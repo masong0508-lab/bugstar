@@ -76,6 +76,11 @@ BUGC=[(110,120,160),(230,50,50),(255,240,120),(250,200,40),(90,200,80),(200,70,4
 for i,c in enumerate(BERRY): pal[216+i]=c
 for i,c in enumerate(BUGC): pal[224+i]=c
 pal[230]=(250,250,250)
+POT={'POTR':(231,[(30,4,8),(110,16,30),(200,40,50),(250,110,100),(255,220,200)]),
+     'POTY':(239,[(26,20,4),(100,80,10),(200,170,30),(250,230,90),(255,255,210)]),
+     'POTP':(247,[(20,6,30),(80,20,110),(160,60,200),(220,140,240),(255,230,255)])}
+for k,(b0,keys) in POT.items():
+    for j,c in enumerate(ramp8(keys)): pal[b0+j]=c
 arr("bg_pal","unsigned short",[c15(*c) for c in pal])
 # ---------------- planet picture (palette indices)
 rng=np.random.default_rng(11)
@@ -217,6 +222,34 @@ def soft(rows,rampbase):
     return [0 if c=='.' else rampbase+m[c] for r in rows for c in r]
 rb={k:base+i*8 for i,k in enumerate(RAMPS)}
 arr("spider_art","unsigned char",soft(SPIDER,rb['SPIDER'])); out.append("#define SPIDER_W 20\n#define SPIDER_H 14")
+def legs_step(rows):          # second walking frame: legs swap forward and back
+    out_=[]
+    for j,r in enumerate(rows):
+        r=list(r); n=len(r); new=['.']*n
+        for i,c in enumerate(r):
+            if c=='.': continue
+            body = 4<=i<=15 and 2<=j<=10
+            if body: new[i]=c; continue
+            d = (1 if i<n//2 else -1) * (1 if j%2 else -1)
+            k=min(n-1,max(0,i+d)); new[k]=c
+        out_.append(''.join(new))
+    return out_
+arr("spider_art2","unsigned char",soft(legs_step(SPIDER),rb['SPIDER']))
+BEETLE=[".........11.........",
+        "........1221........",
+        "........1341........",
+        "....111114411111....",
+        "...12222222222221...",
+        "..1233333333333321..",
+        ".123344444444443321.",
+        ".123345344443543321.",
+        "12333333333333333321",
+        ".1.1222222222221.1..",
+        "1.1..1.1...1.1..1.1.",
+        ".1..1...1.1...1..1.."]
+BEETLE=[r.ljust(20,'.') for r in BEETLE]
+arr("beetle_art","unsigned char",soft(BEETLE,rb['SPIDER'])); arr("beetle_art2","unsigned char",soft(legs_step(BEETLE),rb['SPIDER']))
+out.append("#define BEETLE_W 20\n#define BEETLE_H 12")
 arr("chest_art","unsigned char",soft(CHEST,rb['CHEST'])); out.append("#define CHEST_W 16\n#define CHEST_H 10")
 def soft2(rows,cmap):
     return [cmap.get(c,0) for r in rows for c in r]
@@ -227,7 +260,7 @@ CM={'.':0,'1':1,'k':rb2['CEIL'],'w':230,'g':rb2['MOSS']+5,'G':rb2['MOSS']+3,
     'o':rb2['WOOD']+3,'O':rb2['WOOD']+5,'x':rb2['WOOD']+1,
     'c':rb2['DIRT']+5,'C':rb2['DIRT']+7,'b':rb2['DIRT']+3,
     'q':rb2['CRYSTAL']+4,'Q':rb2['CRYSTAL']+7,'n':rb2['CRYSTAL']+2,
-    'r':216,'y':218,'f':rb2['FLAME']+5,'F':rb2['FLAME']+7,'h':rb2['STONE']+3,'H':rb2['STONE']+5}
+    'r':216,'y':218,'Y':rb2['CHEST']+6,'f':rb2['FLAME']+5,'F':rb2['FLAME']+7,'h':rb2['STONE']+3,'H':rb2['STONE']+5}
 ART={
  'BERRY':["...gG...","..g.....",".k1111k.","k1w1111k","k111111k","k111111k",".k1111k.","..kkkk.."],
  'SEED':["...E....","..EEe...",".EeeEe..",".eeeee..",".deeed..","..ddd..."],
@@ -237,6 +270,10 @@ ART={
  'WARP':["...Q...","..QqQ..",".QqqnQ.","QqqnnnQ",".qqnnn.","..qnn..","...n..."],
  'GEM':["..kkkk..",".k1w11k.","k1w1111k","k111111k",".k1111k.","..k11k..","...kk..."],
  'BAT':["..x..............x..",".xox............xox.","xoOox..........xoOox","xoOOox..xxxx..xoOOox",".xoOOoxxoooooxxoOOox.".rstrip('.')+'.',"..xoOOoxroorxoOOox..","...xxooooooooooxx...","....xx.oooooo.xx....","......xxo..oxx......",".......x.oo.x.......","..........x........."],
+ 'BAT2':["....................","....................","....................","...xxxxx..xxxx..xxxx".replace('x','.'),".xxoOOoxxoooooxxoOOox","xoOOOoxroorxoOOOox..","xoOOooooooooooOOox..","xoOox..oooooo.xoOox.","xox....xo..oxx..xox.",".x.....x.oo.x....x..","..........x........."],
+ 'WASP':[".SS............SS.","SSSS..........SSSS",".SSSS..kkkk..SSSS.","...SSS.krrk.SSS...",".......kkkk.......","......YYYYYY......","......kkkkkk......","......YYYYYY......",".......kkkk.......",".......YYYY.......","........kk........","........k........."],
+ 'WASP2':["..................","..................",".......kkkk.......",".SS....krrk....SS.","SSSSSSSkkkkSSSSSSS",".SSSS.YYYYYY.SSSS.","......kkkkkk......","......YYYYYY......",".......kkkk.......",".......YYYY.......","........kk........","........k........."],
+ 'PET':["....k......k....",".....k....k.....","......kkkk......",".....kwkkwk.....","....kkkkkkkk....","...1111k11111...","..11k11k11k111..",".111111k1111111.",".11k111k111k111.",".111111k1111111.","..1111111111111.","..k.k..k..k.k..."],
  'LAMP':["....h....","....H....","....h....","....H....","....h....","...hHh...","..hHHHh..",".hfFFFfh.",".hfFFFfh.",".hffFffh.","..hhhhh..","...hHh..."],
  'CAGE':["kxxxxxxxxxxk","kOOOOOOOOOOk",".o.o.o.o.o..",".o.o.o.o.o..",".o.o11.o.o..",".o.1111o.o..",".o11k11.o.o.",".o.1111o.o..",".o.o11.o.o..",".o.o.o.o.o..","kOOOOOOOOOOk","kxxxxxxxxxxk"]}
 for k,rows in ART.items():
@@ -262,5 +299,17 @@ for i in range(512):
     d=i/16; L=max(0.03,min(1.0,1.05-d/6.0)); lt.append(int(L*110))
 arr("light_tab","unsigned char",lt)
 arr("fog_tab","unsigned char",[int(max(0.12,1-(i/16)/15)*64) for i in range(512)])
+sq=[];wv=[]
+for m in range(128):
+    f=440*2**((m-69)/12)
+    sq.append(max(0,min(2047,round(2048-131072/f)))); wv.append(max(0,min(2047,round(2048-65536/f))))
+arr("sq_freq","unsigned short",sq); arr("wv_freq","unsigned short",wv)
+import texgen
+R=dict(rb2); R.update({k:v[0] for k,v in POT.items()})
+TX=texgen.make_all(R)
+for grp in ('wall','floor','ceil'):
+    texels, ramps = TX[grp]
+    arr(grp+"_tex","unsigned char",texels,per=48); arr(grp+"_ramp","unsigned short",ramps)
+out.append("enum { %s };" % ", ".join("WT_"+n for n in texgen.WALLS))
 open("assets.h","w").write("// made by gen.py\n"+"\n".join(out)+"\n")
 print("tiles",t,"bytes",len(allt))

@@ -79,18 +79,21 @@ static void fade(int out){
 
 // ---------------------------------------------------------------- OAM helpers
 typedef struct { u16 a0,a1,a2,pad; } Obj;
-static Obj shadow_oam[128];
+#define EW __attribute__((section(".ewram")))
+EW static Obj shadow_oam[128];
 static void oam_hide_all(void){ for(int i=0;i<128;i++){ shadow_oam[i].a0 = 0x0200; shadow_oam[i].a1=0; shadow_oam[i].a2=0; } }
 static void oam_flush(void){ volatile u16 *o=OAM; for(int i=0;i<128;i++){ o[i*4]=shadow_oam[i].a0; o[i*4+1]=shadow_oam[i].a1; o[i*4+2]=shadow_oam[i].a2; } }
 static void set_affine(int m, int pa, int pb, int pc, int pd){ volatile u16 *o=OAM; o[m*16+3]=pa; o[m*16+7]=pb; o[m*16+11]=pc; o[m*16+15]=pd; }
 
+#include "sound.inc"
 #include "game.inc"
+#include "ui.inc"
 
 // ================================================================= THE PLANET
 enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_PEBBLE, O_TUFT };
 typedef struct { s32 x,y,z; u8 kind, alive; } PObj;
 #define NPO 110
-static PObj po[NPO];
+EW static PObj po[NPO];
 static const s32 P0x=-565, P0y=-10027, P0z=12943;      // where the bug stands on the ball (2.14)
 static const s32 AXx=0, AXy=12945, AXz=10027;          // axis for walking sideways
 static int facing=1, msg_timer=0;
@@ -157,7 +160,7 @@ static void planet_frame(void){
     // slugs crawl toward you
     for(int i=0;i<NPO;i++) if(po[i].kind==O_SLUG && po[i].alive){
         PObj *o=&po[i]; if(dot_p0(o)>9000){ o->x+=(P0x-o->x)>>7; o->y+=(P0y-o->y)>>7; o->z+=(P0z-o->z)>>7; renorm(o); }
-        if(dot_p0(o)>16300 && !invuln){ hurt(1); if(invuln>30) show_msg("OUCH! A SLUG"); }
+        if(dot_p0(o)>16300 && !invuln){ hurt(3+dlv()*2); if(invuln>20) show_msg("OUCH! A SLUG"); }
     }
     // A: use what is next to you
     if(HIT(K_A)){
@@ -165,26 +168,26 @@ static void planet_frame(void){
         for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_SLUG){ s32 d=dot_p0(&po[i]); if(d>bd){ bd=d; best=i; } }
         if(best<0) show_msg("NOTHING HERE");
         else switch(po[best].kind){
-            case O_DOOR: enter_dungeon_flag=1; break;
+            case O_DOOR: enter_dungeon_flag=1; sfx(5); break;
             case O_SHIP:
-                if(!shop_menu()){ planet_draw_bg(); planet_hud(); if(!zone_cleared) show_msg("BEAT THE BOSS BELOW TO FLY ON"); return; }
+                if(!shop_menu()){ planet_draw_bg(); planet_hud(); save_game(); show_msg("GAME SAVED"); return; }
                 if(endless){ world_no++; make_world(); }
                 else if(zone==NTINT-1){ endless=1; world_no=1; galaxy_seed=rnd()|1; make_world(); }
                 else { zone++; zone_cleared=0; }
-                fade(1); new_planet(); planet_palette(); planet_draw_bg(); planet_hud();
+                fade(1); new_planet(); planet_palette(); planet_draw_bg(); planet_hud(); restock(); portal_depth=0; save_game();
                 show_msg(endless && world_no==1 ? "THE ENDLESS GALAXY OPENS" : world_name()); fade(0); return;
             case O_CAGE: po[best].alive=0; free_bug(rndi(8)<2?BUG_PILL:rndi(6)); break;
-            case O_SLUG: po[best].alive=0; gold+=5; show_msg("SQUASH! +5 GOLD"); gain_xp(2); break;
+            case O_SLUG: po[best].alive=0; gold+=5; show_msg("SQUASH! +5 GOLD"); gain_xp(3+dlv()); sfx(9); break;
         }
     }
-    bag_input(); tick_timers(); hunger_tick(240);
-    if(HIT(K_START)){ stats_screen(VRAM); planet_draw_bg(); planet_hud(); msg_timer=0; return; }
-    escape_flag=call_flag=blast_flag=0;
+    bag_input(); tick_timers(); hunger_tick(240); regen_tick(120);
+    if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen(VRAM); planet_draw_bg(); planet_hud(); msg_timer=0; return; }
+    escape_flag=call_flag=blast_flag=0; cast_flag=-1;
     if(hearts<=0){ hearts=maxh; food=60; gold/=2; bag_n=0; bag_sel=0; show_msg("YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }
     if(msg_timer && --msg_timer==0) show_msg("");
     if(frames%60==0) planet_hud();
     // sprites: project, scale, sort by height on screen
-    static u8 order[NPO]; static s16 sy_[NPO]; int n=0;
+    EW static u8 order[NPO]; EW static s16 sy_[NPO]; int n=0;
     for(int i=0;i<NPO;i++){ if(!po[i].alive || po[i].z<300) continue; s32 sy=292+((232*po[i].y)>>14); if(sy>170) continue; sy_[i]=sy; order[n++]=i; }
     for(int i=1;i<n;i++){ u8 t=order[i]; int j=i; while(j>0 && sy_[order[j-1]]<sy_[t]){ order[j]=order[j-1]; j--; } order[j]=t; }
     for(int m=0;m<30;m++){ int s=40+m*7; int inv=16384/s; set_affine(m, inv, 0, 0, inv); }   // scale s/64 .. (pa=256*64/s)
@@ -223,29 +226,27 @@ static void planet_enter(void){
 static void hud_now(void){ if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
     if(scene==0){ show_msg(t); return; }
-    int n=0; while(t[n] && n<39){ msg[n]=t[n]; n++; } msg[n]=0; msg_timer=45;
+    int n=0; while(t[n] && n<39){ msg[n]=t[n]; n++; } msg[n]=0; msg_timer=40;
 }
 static void compass(volatile u16 *pg, s32 dirx, s32 diry){
     s32 dx=tgt_x-px_, dy=tgt_y-py_;
     s32 f=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16), r=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16);
-    // r>0 means to the right on screen
     int ax= r>0 ? 1 : -1, ay= f>0 ? -1 : 1;
     s32 af=f<0?-f:f, ar=r<0?-r:r;
     if(ar*5<af*2) ax=0; else if(af*5<ar*2) ay=0;
-    int cx=112, cy=30;          // in 2-pixel columns
+    int cx=112, cy=30;
     for(int k=-3;k<=3;k++){ int x=cx+ax*k, y=cy+ay*k*2; for(int j=0;j<2;j++) pg[(y+j)*120+x]=C_CYAN|(C_CYAN<<8); }
     int hx=cx+ax*4, hy=cy+ay*8; for(int j=-2;j<=2;j++) for(int i=-1;i<=1;i++){ int y=hy+j, x=hx+i; if(x>=0&&x<120&&y>=18&&y<160) pg[y*120+x]=C_WHITE|(C_WHITE<<8); }
 }
-
 static void bar(volatile u16 *pg, int c0, int val, int max, int col){
     int h=34, f = max>0 ? val*h/max : 0; if(f>h) f=h; if(f<0) f=0;
     for(int y=0;y<h+2;y++){ int yy=124+y; u16 e=6|(6<<8); pg[yy*120+c0]=e; pg[yy*120+c0+2]=e; }
     for(int y=0;y<h;y++){ int yy=125+y; int ci = (h-y<=f) ? col : 0; pg[yy*120+c0+1]=ci|(ci<<8); }
 }
 static void hud3d(volatile u16 *pg){
-    bar(pg,1,hearts,maxh,C_RED); bar(pg,4,food,100,C_GREEN); bar(pg,7,xp,xp_next(),C_CYAN);
+    bar(pg,1,hearts,maxh,C_RED); bar(pg,4,mp,maxmp,C_CYAN); bar(pg,7,food,100,C_GREEN);
     int c0=86, c1=117, y0=146, y1=157;
-    u16 rim=C_GOLD|(C_GOLD<<8), in=(R_CHEST+3)|((R_CHEST+3)<<8), dk=(R_CHEST+1)|((R_CHEST+1)<<8);
+    u16 rim=C_GOLD|(C_GOLD<<8), in=(R_CHEST+3)|((R_CHEST+3)<<8);
     for(int c=c0;c<=c1;c++){ pg[y0*120+c]=rim; pg[y1*120+c]=rim; for(int y=y0+1;y<y1;y++) pg[y*120+c]=in; }
     for(int y=y0;y<=y1;y++){ pg[y*120+c0]=rim; pg[y*120+c1]=rim; }
     static const char *const lab[8]={"E","","S","","W","","N",""};
@@ -253,26 +254,71 @@ static void hud3d(volatile u16 *pg){
         int x=204+off*28/232;
         if(lab[k][0]) text(pg,x-1,y0+3,lab[k],0,1); else for(int y=y0+4;y<y0+8;y++) pix(pg,x,y,R_CHEST+1); }
     for(int y=y0+1;y<y1;y++) pix(pg,204,y,C_RED);
-    (void)dk;
+    // the spell you have ready
+    if(spell_known[spell_sel]){ char b[20]; scpy(b,spell_name[spell_sel]); text(pg,24,150,b, mp>=spell_cost[spell_sel]?C_CYAN:C_DGREY,1); }
 }
+
+// ---------------------------------------------------------------- combat
+static s32 dist8(s32 dx, s32 dy){ s32 adx=dx<0?-dx:dx, ady=dy<0?-dy:dy; return adx>ady ? adx+ady/2 : ady+adx/2; }
+static int mon_dmg(DObj *o){
+    int b=3+dlv()*2+depth_no/2;
+    switch(o->kind){ case K_BEETLE: b=b*9/5; break; case K_BAT: b=b*7/10+1; break; case K_BOSS: b=b*5/2; break; }
+    if(o->champ) b=b*3/2;
+    return b;
+}
+static void kill_mon(DObj *o){
+    int boss=o->kind==K_BOSS;
+    int xpv = (4+dlv()*2+depth_no) * (o->kind==K_BEETLE?2 : o->kind==K_WASP?3 : boss?10 : 1) / (o->kind==K_WASP?2:1);
+    if(o->champ) xpv*=3;
+    earn(boss ? 100+depth_no*10 : 6+dlv()*4+(o->champ?40:0));
+    if(q_type==Q_HUNT){ q_have++; if(q_have>=q_need && !q_done){ q_done=1; say("QUEST DONE! GO BACK TO YOUR SHIP"); } }
+    if(o->champ==2 && q_type==Q_CHAMP){ q_done=1; say("QUEST TARGET SLAIN!"); }
+    sfx(9); burst(o->x,o->y,0x6000,10,1);
+    int ilvl=dlv()*3+depth_no;
+    if(boss){ if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; say("BOSS BEATEN! ZONE CLEARED"); } xpv+=30+dlv()*10; }
+    gain_xp(xpv);
+    Gear g; int drop=0;
+    if(boss || o->champ){ g=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, ilvl+4, 40); drop=1; }
+    else if(rndi(3)==0){ g=roll_drop(ilvl,0); drop=1; }
+    s32 x=o->x, y=o->y;
+    o->alive=0;
+    if(drop){ memset(o,0,sizeof(DObj)); o->kind=K_ITEM; o->alive=1; o->x=x; o->y=y; o->it=g.it; o->sub=g.sub; o->rar=g.rar; o->pre=g.pre; o->suf=g.suf; o->lvl=g.lvl; }
+    hud_now();
+}
+static void hit_mon(DObj *o, int dmg, int crit){
+    o->hp-=dmg; o->flash=6; add_fnum(o->x,o->y,dmg,crit?C_GOLD:C_WHITE); sfx(1);
+    if(d_fire) burst(o->x,o->y,0x6000,4,0);
+    if(d_venom) o->venom=90;
+    if(o->hp<=0) kill_mon(o);
+}
+
+// ---------------------------------------------------------------- fishing
+static int fish_state=0, fish_t=0;
+static int water_ahead(s32 dirx, s32 diry){
+    s32 x=px_+((dirx*13)>>4), y=py_+((diry*13)>>4); int tx=x>>16, ty=y>>16;
+    if(tx<0||ty<0||tx>=MW||ty>=MW) return 0; return fmat[ty*MW+tx]==FL_WATER && dmap[ty*MW+tx]==D_FLOOR;
+}
+static int spark_t=0, spark_c=60, spark_y=80;
+
 static int dungeon_frame_(void);
 static int dungeon_frame(void){ u32 t=TMR(); int r=dungeon_frame_(); prof[5]=TMR()-t; return r; }
-static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint
-    tick_timers(); hunger_tick(40); bag_input();
-    { int f=frames; int fl=(sin_tab[(f*29)&255]+sin_tab[(f*47+80)&255])>>12;      // -8..8
+static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint, 3 when you warp out
+    tick_timers(); hunger_tick(40); regen_tick(45); bag_input();
+    { int f=frames; int fl=(sin_tab[(f*29)&255]+sin_tab[(f*47+80)&255])>>12;
       for(int i=0;i<8;i++){ int k=i+(fl>2?1:fl<-2?-1:0); if(k<0)k=0; if(k>7)k=7; BG_PAL[R_FLAME+i]=bg_pal[R_FLAME+k]; }
       for(int i=2;i<7;i++){ int k=i+((((f>>2)+i)&3)==0); BG_PAL[R_WATER+i]=bg_pal[R_WATER+(k>7?7:k)]; BG_PAL[R_CRYSTAL+i]=bg_pal[R_CRYSTAL+((((f>>3)+i*3)%5)==0 && i<6 ? i+1 : i)]; } }
-    if(HIT(K_START)){ stats_screen((volatile u16*)(0x06000000 + (page_back?0:0xA000))); dungeon_hud(); }
+    if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen((volatile u16*)(0x06000000 + (page_back?0:0xA000))); dungeon_hud(); }
     int kl=K_LEFT, kr=K_RIGHT, ku=K_UP, kd=K_DOWN;
     if(dizzy_t){ kl=K_RIGHT; kr=K_LEFT; ku=K_DOWN; kd=K_UP; }
     if(HELD(kl)) pang=(pang-12)&1023;
     if(HELD(kr)) pang=(pang+12)&1023;
-    s32 dirx=cosx(pang>>2)<<2, diry=sinx(pang>>2)<<2;                 // 16.16
-    s32 plx=-(diry*43/65), ply=dirx*43/65;                             // camera plane
+    s32 dirx=cosx(pang>>2)<<2, diry=sinx(pang>>2)<<2;
+    s32 plx=-(diry*43/65), ply=dirx*43/65;
     s32 sp = HELD(ku) ? 0x0D00 : HELD(kd) ? -0x0900 : 0;
-    if(have_bug[BUG_CRICKET]) sp=sp*5/4;
+    sp = sp*(100+d_spd+have_bug[BUG_CRICKET]*25)/100;
     if(speed_t) sp=sp*8/5;
     if(sp){
+        fish_state=0;
         s32 nx=px_+(s32)(((long long)dirx*sp)>>16), ny=py_+(s32)(((long long)diry*sp)>>16);
         s32 mx = nx + (sp>0? (dirx>0?0x4000:-0x4000) : (dirx>0?-0x4000:0x4000));
         s32 my = ny + (sp>0? (diry>0?0x4000:-0x4000) : (diry>0?-0x4000:0x4000));
@@ -281,59 +327,143 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint
     }
     if(atk_t) atk_t--;
     if(escape_flag){ escape_flag=0; return 3; }
-    // monsters, pickups, cages
-    int near_cage=-1;
+    // ---- spells
+    if(cast_flag>=0){ int s=cast_flag; cast_flag=-1;
+        if(!spell_known[s]) say("FIND A SPELL BOOK FIRST");
+        else if(mp<spell_cost[s]){ say("NOT ENOUGH MANA"); }
+        else { mp-=spell_cost[s];
+            if(s==SP_FIRE){ fire_proj(0, px_+(dirx>>2), py_+(diry>>2), 0x7000, (dirx*3)>>5, (diry*3)>>5, 6+st_mag*2+level); sfx(3); }
+            else if(s==SP_SPARK){ int best=-1; s32 bd=0x60000;
+                for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; s32 d=dist8(o->x-px_,o->y-py_); if(d<bd){ bd=d; best=i; } }
+                if(best>=0){ DObj *o=&dob[best]; hit_mon(o, 5+st_mag*2+level, 0); burst(o->x,o->y,0x8000,8,2); spark_t=6;
+                    s32 det=(s32)((((long long)plx*diry)-((long long)dirx*ply))>>16); s32 sx=o->x-px_, sy=o->y-py_;
+                    s32 tY=(s32)((((long long)-ply*sx)+((long long)plx*sy))/det), tX=(s32)((((long long)diry*sx)-((long long)dirx*sy))/det);
+                    if(tY>0x2000){ spark_c=60+(s32)(((long long)tX*60)/tY); spark_y=hz; } else { spark_c=60; spark_y=60; } }
+                else say("NOTHING TO ZAP");
+                sfx(10); }
+            else if(s==SP_HEAL){ hearts+=10+st_mag*3; if(hearts>maxh) hearts=maxh; burst(px_+(dirx>>1),py_+(diry>>1),0x4000,10,1); sfx(6); say("HEALED"); }
+            else { shield_t=900; say("SHIELD UP"); sfx(6); }
+            hud_now(); }
+    }
+    // ---- Buddy, your pet
+    int pet_here = !pet_away_t && !pet_down_t;
+    if(pet_here){
+        int tg=-1; s32 best=0x48000;
+        for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
+            if(dist8(o->x-px_,o->y-py_)>0x50000) continue; s32 d=dist8(o->x-pet_x,o->y-pet_y); if(d<best){ best=d; tg=i; } }
+        s32 tx,ty;
+        if(tg>=0){ tx=dob[tg].x; ty=dob[tg].y; } else { tx=px_-((dirx*14)>>4)+((-diry)>>2); ty=py_-((diry*14)>>4)+(dirx>>2); }
+        s32 dx=tx-pet_x, dy=ty-pet_y, d=dist8(dx,dy);
+        s32 st = pet_form==3?0x0B00 : pet_form==2?0x0700 : 0x0900;
+        if(d > (tg>=0?0x9000:0x5000)){
+            s32 stx = dx>0x800?st : dx<-0x800?-st : 0, sty = dy>0x800?st : dy<-0x800?-st : 0;
+            if(!solid(pet_x+stx*3,pet_y)) pet_x+=stx; if(!solid(pet_x,pet_y+sty*3)) pet_y+=sty;
+        }
+        if(dist8(px_-pet_x,py_-pet_y)>0x80000){ pet_x=px_-(dirx>>1); pet_y=py_-(diry>>1); if(solid(pet_x,pet_y)){ pet_x=px_; pet_y=py_; } }
+        if(pet_cool) pet_cool--;
+        if(tg>=0 && best<0xC000 && !pet_cool){ hit_mon(&dob[tg], pet_dmg(), 0); pet_cool = pet_form==1?12:20; if(pet_form==1) burst(dob[tg].x,dob[tg].y,0x5000,5,0); }
+        if(pet_hp<=0){ pet_down_t=900; say("BUDDY IS HURT. HE'LL BE BACK"); }
+    }
+    if(pet_down_t && --pet_down_t==0){ pet_hp=pet_maxhp/2; pet_x=px_; pet_y=py_; say("BUDDY IS BACK!"); }
+    // ---- monsters, pickups, cages
+    int near_cage=-1; DObj *named=0; s32 named_d=0x60000;
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(o->flash) o->flash--;
-        s32 dx=px_-o->x, dy=py_-o->y; s32 adx=dx<0?-dx:dx, ady=dy<0?-dy:dy; s32 d = adx>ady ? adx+ady/2 : ady+adx/2;
-        if(o->kind==K_SPIDER || o->kind==K_BOSS || o->kind==K_BAT){
-            int boss=o->kind==K_BOSS, bat=o->kind==K_BAT; s32 reach = boss?0x14000:0xB000;
-            if(blast_flag && d<0x30000){ o->hp-=3; o->flash=8; }
-            if(!stun_t && d<0x70000 && d>reach-0x2000){ s32 st=boss?0x0500:bat?(0x0700+((frames+i*9)%24<12?0x400:0)):0x0600; s32 stx=(dx>0?st:-st), sty=(dy>0?st:-st);
-                if(!solid(o->x+stx*3,o->y)) o->x+=stx; if(!solid(o->x,o->y+sty*3)) o->y+=sty; }
+        s32 dx=px_-o->x, dy=py_-o->y, d=dist8(dx,dy);
+        if(is_mon(o->kind)){
+            int boss=o->kind==K_BOSS, bat=o->kind==K_BAT, wasp=o->kind==K_WASP;
+            s32 reach = boss?0x14000 : o->kind==K_BEETLE?0xC000 : 0xB000;
+            if((o->champ||boss) && d<named_d){ named=o; named_d=d; }
+            if(o->venom){ o->venom--; if((o->venom%15)==0){ int vd=1+d_venom/3; o->hp-=vd; add_fnum(o->x,o->y,vd,C_GREEN); if(o->hp<=0){ kill_mon(o); continue; } } }
+            if(blast_flag && d<0x30000){ hit_mon(o, 8+level*2, 0); if(!o->alive) continue; }
+            // go after whoever is closer: you or Buddy
+            s32 pdx=pet_x-o->x, pdy=pet_y-o->y, pd = pet_here ? dist8(pdx,pdy) : 0x7FFFFFFF;
+            int at_pet = pd < d;
+            s32 tdx = at_pet?pdx:dx, tdy = at_pet?pdy:dy, td = at_pet?pd:d;
+            if(!stun_t && td<0x70000){
+                s32 st = boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : 0x0600;
+                int away = wasp && td<0x18000, keep = wasp && td<0x40000 && td>=0x18000;
+                if(!keep && (td>reach-0x2000 || away)){
+                    s32 stx=(tdx>0?st:-st), sty=(tdy>0?st:-st); if(away){ stx=-stx; sty=-sty; }
+                    if(!solid(o->x+stx*3,o->y)) o->x+=stx; if(!solid(o->x,o->y+sty*3)) o->y+=sty; }
+            }
             if(o->cool) o->cool--;
-            if(!stun_t && d<reach && !o->cool){ o->cool=boss?40:50; if(!invuln){ hurt(boss?2:1); if(invuln>=40) hurt_flash=8; }
-                if(have_bug[BUG_BEE]){ o->hp--; o->flash=8; } }
-            if(o->hp<=0){ o->alive=0; earn(boss ? 100+depth_no*10 : 8+dlv()*4);
-                if(boss){ if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; say("BOSS BEATEN! ZONE CLEARED"); } gain_xp(30+dlv()*10); }
-                else { gain_xp(2+dlv()+depth_no/2);
-                       if(rndi(3)==0){ int r=rndi(10), it = r<5?IT_BERRY : r<7?IT_CRUMB : r<9?IT_SEED : IT_THORN;
-                           o->kind=K_ITEM; o->alive=1; o->sub=(it<<4)|(it==IT_BERRY?rndi(8):it==IT_SEED?rndi(6):it==IT_THORN?rndi(4):0); } }
-                hud_now(); }
-        } else if(o->kind==K_CHEST){ if(d<0x9000){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); if(endless && rndi(2)) add_item(IT_GEM,rndi(4)); else if(rndi(2)) add_item(IT_SEED+rndi(3),rndi(4)); hud_now(); } }
-        else if(o->kind==K_ITEM){ if(d<0x9000 && bag_n<8){ o->alive=0; add_item(o->sub>>4,o->sub&15); } }
+            if(wasp && !stun_t && !o->cool && d<0x60000){        // wasps shoot stingers
+                s32 l=isqrt((u32)((dx>>8)*(dx>>8)+(dy>>8)*(dy>>8))); if(l<1) l=1;
+                fire_proj(1, o->x, o->y, 0x8000, (dx>>8)*0x1400/l, (dy>>8)*0x1400/l, mon_dmg(o)); o->cool=55+rndi(30); }
+            if(!wasp && !stun_t && td<reach && !o->cool){
+                o->cool=boss?40:50;
+                if(at_pet){ pet_hp-=mon_dmg(o)/2; petobj.flash=6; }
+                else { if(!invuln){ int before=hearts; hurt(mon_dmg(o)); if(hearts<before) hurt_flash=8; }
+                       int ret=d_reflect+d_sting; if(ret){ hit_mon(o,ret,0); if(!o->alive) continue; } }
+            }
+        } else if(o->kind==K_CHEST){ if(d<0x9000){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
+                Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now(); } }
+        else if(o->kind==K_ITEM){ if(d<0x9000 && (bag_n<BAGMAX || o->it==IT_QUEST)){ Gear g={o->it,o->sub,o->rar,o->pre,o->suf,o->lvl}; if(add_gear(g)) o->alive=0; } }
         else if(o->kind==K_CAGE){ if(d<0xC000) near_cage=i; }
     }
     blast_flag=0;
     if(call_flag){ call_flag=0; for(int i=0;i<ndo;i++) if(dob[i].alive && dob[i].kind==K_CAGE){ dob[i].alive=0; free_bug(dob[i].sub); break; } }
-    // A: free a bug, or bite whatever is in front of you
+    // ---- fireballs and stingers
+    for(int i=0;i<NPROJ;i++){ Proj *p=&proj[i]; if(!p->alive) continue;
+        p->x+=p->vx; p->y+=p->vy; if(--p->life<=0 || solid(p->x,p->y)){ p->alive=0; burst(p->x-p->vx,p->y-p->vy,p->h,p->kind?4:10,0); continue; }
+        if(p->kind==0){ if(frames&1) burst(p->x,p->y,p->h,1,0);
+            for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(!o->alive||!is_mon(o->kind)) continue;
+                if(dist8(o->x-p->x,o->y-p->y)<0x9000){ hit_mon(o,p->dmg,0); p->alive=0; burst(p->x,p->y,p->h,12,0); break; } } }
+        else if(dist8(px_-p->x,py_-p->y)<0x7000){ p->alive=0; int before=hearts; hurt(p->dmg); if(hearts<before) hurt_flash=8; }
+    }
+    // ---- A: open a cage, take the stairs, fish, or bite
     int here=dmap[(py_>>16)*MW+(px_>>16)];
+    if(fish_state==1 && --fish_t<=0){ fish_state=2; fish_t=14; sfx(8); say("! A BITE ! PRESS A"); }
+    else if(fish_state==2 && --fish_t<=0){ fish_state=0; say("IT GOT AWAY"); }
     if(HIT(K_A)){
-        if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
+        if(fish_state==2){ fish_state=0; int r=rndi(100), f = r<45?0 : r<62?1 : r<79?2 : r<88?3 : 4; add_item(IT_FISH,f); sfx(8); }
+        else if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
         else if(here==D_UP) return 1;
         else if(here==D_DOWN){ fade(1); dungeon_enter(); fade(0); return 0; }
+        else if(fish_state==1){ fish_state=0; say("YOU REEL IN"); }
+        else if(water_ahead(dirx,diry)){ fish_state=1; fish_t=25+rndi(50); say("FISHING... WAIT FOR A BITE"); sfx(8); }
         else if(!atk_t){
-            atk_t=14; int pw=bite_power();
-            for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||(o->kind!=K_SPIDER&&o->kind!=K_BOSS&&o->kind!=K_BAT)) continue;
+            atk_t=14-d_haste; if(atk_t<6) atk_t=6; int crit; int pw=bite_power(&crit); sfx(0);
+            for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
                 s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16);
                 s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(side<0) side=-side;
                 s32 rng_=o->kind==K_BOSS?0x1C000:0x14000;
-                if(fwd>0 && fwd<rng_ && side<0xC000){ o->flash=8; if(o->kind!=K_BOSS){ o->x+=dirx>>2; o->y+=diry>>2; } o->hp-=pw; }
+                if(fwd>0 && fwd<rng_ && side<0xC000){ if(o->kind!=K_BOSS && o->kind!=K_BEETLE && !o->champ){ o->x+=dirx>>2; o->y+=diry>>2; } hit_mon(o,pw,crit); }
             }
         }
     }
     if(hearts<=0) return 2;
-    // draw into the back page
+    // ---- draw into the back page
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
+    if(sp){ bob_ph += speed_t?14:10; }
+    hz = 89 + (sinI[bob_ph&255]>>13) + (shake_t ? ((shake_t&1)?3:-3) : 0);
+    if(shake_t) shake_t--;
+    parts_update();
     render_view(pg,dirx,diry,plx,ply);
-    static u8 ord[NDO]; static s32 dd[NDO]; int n=0;
+    static u8 ord[NDO+1]; static s32 dd[NDO+1]; int n=0;
     for(int i=0;i<ndo;i++) if(dob[i].alive){ s32 dx=dob[i].x-px_, dy=dob[i].y-py_; dd[i]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=i; }
+    if(pet_here){ petobj.kind=K_PET; petobj.alive=1; petobj.x=pet_x; petobj.y=pet_y; if(petobj.flash) petobj.flash--; s32 dx=pet_x-px_, dy=pet_y-py_; dd[NDO]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=NDO; }
     for(int i=1;i<n;i++){ u8 t=ord[i]; int j=i; while(j>0 && dd[ord[j-1]]<dd[t]){ ord[j]=ord[j-1]; j--; } ord[j]=t; }
-    for(int i=0;i<n;i++) draw_sprite(pg,&dob[ord[i]],dirx,diry,plx,ply);
+    for(int i=0;i<n;i++) draw_sprite(pg, ord[i]==NDO ? &petobj : &dob[ord[i]], dirx,diry,plx,ply);
+    for(int i=0;i<NPROJ;i++){ Proj *p=&proj[i]; if(!p->alive) continue;
+        if(p->kind==0) draw_glow(pg,p->x,p->y,p->h,0x2400 + (sinI[(frames*40)&255]>>6),R_FLAME+7,R_FLAME+4,dirx,diry,plx,ply);
+        else draw_glow(pg,p->x,p->y,p->h,0x0C00,R_CHEST+7,R_CHEST+5,dirx,diry,plx,ply); }
+    parts_draw(pg,dirx,diry,plx,ply);
+    draw_fnums(pg,dirx,diry,plx,ply);
+    if(spark_t){ spark_t--; int c=60, y=140; for(int k=0;k<12;k++){ int c2=60+(spark_c-60)*(k+1)/12+(k<11?rndi(5)-2:0), y2=140+(spark_y-140)*(k+1)/12;
+            int steps=(y-y2)>0?(y-y2):1; for(int s=0;s<=steps;s+=2){ int cc=c+(c2-c)*s/steps, yy=y-s; if(cc>=0&&cc<120&&yy>=18&&yy<160){ pg[yy*120+cc]=(C_WHITE)|(C_WHITE<<8); if(cc+1<120) pg[yy*120+cc+1]=(R_CRYSTAL+7)|((R_CRYSTAL+7)<<8);} }
+            c=c2; y=y2; } }
+    if(fish_state){ int by = 118 + (fish_state==2 ? 4 : (sinI[(frames*20)&255]>>12)); for(int y=100;y<by;y+=2) pg[y*120+66]=(R_STONE+6)|((R_STONE+6)<<8);
+        for(int y=by;y<by+4;y++){ pg[y*120+66]=216|(216<<8); pg[y*120+67]=216|(216<<8); } }
     if(sight || have_bug[BUG_ANT]) compass(pg,dirx,diry);
     hud3d(pg);
+    if(named){ char b[32]; b[0]=0; if(named->kind==K_BOSS) scpy(b, endless?"GUARDIAN":"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
+        int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
     if(msg_timer){ msg_timer--; text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
-    else if(near_cage>=0) text(pg,120-14*4,24,"A: OPEN CAGE",C_WHITE,2);
-    else if(here==D_UP||here==D_DOWN){ const char *m = here==D_UP? "A: CLIMB UP" : "A: GO DEEPER"; text(pg,120-textlen(m)*4,24,m,C_WHITE,2); }
+    else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);
+    else if(here==D_UP||here==D_DOWN){ const char *m2 = here==D_UP? "A: CLIMB UP" : "A: GO DEEPER"; text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
+    else if(!fish_state && water_ahead(dirx,diry)) text(pg,120-9*4,24,"A: FISH",C_CYAN,2);
+    if(shield_t && (frames&16)){ for(int c=0;c<120;c+=6){ pg[18*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); pg[159*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); } }
     if(hurt_flash){ hurt_flash--; for(int y=18;y<22;y++) for(int x=0;x<120;x++) pg[y*120+x]=C_RED|(C_RED<<8); }
     if(frames%60==0) dungeon_hud();
     oam_hide_all();
@@ -346,34 +476,70 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint
     return 0;
 }
 
+// ---------------------------------------------------------------- the title screen
+static int title_screen(void){
+    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
+    int z=zone, e=endless; zone=0; endless=0; planet_palette(); planet_draw_bg(); zone=z; endless=e;
+    volatile u16 *pg=VRAM;
+    rect(pg,0,0,240,18,0);
+    text(pg,66,26,"BUGSTAR",C_DGREY,4); text(pg,64,24,"BUGSTAR",C_GOLD,4);
+    text(pg,68,50,"A LITTLE BUG. A BIG GALAXY.",C_WHITE,1);
+    int has=load_game(0);
+    volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
+    for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
+    music(2);
+    wait_release();
+    int blink=0;
+    while(1){
+        oam_hide_all(); set_affine(31,128,0,0,128);
+        shadow_oam[0].a0=((150-32-((blink>>3)&1))&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((120-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=T_BUGSIDE;
+        vsync(); oam_flush(); read_keys(); blink++; rng_s += blink;
+        if((blink&31)==0 || (blink&31)==16){ const u16 *src=(const u16*)planet_img; for(int i=64*120;i<86*120;i++) pg[i]=src[i];
+            if(blink&16){ text(pg,85,67,"A: NEW GAME",0,1); text(pg,84,66,"A: NEW GAME",C_WHITE,1); if(has){ text(pg,81,77,"START: CONTINUE",0,1); text(pg,80,76,"START: CONTINUE",C_CYAN,1); } } }
+        if(HIT(K_A)) return 0;
+        if(has && HIT(K_START)) return 1;
+    }
+}
+
 // ================================================================= main loop
 int main(void){
     REG_DISPCNT = 0x80;
     REG_WAITCNT = 0x4317;
     *(volatile u16*)0x04000100=0; *(volatile u16*)0x04000104=0; *(volatile u16*)0x04000106=0x84; *(volatile u16*)0x04000102=0x80;
+    sound_init();
     rng_s ^= 0x9E3779B9;
     new_game();
-    planet_enter(); new_planet(); show_msg("THE GARDEN: FIND THE DOOR");
-    oam_hide_all(); oam_flush();
-    scene=0;
+    int cont = title_screen();
+    rng_s ^= vbl_count*2654435761u;
+    fade(1);
+    if(cont) load_game(1); else { new_game(); save_game(); }
+    restock();
+    planet_enter(); new_planet(); show_msg(cont ? "WELCOME BACK" : "THE GARDEN: FIND THE DOOR");
+    oam_hide_all(); oam_flush(); fade(0);
+    scene=0; music(0);
     while(1){
         read_keys(); frames++; if(invuln) invuln--;
         rng_s += keys;
+        if(pet_away_t && --pet_away_t==0){ gold+=pet_sold_g; char b[40]; scpy(b,"BUDDY SOLD "); ncat(b,pet_sold_n); scat(b," THINGS: +"); ncat(b,pet_sold_g); scat(b,"G"); say(b); sfx(7); hud_now(); pet_x=px_; pet_y=py_; }
         if(scene==0){
             planet_frame();
             vsync(); oam_flush();
-            if(enter_dungeon_flag){ enter_dungeon_flag=0; fade(1); oam_hide_all(); oam_flush(); depth_no=0; scene=1; dungeon_enter(); page_back=1; fade(0); }
+            if(enter_dungeon_flag){ enter_dungeon_flag=0; fade(1); oam_hide_all(); oam_flush();
+                depth_no=0; if(portal_depth>0){ depth_no=portal_depth-1; portal_depth=0; }
+                scene=1; dungeon_enter(); page_back=1; music(1); fade(0); }
         } else {
             int r=dungeon_frame();
             vsync();
             if(scene==1){ REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; }
             oam_flush();
-            if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; msg_timer=0;
+            if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; msg_timer=0; fish_state=0;
                    char mb[40];
-                   if(r==2){ hearts=maxh; food=60; if(!endless) gold/=2; loot=0; bag_n=0; bag_sel=0; scpy(mb, endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
-                   else if(endless){ int bonus = loot*(100+depth_no*15)/100; gold+=bonus; loot=0; char n2[6]; scpy(mb,"ESCAPED B"); num(n2,depth_no,depth_no>9?2:1); scat(mb,n2); scat(mb,": +"); num(n2,bonus,bonus>999?4:3); scat(mb,n2); scat(mb,"G"); }
-                   else scpy(mb, r==3 ? "WARPED OUT!" : (zone_cleared?"ZONE CLEARED! GO TO YOUR SHIP":"BACK ON THE SURFACE"));
-                   planet_enter(); show_msg(mb); oam_flush(); fade(0); }
+                   if(r==2){ recalc(); hearts=maxh; food=60; if(!endless) gold/=2; loot=0; bag_n=0; bag_sel=0; portal_depth=0; scpy(mb, endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
+                   else if(endless){ int bonus = loot*(100+depth_no*15)/100; gold+=bonus; loot=0; scpy(mb,"ESCAPED B"); ncat(mb,depth_no); scat(mb,": +"); ncat(mb,bonus); scat(mb,"G"); }
+                   else if(r==3 && portal_depth) scpy(mb,"PORTAL OPEN: THE DOOR TAKES YOU BACK");
+                   else scpy(mb, zone_cleared?"ZONE CLEARED! GO TO YOUR SHIP":"BACK ON THE SURFACE");
+                   restock(); save_game();
+                   planet_enter(); show_msg(mb); oam_flush(); music(0); fade(0); }
         }
     }
 }
