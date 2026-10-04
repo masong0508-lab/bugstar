@@ -226,6 +226,7 @@ CM={'.':0,'1':1,'k':rb2['CEIL'],'w':230,'g':rb2['MOSS']+5,'G':rb2['MOSS']+3,
     's':rb2['STONE']+4,'S':rb2['STONE']+6,'t':rb2['STONE']+2,
     'o':rb2['WOOD']+3,'O':rb2['WOOD']+5,'x':rb2['WOOD']+1,
     'c':rb2['DIRT']+5,'C':rb2['DIRT']+7,'b':rb2['DIRT']+3,
+    'q':rb2['CRYSTAL']+4,'Q':rb2['CRYSTAL']+7,'n':rb2['CRYSTAL']+2,
     'r':216,'y':218,'f':rb2['FLAME']+5,'F':rb2['FLAME']+7,'h':rb2['STONE']+3,'H':rb2['STONE']+5}
 ART={
  'BERRY':["...gG...","..g.....",".k1111k.","k1w1111k","k111111k","k111111k",".k1111k.","..kkkk.."],
@@ -233,6 +234,8 @@ ART={
  'SHELL':["...kkkk...","..kSSssk..",".kSsssstk.",".ksssstttk","kssttttttk","kkkkkkkkkk"],
  'THORN':["...w..","...S..","..sS..","..ss..",".kst..",".kst..","kxoox.","kxxxx."],
  'CRUMB':["..kkkk..",".kCCCck.","kCccccbk","kcccbbbk",".kkkkkk."],
+ 'WARP':["...Q...","..QqQ..",".QqqnQ.","QqqnnnQ",".qqnnn.","..qnn..","...n..."],
+ 'GEM':["..kkkk..",".k1w11k.","k1w1111k","k111111k",".k1111k.","..k11k..","...kk..."],
  'BAT':["..x..............x..",".xox............xox.","xoOox..........xoOox","xoOOox..xxxx..xoOOox",".xoOOoxxoooooxxoOOox.".rstrip('.')+'.',"..xoOOoxroorxoOOox..","...xxooooooooooxx...","....xx.oooooo.xx....","......xxo..oxx......",".......x.oo.x.......","..........x........."],
  'LAMP':["....h....","....H....","....h....","....H....","....h....","...hHh...","..hHHHh..",".hfFFFfh.",".hfFFFfh.",".hffFffh.","..hhhhh..","...hHh..."],
  'CAGE':["kxxxxxxxxxxk","kOOOOOOOOOOk",".o.o.o.o.o..",".o.o.o.o.o..",".o.o11.o.o..",".o.1111o.o..",".o11k11.o.o.",".o.1111o.o..",".o.o11.o.o..",".o.o.o.o.o..","kOOOOOOOOOOk","kxxxxxxxxxxk"]}

@@ -50,7 +50,8 @@ static void make_floor(void){
     nrooms=0; nlights=0; nlamps=0;
     for(int t=0;t<400 && nrooms<8;t++){
         static const u8 zst[6][3]={{ST_HALL,ST_CAVE,ST_GROTTO},{ST_GROTTO,ST_GROTTO,ST_CRYPT},{ST_HALL,ST_CRYPT,ST_HALL},{ST_CRYSTAL,ST_CRYSTAL,ST_CAVE},{ST_CRYSTAL,ST_HALL,ST_CRYPT},{ST_CAVE,ST_CAVE,ST_CRYPT}};
-        int st = nrooms==0 ? zst[zone][0] : (rndi(10)<7 ? zst[zone][rndi(3)] : rndi(NSTYLE)), w, h;
+        const u8 *zs = endless ? w_styles : zst[zone];
+        int st = nrooms==0 ? zs[0] : (rndi(10)<7 ? zs[rndi(3)] : rndi(NSTYLE)), w, h;
         if(st==ST_HALL){ w=9+rndi(5); h=7+rndi(2); if(rnd()&1){ int k=w; w=h; h=k; } }
         else { w=6+rndi(5); h=6+rndi(4); }
         if(w>MW-4) w=MW-4; if(h>MW-4) h=MW-4;
@@ -89,7 +90,7 @@ static void make_floor(void){
         wmat[i] = st>=0 ? style_wall[st] : M_BRICK;
         int hsh=(x*7+y*13)&7;
         if(st==ST_HALL||st==ST_CRYPT||st<0){
-            int h2=(x*31+y*17+depth_no*7+zone*3)%13;
+            int h2=(x*31+y*17+depth_no*7+dlv()*3)%13;
             wdec[i] = h2<2?DC_NICHE : h2<3?DC_DOOR : h2<4?DC_PLAQUE : h2<6?DC_RUNE : (st==ST_CRYPT && h2<11)?DC_PANEL : DC_NONE;
         }
         if((st==ST_HALL||st==ST_CRYPT) && hsh<2){ wmat[i]|=F_TORCH; add_light(f%MW,f/MW,72); if(wdec[i]!=DC_PANEL) wdec[i]=DC_NONE; }
@@ -117,14 +118,15 @@ static void make_floor(void){
       for(int k=0;k<4;k++){ int x=up%MW, y=up/MW, l=0; while(l<20){ x+=ddx[k]; y+=ddy[k]; if(x<0||y<0||x>=MW||y>=MW) break; int t=dmap[y*MW+x]; if(t==D_WALL||t==D_PILLAR) break; l++; } if(l>bl){ bl=l; best=k; } }
       pang = best*256; }
     // monsters, treasure, items, a caged bug or two; the last floor of the zone has a boss instead of stairs down
-    int last = depth_no>=zone_floors();
+    int last = !endless && depth_no>=zone_floors();
     if(last){ dmap[dn]=D_FLOOR; }
+    if(endless && depth_no>1) dmap[up]=D_FLOOR;          // no way back up: warp out or keep going
     tgt_x=((dn%MW)<<16)+0x8000; tgt_y=((dn/MW)<<16)+0x8000;
     ndo=0;
     #define SPAWN(k_,cell_,hp_,sub_) do{ if(ndo<NDO){ DObj *o=&dob[ndo++]; int c_=(cell_); o->kind=(k_); o->alive=1; o->hp=(hp_); o->sub=(sub_); o->flash=0; o->cool=0; o->x=((c_%MW)<<16)+0x8000; o->y=((c_/MW)<<16)+0x8000; } }while(0)
-    int mhp = 2 + zone + depth_no/2;
+    int mhp = 2 + dlv() + depth_no/2; if(mhp>60) mhp=60;
     for(int i=1;i<nrooms;i++){
-        int c = 1 + (rooms[i].w*rooms[i].h>60) + (zone+depth_no)/4;
+        int c = 1 + (rooms[i].w*rooms[i].h>60) + ((dlv()+depth_no)/4 > 3 ? 3 : (dlv()+depth_no)/4);
         for(int k=0;k<c;k++) SPAWN(K_SPIDER, room_floor_cell(&rooms[i]), mhp, 0);
         if(rnd()&1) SPAWN(K_CHEST, room_floor_cell(&rooms[i]), 1, 0);
     }
@@ -136,10 +138,18 @@ static void make_floor(void){
     }
     int cages = 1 + (nrooms>5);
     for(int k=0;k<cages;k++){ int r=1+rndi(nrooms>1?nrooms-1:1); SPAWN(K_CAGE, room_floor_cell(&rooms[r<nrooms?r:0]), 1, rndi(8)<2?BUG_PILL:rndi(6)); }
-    int nb = 1 + zone/2 + (depth_no>2);
-    for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[1+rndi(nrooms>1?nrooms-1:1) < nrooms ? 1+rndi(nrooms>1?nrooms-1:1) : 0]), 1+zone/2, 0);
+    int nb = 1 + (dlv()/2>3?3:dlv()/2) + (depth_no>2);
+    for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), 1+dlv()/2, 0);
     for(int k=0;k<nlamps;k++) SPAWN(K_LAMP, lampcell[k], 1, 0);
     if(last && !zone_cleared){ SPAWN(K_BOSS, dn, 12+zone*6, 0); }
+    if(endless){
+        if(depth_no%10==0) SPAWN(K_BOSS, dn, 20+depth_no*2+dlv()*2, 0);               // a guardian every 10 floors
+        if(depth_no%5==0 || rndi(10)<3) SPAWN(K_ITEM, room_floor_cell(&rooms[rndi(nrooms)]), 1, (IT_WARP<<4));
+        int ng = 1 + rndi(2) + depth_no/8; if(ng>4) ng=4;
+        for(int k=0;k<ng;k++){ int t=rndi(10)+depth_no/6; int tier = t<5?0 : t<8?1 : t<11?2 : 3;
+            SPAWN(K_ITEM, room_floor_cell(&rooms[rndi(nrooms)]), 1, (IT_GEM<<4)|tier); }
+        if(depth_no>=5 && rndi(8)==0) SPAWN(K_ITEM, room_floor_cell(&rooms[rndi(nrooms)]), 1, ((rndi(2)?IT_SHELL:IT_THORN)<<4)|4);
+    }
 }
 static int solid(s32 x, s32 y){ int cx=x>>16, cy=y>>16; if(cx<0||cy<0||cx>=MW||cy>=MW) return 1; int t=dmap[cy*MW+cx]; return t==D_WALL||t==D_PILLAR; }
 
@@ -378,6 +388,8 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
                         case IT_SEED: art=art_seed; aw=SEED_W; ah=SEED_H; hw=0x2400; break;
                         case IT_SHELL: art=art_shell; aw=SHELL_W; ah=SHELL_H; hw=0x2C00; break;
                         case IT_THORN: art=art_thorn; aw=THORN_W; ah=THORN_H; hw=0x3800; break;
+                        case IT_WARP: art=art_warp; aw=WARP_W; ah=WARP_H; hw=0x3800; break;
+                        case IT_GEM: { static const u8 gc[4]={216,217,222,220}; art=art_gem; aw=GEM_W; ah=GEM_H; hw=0x2C00; tint=gc[sub&3]; break; }
                         default: art=art_crumb; aw=CRUMB_W; ah=CRUMB_H; hw=0x2400; break; } }
     }
     int hpx = (s32)(((long long)FOC*hw)/tY);
@@ -401,7 +413,9 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
 }
 
 static void dungeon_hud(void){
-    char b[32]; scpy(b,tint_name[zone]); scat(b," B"); char n2[4]; num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,zone_floors(),1); scat(b,n2);
+    char b[40]; scpy(b,world_name()); scat(b," B"); char n2[6];
+    if(endless){ num(n2,depth_no,depth_no>99?3:depth_no>9?2:1); scat(b,n2); }
+    else { num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,zone_floors(),1); scat(b,n2); }
     for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b);
 }
 static void dungeon_enter(void){
@@ -409,7 +423,8 @@ static void dungeon_enter(void){
     make_floor();
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
-    for(int i=0;i<8;i++) BG_PAL[R_SPIDER+i]=zone_mon_pal[zone*8+i];
+    for(int i=0;i<8;i++) BG_PAL[R_SPIDER+i]= endless ? w_mon[i] : zone_mon_pal[zone*8+i];
+    if(endless && depth_no>best_depth) best_depth=depth_no;
     lantk = have_bug[BUG_FIRE] ? 74 : 58;
     int rk = have_bug[BUG_FIRE] ? 56 : 44;
     for(int y=0;y<160;y++){

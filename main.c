@@ -112,7 +112,7 @@ static s32 dot_p0(PObj *o){ return (o->x*P0x + o->y*P0y + o->z*P0z)>>14; }
 
 static void planet_palette(void){
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
-    for(int i=0;i<6;i++) BG_PAL[16+i]=tint_pal[cur_tint*6+i];
+    for(int i=0;i<6;i++) BG_PAL[16+i]= endless ? w_tint[i] : tint_pal[zone*6+i];
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
 }
 static void planet_draw_bg(void){
@@ -120,7 +120,7 @@ static void planet_draw_bg(void){
     for(int i=0;i<240*160/2;i++) pg[i]=src[i];
 }
 static void planet_hud(void){
-    char b[24]; scpy(b,tint_name[zone]); if(zone_cleared) scat(b," *");
+    char b[24]; scpy(b,world_name()); if(zone_cleared && !endless) scat(b," *");
     draw_hud(VRAM, b);
 }
 static void show_msg(const char *s){
@@ -164,9 +164,11 @@ static void planet_frame(void){
             case O_DOOR: enter_dungeon_flag=1; break;
             case O_SHIP:
                 if(!shop_menu()){ planet_draw_bg(); planet_hud(); if(!zone_cleared) show_msg("BEAT THE BOSS BELOW TO FLY ON"); return; }
-                if(zone==NTINT-1){ show_msg("YOU BEAT THE ANT KING! NEW GAME"); new_game(); }
+                if(endless){ world_no++; make_world(); }
+                else if(zone==NTINT-1){ endless=1; world_no=1; galaxy_seed=rnd()|1; make_world(); }
                 else { zone++; zone_cleared=0; }
-                fade(1); new_planet(); planet_palette(); planet_draw_bg(); planet_hud(); show_msg(tint_name[zone]); fade(0); return;
+                fade(1); new_planet(); planet_palette(); planet_draw_bg(); planet_hud();
+                show_msg(endless && world_no==1 ? "THE ENDLESS GALAXY OPENS" : world_name()); fade(0); return;
             case O_CAGE: po[best].alive=0; free_bug(rndi(8)<2?BUG_PILL:rndi(6)); break;
             case O_SLUG: po[best].alive=0; gold+=5; show_msg("SQUASH! +5 GOLD"); gain_xp(2); break;
         }
@@ -269,7 +271,7 @@ static int dungeon_frame(void){   // returns 1 to go back up, 2 when you faint
         if(!solid(px_,my)) py_=ny;
     }
     if(atk_t) atk_t--;
-    if(escape_flag){ escape_flag=0; return 1; }
+    if(escape_flag){ escape_flag=0; return 3; }
     // monsters, pickups, cages
     int near_cage=-1;
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(o->flash) o->flash--;
@@ -282,13 +284,13 @@ static int dungeon_frame(void){   // returns 1 to go back up, 2 when you faint
             if(o->cool) o->cool--;
             if(!stun_t && d<reach && !o->cool){ o->cool=boss?40:50; if(!invuln){ hurt(boss?2:1); if(invuln>=40) hurt_flash=8; }
                 if(have_bug[BUG_BEE]){ o->hp--; o->flash=8; } }
-            if(o->hp<=0){ o->alive=0; gold+=boss?100:8+zone*4;
-                if(boss){ zone_cleared=1; say("BOSS BEATEN! ZONE CLEARED"); gain_xp(30+zone*10); }
-                else { gain_xp(2+zone+depth_no/2);
+            if(o->hp<=0){ o->alive=0; earn(boss ? 100+depth_no*10 : 8+dlv()*4);
+                if(boss){ if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; say("BOSS BEATEN! ZONE CLEARED"); } gain_xp(30+dlv()*10); }
+                else { gain_xp(2+dlv()+depth_no/2);
                        if(rndi(3)==0){ int r=rndi(10), it = r<5?IT_BERRY : r<7?IT_CRUMB : r<9?IT_SEED : IT_THORN;
                            o->kind=K_ITEM; o->alive=1; o->sub=(it<<4)|(it==IT_BERRY?rndi(8):it==IT_SEED?rndi(6):it==IT_THORN?rndi(4):0); } }
                 hud_now(); }
-        } else if(o->kind==K_CHEST){ if(d<0x9000){ o->alive=0; gold+=10+rndi(20)+zone*8+depth_no*3; say("TREASURE!"); if(rndi(2)) add_item(IT_SEED+rndi(3),rndi(4)); hud_now(); } }
+        } else if(o->kind==K_CHEST){ if(d<0x9000){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); if(endless && rndi(2)) add_item(IT_GEM,rndi(4)); else if(rndi(2)) add_item(IT_SEED+rndi(3),rndi(4)); hud_now(); } }
         else if(o->kind==K_ITEM){ if(d<0x9000 && bag_n<8){ o->alive=0; add_item(o->sub>>4,o->sub&15); } }
         else if(o->kind==K_CAGE){ if(d<0xC000) near_cage=i; }
     }
@@ -358,8 +360,11 @@ int main(void){
             if(scene==1){ REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; }
             oam_flush();
             if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; msg_timer=0;
-                   if(r==2){ hearts=maxh; food=60; gold/=2; bag_n=0; bag_sel=0; }
-                   planet_enter(); show_msg(r==1 ? (zone_cleared?"ZONE CLEARED! GO TO YOUR SHIP":"BACK ON THE SURFACE") : "YOU FAINTED. YOU LOST YOUR BAG"); oam_flush(); fade(0); }
+                   char mb[40];
+                   if(r==2){ hearts=maxh; food=60; if(!endless) gold/=2; loot=0; bag_n=0; bag_sel=0; scpy(mb, endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
+                   else if(endless){ int bonus = loot*(100+depth_no*15)/100; gold+=bonus; loot=0; char n2[6]; scpy(mb,"ESCAPED B"); num(n2,depth_no,depth_no>9?2:1); scat(mb,n2); scat(mb,": +"); num(n2,bonus,bonus>999?4:3); scat(mb,n2); scat(mb,"G"); }
+                   else scpy(mb, r==3 ? "WARPED OUT!" : (zone_cleared?"ZONE CLEARED! GO TO YOUR SHIP":"BACK ON THE SURFACE"));
+                   planet_enter(); show_msg(mb); oam_flush(); fade(0); }
         }
     }
 }
