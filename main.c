@@ -53,7 +53,11 @@ static void pix(volatile u16 *pg, int x, int y, int c){
     if(x&1) *p = (*p&0x00FF)|(c<<8); else *p = (*p&0xFF00)|c;
 }
 static void rect(volatile u16 *pg, int x, int y, int w, int h, int c){
-    for(int j=0;j<h;j++) for(int i=0;i<w;i++) pix(pg,x+i,y+j,c);
+    for(int j=0;j<h;j++){ int i=0;
+        if(x&1){ pix(pg,x,y+j,c); i=1; }
+        volatile u16 *p = pg + (((y+j)*240+x+i)>>1); u16 cc=c|(c<<8);
+        for(; i+1<w; i+=2) *p++=cc;
+        if(i<w) pix(pg,x+i,y+j,c); }
 }
 static int text(volatile u16 *pg, int x, int y, const char *s, int c, int sc){
     for(;*s;s++){
@@ -251,8 +255,13 @@ static void hud3d(volatile u16 *pg){
     for(int y=y0+1;y<y1;y++) pix(pg,204,y,C_RED);
     (void)dk;
 }
-static int dungeon_frame(void){   // returns 1 to go back up, 2 when you faint
+static int dungeon_frame_(void);
+static int dungeon_frame(void){ u32 t=TMR(); int r=dungeon_frame_(); prof[5]=TMR()-t; return r; }
+static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint
     tick_timers(); hunger_tick(40); bag_input();
+    { int f=frames; int fl=(sin_tab[(f*29)&255]+sin_tab[(f*47+80)&255])>>12;      // -8..8
+      for(int i=0;i<8;i++){ int k=i+(fl>2?1:fl<-2?-1:0); if(k<0)k=0; if(k>7)k=7; BG_PAL[R_FLAME+i]=bg_pal[R_FLAME+k]; }
+      for(int i=2;i<7;i++){ int k=i+((((f>>2)+i)&3)==0); BG_PAL[R_WATER+i]=bg_pal[R_WATER+(k>7?7:k)]; BG_PAL[R_CRYSTAL+i]=bg_pal[R_CRYSTAL+((((f>>3)+i*3)%5)==0 && i<6 ? i+1 : i)]; } }
     if(HIT(K_START)){ stats_screen((volatile u16*)(0x06000000 + (page_back?0:0xA000))); dungeon_hud(); }
     int kl=K_LEFT, kr=K_RIGHT, ku=K_UP, kd=K_DOWN;
     if(dizzy_t){ kl=K_RIGHT; kr=K_LEFT; ku=K_DOWN; kd=K_UP; }

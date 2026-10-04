@@ -398,16 +398,20 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
     int bot = HZ + (FOC<<15)/tY;
     int top = bot - hpx;
     int x0 = scx - wcols/2;
-    for(int c=(x0<0?0:x0); c<x0+wcols && c<120; c++){
+    s32 ustep=(aw<<16)/wcols, vstp=(ah<<16)/hpx;
+    int dark = tY>0x40000 ? 2 : tY>0x28000 ? 1 : 0;
+    int c0 = x0<0?0:x0, y0 = top<18?18:top;
+    s32 ua = (c0-x0)*ustep;
+    for(int c=c0; c<x0+wcols && c<120; c++, ua+=ustep){
         if(tY >= zbuf[c]) continue;
-        int ax = (c-x0)*aw/wcols;
-        for(int y=(top<18?18:top); y<bot && y<160; y++){
-            int ay=(y-top)*ah/hpx;
-            int ix=art[ay*aw+ax];
+        const u8 *acol = art + (ua>>16);
+        s32 va = (y0-top)*vstp;
+        for(int y=y0; y<bot && y<160; y+=2, va+=2*vstp){
+            int ix=acol[(va>>16)*aw];
             if(!ix) continue;
-            if(ix==1) ix=tint;
+            if(ix==1) ix=tint; else if(dark && ix>=64 && ix<216){ int l=(ix&7)-dark; ix=(ix&~7)+(l<0?0:l); }
             if(o->flash) ix = R_UP+7;
-            pg[y*120+c]=ix|(ix<<8);
+            u16 p2=ix|(ix<<8); pg[y*120+c]=p2; if(y+1<bot && y+1<160) pg[y*120+120+c]=p2;
         }
     }
 }
