@@ -8,14 +8,14 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | Button | On a planet | In a dungeon |
 | --- | --- | --- |
 | D-pad | Walk; the planet turns under you | Up/down walk, left/right turn (a tap turns a little, holding turns faster) |
-| A | Door, ship, cage, slug | Bite; open cages; stairs; fish at water |
+| A | Door, ship, cage, slug | Bite (hold A to keep biting). With nothing to bite: open cages, stairs, fish at water |
 | B | Use the picked item | Use the picked item |
-| L / R | Pick an item in your bag | Pick an item in your bag |
-| SELECT | | Tap: cast your spell. Hold + L/R: change spell |
+| L / R | Pick an item in your bag | Strafe left / right |
+| SELECT | | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
 | START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM) | Character screen |
 
 ## Speed
-The 3D view is heavy to draw, so on a slow emulator it may show fewer pictures a second. The game itself always runs at 60 steps a second, so walking, turning, fights, timers and messages keep the same pace either way.
+The 3D view is heavy to draw, so it shows about 15 pictures a second. Your own movement (walking, strafing, turning) runs 60 times a second, and the rest of the dungeon (monsters, hunger, cooldowns, timers) ticks at a steady 15 a second, so nothing speeds up or slows down when drawing does. Walking and turning speeds are the `WALK_*` and `TURN_*` numbers at the top of the dungeon code in `main.c`.
 
 ## Saving, loading and options
 - **Title screen:** CONTINUE (your last slot), NEW GAME, LOAD GAME, OPTIONS. Up/down and A.

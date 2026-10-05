@@ -233,7 +233,7 @@ static void planet_enter(void){
 static void hud_now(void){ if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
     if(scene==0){ show_msg(t); return; }
-    int n=0; while(t[n] && n<39){ msg[n]=t[n]; n++; } msg[n]=0; msg_timer=100;
+    int n=0; while(t[n] && n<39){ msg[n]=t[n]; n++; } msg[n]=0; msg_timer=24;
 }
 static void compass(volatile u16 *pg, s32 dirx, s32 diry){
     s32 dx=tgt_x-px_, dy=tgt_y-py_;
@@ -309,40 +309,71 @@ static int spark_t=0, spark_c=60, spark_y=80;
 
 // The 3D view takes several 60ths of a second to draw. The game itself always runs 60 steps a second:
 // run_game() runs as many steps as time has passed and draws once (skip_draw=1 on the catch-up steps).
-#define WALK_FWD   0x0F00      // was 0x0D00
-#define WALK_BACK  0x0A00      // was 0x0900
-#define TURN_MIN   10          // a tap turns finely...
-#define TURN_MAX   22          // ...holding speeds up to this (was a flat 12)
-#define TURN_RAMP  16          // steps of holding to reach TURN_MAX
-static int skip_draw=0, turn_held=0, hud_f=0, dt_last=0;
+// Your own movement runs every 60th of a second. Everything else in the dungeon (monsters, hunger, cooldowns,
+// timers, your pet) ticks once every WDIV of those, which is the pace the game was balanced for (about 15 a second).
+#define WDIV       4
+#define WALK_FWD   0x0700      // per 60th: about 1.6 tiles a second
+#define WALK_BACK  0x0500
+#define WALK_SIDE  0x0580      // strafing
+#define TURN_MIN   4           // a tap turns finely...
+#define TURN_MAX   9           // ...holding speeds up to this
+#define TURN_RAMP  16          // 60ths of holding to reach TURN_MAX
+static int skip_draw=0, wtick=1, turn_held=0, hud_f=0, dt_last=0, wacc=0, mv_now=0, near_cage_p=-1, atk_len=9;
+static DObj *named_p=0;
+// is there something to bite right in front of you? (same box the bite uses)
+static int foe_ahead(s32 dirx, s32 diry){
+    for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
+        s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16);
+        s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(side<0) side=-side;
+        s32 rng_=o->kind==K_BOSS?0x1C000:0x14000;
+        if(fwd>0 && fwd<rng_ && side<0xC000) return 1; }
+    return 0;
+}
+static void do_bite(s32 dirx, s32 diry){
+    atk_len=(14-d_haste)*2/3; if(atk_len<4) atk_len=4; atk_t=atk_len;        // was 14 (min 6): a bite every 0.9 s was slow
+    int crit; int pw=bite_power(&crit); sfx(0);
+    for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
+        s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16);
+        s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(side<0) side=-side;
+        s32 rng_=o->kind==K_BOSS?0x1C000:0x14000;
+        if(fwd>0 && fwd<rng_ && side<0xC000){ if(o->kind!=K_BOSS && o->kind!=K_BEETLE && !o->champ){ o->x+=dirx>>2; o->y+=diry>>2; } hit_mon(o,pw,crit); }
+    }
+}
 static int dungeon_frame_(void);
 static int dungeon_frame(void){ u32 t=TMR(); int r=dungeon_frame_(); prof[5]=TMR()-t; return r; }
 static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint, 3 when you warp out
-    tick_timers(); hunger_tick(40); regen_tick(45); bag_input();
+    if(wtick){ tick_timers(); hunger_tick(40); regen_tick(45); }
+    bag_input();
     if(!skip_draw){ int f=frames; int fl=(sin_tab[(f*29)&255]+sin_tab[(f*47+80)&255])>>12;
       for(int i=0;i<8;i++){ int k=i+(fl>2?1:fl<-2?-1:0); if(k<0)k=0; if(k>7)k=7; BG_PAL[R_FLAME+i]=bg_pal[R_FLAME+k]; }
       for(int i=2;i<7;i++){ int k=i+((((f>>2)+i)&3)==0); BG_PAL[R_WATER+i]=bg_pal[R_WATER+(k>7?7:k)]; BG_PAL[R_CRYSTAL+i]=bg_pal[R_CRYSTAL+((((f>>3)+i*3)%5)==0 && i<6 ? i+1 : i)]; } }
     if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen((volatile u16*)(0x06000000 + (page_back?0:0xA000))); dungeon_hud(); }
-    int kl=K_LEFT, kr=K_RIGHT, ku=K_UP, kd=K_DOWN;
-    if(dizzy_t){ kl=K_RIGHT; kr=K_LEFT; ku=K_DOWN; kd=K_UP; }
+    int kl=K_LEFT, kr=K_RIGHT, ku=K_UP, kd=K_DOWN, ksl=K_L, ksr=K_R;
+    if(dizzy_t){ kl=K_RIGHT; kr=K_LEFT; ku=K_DOWN; kd=K_UP; ksl=K_R; ksr=K_L; }
+    if(HELD(K_SEL)){ kl=kr=ku=kd=ksl=ksr=0; }          // SELECT held: d-pad and L/R pick items and spells instead
     if(HELD(kl)||HELD(kr)){ if(turn_held<TURN_RAMP) turn_held++; } else turn_held=0;
     int ts = TURN_MIN + (((TURN_MAX-TURN_MIN)*turn_held)>>4);
     if(HELD(kl)) pang=(pang-ts)&1023;
     if(HELD(kr)) pang=(pang+ts)&1023;
     s32 dirx=cosx(pang>>2)<<2, diry=sinx(pang>>2)<<2;
     s32 plx=-(diry*43/65), ply=dirx*43/65;
-    s32 sp = HELD(ku) ? WALK_FWD : HELD(kd) ? -WALK_BACK : 0;
-    sp = sp*(100+d_spd+have_bug[BUG_CRICKET]*25)/100;
-    if(speed_t) sp=sp*8/5;
+    s32 spf = HELD(ku) ? WALK_FWD : HELD(kd) ? -WALK_BACK : 0;
+    s32 sps = HELD(ksr) ? WALK_SIDE : HELD(ksl) ? -WALK_SIDE : 0;
+    if(spf && sps){ spf=spf*3/4; sps=sps*3/4; }          // diagonals are not faster
+    spf = spf*(100+d_spd+have_bug[BUG_CRICKET]*25)/100; sps = sps*(100+d_spd+have_bug[BUG_CRICKET]*25)/100;
+    if(speed_t){ spf=spf*8/5; sps=sps*8/5; }
+    int sp = (spf||sps);
     if(sp){
         fish_state=0;
-        s32 nx=px_+(s32)(((long long)dirx*sp)>>16), ny=py_+(s32)(((long long)diry*sp)>>16);
-        s32 mx = nx + (sp>0? (dirx>0?0x4000:-0x4000) : (dirx>0?-0x4000:0x4000));
-        s32 my = ny + (sp>0? (diry>0?0x4000:-0x4000) : (diry>0?-0x4000:0x4000));
+        s32 mvx=(s32)((((long long)dirx*spf)-((long long)diry*sps))>>16), mvy=(s32)((((long long)diry*spf)+((long long)dirx*sps))>>16);
+        s32 nx=px_+mvx, ny=py_+mvy;
+        s32 mx = nx + (mvx>0?0x4000:mvx<0?-0x4000:0);
+        s32 my = ny + (mvy>0?0x4000:mvy<0?-0x4000:0);
         if(!solid(mx,py_)) px_=nx;
         if(!solid(px_,my)) py_=ny;
     }
-    if(atk_t) atk_t--;
+    mv_now = sp;
+    if(wtick && atk_t) atk_t--;
     if(escape_flag){ escape_flag=0; return 3; }
     // ---- spells
     if(cast_flag>=0){ int s=cast_flag; cast_flag=-1;
@@ -364,7 +395,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     }
     // ---- Buddy, your pet
     int pet_here = !pet_away_t && !pet_down_t;
-    if(pet_here){
+    if(wtick && pet_here){
         int tg=-1; s32 best=0x48000;
         for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
             if(dist8(o->x-px_,o->y-py_)>0x50000) continue; s32 d=dist8(o->x-pet_x,o->y-pet_y); if(d<best){ best=d; tg=i; } }
@@ -382,15 +413,15 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         if(tg>=0 && best<0xC000 && !pet_cool){ hit_mon(&dob[tg], pet_dmg(), 0); pet_cool = pet_form==1?12:20; if(pet_form==1) burst(dob[tg].x,dob[tg].y,0x5000,5,0); }
         if(pet_hp<=0){ pet_down_t=900; say("BUDDY IS HURT. HE'LL BE BACK"); }
     }
-    if(pet_down_t && --pet_down_t==0){ pet_hp=pet_maxhp/2; pet_x=px_; pet_y=py_; say("BUDDY IS BACK!"); }
+    if(wtick && pet_down_t && --pet_down_t==0){ pet_hp=pet_maxhp/2; pet_x=px_; pet_y=py_; say("BUDDY IS BACK!"); }
     // ---- monsters, pickups, cages
-    int near_cage=-1; DObj *named=0; s32 named_d=0x60000;
-    for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(o->flash) o->flash--;
+    s32 named_d=0x60000; if(wtick){ near_cage_p=-1; named_p=0; }
+    for(int i=0;wtick && i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(o->flash) o->flash--;
         s32 dx=px_-o->x, dy=py_-o->y, d=dist8(dx,dy);
         if(is_mon(o->kind)){
             int boss=o->kind==K_BOSS, bat=o->kind==K_BAT, wasp=o->kind==K_WASP;
             s32 reach = boss?0x14000 : o->kind==K_BEETLE?0xC000 : 0xB000;
-            if((o->champ||boss) && d<named_d){ named=o; named_d=d; }
+            if((o->champ||boss) && d<named_d){ named_p=o; named_d=d; }
             if(o->venom){ o->venom--; if((o->venom%15)==0){ int vd=1+d_venom/3; o->hp-=vd; add_fnum(o->x,o->y,vd,C_GREEN); if(o->hp<=0){ kill_mon(o); continue; } } }
             if(blast_flag && d<0x30000){ hit_mon(o, 8+level*2, 0); if(!o->alive) continue; }
             // go after whoever is closer: you or Buddy
@@ -417,12 +448,15 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         } else if(o->kind==K_CHEST){ if(d<0x9000){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
                 Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now(); } }
         else if(o->kind==K_ITEM){ if(d<0x9000 && (bag_n<BAGMAX || o->it==IT_QUEST)){ Gear g={o->it,o->sub,o->rar,o->pre,o->suf,o->lvl}; if(add_gear(g)) o->alive=0; } }
-        else if(o->kind==K_CAGE){ if(d<0xC000) near_cage=i; }
+        else if(o->kind==K_CAGE){ if(d<0xC000) near_cage_p=i; }
     }
-    blast_flag=0;
+    int near_cage=near_cage_p; DObj *named=named_p;
+    if(near_cage>=0 && !(dob[near_cage].alive && dob[near_cage].kind==K_CAGE)) near_cage=-1;
+    if(named && !named->alive) named=0;
+    if(wtick) blast_flag=0;
     if(call_flag){ call_flag=0; for(int i=0;i<ndo;i++) if(dob[i].alive && dob[i].kind==K_CAGE){ dob[i].alive=0; free_bug(dob[i].sub); break; } }
     // ---- fireballs and stingers
-    for(int i=0;i<NPROJ;i++){ Proj *p=&proj[i]; if(!p->alive) continue;
+    for(int i=0;wtick && i<NPROJ;i++){ Proj *p=&proj[i]; if(!p->alive) continue;
         p->x+=p->vx; p->y+=p->vy; if(--p->life<=0 || solid(p->x,p->y)){ p->alive=0; burst(p->x-p->vx,p->y-p->vy,p->h,p->kind?4:10,0); continue; }
         if(p->kind==0){ if(frames&1) burst(p->x,p->y,p->h,1,0);
             for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(!o->alive||!is_mon(o->kind)) continue;
@@ -431,33 +465,29 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     }
     // ---- A: open a cage, take the stairs, fish, or bite
     int here=dmap[(py_>>16)*MW+(px_>>16)];
-    if(fish_state==1 && --fish_t<=0){ fish_state=2; fish_t=14; sfx(8); say("! A BITE ! PRESS A"); }
-    else if(fish_state==2 && --fish_t<=0){ fish_state=0; say("IT GOT AWAY"); }
-    if(HIT(K_A)){
-        if(fish_state==2){ fish_state=0; int r=rndi(100), f = r<45?0 : r<62?1 : r<79?2 : r<88?3 : 4; add_item(IT_FISH,f); sfx(8); }
-        else if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
+    if(wtick && fish_state==1 && --fish_t<=0){ fish_state=2; fish_t=14; sfx(8); say("! A BITE ! PRESS A"); }
+    else if(wtick && fish_state==2 && --fish_t<=0){ fish_state=0; say("IT GOT AWAY"); }
+    int foe = foe_ahead(dirx,diry);
+    if(HIT(K_A) && fish_state==2){ fish_state=0; int r=rndi(100), f = r<45?0 : r<62?1 : r<79?2 : r<88?3 : 4; add_item(IT_FISH,f); sfx(8); }
+    else if(HELD(K_A) && foe){ if(!atk_t) do_bite(dirx,diry); }          // something in front always gets bitten, and holding A keeps biting
+    else if(HIT(K_A)){
+        if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
         else if(here==D_UP) return 1;
-        else if(here==D_DOWN){ fade(1); dungeon_enter(); fade(0); return 0; }
+        else if(here==D_DOWN){ wacc=WDIV-1; fade(1); dungeon_enter(); fade(0); return 0; }
         else if(fish_state==1){ fish_state=0; say("YOU REEL IN"); }
         else if(water_ahead(dirx,diry)){ fish_state=1; fish_t=25+rndi(50); say("FISHING... WAIT FOR A BITE"); sfx(8); }
-        else if(!atk_t){
-            atk_t=14-d_haste; if(atk_t<6) atk_t=6; int crit; int pw=bite_power(&crit); sfx(0);
-            for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
-                s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16);
-                s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(side<0) side=-side;
-                s32 rng_=o->kind==K_BOSS?0x1C000:0x14000;
-                if(fwd>0 && fwd<rng_ && side<0xC000){ if(o->kind!=K_BOSS && o->kind!=K_BEETLE && !o->champ){ o->x+=dirx>>2; o->y+=diry>>2; } hit_mon(o,pw,crit); }
-            }
-        }
+        else if(!atk_t) do_bite(dirx,diry);
     }
     if(hearts<=0) return 2;
     // ---- things that count down or drift: one tick per game step, drawn or not
-    if(sp){ bob_ph += speed_t?14:10; }
-    if(shake_t) shake_t--;
-    if(msg_timer) msg_timer--;
-    if(hurt_flash) hurt_flash--;
-    if(spark_t) spark_t--;
-    parts_update(); fnums_update();
+    if(wtick){
+        if(sp){ bob_ph += speed_t?14:10; }
+        if(shake_t) shake_t--;
+        if(msg_timer) msg_timer--;
+        if(hurt_flash) hurt_flash--;
+        if(spark_t) spark_t--;
+        parts_update(); fnums_update();
+    }
     if(skip_draw) return 0;
     // ---- draw into the back page
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
@@ -490,7 +520,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(hurt_flash){ for(int y=18;y<22;y++) for(int x=0;x<120;x++) pg[y*120+x]=C_RED|(C_RED<<8); }
     if(frames-hud_f>=60){ hud_f=frames; dungeon_hud(); }
     oam_hide_all();
-    int bob = (sp ? ((frames>>3)&1) : 0) + (atk_t>7 ? 6 : 0);
+    int bob = (sp ? ((frames>>3)&1) : 0) + (atk_t*2>atk_len ? 6 : 0);
     if(!(invuln && (frames&4))){
         shadow_oam[0].a0 = ((98-bob)&255);
         shadow_oam[0].a1 = ((120-32)&511) | (3<<14);
@@ -584,10 +614,10 @@ static void pet_away_tick(void){
 // plays until the player chooses QUIT TO TITLE
 static void run_game(void){
     while(1){
-        read_keys(); frames++; if(invuln) invuln--;
+        read_keys(); if(scene!=1){ frames++; if(invuln) invuln--; }
         if(sys_req){ int rq=sys_req; sys_req=0; if(rq==2) return; start_game(1); continue; }
         rng_s += keys;
-        pet_away_tick();
+        if(scene!=1) pet_away_tick();
         if(scene==2){
             int r=space_frame();
             vsync();
@@ -605,19 +635,21 @@ static void run_game(void){
             if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(2); fade(0); continue; }
             if(enter_dungeon_flag){ enter_dungeon_flag=0; fade(1); oam_hide_all(); oam_flush();
                 depth_no=0; if(portal_depth>0){ depth_no=portal_depth-1; portal_depth=0; }
-                scene=1; dungeon_enter(); page_back=1; music(1); fade(0); }
+                scene=1; dungeon_enter(); page_back=1; music(1); fade(0); wacc=WDIV-1; dt_last=vbl_count; }
         } else {
             int r=0;
             int n = vbl_count - dt_last; dt_last = vbl_count;          // 60ths of a second since the last picture
-            if(n>6) n = (n>10) ? 1 : 6;                                // after a menu or a load, don't fast-forward
+            if(n>12) n = (n>30) ? 1 : 12;                              // after a menu or a load, don't fast-forward
             if(n<1) n=1;
             for(int i=0;i<n;i++){
-                if(i){ frames++; if(invuln) invuln--; pet_away_tick(); keys_old=keys; }
+                wtick = (++wacc>=WDIV);
+                if(wtick){ wacc=0; frames++; if(invuln) invuln--; pet_away_tick(); }
+                if(i) keys_old=keys;
                 skip_draw = (i<n-1);
                 r=dungeon_frame();
                 if(r) break;
             }
-            skip_draw=0;
+            skip_draw=0; wtick=1;
             vsync();
             if(scene==1){ REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; }
             oam_flush();
