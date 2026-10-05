@@ -304,6 +304,27 @@ for m in range(128):
     f=440*2**((m-69)/12)
     sq.append(max(0,min(2047,round(2048-131072/f)))); wv.append(max(0,min(2047,round(2048-65536/f))))
 arr("sq_freq","unsigned short",sq); arr("wv_freq","unsigned short",wv)
+# ---- space: a lookup that turns a point on a disc into longitude/latitude on a sphere, and planet surface noise
+su=[];sv=[];sz=[]
+for j in range(64):
+    for i in range(64):
+        x=(i-31.5)/32; y=(j-31.5)/32; d=x*x+y*y
+        if d>=1: su.append(0); sv.append(0); sz.append(0); continue
+        z=math.sqrt(1-d); lon=math.atan2(x,z); lat=math.asin(y)
+        su.append(int((lon/math.pi+1)*32)&63); sv.append(int((lat/math.pi+0.5)*63)&63); sz.append(int(z*255))
+arr("sph_u","unsigned char",su,per=64); arr("sph_v","unsigned char",sv,per=64); arr("sph_z","unsigned char",sz,per=64)
+rng2=np.random.default_rng(99)
+def pnoise(seed):
+    r=np.random.default_rng(seed); acc=np.zeros((64,64))
+    for cells,amp in ((4,1.0),(8,.5),(16,.25)):
+        g=r.random((cells,cells)); g=np.kron(g,np.ones((64//cells,64//cells)))
+        k=np.ones(64//cells)/(64//cells)
+        g=np.apply_along_axis(lambda m: np.convolve(np.concatenate([m,m]),k,'same')[:64],1,g)
+        g=np.apply_along_axis(lambda m: np.convolve(np.concatenate([m,m]),k,'same')[:64],0,g)
+        acc+=g*amp
+    acc=(acc-acc.min())/(acc.max()-acc.min())
+    return [int(v*15) for v in acc.flatten()]
+arr("pl_noise","unsigned char",pnoise(5)+pnoise(6),per=64)
 import texgen
 R=dict(rb2); R.update({k:v[0] for k,v in POT.items()})
 TX=texgen.make_all(R)

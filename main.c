@@ -88,6 +88,8 @@ static void set_affine(int m, int pa, int pb, int pc, int pd){ volatile u16 *o=O
 #include "sound.inc"
 #include "game.inc"
 #include "ui.inc"
+static int launch_flag=0;
+static void story_boss_beaten(void);
 
 // ================================================================= THE PLANET
 enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_PEBBLE, O_TUFT };
@@ -171,11 +173,7 @@ static void planet_frame(void){
             case O_DOOR: enter_dungeon_flag=1; sfx(5); break;
             case O_SHIP:
                 if(!shop_menu()){ planet_draw_bg(); planet_hud(); save_game(); show_msg("GAME SAVED"); return; }
-                if(endless){ world_no++; make_world(); }
-                else if(zone==NTINT-1){ endless=1; world_no=1; galaxy_seed=rnd()|1; make_world(); }
-                else { zone++; zone_cleared=0; }
-                fade(1); new_planet(); planet_palette(); planet_draw_bg(); planet_hud(); restock(); portal_depth=0; save_game();
-                show_msg(endless && world_no==1 ? "THE ENDLESS GALAXY OPENS" : world_name()); fade(0); return;
+                save_game(); launch_flag=1; return;
             case O_CAGE: po[best].alive=0; free_bug(rndi(8)<2?BUG_PILL:rndi(6)); break;
             case O_SLUG: po[best].alive=0; gold+=5; show_msg("SQUASH! +5 GOLD"); gain_xp(3+dlv()); sfx(9); break;
         }
@@ -222,6 +220,7 @@ static void planet_enter(void){
 }
 
 #include "dungeon.inc"
+#include "space.inc"
 
 static void hud_now(void){ if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
@@ -275,7 +274,7 @@ static void kill_mon(DObj *o){
     if(o->champ==2 && q_type==Q_CHAMP){ q_done=1; say("QUEST TARGET SLAIN!"); }
     sfx(9); burst(o->x,o->y,0x6000,10,1);
     int ilvl=dlv()*3+depth_no;
-    if(boss){ if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; say("BOSS BEATEN! ZONE CLEARED"); } xpv+=30+dlv()*10; }
+    if(boss){ if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
     gain_xp(xpv);
     Gear g; int drop=0;
     if(boss || o->champ){ g=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, ilvl+4, 40); drop=1; }
@@ -512,7 +511,8 @@ int main(void){
     int cont = title_screen();
     rng_s ^= vbl_count*2654435761u;
     fade(1);
-    if(cont) load_game(1); else { new_game(); save_game(); }
+    gen_cluster();
+    if(cont) load_game(1); else { new_game(); gen_cluster(); load_ext_defaults(); save_game(); }
     restock();
     planet_enter(); new_planet(); show_msg(cont ? "WELCOME BACK" : "THE GARDEN: FIND THE DOOR");
     oam_hide_all(); oam_flush(); fade(0);
@@ -521,9 +521,21 @@ int main(void){
         read_keys(); frames++; if(invuln) invuln--;
         rng_s += keys;
         if(pet_away_t && --pet_away_t==0){ gold+=pet_sold_g; char b[40]; scpy(b,"BUDDY SOLD "); ncat(b,pet_sold_n); scat(b," THINGS: +"); ncat(b,pet_sold_g); scat(b,"G"); say(b); sfx(7); hud_now(); pet_x=px_; pet_y=py_; }
+        if(scene==2){
+            int r=space_frame();
+            vsync();
+            REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1;
+            if(r==2) galaxy_map();
+            else if(r==3){ station_menu(); save_game(); }
+            else if(r==1){ fade(1); land_on_current(); portal_depth=0; scene=0; msg_timer=0;
+                planet_enter(); new_planet(); planet_palette(); planet_draw_bg(); planet_hud(); restock(); save_game();
+                show_msg(world_name()); oam_hide_all(); oam_flush(); music(0); fade(0); }
+            continue;
+        }
         if(scene==0){
             planet_frame();
             vsync(); oam_flush();
+            if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(2); fade(0); continue; }
             if(enter_dungeon_flag){ enter_dungeon_flag=0; fade(1); oam_hide_all(); oam_flush();
                 depth_no=0; if(portal_depth>0){ depth_no=portal_depth-1; portal_depth=0; }
                 scene=1; dungeon_enter(); page_back=1; music(1); fade(0); }

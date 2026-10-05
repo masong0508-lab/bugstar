@@ -9,8 +9,8 @@ enum { BUG_PILL, BUG_LADY, BUG_FIRE, BUG_BEE, BUG_CRICKET, BUG_ANT };
 static const char *const bug_name[6]={"PILL BUG","LADYBUG","FIREFLY","BEE","CRICKET","RUNAWAY ANT"};
 static const char *const bug_power[6]={"+10 GOLD","+5 HEALTH","LIGHTS THE DARK","STINGS ATTACKERS","FASTER LEGS","POINTS TO STAIRS"};
 // ---- endless galaxy (after the Ant King)
-static int endless=0, world_no=0, loot=0, best_depth=0; static u32 galaxy_seed=1;
-static int dlv(void){ int d = endless ? 6 + world_no/2 : zone; return d>30?30:d; }
+static int endless=0, world_no=0, loot=0, best_depth=0, w_dlv=6; static u32 galaxy_seed=1;
+static int dlv(void){ int d = endless ? w_dlv : zone; return d>30?30:d; }
 static int zone_floors(void){ return endless ? 9999 : zone+3; }
 static int gold_find=100;
 static void earn(int g){ g = g*gold_find/100; if(endless && scene==1) loot+=g; else gold+=g; }
@@ -18,11 +18,14 @@ static u16 w_tint[6], w_mon[8]; static u8 w_styles[3]; static char w_name[24];
 static u32 wseed;
 static int wr(int n){ wseed = wseed*1103515245u + 12345u; return (int)((wseed>>16)%(u32)n); }
 static u16 rgb15(int r,int g,int b){ if(r>255)r=255; if(g>255)g=255; if(b>255)b=255; return (r>>3)|((g>>3)<<5)|((b>>3)<<10); }
-static void make_world(void){
+static void name_of(u32 wn, char *b){
     static const char *const syl[16]={"ZA","KOR","MI","LUX","PO","BRA","NU","TIK","VO","RAN","SPI","GLO","QUA","FEN","DOR","ULM"};
     static const char *const suf[6]={""," PRIME"," II"," MAJOR"," MINOR"," X"};
-    wseed = galaxy_seed ^ ((u32)world_no*2654435761u);
-    w_name[0]=0; int n=2+wr(2); for(int i=0;i<n;i++) scat(w_name,syl[wr(16)]); scat(w_name,suf[wr(6)]);
+    wseed = galaxy_seed ^ (wn*2654435761u);
+    b[0]=0; int n=2+wr(2); for(int i=0;i<n;i++) scat(b,syl[wr(16)]); scat(b,suf[wr(6)]);
+}
+static void make_world(void){
+    name_of((u32)world_no,w_name);
     int r=40+wr(216), g=40+wr(216), b=40+wr(216); int k=wr(3); if(k==0) r=230; else if(k==1) g=230; else b=230;
     static const u8 mul[5]={8,30,55,80,100};
     for(int i=0;i<5;i++){ int m=mul[i]; int w = i==4 ? 120 : (i==3?30:0); w_tint[i]=rgb15(r*m/100+w, g*m/100+w, b*m/100+w); }

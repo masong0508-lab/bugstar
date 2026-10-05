@@ -1,0 +1,434 @@
+// ================================================================= SPACE: flight, pirates, stations, the galaxy map
+// Every star system has a sun, one planet you can land on, and a wireframe trading station.
+// Before the Ant King falls you can only fly between the six story zones; after that the whole galaxy opens,
+// and an intergalactic jump takes you to a new cluster of stars, forever.
+
+#define NSYS 32
+typedef struct { u8 x,y,kind,eco; } Sys;            // kind 0..5 = story zone, 6 = uncharted world
+EW static Sys sys[NSYS];
+static int cur_sys=0, cluster_no=0, fuel=70, hull=100, shield=40, shield_lv=1, laser_lv=1, cargo_cap=10, ant_king=0, cleared_mask=0, zones_open=1, visits=0;
+static u8 cargo[8];
+static const char *const eco_name[4]={"FARMING","MINING","TECH","HIVE"};
+static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MACHINES","MEDICINE","RELICS"};
+static const u8 good_base[8]={8,18,34,55,80,110,65,190};
+static const u8 eco_mul[4][8]={{55,65,80,110,130,150,120,120},{120,110,105,70,60,120,110,95},{130,120,110,105,110,60,75,110},{105,50,70,90,115,120,100,80}};
+
+static u32 lseed;
+static int lr(int n){ lseed = lseed*1664525u + 1013904223u; return (int)((lseed>>16)%(u32)n); }
+static u32 sys_id(int i){ return (u32)cluster_no*64 + i + 1; }
+static int sys_dist(int a, int b){ int dx=sys[a].x-sys[b].x, dy=sys[a].y-sys[b].y; return isqrt(dx*dx+dy*dy); }
+static void gen_cluster(void){
+    lseed = galaxy_seed ^ (cluster_no*0x9E3779B1u) ^ 0x5bd1e995;
+    int start=0;
+    if(cluster_no==0){
+        static const u8 pos[6][2]={{20,74},{52,52},{86,80},{120,54},{156,82},{196,60}};
+        static const u8 eco[6]={0,0,3,1,3,2};
+        for(int k=0;k<6;k++){ sys[k].x=pos[k][0]; sys[k].y=pos[k][1]; sys[k].kind=k; sys[k].eco=eco[k]; }
+        start=6;
+    }
+    for(int i=start;i<NSYS;i++){
+        for(int t=0;t<60;t++){
+            sys[i].x=8+lr(208); sys[i].y=24+lr(100); int ok=1;
+            for(int j=0;j<i;j++){ int dx=sys[i].x-sys[j].x, dy=sys[i].y-sys[j].y; if(dx*dx+dy*dy<15*15){ ok=0; break; } }
+            if(ok) break;
+        }
+        sys[i].kind=6; sys[i].eco=lr(4);
+    }
+}
+static int sys_dlv(int i){ return sys[i].kind<6 ? sys[i].kind : 6 + cluster_no*4 + sys_dist(i,0)/40; }
+static void sys_name(int i, char *b){ if(sys[i].kind<6) scpy(b,tint_name[sys[i].kind]); else name_of(sys_id(i),b); }
+static int can_jump(int i){ if(i==cur_sys) return 0; if(sys[i].kind<6) return sys[i].kind<zones_open; return ant_king; }
+
+// where you are when you land: the planet of the current system
+static void land_on_current(void){
+    if(sys[cur_sys].kind<6){ endless=0; zone=sys[cur_sys].kind; zone_cleared=(cleared_mask>>zone)&1; }
+    else { endless=1; world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); zone_cleared=0; }
+}
+
+// ---------------------------------------------------------------- the ship in space
+#define PR 3000                     // planet radius
+#define VCY 64                      // middle of the view
+#define FOCS 160
+static s32 shx, shy, shz; static int yaw, pitch, speed, laser_cool, laser_t, sh_regen, space_msg_t, hit_t;
+static s32 stx_=2500, sty_=600, stz_=-9000;     // the station
+static s16 bf[3], br[3], bu[3];     // forward, right, up (2.14)
+static s16 sun[3]={-9000,6000,-11000};
+EW static s16 star_dir[96*3];
+EW static s32 dust[20*3];
+typedef struct { s32 x,y,z; s16 f[3]; s16 hp; s8 alive, cool, fire_t; } Pirate;
+#define NPIR 4
+EW static Pirate pir[NPIR];
+typedef struct { s32 x,y,z; s16 vx,vy,vz; s16 life; u8 col; } SPart;
+#define NSPP 48
+EW static SPart spp[NSPP];
+typedef struct { s32 x,y,z; u8 alive; } Can;
+EW static Can cans[4];
+static char smsg[40];
+static void space_say(const char *t){ int n=0; while(t[n]&&n<39){ smsg[n]=t[n]; n++; } smsg[n]=0; space_msg_t=90; }
+
+static void norm3(s16 *v){ s32 l=isqrt((u32)(v[0]*v[0]+v[1]*v[1]+v[2]*v[2])); if(l>0){ v[0]=v[0]*16384/l; v[1]=v[1]*16384/l; v[2]=v[2]*16384/l; } }
+static void basis(void){
+    s32 sy=sinx(yaw>>2), cy=cosx(yaw>>2), sp=sinx(pitch>>2), cp=cosx(pitch>>2);
+    bf[0]=(sy*cp)>>14; bf[1]=sp; bf[2]=(cy*cp)>>14;
+    br[0]=cy; br[1]=0; br[2]=-sy;
+    bu[0]=(-sy*sp)>>14; bu[1]=cp; bu[2]=(-cy*sp)>>14;
+}
+// world point -> camera; returns 0 if behind
+static int cam3(s32 x, s32 y, s32 z, s32 *cx, s32 *cy, s32 *cz){
+    s32 rx=x-shx, ry=y-shy, rz=z-shz;
+    *cx=(s32)(((long long)rx*br[0]+(long long)ry*br[1]+(long long)rz*br[2])>>14);
+    *cy=(s32)(((long long)rx*bu[0]+(long long)ry*bu[1]+(long long)rz*bu[2])>>14);
+    *cz=(s32)(((long long)rx*bf[0]+(long long)ry*bf[1]+(long long)rz*bf[2])>>14);
+    return *cz>20;
+}
+static int sproj(s32 x, s32 y, s32 z, int *sx, int *sy, s32 *zz){
+    s32 cx,cy,cz; if(!cam3(x,y,z,&cx,&cy,&cz)) return 0;
+    s32 px=120+(s32)(((long long)cx*FOCS)/cz), py=VCY-(s32)(((long long)cy*FOCS)/cz);
+    if(px<-4000||px>4000||py<-4000||py>4000) return 0;
+    *sx=px; *sy=py; if(zz) *zz=cz; return 1;
+}
+static void dot2(volatile u16 *pg, int x, int y, int c){ if(x>=0&&x<240&&y>=0&&y<128) pix(pg,x,y,c); }
+static void line2(volatile u16 *pg, int x0, int y0, int x1, int y1, int c){
+    int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(n>400) return; if(!n){ dot2(pg,x0,y0,c); return; }
+    s32 fx=x0<<16, fy=y0<<16, sx=(dx<<16)/n, sy=(dy<<16)/n;
+    for(int i=0;i<=n;i++){ dot2(pg,(fx+0x8000)>>16,(fy+0x8000)>>16,c); fx+=sx; fy+=sy; }
+}
+static void wire(volatile u16 *pg, const s32 *v, int nv, const u8 *e, int ne, int c){
+    int sx[16], sy[16]; u8 ok[16];
+    for(int i=0;i<nv;i++) ok[i]=sproj(v[i*3],v[i*3+1],v[i*3+2],&sx[i],&sy[i],0);
+    for(int i=0;i<ne;i++){ int a=e[i*2], b=e[i*2+1]; if(ok[a]&&ok[b]) line2(pg,sx[a],sy[a],sx[b],sy[b],c); }
+}
+
+// ---------------------------------------------------------------- a round, lit, turning planet
+static int pl_rot=0, pl_tex=0;
+IWRAM static void planet_fill(volatile u16 *pg, int cx, int cy, int r, s32 Lx, s32 Ly, s32 Lz, int rot, const u8 *noise){
+    int y0=cy-r, y1=cy+r; if(y0<0) y0=0; if(y1>127) y1=127;
+    for(int y=y0;y<=y1;y++){
+        int dy=y-cy; int w=isqrt((u32)(r*r-dy*dy));
+        int c0=(cx-w)>>1, c1=(cx+w)>>1; if(c0<0) c0=0; if(c1>119) c1=119; if(c0>c1) continue;
+        int ky=((dy+r)*32)/r; if(ky<0) ky=0; if(ky>63) ky=63;
+        s32 kx=(((c0*2-cx+r)<<16)/r)*32, ks=((2<<16)/r)*32;
+        static const u8 b4[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5}; const u8 *bz=b4+(y&3)*4;
+        volatile u16 *row=pg+y*120;
+        int ny=(32-ky)*8;
+        for(int c=c0;c<=c1;c++, kx+=ks){
+            int kxx=kx>>16; if(kxx<0) kxx=0; if(kxx>63) kxx=63;
+            int k=(ky<<6)|kxx, nz=sph_z[k], ix;
+            if(nz<14){ ix=48; }
+            else {
+                int nx=(kxx-32)*8;
+                s32 lit=(nx*Lx + ny*Ly - nz*Lz)>>14;
+                int t=noise[(sph_v[k]<<6)|((sph_u[k]+rot)&63)];
+                int s = lit>0 ? lit : 0;
+                s = t>=8 ? (s*(44+t*2))>>6 : (s*(22+t*2))>>6;
+                s = (s>>1) + 3; if(s>127) s=127;
+                { int lv=(((s*113)>>7)+bz[c&3])>>4; if(lv>7) lv=7; ix = 40 + lv; }
+                if(nz<40 && lit>-60) ix = (c&1)^(y&1) ? 48 : ix;   // a thin glowing atmosphere at the edge
+            }
+            row[c]=ix|(ix<<8);
+        }
+    }
+}
+
+// ---------------------------------------------------------------- setting up a system
+static void build_space_palette(void){
+    for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
+    const u16 *t = sys[cur_sys].kind<6 ? &tint_pal[sys[cur_sys].kind*6] : w_tint;
+    for(int i=0;i<8;i++){                                   // 8 shades from the planet's 5 colours
+        int f=i*4*16/7, a=f>>4, fr=f&15; if(a>=4){ a=3; fr=16; }
+        u16 c0=t[a], c1=t[a+1];
+        int r=((c0&31)*(16-fr)+(c1&31)*fr)>>4, g=(((c0>>5)&31)*(16-fr)+((c1>>5)&31)*fr)>>4, b=(((c0>>10)&31)*(16-fr)+((c1>>10)&31)*fr)>>4;
+        BG_PAL[40+i]=r|(g<<5)|(b<<10);
+    }
+    BG_PAL[48]=t[5]|0x0421;                                  // atmosphere
+    BG_PAL[49]=rgb15(255,255,230); BG_PAL[50]=rgb15(255,220,120); BG_PAL[51]=rgb15(220,120,40);
+    BG_PAL[52]=rgb15(120,255,120); BG_PAL[53]=rgb15(255,80,70); BG_PAL[54]=rgb15(220,230,240); BG_PAL[55]=rgb15(90,220,255); BG_PAL[56]=rgb15(90,100,120);
+    BG_PAL[57]=rgb15(16,20,34); BG_PAL[58]=rgb15(60,80,120);
+}
+static void spawn_pirates(int n){
+    for(int i=0;i<NPIR && n;i++) if(!pir[i].alive){ Pirate *p=&pir[i];
+        s16 d[3]={(s16)(lr(32768)-16384),(s16)(lr(16384)-8192),(s16)(lr(32768)-16384)}; norm3(d);
+        int dist=7000+lr(3000);
+        p->x=shx+((d[0]*dist)>>14); p->y=shy+((d[1]*dist)>>14); p->z=shz+((d[2]*dist)>>14);
+        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->hp=10+sys_dlv(cur_sys)*5; p->alive=1; p->cool=60; p->fire_t=0; n--; }
+}
+static void space_enter(int from_planet){
+    lseed = galaxy_seed ^ 0x1234567 ^ frames;
+    for(int i=0;i<96;i++){ s16 *d=&star_dir[i*3]; d[0]=lr(32768)-16384; d[1]=lr(32768)-16384; d[2]=lr(32768)-16384; norm3(d); }
+    for(int i=0;i<60;i++) dust[i]=lr(1600)-800;
+    norm3(sun);
+    for(int i=0;i<NPIR;i++) pir[i].alive=0; for(int i=0;i<NSPP;i++) spp[i].life=0; for(int i=0;i<4;i++) cans[i].alive=0;
+    if(sys[cur_sys].kind==6){ world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); }
+    build_space_palette();
+    pl_tex = (sys_id(cur_sys)&1)<<12; pl_rot=sys_id(cur_sys)*7;
+    if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("LAUNCHED. B: THRUST  R: BRAKE"); }
+    else { shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=20; }
+    int danger=sys_dlv(cur_sys);
+    if(!from_planet && lr(100) < 25+danger*6) spawn_pirates(1+lr(1+danger/3>3?3:1+danger/3));
+    shield = 20+shield_lv*20; if(hull<1) hull=100;
+    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
+}
+static void boom(s32 x, s32 y, s32 z, int n, int col){
+    for(int i=0;i<NSPP && n;i++) if(spp[i].life<=0){ SPart *p=&spp[i]; p->x=x; p->y=y; p->z=z; p->vx=lr(161)-80; p->vy=lr(161)-80; p->vz=lr(161)-80; p->life=20+lr(25); p->col=col; n--; }
+}
+
+// ---------------------------------------------------------------- the cockpit
+static const s8 scan_pts[32][2]={{44,0},{43,3},{40,5},{35,7},{29,9},{22,10},{15,11},{7,12},{0,12},{-7,12},{-15,11},{-22,10},{-29,9},{-35,7},{-40,5},{-43,3},{-44,0},{-43,-3},{-40,-5},{-35,-7},{-29,-9},{-22,-10},{-15,-11},{-7,-12},{0,-12},{7,-12},{15,-11},{22,-10},{29,-9},{35,-7},{40,-5},{43,-3}};
+static void blip(volatile u16 *pg, s32 x, s32 y, s32 z, int c){
+    s32 cx,cy,cz; cam3(x,y,z,&cx,&cy,&cz);
+    s32 rng=16000; if(cx>rng||cx<-rng||cz>rng||cz<-rng) return;
+    int bx=120+cx*44/rng, by=144-cz*12/rng, h=-(cy*10/rng); if(h>10) h=10; if(h<-10) h=-10;
+    for(int i=0;i!=h;i+= h>0?1:-1) if(by+i>=129&&by+i<159) pix(pg,bx,by+i,c);
+    if(by+h>=129&&by+h<159){ pix(pg,bx,by+h,c); pix(pg,bx+1,by+h,c); }
+}
+static void cockpit(volatile u16 *pg){
+    for(int i=128*120;i<160*120;i++) pg[i]=57|(57<<8);
+    for(int i=128*120;i<129*120;i++) pg[i]=58|(58<<8);
+    for(int i=0;i<32;i++) pix(pg,120+scan_pts[i][0],144+scan_pts[i][1],58);
+    pix(pg,120,144,54); pix(pg,121,144,54);
+    blip(pg,0,0,0,48); blip(pg,stx_,sty_,stz_,55);
+    for(int i=0;i<NPIR;i++) if(pir[i].alive) blip(pg,pir[i].x,pir[i].y,pir[i].z,53);
+    for(int i=0;i<4;i++) if(cans[i].alive) blip(pg,cans[i].x,cans[i].y,cans[i].z,50);
+    // bars on the left: shield, hull, fuel; speed on the right
+    static const char *const lab[3]={"SHLD","HULL","FUEL"}; int val[3]={shield,hull,fuel}, mx[3]={20+shield_lv*20,100,70}, col[3]={55,53,50};
+    for(int k=0;k<3;k++){ text(pg,4,131+k*9,lab[k],58,1); rect(pg,24,132+k*9,40,3,56); int w=val[k]*40/mx[k]; if(w<0) w=0; if(w>40) w=40; rect(pg,24,132+k*9,w,3,col[k]); }
+    text(pg,180,131,"SPEED",58,1); rect(pg,180,140,52,3,56); rect(pg,180,140,speed*52/60,3,52);
+    char b[24]; sys_name(cur_sys,b); b[12]=0; text(pg,180,148,b,54,1);
+}
+
+// ---------------------------------------------------------------- one frame of flying
+static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
+    // steer, throttle
+    if(HELD(K_LEFT)) yaw=(yaw-10)&1023; if(HELD(K_RIGHT)) yaw=(yaw+10)&1023;
+    if(HELD(K_UP)) pitch-=7; if(HELD(K_DOWN)) pitch+=7; if(pitch>230) pitch=230; if(pitch<-230) pitch=-230;
+    if(HELD(K_B)) speed+=2; if(HELD(K_R)) speed-=3; if(speed<0) speed=0; if(speed>60) speed=60;
+    basis();
+    shx+=(bf[0]*speed*3)>>14; shy+=(bf[1]*speed*3)>>14; shz+=(bf[2]*speed*3)>>14;
+    s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
+    if(pd<PR+300){ s32 k=(PR+300)*64/(pd?pd:1); shx=shx*k/64; shy=shy*k/64; shz=shz*k/64; if(speed>10) speed=10; }
+    s32 sdx=shx-stx_, sdy=shy-sty_, sdz=shz-stz_; s32 sd=isqrt((u32)((sdx>>4)*(sdx>>4)+(sdy>>4)*(sdy>>4)+(sdz>>4)*(sdz>>4)))<<4;
+    int can_land = pd < PR+2200, can_dock = sd < 1100;
+    if(++sh_regen>=20){ sh_regen=0; if(shield<20+shield_lv*20) shield++; }
+    if(HIT(K_SEL)) return 2;
+    if(HIT(K_START)){ char b[40]; int n=0; for(int i=0;i<8;i++) n+=cargo[i]; scpy(b,"CARGO "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); scat(b,"  LASER MK"); ncat(b,laser_lv); space_say(b); }
+    // A: land, dock, or fire
+    if(laser_cool) laser_cool--;
+    if(HIT(K_A) && can_land){ return 1; }
+    if(HIT(K_A) && can_dock){ speed=0; return 3; }
+    if(HELD(K_A) && !laser_cool && !can_land && !can_dock){
+        laser_cool=10-laser_lv; laser_t=4; sfx(10);
+        for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue; int sx,sy; s32 z;
+            if(sproj(p->x,p->y,p->z,&sx,&sy,&z) && z<9000 && sx>104 && sx<136 && sy>VCY-14 && sy<VCY+14){
+                p->hp -= laser_lv*5+2; boom(p->x,p->y,p->z,4,54); sfx(1);
+                if(p->hp<=0){ p->alive=0; boom(p->x,p->y,p->z,24,50); sfx(9); int g=30+sys_dlv(cur_sys)*15; gold+=g; gain_xp(10+sys_dlv(cur_sys)*3);
+                    char b[32]; scpy(b,"PIRATE DOWN! +"); ncat(b,g); scat(b,"G"); space_say(b);
+                    if(lr(2)) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; } } } }
+    }
+    // pirates
+    int danger=sys_dlv(cur_sys);
+    if(!can_land && lr(1500) < 2+danger) spawn_pirates(1);
+    for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
+        s16 d[3]; s32 dx=shx-p->x, dy=shy-p->y, dz=shz-p->z; s32 l=isqrt((u32)((dx>>4)*(dx>>4)+(dy>>4)*(dy>>4)+(dz>>4)*(dz>>4)))<<4; if(l<1) l=1;
+        if(l>40000){ p->alive=0; continue; }
+        d[0]=dx*16384/l; d[1]=dy*16384/l; d[2]=dz*16384/l;
+        if(l<1200){ d[0]=-d[0]; d[1]=-d[1]+8000; d[2]=-d[2]; }          // swerve away instead of ramming
+        for(int k=0;k<3;k++) p->f[k]+= (d[k]-p->f[k])>>4;
+        norm3(p->f);
+        int ps=34+danger*2; p->x+=(p->f[0]*ps)>>14; p->y+=(p->f[1]*ps)>>14; p->z+=(p->f[2]*ps)>>14;
+        if(p->cool) p->cool--; if(p->fire_t) p->fire_t--;
+        s32 aim=(p->f[0]*d[0]+p->f[1]*d[1]+p->f[2]*d[2])>>14;
+        if(!p->cool && l<7000 && aim>15500){ p->cool=40+lr(30); p->fire_t=4; sfx(4);
+            if(lr(100)<55){ int dm=4+danger*2; if(shield>=dm) shield-=dm; else { hull-=dm-shield; shield=0; } hit_t=6; } }
+    }
+    // canisters: fly into them to scoop the cargo
+    for(int k=0;k<4;k++) if(cans[k].alive){ s32 dx=shx-cans[k].x, dy=shy-cans[k].y, dz=shz-cans[k].z;
+        if(dx>-500&&dx<500&&dy>-500&&dy<500&&dz>-500&&dz<500){ cans[k].alive=0; int n=0; for(int i=0;i<8;i++) n+=cargo[i];
+            if(n<cargo_cap){ int g=lr(8); cargo[g]++; char b[32]; scpy(b,"SCOOPED "); scat(b,goods[g]); space_say(b); sfx(2); } else space_say("CARGO HOLD FULL"); } }
+    for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; p->life--; p->x+=p->vx; p->y+=p->vy; p->z+=p->vz; }
+    if(hull<=0){ hull=100; for(int i=0;i<8;i++) cargo[i]=0; gold/=2; for(int i=0;i<NPIR;i++) pir[i].alive=0;
+        shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=10; space_say("SHIP WRECKED! CARGO LOST"); sfx(9); }
+    // ---- draw
+    volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
+    { static u32 zero=0; *(volatile u32*)0x040000D4=(u32)&zero; *(volatile u32*)0x040000D8=(u32)pg; *(volatile u32*)0x040000DC=(120*128/2)|(2<<23)|(1<<26)|(1u<<31); }
+    for(int i=0;i<96;i++){ s16 *d=&star_dir[i*3]; s32 z=(d[0]*bf[0]+d[1]*bf[1]+d[2]*bf[2])>>14; if(z<2000) continue;
+        s32 x=(d[0]*br[0]+d[1]*br[1]+d[2]*br[2])>>14, y=(d[0]*bu[0]+d[1]*bu[1]+d[2]*bu[2])>>14;
+        int sx=120+x*FOCS/z, sy=VCY-y*FOCS/z; dot2(pg,sx,sy, i<20?5 : i<50?4 : 3); }
+    { s32 z=(sun[0]*bf[0]+sun[1]*bf[1]+sun[2]*bf[2])>>14;
+      if(z>2000){ s32 x=(sun[0]*br[0]+sun[1]*br[1]+sun[2]*br[2])>>14, y=(sun[0]*bu[0]+sun[1]*bu[1]+sun[2]*bu[2])>>14;
+          int sx=120+x*FOCS/z, sy=VCY-y*FOCS/z;
+          for(int dy=-12;dy<=12;dy++) for(int dx=-12;dx<=12;dx++){ int d2=dx*dx+dy*dy; if(d2>144) continue; int c = d2<30?49 : d2<70?50 : ((dx+dy)&1)?51:0; if(c) dot2(pg,sx+dx,sy+dy,c); } } }
+    // the planet
+    { s32 cx,cy,cz; if(cam3(0,0,0,&cx,&cy,&cz) && cz>PR/3){
+        int r=(int)(((long long)PR*FOCS)/cz), px=120+(s32)(((long long)cx*FOCS)/cz), py=VCY-(s32)(((long long)cy*FOCS)/cz);
+        if(r<1200 && px+r>0 && px-r<240 && py+r>0 && py-r<128){
+            s32 Lx=(sun[0]*br[0]+sun[1]*br[1]+sun[2]*br[2])>>14, Ly=(sun[0]*bu[0]+sun[1]*bu[1]+sun[2]*bu[2])>>14, Lz=(sun[0]*bf[0]+sun[1]*bf[1]+sun[2]*bf[2])>>14;
+            if(r<2) r=2; planet_fill(pg,px,py,r,Lx,Ly,Lz,(pl_rot+(frames>>4))&63,pl_noise+pl_tex); } } }
+    // flying dust gives a sense of speed
+    for(int i=0;i<20;i++){ s32 *d=&dust[i*3];
+        for(int k=0;k<3;k++){ s32 rel=d[k]-(k==0?shx:k==1?shy:shz); if(rel>800) d[k]-=1600; if(rel<-800) d[k]+=1600; }
+        int sx,sy,sx2,sy2; s32 z;
+        if(sproj(d[0],d[1],d[2],&sx,&sy,&z)){ if(speed>14 && sproj(d[0]-((bf[0]*speed*4)>>14),d[1]-((bf[1]*speed*4)>>14),d[2]-((bf[2]*speed*4)>>14),&sx2,&sy2,0)) line2(pg,sx,sy,sx2,sy2,56); else dot2(pg,sx,sy,56); } }
+    // the station: a turning wireframe cube with a glowing dock slot, like Elite's Coriolis
+    { s32 v[12*3]; int a=frames*3; s32 S=420, c_=cosx(a>>2), s_=sinx(a>>2);
+      static const s8 cube[8][3]={{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
+      for(int i=0;i<8;i++){ s32 x=cube[i][0]*S, z=cube[i][2]*S; v[i*3]=stx_+((x*c_-z*s_)>>14); v[i*3+1]=sty_+cube[i][1]*S; v[i*3+2]=stz_+((x*s_+z*c_)>>14); }
+      static const s8 slot[4][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
+      for(int i=0;i<4;i++){ s32 x=slot[i][0]*140, z=-S; v[(8+i)*3]=stx_+((x*c_-z*s_)>>14); v[(8+i)*3+1]=sty_+slot[i][1]*70; v[(8+i)*3+2]=stz_+((x*s_+z*c_)>>14); }
+      static const u8 ce[]={0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7}; static const u8 se[]={8,9,9,10,10,11,11,8};
+      wire(pg,v,12,ce,12,54); wire(pg,v,12,se,4,(frames&16)?55:56); }
+    // pirates: little wireframe fighters
+    for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
+        s16 R[3]={p->f[2],0,(s16)-p->f[0]}; norm3(R); s16 U[3]={(s16)((p->f[1]*R[2]-p->f[2]*R[1])>>14),(s16)((p->f[2]*R[0]-p->f[0]*R[2])>>14),(s16)((p->f[0]*R[1]-p->f[1]*R[0])>>14)};
+        static const s16 mdl[6][3]={{0,0,110},{-110,0,-50},{110,0,-50},{0,35,-50},{0,-18,-50},{0,0,-70}};
+        s32 v[6*3]; for(int k=0;k<6;k++){ for(int a=0;a<3;a++) v[k*3+a]=(a==0?p->x:a==1?p->y:p->z)+((mdl[k][0]*R[a]+mdl[k][1]*U[a]+mdl[k][2]*p->f[a])>>14); }
+        static const u8 pe[]={0,1,0,2,0,3,0,4,1,3,2,3,1,4,2,4,3,5,4,5,1,5,2,5};
+        wire(pg,v,6,pe,12,53);
+        if(p->fire_t){ int sx,sy; if(sproj(p->x,p->y,p->z,&sx,&sy,0)) line2(pg,sx,sy,120+(frames&7)-4,124,53); } }
+    for(int k=0;k<4;k++) if(cans[k].alive){ int sx,sy; s32 z; if(sproj(cans[k].x,cans[k].y,cans[k].z,&sx,&sy,&z)){ int r=(int)(60*FOCS/z)+1; line2(pg,sx-r,sy,sx,sy-r,50); line2(pg,sx,sy-r,sx+r,sy,50); line2(pg,sx+r,sy,sx,sy+r,50); line2(pg,sx,sy+r,sx-r,sy,50); } }
+    for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; int sx,sy; if(sproj(p->x,p->y,p->z,&sx,&sy,0)){ dot2(pg,sx,sy,p->life>12?49:p->col); dot2(pg,sx+1,sy,p->col); } }
+    if(laser_t){ laser_t--; line2(pg,30,127,120,VCY,52); line2(pg,210,127,120,VCY,52); }
+    // crosshair
+    for(int k=4;k<9;k++){ dot2(pg,120+k,VCY,52); dot2(pg,120-k,VCY,52); dot2(pg,120,VCY+k,52); dot2(pg,120,VCY-k,52); }
+    if(hit_t){ hit_t--; for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
+    cockpit(pg);
+    const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
+    if(space_msg_t){ space_msg_t--; text(pg,120-textlen(smsg)*2,4,smsg,54,1); }
+    if(pr) text(pg,120-textlen(pr)*4,96,pr,55,2);
+    else if(!space_msg_t && !(frames&64)) text(pg,64,4,"SELECT: GALAXY MAP",56,1);
+    return 0;
+}
+
+// ---------------------------------------------------------------- hyperspace
+static void hyperspace(void){
+    sfx(3);
+    for(int f=0;f<70;f++){
+        volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
+        for(int i=0;i<120*128;i++) pg[i]=0;
+        for(int k=0;k<40;k++){ int a=(k*37+f*3)&255; s32 ca=sinx(a+64), sa=sinx(a); int r0=((k*53+f*f)%110)+4, r1=r0+6+f/3;
+            line2(pg,120+(ca*r0>>14),VCY+(sa*r0>>15),120+(ca*r1>>14),VCY+(sa*r1>>15), k&1?55:(f>50?49:58)); }
+        cockpit(pg);
+        vsync(); REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1;
+    }
+}
+
+// ---------------------------------------------------------------- the galaxy map (Elite-style chart)
+static int galaxy_map(void){     // returns 1 if you jumped
+    volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));     // draw on the page you are looking at
+    int cx=sys[cur_sys].x*8, cy=sys[cur_sys].y*8, sel=cur_sys, dirty=1;
+    wait_release();
+    while(1){
+        if(dirty){ dirty=0;
+            for(int i=0;i<240*160/2;i++) pg[i]=0;
+            lseed=cluster_no*977+3; for(int i=0;i<120;i++) pix(pg,lr(240),18+lr(110),1+lr(3));
+            char b[48]; scpy(b,"GALAXY MAP - CLUSTER "); ncat(b,cluster_no+1); text(pg,4,3,b,C_GOLD,1);
+            for(int i=0;i<64;i++){ int a=i*4; int r=fuel; int x=sys[cur_sys].x+(sinx(a+64)*r>>14), y=sys[cur_sys].y+(sinx(a)*r>>14); if(x>=0&&x<240&&y>=16&&y<130) pix(pg,x,y,C_DGREY); }
+            for(int i=0;i<NSYS;i++){ int x=sys[i].x, y=sys[i].y, k=sys[i].kind;
+                int c = k<6 ? (k<zones_open ? C_GOLD : C_DGREY) : (ant_king ? (sys[i].eco==0?C_GREEN : sys[i].eco==1?C_GREY : sys[i].eco==2?C_CYAN : C_RED) : C_DGREY);
+                rect(pg,x-1,y-1,3,3,c); if(k<6){ b[0]='1'+k; b[1]=0; text(pg,x+3,y-6,b,c,1); } }
+            for(int k=0;k<5;k++) if((cleared_mask>>k)&1){ line2(pg,sys[k].x,sys[k].y,sys[k+1].x,sys[k+1].y,C_DGREY); }
+            int x=sys[cur_sys].x, y=sys[cur_sys].y; for(int a=0;a<256;a+=16) pix(pg,x+(sinx(a+64)*5>>14),y+(sinx(a)*5>>14),C_WHITE);
+            x=sys[sel].x; y=sys[sel].y; line2(pg,x-6,y,x-3,y,C_CYAN); line2(pg,x+3,y,x+6,y,C_CYAN); line2(pg,x,y-6,x,y-3,C_CYAN); line2(pg,x,y+3,x,y+6,C_CYAN);
+            rect(pg,0,132,240,28,57);
+            sys_name(sel,b); text(pg,4,135,b,C_WHITE,1);
+            int d=sys_dist(sel,cur_sys);
+            scpy(b, sys[sel].kind<6 ? "STORY ZONE  " : "UNCHARTED  "); scat(b,eco_name[sys[sel].eco]); scat(b,"  DANGER "); ncat(b,sys_dlv(sel)); text(pg,4,143,b,C_GREY,1);
+            scpy(b,"DISTANCE "); ncat(b,d/10); scat(b,"."); ncat(b,d%10); scat(b," LY   FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10);
+            text(pg,4,151,b,C_GREY,1);
+            const char *st = sel==cur_sys ? "YOU ARE HERE" : !can_jump(sel) ? (sys[sel].kind<6 ? "LOCKED: BEAT THE BOSS BEFORE IT" : "LOCKED: BEAT THE ANT KING") : d>fuel ? "TOO FAR: REFUEL AT A STATION" : "A: JUMP HERE";
+            text(pg,236-textlen(st)*4,151,st, (sel!=cur_sys && can_jump(sel) && d<=fuel)?C_GREEN:C_RED,1);
+            text(pg,150,3,ant_king?"START: NEW CLUSTER":"B: BACK",C_DGREY,1);
+        }
+        vsync(); read_keys();
+        int mv=0;
+        if(HELD(K_LEFT)){ cx-=12; mv=1; } if(HELD(K_RIGHT)){ cx+=12; mv=1; } if(HELD(K_UP)){ cy-=12; mv=1; } if(HELD(K_DOWN)){ cy+=12; mv=1; }
+        if(cx<0) cx=0; if(cx>239*8) cx=239*8; if(cy<16*8) cy=16*8; if(cy>130*8) cy=130*8;
+        if(mv){ int best=sel, bd=1<<30; for(int i=0;i<NSYS;i++){ int dx=sys[i].x*8-cx, dy=sys[i].y*8-cy, dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } } if(best!=sel){ sel=best; dirty=1; } }
+        if(HIT(K_B)){ wait_release(); return 0; }
+        if(HIT(K_START) && ant_king){
+            if(fuel<70){ space_say("NEED FULL FUEL FOR AN INTERGALACTIC JUMP"); wait_release(); return 0; }
+            fuel=0; cluster_no++; gen_cluster(); cur_sys=0; hyperspace(); space_enter(0); space_say("A NEW CLUSTER OF STARS!"); wait_release(); return 1; }
+        if(HIT(K_A) && sel!=cur_sys && can_jump(sel) && sys_dist(sel,cur_sys)<=fuel){
+            s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
+            if(pd<PR*2){ space_say("TOO CLOSE TO THE PLANET TO JUMP"); wait_release(); return 0; }
+            fuel-=sys_dist(sel,cur_sys); cur_sys=sel; visits++;
+            hyperspace(); space_enter(0); char b[40]; scpy(b,"ARRIVED: "); char nm[24]; sys_name(cur_sys,nm); scat(b,nm); space_say(b);
+            wait_release(); return 1; }
+    }
+}
+
+// ---------------------------------------------------------------- docked at the station: trading and the shipyard
+static int good_price(int g){ int e=sys[cur_sys].eco; int p=good_base[g]*eco_mul[e][g]/100; int wob=(int)((sys_id(cur_sys)*7+g*13+visits*5)%21); return p*(90+wob)/100+1; }
+static void station_menu(void){
+    volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));
+    int tab=0, sel=0, dirty=1; wait_release(); sfx(5);
+    static const char *const yard[6]={"REFUEL","REPAIR HULL","LASER UPGRADE","SHIELD UPGRADE","BIGGER CARGO BAY","LEAVE"};
+    while(1){
+        if(dirty){ dirty=0; char b[48];
+            for(int i=0;i<240*160/2;i++) pg[i]=57|(57<<8);
+            char nm[24]; sys_name(cur_sys,nm); scpy(b,nm); scat(b," STATION"); text(pg,6,4,b,C_GOLD,1);
+            scpy(b,"G"); ncat(b,gold); text(pg,190,4,b,C_GOLD,1);
+            text(pg,6,14,"MARKET",tab==0?C_WHITE:C_DGREY,1); text(pg,46,14,"SHIPYARD",tab==1?C_WHITE:C_DGREY,1); scpy(b,eco_name[sys[cur_sys].eco]); scat(b," WORLD"); text(pg,140,14,b,C_CYAN,1);
+            if(tab==0){
+                int n=0; for(int i=0;i<8;i++) n+=cargo[i];
+                text(pg,14,26,"GOODS        PRICE   YOU HAVE",C_GREY,1);
+                for(int i=0;i<8;i++){ if(i==sel) text(pg,6,36+i*10,">",C_CYAN,1); scpy(b,goods[i]); while(textlen(b)<13) scat(b," "); ncat(b,good_price(i)); scat(b,"G"); while(textlen(b)<21) scat(b," "); ncat(b,cargo[i]);
+                    text(pg,14,36+i*10,b,i==sel?C_WHITE:C_GREY,1); }
+                scpy(b,"HOLD "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); text(pg,14,122,b,C_WHITE,1);
+                text(pg,6,148,"A: BUY  B: SELL  L/R: SHIPYARD  START: LEAVE",C_CYAN,1);
+            } else {
+                int cost[6]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<4?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0, 0 };
+                for(int i=0;i<6;i++){ if(i==sel) text(pg,6,30+i*12,">",C_CYAN,1); scpy(b,yard[i]); while(textlen(b)<18) scat(b," ");
+                    if(i<5){ if(cost[i]) { ncat(b,cost[i]); scat(b,"G"); } else scat(b, i<2?"FULL":"MAX"); }
+                    text(pg,14,30+i*12,b,i==sel?C_WHITE:C_GREY,1); }
+                scpy(b,"LASER MK"); ncat(b,laser_lv); scat(b,"  SHIELD MK"); ncat(b,shield_lv); scat(b,"  CARGO "); ncat(b,cargo_cap); text(pg,14,110,b,C_WHITE,1);
+                scpy(b,"HULL "); ncat(b,hull); scat(b,"%  FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10); scat(b," LY"); text(pg,14,120,b,C_WHITE,1);
+                text(pg,6,148,"A: BUY  L/R: MARKET  START: LEAVE",C_CYAN,1);
+            }
+        }
+        vsync(); read_keys();
+        int n = tab==0 ? 8 : 6;
+        if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; } if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; }
+        if(HIT(K_L)||HIT(K_R)){ tab^=1; sel=0; dirty=1; }
+        if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==5)) break;
+        if(tab==0){
+            int held=0; for(int i=0;i<8;i++) held+=cargo[i];
+            if(HIT(K_A)){ int p=good_price(sel); if(gold>=p && held<cargo_cap){ gold-=p; cargo[sel]++; sfx(7); } dirty=1; }
+            if(HIT(K_B) && cargo[sel]){ gold+=good_price(sel); cargo[sel]--; sfx(7); dirty=1; }
+        } else if(HIT(K_A)){
+            int cost[5]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<4?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0 };
+            if(cost[sel] && gold>=cost[sel]){ gold-=cost[sel]; sfx(6);
+                if(sel==0) fuel=70; else if(sel==1) hull=100; else if(sel==2) laser_lv++; else if(sel==3){ shield_lv++; shield=20+shield_lv*20; } else cargo_cap+=10; }
+            dirty=1;
+        }
+    }
+    wait_release();
+}
+
+// ---------------------------------------------------------------- the ship's own save block (after the main save)
+typedef struct { u32 magic; s16 cur_sys, cluster_no, fuel, hull, shield_lv, laser_lv, cargo_cap, ant_king, cleared_mask, zones_open, visits, w_dlv; u8 cargo[8]; u32 sum; } SaveX;
+EW static SaveX svx;
+#define SX_OFF 0x800
+static u32 sx_sum(const SaveX *s){ const u8 *p=(const u8*)s; u32 h=2166136261u; for(unsigned i=0;i<sizeof(SaveX)-4;i++){ h^=p[i]; h*=16777619u; } return h; }
+static void save_ext(void){
+    SaveX *s=&svx; memset(s,0,sizeof(SaveX)); s->magic=0x50494853;
+    s->cur_sys=cur_sys; s->cluster_no=cluster_no; s->fuel=fuel; s->hull=hull; s->shield_lv=shield_lv; s->laser_lv=laser_lv; s->cargo_cap=cargo_cap;
+    s->ant_king=ant_king; s->cleared_mask=cleared_mask; s->zones_open=zones_open; s->visits=visits; s->w_dlv=w_dlv; memcpy(s->cargo,cargo,8);
+    s->sum=sx_sum(s); const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) SRAM[SX_OFF+i]=p[i];
+}
+static void load_ext_defaults(void){
+    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; memset(cargo,0,8);
+    if(endless){ ant_king=1; zones_open=6; cleared_mask=63; w_dlv=6+world_no/2; cur_sys=6; }
+    else { ant_king=0; zones_open=zone+1+(zone_cleared?1:0); if(zones_open>6) zones_open=6; cleared_mask=((1<<zone)-1)|(zone_cleared?1<<zone:0); cur_sys=zone; }
+    gen_cluster();
+}
+static int load_ext(void){
+    SaveX *s=&svx; u8 *p=(u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) p[i]=SRAM[SX_OFF+i];
+    if(s->magic!=0x50494853 || s->sum!=sx_sum(s)){ load_ext_defaults(); return 0; }
+    cur_sys=s->cur_sys; cluster_no=s->cluster_no; fuel=s->fuel; hull=s->hull; shield_lv=s->shield_lv; laser_lv=s->laser_lv; cargo_cap=s->cargo_cap;
+    ant_king=s->ant_king; cleared_mask=s->cleared_mask; zones_open=s->zones_open; visits=s->visits; w_dlv=s->w_dlv; memcpy(cargo,s->cargo,8);
+    gen_cluster(); return 1;
+}
+static void story_boss_beaten(void){
+    cleared_mask|=1<<zone; if(zones_open<zone+2) zones_open=zone+2; if(zones_open>6) zones_open=6;
+    if(zone==5 && !ant_king){ ant_king=1; galaxy_seed=rnd()|1; gen_cluster(); }
+}

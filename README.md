@@ -33,3 +33,11 @@ Needs an ARM GBA toolchain (`arm-none-eabi-gcc`, e.g. devkitARM), `gbafix`, and 
 make            # or: make TC=/path/to/arm-none-eabi-
 ```
 Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, saving), `sound.inc` (music and effects), `gen.py` + `texgen.py` (make `assets.h`: palettes, textures, sprites, tables), `crt0.s` + `gba.ld`.
+
+## Space (new)
+At your ship, pick **LAUNCH INTO SPACE**.
+- D-pad: steer. B: thrust. R: brake. A: shoot pirates.
+- Fly close to the planet and press A to land. Fly to the white box (station) and press A to dock.
+- Station: buy and sell 8 kinds of goods (prices change by world type), refuel, repair, and upgrade laser, shield and cargo.
+- SELECT: galaxy map. Pick a star and press A to jump (uses fuel).
+- Beat each zone's boss to open the next star. Beat the Ant King to open the whole galaxy. Then START on the map jumps to a new cluster, forever.

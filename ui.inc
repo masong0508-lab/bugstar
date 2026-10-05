@@ -151,13 +151,14 @@ static const u8 sup_cost[6]={10,25,25,15,20,120};
 static void sup_row(int i, char *b, int *c){ scpy(b,sup_name[i]); while(textlen(b)<16) scat(b," "); ncat(b,sup_cost[i]); scat(b,"G"); }
 static void stock_row(int i, char *b, int *c){ if(!stock[i].it){ scpy(b,"SOLD"); *c=C_DGREY; return; } gear_name(&stock[i],b); b[34]=0; while(textlen(b)<35) scat(b," "); ncat(b,item_value(&stock[i])*2); scat(b,"G"); *c=rar_color(&stock[i]); }
 static void sell_row(int i, char *b, int *c){ gear_name(&bag[i],b); b[34]=0; while(textlen(b)<35) scat(b," "); ncat(b,item_value(&bag[i])); scat(b,"G"); *c=rar_color(&bag[i]); }
+static void save_ext(void); static int load_ext(void);
 static int shop_menu(void){   // returns 1 to fly on
     volatile u16 *pg=VRAM;
     oam_hide_all(); oam_flush();
     int sel=0;
     while(1){
-        const char *main_opt[8]={ endless?"WARP TO A NEW WORLD":"FLY TO THE NEXT ZONE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","LEAVE"};
-        int can_fly = endless || zone_cleared;
+        const char *main_opt[8]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","LEAVE"};
+        int can_fly = 1;
         int dirty=1; wait_release();
         while(1){
             if(dirty){ dirty=0; box(pg,12,20,216,136); text(pg,20,24,"YOUR SHIP",C_GOLD,1); char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
@@ -238,6 +239,7 @@ static void save_game(void){
     s->pet_form=pet_form; s->pet_form_t=pet_form_t; s->pet_maxhp=pet_maxhp; s->pet_hp=pet_hp;
     s->sum=save_sum(s);
     const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(Save);i++) SRAM[i]=p[i];
+    save_ext();
 }
 static int load_game(int apply){
     Save *s=&sv; u8 *p=(u8*)s; for(unsigned i=0;i<sizeof(Save);i++) p[i]=SRAM[i];
@@ -251,6 +253,7 @@ static int load_game(int apply){
     eqw=s->eq[0]; eqa=s->eq[1]; eqc=s->eq[2]; bag_n=s->bag_n; memcpy(bag,s->bag,sizeof(bag)); bag_sel=0;
     q_type=s->q_type; q_need=s->q_need; q_have=s->q_have; q_floor=s->q_floor; q_done=s->q_done; q_gold=s->q_gold; q_fame=s->q_fame; q_zone=s->q_zone; q_world=s->q_world; memcpy(q_name,s->q_name,24);
     pet_form=s->pet_form; pet_form_t=s->pet_form_t; pet_maxhp=s->pet_maxhp; pet_hp=s->pet_hp; pet_away_t=0; pet_down_t=0;
+    load_ext();
     if(endless) make_world();
     recalc(); hearts=s->hp; mp=s->mp; if(hearts<1) hearts=maxh;
     return 1;
