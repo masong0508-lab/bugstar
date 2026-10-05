@@ -146,7 +146,8 @@ static void make_floor(void){
     for(int k=0;k<nlamps;k++) SPAWN(K_LAMP, lampcell[k], 1, 0);
     if(last && !zone_cleared){ SPAWN(K_BOSS, dn, 40+dlv()*30, 0); }
     if(endless){
-        if(depth_no%10==0) SPAWN(K_BOSS, dn, 60+depth_no*6+dlv()*20, 0);               // a guardian every 10 floors
+        if(hive_boss_floor()) SPAWN(K_BOSS, dn, 150+depth_no*12+dlv()*45, 0);              // a Tech Hive overlord guards the hive core
+        else if(depth_no%10==0) SPAWN(K_BOSS, dn, 60+depth_no*6+dlv()*20, 0);               // a guardian every 10 floors
         if(depth_no%5==0 || rndi(10)<3) SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), ((Gear){IT_WARP,0,0,0,0,0}));
         int ng = 1 + rndi(2) + depth_no/8; if(ng>4) ng=4;
         for(int k=0;k<ng;k++){ int t=rndi(10)+depth_no/6; Gear g={IT_GEM,(u8)(t<5?0 : t<8?1 : t<11?2 : 3),0,0,0,0}; SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), g); }

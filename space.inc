@@ -35,14 +35,21 @@ static void gen_cluster(void){
         sys[i].kind=6; sys[i].eco=lr(4);
     }
 }
-static int sys_dlv(int i){ return sys[i].kind<6 ? sys[i].kind : 6 + cluster_no*4 + sys_dist(i,0)/40; }
-static void sys_name(int i, char *b){ if(sys[i].kind<6) scpy(b,tint_name[sys[i].kind]); else name_of(sys_id(i),b); }
+// ---- the post-Ant-King campaign: five Tech Hives feed the Technobeast
+static int hive_done=0, hive_card=0, floor_msg_t=0;
+static const char *const hive_nm[5]={"THE SCRAP HIVE","THE BATTERY MOON","THE GEAR FOREST","THE SILICON SWAMP","THE MOTHERBOARD"};
+static const u8 hive_floors[5]={3,5,7,9,12};
+static int hive_active(void); static void show_hive_card(void);
+static int hive_sys(void){ return 8+hive_done*5; }
+static int is_hive(int i){ return hive_active() && i==hive_sys(); }
+static int sys_dlv(int i){ return sys[i].kind<6 ? sys[i].kind : 6 + cluster_no*4 + sys_dist(i,0)/40 + (is_hive(i) ? 4+hive_done*3 : 0); }
+static void sys_name(int i, char *b){ if(sys[i].kind<6) scpy(b,tint_name[sys[i].kind]); else if(is_hive(i)) scpy(b,hive_nm[hive_done]); else name_of(sys_id(i),b); }
 static int can_jump(int i){ if(i==cur_sys) return 0; if(sys[i].kind<6) return sys[i].kind<zones_open; return ant_king; }
 
 // where you are when you land: the planet of the current system
 static void land_on_current(void){
     if(sys[cur_sys].kind<6){ endless=0; zone=sys[cur_sys].kind; zone_cleared=(cleared_mask>>zone)&1; }
-    else { endless=1; world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); zone_cleared=0; }
+    else { endless=1; world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); zone_cleared=0; }
 }
 
 // ---------------------------------------------------------------- the ship in space
@@ -158,6 +165,10 @@ static void build_space_palette(void){
 }
 static int beast_stage=0, beast_fight=0, ambush_t=0, no_ambush=0; static u64 b3_hp, b3_max;
 static int in_lair=0, tech_lv=0, beast_kills=0, beast_charge=0, beast_fire=0, beast_t=0, lair_out=0; static u64 beast_hp, beast_max; static char beast_dmg_txt[16]; static int beast_dmg_t=0;
+static int hive_active(void){ return beast_stage>=3 && hive_done<5; }
+static int hive_here(void){ return endless && hive_active() && cur_sys==hive_sys(); }
+static int hive_boss_floor(void){ return hive_here() && depth_no==hive_floors[hive_done]; }
+static void hive_kill(void){ hive_done++; hive_card=hive_done+1; }
 static int space_danger(void){ return in_lair ? (beast_fight==1 ? 1+level/3 : beast_fight==2 ? 4+tech_lv*2+level/3 : 8 + tech_lv*2 + beast_kills*6 + level/3) : sys_dlv(cur_sys) + level/4; }
 static void spawn_pirates(int n){
     for(int i=0;i<NPIR && n;i++) if(!pir[i].alive){ Pirate *p=&pir[i];
@@ -172,7 +183,7 @@ static void space_enter(int from_planet){
     for(int i=0;i<60;i++) dust[i]=lr(1600)-800;
     norm3(sun);
     for(int i=0;i<NPIR;i++) pir[i].alive=0; for(int i=0;i<NSPP;i++) spp[i].life=0; for(int i=0;i<4;i++) cans[i].alive=0;
-    if(sys[cur_sys].kind==6){ world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); }
+    if(sys[cur_sys].kind==6){ world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); }
     build_space_palette();
     pl_tex = (sys_id(cur_sys)&1)<<13; pl_rot=sys_id(cur_sys)*7;
     if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("LAUNCHED. B: THRUST  R: BRAKE"); }
@@ -183,10 +194,27 @@ static void space_enter(int from_planet){
     shield = 20+shield_lv*20; if(hull<1) hull=100;
     ambush_t=0;
     if(!no_ambush && ((beast_stage==0 && (cleared_mask&1)) || (beast_stage==1 && (cleared_mask&4)) || (beast_stage==2 && ant_king))){ ambush_t=160; space_say("WARNING: SOMETHING IS COMING..."); }
+    if(hive_card && !no_ambush) show_hive_card();
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
 }
 static void boom(s32 x, s32 y, s32 z, int n, int col){
     for(int i=0;i<NSPP && n;i++) if(spp[i].life<=0){ SPart *p=&spp[i]; p->x=x; p->y=y; p->z=z; p->vx=lr(161)-80; p->vy=lr(161)-80; p->vz=lr(161)-80; p->life=20+lr(25); p->col=col; n--; }
+}
+
+
+// ---------------------------------------------------------------- campaign story cards
+static void story_card(const char *title, const char *const *ln, int n);
+static void show_hive_card(void){
+    int k=hive_card; hive_card=0;
+    static const char *const c[6][5]={
+      {"THE BEAST FEEDS FROM 5 TECH HIVES.","WHILE THEY LIVE. ITS WOUNDS CLOSE","BEFORE IT CAN DIE.","THE FIRST HIVE IS MARKED ON YOUR MAP.","DIVE TO ITS CORE. KILL THE OVERLORD."},
+      {"THE SCRAP HIVE FALLS SILENT.","THE BEAST SCREAMS ACROSS SPACE.","ITS ARMOUR CRACKS: 2X DAMAGE.","NEXT: THE BATTERY MOON.","IT DRINKS LIGHTNING THERE."},
+      {"THE BATTERY MOON GOES DARK.","THE BEAST IS RUNNING LOW ON POWER.","ITS ARMOUR CRACKS AGAIN.","NEXT: THE GEAR FOREST.","ITS SHELL IS GROWN THERE."},
+      {"THE GEAR FOREST STOPS TURNING.","NO MORE NEW SHELL FOR THE BEAST.","ITS ARMOUR IS FALLING APART.","NEXT: THE SILICON SWAMP.","ITS BRAIN IS COPIED THERE."},
+      {"THE SILICON SWAMP BURNS.","THE BEAST CAN NOT THINK AHEAD NOW.","ONE HIVE LEFT.","NEXT: THE MOTHERBOARD.","THE HEART OF ITS NETWORK."},
+      {"THE MOTHERBOARD IS DEAD!","THE BEAST IS ALONE.","NOTHING CAN HEAL IT NOW.","ITS ARMOUR IS GONE: 32X DAMAGE.","GO FINISH THE TECHNOBEAST!"}};
+    static const char *const ttl[6]={"CHAPTER 1: THE TECH HIVES","HIVE 1 OF 5 DESTROYED","HIVE 2 OF 5 DESTROYED","HIVE 3 OF 5 DESTROYED","HIVE 4 OF 5 DESTROYED","ALL 5 HIVES DESTROYED"};
+    story_card(ttl[k-1], c[k-1], 5);
 }
 
 // ---------------------------------------------------------------- the cockpit
@@ -225,6 +253,7 @@ static void fmt_big(u64 v, char *b){
 static u64 beast_damage(int *core){
     u64 d=laser_lv*5+2; for(int t=0;t<tech_lv;t++) d*=4;
     d = d*(u64)(10+d_dmg)/10;
+    d <<= hive_done;                                  // every dead hive cracks its armour more
     if(*core) d*=3;
     return d;
 }
@@ -243,7 +272,12 @@ static void beast_shot(void){
     int dx=sx-120, dy=sy-VCY; if(dx<0) dx=-dx; if(dy<0) dy=-dy;
     if(dx>r || dy>r) return;
     int core = dx<r/3 && dy<r/3;
-    u64 d=beast_damage(&core); if(d>beast_hp) d=beast_hp; beast_hp-=d;
+    u64 d=beast_damage(&core); if(d>beast_hp) d=beast_hp;
+    if(beast_fight==3){ u64 fl=b3_max/5*(u64)(5-hive_done);         // living hives heal it back up to here
+        if(beast_hp-d < fl){ d = beast_hp>fl ? beast_hp-fl : 0;
+            if(!floor_msg_t){ floor_msg_t=150; space_say(hive_done<5?"ITS HIVES HEAL IT! DESTROY A TECH HIVE":""); } } }
+    if(floor_msg_t) floor_msg_t--;
+    beast_hp-=d;
     s32 k=z-1500; boom(shx+((bf[0]*k)>>14),shy+((bf[1]*k)>>14),shz+((bf[2]*k)>>14), core?8:3, core?49:51);
     if(beast_fight==3){ b3_hp=beast_hp; gold += (1+tech_lv*2)*(1+beast_kills); } sfx(1);
     scpy(beast_dmg_txt, core?"CORE -":"-"); char nb[12]; fmt_big(d,nb); scat(beast_dmg_txt,nb); beast_dmg_t=30;
@@ -316,7 +350,7 @@ static void beast_hud(volatile u16 *pg){
 static void lair_enter(void){
     no_ambush=1; space_enter(0); no_ambush=0; in_lair=1; ambush_t=0;
     beast_fight = beast_stage>=2 ? 3 : beast_stage+1;
-    if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"WITHOUT ITS KING. THE BEAST WAKES.","IT ATE A WHOLE MOON. 1 TRILLION HP.","YOU CANNOT WIN TODAY. HIT IT AND WARP OUT.","GET STRONGER. AND COME BACK.","ITS WOUNDS WILL NEVER HEAL."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); }
+    if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"WITHOUT ITS KING. THE BEAST WAKES.","IT ATE A WHOLE MOON. 1 TRILLION HP.","YOU CANNOT WIN TODAY. HIT IT AND WARP OUT.","GET STRONGER. AND COME BACK.","ITS WOUNDS WILL NEVER HEAL."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); hive_card=1; hive_done=0; }
         beast_stage=3; beast_max=b3_max; beast_hp=b3_hp; }
     else if(beast_fight==1){ beast_max=beast_hp=600; static const char *const t[5]={"A SIGNAL FROM THE DARK...","A TINY MACHINE BUG BUILT FROM SCRAP.","IT EATS SHIPS TO GROW BIGGER.","SHOOT ITS GLOWING CORE!","STOP IT WHILE IT IS SMALL."}; story_card("THE TECHNOBEAST - HATCHLING",t,5); }
     else { beast_max=beast_hp=40000; static const char *const t[5]={"IT IS BACK. AND MUCH BIGGER.","IT ATE A WHOLE PIRATE FLEET.","NOW IT HAS A BEAM.","WHEN IT CHARGES. HOLD B","TO FLY FAST AND DODGE."}; story_card("THE TECHNOBEAST - GROWN",t,5); } beast_t=1; beast_charge=0; beast_fire=0;
@@ -325,7 +359,7 @@ static void lair_enter(void){
     BG_PAL[57]=rgb15(34,12,16); BG_PAL[58]=rgb15(130,50,60);
     space_say(beast_fight==3?"THE TECHNOBEAST AWAKENS":"IT ATTACKS!");
 }
-static void lair_leave(void){ int f=beast_fight; in_lair=0; hyperspace(); no_ambush=1; space_enter(0); no_ambush=0; space_say(f<3 && beast_stage>=f ? "IT GOT AWAY... FOR NOW" : "WARPED OUT. COME BACK STRONGER"); do_save(); }
+static void lair_leave(void){ int f=beast_fight; in_lair=0; hyperspace(); no_ambush=1; space_enter(0); no_ambush=0; if(hive_card) show_hive_card(); space_say(f<3 && beast_stage>=f ? "IT GOT AWAY... FOR NOW" : "WARPED OUT. COME BACK STRONGER"); do_save(); }
 
 // ---------------------------------------------------------------- one frame of flying
 static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
@@ -462,19 +496,22 @@ static int galaxy_map(void){     // returns 1 if you jumped
             for(int i=0;i<NSYS;i++){ int x=sys[i].x, y=sys[i].y, k=sys[i].kind;
                 int c = k<6 ? (k<zones_open ? C_GOLD : C_DGREY) : (ant_king ? (sys[i].eco==0?C_GREEN : sys[i].eco==1?C_GREY : sys[i].eco==2?C_CYAN : C_RED) : C_DGREY);
                 rect(pg,x-1,y-1,3,3,c); if(k<6){ b[0]='1'+k; b[1]=0; text(pg,x+3,y-6,b,c,1); } }
+            if(hive_active()){ int hx=sys[hive_sys()].x, hy=sys[hive_sys()].y; for(int a=0;a<256;a+=8) pix(pg,hx+(sinx(a+64)*7>>14),hy+(sinx(a)*7>>14),C_RED); text(pg,hx-8,hy+9,"HIVE",C_RED,1);
+                scpy(b,"TECH HIVES LEFT: "); ncat(b,5-hive_done); text(pg,4,112,b,C_RED,1); }
             for(int k=0;k<5;k++) if((cleared_mask>>k)&1){ line2(pg,sys[k].x,sys[k].y,sys[k+1].x,sys[k+1].y,C_DGREY); }
             int x=sys[cur_sys].x, y=sys[cur_sys].y; for(int a=0;a<256;a+=16) pix(pg,x+(sinx(a+64)*5>>14),y+(sinx(a)*5>>14),C_WHITE);
             x=sys[sel].x; y=sys[sel].y; line2(pg,x-6,y,x-3,y,C_CYAN); line2(pg,x+3,y,x+6,y,C_CYAN); line2(pg,x,y-6,x,y-3,C_CYAN); line2(pg,x,y+3,x,y+6,C_CYAN);
             rect(pg,0,132,240,28,57);
             sys_name(sel,b); text(pg,4,135,b,C_WHITE,1);
             int d=sys_dist(sel,cur_sys);
-            scpy(b, sys[sel].kind<6 ? "STORY ZONE  " : "UNCHARTED  "); scat(b,eco_name[sys[sel].eco]); scat(b,"  DANGER "); ncat(b,sys_dlv(sel)); text(pg,4,143,b,C_GREY,1);
+            scpy(b, sys[sel].kind<6 ? "STORY ZONE  " : is_hive(sel) ? "TECH HIVE  " : "UNCHARTED  "); scat(b,eco_name[sys[sel].eco]); scat(b,"  DANGER "); ncat(b,sys_dlv(sel)); text(pg,4,143,b,C_GREY,1);
             scpy(b,"DISTANCE "); ncat(b,d/10); scat(b,"."); ncat(b,d%10); scat(b," LY   FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10);
             text(pg,4,151,b,C_GREY,1);
+            if(is_hive(sel)){ scpy(b,"OVERLORD ON FLOOR "); ncat(b,hive_floors[hive_done]); text(pg,236-textlen(b)*4,135,b,C_RED,1); }
             const char *st = sel==cur_sys ? "YOU ARE HERE" : !can_jump(sel) ? (sys[sel].kind<6 ? "LOCKED: BEAT THE BOSS BEFORE IT" : "LOCKED: BEAT THE ANT KING") : d>fuel ? "TOO FAR: REFUEL AT A STATION" : "A: JUMP HERE";
             text(pg,236-textlen(st)*4,151,st, (sel!=cur_sys && can_jump(sel) && d<=fuel)?C_GREEN:C_RED,1);
             text(pg,150,3,ant_king?"START: NEW CLUSTER":"B: BACK",C_DGREY,1);
-            if(beast_stage>=3) text(pg,4,122,"L: FIGHT THE TECHNOBEAST (2.0 LY)",C_RED,1);
+            if(beast_stage>=3) text(pg,4,122,"L: FIGHT THE TECHNOBEAST - 2.0 LY",C_RED,1);
         }
         vsync(); read_keys();
         int mv=0;
@@ -557,17 +594,17 @@ static void save_ext(void){
     s->sum=sx_sum(s); const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) SRAM[slot_base(cur_slot)+SX_OFF+i]=p[i];
     beast_save();
 }
-typedef struct { u32 magic, hp_lo, hp_hi, mx_lo, mx_hi; u16 tech, kills, stage, pad; u32 sum; } SaveB;
-static void beast_defaults(void){ tech_lv=0; beast_kills=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
+typedef struct { u32 magic, hp_lo, hp_hi, mx_lo, mx_hi; u16 tech, kills, stage, hives; u32 sum; } SaveB;
+static void beast_defaults(void){ hive_done=0; tech_lv=0; beast_kills=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
 #define SB_OFF 0xA00
 static void beast_load(void){
     SaveB b; sram_read(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
     u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; }
     if(b.magic!=0x32534542 || b.sum!=h){ beast_defaults(); return; }
-    b3_hp=((u64)b.hp_hi<<32)|b.hp_lo; b3_max=((u64)b.mx_hi<<32)|b.mx_lo; tech_lv=b.tech; beast_kills=b.kills; beast_stage=b.stage;
+    b3_hp=((u64)b.hp_hi<<32)|b.hp_lo; b3_max=((u64)b.mx_hi<<32)|b.mx_lo; tech_lv=b.tech; beast_kills=b.kills; beast_stage=b.stage; hive_done=b.hives>5?5:b.hives;
 }
 static void beast_save(void){
-    SaveB b; memset(&b,0,sizeof b); b.magic=0x32534542; b.hp_lo=(u32)b3_hp; b.hp_hi=(u32)(b3_hp>>32); b.mx_lo=(u32)b3_max; b.mx_hi=(u32)(b3_max>>32); b.tech=tech_lv; b.kills=beast_kills; b.stage=beast_stage;
+    SaveB b; memset(&b,0,sizeof b); b.magic=0x32534542; b.hp_lo=(u32)b3_hp; b.hp_hi=(u32)(b3_hp>>32); b.mx_lo=(u32)b3_max; b.mx_hi=(u32)(b3_max>>32); b.tech=tech_lv; b.kills=beast_kills; b.stage=beast_stage; b.hives=hive_done;
     u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; } b.sum=h;
     sram_write(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
 }

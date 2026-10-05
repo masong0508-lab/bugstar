@@ -97,7 +97,7 @@ static void set_affine(int m, int pa, int pb, int pc, int pd){ volatile u16 *o=O
 #include "save.inc"
 #include "ui.inc"
 static int launch_flag=0;
-static void story_boss_beaten(void);
+static void story_boss_beaten(void); static int hive_here(void); static int hive_boss_floor(void); static void hive_kill(void);
 
 // ================================================================= THE PLANET
 enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_PEBBLE, O_TUFT };
@@ -282,7 +282,7 @@ static void kill_mon(DObj *o){
     if(o->champ==2 && q_type==Q_CHAMP){ q_done=1; say("QUEST TARGET SLAIN!"); }
     sfx(9); burst(o->x,o->y,0x6000,10,1);
     int ilvl=dlv()*3+depth_no;
-    if(boss){ if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
+    if(boss){ if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
     gain_xp(xpv);
     Gear g; int drop=0;
     if(boss || o->champ){ g=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, ilvl+4, 40); drop=1; }
@@ -510,7 +510,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         for(int y=by;y<by+4;y++){ pg[y*120+66]=216|(216<<8); pg[y*120+67]=216|(216<<8); } }
     if(sight || have_bug[BUG_ANT]) compass(pg,dirx,diry);
     hud3d(pg);
-    if(named){ char b[32]; b[0]=0; if(named->kind==K_BOSS) scpy(b, endless?"GUARDIAN":"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
+    if(named){ char b[32]; b[0]=0; if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
     if(msg_timer){ text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
     else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);

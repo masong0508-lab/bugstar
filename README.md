@@ -60,3 +60,12 @@ A machine bug that eats ships to grow. You meet it 3 times:
 3. **Complete** - after the Ant King falls, it wakes with **1 trillion HP**. You can't win in one go. Hit it, warp out (SELECT), get stronger, come back. **Its wounds never heal.** Find it any time from the galaxy map with **L**.
 
 Shoot the glowing core for 3x damage. Weapon gear adds damage too. Its drones get stronger with your level, tech and kills. Kill it and it rebuilds 10x stronger.
+
+## After the Ant King: the Tech Hive campaign
+The Technobeast feeds from **5 Tech Hives**. While a hive lives, the beast heals itself back up: each living hive keeps 20% of its HP safe. You can't kill it until all 5 are gone.
+- The next hive is marked in red on the galaxy map (SELECT).
+- Fly there, land, and dive its dungeon. The **Hive Overlord** waits at the core: floors 3, 5, 7, 9 and 12.
+- Each dead hive cracks the beast's armour: **2x damage** each time (32x after all 5).
+- The hives are: The Scrap Hive, The Battery Moon, The Gear Forest, The Silicon Swamp, The Motherboard.
+- Go back and forth: dive a hive, get loot and Tech Cores, then chip more off the beast.
+
