@@ -306,25 +306,28 @@ for m in range(128):
 arr("sq_freq","unsigned short",sq); arr("wv_freq","unsigned short",wv)
 # ---- space: a lookup that turns a point on a disc into longitude/latitude on a sphere, and planet surface noise
 su=[];sv=[];sz=[]
-for j in range(64):
-    for i in range(64):
-        x=(i-31.5)/32; y=(j-31.5)/32; d=x*x+y*y
+for j in range(128):
+    for i in range(128):
+        x=(i-63.5)/64; y=(j-63.5)/64; d=x*x+y*y
         if d>=1: su.append(0); sv.append(0); sz.append(0); continue
         z=math.sqrt(1-d); lon=math.atan2(x,z); lat=math.asin(y)
-        su.append(int((lon/math.pi+1)*32)&63); sv.append(int((lat/math.pi+0.5)*63)&63); sz.append(int(z*255))
-arr("sph_u","unsigned char",su,per=64); arr("sph_v","unsigned char",sv,per=64); arr("sph_z","unsigned char",sz,per=64)
-rng2=np.random.default_rng(99)
-def pnoise(seed):
-    r=np.random.default_rng(seed); acc=np.zeros((64,64))
-    for cells,amp in ((4,1.0),(8,.5),(16,.25)):
-        g=r.random((cells,cells)); g=np.kron(g,np.ones((64//cells,64//cells)))
-        k=np.ones(64//cells)/(64//cells)
-        g=np.apply_along_axis(lambda m: np.convolve(np.concatenate([m,m]),k,'same')[:64],1,g)
-        g=np.apply_along_axis(lambda m: np.convolve(np.concatenate([m,m]),k,'same')[:64],0,g)
-        acc+=g*amp
-    acc=(acc-acc.min())/(acc.max()-acc.min())
-    return [int(v*15) for v in acc.flatten()]
-arr("pl_noise","unsigned char",pnoise(5)+pnoise(6),per=64)
+        su.append(int((lon/math.pi+1)*64)&127); sv.append(int((lat/math.pi+0.5)*63)&63); sz.append(int(z*255))
+arr("sph_u","unsigned char",su,per=128); arr("sph_v","unsigned char",sv,per=128); arr("sph_z","unsigned char",sz,per=128)
+def pnoise(seed,w=128,h=64):
+    # smooth value noise that wraps around in longitude; ranked so half of it is "land" (>=8)
+    r=np.random.default_rng(seed); acc=np.zeros((h,w))
+    for cx,cy,amp in ((8,4,1.0),(16,8,.5),(32,16,.25),(64,32,.12)):
+        g=r.random((cy+1,cx))
+        xs=np.arange(w)*cx/w; ys=np.arange(h)*cy/h
+        x0=xs.astype(int); fx=xs-x0; y0=ys.astype(int); fy=ys-y0
+        fx=fx*fx*(3-2*fx); fy=fy*fy*(3-2*fy); x1=(x0+1)%cx
+        a=g[y0][:,x0]; b=g[y0][:,x1]; c=g[y0+1][:,x0]; d=g[y0+1][:,x1]
+        top=a*(1-fx)+b*fx; bot=c*(1-fx)+d*fx
+        acc+=(top*(1-fy)[:,None]+bot*fy[:,None])*amp
+    rank=acc.flatten().argsort().argsort()
+    return [int(v*16//(w*h)) for v in rank]
+# two planet surfaces, then one cloud layer (each 128 wide x 64 tall)
+arr("pl_noise","unsigned char",pnoise(5)+pnoise(6)+pnoise(7),per=128)
 import texgen
 R=dict(rb2); R.update({k:v[0] for k,v in POT.items()})
 TX=texgen.make_all(R)

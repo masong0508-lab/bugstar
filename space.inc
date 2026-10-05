@@ -100,33 +100,44 @@ static void wire(volatile u16 *pg, const s32 *v, int nv, const u8 *e, int ne, in
 }
 
 // ---------------------------------------------------------------- a round, lit, turning planet
+// 128x128 sphere lookup, sea/land, polar ice, a drifting cloud layer, a soft terminator and a hazy rim.
+// Cost is kept flat when the planet is close: big discs are drawn in 2x2 (then 4x2) blocks.
 static int pl_rot=0, pl_tex=0;
 IWRAM static void planet_fill(volatile u16 *pg, int cx, int cy, int r, s32 Lx, s32 Ly, s32 Lz, int rot, const u8 *noise){
+    static const u8 b4[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
+    const u8 *cloud = pl_noise + 16384;                           // the cloud layer sits after the two surfaces
+    int crot = rot + (frames>>5) + 40;                            // clouds drift slowly over the ground
+    int ys = r>64 ? 2 : 1, cs = r>150 ? 2 : 1;
     int y0=cy-r, y1=cy+r; if(y0<0) y0=0; if(y1>127) y1=127;
-    for(int y=y0;y<=y1;y++){
+    for(int y=y0;y<=y1;y+=ys){
         int dy=y-cy; int w=isqrt((u32)(r*r-dy*dy));
         int c0=(cx-w)>>1, c1=(cx+w)>>1; if(c0<0) c0=0; if(c1>119) c1=119; if(c0>c1) continue;
-        int ky=((dy+r)*32)/r; if(ky<0) ky=0; if(ky>63) ky=63;
-        s32 kx=(((c0*2-cx+r)<<16)/r)*32, ks=((2<<16)/r)*32;
-        static const u8 b4[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5}; const u8 *bz=b4+(y&3)*4;
+        int ky=((dy+r)*64)/r; if(ky<0) ky=0; if(ky>127) ky=127;
+        s32 kx=(((c0*2-cx+r)<<16)/r)*64, ks=(((2*cs)<<16)/r)*64;
+        const u8 *bz=b4+(y&3)*4;
         volatile u16 *row=pg+y*120;
-        int ny=(32-ky)*8;
-        for(int c=c0;c<=c1;c++, kx+=ks){
-            int kxx=kx>>16; if(kxx<0) kxx=0; if(kxx>63) kxx=63;
-            int k=(ky<<6)|kxx, nz=sph_z[k], ix;
-            if(nz<14){ ix=48; }
+        int ny=(64-ky)*4;
+        for(int c=c0;c<=c1;c+=cs, kx+=ks){
+            int kxx=kx>>16; if(kxx<0) kxx=0; if(kxx>127) kxx=127;
+            int k=(ky<<7)|kxx, nz=sph_z[k], ix;
+            if(nz<10){ ix=48; }
             else {
-                int nx=(kxx-32)*8;
-                s32 lit=(nx*Lx + ny*Ly - nz*Lz)>>14;
-                int t=noise[(sph_v[k]<<6)|((sph_u[k]+rot)&63)];
-                int s = lit>0 ? lit : 0;
-                s = t>=8 ? (s*(44+t*2))>>6 : (s*(22+t*2))>>6;
-                s = (s>>1) + 3; if(s>127) s=127;
-                { int lv=(((s*113)>>7)+bz[c&3])>>4; if(lv>7) lv=7; ix = 40 + lv; }
-                if(nz<40 && lit>-60) ix = (c&1)^(y&1) ? 48 : ix;   // a thin glowing atmosphere at the edge
+                int nx=(kxx-64)*4;
+                s32 lit=(nx*Lx + ny*Ly - nz*Lz)>>14;                  // about -256..256
+                int v=sph_v[k], u=sph_u[k];
+                int t=noise[(v<<7)|((u+rot)&127)];                    // 0..15, 8+ is land
+                int base = t>=8 ? 50+t*4 : 14+t*3;                    // land is bright, sea is dark
+                if(v<4 || v>59) base=100+t;                           // polar ice
+                int cl=cloud[(v<<7)|((u+crot)&127)];
+                if(cl>10) base += ((cl-9)*(124-base))>>3;             // clouds whiten whatever is below
+                int d=lit+40; if(d<0) d=0; if(d>256) d=256;           // a soft edge between day and night
+                int sh=((base*d)>>8)+4; if(sh>127) sh=127;
+                int lv=(((sh*113)>>7)+bz[c&3])>>4; if(lv>7) lv=7; ix=40+lv;
+                if(nz<90 && lit>-50 && ((90-nz)>>2)>bz[c&3]) ix=48;   // haze thickens toward the limb on the lit side
             }
-            row[c]=ix|(ix<<8);
+            u16 vv=ix|(ix<<8); row[c]=vv; if(cs==2 && c<119) row[c+1]=vv;
         }
+        if(ys==2 && y+1<=y1){ volatile u16 *r2=row+120; for(int c=c0;c<=c1;c++) r2[c]=row[c]; }
     }
 }
 
@@ -160,7 +171,7 @@ static void space_enter(int from_planet){
     for(int i=0;i<NPIR;i++) pir[i].alive=0; for(int i=0;i<NSPP;i++) spp[i].life=0; for(int i=0;i<4;i++) cans[i].alive=0;
     if(sys[cur_sys].kind==6){ world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); }
     build_space_palette();
-    pl_tex = (sys_id(cur_sys)&1)<<12; pl_rot=sys_id(cur_sys)*7;
+    pl_tex = (sys_id(cur_sys)&1)<<13; pl_rot=sys_id(cur_sys)*7;
     if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("LAUNCHED. B: THRUST  R: BRAKE"); }
     else { shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=20; }
     int danger=sys_dlv(cur_sys);
@@ -262,7 +273,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         int r=(int)(((long long)PR*FOCS)/cz), px=120+(s32)(((long long)cx*FOCS)/cz), py=VCY-(s32)(((long long)cy*FOCS)/cz);
         if(r<1200 && px+r>0 && px-r<240 && py+r>0 && py-r<128){
             s32 Lx=(sun[0]*br[0]+sun[1]*br[1]+sun[2]*br[2])>>14, Ly=(sun[0]*bu[0]+sun[1]*bu[1]+sun[2]*bu[2])>>14, Lz=(sun[0]*bf[0]+sun[1]*bf[1]+sun[2]*bf[2])>>14;
-            if(r<2) r=2; planet_fill(pg,px,py,r,Lx,Ly,Lz,(pl_rot+(frames>>4))&63,pl_noise+pl_tex); } } }
+            if(r<2) r=2; planet_fill(pg,px,py,r,Lx,Ly,Lz,(pl_rot+(frames>>3))&127,pl_noise+pl_tex); } } }
     // flying dust gives a sense of speed
     for(int i=0;i<20;i++){ s32 *d=&dust[i*3];
         for(int k=0;k<3;k++){ s32 rel=d[k]-(k==0?shx:k==1?shy:shz); if(rel>800) d[k]-=1600; if(rel<-800) d[k]+=1600; }

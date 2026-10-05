@@ -25,6 +25,7 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 - **Quests and fame** from your ship's quest board; named elite monsters; wasps that shoot; beetles that hit hard.
 - **Your ship:** supplies, a gear shop, selling, healing, and flying on.
 - **Warp crystals** open a portal home; the door takes you back to the same floor.
+- **Planets from space:** a round, turning world with seas, land, polar ice, drifting clouds, a soft day/night edge and a hazy rim; it keeps the frame rate up when you fly close.
 - **Looks:** baked stone, brick, earth, moss, crystal and marble textures, doors, potion niches, plaques, rune bands, torches, smooth lighting with soft corner shadows, water and polished floors that reflect, embers and dust, head bob, chiptune music.
 
 ## Build
