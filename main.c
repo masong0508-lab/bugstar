@@ -230,7 +230,7 @@ static void planet_enter(void){
 #include "dungeon.inc"
 #include "space.inc"
 
-static void hud_now(void){ if(scene==0) planet_hud(); else dungeon_hud(); }
+static void hud_now(void){ if(scene==2) return; if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
     if(scene==0){ show_msg(t); return; }
     int n=0; while(t[n] && n<39){ msg[n]=t[n]; n++; } msg[n]=0; msg_timer=24;

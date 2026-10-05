@@ -53,12 +53,10 @@ At your ship, pick **LAUNCH INTO SPACE**.
 - SELECT: galaxy map. Pick a star and press A to jump (uses fuel).
 - Beat each zone's boss to open the next star. Beat the Ant King to open the whole galaxy. Then START on the map jumps to a new cluster, forever.
 
-## The Technobeast (space boss)
-After you beat the Ant King, open the galaxy map (SELECT) and press **L** to fly to the Technobeast's lair (costs 2.0 LY fuel).
-- It has **one trillion HP**. Its damage **stays** when you leave, so you can come back again and again.
-- Shoot the glowing middle (the core) for 3x damage.
-- When it charges its beam, fly fast (hold B) to dodge.
-- It sends drone fighters. They get stronger with your level, your tech and every beast you kill.
-- **SELECT** warps you out.
-- Get stronger at any station: **TECH CORE** makes your laser 4x stronger on the beast, every level. Your weapon gear also adds damage.
-- Kill it and it rebuilds with 10x more HP.
+## The Technobeast (the second villain)
+A machine bug that eats ships to grow. You meet it 3 times:
+1. **Hatchling** - after you beat the Garden boss, it ambushes you in space. It is small and weak. Beat it and it flees, but you grab its tech: stations can now build **TECH CORE** (each level = 4x laser damage on the beast).
+2. **Grown** - after the Picnic boss it comes back bigger, with a beam (hold B to fly fast and dodge) and a drone. Beat it and it flees... it was feeding tech to the Ant King!
+3. **Complete** - after the Ant King falls, it wakes with **1 trillion HP**. You can't win in one go. Hit it, warp out (SELECT), get stronger, come back. **Its wounds never heal.** Find it any time from the galaxy map with **L**.
+
+Shoot the glowing core for 3x damage. Weapon gear adds damage too. Its drones get stronger with your level, tech and kills. Kill it and it rebuilds 10x stronger.
