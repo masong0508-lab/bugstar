@@ -18,7 +18,8 @@ for i,c in enumerate(SPACE): pal[1+i]=c
 pal[6]=(46,56,86)          # HUD line
 HUD={'white':(232,230,222),'red':(232,72,80),'dred':(70,30,40),'green':(120,200,110),'gold':(255,210,90),'grey':(120,130,150),'dgrey':(60,64,80),'cyan':(140,220,255)}
 for i,k in enumerate(HUD): pal[30+i]=HUD[k]
-out.append("enum{C_WHITE=30,C_RED,C_DRED,C_GREEN,C_GOLD,C_GREY,C_DGREY,C_CYAN};")
+out.append("enum{C_WHITE=30,C_RED,C_DRED,C_GREEN,C_GOLD,C_GREY,C_DGREY,C_CYAN,C_UNIQ};")
+pal[38]=(255,140,50)       # unique items
 TINTS=[("THE GARDEN",[(10,22,18),(30,62,40),(68,118,62),(132,176,92),(214,232,160)],(60,110,90)),
        ("THE POND",[(6,14,28),(20,46,86),(44,96,150),(110,170,214),(210,240,255)],(70,130,190)),
        ("THE PICNIC",[(26,6,10),(82,16,26),(150,36,48),(214,90,96),(255,200,190)],(150,60,70)),
@@ -185,7 +186,72 @@ BACK=["......1........1......",
       "..112222222222222211..",
       "....11111111111111....",
       "...1..1..1..1..1..1...",]
-sprs=[("BUGSIDE",BUG,32,16,1),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
+
+# ---- the player, redrawn: your jaws in first person (one jaw; the other is the same art mirrored), and a side view with 2 walking frames
+def gen_jaw():
+    import math
+    W=32; g=[['.']*W for _ in range(W)]
+    P=[(-3,36),(5,19),(15,4),(28,9)]
+    def bez(t):
+        a=(1-t)**3; b=3*(1-t)**2*t; c=3*(1-t)*t*t; d=t**3
+        return (a*P[0][0]+b*P[1][0]+c*P[2][0]+d*P[3][0], a*P[0][1]+b*P[1][1]+c*P[2][1]+d*P[3][1])
+    pts=[bez(i/200) for i in range(201)]
+    for y in range(W):
+        for x in range(W):
+            best=1e9; bi=0
+            for i,(px,py) in enumerate(pts):
+                d=(x+0.5-px)**2+(y+0.5-py)**2
+                if d<best: best=d; bi=i
+            t=bi/200; px,py=pts[bi]
+            tx,ty = (pts[min(bi+1,200)][0]-pts[max(bi-1,0)][0], pts[min(bi+1,200)][1]-pts[max(bi-1,0)][1])
+            l=math.hypot(tx,ty) or 1; nx,ny = ty/l, -tx/l        # normal pointing up-left (the outside)
+            off=((x+0.5-px)*nx+(y+0.5-py)*ny)                    # + outside, - inside (toward the middle of the screen)
+            w = 6.6 if t<0.38 else 6.6-(t-0.38)/0.62*5.9
+            tooth = 1.5 if (0.50<t<0.85 and (t*15)%1<0.45) else 0
+            lim_in = w + tooth
+            if off>w or -off>lim_in: continue
+            if t<0.02: continue
+            edge = off>w-1.0 or -off>lim_in-1.0
+            if edge: g[y][x]='1'; continue
+            if -off>w: g[y][x]='8'; continue                    # teeth
+            sh = 0.5 + off/(2*w)
+            tipc = t>0.66
+            if t<0.45 and (t*30)%3<0.35: g[y][x]='2' if sh>0.4 else '1'; continue     # joints in the arm
+            if tipc: c = '8' if sh>0.6 else '7' if sh>0.3 else '6'
+            else: c = '5' if sh>0.86 else '4' if sh>0.62 else '3' if sh>0.32 else '2'
+            g[y][x]=c
+    return [''.join(r) for r in g]
+JAW=gen_jaw()
+def gen_side(frame):
+    import math
+    W,H=28,14; g=[['.']*W for _ in range(H)]
+    cx,cy,a,b=11.0,10.6,10.0,8.6
+    for y in range(H):
+        for x in range(W):
+            nx=(x+0.5-cx)/a; ny=(y+0.5-cy)/b
+            if y<=10 and nx*nx+ny*ny<=1.0:
+                e = nx*nx+ny*ny > 0.80 or y==10
+                if e: g[y][x]='1'; continue
+                lit = -nx*0.45 - ny*0.95
+                band = int((x+0.5-cx + 1.5*ny*ny*3)//3)
+                seam = ((x+1)%4==0) and y>2
+                c = 5 if lit>0.75 else 4 if lit>0.42 else 3 if lit>0.05 else 2
+                if seam: c=max(2,c-1)
+                g[y][x]=str(c)
+    for y in range(H):                                   # the head
+        for x in range(W):
+            if (x+0.5-21.5)**2/(3.2**2)+(y+0.5-8.5)**2/(2.6**2)<=1 and g[y][x] in '.1':
+                e=(x+0.5-21.5)**2/(3.2**2)+(y+0.5-8.5)**2/(2.6**2)>0.62
+                g[y][x]='1' if e else ('3' if y<8 else '2')
+    g[8][22]='5'; g[7][22]='1'
+    for i,(x,y) in enumerate([(23,5),(24,4),(25,3),(26,2),(27,2)]): g[y][x]='1' if i<4 else '3'      # antenna
+    for i,(x,y) in enumerate([(22,5),(22,4),(23,3),(23,2)]): g[y][x]='1'
+    for k,lx in enumerate([3,6,9,12,15,18]):            # legs: they swap between the two frames
+        fwd = (k+frame)%2==0
+        g[11][lx]='1'; g[12][lx+(1 if fwd else -1)]='1'; g[13][lx+(1 if fwd else -1)]='1'
+    return [''.join(r) for r in g]
+BUG=[r[::-1] for r in gen_side(0)]; BUG2=[r[::-1] for r in gen_side(1)]      # drawn facing right; the game mirrors it
+sprs=[("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
       ("PLANT",PLANT,8,8,1),("PEBBLE",PEBBLE,8,8,1),("TUFT",TUFT,8,8,1),("BACK",BACK,64,64,2)]
 allt=[]; t=0
 for name,rows,w,h,s in sprs:
@@ -275,6 +341,8 @@ ART={
  'WASP2':["..................","..................",".......kkkk.......",".SS....krrk....SS.","SSSSSSSkkkkSSSSSSS",".SSSS.YYYYYY.SSSS.","......kkkkkk......","......YYYYYY......",".......kkkk.......",".......YYYY.......","........kk........","........k........."],
  'PET':["....k......k....",".....k....k.....","......kkkk......",".....kwkkwk.....","....kkkkkkkk....","...1111k11111...","..11k11k11k111..",".111111k1111111.",".11k111k111k111.",".111111k1111111.","..1111111111111.","..k.k..k..k.k..."],
  'LAMP':["....h....","....H....","....h....","....H....","....h....","...hHh...","..hHHHh..",".hfFFFfh.",".hfFFFfh.",".hffFffh.","..hhhhh..","...hHh..."],
+ 'BARREL':["...xxxxxx...","..xOOOOOOx..",".xhhhhhhhhx.",".xoOOoOOoox.","xooOOoOOooox","xoOOOoOOooox","xhhhhhhhhhhx","xoOOOoOOooox","xooOOoOOooox",".xoOOoOOoox.",".xhhhhhhhhx.","..xoooooox..","...xxxxxx..."],
+ 'CRATE':["xxxxxxxxxxxx","xOOOOOOOOOOx","xOxooooooxOx","xOoxooooxoOx","xOooxooxooOx","xOoooxxoooOx","xOoooxxoooOx","xOooxooxooOx","xOoxooooxoOx","xOxooooooxOx","xOOOOOOOOOOx","xxxxxxxxxxxx"],
  'CAGE':["kxxxxxxxxxxk","kOOOOOOOOOOk",".o.o.o.o.o..",".o.o.o.o.o..",".o.o11.o.o..",".o.1111o.o..",".o11k11.o.o.",".o.1111o.o..",".o.o11.o.o..",".o.o.o.o.o..","kOOOOOOOOOOk","kxxxxxxxxxxk"]}
 for k,rows in ART.items():
     w=max(len(r) for r in rows); rows=[r.ljust(w,'.') for r in rows]
@@ -287,7 +355,7 @@ F={'A':"111101111101101",'B':"110101110101110",'C':"111100100100111",'D':"110101
 'Y':"101101111010010",'Z':"111001010100111",'0':"111101101101111",'1':"010110010010111",'2':"111001111100111",'3':"111001111001111",
 '4':"101101111001001",'5':"111100111001111",'6':"111100111101111",'7':"111001001001001",'8':"111101111101111",'9':"111101111001111",
 ':':"000010000010000",'!':"010010010000010",'?':"111001011000010",'+':"000010111010000",'-':"000000111000000",'.':"000000000000010",
-' ':"000000000000000","'":"010010000000000",'/':"001001010100100",'<':"001010100010001",'>':"100010001010100",'^':"010101000000000",'*':"101010111010101"}
+' ':"000000000000000","'":"010010000000000",'/':"001001010100100",'<':"001010100010001",'>':"100010001010100",'^':"010101000000000",'*':"101010111010101",',':"000000000010100",'(':"010100100100010",')':"010001001001010",'%':"101001010100101"}
 fv=[0]*128
 for ch,bits in F.items(): fv[ord(ch)]=int(bits,2)
 arr("font","unsigned short",fv)

@@ -11,10 +11,10 @@ static const u8 style_floor[NSTYLE]={FL_FLAG,FL_TILE,FL_DIRT,FL_MOSS,FL_TILE};
 static u8 dmap[MW*MW];
 EW static u8 wmat[MW*MW], fmat[MW*MW], rid[MW*MW], wdec[MW*MW];
 static u16 lampcell[12]; static int nlamps;
-typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; } DObj;
-enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET };
+typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; s32 kvx, kvy; u8 stag, lunge; } DObj;
+enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL };
 static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT","VILE","FROST","ROTTEN"};
-static const char *const kind_name[10]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP",""};
+static const char *const kind_name[11]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL"};
 static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP; }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 40
@@ -137,6 +137,7 @@ static void make_floor(void){
         }
         if(rnd()&1) SPAWN(K_CHEST, room_floor_cell(&rooms[i]), 1, 0);
     }
+    for(int i=0;i<nrooms;i++){ int c=rndi(3); for(int k=0;k<c;k++){ int cr=rndi(3)==0; SPAWN(K_BARREL, room_floor_cell(&rooms[i]), cr?3:1, cr); } }   // barrels and crates to shove and smash
     #define SPAWN_GEAR(cell_,g_) do{ Gear gg_=(g_); SPAWN(K_ITEM,(cell_),1,gg_.sub); DObj *o_=&dob[ndo-1]; o_->it=gg_.it; o_->rar=gg_.rar; o_->pre=gg_.pre; o_->suf=gg_.suf; o_->lvl=gg_.lvl; }while(0)
     for(int i=0;i<nrooms;i++){ int c = 1 + rndi(2); for(int k=0;k<c;k++) SPAWN_GEAR(room_floor_cell(&rooms[i]), roll_drop(ilvl,0)); }
     int cages = 1 + (nrooms>5);
@@ -363,6 +364,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
         case K_CHEST: art=chest_art; aw=CHEST_W; ah=CHEST_H; hw=0x5000; break;
         case K_BAT: if((frames>>1)&1){ art=art_bat2; aw=BAT2_W; ah=BAT2_H; } else { art=art_bat; aw=BAT_W; ah=BAT_H; } hw=0x3800; break;
         case K_LAMP: art=art_lamp; aw=LAMP_W; ah=LAMP_H; hw=0x8000; break;
+        case K_BARREL: if(o->sub){ art=art_crate; aw=CRATE_W; ah=CRATE_H; hw=0x5800; } else { art=art_barrel; aw=BARREL_W; ah=BARREL_H; hw=0x6800; } break;
         case K_CAGE: art=art_cage; aw=CAGE_W; ah=CAGE_H; hw=0x9000; tint=224+o->sub; break;
         case K_BEETLE: art=anim?beetle_art2:beetle_art; aw=BEETLE_W; ah=BEETLE_H; hw=0x8000; break;
         case K_WASP: if((frames>>1)&1){ art=art_wasp2; aw=WASP2_W; ah=WASP2_H; } else { art=art_wasp; aw=WASP_W; ah=WASP_H; } hw=0x4000; break;
@@ -408,7 +410,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
             int ix=acol[(va>>16)*aw];
             if(!ix) continue;
             if(ix==1) ix=tint; else if(dark && ix>=64 && ix<216){ int l=(ix&7)-dark; ix=(ix&~7)+(l<0?0:l>7?7:l); }
-            if(o->flash) ix = R_UP+7;
+            if(o->flash){ if(o->flash>=5) ix = R_UP+7; else if(ix>=64 && ix<216){ int l=(ix&7)+3; ix=(ix&~7)+(l>7?7:l); } }   // one white blink, then a bright glow
             u16 p2=ix|(ix<<8); pg[y*120+c]=p2; if(y+1<bot && y+1<160) pg[y*120+120+c]=p2;
         }
     }
@@ -416,12 +418,13 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
 
 // ---------------------------------------------------------------- embers off the torches, dust in the light
 typedef struct { s32 x,y,h; s16 vx,vy,vh,life; u8 kind; } Part;
-#define NPART 24
+#define NPART 40
 EW static Part part[NPART];
 static void parts_update(void){
     for(int i=0;i<NPART;i++){ Part *p=&part[i]; if(p->life<=0) continue;
         p->life--; p->x+=p->vx; p->y+=p->vy; p->h+=p->vh;
-        if(p->kind==0){ p->vx += (rndi(5)-2)<<4; p->vy += (rndi(5)-2)<<4; } }
+        if(p->kind==0){ p->vx += (rndi(5)-2)<<4; p->vy += (rndi(5)-2)<<4; }
+        else if(p->kind>=2){ p->vh -= 0x180; if(p->h<0){ p->h=0; p->vh=-p->vh/3; p->vx/=2; p->vy/=2; } } }    // debris falls and bounces
     // a new ember from a torch near you
     if(ntorch && (frames&1)){ int k=rndi(ntorch); s32 dx=torch_x[k]-px_, dy=torch_y[k]-py_;
         if(dx<0x70000 && dx>-0x70000 && dy<0x70000 && dy>-0x70000)
@@ -443,7 +446,7 @@ static void parts_draw(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
         int c = 60 + (s32)(((long long)tX*60)/tY); if(c<0||c>=120) continue;
         if(tY>=zbuf[c]) continue;
         int y = hz + (s32)(((long long)(0x8000-p->h)*FOC)/tY); y&=~1; if(y<18||y>156) continue;
-        int ix = p->kind==0 ? R_FLAME+5+(p->life>20) : R_STONE+5;
+        int ix = p->kind==0 ? R_FLAME+5+(p->life>20) : p->kind==2 ? R_WOOD+4+(i&1)*2 : p->kind==3 ? R_SPIDER+3+(i&3) : R_STONE+5;
         u16 px2=ix|(ix<<8); int big = tY<0x18000;
         pg[y*120+c]=px2; pg[y*120+120+c]=px2;
         if(big && c+1<120){ pg[y*120+c+1]=px2; pg[y*120+121+c]=px2; }
@@ -456,6 +459,10 @@ typedef struct { s32 x,y,h,vx,vy; s16 life, dmg; u8 kind, alive; } Proj;     // 
 EW static Proj proj[NPROJ];
 static void fire_proj(int kind, s32 x, s32 y, s32 h, s32 vx, s32 vy, int dmg){
     for(int i=0;i<NPROJ;i++) if(!proj[i].alive){ Proj *p=&proj[i]; p->kind=kind; p->x=x; p->y=y; p->h=h; p->vx=vx; p->vy=vy; p->dmg=dmg; p->life=90; p->alive=1; return; }
+}
+static void debris(s32 x, s32 y, s32 h, int n, int kind, s32 dx, s32 dy){      // chunks that fly, fall and bounce
+    for(int i=0;i<NPART && n;i++) if(part[i].life<=0 || part[i].kind==1){ Part *p=&part[i]; p->kind=kind; p->x=x; p->y=y; p->h=h;
+        p->vx=((rndi(17)-8)<<7)+(dx>>5); p->vy=((rndi(17)-8)<<7)+(dy>>5); p->vh=0x500+rndi(0x600); p->life=14+rndi(10); n--; }
 }
 static void burst(s32 x, s32 y, s32 h, int n, int kind){        // a puff of sparks
     for(int i=0;i<NPART && n;i++) if(part[i].life<=0){ Part *p=&part[i]; p->kind=kind; p->x=x; p->y=y; p->h=h; p->vx=(rndi(17)-8)<<7; p->vy=(rndi(17)-8)<<7; p->vh=(rndi(13)-4)<<7; p->life=8+rndi(10); n--; }

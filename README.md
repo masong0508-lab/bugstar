@@ -69,3 +69,16 @@ The Technobeast feeds from **5 Tech Hives**. While a hive lives, the beast heals
 - The hives are: The Scrap Hive, The Battery Moon, The Gear Forest, The Silicon Swamp, The Motherboard.
 - Go back and forth: dive a hive, get loot and Tech Cores, then chip more off the beast.
 
+
+## Feel and physics
+- You speed up and slow down, bump walls, and can't walk through monsters. Monsters shove each other.
+- Bites knock enemies back. Slam them into walls or into each other for extra damage. A short freeze when a hit lands.
+- Barrels and crates: push them, smash them for gold and food.
+- You see your own jaws. They sway when you walk and snap shut when you bite.
+- The ship drifts and banks. Crashing into the planet, station, rocks or pirates hurts. Shoot asteroids to mine crystals and amber.
+
+## Keep or scrap your loot
+- 12 UNIQUE items (orange), mostly from bosses. Hive Overlords always drop one.
+- At your ship: TROPHY CASE. KEEP an item forever (safe even if you faint) for permanent points: common 1, magic 3, rare 10, unique 50. Points give damage, gold and health. You can take uniques back out.
+- Or SCRAP it (B on the gear page, or in the case) for Tech Scrap. Tech Cores now need gold + scrap.
+- The Techno Shard doubles your damage on the Technobeast.

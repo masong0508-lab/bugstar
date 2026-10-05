@@ -6,6 +6,7 @@ static const char *const apre_txt[7]={"","+DEFENCE","++DEFENCE","HURTS ATTACKERS
 static const char *const suff_txt[8]={"","+HEALTH","+MANA","+DAMAGE","+CRITS","+GOLD","FASTER BITES","STINGS ATTACKERS"};
 static void describe(const Gear *g, char *b){
     b[0]=0;
+    if(g->rar==R_UNIQUE && is_gear(g)){ scpy(b,"UNIQUE. "); scat(b,uq_desc[g->sub%NUNIQ]); return; }
     switch(g->it){
         case IT_THORN: scpy(b,"DAMAGE "); ncat(b,weapon_base(g)); if(g->sub==3) scat(b,". CURSED"); break;
         case IT_SHELL: scpy(b,"DEFENCE "); ncat(b,armor_base(g)); if(g->sub==3) scat(b,". STICKY"); break;
@@ -31,7 +32,7 @@ static void box(volatile u16 *pg, int x, int y, int w, int h){ rect(pg,x,y,w,h,0
 static int send_pet_to_sell(void){
     if(pet_away_t||pet_down_t){ say("BUDDY ISN'T HERE"); return 0; }
     int n=0, g=0;
-    for(int i=0;i<bag_n;){ int it=bag[i].it; if(it==IT_THORN||it==IT_SHELL||it==IT_CHARM||it==IT_GEM||(it==IT_FISH&&bag[i].sub==4)){ g+=item_value(&bag[i]); n++; drop_at(i); } else i++; }
+    for(int i=0;i<bag_n;){ int it=bag[i].it; if(((it==IT_THORN||it==IT_SHELL||it==IT_CHARM) && bag[i].rar!=R_UNIQUE)||it==IT_GEM||(it==IT_FISH&&bag[i].sub==4)){ g+=item_value(&bag[i]); n++; drop_at(i); } else i++; }
     if(!n){ say("NOTHING FOR BUDDY TO SELL"); return 0; }
     pet_sold_n=n; pet_sold_g=g; pet_away_t=900; say("BUDDY RUNS OFF TO SELL YOUR GEAR"); return 1;
 }
@@ -82,8 +83,10 @@ static void char_screen(volatile u16 *pg){
                 y+=4; text(pg,8,y,"YOUR BAG",C_GOLD,1); y+=8;
                 for(int i=0;i<bag_n;i++){ if(cur==i) text(pg,4,y,">",C_CYAN,1); gear_name(&bag[i],b); b[44]=0; text(pg,10,y,b,rar_color(&bag[i]),1); y+=7; }
                 if(!bag_n) text(pg,10,y,"EMPTY",C_DGREY,1);
-                if(bag_n){ describe(&bag[cur],b); b[56]=0; text(pg,8,139,b,C_WHITE,1); scpy(b,"WORTH "); ncat(b,item_value(&bag[cur])); scat(b,"G"); text(pg,190,131,b,C_GOLD,1); }
-                text(pg,8,147,"A: USE/WEAR  B: DROP  SELECT: BUDDY SELLS GEAR",C_CYAN,1);
+                if(bag_n){ describe(&bag[cur],b); b[56]=0; text(pg,8,139,b,C_WHITE,1); scpy(b,"WORTH "); ncat(b,item_value(&bag[cur])); scat(b,"G");
+                    if(is_gear(&bag[cur])){ scat(b,"  SCRAP "); ncat(b,scrap_of(bag[cur].rar)); scat(b,"  KEEP +"); ncat(b,keep_points(bag[cur].rar)); }
+                    text(pg,236-textlen(b)*4,131,b,C_GOLD,1); }
+                text(pg,8,147, bag_n && is_gear(&bag[cur]) ? "A: WEAR  B: SCRAP IT  SELECT: BUDDY SELLS GEAR" : "A: USE  B: DROP  SELECT: BUDDY SELLS GEAR",C_CYAN,1);
             } else if(page==2){
                 scpy(b,"MANA "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); scat(b,"   SPELL POWER "); ncat(b,st_mag); text(pg,8,y,b,C_CYAN,1); y+=12;
                 static const char *const sd[NSPELL]={"A BALL OF FIRE FLIES AHEAD","LIGHTNING HITS THE NEAREST FOE","HEALS YOU","HARDER TO HURT FOR A WHILE"};
@@ -135,7 +138,10 @@ static void char_screen(volatile u16 *pg){
             if(page==2 && spell_known[cur]) spell_sel=cur;
             if(page==4){ sys_action(pg,cur); if(sys_req) break; }
         }
-        if(HIT(K_B) && page==1 && bag_n){ if(scene==1 && (bag[cur].it==IT_THORN||bag[cur].it==IT_SHELL)){ drop_at(cur); say("DROPPED"); } else drop_at(cur); if(cur>=bag_n && cur) cur--; dirty=1; }
+        if(HIT(K_B) && page==1 && bag_n){
+            if(is_gear(&bag[cur])){ int n=scrap_of(bag[cur].rar); scrap+=n; char m[32]; scpy(m,"SCRAPPED: +"); ncat(m,n); scat(m," TECH SCRAP"); drop_at(cur); say(m); sfx(13); }
+            else drop_at(cur);
+            if(cur>=bag_n && cur) cur--; dirty=1; }
         if(HIT(K_SEL) && page==1){ send_pet_to_sell(); dirty=1; }
     }
     wait_release();
@@ -181,26 +187,62 @@ static const u8 sup_cost[6]={10,25,25,15,20,120};
 static void sup_row(int i, char *b, int *c){ scpy(b,sup_name[i]); while(textlen(b)<16) scat(b," "); ncat(b,sup_cost[i]); scat(b,"G"); }
 static void stock_row(int i, char *b, int *c){ if(!stock[i].it){ scpy(b,"SOLD"); *c=C_DGREY; return; } gear_name(&stock[i],b); b[34]=0; while(textlen(b)<35) scat(b," "); ncat(b,item_value(&stock[i])*2); scat(b,"G"); *c=rar_color(&stock[i]); }
 static void sell_row(int i, char *b, int *c){ gear_name(&bag[i],b); b[34]=0; while(textlen(b)<35) scat(b," "); ncat(b,item_value(&bag[i])); scat(b,"G"); *c=rar_color(&bag[i]); }
+// ---------------------------------------------------------------- the trophy case: keep it forever, or scrap it for tech
+static void trophy_case(volatile u16 *pg){
+    int sel=0, dirty=1; wait_release();
+    while(1){
+        int gi[BAGMAX], ng=0; for(int i=0;i<bag_n;i++) if(is_gear(&bag[i])) gi[ng++]=i;
+        int uq[NUNIQ], nu=0; for(int k=0;k<NUNIQ;k++) if(tr_uq>>k&1) uq[nu++]=k;
+        int n=ng+nu; if(sel>=n) sel=n?n-1:0;
+        if(dirty){ dirty=0; char b[64];
+            box(pg,12,20,216,136); text(pg,20,24,"TROPHY CASE",C_GOLD,1);
+            scpy(b,"SCRAP "); ncat(b,scrap); text(pg,236-24-textlen(b)*4,24,b,C_CYAN,1);
+            int tp=trophy_points(); scpy(b,"POINTS "); ncat(b,tp); scat(b,":  +"); ncat(b,tp/15); scat(b," DAMAGE  +"); ncat(b,tp/5); scat(b,"% GOLD  +"); ncat(b,tp/10); scat(b," HP");
+            text(pg,20,34,b,C_WHITE,1);
+            scpy(b,"KEPT "); ncat(b,tr_n[0]); scat(b," COMMON  "); ncat(b,tr_n[1]); scat(b," MAGIC  "); ncat(b,tr_n[2]); scat(b," RARE  "); ncat(b,tr_n[3]); scat(b," UNIQUE"); text(pg,20,42,b,C_GREY,1);
+            int y=54;
+            if(!n) text(pg,22,y,"NO GEAR IN YOUR BAG",C_DGREY,1);
+            for(int i=0;i<n && y<136;i++, y+=8){
+                if(i<ng){ Gear *g=&bag[gi[i]]; gear_name(g,b); b[30]=0; text(pg,22,y,b,rar_color(g),1);
+                    scpy(b,"KEEP +"); ncat(b,keep_points(g->rar)); scat(b,"  SCRAP "); ncat(b,scrap_of(g->rar)); text(pg,236-24-textlen(b)*4,y,b,C_DGREY,1); }
+                else { scpy(b,"IN CASE: "); scat(b,uq_name[uq[i-ng]]); text(pg,22,y,b,C_UNIQ,1); text(pg,180,y,"TAKE OUT",C_DGREY,1); }
+                if(i==sel) text(pg,16,y,">",C_CYAN,1); }
+            text(pg,20,140, sel<ng ? "A: KEEP IT FOREVER  B: SCRAP IT  START: BACK" : "A: TAKE IT OUT TO USE  START: BACK",C_CYAN,1);
+            text(pg,20,148,"KEPT THINGS ARE SAFE, EVEN IF YOU FAINT",C_DGREY,1);
+        }
+        vsync(); read_keys(); if(keys!=keys_old) dirty=1;
+        if(n){ if(HIT(K_UP)) sel=(sel+n-1)%n; if(HIT(K_DOWN)) sel=(sel+1)%n; }
+        if(HIT(K_START) || (HIT(K_B) && sel>=ng)) break;
+        if(HIT(K_A) && sel<ng){ Gear *g=&bag[gi[sel]]; int r=g->rar&3;
+            if(r==R_UNIQUE && (tr_uq>>(g->sub%NUNIQ)&1)){ say("ONE OF THOSE IS ALREADY IN THE CASE"); continue; }
+            tr_n[r]++; if(r==R_UNIQUE) tr_uq|=1<<(g->sub%NUNIQ); drop_at(gi[sel]); recalc(); sfx(6); say(r>=R_RARE?"A FINE TROPHY!":"KEPT IN THE CASE"); }
+        else if(HIT(K_A) && sel>=ng){ int k=uq[sel-ng]; Gear g={uq_it[k],(u8)k,R_UNIQUE,0,0,(u8)(5+level>99?99:5+level)};
+            if(add_gear(g)){ tr_uq&=~(1<<k); tr_n[3]--; recalc(); sfx(2); } }
+        else if(HIT(K_B) && sel<ng){ Gear *g=&bag[gi[sel]]; int v=scrap_of(g->rar); scrap+=v; drop_at(gi[sel]); sfx(13); char m[32]; scpy(m,"+"); ncat(m,v); scat(m," TECH SCRAP"); say(m); }
+    }
+    wait_release(); hud_now();
+}
 static int shop_menu(void){   // returns 1 to fly on
     volatile u16 *pg=VRAM;
     oam_hide_all(); oam_flush();
     int sel=0;
     while(1){
-        const char *main_opt[8]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","LEAVE"};
+        const char *main_opt[9]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","LEAVE"};
         int can_fly = 1;
         int dirty=1; wait_release();
         while(1){
             if(dirty){ dirty=0; box(pg,12,20,216,136); text(pg,20,24,"YOUR SHIP",C_GOLD,1); char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
-                for(int i=0;i<8;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:C_GREY); if(i==sel) text(pg,16,36+i*10,">",C_CYAN,1); text(pg,22,36+i*10,main_opt[i],c,1); }
+                for(int i=0;i<9;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:C_GREY); if(i==sel) text(pg,16,36+i*10,">",C_CYAN,1); text(pg,22,36+i*10,main_opt[i],c,1); }
                 if(q_type!=Q_NONE && q_done) text(pg,120,76,"! QUEST DONE",C_GREEN,1);
                 if(!can_fly) text(pg,20,124,"BEAT THE BOSS BELOW TO FLY ON",C_DGREY,1);
                 text(pg,20,148,"A: CHOOSE  B: LEAVE",C_CYAN,1); }
             vsync(); read_keys(); if(keys!=keys_old) dirty=1;
-            if(HIT(K_UP)) sel=(sel+7)%8; if(HIT(K_DOWN)) sel=(sel+1)%8;
+            if(HIT(K_UP)) sel=(sel+8)%9; if(HIT(K_DOWN)) sel=(sel+1)%9;
             if(HIT(K_B)){ wait_release(); return 0; }
             if(HIT(K_A)) break;
         }
-        if(sel==7){ wait_release(); return 0; }
+        if(sel==8){ wait_release(); return 0; }
+        if(sel==7){ trophy_case(pg); continue; }
         if(sel==0){ if(can_fly){ wait_release(); return 1; } continue; }
         if(sel==1){ int s2=0; int r; while((r=list_pick(pg,"SUPPLIES",6,sup_row,&s2,"A: BUY  B: BACK"))>=0){
                 if(gold<sup_cost[r]){ say("NOT ENOUGH GOLD"); continue; }

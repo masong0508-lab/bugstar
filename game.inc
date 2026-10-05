@@ -39,7 +39,18 @@ static const char *world_name(void){ return endless ? w_name : tint_name[zone]; 
 
 // ---------------------------------------------------------------- items
 enum { IT_NONE, IT_BERRY, IT_SEED, IT_SHELL, IT_THORN, IT_CRUMB, IT_WARP, IT_GEM, IT_CHARM, IT_BOOK, IT_FISH, IT_POTION, IT_QUEST };
-enum { R_NORMAL, R_MAGIC, R_RARE };
+enum { R_NORMAL, R_MAGIC, R_RARE, R_UNIQUE };
+// unique items: one of a kind, each with its own power. Mostly from bosses. Worth keeping.
+#define NUNIQ 12
+static const char *const uq_name[NUNIQ]={"QUEEN'S FANG","STAG KING'S HORN","EMPRESS STING","EMBER MANDIBLE","MOON SHELL","ANT KING'S PLATE","MIRROR CARAPACE","WIND WINGS","STAR PEBBLE","LUCKY CLOVER","OLD LANTERN","TECHNO SHARD"};
+static const u8 uq_it[NUNIQ]={4,4,4,4,3,3,3,3,8,8,8,8};       // IT_THORN, IT_SHELL, IT_CHARM
+static const char *const uq_desc[NUNIQ]={"HUGE BITE. POISON","HUGE CRITS","STINGS. FAST BITES","BITES BURN HOT","TOUGH. LOTS OF MANA","TOUGHEST. MORE HEALTH","HURTS WHAT HITS YOU","VERY FAST LEGS","MANA. HEALS YOU SLOWLY","MUCH MORE GOLD. CRITS","LIGHT. MORE HEALTH","2X DAMAGE ON THE TECHNOBEAST"};
+// the trophy case on your ship: what you KEEP stays forever (even if you faint) and makes you stronger.
+// what you SCRAP turns into tech scrap, which builds Tech Cores.
+static int tr_n[4], tr_uq, scrap;
+static int trophy_points(void){ return tr_n[0] + tr_n[1]*3 + tr_n[2]*10 + tr_n[3]*50; }
+static int keep_points(int rar){ static const u8 p[4]={1,3,10,50}; return p[rar&3]; }
+static int scrap_of(int rar){ static const u8 p[4]={1,3,6,12}; return p[rar&3]; }
 static const char *const gem_name[4]={"RUBY","SAPPHIRE","EMERALD","DIAMOND"};
 static const char *const gem_use[4]={"HEALS ALL","+XP","FULL BELLY","+2 STRENGTH"};
 static const char *const berry_col[8]={"RED","BLUE","GOLD","BLACK","WHITE","PINK","GREEN","PURPLE"};
@@ -81,10 +92,19 @@ static void scpy(char *d, const char *s){ while(*s) *d++=*s++; *d=0; }
 static void scat(char *d, const char *s){ while(*d) d++; scpy(d,s); }
 static void ncat(char *d, int v){ char t[8]; int n=0; if(v<0){ scat(d,"-"); v=-v; } do { t[n++]='0'+v%10; v/=10; } while(v && n<7); char r[8]; for(int i=0;i<n;i++) r[i]=t[n-1-i]; r[n]=0; scat(d,r); }
 
-static int weapon_base(const Gear *g){ static const u8 b[5]={2,4,6,5,10}; return g->it==IT_THORN ? b[g->sub]+g->lvl/2 : 0; }
-static int armor_base(const Gear *g){ static const u8 b[5]={2,4,6,5,10}; return g->it==IT_SHELL ? b[g->sub]+g->lvl/3 : 0; }
+static int weapon_base(const Gear *g){ static const u8 b[5]={2,4,6,5,10}; return g->it!=IT_THORN ? 0 : g->rar==R_UNIQUE ? 12+g->lvl/2 : b[g->sub%5]+g->lvl/2; }
+static int armor_base(const Gear *g){ static const u8 b[5]={2,4,6,5,10}; return g->it!=IT_SHELL ? 0 : g->rar==R_UNIQUE ? 12+g->lvl/3 : b[g->sub%5]+g->lvl/3; }
 static void gear_affix(const Gear *g){
     if(!g->it) return;
+    if(g->rar==R_UNIQUE){ int v=2+g->lvl/4;
+        switch(g->sub){
+            case 0: d_dmg+=6*v; d_venom+=3*v; break;            case 1: d_dmg+=3*v; d_crit+=25; break;
+            case 2: d_sting+=5*v; d_haste+=4; break;            case 3: d_fire+=5*v; d_dmg+=3*v; break;
+            case 4: d_def+=5*v; maxmp+=6*v; break;              case 5: d_def+=6*v; maxh+=8*v; break;
+            case 6: d_reflect+=6*v; d_def+=3*v; break;          case 7: d_spd+=25; d_haste+=3; break;
+            case 8: maxmp+=8*v; d_regen+=1; break;              case 9: gold_find+=80; d_crit+=10; break;
+            case 10: d_light+=30; maxh+=5*v; break;             default: d_dmg+=3*v; break; }
+        return; }
     int wpn = g->it==IT_THORN, arm = g->it==IT_SHELL, v = 1 + g->lvl/4 + (g->rar==R_RARE);
     if(wpn) switch(g->pre){ case 1: d_dmg+=2*v; break; case 2: d_dmg+=4*v; break; case 3: d_fire+=3*v; break; case 4: d_venom+=2*v; break; case 5: gold_find+=25; break; case 6: d_vamp+=1; break; }
     else if(arm) switch(g->pre){ case 1: d_def+=2*v; break; case 2: d_def+=4*v; break; case 3: d_reflect+=3*v; break; case 4: d_spd+=12; break; case 5: d_regen+=1; break; case 6: d_light+=12; break; }
@@ -101,7 +121,8 @@ static void recalc(void){
     d_crit += st_dex;
     d_haste += st_dex/6;
     d_sting += have_bug[BUG_BEE]*2;
-    if(eqa.it==IT_SHELL && eqa.sub==3) d_spd -= 15;        // the sticky shell slows you
+    if(eqa.it==IT_SHELL && eqa.sub==3 && eqa.rar!=R_UNIQUE) d_spd -= 15;        // the sticky shell slows you
+    { int tp=trophy_points(); d_dmg += tp/15; gold_find += tp/5; maxh += tp/10; d_def += tp/30; }   // your trophy case
     if(hearts>maxh) hearts=maxh; if(mp>maxmp) mp=maxmp;
 }
 static void shuffle(u8 *a, int n){ for(int i=0;i<n;i++) a[i]=i; for(int i=n-1;i>0;i--){ int j=rndi(i+1); u8 t=a[i]; a[i]=a[j]; a[j]=t; } }
@@ -136,6 +157,7 @@ static void new_game(void){
 
 static void gear_name(const Gear *g, char *b){
     b[0]=0;
+    if(g->rar==R_UNIQUE && (g->it==IT_THORN||g->it==IT_SHELL||g->it==IT_CHARM)){ scpy(b,uq_name[g->sub%NUNIQ]); return; }
     int it=g->it, sub=g->sub;
     switch(it){
         case IT_BERRY: scpy(b,berry_col[sub]); scat(b," BERRY"); if(berry_known[sub]){ scat(b," "); scat(b,berry_eff[berry_map[sub]]); } break;
@@ -156,7 +178,9 @@ static void gear_name(const Gear *g, char *b){
         default: scpy(b,"NOTHING");
     }
 }
-static int rar_color(const Gear *g){ return g->rar==R_RARE ? C_GOLD : g->rar==R_MAGIC ? C_CYAN : C_WHITE; }
+static int rar_color(const Gear *g){ return g->rar==R_UNIQUE ? C_UNIQ : g->rar==R_RARE ? C_GOLD : g->rar==R_MAGIC ? C_CYAN : C_WHITE; }
+static int is_gear(const Gear *g){ return g->it==IT_THORN||g->it==IT_SHELL||g->it==IT_CHARM; }
+static Gear roll_unique(int ilvl){ int id=rndi(NUNIQ); Gear g={uq_it[id],(u8)id,R_UNIQUE,0,0,(u8)(ilvl+5>99?99:ilvl+5)}; return g; }
 
 // make a random piece of gear for this depth (drops, shops, rewards)
 static Gear roll_gear(int kind, int ilvl, int luck){
@@ -187,7 +211,7 @@ static Gear roll_drop(int ilvl, int luck){
 static int item_value(const Gear *g){
     switch(g->it){
         case IT_GEM: { static const u8 v[4]={40,60,90,150}; return v[g->sub&3] + 5*dlv(); }
-        case IT_SHELL: case IT_THORN: case IT_CHARM: { int v=12+g->lvl*3+(g->sub==4?150:0); return g->rar==R_RARE?v*4 : g->rar==R_MAGIC?v*2 : v; }
+        case IT_SHELL: case IT_THORN: case IT_CHARM: { if(g->rar==R_UNIQUE) return 400+g->lvl*20; int v=12+g->lvl*3+(g->sub==4?150:0); return g->rar==R_RARE?v*4 : g->rar==R_MAGIC?v*2 : v; }
         case IT_WARP: return 60; case IT_SEED: return 8; case IT_BERRY: return 5; case IT_BOOK: return 80; case IT_POTION: return 12;
         case IT_FISH: { static const u8 v[5]={10,40,40,90,120}; return v[g->sub%5]; }
         default: return 2;
