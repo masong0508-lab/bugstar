@@ -52,3 +52,13 @@ At your ship, pick **LAUNCH INTO SPACE**.
 - Station: buy and sell 8 kinds of goods (prices change by world type), refuel, repair, and upgrade laser, shield and cargo.
 - SELECT: galaxy map. Pick a star and press A to jump (uses fuel).
 - Beat each zone's boss to open the next star. Beat the Ant King to open the whole galaxy. Then START on the map jumps to a new cluster, forever.
+
+## The Technobeast (space boss)
+After you beat the Ant King, open the galaxy map (SELECT) and press **L** to fly to the Technobeast's lair (costs 2.0 LY fuel).
+- It has **one trillion HP**. Its damage **stays** when you leave, so you can come back again and again.
+- Shoot the glowing middle (the core) for 3x damage.
+- When it charges its beam, fly fast (hold B) to dodge.
+- It sends drone fighters. They get stronger with your level, your tech and every beast you kill.
+- **SELECT** warps you out.
+- Get stronger at any station: **TECH CORE** makes your laser 4x stronger on the beast, every level. Your weapon gear also adds damage.
+- Kill it and it rebuilds with 10x more HP.

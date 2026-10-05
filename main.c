@@ -1,6 +1,6 @@
 // BUGSTAR prototype: a pill bug on a turning planet, and a colour 3D dungeon underneath.
 #include "assets.h"
-typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; typedef signed short s16; typedef signed char s8; typedef int s32;
+typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; typedef signed short s16; typedef signed char s8; typedef int s32; typedef unsigned long long u64;
 #define REG_DISPCNT  (*(volatile u16*)0x04000000)
 #define REG_VCOUNT   (*(volatile u16*)0x04000006)
 #define REG_BG2CNT   (*(volatile u16*)0x0400000C)

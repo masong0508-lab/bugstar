@@ -156,12 +156,14 @@ static void build_space_palette(void){
     BG_PAL[52]=rgb15(120,255,120); BG_PAL[53]=rgb15(255,80,70); BG_PAL[54]=rgb15(220,230,240); BG_PAL[55]=rgb15(90,220,255); BG_PAL[56]=rgb15(90,100,120);
     BG_PAL[57]=rgb15(16,20,34); BG_PAL[58]=rgb15(60,80,120);
 }
+static int in_lair=0, tech_lv=0, beast_kills=0, beast_charge=0, beast_fire=0, beast_t=0, lair_out=0; static u64 beast_hp, beast_max; static char beast_dmg_txt[16]; static int beast_dmg_t=0;
+static int space_danger(void){ return in_lair ? 8 + tech_lv*2 + beast_kills*6 + level/3 : sys_dlv(cur_sys) + level/4; }
 static void spawn_pirates(int n){
     for(int i=0;i<NPIR && n;i++) if(!pir[i].alive){ Pirate *p=&pir[i];
         s16 d[3]={(s16)(lr(32768)-16384),(s16)(lr(16384)-8192),(s16)(lr(32768)-16384)}; norm3(d);
         int dist=7000+lr(3000);
         p->x=shx+((d[0]*dist)>>14); p->y=shy+((d[1]*dist)>>14); p->z=shz+((d[2]*dist)>>14);
-        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->hp=10+sys_dlv(cur_sys)*5; p->alive=1; p->cool=60; p->fire_t=0; n--; }
+        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->hp=10+space_danger()*5; p->alive=1; p->cool=60; p->fire_t=0; n--; }
 }
 static void space_enter(int from_planet){
     lseed = galaxy_seed ^ 0x1234567 ^ frames;
@@ -175,6 +177,7 @@ static void space_enter(int from_planet){
     if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("LAUNCHED. B: THRUST  R: BRAKE"); }
     else { shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=20; }
     int danger=sys_dlv(cur_sys);
+    in_lair=0;
     if(!from_planet && lr(100) < 25+danger*6) spawn_pirates(1+lr(1+danger/3>3?3:1+danger/3));
     shield = 20+shield_lv*20; if(hull<1) hull=100;
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
@@ -197,7 +200,7 @@ static void cockpit(volatile u16 *pg){
     for(int i=128*120;i<129*120;i++) pg[i]=58|(58<<8);
     for(int i=0;i<32;i++) pix(pg,120+scan_pts[i][0],144+scan_pts[i][1],58);
     pix(pg,120,144,54); pix(pg,121,144,54);
-    blip(pg,0,0,0,48); blip(pg,stx_,sty_,stz_,55);
+    blip(pg,0,0,0,in_lair?53:48); if(!in_lair) blip(pg,stx_,sty_,stz_,55);
     for(int i=0;i<NPIR;i++) if(pir[i].alive) blip(pg,pir[i].x,pir[i].y,pir[i].z,53);
     for(int i=0;i<4;i++) if(cans[i].alive) blip(pg,cans[i].x,cans[i].y,cans[i].z,50);
     // bars on the left: shield, hull, fuel; speed on the right
@@ -206,6 +209,96 @@ static void cockpit(volatile u16 *pg){
     text(pg,180,131,"SPEED",58,1); rect(pg,180,140,52,3,56); rect(pg,180,140,speed*52/60,3,52);
     char b[24]; sys_name(cur_sys,b); b[12]=0; text(pg,180,148,b,54,1);
 }
+
+
+// ---------------------------------------------------------------- THE TECHNOBEAST: one trillion HP, and its damage stays between visits
+static void lair_leave(void); static void hyperspace(void); static void beast_save(void);
+static void fmt_big(u64 v, char *b){
+    static const char *const suf[7]={"","K","M","B","T","QA","QI"};
+    int e=0; u64 d=1; while(e<6 && v>=d*1000){ d*=1000; e++; }
+    u32 whole=(u32)(v/d); b[0]=0; ncat(b,whole);
+    if(e){ u32 fr=(u32)((v%d)*10/d); scat(b,"."); ncat(b,fr); scat(b,suf[e]); }
+}
+static u64 beast_damage(int *core){
+    u64 d=laser_lv*5+2; for(int t=0;t<tech_lv;t++) d*=4;
+    d = d*(u64)(10+d_dmg)/10;
+    if(*core) d*=3;
+    return d;
+}
+static void beast_shot(void){
+    int sx,sy; s32 z; if(!sproj(0,0,0,&sx,&sy,&z) || z>30000) return;
+    int r=(int)(1700L*FOCS/z); if(r<4) r=4;
+    int dx=sx-120, dy=sy-VCY; if(dx<0) dx=-dx; if(dy<0) dy=-dy;
+    if(dx>r || dy>r) return;
+    int core = dx<r/3 && dy<r/3;
+    u64 d=beast_damage(&core); if(d>beast_hp) d=beast_hp; beast_hp-=d;
+    s32 k=z-1500; boom(shx+((bf[0]*k)>>14),shy+((bf[1]*k)>>14),shz+((bf[2]*k)>>14), core?8:3, core?49:51);
+    gold += (1+tech_lv*2)*(1+beast_kills); sfx(1);
+    scpy(beast_dmg_txt, core?"CORE -":"-"); char nb[12]; fmt_big(d,nb); scat(beast_dmg_txt,nb); beast_dmg_t=30;
+    if(!beast_hp){
+        beast_kills++; int g=100000*beast_kills; gold+=g; gain_xp(2000*beast_kills);
+        boom(0,0,0,40,49); sfx(9);
+        beast_max = beast_max>=1000000000000000000ULL ? beast_max : beast_max*10; beast_hp=beast_max;
+        lair_out=1; char b[40]; scpy(b,"TECHNOBEAST DOWN! +"); ncat(b,g); scat(b,"G"); space_say(b);
+    }
+}
+static void beast_update(void){
+    beast_t++;
+    int phase = 3 - (int)(beast_hp*4/(beast_max?beast_max:1)); if(phase<0) phase=0;
+    int dg = space_danger();
+    if(beast_fire) beast_fire--;
+    if(beast_charge){ if(--beast_charge==0){ beast_fire=8; sfx(4);
+            int ch = speed>=30 ? 30 : 75;               // fly fast to dodge
+            if(lr(100)<ch){ int dm=10+dg*2+phase*6; if(shield>=dm) shield-=dm; else { hull-=dm-shield; shield=0; } hit_t=8; } } }
+    else if(beast_t % (100-phase*18) == 0){ beast_charge=40; space_say("THE BEAST CHARGES ITS BEAM! SPEED UP!"); }
+    if(beast_t % (420-phase*80) == 0){ int alive=0; for(int i=0;i<NPIR;i++) alive+=pir[i].alive; if(alive<1+phase) spawn_pirates(1); }
+}
+static void beast_draw(volatile u16 *pg){
+    s32 v[32*3]; int sx[32], sy[32]; u8 ok[32];
+    int a=(beast_t*2)&255, b2=(beast_t*3+64)&255; s32 ca=cosx(a), sa=sinx(a), cb=cosx(b2), sb=sinx(b2);
+    static const s8 oct[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+    static const s8 cub[8][3]={{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
+    int pulse = beast_charge ? 1100 + (beast_charge&4)*60 : 900;
+    for(int i=0;i<32;i++){ s32 x,y,z;
+        if(i<6){ x=oct[i][0]*pulse; y=oct[i][1]*pulse; z=oct[i][2]*pulse; }
+        else if(i<14){ x=cub[i-6][0]*1250; y=cub[i-6][1]*1250; z=cub[i-6][2]*1250; }
+        else if(i<20){ x=oct[i-14][0]*3300; y=oct[i-14][1]*3300; z=oct[i-14][2]*3300; }
+        else { int k=((i-20)*256/12)&255; s32 rx=(cosx(k)*2900)>>14, rz=(sinx(k)*2900)>>14;   // a ring that turns the other way
+               x=(rx*cb-rz*sb)>>14; z=(rx*sb+rz*cb)>>14; y=(z*sinx(24))>>14; z=(z*cosx(24))>>14; }
+        if(i<20){ s32 t=(x*ca-z*sa)>>14; z=(x*sa+z*ca)>>14; x=t; }
+        v[i*3]=x; v[i*3+1]=y; v[i*3+2]=z;
+        ok[i]=sproj(x,y,z,&sx[i],&sy[i],0);
+    }
+    #define E(p,q,c) if(ok[p]&&ok[q]) line2(pg,sx[p],sy[p],sx[q],sy[q],c)
+    static const u8 ce[]={0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7};
+    for(int i=0;i<24;i+=2) E(6+ce[i],6+ce[i+1],53);
+    static const u8 oe[]={0,2,0,3,0,4,0,5,1,2,1,3,1,4,1,5,2,4,2,5,3,4,3,5};
+    int cc = beast_charge ? ((beast_t&4)?49:53) : ((beast_t&16)?50:51);
+    for(int i=0;i<24;i+=2) E(oe[i],oe[i+1],cc);
+    for(int s=0;s<6;s++) for(int k=0;k<8;k++){ int x=cub[k][0], y=cub[k][1], z=cub[k][2];
+        if((s==0&&x>0)||(s==1&&x<0)||(s==2&&y>0)||(s==3&&y<0)||(s==4&&z>0)||(s==5&&z<0)) E(14+s,6+k,51); }
+    for(int i=0;i<12;i++) E(20+i,20+(i+1)%12,55);
+    for(int i=0;i<12;i+=3) E(20+i,6+(i/3)*2,56);
+    if(beast_fire && ok[0]){ int cx=(sx[0]+sx[1])/2, cy=(sy[0]+sy[1])/2;
+        for(int w=-2;w<=2;w++) line2(pg,cx+w,cy,120+w*6,127,w?53:49); }
+    #undef E
+}
+static void beast_hud(volatile u16 *pg){
+    char b[24]; text(pg,4,2,"TECHNOBEAST",53,1);
+    if(beast_kills){ scpy(b,"MK "); ncat(b,beast_kills+1); text(pg,52,2,b,50,1); }
+    fmt_big(beast_hp,b); scat(b," HP"); text(pg,236-textlen(b)*4,2,b,54,1);
+    rect(pg,4,10,232,3,56); u32 w=(u32)(beast_hp*232/(beast_max?beast_max:1)); if(!w && beast_hp) w=1; rect(pg,4,10,w,3,53);
+    if(beast_dmg_t){ beast_dmg_t--; text(pg,120-textlen(beast_dmg_txt)*2,18,beast_dmg_txt,beast_dmg_txt[0]=='C'?49:50,1); }
+    else if(!(frames&64)) text(pg,64,18,"SELECT: WARP OUT",56,1);
+}
+static void lair_enter(void){
+    space_enter(0); in_lair=1; beast_t=1; beast_charge=0; beast_fire=0;
+    for(int i=0;i<NPIR;i++) pir[i].alive=0;
+    shx=0; shy=0; shz=-15000; yaw=0; pitch=0; speed=0;
+    BG_PAL[57]=rgb15(34,12,16); BG_PAL[58]=rgb15(130,50,60);
+    space_say("THE TECHNOBEAST AWAKENS");
+}
+static void lair_leave(void){ in_lair=0; hyperspace(); space_enter(0); space_say("WARPED HOME. COME BACK STRONGER"); do_save(); }
 
 // ---------------------------------------------------------------- one frame of flying
 static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
@@ -216,11 +309,12 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     basis();
     shx+=(bf[0]*speed*3)>>14; shy+=(bf[1]*speed*3)>>14; shz+=(bf[2]*speed*3)>>14;
     s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
-    if(pd<PR+300){ s32 k=(PR+300)*64/(pd?pd:1); shx=shx*k/64; shy=shy*k/64; shz=shz*k/64; if(speed>10) speed=10; }
+    if(pd<(in_lair?2400:PR+300)){ if(in_lair){ s32 k=2400*64/(pd?pd:1); shx=shx*k/64; shy=shy*k/64; shz=shz*k/64; speed=0; } else { s32 k=(PR+300)*64/(pd?pd:1); shx=shx*k/64; shy=shy*k/64; shz=shz*k/64; if(speed>10) speed=10; } }
     s32 sdx=shx-stx_, sdy=shy-sty_, sdz=shz-stz_; s32 sd=isqrt((u32)((sdx>>4)*(sdx>>4)+(sdy>>4)*(sdy>>4)+(sdz>>4)*(sdz>>4)))<<4;
-    int can_land = pd < PR+2200, can_dock = sd < 1100;
+    int can_land = !in_lair && pd < PR+2200, can_dock = !in_lair && sd < 1100;
     if(++sh_regen>=20){ sh_regen=0; if(shield<20+shield_lv*20) shield++; }
-    if(HIT(K_SEL)) return 2;
+    if(lair_out){ lair_out=0; lair_leave(); return 0; }
+    if(HIT(K_SEL)){ if(in_lair){ lair_leave(); return 0; } return 2; }
     if(HIT(K_START)){ char b[40]; int n=0; for(int i=0;i<8;i++) n+=cargo[i]; scpy(b,"CARGO "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); scat(b,"  LASER MK"); ncat(b,laser_lv); space_say(b); }
     // A: land, dock, or fire
     if(laser_cool) laser_cool--;
@@ -230,14 +324,16 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         laser_cool=10-laser_lv; laser_t=4; sfx(10);
         for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue; int sx,sy; s32 z;
             if(sproj(p->x,p->y,p->z,&sx,&sy,&z) && z<9000 && sx>104 && sx<136 && sy>VCY-14 && sy<VCY+14){
-                p->hp -= laser_lv*5+2; boom(p->x,p->y,p->z,4,54); sfx(1);
-                if(p->hp<=0){ p->alive=0; boom(p->x,p->y,p->z,24,50); sfx(9); int g=30+sys_dlv(cur_sys)*15; gold+=g; gain_xp(10+sys_dlv(cur_sys)*3);
+                p->hp -= laser_lv*5+2 + (in_lair? tech_lv*12 : 0); boom(p->x,p->y,p->z,4,54); sfx(1);
+                if(p->hp<=0){ p->alive=0; boom(p->x,p->y,p->z,24,50); sfx(9); int g=30+space_danger()*15; gold+=g; gain_xp(10+space_danger()*3);
                     char b[32]; scpy(b,"PIRATE DOWN! +"); ncat(b,g); scat(b,"G"); space_say(b);
                     if(lr(2)) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; } } } }
+        if(in_lair) beast_shot();
     }
+    if(in_lair) beast_update();
     // pirates
-    int danger=sys_dlv(cur_sys);
-    if(!can_land && lr(1500) < 2+danger) spawn_pirates(1);
+    int danger=space_danger();
+    if(!in_lair && !can_land && lr(1500) < 2+danger) spawn_pirates(1);
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
         s16 d[3]; s32 dx=shx-p->x, dy=shy-p->y, dz=shz-p->z; s32 l=isqrt((u32)((dx>>4)*(dx>>4)+(dy>>4)*(dy>>4)+(dz>>4)*(dz>>4)))<<4; if(l<1) l=1;
         if(l>40000){ p->alive=0; continue; }
@@ -256,7 +352,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         if(dx>-500&&dx<500&&dy>-500&&dy<500&&dz>-500&&dz<500){ cans[k].alive=0; int n=0; for(int i=0;i<8;i++) n+=cargo[i];
             if(n<cargo_cap){ int g=lr(8); cargo[g]++; char b[32]; scpy(b,"SCOOPED "); scat(b,goods[g]); space_say(b); sfx(2); } else space_say("CARGO HOLD FULL"); } }
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; p->life--; p->x+=p->vx; p->y+=p->vy; p->z+=p->vz; }
-    if(hull<=0){ hull=100; for(int i=0;i<8;i++) cargo[i]=0; gold/=2; for(int i=0;i<NPIR;i++) pir[i].alive=0;
+    if(hull<=0){ if(in_lair){ in_lair=0; space_enter(0); } hull=100; for(int i=0;i<8;i++) cargo[i]=0; gold/=2; for(int i=0;i<NPIR;i++) pir[i].alive=0;
         shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=10; space_say("SHIP WRECKED! CARGO LOST"); sfx(9); }
     // ---- draw
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
@@ -269,7 +365,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
           int sx=120+x*FOCS/z, sy=VCY-y*FOCS/z;
           for(int dy=-12;dy<=12;dy++) for(int dx=-12;dx<=12;dx++){ int d2=dx*dx+dy*dy; if(d2>144) continue; int c = d2<30?49 : d2<70?50 : ((dx+dy)&1)?51:0; if(c) dot2(pg,sx+dx,sy+dy,c); } } }
     // the planet
-    { s32 cx,cy,cz; if(cam3(0,0,0,&cx,&cy,&cz) && cz>PR/3){
+    { s32 cx,cy,cz; if(!in_lair && cam3(0,0,0,&cx,&cy,&cz) && cz>PR/3){
         int r=(int)(((long long)PR*FOCS)/cz), px=120+(s32)(((long long)cx*FOCS)/cz), py=VCY-(s32)(((long long)cy*FOCS)/cz);
         if(r<1200 && px+r>0 && px-r<240 && py+r>0 && py-r<128){
             s32 Lx=(sun[0]*br[0]+sun[1]*br[1]+sun[2]*br[2])>>14, Ly=(sun[0]*bu[0]+sun[1]*bu[1]+sun[2]*bu[2])>>14, Lz=(sun[0]*bf[0]+sun[1]*bf[1]+sun[2]*bf[2])>>14;
@@ -280,7 +376,8 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         int sx,sy,sx2,sy2; s32 z;
         if(sproj(d[0],d[1],d[2],&sx,&sy,&z)){ if(speed>14 && sproj(d[0]-((bf[0]*speed*4)>>14),d[1]-((bf[1]*speed*4)>>14),d[2]-((bf[2]*speed*4)>>14),&sx2,&sy2,0)) line2(pg,sx,sy,sx2,sy2,56); else dot2(pg,sx,sy,56); } }
     // the station: a turning wireframe cube with a glowing dock slot, like Elite's Coriolis
-    { s32 v[12*3]; int a=frames*3; s32 S=420, c_=cosx(a>>2), s_=sinx(a>>2);
+    if(in_lair) beast_draw(pg);
+    else { s32 v[12*3]; int a=frames*3; s32 S=420, c_=cosx(a>>2), s_=sinx(a>>2);
       static const s8 cube[8][3]={{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
       for(int i=0;i<8;i++){ s32 x=cube[i][0]*S, z=cube[i][2]*S; v[i*3]=stx_+((x*c_-z*s_)>>14); v[i*3+1]=sty_+cube[i][1]*S; v[i*3+2]=stz_+((x*s_+z*c_)>>14); }
       static const s8 slot[4][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
@@ -303,8 +400,9 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(hit_t){ hit_t--; for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
     cockpit(pg);
     const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
-    if(space_msg_t){ space_msg_t--; text(pg,120-textlen(smsg)*2,4,smsg,54,1); }
+    if(space_msg_t){ space_msg_t--; text(pg,120-textlen(smsg)*2,in_lair?28:4,smsg,54,1); }
     if(pr) text(pg,120-textlen(pr)*4,96,pr,55,2);
+    if(in_lair) beast_hud(pg);
     else if(!space_msg_t && !(frames&64)) text(pg,64,4,"SELECT: GALAXY MAP",56,1);
     return 0;
 }
@@ -348,6 +446,7 @@ static int galaxy_map(void){     // returns 1 if you jumped
             const char *st = sel==cur_sys ? "YOU ARE HERE" : !can_jump(sel) ? (sys[sel].kind<6 ? "LOCKED: BEAT THE BOSS BEFORE IT" : "LOCKED: BEAT THE ANT KING") : d>fuel ? "TOO FAR: REFUEL AT A STATION" : "A: JUMP HERE";
             text(pg,236-textlen(st)*4,151,st, (sel!=cur_sys && can_jump(sel) && d<=fuel)?C_GREEN:C_RED,1);
             text(pg,150,3,ant_king?"START: NEW CLUSTER":"B: BACK",C_DGREY,1);
+            if(ant_king) text(pg,4,122,"L: FIGHT THE TECHNOBEAST (2.0 LY)",C_RED,1);
         }
         vsync(); read_keys();
         int mv=0;
@@ -355,6 +454,9 @@ static int galaxy_map(void){     // returns 1 if you jumped
         if(cx<0) cx=0; if(cx>239*8) cx=239*8; if(cy<16*8) cy=16*8; if(cy>130*8) cy=130*8;
         if(mv){ int best=sel, bd=1<<30; for(int i=0;i<NSYS;i++){ int dx=sys[i].x*8-cx, dy=sys[i].y*8-cy, dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } } if(best!=sel){ sel=best; dirty=1; } }
         if(HIT(K_B)){ wait_release(); return 0; }
+        if(HIT(K_L) && ant_king){
+            if(fuel<20){ space_say("NEED 2.0 LY OF FUEL FOR THE LAIR"); wait_release(); return 0; }
+            fuel-=20; hyperspace(); lair_enter(); wait_release(); return 1; }
         if(HIT(K_START) && ant_king){
             if(fuel<70){ space_say("NEED FULL FUEL FOR AN INTERGALACTIC JUMP"); wait_release(); return 0; }
             fuel=0; cluster_no++; gen_cluster(); cur_sys=0; hyperspace(); space_enter(0); space_say("A NEW CLUSTER OF STARS!"); wait_release(); return 1; }
@@ -368,11 +470,12 @@ static int galaxy_map(void){     // returns 1 if you jumped
 }
 
 // ---------------------------------------------------------------- docked at the station: trading and the shipyard
+static int tech_cost(void){ return tech_lv<30 ? 2000*(tech_lv+1)*(tech_lv+1) : 0; }
 static int good_price(int g){ int e=sys[cur_sys].eco; int p=good_base[g]*eco_mul[e][g]/100; int wob=(int)((sys_id(cur_sys)*7+g*13+visits*5)%21); return p*(90+wob)/100+1; }
 static void station_menu(void){
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));
     int tab=0, sel=0, dirty=1; wait_release(); sfx(5);
-    static const char *const yard[6]={"REFUEL","REPAIR HULL","LASER UPGRADE","SHIELD UPGRADE","BIGGER CARGO BAY","LEAVE"};
+    static const char *const yard[7]={"REFUEL","REPAIR HULL","LASER UPGRADE","SHIELD UPGRADE","BIGGER CARGO BAY","TECH CORE (X4 DMG)","LEAVE"};
     while(1){
         if(dirty){ dirty=0; char b[48];
             for(int i=0;i<240*160/2;i++) pg[i]=57|(57<<8);
@@ -387,28 +490,28 @@ static void station_menu(void){
                 scpy(b,"HOLD "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); text(pg,14,122,b,C_WHITE,1);
                 text(pg,6,148,"A: BUY  B: SELL  L/R: SHIPYARD  START: LEAVE",C_CYAN,1);
             } else {
-                int cost[6]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<4?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0, 0 };
-                for(int i=0;i<6;i++){ if(i==sel) text(pg,6,30+i*12,">",C_CYAN,1); scpy(b,yard[i]); while(textlen(b)<18) scat(b," ");
-                    if(i<5){ if(cost[i]) { ncat(b,cost[i]); scat(b,"G"); } else scat(b, i<2?"FULL":"MAX"); }
+                int cost[7]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0, tech_cost(), 0 };
+                for(int i=0;i<7;i++){ if(i==sel) text(pg,6,30+i*12,">",C_CYAN,1); scpy(b,yard[i]); while(textlen(b)<20) scat(b," ");
+                    if(i<6){ if(cost[i]) { ncat(b,cost[i]); scat(b,"G"); } else scat(b, i<2?"FULL":"MAX"); }
                     text(pg,14,30+i*12,b,i==sel?C_WHITE:C_GREY,1); }
-                scpy(b,"LASER MK"); ncat(b,laser_lv); scat(b,"  SHIELD MK"); ncat(b,shield_lv); scat(b,"  CARGO "); ncat(b,cargo_cap); text(pg,14,110,b,C_WHITE,1);
-                scpy(b,"HULL "); ncat(b,hull); scat(b,"%  FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10); scat(b," LY"); text(pg,14,120,b,C_WHITE,1);
+                scpy(b,"LASER MK"); ncat(b,laser_lv); scat(b,"  SHIELD MK"); ncat(b,shield_lv); scat(b,"  CARGO "); ncat(b,cargo_cap); scat(b,"  TECH "); ncat(b,tech_lv); text(pg,14,116,b,C_WHITE,1);
+                scpy(b,"HULL "); ncat(b,hull); scat(b,"%  FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10); scat(b," LY"); text(pg,14,126,b,C_WHITE,1);
                 text(pg,6,148,"A: BUY  L/R: MARKET  START: LEAVE",C_CYAN,1);
             }
         }
         vsync(); read_keys();
-        int n = tab==0 ? 8 : 6;
+        int n = tab==0 ? 8 : 7;
         if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; } if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; }
         if(HIT(K_L)||HIT(K_R)){ tab^=1; sel=0; dirty=1; }
-        if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==5)) break;
+        if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==6)) break;
         if(tab==0){
             int held=0; for(int i=0;i<8;i++) held+=cargo[i];
             if(HIT(K_A)){ int p=good_price(sel); if(gold>=p && held<cargo_cap){ gold-=p; cargo[sel]++; sfx(7); } dirty=1; }
             if(HIT(K_B) && cargo[sel]){ gold+=good_price(sel); cargo[sel]--; sfx(7); dirty=1; }
         } else if(HIT(K_A)){
-            int cost[5]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<4?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0 };
+            int cost[6]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0, tech_cost() };
             if(cost[sel] && gold>=cost[sel]){ gold-=cost[sel]; sfx(6);
-                if(sel==0) fuel=70; else if(sel==1) hull=100; else if(sel==2) laser_lv++; else if(sel==3){ shield_lv++; shield=20+shield_lv*20; } else cargo_cap+=10; }
+                if(sel==0) fuel=70; else if(sel==1) hull=100; else if(sel==2) laser_lv++; else if(sel==3){ shield_lv++; shield=20+shield_lv*20; } else if(sel==4) cargo_cap+=10; else tech_lv++; }
             dirty=1;
         }
     }
@@ -424,8 +527,23 @@ static void save_ext(void){
     s->cur_sys=cur_sys; s->cluster_no=cluster_no; s->fuel=fuel; s->hull=hull; s->shield_lv=shield_lv; s->laser_lv=laser_lv; s->cargo_cap=cargo_cap;
     s->ant_king=ant_king; s->cleared_mask=cleared_mask; s->zones_open=zones_open; s->visits=visits; s->w_dlv=w_dlv; memcpy(s->cargo,cargo,8);
     s->sum=sx_sum(s); const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) SRAM[slot_base(cur_slot)+SX_OFF+i]=p[i];
+    beast_save();
+}
+typedef struct { u32 magic, hp_lo, hp_hi, mx_lo, mx_hi; u16 tech, kills; u32 sum; } SaveB;
+#define SB_OFF 0xA00
+static void beast_load(void){
+    SaveB b; sram_read(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
+    u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; }
+    if(b.magic!=0x54534542 || b.sum!=h){ tech_lv=0; beast_kills=0; beast_max=1000000000000ULL; beast_hp=beast_max; return; }
+    beast_hp=((u64)b.hp_hi<<32)|b.hp_lo; beast_max=((u64)b.mx_hi<<32)|b.mx_lo; tech_lv=b.tech; beast_kills=b.kills;
+}
+static void beast_save(void){
+    SaveB b; memset(&b,0,sizeof b); b.magic=0x54534542; b.hp_lo=(u32)beast_hp; b.hp_hi=(u32)(beast_hp>>32); b.mx_lo=(u32)beast_max; b.mx_hi=(u32)(beast_max>>32); b.tech=tech_lv; b.kills=beast_kills;
+    u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; } b.sum=h;
+    sram_write(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
 }
 static void load_ext_defaults(void){
+    tech_lv=0; beast_kills=0; beast_max=1000000000000ULL; beast_hp=beast_max;
     fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; memset(cargo,0,8);
     if(endless){ ant_king=1; zones_open=6; cleared_mask=63; w_dlv=6+world_no/2; cur_sys=6; }
     else { ant_king=0; zones_open=zone+1+(zone_cleared?1:0); if(zones_open>6) zones_open=6; cleared_mask=((1<<zone)-1)|(zone_cleared?1<<zone:0); cur_sys=zone; }
@@ -433,10 +551,10 @@ static void load_ext_defaults(void){
 }
 static int load_ext(void){
     SaveX *s=&svx; u8 *p=(u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) p[i]=SRAM[slot_base(cur_slot)+SX_OFF+i];
-    if(s->magic!=0x50494853 || s->sum!=sx_sum(s)){ load_ext_defaults(); return 0; }
+    if(s->magic!=0x50494853 || s->sum!=sx_sum(s)){ load_ext_defaults(); beast_load(); return 0; }
     cur_sys=s->cur_sys; cluster_no=s->cluster_no; fuel=s->fuel; hull=s->hull; shield_lv=s->shield_lv; laser_lv=s->laser_lv; cargo_cap=s->cargo_cap;
     ant_king=s->ant_king; cleared_mask=s->cleared_mask; zones_open=s->zones_open; visits=s->visits; w_dlv=s->w_dlv; memcpy(cargo,s->cargo,8);
-    gen_cluster(); return 1;
+    beast_load(); gen_cluster(); return 1;
 }
 static void story_boss_beaten(void){
     cleared_mask|=1<<zone; if(zones_open<zone+2) zones_open=zone+2; if(zones_open>6) zones_open=6;
