@@ -474,10 +474,11 @@ static void draw_glow(volatile u16 *pg, s32 wx, s32 wy, s32 h, s32 rad, int c_in
 // floating damage numbers
 typedef struct { s32 x,y,h; s16 v, life; u8 col; } FNum;
 EW static FNum fnum[8];
-static void add_fnum(s32 x, s32 y, int v, int col){ int k=0; for(int i=1;i<8;i++) if(fnum[i].life<fnum[k].life) k=i; fnum[k]=(FNum){x,y,0xC000,(s16)v,24,(u8)col}; }
+static void add_fnum(s32 x, s32 y, int v, int col){ int k=0; for(int i=1;i<8;i++) if(fnum[i].life<fnum[k].life) k=i; fnum[k]=(FNum){x,y,0xC000,(s16)v,32,(u8)col}; }
+static void fnums_update(void){ for(int i=0;i<8;i++){ FNum *f=&fnum[i]; if(f->life>0){ f->life--; f->h+=0x0900; } } }
 static void draw_fnums(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16); if(!det) return;
-    for(int i=0;i<8;i++){ FNum *f=&fnum[i]; if(f->life<=0) continue; f->life--; f->h+=0x0C00;
+    for(int i=0;i<8;i++){ FNum *f=&fnum[i]; if(f->life<=0) continue;
         s32 sx=f->x-px_, sy=f->y-py_;
         s32 tX = (s32)((((long long)diry*sx) - ((long long)dirx*sy))/det);
         s32 tY = (s32)((((long long)-ply*sx) + ((long long)plx*sy))/det);

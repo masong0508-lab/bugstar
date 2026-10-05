@@ -7,12 +7,15 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 ## Controls
 | Button | On a planet | In a dungeon |
 | --- | --- | --- |
-| D-pad | Walk; the planet turns under you | Up/down walk, left/right turn |
+| D-pad | Walk; the planet turns under you | Up/down walk, left/right turn (a tap turns a little, holding turns faster) |
 | A | Door, ship, cage, slug | Bite; open cages; stairs; fish at water |
 | B | Use the picked item | Use the picked item |
 | L / R | Pick an item in your bag | Pick an item in your bag |
 | SELECT | | Tap: cast your spell. Hold + L/R: change spell |
 | START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM) | Character screen |
+
+## Speed
+The 3D view is heavy to draw, so on a slow emulator it may show fewer pictures a second. The game itself always runs at 60 steps a second, so walking, turning, fights, timers and messages keep the same pace either way.
 
 ## Saving, loading and options
 - **Title screen:** CONTINUE (your last slot), NEW GAME, LOAD GAME, OPTIONS. Up/down and A.
