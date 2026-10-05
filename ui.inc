@@ -1,5 +1,4 @@
 // ================================================================= SCREENS: character, shops, quest board, title, saving
-static void wait_release(void){ do { vsync(); read_keys(); } while(keys); }
 
 // what a thing does, in a few words
 static const char *const wpre_txt[7]={"","+DAMAGE","++DAMAGE","FIRE DAMAGE","POISON","+25% GOLD","DRINKS HEALTH"};
@@ -36,17 +35,32 @@ static int send_pet_to_sell(void){
     if(!n){ say("NOTHING FOR BUDDY TO SELL"); return 0; }
     pet_sold_n=n; pet_sold_g=g; pet_away_t=900; say("BUDDY RUNS OFF TO SELL YOUR GEAR"); return 1;
 }
+// ---------------------------------------------------------------- the SYSTEM page: save, load, options, quit
+static char sys_msg[40]; static int sys_col=C_GREEN;
+static void sys_say(const char *t, int c){ scpy(sys_msg,t); sys_col=c; }
+static void sys_action(volatile u16 *pg, int cur){
+    char b[40];
+    if(cur==0 || cur==1){
+        if(scene!=0){ sys_say("YOU CAN ONLY SAVE ON THE SURFACE",C_RED); sfx(0); return; }
+        if(cur==1){ int t=slot_picker(pg,SP_SAVE,0); if(t<0) return; cur_slot=t; }
+        do_save(); scpy(b,"SAVED TO SLOT "); ncat(b,cur_slot+1); sys_say(b,C_GREEN); sfx(6);
+    }
+    else if(cur==2){ int t=slot_picker(pg,SP_LOAD,0); if(t>=0){ cur_slot=t; sys_req=1; } }
+    else if(cur==3) options_screen(pg);
+    else if(confirm(pg,"QUIT TO THE TITLE?","UNSAVED PROGRESS IS LOST")) sys_req=2;
+}
+
 static void char_screen(volatile u16 *pg){
-    int page=0, cur=0, dirty=1;
-    static const char *const tabs[4]={"BUG","GEAR","MAGIC","QUEST"};
+    int page=0, cur=0, dirty=1; sys_msg[0]=0;
+    static const char *const tabs[5]={"BUG","GEAR","MAGIC","QUEST","SYSTEM"};
     static const char *const stn[4]={"STRENGTH","DEXTERITY","VITALITY","MAGIC"};
     static const char *const std[4]={"BITE DAMAGE","CRITS, FASTER BITES","HEALTH, DEFENCE","MANA, SPELL POWER"};
     wait_release();
     while(1){
         if(dirty){ dirty=0; char b[64];
             rect(pg,0,18,240,142,0);
-            for(int t=0;t<4;t++) text(pg,8+t*56,21,tabs[t], t==page?C_GOLD:C_DGREY, 1);
-            rect(pg,8+page*56,28,textlen(tabs[page])*4,1,C_GOLD);
+            for(int t=0;t<5;t++) text(pg,8+t*46,21,tabs[t], t==page?C_GOLD:C_DGREY, 1);
+            rect(pg,8+page*46,28,textlen(tabs[page])*4,1,C_GOLD);
             int y=34;
             if(page==0){
                 scpy(b,"LEVEL "); ncat(b,level); scat(b,"   XP "); ncat(b,xp); scat(b,"/"); ncat(b,xp_next()); text(pg,8,y,b,C_WHITE,1); y+=8;
@@ -80,7 +94,7 @@ static void char_screen(volatile u16 *pg){
                 y+=6; text(pg,8,y,"IN A DUNGEON: TAP SELECT TO CAST.",C_WHITE,1); y+=8;
                 text(pg,8,y,"HOLD SELECT + L OR R TO CHANGE SPELL.",C_WHITE,1); y+=8;
                 text(pg,8,147,"A: MAKE IT YOUR SPELL",C_CYAN,1);
-            } else {
+            } else if(page==3){
                 text(pg,8,y,"QUEST",C_GOLD,1); y+=8;
                 if(q_type==Q_NONE) text(pg,8,y,"NONE. VISIT YOUR SHIP'S QUEST BOARD.",C_DGREY,1);
                 else { text(pg,8,y,q_name,C_WHITE,1); y+=7; scpy(b, q_done ? "DONE! GO BACK TO YOUR SHIP" : "IN PROGRESS"); if(!q_done && (q_type==Q_HUNT||q_type==Q_RESCUE)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,8,y,b,q_done?C_GREEN:C_WHITE,1); }
@@ -90,20 +104,36 @@ static void char_screen(volatile u16 *pg){
                 for(int i=0;i<8;i++){ scpy(b,berry_col[i]); scat(b,":"); scat(b, berry_known[i]?berry_eff[berry_map[i]]:"?"); text(pg,8+(i&3)*58,y+(i>>2)*7,b,berry_known[i]?C_WHITE:C_DGREY,1); }
                 y+=16;
                 for(int i=0;i<6;i++){ scpy(b,seed_look[i]); scat(b,":"); scat(b, seed_known[i]?seed_eff[seed_map[i]]:"?"); text(pg,8+(i%3)*76,y+(i/3)*7,b,seed_known[i]?C_WHITE:C_DGREY,1); }
+            } else {
+                static const char *const sn[5]={"SAVE GAME","SAVE TO ANOTHER SLOT","LOAD GAME","OPTIONS","QUIT TO TITLE"};
+                scpy(b,"SLOT "); ncat(b,cur_slot+1); text(pg,8,y,b,C_CYAN,1);
+                fmt_time(b,play_secs()); scat(b," PLAYED"); text(pg,60,y,b,C_GREY,1);
+                text(pg,170,y,opt_autosave?"AUTOSAVE ON":"AUTOSAVE OFF",opt_autosave?C_GREEN:C_DGREY,1); y+=14;
+                for(int i=0;i<5;i++){
+                    int ok = !(i<2 && scene!=0);
+                    if(cur==i) rect(pg,4,y-2,232,10,6);
+                    text(pg,10,y,sn[i],!ok?C_DGREY: cur==i?C_WHITE:C_GREY,1);
+                    if(i==0){ scpy(b,"-> SLOT "); ncat(b,cur_slot+1); text(pg,150,y,b,ok?C_CYAN:C_DGREY,1); }
+                    y+=12;
+                }
+                if(scene!=0) text(pg,8,y+4,"SAVING IS ONLY POSSIBLE ON THE SURFACE",C_DGREY,1);
+                if(sys_msg[0]) text(pg,8,134,sys_msg,sys_col,1);
+                text(pg,8,147,"A: CHOOSE",C_CYAN,1);
             }
-            text(pg,160,154,"L/R: PAGE  START: BACK",C_DGREY,1);
+            text(pg,148,154,"L/R: PAGE  START: BACK",C_DGREY,1);
         }
         vsync(); read_keys();
         if(HIT(K_START)) break;
-        if(HIT(K_L)){ page=(page+3)%4; cur=0; dirty=1; }
-        if(HIT(K_R)){ page=(page+1)%4; cur=0; dirty=1; }
-        int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : 0;
+        if(HIT(K_L)){ page=(page+4)%5; cur=0; dirty=1; sys_msg[0]=0; }
+        if(HIT(K_R)){ page=(page+1)%5; cur=0; dirty=1; sys_msg[0]=0; }
+        int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : page==4?5 : 0;
         if(nmax){ if(HIT(K_UP)){ cur=(cur+nmax-1)%nmax; dirty=1; } if(HIT(K_DOWN)){ cur=(cur+1)%nmax; dirty=1; } }
         if(HIT(K_A)){
             dirty=1;
             if(page==0 && stat_pts){ int *sv[4]={&st_str,&st_dex,&st_vit,&st_mag}; (*sv[cur])++; stat_pts--; int oldmax=maxh; recalc(); hearts+=maxh-oldmax; sfx(2); }
             if(page==1 && bag_n){ use_index(cur); if(cur>=bag_n && cur) cur--; }
             if(page==2 && spell_known[cur]) spell_sel=cur;
+            if(page==4){ sys_action(pg,cur); if(sys_req) break; }
         }
         if(HIT(K_B) && page==1 && bag_n){ if(scene==1 && (bag[cur].it==IT_THORN||bag[cur].it==IT_SHELL)){ drop_at(cur); say("DROPPED"); } else drop_at(cur); if(cur>=bag_n && cur) cur--; dirty=1; }
         if(HIT(K_SEL) && page==1){ send_pet_to_sell(); dirty=1; }
@@ -151,7 +181,6 @@ static const u8 sup_cost[6]={10,25,25,15,20,120};
 static void sup_row(int i, char *b, int *c){ scpy(b,sup_name[i]); while(textlen(b)<16) scat(b," "); ncat(b,sup_cost[i]); scat(b,"G"); }
 static void stock_row(int i, char *b, int *c){ if(!stock[i].it){ scpy(b,"SOLD"); *c=C_DGREY; return; } gear_name(&stock[i],b); b[34]=0; while(textlen(b)<35) scat(b," "); ncat(b,item_value(&stock[i])*2); scat(b,"G"); *c=rar_color(&stock[i]); }
 static void sell_row(int i, char *b, int *c){ gear_name(&bag[i],b); b[34]=0; while(textlen(b)<35) scat(b," "); ncat(b,item_value(&bag[i])); scat(b,"G"); *c=rar_color(&bag[i]); }
-static void save_ext(void); static int load_ext(void);
 static int shop_menu(void){   // returns 1 to fly on
     volatile u16 *pg=VRAM;
     oam_hide_all(); oam_flush();
@@ -209,52 +238,4 @@ static int shop_menu(void){   // returns 1 to fly on
             for(int k=0;k<bag_n && !ok;k++){ if(bag[k].it==IT_BERRY && !berry_known[bag[k].sub]){ berry_known[bag[k].sub]=1; ok=1; } else if(bag[k].it==IT_SEED && !seed_known[bag[k].sub]){ seed_known[bag[k].sub]=1; ok=1; } }
             if(ok){ gold-=30; say("IDENTIFIED"); hud_now(); } else say("NOTHING TO IDENTIFY"); }
     }
-}
-
-// ---------------------------------------------------------------- saving to the cartridge (battery save)
-__attribute__((used, aligned(4))) const char sram_tag[]="SRAM_V113";
-#define SRAM ((volatile u8*)0x0E000000)
-typedef struct {
-    u32 magic; u16 ver;
-    s16 zone, zone_cleared, endless, world_no, best_depth, level, st[4], stat_pts, hp, mp, food, bugs, fame, portal, spell_sel;
-    s32 xp, gold; u32 galaxy_seed;
-    u8 have_bug[6], berry_map[8], seed_map[6], berry_known[8], seed_known[6], spell_known[NSPELL];
-    Gear eq[3]; u8 bag_n; Gear bag[BAGMAX];
-    s16 q_type, q_need, q_have, q_floor, q_done, q_gold, q_fame, q_zone, q_world; char q_name[24];
-    s16 pet_form, pet_form_t, pet_maxhp, pet_hp;
-    u32 sum;
-} Save;
-EW static Save sv;
-static u32 save_sum(const Save *s){ const u8 *p=(const u8*)s; u32 h=2166136261u; for(unsigned i=0;i<sizeof(Save)-4;i++){ h^=p[i]; h*=16777619u; } return h; }
-static void save_game(void){
-    Save *s=&sv; memset(s,0,sizeof(Save));
-    s->magic=0x53475542; s->ver=1;
-    s->zone=zone; s->zone_cleared=zone_cleared; s->endless=endless; s->world_no=world_no; s->best_depth=best_depth; s->level=level;
-    s->st[0]=st_str; s->st[1]=st_dex; s->st[2]=st_vit; s->st[3]=st_mag; s->stat_pts=stat_pts; s->hp=hearts; s->mp=mp; s->food=food; s->bugs=bugs_freed; s->fame=fame; s->portal=portal_depth; s->spell_sel=spell_sel;
-    s->xp=xp; s->gold=gold; s->galaxy_seed=galaxy_seed;
-    for(int i=0;i<6;i++) s->have_bug[i]=have_bug[i];
-    memcpy(s->berry_map,berry_map,8); memcpy(s->seed_map,seed_map,6); memcpy(s->berry_known,berry_known,8); memcpy(s->seed_known,seed_known,6); memcpy(s->spell_known,spell_known,NSPELL);
-    s->eq[0]=eqw; s->eq[1]=eqa; s->eq[2]=eqc; s->bag_n=bag_n; memcpy(s->bag,bag,sizeof(bag));
-    s->q_type=q_type<0?0:q_type; s->q_need=q_need; s->q_have=q_have; s->q_floor=q_floor; s->q_done=q_done; s->q_gold=q_gold; s->q_fame=q_fame; s->q_zone=q_zone; s->q_world=q_world; memcpy(s->q_name,q_name,24);
-    s->pet_form=pet_form; s->pet_form_t=pet_form_t; s->pet_maxhp=pet_maxhp; s->pet_hp=pet_hp;
-    s->sum=save_sum(s);
-    const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(Save);i++) SRAM[i]=p[i];
-    save_ext();
-}
-static int load_game(int apply){
-    Save *s=&sv; u8 *p=(u8*)s; for(unsigned i=0;i<sizeof(Save);i++) p[i]=SRAM[i];
-    if(s->magic!=0x53475542 || s->ver!=1 || s->sum!=save_sum(s)) return 0;
-    if(!apply) return 1;
-    zone=s->zone; zone_cleared=s->zone_cleared; endless=s->endless; world_no=s->world_no; best_depth=s->best_depth; level=s->level;
-    st_str=s->st[0]; st_dex=s->st[1]; st_vit=s->st[2]; st_mag=s->st[3]; stat_pts=s->stat_pts; food=s->food; bugs_freed=s->bugs; fame=s->fame; portal_depth=s->portal; spell_sel=s->spell_sel;
-    xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed;
-    for(int i=0;i<6;i++) have_bug[i]=s->have_bug[i];
-    memcpy(berry_map,s->berry_map,8); memcpy(seed_map,s->seed_map,6); memcpy(berry_known,s->berry_known,8); memcpy(seed_known,s->seed_known,6); memcpy(spell_known,s->spell_known,NSPELL);
-    eqw=s->eq[0]; eqa=s->eq[1]; eqc=s->eq[2]; bag_n=s->bag_n; memcpy(bag,s->bag,sizeof(bag)); bag_sel=0;
-    q_type=s->q_type; q_need=s->q_need; q_have=s->q_have; q_floor=s->q_floor; q_done=s->q_done; q_gold=s->q_gold; q_fame=s->q_fame; q_zone=s->q_zone; q_world=s->q_world; memcpy(q_name,s->q_name,24);
-    pet_form=s->pet_form; pet_form_t=s->pet_form_t; pet_maxhp=s->pet_maxhp; pet_hp=s->pet_hp; pet_away_t=0; pet_down_t=0;
-    load_ext();
-    if(endless) make_world();
-    recalc(); hearts=s->hp; mp=s->mp; if(hearts<1) hearts=maxh;
-    return 1;
 }

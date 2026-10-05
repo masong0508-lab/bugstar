@@ -229,7 +229,7 @@ static void hurt(int n){
     int def = d_def + (shield_t ? 5+st_mag/2 : 0);
     n -= def/2; if(n<1) n=1;
     if(rndi(100) < def){ say("BLOCKED!"); invuln=15; return; }
-    hearts-=n; invuln=30; shake_t=10; sfx(4); hud_now();
+    hearts-=n; invuln=30; shake_t=opt_shake?10:0; sfx(4); hud_now();
 }
 static void hunger_tick(int every){
     if(++hunger_t < every) return; hunger_t=0;

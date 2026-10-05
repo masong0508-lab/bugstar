@@ -2,7 +2,7 @@
 
 A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time 3D dungeons under each one, a pet that fights beside you, and a galaxy that never ends.
 
-**Play:** open `bugstar.gba` in mGBA (or any GBA emulator, or a flash cart). It saves your bug on the cartridge.
+**Play:** open `bugstar.gba` in mGBA (or any GBA emulator, or a flash cart). It saves on the cartridge (3 save slots).
 
 ## Controls
 | Button | On a planet | In a dungeon |
@@ -12,7 +12,14 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | B | Use the picked item | Use the picked item |
 | L / R | Pick an item in your bag | Pick an item in your bag |
 | SELECT | | Tap: cast your spell. Hold + L/R: change spell |
-| START | Character screen | Character screen |
+| START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM) | Character screen |
+
+## Saving, loading and options
+- **Title screen:** CONTINUE (your last slot), NEW GAME, LOAD GAME, OPTIONS. Up/down and A.
+- **Three save slots.** Each card shows the world, level, XP bar, gold, fame and play time. In the slot picker: SELECT erases a slot, R copies it to another. Old single-slot saves show up as slot 1.
+- **SYSTEM tab** (START, then L/R): SAVE GAME to your slot, SAVE TO ANOTHER SLOT, LOAD GAME, OPTIONS, QUIT TO TITLE. You can only save on the surface (not inside a dungeon). Loading and quitting work anywhere.
+- **Autosave** still happens at your ship, after dungeons and at stations. Turn it off in OPTIONS if you want to save by hand.
+- **Options:** music (off/low/full), sound effects, autosave, screen shake. They are remembered on the cartridge.
 
 ## What is in it
 - **Six zones**, each dungeon deeper than the last (3 to 8 floors), a boss at the bottom. Then the **endless galaxy**: new worlds forever, bottomless dungeons, loot you only keep if you get out.
@@ -33,7 +40,7 @@ Needs an ARM GBA toolchain (`arm-none-eabi-gcc`, e.g. devkitARM), `gbafix`, and 
 ```
 make            # or: make TC=/path/to/arm-none-eabi-
 ```
-Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, saving), `sound.inc` (music and effects), `gen.py` + `texgen.py` (make `assets.h`: palettes, textures, sprites, tables), `crt0.s` + `gba.ld`.
+Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `gen.py` + `texgen.py` (make `assets.h`: palettes, textures, sprites, tables), `crt0.s` + `gba.ld`.
 
 ## Space (new)
 At your ship, pick **LAUNCH INTO SPACE**.

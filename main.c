@@ -46,6 +46,13 @@ static int cosx(int a){ return sin_tab[(a+64)&255]; }
 static int hearts=5, gold=0, crew=0, frames=0, planet_no=0, depth_no=0, invuln=0;
 static volatile u16 *page;         // the page we draw into (mode 4)
 static int page_back=0;
+// options, save slots and menu requests (see save.inc)
+static volatile int opt_music=2;   // 0 off, 1 low, 2 full
+static volatile int opt_sfx=1;
+static int opt_autosave=1, opt_shake=1;
+static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
+static int in_game=0;
+static int sys_req=0;                 // set by the SYSTEM page: 1 = load cur_slot, 2 = quit to the title
 
 // ---------------------------------------------------------------- mode 4 text
 static void pix(volatile u16 *pg, int x, int y, int c){
@@ -87,6 +94,7 @@ static void set_affine(int m, int pa, int pb, int pc, int pd){ volatile u16 *o=O
 
 #include "sound.inc"
 #include "game.inc"
+#include "save.inc"
 #include "ui.inc"
 static int launch_flag=0;
 static void story_boss_beaten(void);
@@ -172,7 +180,7 @@ static void planet_frame(void){
         else switch(po[best].kind){
             case O_DOOR: enter_dungeon_flag=1; sfx(5); break;
             case O_SHIP:
-                if(!shop_menu()){ planet_draw_bg(); planet_hud(); save_game(); show_msg("GAME SAVED"); return; }
+                if(!shop_menu()){ planet_draw_bg(); planet_hud(); save_game(); show_msg(opt_autosave?"GAME SAVED":""); return; }
                 save_game(); launch_flag=1; return;
             case O_CAGE: po[best].alive=0; free_bug(rndi(8)<2?BUG_PILL:rndi(6)); break;
             case O_SLUG: po[best].alive=0; gold+=5; show_msg("SQUASH! +5 GOLD"); gain_xp(3+dlv()); sfx(9); break;
@@ -475,50 +483,90 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     return 0;
 }
 
-// ---------------------------------------------------------------- the title screen
-static int title_screen(void){
-    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
+// ---------------------------------------------------------------- the title screen: CONTINUE / NEW GAME / LOAD GAME / OPTIONS
+static void title_restore(volatile u16 *pg, int y0, int y1){ const u16 *src=(const u16*)planet_img; for(int i=y0*120;i<y1*120;i++) pg[i]=src[i]; }
+static void title_paint(volatile u16 *pg){
     int z=zone, e=endless; zone=0; endless=0; planet_palette(); planet_draw_bg(); zone=z; endless=e;
-    volatile u16 *pg=VRAM;
     rect(pg,0,0,240,18,0);
     text(pg,66,26,"BUGSTAR",C_DGREY,4); text(pg,64,24,"BUGSTAR",C_GOLD,4);
-    text(pg,68,50,"A LITTLE BUG. A BIG GALAXY.",C_WHITE,1);
-    int has=load_game(0);
+    stext(pg,68,50,"A LITTLE BUG. A BIG GALAXY.",C_WHITE);
+}
+static void twinkle(volatile u16 *pg, int t){        // a few stars blink in the side margins
+    const u8 *img=(const u8*)planet_img;
+    for(int k=0;k<14;k++){
+        int x=(k*37+11)%48; if(k&1) x+=192;
+        int y=21+((k*53+9)%86);
+        int o=img[y*240+x]; if(o>3) continue;
+        int ph=((t>>3)+k*5)&15;
+        pix(pg,x,y, ph==0 ? 5 : (ph==1||ph==15) ? 4 : o);
+    }
+}
+// returns 1 to continue or load the game in cur_slot, 0 to start a new one there
+static int title_screen(void){
+    volatile u16 *pg=VRAM;
+    enum { TI_CONT, TI_NEW, TI_LOAD, TI_OPT };
+    static const char *const tn[4]={"CONTINUE","NEW GAME","LOAD GAME","OPTIONS"};
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
+    title_paint(pg);
+    REG_BLDCNT = 0x3F | (3<<6); REG_BLDY = 16;
+    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
     music(2);
+    int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1; int it[4];
     wait_release();
-    int blink=0;
+    int fading_in=1;
     while(1){
+        if(full){ full=0; title_paint(pg); slots_refresh(); cs=first_good_slot();
+            n=0; if(cs>=0) it[n++]=TI_CONT; it[n++]=TI_NEW; if(cs>=0) it[n++]=TI_LOAD; it[n++]=TI_OPT;
+            if(sel>=n) sel=0; dirty=1; }
+        if(dirty){ dirty=0; char b[40];
+            title_restore(pg,56,118);
+            for(int i=0;i<n;i++){ int y=62+i*11; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
+                if(i==sel){ rect(pg,66,y-2,108,10,6); text(pg,x,y,nm,C_GOLD,1); text(pg,70,y,">",C_GOLD,1); text(pg,166,y,"<",C_GOLD,1); }
+                else stext(pg,x,y,nm,C_WHITE); }
+            int y=62+n*11+3; b[0]=0;
+            if(it[sel]==TI_CONT){ const SlotInfo *o=&sinf[cs]; char w[28]; slot_where(o,w); scpy(b,"SLOT "); ncat(b,cs+1); scat(b,"  LV "); ncat(b,o->level); scat(b,"  "); scat(b,w); }
+            else if(it[sel]==TI_NEW) scpy(b,"START A NEW ADVENTURE");
+            else if(it[sel]==TI_LOAD) scpy(b,"PICK ONE OF YOUR 3 SAVE SLOTS");
+            else scpy(b,"SOUND, AUTOSAVE AND MORE");
+            b[34]=0; stext(pg,120-textlen(b)*2,y,b,C_CYAN);
+        }
         oam_hide_all(); set_affine(31,128,0,0,128);
         shadow_oam[0].a0=((150-32-((blink>>3)&1))&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((120-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=T_BUGSIDE;
         vsync(); oam_flush(); read_keys(); blink++; rng_s += blink;
-        if((blink&31)==0 || (blink&31)==16){ const u16 *src=(const u16*)planet_img; for(int i=64*120;i<86*120;i++) pg[i]=src[i];
-            if(blink&16){ text(pg,85,67,"A: NEW GAME",0,1); text(pg,84,66,"A: NEW GAME",C_WHITE,1); if(has){ text(pg,81,77,"START: CONTINUE",0,1); text(pg,80,76,"START: CONTINUE",C_CYAN,1); } } }
-        if(HIT(K_A)) return 0;
-        if(has && HIT(K_START)) return 1;
+        if(fading_in){ fading_in=0; fade(0); }
+        twinkle(pg,blink);
+        if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; sfx(7); }
+        if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; sfx(7); }
+        if(HIT(K_A)||HIT(K_START)){
+            int a=it[sel]; sfx(2);
+            if(a==TI_CONT){ cur_slot=cs; return 1; }
+            if(a==TI_NEW){ int s2=slot_picker(pg,SP_NEW,0); if(s2>=0){ cur_slot=s2; return 0; } full=1; }
+            if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; return 1; } full=1; }
+            if(a==TI_OPT){ options_screen(pg); full=1; }
+            wait_release();
+        }
     }
 }
 
-// ================================================================= main loop
-int main(void){
-    REG_DISPCNT = 0x80;
-    REG_WAITCNT = 0x4317;
-    *(volatile u16*)0x04000100=0; *(volatile u16*)0x04000104=0; *(volatile u16*)0x04000106=0x84; *(volatile u16*)0x04000102=0x80;
-    sound_init();
-    rng_s ^= 0x9E3779B9;
-    new_game();
-    int cont = title_screen();
+// ================================================================= starting, running and leaving a game
+static void start_game(int cont){       // fades out, sets the world up from cur_slot (or fresh) and fades in on the planet
     rng_s ^= vbl_count*2654435761u;
     fade(1);
     gen_cluster();
-    if(cont) load_game(1); else { new_game(); gen_cluster(); load_ext_defaults(); save_game(); }
+    if(!(cont && load_game(1))){ cont=0; new_game(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
+    scene=0; launch_flag=0; enter_dungeon_flag=0; fish_state=0; msg_timer=0; invuln=0; shake_t=0; page_back=0; loot=0; depth_no=0;
+    speed_t=strong_t=dizzy_t=stun_t=shield_t=0;
     restock();
     planet_enter(); new_planet(); show_msg(cont ? "WELCOME BACK" : "THE GARDEN: FIND THE DOOR");
     oam_hide_all(); oam_flush(); fade(0);
-    scene=0; music(0);
+    music(0);
+}
+// plays until the player chooses QUIT TO TITLE
+static void run_game(void){
     while(1){
         read_keys(); frames++; if(invuln) invuln--;
+        if(sys_req){ int rq=sys_req; sys_req=0; if(rq==2) return; start_game(1); continue; }
         rng_s += keys;
         if(pet_away_t && --pet_away_t==0){ gold+=pet_sold_g; char b[40]; scpy(b,"BUDDY SOLD "); ncat(b,pet_sold_n); scat(b," THINGS: +"); ncat(b,pet_sold_g); scat(b,"G"); say(b); sfx(7); hud_now(); pet_x=px_; pet_y=py_; }
         if(scene==2){
@@ -553,5 +601,25 @@ int main(void){
                    restock(); save_game();
                    planet_enter(); show_msg(mb); oam_flush(); music(0); fade(0); }
         }
+    }
+}
+
+int main(void){
+    REG_DISPCNT = 0x80;
+    REG_WAITCNT = 0x4317;
+    *(volatile u16*)0x04000100=0; *(volatile u16*)0x04000104=0; *(volatile u16*)0x04000106=0x84; *(volatile u16*)0x04000102=0x80;
+    sound_init();
+    rng_s ^= 0x9E3779B9;
+    settings_load(); music_apply();
+    while(1){
+        in_game=0; sys_req=0; scene=0;
+        cur_slot=last_slot;
+        new_game();
+        int cont=title_screen();
+        start_game(cont);
+        in_game=1;
+        run_game();
+        fade(1); oam_hide_all(); oam_flush(); music(-1);
+        REG_BLDCNT=0; REG_BLDY=0; REG_DISPCNT=0x80;      // dark, until the title is painted
     }
 }

@@ -418,13 +418,12 @@ static void station_menu(void){
 // ---------------------------------------------------------------- the ship's own save block (after the main save)
 typedef struct { u32 magic; s16 cur_sys, cluster_no, fuel, hull, shield_lv, laser_lv, cargo_cap, ant_king, cleared_mask, zones_open, visits, w_dlv; u8 cargo[8]; u32 sum; } SaveX;
 EW static SaveX svx;
-#define SX_OFF 0x800
 static u32 sx_sum(const SaveX *s){ const u8 *p=(const u8*)s; u32 h=2166136261u; for(unsigned i=0;i<sizeof(SaveX)-4;i++){ h^=p[i]; h*=16777619u; } return h; }
 static void save_ext(void){
     SaveX *s=&svx; memset(s,0,sizeof(SaveX)); s->magic=0x50494853;
     s->cur_sys=cur_sys; s->cluster_no=cluster_no; s->fuel=fuel; s->hull=hull; s->shield_lv=shield_lv; s->laser_lv=laser_lv; s->cargo_cap=cargo_cap;
     s->ant_king=ant_king; s->cleared_mask=cleared_mask; s->zones_open=zones_open; s->visits=visits; s->w_dlv=w_dlv; memcpy(s->cargo,cargo,8);
-    s->sum=sx_sum(s); const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) SRAM[SX_OFF+i]=p[i];
+    s->sum=sx_sum(s); const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) SRAM[slot_base(cur_slot)+SX_OFF+i]=p[i];
 }
 static void load_ext_defaults(void){
     fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; memset(cargo,0,8);
@@ -433,7 +432,7 @@ static void load_ext_defaults(void){
     gen_cluster();
 }
 static int load_ext(void){
-    SaveX *s=&svx; u8 *p=(u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) p[i]=SRAM[SX_OFF+i];
+    SaveX *s=&svx; u8 *p=(u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) p[i]=SRAM[slot_base(cur_slot)+SX_OFF+i];
     if(s->magic!=0x50494853 || s->sum!=sx_sum(s)){ load_ext_defaults(); return 0; }
     cur_sys=s->cur_sys; cluster_no=s->cluster_no; fuel=s->fuel; hull=s->hull; shield_lv=s->shield_lv; laser_lv=s->laser_lv; cargo_cap=s->cargo_cap;
     ant_king=s->ant_king; cleared_mask=s->cleared_mask; zones_open=s->zones_open; visits=s->visits; w_dlv=s->w_dlv; memcpy(cargo,s->cargo,8);

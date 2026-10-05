@@ -31,14 +31,14 @@ static volatile int vbl_count=0;
 
 IWRAM static void music_tick(void){
     vbl_count++;
-    if(mus_track<0) return;
+    if(mus_track<0 || opt_music==0) return;
     if(--mus_t>0) return;
     const Track *t=&tracks[mus_track]; mus_t=t->tempo;
     int m=t->mel[mus_step], b=t->bas[mus_step];
     if(m==0) SND(0x08)=0;                                            // channel 2 quiet
-    else if(m>1){ SND(0x08)=(t->vol<<12)|(1<<8)|(2<<6); SND(0x0C)=0x8000|sq_freq[m]; }
+    else if(m>1){ int v = opt_music==1 ? t->vol>>1 : t->vol; SND(0x08)=(v<<12)|(1<<8)|(2<<6); SND(0x0C)=0x8000|sq_freq[m]; }
     if(b==0) SND(0x12)=0;
-    else if(b>1){ SND(0x12)=(1<<13); SND(0x14)=0x8000|wv_freq[b]; }
+    else if(b>1){ SND(0x12)=((opt_music==1?2:1)<<13); SND(0x14)=0x8000|wv_freq[b]; }
     mus_step=(mus_step+1)&63;
 }
 IWRAM static void irq_handler(void){
@@ -61,6 +61,7 @@ static void sound_init(void){
 }
 // little noises: 0 bite, 1 hit, 2 pick up, 3 fireball, 4 hurt, 5 stairs, 6 fanfare, 7 coin, 8 splash, 9 monster dies, 10 spark
 static void sfx(int n){
+    if(!opt_sfx) return;
     switch(n){
         case 0: SND(0x18)=(0xA<<12)|(1<<8); SND(0x1C)=0x8000|(3<<4)|1; break;
         case 1: SND(0x00)=(2<<4)|(1<<3)|3; SND(0x02)=(0xC<<12)|(1<<8)|(2<<6); SND(0x04)=0x8000|1750; break;
