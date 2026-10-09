@@ -203,7 +203,7 @@ static void space_enter(int from_planet){
     ambush_t=0;
     if(!no_ambush && ((beast_stage==0 && (cleared_mask&1)) || (beast_stage==1 && (cleared_mask&4)) || (beast_stage==2 && ant_king))){ ambush_t=160; space_say("WARNING: SOMETHING IS COMING..."); }
     if(hive_card && !no_ambush) show_hive_card();
-    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
+    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); hdma_on=0;
 }
 static void boom(s32 x, s32 y, s32 z, int n, int col){
     for(int i=0;i<NSPP && n;i++) if(spp[i].life<=0){ SPart *p=&spp[i]; p->x=x; p->y=y; p->z=z; p->vx=lr(161)-80; p->vy=lr(161)-80; p->vz=lr(161)-80; p->life=20+lr(25); p->col=col; n--; }

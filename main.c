@@ -93,6 +93,20 @@ static void oam_hide_all(void){ for(int i=0;i<128;i++){ shadow_oam[i].a0 = 0x020
 static void oam_flush(void){ volatile u16 *o=OAM; for(int i=0;i<128;i++){ o[i*4]=shadow_oam[i].a0; o[i*4+1]=shadow_oam[i].a1; o[i*4+2]=shadow_oam[i].a2; } }
 static void set_affine(int m, int pa, int pb, int pc, int pd){ volatile u16 *o=OAM; o[m*16+3]=pa; o[m*16+7]=pb; o[m*16+11]=pc; o[m*16+15]=pd; }
 
+// ---------------------------------------------------------------- hills: a per-scanline vertical offset for the planet picture (HBlank DMA into BG2Y)
+#define REG_BG2Y   (*(volatile u32*)0x04000038)
+#define REG_DMA0SAD (*(volatile u32*)0x040000B0)
+#define REG_DMA0DAD (*(volatile u32*)0x040000B4)
+#define REG_DMA0CNT (*(volatile u32*)0x040000B8)
+static volatile int hdma_on=0;
+EW static u32 bg2y_tab[162];
+static void hdma_vbl(void){          // called every VBlank from the interrupt: restart the per-line copy
+    REG_DMA0CNT=0;
+    if(!hdma_on){ REG_BG2Y=0; return; }
+    REG_BG2Y=bg2y_tab[0];
+    REG_DMA0SAD=(u32)&bg2y_tab[1]; REG_DMA0DAD=0x04000038;
+    REG_DMA0CNT = 1 | (2u<<21) | (0u<<23) | (1u<<25) | (1u<<26) | (2u<<28) | (1u<<31);   // 1 word, dst fixed, src inc, repeat, 32-bit, at HBlank, on
+}
 #include "sound.inc"
 #include "game.inc"
 #include "save.inc"
@@ -101,7 +115,8 @@ static int launch_flag=0, zone_card=0, arrow_ship=0;
 static void story_boss_beaten(void); static int hive_here(void); static int hive_boss_floor(void); static void hive_kill(void);
 
 // ================================================================= THE PLANET
-enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_PEBBLE, O_TUFT };
+enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_PEBBLE, O_TUFT, O_HILL };
+#define NHILL 22
 typedef struct { s32 x,y,z; u8 kind, alive; } PObj;
 #define NPO 110
 EW static PObj po[NPO];
@@ -162,12 +177,21 @@ static void new_planet(void){
     po[k].kind=O_DOOR; po[k].alive=1; po[k].x=P0x; po[k].y=P0y; po[k].z=P0z; rot_axis(&po[k],16384,0,0,30); rot_axis(&po[k],AXx,AXy,AXz,8); k++;
     for(int i=0;i<2;i++){ po[k].kind=O_CAGE; po[k].alive=1; rand_dir(&po[k]); k++; }
     for(int i=0;i<2;i++){ po[k].kind=O_SLUG; po[k].alive=1; do rand_dir(&po[k]); while(dot_p0(&po[k])>8000); k++; }
+    for(int i=0;i<NHILL;i++){ po[k].kind=O_HILL; po[k].alive=1; do rand_dir(&po[k]); while(dot_p0(&po[k])>15500); k++; }   // hills, none right under you at the start
     for(int i=0;i<30;i++){ po[k].kind=O_PLANT; po[k].alive=1; rand_dir(&po[k]); k++; }
     while(k<NPO){ po[k].kind = (k&1)?O_PEBBLE:O_TUFT; po[k].alive=1; rand_dir(&po[k]); k++; }
 }
-static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_PEBBLE,T_TUFT};
-static const u8 shape_of[]={0,0,1,1,0,0,0}, size_of[]={1,1,0,0,0,0,0}, w_of[]={16,16,16,16,8,8,8}, h_of[]={16,16,8,8,8,8,8};
+static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_PEBBLE,T_TUFT,T_HILL};
+static const u8 shape_of[]={0,0,1,1,0,0,0,1}, size_of[]={1,1,0,0,0,0,0,3}, w_of[]={16,16,16,16,8,8,8,64}, h_of[]={16,16,8,8,8,8,8,32};
 
+// the ground rises in smooth bumps around each hill. heights are in screen pixels at full scale
+static int hill_h(int k){ return 16+(k%4)*6; }
+static int bump(s32 d, int H){ if(d<14300) return 0; int t=(d-14300)*64/(16384-14300); return (H*t*t)>>12; }
+static int height_at(PObj *o){ int h=0, k=0; for(int i=0;i<NPO;i++) if(po[i].kind==O_HILL){ s32 d=(po[i].x*o->x+po[i].y*o->y+po[i].z*o->z)>>14; h+=bump(d,hill_h(k)); k++; } return h; }
+static int player_h=0;
+static void hills_scanlines(void){      // the picture stretches down as you climb: rows near you move most
+    for(int r=0;r<162;r++){ int off=0; if(r>=18) off = -(player_h*(r-18))/142; int src=r+off; if(src<18 && r>=18) src=18; bg2y_tab[r]=(u32)(src<<8); }
+}
 static int enter_dungeon_flag=0;
 static int pw_h=0, pw_v=0, pw_ha=0, pw_va=0, pw_step=0;     // walking on the ball: speed in 16ths of a step, with a little weight
 static void planet_frame(void){
@@ -201,7 +225,7 @@ static void planet_frame(void){
         else switch(po[best].kind){
             case O_DOOR: enter_dungeon_flag=1; sfx(5); break;
             case O_SHIP:
-                { int r=shop_menu();
+                { hdma_on=0; int r=shop_menu(); hdma_on=1;
                   if(!r){ planet_draw_bg(); planet_hud(); save_game(); show_msg(opt_autosave?"GAME SAVED":""); return; }
                   save_game(); launch_flag=r; return; }
             case O_CAGE: po[best].alive=0; free_bug(rndi(8)<2?BUG_PILL:rndi(6)); break;
@@ -215,7 +239,7 @@ static void planet_frame(void){
         }
     }
     bag_input(); tick_timers(); hunger_tick(240); regen_tick(120);
-    if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen(VRAM); planet_draw_bg(); planet_hud(); msg_timer=0; return; }
+    if(HIT(K_START)){ oam_hide_all(); oam_flush(); hdma_on=0; char_screen(VRAM); planet_draw_bg(); planet_hud(); msg_timer=0; hdma_on=1; return; }
     if(cast_flag>=0){ arrow_ship^=1; show_msg(arrow_ship?"ARROW: TO YOUR SHIP":"ARROW: TO THE DOOR"); sfx(7); }
     escape_flag=call_flag=blast_flag=0; cast_flag=-1;
     if(hearts<=0){ hearts=maxh; food=60; gold/=2; if(!opt_easy){ bag_n=0; bag_sel=0; } show_msg(opt_easy?"YOU FAINTED. HALF YOUR GOLD IS GONE":"YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }
@@ -232,7 +256,9 @@ static void planet_frame(void){
           if(pk>=0){ const char *s=pt[pk]; stext(pg,120-textlen(s)*2,38,s,C_GOLD); } } }
     // sprites: project, scale, sort by height on screen
     EW static u8 order[NPO]; EW static s16 sy_[NPO]; int n=0;
-    for(int i=0;i<NPO;i++){ if(!po[i].alive || po[i].z<300) continue; s32 sy=292+((232*po[i].y)>>14); if(sy>170) continue; sy_[i]=sy; order[n++]=i; }
+    { PObj me={P0x,P0y,P0z,0,1}; int k=0, h=0; for(int i=0;i<NPO;i++) if(po[i].kind==O_HILL){ h+=bump(dot_p0(&po[i]),hill_h(k)); k++; } player_h=h; }
+    hills_scanlines();
+    for(int i=0;i<NPO;i++){ if(!po[i].alive || po[i].z<300) continue; s32 sy=292+((232*po[i].y)>>14); if(sy>190) continue; sy_[i]=sy; order[n++]=i; }
     for(int i=1;i<n;i++){ u8 t=order[i]; int j=i; while(j>0 && sy_[order[j-1]]<sy_[t]){ order[j]=order[j-1]; j--; } order[j]=t; }
     for(int m=0;m<30;m++){ int s=40+m*7; int inv=16384/s; set_affine(m, inv, 0, 0, inv); }   // scale s/64 .. (pa=256*64/s)
     oam_hide_all();
@@ -241,7 +267,7 @@ static void planet_frame(void){
     int pvis = !(invuln && (frames&4));
     { int lean = moved ? 10 : 0, sq = moved && ((frames>>3)&1) ? 8 : 0;   // lean into the walk, a little squash each step
       set_affine(31, facing? -128:128, facing? lean:-lean, 0, 128+sq); }
-    if(pvis){ shadow_oam[0].a0 = ((150-16-16-bob)&255) | (1<<8)|(1<<9) | (1<<14);
+    if(pvis){ shadow_oam[0].a0 = ((150-16-16-bob-player_h/3)&255) | (1<<8)|(1<<9) | (1<<14);
               shadow_oam[0].a1 = ((120-32)&511) | (31<<9) | (2<<14);
               shadow_oam[0].a2 = moved && ((frames>>3)&1) ? T_BUGSIDE2 : T_BUGSIDE; }
     // the guide arrow: it circles your bug and points the shortest way to the door (or to your ship once the boss is beaten)
@@ -262,34 +288,37 @@ static void planet_frame(void){
     for(int k=0;k<3 && slot<125;k++){ Cloud *c=&clouds[k];
         c->x += ((frames+k*20)%3==0) ? (k&1?1:-1) : 0; c->x -= pw_h/8;
         if(c->x<-40) c->x=250; if(c->x>250) c->x=-40;
-        shadow_oam[slot].a0 = ((c->y-4)&255) | (1<<8)|(1<<9) | (1<<10) | (1<<14);
-        shadow_oam[slot].a1 = ((c->x-16)&511) | (9<<9) | (1<<14);
+        shadow_oam[slot].a0 = ((c->y-4)&255) | (1<<14);
+        shadow_oam[slot].a1 = ((c->x-16)&511) | (1<<14);
         shadow_oam[slot].a2 = T_CLOUD; slot++; }
-    if(slot<125){ shadow_oam[slot].a0 = ((150-6)&255) | (1<<8)|(1<<9) | (1<<10) | (1<<14); shadow_oam[slot].a1 = ((120-8)&511) | (9<<9); shadow_oam[slot].a2 = T_SHADOW; slot++; }
-    REG_BLDCNT = (1<<6) | (1<<10); REG_BLDALPHA = 6 | (10<<8);     // shadows and clouds are see-through
+    if(slot<125){ shadow_oam[slot].a0 = ((150-2)&255) | (1<<14); shadow_oam[slot].a1 = ((120-8)&511) | (1<<14); shadow_oam[slot].a2 = T_SHADOW; slot++; }
+    REG_BLDCNT = 0;
+    int hk=0;
     for(int k=0;k<n && slot<128;k++){
         PObj *o=&po[order[k]];
         int sx=128+((232*o->x)>>14), sy=sy_[order[k]];
         int sc=26+((o->z*102)>>14);                      // scale in 1/64: rim small, front big
-        int m=(sc-40)/7; if(m<0) m=0; if(m>29) m=29; sc=40+m*7;
+        int m=(sc-40)/7; if(m<0) m=0; if(m>29) m=29; if(o->kind==O_HILL && m>12) m=12; sc=40+m*7;     // a hill is as big as its sprite box allows
         int w=w_of[o->kind], h=h_of[o->kind];
+        int hdiff = (o->kind==O_HILL ? hill_h(hk++)*2/3 : height_at(o)) - player_h;    // higher ground lifts things; you on a hill lowers them
+        sy += -(hdiff*sc)>>6;
         int cy=sy - (sc*h)/128;                           // centre so the bottom touches the ground
         int ox=sx-w, oy=cy-h;
         if(ox<-64||ox>240||oy<-64||oy>160) continue;
         int pb = o->z>9500 ? 0 : o->z>5000 ? 1 : 2;              // palette bank: dimmer toward the rim
         shadow_oam[slot].a0 = (oy&255) | (1<<8)|(1<<9) | (shape_of[o->kind]<<14);
         shadow_oam[slot].a1 = (ox&511) | (m<<9) | (size_of[o->kind]<<14);
-        shadow_oam[slot].a2 = tile_of[o->kind] | (pb<<12);
+        shadow_oam[slot].a2 = tile_of[o->kind] | (pb<<12) | (o->kind==O_HILL ? (1<<10) : 0);   // hills lie flat under everything
         slot++;
         if(o->kind<=O_SLUG && slot<126){                           // a soft shadow on the ground under the big things
             int sw = o->kind<=O_SHIP ? 16 : 16; (void)sw;
-            shadow_oam[slot].a0 = ((sy-2-4)&255) | (1<<8)|(1<<9) | (1<<10) | (1<<14);
+            shadow_oam[slot].a0 = ((sy-2-4)&255) | (1<<8)|(1<<9) | (1<<14);
             shadow_oam[slot].a1 = ((sx-8)&511) | (m<<9) | (0<<14);
-            shadow_oam[slot].a2 = T_SHADOW | (1<<10); slot++; }
+            shadow_oam[slot].a2 = T_SHADOW; slot++; }
     }
 }
 static void planet_enter(void){
-    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
+    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BG2CNT=3; hdma_on=1; hills_scanlines();
     planet_palette(); planet_draw_bg(); planet_hud();
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
 }
@@ -764,7 +793,7 @@ static int title_screen(void){
     static const char *const tn[5]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS"};
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
-    title_paint(pg);
+    hdma_on=0; title_paint(pg);
     REG_BLDCNT = 0x3F | (3<<6); REG_BLDY = 16;
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
     music(2);
@@ -820,7 +849,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     oam_hide_all(); oam_flush(); fade(0);
     music(0);
     if(!cont){ static const char *const t[6]={"YOU ARE A LITTLE PILL BUG.","THE ANT KING HAS CAGED YOUR BUG FRIENDS.","","FOLLOW THE YELLOW ARROW TO THE DOOR.","GO DOWN. BEAT THE BOSS AT THE BOTTOM.","THEN FLY YOUR SHIP TO THE NEXT STAR."};
-        card(VRAM,"BUGSTAR",t,6); planet_draw_bg(); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
+        hdma_on=0; card(VRAM,"BUGSTAR",t,6); hdma_on=1; planet_draw_bg(); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
 #ifdef TEST_DUNGEON
     enter_dungeon_flag=1;
 #endif
@@ -899,10 +928,11 @@ static void run_game(void){
                    restock(); save_game();
                    planet_enter(); arrow_ship = zone_cleared && !endless; show_msg(mb); oam_flush(); music(0); fade(0);
                    if(zone_card){ int z=zone_card-1; zone_card=0;
+                       hdma_on=0;
                        if(z==5){ fade(1); credits(); planet_enter(); fade(0); }
                        else { static const char *const t[6]={"A NEW STAR IS OPEN.","","1. GO TO YOUR SHIP. FOLLOW THE ARROW.","2. PICK LAUNCH INTO SPACE.","3. PRESS SELECT FOR THE GALAXY MAP.","4. PICK THE NEW STAR AND PRESS A."};
                            card(VRAM,"BOSS BEATEN! ZONE CLEARED",t,6); }
-                       planet_draw_bg(); planet_hud(); show_msg("GO TO YOUR SHIP"); } }
+                       hdma_on=1; planet_draw_bg(); planet_hud(); show_msg("GO TO YOUR SHIP"); } }
         }
     }
 }

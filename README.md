@@ -30,7 +30,7 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 - **Easy mode** in OPTIONS: half damage to you, slower hunger, you keep your bag when you faint.
 - **Autopilot:** after you beat a zone's boss, the ship's first choice flies you straight to the next star. Hold A on it to launch by hand instead.
 - **Planets:** search plants (A) for leaves to eat, berries, seeds and the odd shiny pebble. Plants grow back.
-- **Planets look deeper:** things fade as they go over the edge, soft shadows, see-through clouds, a darker rim and a glow of air around the world.
+- **Planets have hills now.** The ground rises and falls as you walk: your bug climbs up on hills (its shadow stays on the ground), things on high ground sit higher, the ground stretches under you when you are up, and hills show as domes on the horizon. Plus: things fade as they go over the edge, soft shadows, drifting clouds, a darker rim and a glow of air around the world.
 
 ## New in this update
 - **Yellow arrow** on every planet. It points the short way to the door (or your ship). SELECT switches it.

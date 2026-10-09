@@ -598,6 +598,6 @@ static void dungeon_enter(void){
     for(int i=0;i<16;i++) bayi[i]=15-bayer[i];
     for(int i=0;i<MW*MW;i++){ int t=dmap[i], f=fmat[i], x=i%MW, y=i/MW;
         fcode[i] = t==D_UP?7 : t==D_DOWN?8 : f==FL_FLAG?((x+y)&1) : f==FL_TILE?2 : f==FL_DIRT?3 : f==FL_MOSS?4 : f==FL_WATER?5 : 6; }
-    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
+    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); hdma_on=0;
     dungeon_hud_both();
 }
