@@ -4,6 +4,8 @@
 // distance, which bends the horizon into the edge of a small planet. Things on the surface are sprites placed on that terrain.
 #define TW 128
 #define TMASK (TW-1)
+#define HW 256                    // the rendered map is the world map smoothed up to 256x256 (two texels per cell)
+#define HMASK (HW-1)
 #define FOCP 120                  // focal length in pixels
 #define CAM_BACK (6<<16)          // the camera sits 6 cells behind the bug
 #define CAM_UP   (4<<8)           // ...and 4 cells above the ground under it
@@ -12,12 +14,16 @@
 #define SKY_B 8                   // palette: sky 8..15, ground 40..55, water 56..63
 #define GND_B 40
 #define WAT_B 56
-enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_PEBBLE, O_TUFT };
-typedef struct { s32 x,y; u8 kind, alive; } PObj;          // x,y: where on the map, 16.16 cells
-#define NPO 90
+enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_TREE, O_ROCK, O_WEB, O_FLOWER, O_PEBBLE, O_TUFT };
+#define O_LAST_USE O_FLOWER                                // kinds up to this one react to A
+typedef struct { s32 x,y; u8 kind, alive, hp; } PObj;      // x,y: where on the map, 16.16 cells. hp: bites left in a resource node
+#define NPO 100
+static const u8 node_good[4]={3,4,2,1};                    // tree -> AMBER, rock -> CRYSTALS, web -> SILK, flower -> NECTAR (the station's goods)
+static const char *const node_name[4]={"AMBER TREE","CRYSTAL ROCK","SILK WEB","NECTAR FLOWER"};
 EW static PObj po[NPO];
-EW static u8 hmap[TW*TW];                                  // 0..255: height of the ground
-EW static u8 cmap[TW*TW];                                  // the colour of each cell, lit by a sun from the north-west
+EW static u8 hmap[TW*TW];                                  // 0..255: height of the ground, one per cell
+EW static u8 hfine[HW*HW];                                 // the same, smoothed, two texels per cell: what the renderer walks
+EW static u8 cmap[HW*HW];                                  // the colour of each texel, lit by a sun from the north-west
 static s32 ppx, ppy;                                       // where the bug stands, 16.16 cells
 static s32 cam_h;                                          // height of the camera above sea level, 8.8 cells
 #define PHZ 66                                              // the eye line (horizon) row
@@ -36,12 +42,13 @@ static void heading_rays(void){
     hcs=cosx(heading>>2)>>6; hsn=sinx(heading>>2)>>6;
     for(int c=0;c<120;c++){ rayvx[c]=(s16)(hsn + ((hcs*raydx[c])>>8)); rayvy[c]=(s16)(hcs - ((hsn*raydx[c])>>8)); }
 }
-static int pw_h=0, pw_v=0, pw_step=0;
+static int pw_h=0, pw_v=0, pw_step=0, mine_t=0;
 IWRAM_DATA static s32 stp_f[NSTEP];                        // per march step: pixels per cell at that distance, 8.8
 IWRAM_DATA static s32 stp_base[NSTEP];                     // per step: (camera height + curvature) * stp_f, 8.8 px above the eye line... as a y offset
 IWRAM_DATA static s32 stp_z[NSTEP];                        // per step: distance from the camera, 8.8 cells
 IWRAM_DATA static u8 ybin[120*8];                          // per column: the terrain's top row after each eighth of the march (for hiding sprites behind hills)
 IWRAM_DATA static u8 skyrow[160];
+IWRAM_DATA static s8 gtex[256];                            // a little grass/soil texture, +-1 shade
 static const u8 bay4[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
 
 static u16 lerp15(u16 a, u16 b, int t){ int r=((a&31)*(16-t)+(b&31)*t)>>4, g=(((a>>5)&31)*(16-t)+((b>>5)&31)*t)>>4, bl=(((a>>10)&31)*(16-t)+((b>>10)&31)*t)>>4; return r|(g<<5)|(bl<<10); }
@@ -68,7 +75,7 @@ static int hm_bil(s32 x, s32 y){                            // height between ce
     int top=a*(256-fx)+b*fx, bot=c*(256-fx)+d*fx;
     return (top*(256-fy)+bot*fy)>>8;                          // 0..255<<8
 }
-static s32 ground_h(s32 x, s32 y){ return hm_bil(x,y)*3>>8; }   // height in 8.8 cells: 255 -> 3 cells
+static s32 ground_h(s32 x, s32 y){ return hfine[((y>>15)&HMASK)*HW + ((x>>15)&HMASK)]*3; }   // height in 8.8 cells: 255 -> 3 cells
 static void gen_terrain(u32 seed){
     wseed=seed;
     EW static s16 acc[TW*TW]; for(int i=0;i<TW*TW;i++) acc[i]=0;
@@ -86,15 +93,20 @@ static void gen_terrain(u32 seed){
     for(int i=0;i<TW*TW;i++){ int v=(acc[i]-lo)*255/(hi-lo+1); v=(v*v)>>8; hmap[i]=v; }         // squared: wide valleys, round hills
     // a flat landing field at the start
     for(int y=-5;y<=5;y++) for(int x=-6;x<=6;x++){ int i=((64+y)&TMASK)*TW+((64+x)&TMASK); int d=x*x+y*y; int t = d<12 ? 0 : d<36 ? (d-12)*256/24 : 256; hmap[i]=(hmap[i]*t + 100*(256-t))>>8; }
-    for(int y=0;y<TW;y++) for(int x=0;x<TW;x++){ int i=y*TW+x, h=hmap[i];
+    // smooth the map up to two texels per cell
+    for(int y=0;y<HW;y++){ int y0=(y>>1)&TMASK, y1=(y0+1)&TMASK, fy=(y&1)?3:1;           // texel centres sit at 1/4 and 3/4 of a cell
+        const u8 *r0=hmap+y0*TW, *r1=hmap+y1*TW; u8 *out=hfine+y*HW;
+        for(int x=0;x<HW;x++){ int x0=(x>>1)&TMASK, x1=(x0+1)&TMASK, fx=(x&1)?3:1;
+            int top=r0[x0]*(4-fx)+r0[x1]*fx, bot=r1[x0]*(4-fx)+r1[x1]*fx; out[x]=(top*(4-fy)+bot*fy)>>4; } }
+    for(int y=0;y<HW;y++) for(int x=0;x<HW;x++){ int i=y*HW+x, h=hfine[i];
         if(h<water_lv){ int w=(h*6)/(water_lv+1); cmap[i]=WAT_B+1+(w>5?5:w); continue; }
-        int hl=hmap[y*TW+((x-1)&TMASK)], hu=hmap[((y-1)&TMASK)*TW+x];
+        int hl=hfine[y*HW+((x-1)&HMASK)], hu=hfine[((y-1)&HMASK)*HW+x];
         int slope = (h-hl) + (h-hu);                                  // facing the sun (north-west) is brighter
-        int s = 5 + (h-water_lv)*6/(255-water_lv+1) + slope/6 + ((bay4[((y&3)<<2)|(x&3)]*2 + ((x*7+y*13)&7)) >> 4);
+        int s = 5 + (h-water_lv)*6/(255-water_lv+1) + slope/3 + ((bay4[((y&3)<<2)|(x&3)] + ((x*7+y*13)&7)) >> 3);
         if(h<water_lv+10 && ((x+y)&1)) s-=1;                            // a dark shoreline
         if(s<0) s=0; if(s>15) s=15; cmap[i]=GND_B+s; }
 }
-static void place(PObj *o, int kind, int minr, int maxr){ o->kind=kind; o->alive=1; int a=wr(256), r=minr+wr(maxr-minr+1); o->x=(64<<16)+cosx(a)*r*4; o->y=(64<<16)+sinx(a)*r*4; }
+static void place(PObj *o, int kind, int minr, int maxr){ o->kind=kind; o->alive=1; o->hp=3; int a=wr(256), r=minr+wr(maxr-minr+1); o->x=(64<<16)+cosx(a)*r*4; o->y=(64<<16)+sinx(a)*r*4; }
 static void new_planet(void){
     water_lv = endless ? 30+wr(60) : (zone==1 ? 100 : zone==0||zone==3 ? 70 : zone==5 ? 10 : 45);
     gen_terrain(endless ? (u32)world_no*2654435761u+7 : (u32)zone*977+13);
@@ -104,13 +116,19 @@ static void new_planet(void){
     po[k].kind=O_DOOR; po[k].alive=1; { int a=wr(256); po[k].x=(64<<16)+cosx(a)*22*4; po[k].y=(64<<16)+sinx(a)*22*4; } k++;
     for(int i=0;i<2;i++) place(&po[k++],O_CAGE,14,40);
     for(int i=0;i<3;i++) place(&po[k++],O_SLUG,10,30);
-    for(int i=0;i<26;i++) place(&po[k++],O_PLANT,4,64);
+    for(int i=0;i<20;i++) place(&po[k++],O_PLANT,4,64);
+    { int eco = endless ? sys[cur_sys].eco : zone%4;                                  // what grows here depends on the world's economy
+      static const u8 mix[4][4]={{5,2,2,5},{2,7,2,3},{3,4,5,2},{2,3,6,3}};            // farming, mining, tech, hive
+      for(int t=0;t<4;t++) for(int i=0;i<mix[eco][t];i++) place(&po[k++],O_TREE+t,6,64); }
     while(k<NPO){ place(&po[k],(k&1)?O_PEBBLE:O_TUFT,3,64); k++; }
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind!=O_SHIP && hm_at(po[i].x,po[i].y)<water_lv){ po[i].x+=1<<16; if(hm_at(po[i].x,po[i].y)<water_lv) po[i].alive = po[i].kind<=O_CAGE ? 1 : 0; }
     ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;
+#ifdef TEST_MINE
+    po[3].kind=O_TREE; po[3].alive=1; po[3].hp=3; po[3].x=(64<<16)+(1<<16); po[3].y=(64<<16)-(1<<16); po[4].kind=O_ROCK; po[4].alive=1; po[4].hp=3; po[4].x=(64<<16)+(2<<16); po[4].y=(64<<16)+(1<<16);
+#endif
 }
-static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_PEBBLE,T_TUFT};
-static const u8 shape_of[]={0,0,1,1,0,0,0}, size_of[]={1,1,0,0,0,0,0}, w_of[]={16,16,16,16,8,8,8}, h_of[]={16,16,8,8,8,8,8};
+static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_TREE,T_ROCK,T_WEB,T_FLOWER,T_PEBBLE,T_TUFT};
+static const u8 shape_of[]={0,0,1,1,0,0,0,0,0,0,0}, size_of[]={1,1,0,0,0,1,1,1,1,0,0}, w_of[]={16,16,16,16,8,16,16,16,16,8,8}, h_of[]={16,16,8,8,8,16,16,16,16,8,8};
 static s32 wrapd(s32 d){ return ((d + (64<<16)) & ((TW<<16)-1)) - (64<<16); }        // shortest way round the world, 16.16
 
 // ---------------------------------------------------------------- the renderer
@@ -119,6 +137,7 @@ static void planet_tables(void){
     for(int i=0;i<NSTEP;i++){ stp_z[i]=z; stp_f[i]=(FOCP<<16)/z; stp_base[i]=0; z += (cam_fp?24:40) + (i*i>>2); }   // steps grow with distance (8.8)
     for(int c=0;c<120;c++) raydx[c]=(s16)(((2*c-119)*180)/120);    // field of view: about 70 degrees, 8.8 cells sideways per cell of depth
     for(int y=0;y<160;y++){ int t = y<18 ? 0 : (y-18)*8/(PHZ+30-18); if(t>7) t=7; skyrow[y]=SKY_B+t; }
+    { u32 r=0x2545F491; for(int i=0;i<256;i++){ r^=r<<13; r^=r>>17; r^=r<<5; int v=(r>>4)&7; gtex[i] = v==0?-1 : v==7?1 : 0; } }
     heading_rays();
 }
 IWRAM static void render_planet(volatile u16 *pg){
@@ -132,16 +151,13 @@ IWRAM static void render_planet(volatile u16 *pg){
         for(int i=0;i<NSTEP;i++){
             s32 z=stp_z[i];
             s32 mx = cam_x + vx*z, my = cam_y + vy*z;
-            int x0=(mx>>16)&TMASK, y0=(my>>16)&TMASK; int h;
-            if(i<NEAR_STEPS){ int fx=(mx>>12)&15, fy=(my>>12)&15;
-                const u8 *r0=hmap+y0*TW, *r1=hmap+((y0+1)&TMASK)*TW; int x1=(x0+1)&TMASK;
-                int top=r0[x0]*(16-fx)+r0[x1]*fx, bot=r1[x0]*(16-fx)+r1[x1]*fx;
-                h=(top*(16-fy)+bot*fy)>>8; }                                           // smooth height between cells, 0..255
-            else h=hmap[y0*TW+x0];
+            int ti = ((my>>15)&HMASK)*HW + ((mx>>15)&HMASK);                             // texel: half a cell
+            int h = hfine[ti];
             s32 hh = h*3;                                                              // 8.8 cells
             int y = PHZ + ((stp_base[i] - ((hh*stp_f[i])>>8))>>8);
             if(y<ytop){
-                int ix = cmap[y0*TW+x0];
+                int ix = cmap[ti];
+                if(i<NEAR_STEPS && ix>=GND_B+1 && ix<GND_B+15) ix += gtex[(((my>>11)&15)<<4)|((mx>>11)&15)];    // grass texture up close
                 if(ix<GND_B && ((((c+sparkle)*7+i*3)&31)==0)) ix=WAT_B+7;              // sparkles on the water
                 u16 p2=ix|(ix<<8);
                 int y0 = y<18 ? 18 : y;
@@ -161,7 +177,7 @@ IWRAM static void render_planet(volatile u16 *pg){
 // ---------------------------------------------------------------- the status bar, messages
 static u32 phud_sig=0;
 static void planet_hud(void){
-    phud_sig=hud_sig(); char b[24]; scpy(b,world_name()); if(zone_cleared && !endless) scat(b," *");
+    phud_sig=hud_sig(); char b[24]; scpy(b,world_name()); if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[zone]+1); }
     for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b);
 }
 static void show_msg(const char *s){ int n=0; while(s[n] && n<39){ msg[n]=s[n]; n++; } msg[n]=0; msg_timer = n ? 150 : 0; }
@@ -174,7 +190,7 @@ static void planet_frame(void){
     int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>4) n=4;           // the view takes a few 60ths to draw: move by that much
     int moved=0;
     int th = HELD(K_LEFT) ? -16 : HELD(K_RIGHT) ? 16 : 0, tv = HELD(K_UP) ? -16 : HELD(K_DOWN) ? 16 : 0;
-    if(HELD(K_SEL)){ th=tv=0; if(HIT(K_L)||HIT(K_R)){ sel_used=1; arrow_ship^=1; show_msg(arrow_ship?"ARROW: TO YOUR SHIP":"ARROW: TO THE DOOR"); sfx(7); } }
+    if(HELD(K_SEL)){ th=tv=0; if(HIT(K_L)||HIT(K_R)){ sel_used=1; arrow_ship=(arrow_ship+1)%3; show_msg(arrow_ship==1?"ARROW: TO YOUR SHIP":arrow_ship==2?"ARROW: TO THE NEAREST RESOURCE":"ARROW: TO THE DOOR"); sfx(7); } }
     if(cam_fp){                                                                         // first person: left/right turn, L/R step sideways
         int turn = th; th = HELD(K_SEL) ? 0 : HELD(K_R) ? 16 : HELD(K_L) ? -16 : 0;
         if(turn){ heading=(heading+turn*n*5/8)&1023; heading_rays(); }
@@ -201,7 +217,7 @@ static void planet_frame(void){
         if(ad<0x14000 && !invuln){ hurt(3+dlv()*2); if(invuln>20) show_msg("OUCH! A SLUG"); pw_h = dx<0 ? 40 : -40; pw_v = dy<0 ? 24 : -24; } }
     // what is next to you
     int best=-1; s32 bd=0x1A000;
-    for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_PLANT){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); s32 d=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(d<bd){ bd=d; best=i; } }
+    for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_LAST_USE){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); s32 d=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(d<bd){ bd=d; best=i; } }
     if(HIT(K_A)){
         if(best<0) show_msg("NOTHING HERE");
         else switch(po[best].kind){
@@ -212,6 +228,14 @@ static void planet_frame(void){
                   save_game(); launch_flag=r; return; }
             case O_CAGE: po[best].alive=0; free_bug(rndi(8)<2?BUG_PILL:rndi(6)); break;
             case O_SLUG: po[best].alive=0; gold+=5; show_msg("SQUASH! +5 GOLD"); gain_xp(3+dlv()); sfx(9); break;
+            case O_TREE: case O_ROCK: case O_WEB: case O_FLOWER: {                     // mining: a few bites, then the goods go in your ship's hold
+                PObj *o=&po[best]; int t=o->kind-O_TREE; sfx(o->kind==O_ROCK?12:13); mine_t=8;
+                if(--o->hp>0){ char b[40]; scpy(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
+                o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0);
+                if(cargo_n()>=cargo_cap){ show_msg("HOLD FULL! SELL GOODS AT A STATION"); break; }
+                int room=cargo_cap-cargo_n(); if(n>room) n=room; cargo[g]+=n; st_mined+=n; ach_check(); gain_xp(2+dlv());
+                char b[40]; scpy(b,"+"); ncat(b,n); scat(b," "); scat(b,goods[g]); scat(b,"  HOLD "); ncat(b,cargo_n()); scat(b,"/"); ncat(b,cargo_cap); show_msg(b); sfx(7);
+                break; }
             case O_PLANT: { po[best].alive=0; int r=rndi(10);
                 if(r<5){ eat(15); show_msg("NIBBLED A LEAF. FOOD +15"); sfx(11); }
                 else if(r<8){ Gear g={IT_BERRY,(u8)rndi(8),0,0,0,0}; if(add_gear(g)) show_msg("FOUND A BERRY IN THE LEAVES"); }
@@ -235,7 +259,7 @@ static void planet_frame(void){
     { static u32 tf0=0; u32 now=TMR(); char fb[40]; scpy(fb,"N"); ncat(fb,n); scat(fb," RENDER "); ncat(fb,(int)((t_r1-t_r0)/1000)); scat(fb,"K PRE "); ncat(fb,(int)((t_r0-t_f0)/1000)); scat(fb,"K FRAME "); ncat(fb,(int)((now-tf0)/1000)); scat(fb,"K"); tf0=now; rect(pg,0,40,240,8,0); text(pg,4,41,fb,C_GOLD,1); }
 #endif
     { int pk = best<0 ? -1 : po[best].kind;
-      static const char *const pt[5]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT"};
+      static const char *const pt[9]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR"};
       if(pk>=0){ const char *s=pt[pk]; stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); } }
     (void)prompt_k;
 #ifdef TEST_FPS
@@ -253,7 +277,8 @@ static void planet_frame(void){
       int sy=bug_sy;
       int bob = moved ? ((frames>>3)&1) : 0;
       int pvis = !(invuln && (frames&4));
-      int lean = moved ? 10 : 0, sq = moved && ((frames>>3)&1) ? 8 : 0;
+      if(mine_t) mine_t--;
+      int lean = moved ? 10 : (mine_t ? 24 : 0), sq = (moved && ((frames>>3)&1)) || mine_t ? 8 : 0;
       int up = tv<0 && !th;
       set_affine(31, up ? 256 : facing? -128:128, up ? 0 : facing? lean:-lean, 0, up ? 256 : 128+sq);
       if(pvis){ shadow_oam[slot].a0 = ((up ? sy-96-bob : sy-32-bob)&255) | (1<<8)|(1<<9) | (up?(0<<14):(1<<14));
@@ -270,7 +295,9 @@ static void planet_frame(void){
         shadow_oam[slot].a0 = ((136-64+dy)&255) | (1<<8)|(1<<9); shadow_oam[slot].a1 = ((188-64)&511) | (29<<9) | (3<<14); shadow_oam[slot].a2 = T_JAW; slot++; }
     }
     // the guide arrow: it circles the bug (or sits at the top of the view) and points the short way to the door or the ship
-    { PObj *t=&po[arrow_ship?0:1]; s32 dx=wrapd(t->x-ppx), dy=wrapd(t->y-ppy);
+    { PObj *t=&po[arrow_ship==1?0:1];
+      if(arrow_ship==2){ s32 bd2=0x7FFFFFFF; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER){ s32 ddx=wrapd(po[i].x-ppx), ddy=wrapd(po[i].y-ppy); s32 d=(ddx<0?-ddx:ddx)+(ddy<0?-ddy:ddy); if(d<bd2){ bd2=d; t=&po[i]; } } }
+      s32 dx=wrapd(t->x-ppx), dy=wrapd(t->y-ppy);
       if((dx<0?-dx:dx)+(dy<0?-dy:dy) > 0x30000){
           s32 rx=((dx*hcs)>>8)-((dy*hsn)>>8), rz=((dx*hsn)>>8)+((dy*hcs)>>8);       // in camera space: right, and ahead
           s32 l=isqrt((u32)((rx>>8)*(rx>>8)+(rz>>8)*(rz>>8))); if(l<1) l=1;
@@ -298,7 +325,7 @@ static void planet_frame(void){
         int c=sx>>1; if(c<0) c=0; if(c>119) c=119;
         int si=0; while(si<NSTEP-1 && stp_z[si]<zc) si++; int bin=(si>>3)-1; if(bin>7) bin=7;
         if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
-        static const u8 ksz[7]={28,28,22,18,16,12,14};                                   // door, ship, cage, slug, plant, pebble, tuft: size in 16ths of a cell
+        static const u8 ksz[11]={28,28,22,18,16,30,24,22,18,12,14};                     // size of each kind in 16ths of a cell
         int s=(f>>6)*ksz[o->kind]>>4; if(s<13) s=13; int m=(s-13)/4; if(m>27) m=27;                      // px per cell / 16 px * 64             // sprite scale: a 16px sprite is one cell (matrices 28-31 belong to the jaws, arrow and bug)
         s32 sc=13+m*4;
         int w=w_of[o->kind], h=h_of[o->kind];

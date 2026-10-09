@@ -5,6 +5,7 @@ __attribute__((used, aligned(4))) const char sram_tag[]="SRAM_V113";
 #define SRAM ((volatile u8*)0x0E000000)
 #define NSLOT 3
 #define SLOT_STRIDE 0x1000
+#define SG_OFF 0x400
 #define SX_OFF 0x800
 #define META_OFF 0xC00
 #define SET_OFF 0x7F00
@@ -26,7 +27,16 @@ typedef struct {
     s16 pet_form, pet_form_t, pet_maxhp, pet_hp;
     u32 sum;
 } Save;
-_Static_assert(sizeof(Save) < SX_OFF, "Save must fit before the ship block");
+_Static_assert(sizeof(Save) < SG_OFF, "Save must fit before the grind block");
+typedef struct { u32 magic; u8 tiers[6]; u16 kills[11]; u16 fish, barrels, mined, dodges, planets, uniq, tier_n, floors; u32 ach; u16 pet_xp, pet_lv; u32 sum; } SaveG;
+static u32 sg_sum(const SaveG *g){ return fnv(g,sizeof(SaveG)-4); }
+static void grind_save(void){ SaveG g; memset(&g,0,sizeof g); g.magic=0x444E5247; for(int i=0;i<6;i++) g.tiers[i]=tiers[i]; for(int i=0;i<11;i++) g.kills[i]=st_kills[i];
+    g.fish=st_fish; g.barrels=st_barrels; g.mined=st_mined; g.dodges=st_dodges; g.planets=st_planets; g.uniq=st_uniq; g.tier_n=st_tiers; g.floors=st_floors; g.ach=ach_done; g.pet_xp=pet_xp; g.pet_lv=pet_lv;
+    g.sum=sg_sum(&g); sram_write(slot_base(cur_slot)+SG_OFF,&g,sizeof g); }
+static void grind_load(void){ SaveG g; sram_read(slot_base(cur_slot)+SG_OFF,&g,sizeof g);
+    if(g.magic!=0x444E5247 || g.sum!=sg_sum(&g)){ for(int i=0;i<6;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; return; }
+    for(int i=0;i<6;i++) tiers[i]=g.tiers[i]; for(int i=0;i<11;i++) st_kills[i]=g.kills[i];
+    st_fish=g.fish; st_barrels=g.barrels; st_mined=g.mined; st_dodges=g.dodges; st_planets=g.planets; st_uniq=g.uniq; st_tiers=g.tier_n; st_floors=g.floors; ach_done=g.ach; pet_xp=g.pet_xp; pet_lv=g.pet_lv; }
 EW static Save sv;
 static u32 save_sum(const Save *s){ return fnv(s, sizeof(Save)-4); }
 
@@ -71,7 +81,7 @@ static void do_save(void){        // always saves, into the slot you are playing
     s->pet_form=pet_form; s->pet_form_t=pet_form_t; s->pet_maxhp=pet_maxhp; s->pet_hp=pet_hp;
     s->sum=save_sum(s);
     sram_write(slot_base(cur_slot), s, sizeof(Save));
-    save_ext();
+    save_ext(); grind_save();
     Meta m, old; meta_read(cur_slot,&old);
     m.magic=0x4154454D; m.secs=play_secs(); m.saves=old.saves+1; m.sum=meta_sum(&m);
     sram_write(slot_base(cur_slot)+META_OFF, &m, sizeof(Meta));
@@ -95,7 +105,7 @@ static int load_game(int apply){
     eqw=s->eq[0]; eqa=s->eq[1]; eqc=s->eq[2]; bag_n=s->bag_n; memcpy(bag,s->bag,sizeof(bag)); bag_sel=0;
     q_type=s->q_type; q_need=s->q_need; q_have=s->q_have; q_floor=s->q_floor; q_done=s->q_done; q_gold=s->q_gold; q_fame=s->q_fame; q_zone=s->q_zone; q_world=s->q_world; memcpy(q_name,s->q_name,24);
     pet_form=s->pet_form; pet_form_t=s->pet_form_t; pet_maxhp=s->pet_maxhp; pet_hp=s->pet_hp; pet_away_t=0; pet_down_t=0;
-    load_ext();
+    load_ext(); grind_load();
     if(endless) make_world();
     recalc(); hearts=s->hp; mp=s->mp; if(hearts<1) hearts=maxh;
     Meta m; meta_read(cur_slot,&m); play_reset(m.secs);

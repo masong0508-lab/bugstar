@@ -14,6 +14,19 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | SELECT | Tap: switch between third person and first person. Hold SELECT + L/R: point the arrow at the door or your ship | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
 | START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM, MAP) | Opens on the MAP |
 
+## Things to do on planets (new)
+- **Mining.** Every world grows four kinds of resource: **amber trees, crystal rocks, silk webs and nectar flowers** (what grows depends on the world's economy). Stand next to one and press A three times. The goods go into your ship's hold (HOLD 3/10 on the ship menu). Sell them at any station, where prices differ by economy, or...
+- **The workbench** on your ship upgrades gear: thorns need crystals, shells need amber, charms need silk, plus gold. Each upgrade adds +2 levels, which raises damage or defence and strengthens magic effects. No cap except 97.
+- **Hold SELECT + L or R** to point the arrow at the door, your ship, or the nearest resource.
+- Buy a bigger hold at a station when it fills up.
+
+## Longer and grindier (new)
+- **Zone tiers.** After a zone's boss is beaten, going back down its door starts **tier 2**: one more floor, stronger monsters, better loot, and the boss is back at the bottom. Beat it for tier 3, and so on up to tier 10. The planet name shows T2, T3... on the status bar.
+- **13 feats** (START > FEATS): slay 50 spiders, catch 10 fish, mine 40 things, dodge 25 bites, land on 6 worlds, go down 30 floors, find 3 uniques, clear 3 tiers, reach level 20, and more. Each pays gold and fame.
+- **Fame has perks** now: each rank (KNOWN BUG, BRAVE BUG, HERO, CHAMPION, BUG LEGEND) adds gold find, health and crit.
+- **Buddy levels up** from the XP you earn: more damage and health. His level shows on the BUG page.
+- **Engine:** the planet ground is now pre-smoothed to twice the detail with a grass texture, and draws faster.
+
 ## Fighting (new)
 - **Monsters wind up before they bite.** A red **!** flashes over them and they hiss. Step back, strafe, or dodge, and they snap at empty air and are open for a moment.
 - **Dodge:** tap L or R twice to dash sideways. You can't be hurt while you dash. Dodge a bite at the right moment for "DODGED!".

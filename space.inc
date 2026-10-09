@@ -3,13 +3,6 @@
 // Before the Ant King falls you can only fly between the six story zones; after that the whole galaxy opens,
 // and an intergalactic jump takes you to a new cluster of stars, forever.
 
-#define NSYS 32
-typedef struct { u8 x,y,kind,eco; } Sys;            // kind 0..5 = story zone, 6 = uncharted world
-EW static Sys sys[NSYS];
-static int cur_sys=0, fuel=70, hull=100, shield=40, shield_lv=1, laser_lv=1, cargo_cap=10, ant_king=0, cleared_mask=0, zones_open=1, visits=0;
-static u8 cargo[8];
-static const char *const eco_name[4]={"FARMING","MINING","TECH","HIVE"};
-static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MACHINES","MEDICINE","RELICS"};
 static const u8 good_base[8]={8,18,34,55,80,110,65,190};
 static const u8 eco_mul[4][8]={{55,65,80,110,130,150,120,120},{120,110,105,70,60,120,110,95},{130,120,110,105,110,60,75,110},{105,50,70,90,115,120,100,80}};
 

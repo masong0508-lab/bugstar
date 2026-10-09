@@ -2,6 +2,7 @@
 // zone 0..5: The Garden .. The Anthill. Zone z has z+3 dungeon floors; the last one has a boss.
 static int zone=0, zone_cleared=0, maxh=30, food=100, bugs_freed=0, scene=0;
 static int level, xp;
+static void ach_check(void);
 static void scpy(char *d, const char *s); static void scat(char *d, const char *s); static void gain_xp(int n);
 static void hud_now(void); static void say(const char *s); static void show_msg(const char *s); static void sfx(int n);
 static int have_bug[6];
@@ -10,8 +11,14 @@ static const char *const bug_name[6]={"PILL BUG","LADYBUG","FIREFLY","BEE","CRIC
 static const char *const bug_power[6]={"+10 GOLD","+5 HEALTH","LIGHTS THE DARK","STINGS ATTACKERS","FASTER LEGS","POINTS TO STAIRS"};
 // ---- endless galaxy (after the Ant King)
 static int endless=0, world_no=0, loot=0, best_depth=0, w_dlv=6; static u32 galaxy_seed=1;
-static int dlv(void){ int d = endless ? w_dlv : zone; return d>30?30:d; }
-static int zone_floors(void){ return endless ? 9999 : zone+3; }
+// ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
+static u8 tiers[6];                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
+static int st_kills[11], st_fish, st_barrels, st_mined, st_dodges, st_planets, st_uniq, st_tiers, st_floors;
+static u32 ach_done;                                 // one bit per achievement
+static int pet_xp, pet_lv;
+static int tier_now(void){ return (!endless && zone_cleared) ? tiers[zone]+1 : 0; }     // 0 on a first run, 1+ when you go back down a cleared zone
+static int dlv(void){ int d = endless ? w_dlv : zone + tier_now()*2; return d>30?30:d; }
+static int zone_floors(void){ return endless ? 9999 : zone+3+tier_now(); }
 static int gold_find=100;
 static void earn(int g){ g = g*gold_find/100; if(endless && scene==1) loot+=g; else gold+=g; }
 static u16 w_tint[6], w_mon[8]; static u8 w_styles[3]; static char w_name[24];
@@ -123,6 +130,7 @@ static void recalc(void){
     d_sting += have_bug[BUG_BEE]*2;
     if(eqa.it==IT_SHELL && eqa.sub==3 && eqa.rar!=R_UNIQUE) d_spd -= 15;        // the sticky shell slows you
     { int tp=trophy_points(); d_dmg += tp/15; gold_find += tp/5; maxh += tp/10; d_def += tp/30; }   // your trophy case
+    { int r = fame>=1200?5: fame>=700?4: fame>=350?3: fame>=150?2: fame>=50?1:0; gold_find += r*5; maxh += r*3; d_crit += r; }   // fame has its perks
     if(hearts>maxh) hearts=maxh; if(mp>maxmp) mp=maxmp;
 }
 static void shuffle(u8 *a, int n){ for(int i=0;i<n;i++) a[i]=i; for(int i=n-1;i>0;i--){ int j=rndi(i+1); u8 t=a[i]; a[i]=a[j]; a[j]=t; } }
@@ -130,7 +138,8 @@ static void shuffle(u8 *a, int n){ for(int i=0;i<n;i++) a[i]=i; for(int i=n-1;i>
 // ---------------------------------------------------------------- the pet (like Fate's dog): it follows you, fights, and changes when fed fish
 static int pet_hp, pet_maxhp, pet_form, pet_form_t, pet_away_t, pet_down_t, pet_cool, pet_sold_n, pet_sold_g;
 static const char *const pet_form_name[4]={"BUDDY","FIRE BEETLE","STONE BEETLE","STAG KING"};
-static int pet_dmg(void){ static const u8 m[4]={2,4,3,6}; return (2 + level/2) * m[pet_form] / 2; }
+static int pet_dmg(void){ static const u8 m[4]={2,4,3,6}; return (2 + (level+pet_lv)/2 + pet_lv/2) * m[pet_form] / 2; }
+static int pet_xp_next(void){ return 40+pet_lv*pet_lv*12; }
 
 // ---------------------------------------------------------------- quests and fame
 enum { Q_NONE, Q_HUNT, Q_CHAMP, Q_FETCH, Q_RESCUE };
@@ -139,7 +148,22 @@ static const char *fame_rank(void){
     return fame>=1200?"BUG LEGEND": fame>=700?"CHAMPION": fame>=350?"HERO": fame>=150?"BRAVE BUG": fame>=50?"KNOWN BUG":"NOBODY";
 }
 
+#define NACH 13
+typedef struct { const char *name, *what; u16 goal, gold, fame; } Ach;
+static const Ach ach[NACH]={
+    {"SPIDER SQUASHER","SLAY 50 SPIDERS",50,150,20},{"BEETLE BREAKER","SLAY 25 BEETLES",25,200,25},{"WASP SWATTER","SLAY 25 WASPS",25,200,25},
+    {"FRIEND OF BUGS","FREE 10 CAGED BUGS",10,120,60},{"ANGLER","CATCH 10 FISH",10,100,15},{"SMASHER","BREAK 30 BARRELS",30,100,10},
+    {"MINER","MINE 40 THINGS ON PLANETS",40,250,20},{"DODGER","DODGE 25 BITES",25,150,20},{"EXPLORER","LAND ON 6 WORLDS",6,200,30},
+    {"DEEP DIVER","GO DOWN 30 FLOORS",30,300,40},{"COLLECTOR","FIND 3 UNIQUE ITEMS",3,400,50},{"CHAMPION","CLEAR 3 ZONE TIERS",3,500,80},
+    {"BUG LEGEND","REACH LEVEL 20",20,999,150}};
+static int ach_have(int i){ switch(i){ case 0: return st_kills[0]; case 1: return st_kills[7]; case 2: return st_kills[8]; case 3: return bugs_freed; case 4: return st_fish;
+    case 5: return st_barrels; case 6: return st_mined; case 7: return st_dodges; case 8: return st_planets; case 9: return st_floors; case 10: return st_uniq; case 11: return st_tiers; default: return level; } }
+static void ach_check(void){
+    for(int i=0;i<NACH;i++) if(!(ach_done>>i&1) && ach_have(i)>=ach[i].goal){ ach_done|=1u<<i; gold+=ach[i].gold; fame+=ach[i].fame;
+        char b[40]; scpy(b,"FEAT: "); scat(b,ach[i].name); scat(b," +"); ncat(b,ach[i].gold); scat(b,"G"); say(b); sfx(6); hud_now(); }
+}
 static void new_game(void){
+    for(int i=0;i<6;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0;
     shuffle(berry_map,8); shuffle(seed_map,6);
     for(int i=0;i<8;i++) berry_known[i]=0; for(int i=0;i<6;i++) seed_known[i]=0;
     for(int i=0;i<6;i++) have_bug[i]=0;
@@ -248,7 +272,7 @@ static void free_bug(int t){
     recalc(); if(t==BUG_LADY) hearts=maxh;
     char b[40]; scpy(b,"FREED A "); scat(b,bug_name[t]); say(b); sfx(2);
     if(q_type==Q_RESCUE){ q_have++; if(q_have>=q_need) q_done=1; }
-    hud_now();
+    ach_check(); hud_now();
 }
 
 // ---------------------------------------------------------------- getting hurt, hunger
@@ -364,13 +388,13 @@ static void tick_timers(void){ if(speed_t) speed_t--; if(strong_t) strong_t--; i
 // ---------------------------------------------------------------- experience and levels
 static int xp_next(void){ return (6*level*level+4)*3; }
 static void gain_xp(int n){
-    xp+=n;
+    xp+=n; pet_xp+=n/2+1; if(pet_xp>=pet_xp_next()){ pet_xp-=pet_xp_next(); pet_lv++; pet_maxhp+=3; pet_hp=pet_maxhp; char pb[32]; scpy(pb,"BUDDY IS LV "); ncat(pb,pet_lv+1); scat(pb,"!"); say(pb); }
     while(xp>=xp_next()){
         xp-=xp_next(); level++; stat_pts+=5;
         recalc(); hearts=maxh; mp=maxmp; pet_maxhp+=4; pet_hp=pet_maxhp;
         char b[40]; scpy(b,"LEVEL UP! LV "); ncat(b,level); scat(b,". START: SPEND POINTS"); say(b); sfx(6);
     }
-    hud_now();
+    ach_check(); hud_now();
 }
 
 // ---------------------------------------------------------------- feeding Buddy

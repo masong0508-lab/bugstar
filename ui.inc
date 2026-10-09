@@ -68,7 +68,7 @@ static void help_screen(volatile u16 *pg){
       {"D-PAD: WALK OVER THE HILLS.","FOLLOW THE YELLOW ARROW.","SELECT: FIRST OR THIRD PERSON VIEW.","IN FIRST PERSON: LEFT/RIGHT TURN.","HOLD SELECT + L OR R: ARROW TARGET.","A: DOOR, SHIP, CAGE, SLUG, PLANT.","B: USE ITEM.  START: BUG, BAG, SAVE.",""},
       {"UP / DOWN: WALK.","LEFT / RIGHT: TURN.","L / R: STEP SIDEWAYS.","A: BITE. HOLD A TO KEEP BITING.","A: OPEN CAGES, TAKE STAIRS, FISH.","B: USE ITEM.  SELECT: CAST A SPELL.","HOLD SELECT + UP/DOWN: PICK AN ITEM.","START: THE MAP."},
       {"D-PAD: STEER.  B: GO.  R: BRAKE.","A: SHOOT.","FLY CLOSE TO THE PLANET. A: LAND.","THE WHITE BOX IS A STATION. A: DOCK.","SELECT: GALAXY MAP.","PICK A STAR AND PRESS A TO JUMP.","JUMPS USE FUEL. BUY IT AT STATIONS.",""},
-      {"THE GREEN BAR IS FOOD. EAT CRUMBS.","TRY BERRIES AND SEEDS TO LEARN THEM.","FREE CAGED BUGS. THEY HELP YOU.","SPEND LEVEL POINTS ON START > BUG.","IF YOU FAINT, YOU LOSE YOUR BAG.","SAVE ON A PLANET: START > SYSTEM.","YOUR SHIP HEALS YOU AND SELLS GEAR.",""}};
+      {"THE GREEN BAR IS FOOD. EAT CRUMBS.","MINE TREES, ROCKS, WEBS AND FLOWERS.","SELL GOODS AT STATIONS, OR UPGRADE","GEAR AT YOUR SHIP'S WORKBENCH.","BEAT A BOSS AGAIN FOR A HARDER TIER.","START > FEATS SHOWS GOALS WITH REWARDS.","SAVE ON A PLANET: START > SYSTEM.",""}};
     int p=0, dirty=1; wait_release();
     while(1){
         if(dirty){ dirty=0; box(pg,6,20,228,136); rect(pg,7,21,226,12,6);
@@ -129,15 +129,15 @@ static void sys_action(volatile u16 *pg, int cur){
 
 static void map_page(volatile u16 *pg);
 static void char_screen(volatile u16 *pg){
-    int page=scene==1?5:0, cur=0, dirty=1; sys_msg[0]=0; in_menu++; menu_msg[0]=0;
-    static const char *const tabs[6]={"BUG","GEAR","MAGIC","QUEST","SYSTEM","MAP"};
+    int page=scene==1?6:0, cur=0, dirty=1; sys_msg[0]=0; in_menu++; menu_msg[0]=0;
+    static const char *const tabs[7]={"BUG","GEAR","MAGIC","QUEST","FEATS","SYSTEM","MAP"};
     static const char *const stn[4]={"STRENGTH","DEXTERITY","VITALITY","MAGIC"};
     static const char *const std[4]={"BITE DAMAGE","CRITS, FASTER BITES","HEALTH, DEFENCE","MANA, SPELL POWER"};
     wait_release();
     while(1){
         if(dirty){ dirty=0; char b[64];
             rect(pg,0,18,240,142,0); rect(pg,0,18,240,12,C_DGREY); rect(pg,0,30,240,1,6);
-            for(int t=0;t<6;t++){ int x=8+t*39; if(t==page) rect(pg,x-4,18,textlen(tabs[t])*4+7,12,0); text(pg,x,21,tabs[t], t==page?C_GOLD:C_GREY, 1); }
+            for(int t=0;t<7;t++){ int x=6+t*34; if(t==page) rect(pg,x-3,18,textlen(tabs[t])*4+5,12,0); text(pg,x,21,tabs[t], t==page?C_GOLD:C_GREY, 1); }
             int y=35;
             if(page==0){
                 scpy(b,"LEVEL "); ncat(b,level); text(pg,8,y,b,C_GOLD,1);
@@ -155,7 +155,7 @@ static void char_screen(volatile u16 *pg){
                 if(d_spd){ scpy(b,"SPEED "); ncat(b,d_spd>0?d_spd:-d_spd); scat(b,"%"); text(pg,130,yy,b,d_spd>0?C_GREEN:C_RED,1); }
                 if(d_haste){ scpy(b,"BITES +"); ncat(b,d_haste); text(pg,186,yy,b,C_GREEN,1); } yy+=8;
                 y+=12; rect(pg,4,y-2,232,1,6); y+=3;
-                scpy(b,"BUDDY: "); scat(b,pet_form_name[pet_form]); text(pg,8,y,b,C_CYAN,1);
+                scpy(b,"BUDDY LV"); ncat(b,pet_lv+1); scat(b,": "); scat(b,pet_form_name[pet_form]); text(pg,8,y,b,C_CYAN,1);
                 if(pet_away_t) rtext(pg,232,y,"AWAY SELLING",C_GREY); else if(pet_down_t) rtext(pg,232,y,"RESTING",C_GREY); else { int pm=pet_maxhp*(pet_form==2?2:1); hbar(pg,152,y+2,80,pet_hp,pm,C_GREEN); } y+=10;
                 text(pg,8,y,"BUG FRIENDS",C_GOLD,1); y+=8; int any=0, x=8;
                 for(int t=0;t<6;t++) if(have_bug[t]){ any=1; scpy(b,bug_name[t]); scat(b," X"); ncat(b,have_bug[t]); text(pg,x,y,b,C_WHITE,1); x+=76; if(x>200){ x=8; y+=7; } }
@@ -198,7 +198,12 @@ static void char_screen(volatile u16 *pg){
                 for(int i=0;i<8;i++){ scpy(b,berry_col[i]); scat(b,":"); scat(b, berry_known[i]?berry_eff[berry_map[i]]:"?"); text(pg,8+(i&3)*58,y+(i>>2)*7,b,berry_known[i]?C_WHITE:C_DGREY,1); }
                 y+=16;
                 for(int i=0;i<6;i++){ scpy(b,seed_look[i]); scat(b,":"); scat(b, seed_known[i]?seed_eff[seed_map[i]]:"?"); text(pg,8+(i%3)*76,y+(i/3)*7,b,seed_known[i]?C_WHITE:C_DGREY,1); }
-            } else if(page==5){ map_page(pg);
+            } else if(page==4){
+                text(pg,8,y,"FEATS",C_GOLD,1); { int dn=0; for(int i=0;i<NACH;i++) dn+=(ach_done>>i)&1; scpy(b,""); ncat(b,dn); scat(b,"/"); ncat(b,NACH); scat(b," DONE"); rtext(pg,232,y,b,C_GREY); } y+=9;
+                for(int i=0;i<NACH;i++){ int done=(ach_done>>i)&1, hv=ach_have(i); if(hv>ach[i].goal) hv=ach[i].goal; int yy=y+i*8;
+                    text(pg,8,yy,ach[i].name,done?C_GOLD:C_WHITE,1); text(pg,76,yy,ach[i].what,done?C_GREY:C_DGREY,1);
+                    if(done) text(pg,180,yy,"DONE",C_GREEN,1); else { hbar(pg,180,yy+2,26,hv,ach[i].goal,C_CYAN); scpy(b,""); ncat(b,hv); scat(b,"/"); ncat(b,ach[i].goal); text(pg,209,yy,b,C_DGREY,1); } }
+            } else if(page==6){ map_page(pg);
             } else {
                 static const char *const sn[5]={"SAVE GAME","SAVE TO ANOTHER SLOT","LOAD GAME","OPTIONS","QUIT TO TITLE"};
                 scpy(b,"SLOT "); ncat(b,cur_slot+1); text(pg,8,y,b,C_CYAN,1);
@@ -220,9 +225,9 @@ static void char_screen(volatile u16 *pg){
         }
         vsync(); read_keys();
         if(HIT(K_START)) break;
-        if(HIT(K_L)){ page=(page+5)%6; cur=0; dirty=1; sys_msg[0]=0; }
-        if(HIT(K_R)){ page=(page+1)%6; cur=0; dirty=1; sys_msg[0]=0; }
-        int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : page==4?5 : 0;
+        if(HIT(K_L)){ page=(page+6)%7; cur=0; dirty=1; sys_msg[0]=0; }
+        if(HIT(K_R)){ page=(page+1)%7; cur=0; dirty=1; sys_msg[0]=0; }
+        int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : page==5?5 : 0;
         if(nmax){ if(HIT(K_UP)){ cur=(cur+nmax-1)%nmax; dirty=1; } if(HIT(K_DOWN)){ cur=(cur+1)%nmax; dirty=1; }
             if(page==1){ if(HIT(K_RIGHT) && cur+6<nmax){ cur+=6; dirty=1; } if(HIT(K_LEFT) && cur>=6){ cur-=6; dirty=1; } } }
         if(HIT(K_A)){
@@ -230,7 +235,7 @@ static void char_screen(volatile u16 *pg){
             if(page==0 && stat_pts){ int *sv[4]={&st_str,&st_dex,&st_vit,&st_mag}; (*sv[cur])++; stat_pts--; int oldmax=maxh; recalc(); hearts+=maxh-oldmax; sfx(2); }
             if(page==1 && bag_n){ use_index(cur); if(cur>=bag_n && cur) cur--; }
             if(page==2 && spell_known[cur]) spell_sel=cur;
-            if(page==4){ sys_action(pg,cur); if(sys_req) break; }
+            if(page==5){ sys_action(pg,cur); if(sys_req) break; }
         }
         if(HIT(K_B) && page==1 && bag_n){
             if(is_gear(&bag[cur])){ int n=scrap_of(bag[cur].rar); scrap+=n; char m[32]; scpy(m,"SCRAPPED: +"); ncat(m,n); scat(m," TECH SCRAP"); drop_at(cur); say(m); sfx(13); }
@@ -327,28 +332,64 @@ static void trophy_case(volatile u16 *pg){
     }
     wait_release(); hud_now();
 }
+// ---------------------------------------------------------------- the workbench: upgrade gear with gold and what you mined
+static int wb_cost_gold(const Gear *g){ return 25 + g->lvl*12 + (g->rar==R_UNIQUE?200:g->rar==R_RARE?60:g->rar==R_MAGIC?20:0); }
+static int wb_good(const Gear *g){ return g->it==IT_THORN ? 4 : g->it==IT_SHELL ? 3 : 2; }     // thorns want crystals, shells amber, charms silk
+static void workbench(volatile u16 *pg){
+    int sel=0, dirty=1; wait_release();
+    while(1){
+        Gear *items[3+BAGMAX]; int n=0; items[n++]=&eqw; items[n++]=&eqa; items[n++]=&eqc;
+        for(int i=0;i<bag_n;i++) if(is_gear(&bag[i])) items[n++]=&bag[i];
+        if(sel>=n) sel=n-1;
+        if(dirty){ dirty=0; char b[64];
+            box(pg,12,20,216,136); text(pg,20,24,"WORKBENCH",C_GOLD,1);
+            scpy(b,"G"); ncat(b,gold); scat(b,"  AMBER "); ncat(b,cargo[3]); scat(b,"  CRYSTALS "); ncat(b,cargo[4]); scat(b,"  SILK "); ncat(b,cargo[2]); rtext(pg,224,24,b,C_CYAN);
+            int y=36;
+            for(int i=0;i<n && y<118;i++,y+=8){ Gear *g=items[i]; if(i==sel) text(pg,16,y,">",C_CYAN,1);
+                if(!g->it){ text(pg,22,y, i==0?"BITE: NOTHING":i==1?"WEAR: NOTHING":"CHARM: NOTHING",C_DGREY,1); continue; }
+                scpy(b, i<3 ? (i==0?"BITE: ":i==1?"WEAR: ":"CHARM: ") : "BAG: "); char nm[40]; gear_name(g,nm); nm[26]=0; scat(b,nm); scat(b," +"); ncat(b,g->lvl); text(pg,22,y,b,rar_color(g),1); }
+            Gear *g=items[sel];
+            if(g->it){ int gd=wb_good(g); scpy(b,"UPGRADE: "); ncat(b,wb_cost_gold(g)); scat(b,"G + 2 "); scat(b,goods[gd]); scat(b,"   HAVE "); ncat(b,cargo[gd]);
+                int ok = gold>=wb_cost_gold(g) && cargo[gd]>=2 && g->lvl<97; text(pg,20,124,b,ok?C_GREEN:C_RED,1);
+                Gear t=*g; t.lvl+=2; Delta d=gear_delta(&t); Gear old=*g; *g=t; recalc(); *g=old; recalc();
+                scpy(b,"NEXT: "); if(g->it==IT_THORN){ scat(b,"DAMAGE "); ncat(b,weapon_base(g)); scat(b," -> "); ncat(b,weapon_base(&t)); } else if(g->it==IT_SHELL){ scat(b,"DEFENCE "); ncat(b,armor_base(g)); scat(b," -> "); ncat(b,armor_base(&t)); } else { scat(b,"STRONGER CHARM EFFECTS"); } (void)d;
+                text(pg,20,132,b,C_WHITE,1); }
+            if(menu_msg[0]) text(pg,20,140,menu_msg,C_GREEN,1);
+            text(pg,20,148,"A: UPGRADE  B: BACK   MINE GOODS ON PLANETS",C_CYAN,1); }
+        vsync(); read_keys(); if(keys!=keys_old) dirty=1;
+        if(HIT(K_UP)){ sel=(sel+n-1)%n; menu_msg[0]=0; } if(HIT(K_DOWN)){ sel=(sel+1)%n; menu_msg[0]=0; }
+        if(HIT(K_B)||HIT(K_START)) break;
+        if(HIT(K_A)){ Gear *g=items[sel]; if(!g->it){ say("NOTHING THERE TO UPGRADE"); continue; } int gd=wb_good(g), c=wb_cost_gold(g);
+            if(g->lvl>=97) say("IT CAN'T GET ANY BETTER"); else if(gold<c) say("NOT ENOUGH GOLD"); else if(cargo[gd]<2){ char m[40]; scpy(m,"YOU NEED 2 "); scat(m,goods[gd]); scat(m,". MINE SOME"); say(m); }
+            else { gold-=c; cargo[gd]-=2; g->lvl+=2; recalc(); sfx(6); char m[40]; scpy(m,"UPGRADED TO +"); ncat(m,g->lvl); say(m); hud_now(); } }
+    }
+    wait_release();
+}
 static int shop_menu(void){   // returns 1 to fly on
     volatile u16 *pg=VRAM;
     oam_hide_all(); oam_flush();
     int sel=0; in_menu++; menu_msg[0]=0;
     while(1){
-        const char *main_opt[9]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","LEAVE"};
+        const char *main_opt[10]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","LEAVE"};
+#define NSHOP 10
         int can_fly = 1, next_ok = !endless && zone_cleared && zone<5 && cluster_no==0; char nxt[40];
         if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); main_opt[0]=nxt; }
         int dirty=1; wait_release();
         while(1){
             if(dirty){ dirty=0; box(pg,12,20,216,136); text(pg,20,24,"YOUR SHIP",C_GOLD,1); char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
-                for(int i=0;i<9;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:C_GREY); if(i==sel) text(pg,16,36+i*10,">",C_CYAN,1); text(pg,22,36+i*10,main_opt[i],c,1); }
-                if(next_ok) text(pg,22,124,"OR LAUNCH YOURSELF: HOLD A ON LAUNCH",C_DGREY,1);
-                if(q_type!=Q_NONE && q_done) text(pg,120,76,"! QUEST DONE",C_GREEN,1);
+                for(int i=0;i<NSHOP;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:C_GREY); if(i==sel) text(pg,16,34+i*9,">",C_CYAN,1); text(pg,22,34+i*9,main_opt[i],c,1); }
+                if(next_ok) text(pg,22,126,"OR LAUNCH YOURSELF: HOLD A ON LAUNCH",C_DGREY,1);
+                { char hb[40]; scpy(hb,"HOLD "); ncat(hb,cargo_n()); scat(hb,"/"); ncat(hb,cargo_cap); rtext(pg,224,34,hb,C_CYAN); }
+                if(q_type!=Q_NONE && q_done) text(pg,130,70,"! QUEST DONE",C_GREEN,1);
                 if(menu_msg[0]) text(pg,20,134,menu_msg,C_GREEN,1);
                 text(pg,20,148,"A: CHOOSE  B: LEAVE",C_CYAN,1); }
             vsync(); read_keys(); if(keys!=keys_old) dirty=1;
-            if(HIT(K_UP)){ sel=(sel+8)%9; menu_msg[0]=0; } if(HIT(K_DOWN)){ sel=(sel+1)%9; menu_msg[0]=0; }
+            if(HIT(K_UP)){ sel=(sel+NSHOP-1)%NSHOP; menu_msg[0]=0; } if(HIT(K_DOWN)){ sel=(sel+1)%NSHOP; menu_msg[0]=0; }
             if(HIT(K_B)){ in_menu--; wait_release(); return 0; }
             if(HIT(K_A)) break;
         }
-        if(sel==8){ in_menu--; wait_release(); return 0; }
+        if(sel==9){ in_menu--; wait_release(); return 0; }
+        if(sel==8){ workbench(pg); continue; }
         if(sel==7){ trophy_case(pg); continue; }
         if(sel==0){ if(can_fly){ in_menu--; int held=0; for(int t=0;t<20 && HELD(K_A);t++){ vsync(); read_keys(); held=t; } wait_release(); return (next_ok && held<19) ? 2 : 1; } continue; }
         if(sel==1){ int s2=0; int r; list_desc=sup_desc; while((r=list_pick(pg,"SUPPLIES",6,sup_row,&s2,"A: BUY  B: BACK"))>=0){

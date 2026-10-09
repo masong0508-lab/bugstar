@@ -147,7 +147,7 @@ static void make_floor(void){
     int nb = 1 + (dlv()/2>3?3:dlv()/2) + (depth_no>2);
     for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), base_hp/2+1, 0);
     for(int k=0;k<nlamps;k++) SPAWN(K_LAMP, lampcell[k], 1, 0);
-    if(last && !zone_cleared){ SPAWN(K_BOSS, dn, 40+dlv()*30, 0); }
+    if(last){ SPAWN(K_BOSS, dn, 40+dlv()*30 + tier_now()*40, 0); }       // the boss is always at the bottom: beat it again for the next tier
     if(endless){
         if(hive_boss_floor()) SPAWN(K_BOSS, dn, 150+depth_no*12+dlv()*45, 0);              // a Tech Hive overlord guards the hive core
         else if(depth_no%10==0) SPAWN(K_BOSS, dn, 60+depth_no*6+dlv()*20, 0);               // a guardian every 10 floors
@@ -564,7 +564,7 @@ static s32 pet_x, pet_y;
 static void dungeon_label(char *b){
     scpy(b,world_name()); scat(b," B"); char n2[6];
     if(endless){ num(n2,depth_no,depth_no>99?3:depth_no>9?2:1); scat(b,n2); }
-    else { num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,zone_floors(),1); scat(b,n2); }
+    else { num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,zone_floors(),1); scat(b,n2); if(tier_now()){ scat(b," T"); ncat(b,tier_now()); } }
 }
 // the status bar is drawn only into the page you can't see, so it never flickers: once for each of the two pages
 static int hud_dirty=0;
@@ -572,7 +572,7 @@ static void dungeon_hud(void){ hud_dirty=2; }
 static void dungeon_hud_both(void){ char b[40]; dungeon_label(b); for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b); hud_dirty=0; }
 static int stair_ok;
 static void dungeon_enter(void){
-    depth_no++; stair_ok=0; sight=0; msg_timer=0;
+    depth_no++; stair_ok=0; st_floors++; ach_check(); sight=0; msg_timer=0;
     make_floor();
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];

@@ -106,6 +106,15 @@ static void oam_flush(void){ volatile u16 *o=OAM; for(int i=0;i<128;i++){ o[i*4]
 static void set_affine(int m, int pa, int pb, int pc, int pd){ volatile u16 *o=OAM; o[m*16+3]=pa; o[m*16+7]=pb; o[m*16+11]=pc; o[m*16+15]=pd; }
 
 static volatile int hdma_on=0;
+// the galaxy and your ship's hold (used by the planet and the ship menu too)
+#define NSYS 32
+typedef struct { u8 x,y,kind,eco; } Sys;            // kind 0..5 = story zone, 6 = uncharted world
+EW static Sys sys[NSYS];
+static int cur_sys=0, fuel=70, hull=100, shield=40, shield_lv=1, laser_lv=1, cargo_cap=10, ant_king=0, cleared_mask=0, zones_open=1, visits=0;
+static u8 cargo[8];
+static const char *const eco_name[4]={"FARMING","MINING","TECH","HIVE"};
+static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MACHINES","MEDICINE","RELICS"};
+static int cargo_n(void){ int n=0; for(int i=0;i<8;i++) n+=cargo[i]; return n; }
 #include "sound.inc"
 #include "game.inc"
 #include "save.inc"
@@ -168,6 +177,7 @@ static int mon_dmg(DObj *o){
 }
 static void kill_mon(DObj *o){
     int boss=o->kind==K_BOSS, hive = boss && endless && hive_boss_floor();
+    if(o->kind>=0 && o->kind<11) st_kills[o->kind]++;
     int xpv = (4+dlv()*2+depth_no) * (o->kind==K_BEETLE?2 : o->kind==K_WASP?3 : boss?10 : 1) / (o->kind==K_WASP?2:1);
     if(o->champ) xpv*=3;
     earn(boss ? 100+depth_no*10 : 6+dlv()*4+(o->champ?40:0));
@@ -175,12 +185,13 @@ static void kill_mon(DObj *o){
     if(o->champ==2 && q_type==Q_CHAMP){ q_done=1; say("QUEST TARGET SLAIN!"); }
     sfx(9); debris(o->x,o->y,0x6000,boss?16:10,3,o->kvx,o->kvy); burst(o->x,o->y,0x6000,4,1);
     int ilvl=dlv()*3+depth_no;
-    if(boss){ music(1); if(!endless) zone_card=1+zone;
-        if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
+    if(boss){ music(1); if(!endless && !zone_cleared) zone_card=1+zone;
+        if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else if(zone_cleared){ if(tiers[zone]<9) tiers[zone]++; st_tiers++; char tb[40]; scpy(tb,"TIER "); ncat(tb,tiers[zone]); scat(tb," CLEARED! LOOT GETS BETTER"); say(tb); }
+              else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
     gain_xp(xpv);
     Gear g; int drop=0;
     int uq_chance = hive ? 1000 : boss ? 300 : o->champ ? 50 : 4;          // in 1000
-    if(rndi(1000) < uq_chance){ g=roll_unique(ilvl); drop=1; say("A UNIQUE ITEM DROPPED!"); sfx(6); }
+    if(rndi(1000) < uq_chance){ g=roll_unique(ilvl); drop=1; st_uniq++; say("A UNIQUE ITEM DROPPED!"); sfx(6); }
     else if(boss || o->champ){ g=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, ilvl+4, 40); drop=1; }
     else if(rndi(3)==0){ g=roll_drop(ilvl,0); drop=1; }
     s32 x=o->x, y=o->y;
@@ -228,7 +239,7 @@ static int separate(s32 *ax, s32 *ay, s32 ar, int am, s32 awr, s32 *bx, s32 *by,
 }
 static void thump(int big){ if(!bump_cd){ sfx(big?12:11); bump_cd=big?6:18; } kick_t = big?6:3; if(big && opt_shake) shake_t=2; }
 static void barrel_break(DObj *o){
-    s32 x=o->x, y=o->y; debris(x,y,0x5000,12,2,o->kvx,o->kvy); sfx(13);
+    s32 x=o->x, y=o->y; st_barrels++; ach_check(); debris(x,y,0x5000,12,2,o->kvx,o->kvy); sfx(13);
     int r=rndi(100); Gear g={0,0,0,0,0,0};
     if(r<30){ int gv=3+dlv()*3+depth_no; earn(gv); add_fnum(x,y,gv,C_GOLD); o->alive=0; }
     else if(r<48) g.it=IT_CRUMB; else if(r<60){ g.it=IT_BERRY; g.sub=rndi(8); } else if(r<66) g=roll_drop(dlv()*3+depth_no,10);
@@ -445,7 +456,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
                     if(td<reach+0x3000){
                         if(td>0x100){ o->kvx += (s32)(((long long)tdx*(boss?0x1400:0x0C00))/td); o->kvy += (s32)(((long long)tdy*(boss?0x1400:0x0C00))/td); }   // it lunges
                         if(at_pet){ pet_hp-=mon_dmg(o)/2; petobj.flash=6; }
-                        else { if(invuln && dodge_msg_t){ say("DODGED!"); gain_xp(1); }
+                        else { if(invuln && dodge_msg_t){ say("DODGED!"); st_dodges++; gain_xp(1); }
                                else if(!invuln){ int before=hearts; hurt(mon_dmg(o)); if(hearts<before){ hurt_flash=8; hitstop=5; kick_t=7; pknock_t=12; combo=0;
                                    s32 kp = boss?0x2400 : o->kind==K_BEETLE?0x1A00 : 0x1000; if(d>0x100){ pvx+=(s32)(((long long)dx*kp)/d); pvy+=(s32)(((long long)dy*kp)/d); } } }
                                int ret=d_reflect+d_sting; if(ret){ hit_mon(o,ret,0); if(!o->alive) continue; } }
@@ -484,7 +495,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(wtick && fish_state==1 && --fish_t<=0){ fish_state=2; fish_t=14; sfx(8); say("! A BITE ! PRESS A"); }
     else if(wtick && fish_state==2 && --fish_t<=0){ fish_state=0; say("IT GOT AWAY"); }
     int foe = foe_ahead(dirx,diry);
-    if(HIT(K_A) && fish_state==2){ fish_state=0; int r=rndi(100), f = r<45?0 : r<62?1 : r<79?2 : r<88?3 : 4; add_item(IT_FISH,f); sfx(8); }
+    if(HIT(K_A) && fish_state==2){ fish_state=0; int r=rndi(100), f = r<45?0 : r<62?1 : r<79?2 : r<88?3 : 4; add_item(IT_FISH,f); st_fish++; ach_check(); sfx(8); }
     else if(HELD(K_A) && foe){ if(!atk_t) do_bite(dirx,diry); }          // something in front always gets bitten, and holding A keeps biting
     else if(HIT(K_A)){
         if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
@@ -657,7 +668,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #endif
 }
 static void arrive_on_planet(void){      // after landing (or the autopilot): set the surface up
-    land_on_current(); portal_depth=0; scene=0; msg_timer=0;
+    land_on_current(); st_planets++; ach_check(); portal_depth=0; scene=0; msg_timer=0;
     new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game();
     char b[40]; scpy(b,world_name()); if(!endless && !zone_cleared) scat(b,": FIND THE DOOR"); show_msg(b); oam_hide_all(); oam_flush(); music(0);
 }
