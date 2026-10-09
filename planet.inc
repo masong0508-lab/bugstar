@@ -14,8 +14,9 @@
 #define SKY_B 8                   // palette: sky 8..15, ground 40..55, water 56..63
 #define GND_B 40
 #define WAT_B 56
-enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_TREE, O_ROCK, O_WEB, O_FLOWER, O_PEBBLE, O_TUFT };
-#define O_LAST_USE O_FLOWER                                // kinds up to this one react to A
+enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_TREE, O_ROCK, O_WEB, O_FLOWER, O_BASE, O_PEBBLE, O_TUFT };
+#define O_LAST_USE O_BASE
+static int has_base(int i){ return i>=0 && i<NSYS && !((base_mask>>(i&31))&1) && ((sys[i].kind>=1 && sys[i].kind<=5) || (sys[i].kind==6 && !is_hive(i) && (sys_id(i)%3)==0)); }                                // kinds up to this one react to A
 typedef struct { s32 x,y; u8 kind, alive, hp; } PObj;      // x,y: where on the map, 16.16 cells. hp: bites left in a resource node
 #define NPO 100
 static const u8 node_good[4]={3,4,2,1};                    // tree -> AMBER, rock -> CRYSTALS, web -> SILK, flower -> NECTAR (the station's goods)
@@ -115,6 +116,11 @@ static void new_planet(void){
     po[k].kind=O_SHIP; po[k].alive=1; po[k].x=(64<<16)-(3<<16); po[k].y=(64<<16)+(1<<16); k++;
     po[k].kind=O_DOOR; po[k].alive=1; { int a=wr(256); po[k].x=(64<<16)+cosx(a)*22*4; po[k].y=(64<<16)+sinx(a)*22*4; } k++;
     for(int i=0;i<2;i++) place(&po[k++],O_CAGE,14,40);
+#ifdef TEST_BASE
+    po[k].kind=O_BASE; po[k].alive=1; po[k].x=(66<<16); po[k].y=(64<<16); k++;
+#else
+    if(has_base(cur_sys)) place(&po[k++],O_BASE,24,40);
+#endif
     for(int i=0;i<3;i++) place(&po[k++],O_SLUG,10,30);
     for(int i=0;i<20;i++) place(&po[k++],O_PLANT,4,64);
     { int eco = endless ? sys[cur_sys].eco : zone%4;                                  // what grows here depends on the world's economy
@@ -127,8 +133,8 @@ static void new_planet(void){
     po[3].kind=O_TREE; po[3].alive=1; po[3].hp=3; po[3].x=(64<<16)+(1<<16); po[3].y=(64<<16)-(1<<16); po[4].kind=O_ROCK; po[4].alive=1; po[4].hp=3; po[4].x=(64<<16)+(2<<16); po[4].y=(64<<16)+(1<<16);
 #endif
 }
-static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_TREE,T_ROCK,T_WEB,T_FLOWER,T_PEBBLE,T_TUFT};
-static const u8 shape_of[]={0,0,1,1,0,0,0,0,0,0,0}, size_of[]={1,1,0,0,0,1,1,1,1,0,0}, w_of[]={16,16,16,16,8,16,16,16,16,8,8}, h_of[]={16,16,8,8,8,16,16,16,16,8,8};
+static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_TREE,T_ROCK,T_WEB,T_FLOWER,T_HATCH,T_PEBBLE,T_TUFT};
+static const u8 shape_of[]={0,0,1,1,0,0,0,0,0,0,0,0}, size_of[]={1,1,0,0,0,1,1,1,1,1,0,0}, w_of[]={16,16,16,16,8,16,16,16,16,16,8,8}, h_of[]={16,16,8,8,8,16,16,16,16,16,8,8};
 static s32 wrapd(s32 d){ return ((d + (64<<16)) & ((TW<<16)-1)) - (64<<16); }        // shortest way round the world, 16.16
 
 // ---------------------------------------------------------------- the renderer
@@ -222,6 +228,7 @@ static void planet_frame(void){
         if(best<0) show_msg("NOTHING HERE");
         else switch(po[best].kind){
             case O_DOOR: enter_dungeon_flag=1; sfx(5); break;
+            case O_BASE: enter_dungeon_flag=2; sfx(5); show_msg("A DRONE OUTPOST. BOLT: FIND THE KEYCARD"); break;
             case O_SHIP:
                 { hdma_on=0; int r=shop_menu();
                   planet_hud(); if(!r){ save_game(); show_msg(opt_autosave?"GAME SAVED":""); p_last=vbl_count; return; }
@@ -232,9 +239,9 @@ static void planet_frame(void){
                 PObj *o=&po[best]; int t=o->kind-O_TREE; sfx(o->kind==O_ROCK?12:13); mine_t=8;
                 if(--o->hp>0){ char b[40]; scpy(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                 o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0);
-                if(cargo_n()>=cargo_cap){ show_msg("HOLD FULL! SELL GOODS AT A STATION"); break; }
-                int room=cargo_cap-cargo_n(); if(n>room) n=room; cargo[g]+=n; st_mined+=n; ach_check(); gain_xp(2+dlv());
-                char b[40]; scpy(b,"+"); ncat(b,n); scat(b," "); scat(b,goods[g]); scat(b,"  HOLD "); ncat(b,cargo_n()); scat(b,"/"); ncat(b,cargo_cap); show_msg(b); sfx(7);
+                if(cargo_n()>=cargo_cap+ship_hold_bonus()){ show_msg("HOLD FULL! SELL GOODS AT A STATION"); break; }
+                int room=cargo_cap+ship_hold_bonus()-cargo_n(); if(n>room) n=room; cargo[g]+=n; st_mined+=n; ach_check(); gain_xp(2+dlv());
+                char b[40]; scpy(b,"+"); ncat(b,n); scat(b," "); scat(b,goods[g]); scat(b,"  HOLD "); ncat(b,cargo_n()); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); show_msg(b); sfx(7);
                 break; }
             case O_PLANT: { po[best].alive=0; int r=rndi(10);
                 if(r<5){ eat(15); show_msg("NIBBLED A LEAF. FOOD +15"); sfx(11); }
@@ -259,7 +266,7 @@ static void planet_frame(void){
     { static u32 tf0=0; u32 now=TMR(); char fb[40]; scpy(fb,"N"); ncat(fb,n); scat(fb," RENDER "); ncat(fb,(int)((t_r1-t_r0)/1000)); scat(fb,"K PRE "); ncat(fb,(int)((t_r0-t_f0)/1000)); scat(fb,"K FRAME "); ncat(fb,(int)((now-tf0)/1000)); scat(fb,"K"); tf0=now; rect(pg,0,40,240,8,0); text(pg,4,41,fb,C_GOLD,1); }
 #endif
     { int pk = best<0 ? -1 : po[best].kind;
-      static const char *const pt[9]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR"};
+      static const char *const pt[10]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR","A: ENTER THE DRONE OUTPOST"};
       if(pk>=0 && opt_hints){ const char *s=pt[pk]; stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); } }
     (void)prompt_k;
 #ifdef TEST_FPS
@@ -322,10 +329,15 @@ static void planet_frame(void){
         s32 gh=ground_h(o->x,o->y); s32 curve=(zc*zc)>>15;
         int sy = PHZ + (((cam_h + curve - gh) * f)>>16);                                // (8.8 cells * 8.8) >> 16 = px
         if(sx<-40||sx>280||sy<10||sy>190) continue;
+        if(o->kind==O_SHIP){                                                           // your ship: the real 3D model, parked
+            BG_PAL[236]=ship.paint; BG_PAL[237]=ship.trim;
+            int sc=f/50; if(sc<2) sc=2;                                                   // 100 model units = 2 cells
+            ship_draw(pg, sx, sy-(f>>9), sc, (1024-heading)&1023, cam_fp?30:70, 236, 237, 0,18,240,160);
+            continue; }
         int c=sx>>1; if(c<0) c=0; if(c>119) c=119;
         int si=0; while(si<NSTEP-1 && stp_z[si]<zc) si++; int bin=(si>>3)-1; if(bin>7) bin=7;
         if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
-        static const u8 ksz[11]={28,28,22,18,16,30,24,22,18,12,14};                     // size of each kind in 16ths of a cell
+        static const u8 ksz[12]={28,28,22,18,16,30,24,22,18,30,12,14};                  // size of each kind in 16ths of a cell
         int s=(f>>6)*ksz[o->kind]>>4; if(s<13) s=13; int m=(s-13)/4; if(m>27) m=27;                      // px per cell / 16 px * 64             // sprite scale: a 16px sprite is one cell (matrices 28-31 belong to the jaws, arrow and bug)
         s32 sc=13+m*4;
         int w=w_of[o->kind], h=h_of[o->kind];

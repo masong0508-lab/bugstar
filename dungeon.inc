@@ -1,6 +1,6 @@
 // ================================================================= THE DUNGEON
 #define MW 32
-enum { D_FLOOR, D_WALL, D_PILLAR, D_UP, D_DOWN };
+enum { D_FLOOR, D_WALL, D_PILLAR, D_UP, D_DOWN, D_LOCK };     // D_LOCK: a locked door, solid until you bring the keycard
 enum { M_BRICK, M_STONE, M_EARTH, M_MOSS, M_CRYSTAL, M_MARBLE };
 #define F_TORCH 0x10
 #define F_BEAM  0x20
@@ -13,10 +13,10 @@ EW static u8 seen[MW*MW]; static u8 room_seen[10];     // what you have seen on 
 EW static u8 wmat[MW*MW], fmat[MW*MW], rid[MW*MW], wdec[MW*MW];
 static u16 lampcell[12]; static int nlamps;
 typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; s32 kvx, kvy; u8 stag, lunge, wind, ph; } DObj;     // wind: ticks of wind-up before it bites. ph: boss phase
-enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL };
+enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL, K_CORE };   // K_CORE: an outpost's power core: smash it
 static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT","VILE","FROST","ROTTEN"};
-static const char *const kind_name[11]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL"};
-static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP; }
+static const char *const kind_name[12]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE"};
+static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE; }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 40
 static s32 tgt_x, tgt_y; static int lantk=58;
@@ -29,7 +29,7 @@ EW static Room rooms[10]; static int nrooms;
 typedef struct { u8 x,y,str; } Light;
 EW static Light lights[64]; static int nlights;
 EW static s32 torch_x[32], torch_y[32]; static int ntorch;
-static void build_light(void); static void build_walls(void);
+static void build_light(void); static void build_walls(void); static int base_floors(void);
 
 static void add_light(int x,int y,int s){ if(nlights<64){ lights[nlights].x=x; lights[nlights].y=y; lights[nlights].str=s; nlights++; } }
 static int floorish(int i){ int t=dmap[i]; return t==D_FLOOR||t==D_UP||t==D_DOWN; }
@@ -58,7 +58,8 @@ static void make_floor(void){
     for(int i=0;i<MW*MW;i++) seen[i]=0; for(int i=0;i<10;i++) room_seen[i]=0;
     for(int t=0;t<400 && nrooms<8;t++){
         static const u8 zst[6][3]={{ST_HALL,ST_CAVE,ST_GROTTO},{ST_GROTTO,ST_GROTTO,ST_CRYPT},{ST_HALL,ST_CRYPT,ST_HALL},{ST_CRYSTAL,ST_CRYSTAL,ST_CAVE},{ST_CRYSTAL,ST_HALL,ST_CRYPT},{ST_CAVE,ST_CAVE,ST_CRYPT}};
-        const u8 *zs = endless ? w_styles : zst[zone];
+        static const u8 bst[3]={ST_CRYSTAL,ST_CRYSTAL,ST_CRYPT};
+        const u8 *zs = base_mode ? bst : endless ? w_styles : zst[zone];
         int st = nrooms==0 ? zs[0] : (rndi(10)<7 ? zs[rndi(3)] : rndi(NSTYLE)), w, h;
         if(st==ST_HALL){ w=9+rndi(5); h=7+rndi(2); if(rnd()&1){ int k=w; w=h; h=k; } }
         else { w=6+rndi(5); h=6+rndi(4); }
@@ -121,7 +122,7 @@ static void make_floor(void){
       for(int k=0;k<4;k++){ int x=up%MW, y=up/MW, l=0; while(l<20){ x+=ddx[k]; y+=ddy[k]; if(x<0||y<0||x>=MW||y>=MW) break; int t=dmap[y*MW+x]; if(t==D_WALL||t==D_PILLAR) break; l++; } if(l>bl){ bl=l; best=k; } }
       pang = best*256; }
     // monsters, treasure, items, a caged bug or two; the last floor of the zone has a boss instead of stairs down
-    int last = !endless && depth_no>=zone_floors();
+    int last = base_mode ? depth_no>=base_floors() : (!endless && depth_no>=zone_floors());
     if(last){ dmap[dn]=D_FLOOR; }
     if(endless && depth_no>1) dmap[up]=D_FLOOR;          // no way back up: warp out or keep going
     tgt_x=((dn%MW)<<16)+0x8000; tgt_y=((dn/MW)<<16)+0x8000;
@@ -147,7 +148,17 @@ static void make_floor(void){
     int nb = 1 + (dlv()/2>3?3:dlv()/2) + (depth_no>2);
     for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), base_hp/2+1, 0);
     for(int k=0;k<nlamps;k++) SPAWN(K_LAMP, lampcell[k], 1, 0);
-    if(last){ SPAWN(K_BOSS, dn, 40+dlv()*30 + tier_now()*40, 0); }       // the boss is always at the bottom: beat it again for the next tier
+    if(last && !base_mode){ SPAWN(K_BOSS, dn, 40+dlv()*30 + tier_now()*40, 0); }       // the boss is always at the bottom: beat it again for the next tier
+    if(base_mode){                                                                       // an outpost floor: a locked door guards the way on, the keycard is somewhere else
+        if(last){ SPAWN(K_CORE, dn, 80+dlv()*25+outposts_done*20, 0); }
+        // lock: the corridor cell just outside the far room
+        int lk=-1; Room *fr=&rooms[far];
+        for(int y=fr->y-1;y<=fr->y+fr->h && lk<0;y++) for(int x=fr->x-1;x<=fr->x+fr->w && lk<0;x++){
+            if(x<1||y<1||x>=MW-1||y>=MW-1) continue; int ring = x==fr->x-1||y==fr->y-1||x==fr->x+fr->w||y==fr->y+fr->h; if(!ring) continue;
+            int i=y*MW+x; if(dmap[i]==D_FLOOR && rid[i]==255) lk=i; }
+        if(lk>=0){ dmap[lk]=D_LOCK; int kr=rndi(nrooms>1?nrooms-1:1); if(kr==far) kr=0; SPAWN_GEAR(room_floor_cell(&rooms[kr]), ((Gear){IT_KEY,0,0,0,0,0})); }
+        for(int k=0;k<2;k++) SPAWN(rndi(2)?K_WASP:K_BEETLE, room_floor_cell(&rooms[rndi(nrooms)]), base_hp*2, 0);
+    }
     if(endless){
         if(hive_boss_floor()) SPAWN(K_BOSS, dn, 150+depth_no*12+dlv()*45, 0);              // a Tech Hive overlord guards the hive core
         else if(depth_no%10==0) SPAWN(K_BOSS, dn, 60+depth_no*6+dlv()*20, 0);               // a guardian every 10 floors
@@ -161,7 +172,7 @@ static void make_floor(void){
     if(qhere && q_type==Q_CHAMP){ SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0); dob[ndo-1].champ=2; }
     if(qhere && q_type==Q_FETCH) SPAWN_GEAR(room_floor_cell(&rooms[far]), ((Gear){IT_QUEST,0,0,0,0,0}));
 }
-static int solid(s32 x, s32 y){ int cx=x>>16, cy=y>>16; if(cx<0||cy<0||cx>=MW||cy>=MW) return 1; int t=dmap[cy*MW+cx]; return t==D_WALL||t==D_PILLAR; }
+static int solid(s32 x, s32 y){ int cx=x>>16, cy=y>>16; if(cx<0||cy<0||cx>=MW||cy>=MW) return 1; int t=dmap[cy*MW+cx]; return t==D_WALL||t==D_PILLAR||t==D_LOCK; }
 
 static u8 bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
 static int hz=89;          // the horizon row; it bobs while you walk and shakes when you are hit
@@ -179,7 +190,7 @@ static s16 sinI[256];
 static u8 lsub[128*128] __attribute__((section(".ewram")));     // smooth light, 4x4 per tile
 
 // ---------------------------------------------------------------- baking the light
-static int opaque(int tx,int ty){ if(tx<0||ty<0||tx>=MW||ty>=MW) return 1; int t=dmap[ty*MW+tx]; return t==D_WALL||t==D_PILLAR; }
+static int opaque(int tx,int ty){ if(tx<0||ty<0||tx>=MW||ty>=MW) return 1; int t=dmap[ty*MW+tx]; return t==D_WALL||t==D_PILLAR||t==D_LOCK; }
 static void build_light(void){
     for(int i=0;i<128*128;i++) lsub[i]=9;
     for(int k=0;k<nlights;k++){ Light *L=&lights[k]; int lx=L->x*4+2, ly=L->y*4+2, st=L->str;
@@ -203,7 +214,8 @@ static void build_light(void){
 static void build_walls(void){
     for(int i=0;i<MW*MW;i++){
         int t=dmap[i], m=wmat[i]&15, fl=wmat[i]&0x30, dc=wdec[i], st=(m==M_STONE), w=WT_BRICK;
-        if(t==D_PILLAR) w = m==M_STONE?WT_STONE_PILLAR : m==M_CRYSTAL?WT_CRYSTAL_PILLAR : WT_MARBLE;
+        if(t==D_LOCK) w = WT_STONE_NICHE+1;                                             // the locked door looks like a door
+        else if(t==D_PILLAR) w = m==M_STONE?WT_STONE_PILLAR : m==M_CRYSTAL?WT_CRYSTAL_PILLAR : WT_MARBLE;
         else if(fl&F_TORCH) w = st?WT_STONE_TORCH:WT_BRICK_TORCH;
         else if(m==M_EARTH) w = (fl&F_BEAM)?WT_EARTH_BEAM:WT_EARTH;
         else if(m==M_MOSS) w=WT_MOSS;
@@ -238,7 +250,7 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
             pmx=mx; pmy=my;
             if(tx<ty){ tx+=ddx; mx+=sx; side=0; } else { ty+=ddy; my+=sy; side=1; }
             if(mx<0||my<0||mx>=MW||my>=MW){ t=D_WALL; mx=pmx; my=pmy; break; }
-            t=dmap[my*MW+mx]; if(t==D_WALL||t==D_PILLAR) break;
+            t=dmap[my*MW+mx]; if(t==D_WALL||t==D_PILLAR||t==D_LOCK) break;
         }
         s32 perp = side==0 ? tx-ddx : ty-ddy; if(perp<0x1000) perp=0x1000;
         ctyp[c]=t; zbuf[c]=perp;
@@ -367,6 +379,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
         case K_LAMP: art=art_lamp; aw=LAMP_W; ah=LAMP_H; hw=0x8000; break;
         case K_BARREL: if(o->sub){ art=art_crate; aw=CRATE_W; ah=CRATE_H; hw=0x5800; } else { art=art_barrel; aw=BARREL_W; ah=BARREL_H; hw=0x6800; } break;
         case K_CAGE: art=art_cage; aw=CAGE_W; ah=CAGE_H; hw=0x9000; tint=224+o->sub; break;
+        case K_CORE: art=art_gem; aw=GEM_W; ah=GEM_H; hw=0x14000; tint=(frames&8)?R_CRYSTAL+7:R_CRYSTAL+5; break;
         case K_BEETLE: art=anim?beetle_art2:beetle_art; aw=BEETLE_W; ah=BEETLE_H; hw=0x8000; break;
         case K_WASP: if((frames>>1)&1){ art=art_wasp2; aw=WASP2_W; ah=WASP2_H; } else { art=art_wasp; aw=WASP_W; ah=WASP_H; } hw=0x4000; break;
         case K_PET: { static const u16 pt[4]={216,R_FLAME+5,R_STONE+5,218}; static const u16 ph[4]={0x3000,0x3800,0x4200,0x5800}; art=art_pet; aw=PET_W; ah=PET_H; hw=ph[pet_form]; tint=pt[pet_form]; break; }
@@ -517,7 +530,7 @@ static void minimap(volatile u16 *pg){
     int cx=px_>>16, cy=py_>>16, ox=2, oy=30;
     for(int j=0;j<15;j++) for(int i=0;i<15;i++){ int x=cx-7+i, y=cy-7+j; int ix=0;
         if(x>=0&&y>=0&&x<MW&&y<MW && seen[y*MW+x]){ int t=dmap[y*MW+x];
-            ix = t==D_WALL||t==D_PILLAR ? R_STONE+3 : t==D_DOWN ? C_GOLD : t==D_UP ? C_CYAN : 2; }
+            ix = t==D_LOCK ? C_RED : t==D_WALL||t==D_PILLAR ? R_STONE+3 : t==D_DOWN ? C_GOLD : t==D_UP ? C_CYAN : 2; }
         else if(!(x>=0&&y>=0&&x<MW&&y<MW)) ix=0; else ix=1;
         u16 p2=ix|(ix<<8); pg[(oy+j*2)*120+ox+i]=p2; pg[(oy+j*2+1)*120+ox+i]=p2; }
     for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(!o->alive) continue; int x=(o->x>>16)-cx+7, y=(o->y>>16)-cy+7; if(x<0||y<0||x>14||y>14||!seen[(o->y>>16)*MW+(o->x>>16)]) continue;
@@ -541,29 +554,33 @@ static void map_page(volatile u16 *pg){
         if(!seen[i]) c = t==D_DOWN ? C_GOLD : R_STONE+1;           // a sight berry shows the whole floor, dimly
         rect(pg,ox+x*4,oy+y*4,4,4,c); }
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; int x=o->x>>16, y=o->y>>16; if(!seen[y*MW+x]) continue;
-        int c = o->kind==K_CAGE ? C_GREEN : o->kind==K_CHEST ? C_GOLD : o->kind==K_BOSS ? C_RED : -1;
+        int c = o->kind==K_CAGE ? C_GREEN : o->kind==K_CHEST ? C_GOLD : o->kind==K_BOSS||o->kind==K_CORE ? C_RED : (o->kind==K_ITEM && o->it==IT_KEY) ? C_GOLD : -1;
         if(c>=0){ rect(pg,ox+x*4+1,oy+y*4+1,2,2,c); } }
     int px=ox+(px_>>14), py=oy+(py_>>14);
     rect(pg,px-1,py-1,3,3,C_RED);
     { s32 dx=cosx(pang>>2), dy=sinx(pang>>2); for(int k=2;k<5;k++) pix(pg,px+(dx*k>>14),py+(dy*k>>14),C_WHITE); }
     int lx=144, y=40; char b[32];
-    scpy(b,world_name()); b[22]=0; text(pg,lx,y,b,C_GOLD,1); y+=8;
-    scpy(b,"FLOOR B"); ncat(b,depth_no); if(!endless){ scat(b," OF "); ncat(b,zone_floors()); } text(pg,lx,y,b,C_WHITE,1); y+=14;
+    scpy(b,base_mode?"DRONE OUTPOST":world_name()); b[22]=0; text(pg,lx,y,b,C_GOLD,1); y+=8;
+    scpy(b,"FLOOR B"); ncat(b,depth_no); if(base_mode){ scat(b," OF "); ncat(b,base_floors()); } else if(!endless){ scat(b," OF "); ncat(b,zone_floors()); } text(pg,lx,y,b,C_WHITE,1); y+=14;
     rect(pg,lx,y,5,5,C_RED); text(pg,lx+9,y,"YOU",C_WHITE,1); y+=9;
     rect(pg,lx,y,5,5,C_GOLD); text(pg,lx+9,y,"STAIRS DOWN",C_WHITE,1); y+=9;
     rect(pg,lx,y,5,5,C_CYAN); text(pg,lx+9,y,"STAIRS UP",C_WHITE,1); y+=9;
     rect(pg,lx+1,y+1,3,3,C_GREEN); text(pg,lx+9,y,"CAGED BUG",C_WHITE,1); y+=9;
-    rect(pg,lx+1,y+1,3,3,C_RED); text(pg,lx+9,y,"BOSS",C_WHITE,1); y+=14;
+    rect(pg,lx+1,y+1,3,3,C_RED); text(pg,lx+9,y,base_mode?"CORE":"BOSS",C_WHITE,1); y+=9;
+    if(base_mode){ rect(pg,lx,y,5,5,C_RED); text(pg,lx+9,y,"LOCKED DOOR",C_WHITE,1); y+=9; }
+    y+=5;
     if(!endless && depth_no>=zone_floors()) text(pg,lx,y,zone_cleared?"BOSS BEATEN!":"THE BOSS IS HERE",zone_cleared?C_GREEN:C_RED,1);
     else text(pg,lx,y,stairs_seen()?"YOU FOUND THE STAIRS":"FIND THE STAIRS",stairs_seen()?C_GREEN:C_GREY,1);
 }
+static int base_floors(void){ return 2 + (outposts_done>5?3:outposts_done/2); }
 static int boss_floor(void){ for(int i=0;i<ndo;i++) if(dob[i].alive && dob[i].kind==K_BOSS) return 1; return 0; }
 static DObj petobj;
 static s32 pet_x, pet_y;
 
 static void dungeon_label(char *b){
-    scpy(b,world_name()); scat(b," B"); char n2[6];
+    if(base_mode) scpy(b,"OUTPOST"); else scpy(b,world_name()); scat(b," B"); char n2[6];
     if(endless){ num(n2,depth_no,depth_no>99?3:depth_no>9?2:1); scat(b,n2); }
+    else if(base_mode){ num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,base_floors(),1); scat(b,n2); }
     else { num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,zone_floors(),1); scat(b,n2); if(tier_now()){ scat(b," T"); ncat(b,tier_now()); } }
 }
 // the status bar is drawn only into the page you can't see, so it never flickers: once for each of the two pages

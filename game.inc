@@ -16,6 +16,8 @@ static u8 tiers[6];                                  // how many extra times eac
 static int st_kills[11], st_fish, st_barrels, st_mined, st_dodges, st_planets, st_uniq, st_tiers, st_floors;
 static u32 ach_done;                                 // one bit per achievement
 static int pet_xp, pet_lv;
+// ---- the drone outposts and Bolt's memory: one bit per star system with its outpost destroyed, how many data cores you hold
+static u32 base_mask; static int data_cores, outposts_done, base_mode;   // base_mode: 1 while you are inside an outpost
 static int tier_now(void){ return (!endless && zone_cleared) ? tiers[zone]+1 : 0; }     // 0 on a first run, 1+ when you go back down a cleared zone
 static int dlv(void){ int d = endless ? w_dlv : zone + tier_now()*2; return d>30?30:d; }
 static int zone_floors(void){ return endless ? 9999 : zone+3+tier_now(); }
@@ -113,7 +115,7 @@ static void make_world(void){
 static const char *world_name(void){ return endless ? w_name : tint_name[zone]; }
 
 // ---------------------------------------------------------------- items
-enum { IT_NONE, IT_BERRY, IT_SEED, IT_SHELL, IT_THORN, IT_CRUMB, IT_WARP, IT_GEM, IT_CHARM, IT_BOOK, IT_FISH, IT_POTION, IT_QUEST };
+enum { IT_NONE, IT_BERRY, IT_SEED, IT_SHELL, IT_THORN, IT_CRUMB, IT_WARP, IT_GEM, IT_CHARM, IT_BOOK, IT_FISH, IT_POTION, IT_QUEST, IT_KEY };
 enum { R_NORMAL, R_MAGIC, R_RARE, R_UNIQUE };
 // unique items: one of a kind, each with its own power. Mostly from bosses. Worth keeping.
 #define NUNIQ 12
@@ -232,7 +234,7 @@ static void ach_check(void){
         char b[40]; scpy(b,"FEAT: "); scat(b,ach[i].name); scat(b," +"); ncat(b,ach[i].gold); scat(b,"G"); say(b); sfx(6); hud_now(); }
 }
 static void new_game(void){
-    for(int i=0;i<6;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0;
+    for(int i=0;i<6;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; base_mask=0; data_cores=0; outposts_done=0; base_mode=0;
     shuffle(berry_map,8); shuffle(seed_map,6);
     for(int i=0;i<8;i++) berry_known[i]=0; for(int i=0;i<6;i++) seed_known[i]=0;
     for(int i=0;i<6;i++) have_bug[i]=0;
@@ -268,6 +270,7 @@ static void gear_name(const Gear *g, char *b){
         case IT_FISH: scpy(b,fish_name[sub%5]); break;
         case IT_POTION: scpy(b,potion_name[sub&1]); break;
         case IT_QUEST: scpy(b,"LOST TREASURE"); break;
+        case IT_KEY: scpy(b,"DRONE KEYCARD"); break;
         default: scpy(b,"NOTHING");
     }
 }
@@ -423,6 +426,7 @@ static void use_index(int i){
         say(b); break; }
     case IT_BOOK: if(spell_known[sub]){ say("YOU KNOW THAT SPELL"); return; } spell_known[sub]=1; spell_sel=sub; scpy(b,"LEARNED "); scat(b,spell_name[sub]); say(b); break;
     case IT_FISH: if(!feed_pet(sub)) return; break;
+    case IT_KEY: say("WALK INTO THE LOCKED DOOR TO USE IT"); return;
     }
     drop_at(i); hud_now();
 }

@@ -114,13 +114,17 @@ static int cur_sys=0, fuel=70, hull=100, shield=40, shield_lv=1, laser_lv=1, car
 static u8 cargo[8];
 static const char *const eco_name[4]={"FARMING","MINING","TECH","HIVE"};
 static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MACHINES","MEDICINE","RELICS"};
+static u32 sys_id(int i); static int is_hive(int i);
 static int cargo_n(void){ int n=0; for(int i=0;i<8;i++) n+=cargo[i]; return n; }
 #include "sound.inc"
 #include "game.inc"
+#include "ship.inc"
 #include "save.inc"
 static void title_restore(volatile u16 *pg, int y0, int y1); static void twinkle(volatile u16 *pg, int t);
+static int beast_stage;
 #include "ui.inc"
-static int launch_flag=0, zone_card=0, arrow_ship=0;
+#include "hangar.inc"
+static int launch_flag=0, zone_card=0, arrow_ship=0, base_card=0;
 static void story_boss_beaten(void); static int hive_here(void); static int hive_boss_floor(void); static void hive_kill(void);
 
 #define VISPG ((volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0xA000:0)))   // the page on screen right now
@@ -179,6 +183,12 @@ static int mon_dmg(DObj *o){
 static void kill_mon(DObj *o){
     int boss=o->kind==K_BOSS, hive = boss && endless && hive_boss_floor();
     if(o->kind>=0 && o->kind<11) st_kills[o->kind]++;
+    if(o->kind==K_CORE){                                                              // the outpost dies: Bolt gets a memory back, the beast loses a feeding node
+        o->alive=0; sfx(9); debris(o->x,o->y,0x8000,16,3,0,0); burst(o->x,o->y,0x8000,12,2); if(opt_shake) shake_t=8;
+        base_mask |= 1u<<(cur_sys&31); outposts_done++; if(data_cores<8) data_cores++;
+        scrap+=8; earn(150+outposts_done*60); gain_xp(40+dlv()*8);
+        b3_max = b3_max*96/100; if(b3_hp>b3_max) b3_hp=b3_max; if(beast_stage>=3){ beast_max=b3_max; if(beast_hp>beast_max) beast_hp=beast_max; }
+        base_card=1; escape_flag=1; say("THE CORE SHATTERS! BOLT: I'LL BEAM US OUT"); hud_now(); return; }
     int xpv = (4+dlv()*2+depth_no) * (o->kind==K_BEETLE?2 : o->kind==K_WASP?3 : boss?10 : 1) / (o->kind==K_WASP?2:1);
     if(o->champ) xpv*=3;
     earn(boss ? 100+depth_no*10 : 6+dlv()*4+(o->champ?40:0));
@@ -215,7 +225,7 @@ static void hit_mon(DObj *o, int dmg, int crit){
 static int combo=0, combo_t=0, dodge_t=0, dodge_dir=0, tapL_t=0, tapR_t=0, dodge_msg_t=0;
 static s32 pvx=0, pvy=0; static int hitstop=0, kick_t=0, bump_cd=0, pknock_t=0, moved_real=0;
 static s32 body_r(DObj *o){ s32 r; switch(o->kind){ case K_SPIDER: r=0x3000; break; case K_BEETLE: r=0x4000; break; case K_BOSS: r=0x6800; break; case K_BAT: r=0x2400; break;
-    case K_WASP: r=0x2800; break; case K_BARREL: r=o->sub?0x3800:0x3200; break; case K_CAGE: r=0x3000; break; default: return 0; } return o->champ ? r*5/4 : r; }
+    case K_WASP: r=0x2800; break; case K_BARREL: r=o->sub?0x3800:0x3200; break; case K_CAGE: r=0x3000; break; case K_CORE: r=0x5000; break; default: return 0; } return o->champ ? r*5/4 : r; }
 static int body_m(DObj *o){ int m; switch(o->kind){ case K_SPIDER: m=3; break; case K_BEETLE: m=8; break; case K_BOSS: m=40; break; case K_BAT: m=1; break;
     case K_WASP: m=2; break; case K_BARREL: m=o->sub?9:5; break; default: m=999; } return o->champ ? m*2 : m; }
 static int box_solid(s32 x, s32 y, s32 r){ return solid(x-r,y-r)||solid(x+r,y-r)||solid(x-r,y+r)||solid(x+r,y+r); }
@@ -318,7 +328,7 @@ static int spark_t=0, spark_c=60, spark_y=80;
 #define TURN_RAMP  16          // 60ths of holding to reach TURN_MAX
 
 static int skip_draw=0, wtick=1, turn_held=0, hud_f=0, dt_last=0, wacc=0, mv_now=0, near_cage_p=-1, atk_len=9;
-static DObj *named_p=0; static u32 dhud_sig=0;
+static DObj *named_p=0; static u32 dhud_sig=0; static int lock_ahead=0;
 // is there something to bite right in front of you? (same box the bite uses)
 static int foe_ahead(s32 dirx, s32 diry){
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
@@ -429,6 +439,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     s32 named_d=0x60000; if(wtick){ near_cage_p=-1; named_p=0; }
     for(int i=0;wtick && i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(o->flash) o->flash--;
         s32 dx=px_-o->x, dy=py_-o->y, d=dist8(dx,dy);
+        if(o->kind==K_CORE){ if(d<named_d){ named_p=o; named_d=d; } if(blast_flag && d<0x30000) hit_mon(o,8+level*2,0); continue; }
         if(is_mon(o->kind)){
             int boss=o->kind==K_BOSS, bat=o->kind==K_BAT, wasp=o->kind==K_WASP;
             s32 contact = 0x7800 + body_r(o), reach = contact + 0x2800;     // they walk up until they touch you, then bite
@@ -492,11 +503,18 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     }
     // ---- A: open a cage, take the stairs, fish, or bite
     int here=dmap[(py_>>16)*MW+(px_>>16)];
+    { s32 ax=px_+((dirx*13)>>4), ay=py_+((diry*13)>>4); int tx=ax>>16, ty=ay>>16;
+      if(tx>=0&&ty>=0&&tx<MW&&ty<MW && dmap[ty*MW+tx]==D_LOCK){ lock_ahead=1;
+          if(HIT(K_A)||(sp && (frames&31)==0)){ int ki=-1; for(int k=0;k<bag_n;k++) if(bag[k].it==IT_KEY){ ki=k; break; }
+              if(ki>=0){ dmap[ty*MW+tx]=D_FLOOR; wtex[ty*MW+tx]=WT_STONE; drop_at(ki); say("KEYCARD ACCEPTED. THE DOOR SLIDES OPEN"); sfx(5); hud_now(); build_light(); }
+              else say("LOCKED. THE DRONES KEEP A KEYCARD SOMEWHERE"); } }
+      else lock_ahead=0; }
     if(here!=D_UP) stair_ok=1;           // you arrive standing on the up stairs: step off once before they work
     if(wtick && fish_state==1 && --fish_t<=0){ fish_state=2; fish_t=14; sfx(8); say("! A BITE ! PRESS A"); }
     else if(wtick && fish_state==2 && --fish_t<=0){ fish_state=0; say("IT GOT AWAY"); }
     int foe = foe_ahead(dirx,diry);
     if(HIT(K_A) && fish_state==2){ fish_state=0; int r=rndi(100), f = r<45?0 : r<62?1 : r<79?2 : r<88?3 : 4; add_item(IT_FISH,f); st_fish++; ach_check(); sfx(8); }
+    else if(lock_ahead && HIT(K_A)){ }
     else if(HELD(K_A) && foe){ if(!atk_t) do_bite(dirx,diry); }          // something in front always gets bitten, and holding A keeps biting
     else if(HIT(K_A)){
         if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
@@ -550,10 +568,11 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(sight || have_bug[BUG_ANT] || stairs_seen()) compass(pg,dirx,diry);
     if(opt_minimap) minimap(pg);
     hud3d(pg);
-    if(named){ char b[32]; b[0]=0; if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
+    if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
     if(msg_timer){ text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
     else if(!opt_hints){}
+    else if(lock_ahead) text(pg,120-14*4,24,"A: USE KEYCARD",C_GOLD,2);
     else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);
     else if((here==D_UP && stair_ok)||here==D_DOWN){ const char *m2 = here==D_UP? "A: CLIMB UP" : "A: GO DEEPER"; text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
     else if(!fish_state && water_ahead(dirx,diry)) text(pg,120-9*4,24,"A: FISH",C_CYAN,2);
@@ -636,7 +655,7 @@ static int title_screen(void){
         if(HIT(K_A)||HIT(K_START)){
             int a=it[sel]; sfx(2);
             if(a==TI_CONT){ cur_slot=cs; return 1; }
-            if(a==TI_NEW){ int s2=slot_picker(pg,SP_NEW,0); if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug(pg,1)) return 0; } full=1; }
+            if(a==TI_NEW){ int s2=slot_picker(pg,SP_NEW,0); if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug(pg,1) && make_ship(pg,1)) return 0; } full=1; }
             if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; return 1; } full=1; }
             if(a==TI_OPT){ oam_hide_all(); oam_flush(); options_screen(pg); full=1; }
             if(a==TI_HELP){ oam_hide_all(); oam_flush(); help_screen(pg); full=1; }
@@ -658,7 +677,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     oam_hide_all(); oam_flush(); fade(0);
     music(0);
     if(!cont){ static const char *const t[6]={"YOU ARE A LITTLE PILL BUG.","THE ANT KING HAS CAGED YOUR BUG FRIENDS.","","FOLLOW THE YELLOW ARROW TO THE DOOR.","GO DOWN. BEAT THE BOSS AT THE BOTTOM.","THEN FLY YOUR SHIP TO THE NEXT STAR."};
-        card(VISPG,"BUGSTAR",t,6); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
+        card(VISPG,"BUGSTAR",t,6); bolt_story(VISPG,0); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
 #ifdef TEST_DUNGEON
     enter_dungeon_flag=1;
 #endif
@@ -701,8 +720,8 @@ static void run_game(void){
                 scene=2; page_back=1; REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BLDY=0; hyperspace();
                 arrive_on_planet(); fade(0); continue; }
             if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }
-            if(enter_dungeon_flag){ enter_dungeon_flag=0; fade(1); oam_hide_all(); oam_flush();
-                depth_no=0; if(portal_depth>0){ depth_no=portal_depth-1; portal_depth=0; }
+            if(enter_dungeon_flag){ if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; fade(1); oam_hide_all(); oam_flush();
+                depth_no=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
                 scene=1; dungeon_enter();
 #ifdef TEST_FOE
                 for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=k?K_BEETLE:K_SPIDER; b->alive=1; b->hp=b->maxhp=k?40:20; b->x=px_+(cosx(pang>>2)<<(k?4:3)); b->y=py_+(sinx(pang>>2)<<(k?4:3)); }
@@ -732,14 +751,20 @@ static void run_game(void){
                    char mb[40];
                    if(r==2){ recalc(); hearts=maxh; food=60; if(!endless) gold/=2; loot=0; if(!opt_easy){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, opt_easy ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
                    else if(endless){ int bonus = loot*(100+depth_no*15)/100; gold+=bonus; loot=0; scpy(mb,"ESCAPED B"); ncat(mb,depth_no); scat(mb,": +"); ncat(mb,bonus); scat(mb,"G"); }
+                   else if(base_mode && base_card) scpy(mb,"THE OUTPOST IS DEAD");
+                   else if(base_mode) scpy(mb,"BACK ON THE SURFACE");
                    else if(r==3 && portal_depth) scpy(mb,"PORTAL OPEN: THE DOOR TAKES YOU BACK");
                    else scpy(mb, zone_cleared?"ZONE CLEARED! GO TO YOUR SHIP":"BACK ON THE SURFACE");
+                   if(base_mode){ base_mode=0; portal_depth=0; for(int k=0;k<bag_n;k++) if(bag[k].it==IT_KEY){ drop_at(k); break; } }
                    restock(); save_game();
                    planet_enter(); arrow_ship = zone_cleared && !endless; show_msg(mb); oam_flush(); music(0); fade(0);
+                   if(base_card){ base_card=0; int k=data_cores-1; if(k<0) k=0; if(k>7) k=7; bolt_card(VISPG,bolt_mem[k],4);
+                       if(data_cores>=8){ static const char *const t[4]={"\"THAT WAS THE LAST OF ME.\"","\"I AM THE DAWN. I KNOW IT NOW.\"","\"FIND THE BEAST. L ON THE GALAXY MAP.\"","\"SHOOT ITS CORE AND I WILL OPEN IT.\""}; bolt_card(VISPG,t,4); }
+                       planet_hud(); }
                    if(zone_card){ int z=zone_card-1; zone_card=0;
-                       if(z==5){ fade(1); credits(); planet_enter(); fade(0); }
+                       if(z==5){ bolt_story(VISPG,6); fade(1); credits(); planet_enter(); fade(0); }
                        else { static const char *const t[6]={"A NEW STAR IS OPEN.","","1. GO TO YOUR SHIP. FOLLOW THE ARROW.","2. PICK LAUNCH INTO SPACE.","3. PRESS SELECT FOR THE GALAXY MAP.","4. PICK THE NEW STAR AND PRESS A."};
-                           card(VISPG,"BOSS BEATEN! ZONE CLEARED",t,6); }
+                           card(VISPG,"BOSS BEATEN! ZONE CLEARED",t,6); bolt_story(VISPG,1+z); }
                        planet_hud(); show_msg("GO TO YOUR SHIP"); } }
         }
     }
@@ -755,7 +780,7 @@ int main(void){
     while(1){
         in_game=0; sys_req=0; scene=0;
         cur_slot=last_slot;
-        new_game(); bug_look_default();
+        new_game(); bug_look_default(); ship_default(); ship_build_model();
         int cont=title_screen();
         start_game(cont);
         in_game=1;

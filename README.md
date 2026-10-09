@@ -14,6 +14,23 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | SELECT | Tap: switch between third person and first person. Hold SELECT + L/R: point the arrow at the door or your ship | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
 | START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM, MAP) | Opens on the MAP |
 
+## The story
+Your little droid **Bolt** rolls after you everywhere. He does not know what he is. He knows he is yours.
+Long ago a seed ship, the **Star Cruiser DAWN**, planted your worlds: the Garden, the Pond, the Night Lawn. Its crew were bugs. Its mind was Bolt. It fell on the Anthill. The Ant King opened its heart and built a mouth around it: the **Technobeast**, which eats ships to grow. The ants broke Bolt's memory into eight **data cores** and used them to power their drone outposts.
+Every outpost core you smash gives Bolt a memory back. The last one is his real name - the word that opens the beast's heart. Then fly into the beast, shoot its core, and let him say it.
+- Bolt speaks after every boss, after every outpost, and whenever you pick **TALK TO BOLT** at your ship (he always tells you what to do next).
+- **Drone outposts** are grey hatches with a red light on planets (zones 2-6 and some uncharted worlds; red marks on the galaxy map). Inside: tech dungeons with a **locked door** - find the **keycard** the drones keep somewhere on the floor - and a **power core** at the bottom to bite to pieces. Each dead outpost also makes the Technobeast smaller.
+- With all 8 cores, hitting the beast's core does **8x damage**: Bolt opens its heart. Beat it and the Dawn flies again.
+- **Station lounge** (a third tab at any station): three regulars - an old moth pilot, a trader bee, and an ant who ran away - with rumours, trade tips and where the drones are digging.
+
+## Your ship (new)
+**Build your ship** after making your bug, or any time at your ship: **HANGAR**. It is a real 3D wireframe that turns in the preview (L/R spin it), and it is parked on every planet in 3D.
+- **Hull:** dart, saucer, cargo box, wedge or needle - sets your armour and hold size.
+- **Wings:** none, straight, swept, delta or X-wings, in three sizes - sets how fast you turn.
+- **Engines** one to four: top speed. **Fins:** how quickly turns settle. **Cannon:** none, nose gun, wing guns or big cannon: laser damage. **Cockpit** bubble or slit.
+- **Paint** and **trim** colours use the same pickers as your bug. SELECT: surprise me.
+The stats card at the bottom shows exactly what each choice does.
+
 ## Your bug (new)
 **Make your bug** when you start a new game, or any time at your ship's **MIRROR**. It is built from parts, like a creature creator, and you watch it change as you go:
 - **Name** (up to 8 letters).
