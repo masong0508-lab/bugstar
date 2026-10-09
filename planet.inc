@@ -290,15 +290,16 @@ static void planet_frame(void){
     for(int k=0;k<cnt && slot<126;k++){
         PObj *o=&po[order[k]]; s32 dz=odz[order[k]], dx=odx[order[k]];
         s32 zc=dz>>8;                                                                  // 8.8 cells
-        s32 f=(FOCP<<16)/zc;                                                           // 16.16 px per cell
-        int sx = 120 + (s32)(((long long)dx*f)>>32);
+        s32 f=(FOCP<<16)/zc;                                                           // 8.8 px per cell
+        int sx = 120 + (s32)(((long long)dx*f)>>24);                                   // (16.16 cells * 8.8) >> 24 = px
         s32 gh=ground_h(o->x,o->y); s32 curve=(zc*zc)>>15;
-        int sy = PHZ + (s32)(((long long)(cam_h + curve - gh) * f)>>24);
+        int sy = PHZ + (((cam_h + curve - gh) * f)>>16);                                // (8.8 cells * 8.8) >> 16 = px
         if(sx<-40||sx>280||sy<10||sy>190) continue;
         int c=sx>>1; if(c<0) c=0; if(c>119) c=119;
         int si=0; while(si<NSTEP-1 && stp_z[si]<zc) si++; int bin=(si>>3)-1; if(bin>7) bin=7;
-        if(bin>=0 && sy < ybin[c*8+bin]-2) continue;                                   // behind a nearer hill
-        int s=f>>(16+4-6); if(s<13) s=13; int m=(s-13)/4; if(m>27) m=27;             // sprite scale: a 16px sprite is one cell (matrices 28-31 belong to the jaws, arrow and bug)
+        if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
+        static const u8 ksz[7]={28,28,22,18,16,12,14};                                   // door, ship, cage, slug, plant, pebble, tuft: size in 16ths of a cell
+        int s=(f>>6)*ksz[o->kind]>>4; if(s<13) s=13; int m=(s-13)/4; if(m>27) m=27;                      // px per cell / 16 px * 64             // sprite scale: a 16px sprite is one cell (matrices 28-31 belong to the jaws, arrow and bug)
         s32 sc=13+m*4;
         int w=w_of[o->kind], h=h_of[o->kind];
         int cy=sy - (sc*h)/128;
