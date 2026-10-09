@@ -224,7 +224,7 @@ def gen_jaw():
             g[y][x]=c
     return [''.join(r) for r in g]
 JAW=gen_jaw()
-def gen_side(frame):
+def gen_side(frame,pattern=0):
     import math
     W,H=28,14; g=[['.']*W for _ in range(H)]
     cx,cy,a,b=11.0,10.6,10.0,8.6
@@ -239,6 +239,9 @@ def gen_side(frame):
                 seam = ((x+1)%4==0) and y>2
                 c = 5 if lit>0.75 else 4 if lit>0.42 else 3 if lit>0.05 else 2
                 if seam: c=max(2,c-1)
+                if pattern==1 and (x//3)%2==0 and 2<y<10: c=max(2,c-2)                     # stripes
+                if pattern==2 and ((x*5+y*3)%7)==0 and 1<y<9 and 2<x<19: c=max(2,c-2)      # spots
+                if pattern==3 and y>=6 and y<10: c=min(5,c+1)                               # a pale belly band
                 g[y][x]=str(c)
     for y in range(H):                                   # the head
         for x in range(W):
@@ -253,6 +256,7 @@ def gen_side(frame):
         g[11][lx]='1'; g[12][lx+(1 if fwd else -1)]='1'; g[13][lx+(1 if fwd else -1)]='1'
     return [''.join(r) for r in g]
 BUG=[r[::-1] for r in gen_side(0)]; BUG2=[r[::-1] for r in gen_side(1)]      # drawn facing right; the game mirrors it
+BUGP=[[ [r[::-1] for r in gen_side(f,p)] for f in (0,1)] for p in (1,2,3)]      # the other shell patterns
 ARROW=["................",
        "................",
        "................",
@@ -361,7 +365,7 @@ FLOWER=["......e5e.......",
         "...b..1b1..b....",
         "....bb1b1bb.....",
         "......1b1......."]
-sprs=[("ARROW",ARROW,16,16,1),("TREE",TREE,16,16,1),("ROCK",ROCK,16,16,1),("WEB",WEB,16,16,1),("FLOWER",FLOWER,16,16,1),("HILL",HILL,64,32,1),("SHADOW",SHADOW,16,8,1),("CLOUD",CLOUD,32,8,1),("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
+sprs=[("ARROW",ARROW,16,16,1),("TREE",TREE,16,16,1),("ROCK",ROCK,16,16,1),("WEB",WEB,16,16,1),("FLOWER",FLOWER,16,16,1),("HILL",HILL,64,32,1),("SHADOW",SHADOW,16,8,1),("CLOUD",CLOUD,32,8,1),("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("BUGP1A",BUGP[0][0],32,16,1),("BUGP1B",BUGP[0][1],32,16,1),("BUGP2A",BUGP[1][0],32,16,1),("BUGP2B",BUGP[1][1],32,16,1),("BUGP3A",BUGP[2][0],32,16,1),("BUGP3B",BUGP[2][1],32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
       ("PLANT",PLANT,8,8,1),("PEBBLE",PEBBLE,8,8,1),("TUFT",TUFT,8,8,1),("BACK",BACK,64,64,2)]
 allt=[]; t=0
 for name,rows,w,h,s in sprs:

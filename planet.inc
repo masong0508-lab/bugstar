@@ -60,7 +60,7 @@ static void planet_palette(void){
     for(int i=0;i<8;i++) BG_PAL[WAT_B+i]=bg_pal[R_WATER+i];
     u16 sky0=rgb15(4,4,14), sky1=tp[5];
     for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=lerp15(sky0,sky1,i*2);
-    for(int i=0;i<16;i++){ OBJ_PAL[i]=obj_pal[i]; OBJ_PAL[16+i]=dim15(obj_pal[i],11); OBJ_PAL[32+i]=dim15(obj_pal[i],7); }
+    obj_palette();
 }
 static void planet_draw_bg(void){                           // the title screen still uses the painted planet picture
     volatile u16 *pg=VRAM; const u16 *src=(const u16*)planet_img;
@@ -260,7 +260,7 @@ static void planet_frame(void){
 #endif
     { int pk = best<0 ? -1 : po[best].kind;
       static const char *const pt[9]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR"};
-      if(pk>=0){ const char *s=pt[pk]; stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); } }
+      if(pk>=0 && opt_hints){ const char *s=pt[pk]; stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); } }
     (void)prompt_k;
 #ifdef TEST_FPS
     u32 t_s0=TMR();
@@ -283,7 +283,7 @@ static void planet_frame(void){
       set_affine(31, up ? 256 : facing? -128:128, up ? 0 : facing? lean:-lean, 0, up ? 256 : 128+sq);
       if(pvis){ shadow_oam[slot].a0 = ((up ? sy-96-bob : sy-32-bob)&255) | (1<<8)|(1<<9) | (up?(0<<14):(1<<14));
                 shadow_oam[slot].a1 = ((up ? 120-64 : 120-32)&511) | (31<<9) | (up?(3<<14):(2<<14));
-                shadow_oam[slot].a2 = up ? T_BACK : (moved && ((frames>>3)&1) ? T_BUGSIDE2 : T_BUGSIDE); slot++; }
+                shadow_oam[slot].a2 = up ? T_BACK : bug_tile(moved && ((frames>>3)&1)); slot++; }
       if(slot<120){ shadow_oam[slot].a0 = ((sy-6)&255) | (1<<14); shadow_oam[slot].a1 = ((120-8)&511); shadow_oam[slot].a2 = T_SHADOW; slot++; }
     } else {                                                                            // first person: your own jaws, swaying as you walk
       if(!(invuln && (frames&4))){
@@ -298,7 +298,7 @@ static void planet_frame(void){
     { PObj *t=&po[arrow_ship==1?0:1];
       if(arrow_ship==2){ s32 bd2=0x7FFFFFFF; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER){ s32 ddx=wrapd(po[i].x-ppx), ddy=wrapd(po[i].y-ppy); s32 d=(ddx<0?-ddx:ddx)+(ddy<0?-ddy:ddy); if(d<bd2){ bd2=d; t=&po[i]; } } }
       s32 dx=wrapd(t->x-ppx), dy=wrapd(t->y-ppy);
-      if((dx<0?-dx:dx)+(dy<0?-dy:dy) > 0x30000){
+      if(opt_arrow && (dx<0?-dx:dx)+(dy<0?-dy:dy) > 0x30000){
           s32 rx=((dx*hcs)>>8)-((dy*hsn)>>8), rz=((dx*hsn)>>8)+((dy*hcs)>>8);       // in camera space: right, and ahead
           s32 l=isqrt((u32)((rx>>8)*(rx>>8)+(rz>>8)*(rz>>8))); if(l<1) l=1;
           s32 ux=(rx>>8)*256/l, uy=-(rz>>8)*256/l;                                  // ahead points up the screen

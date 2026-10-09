@@ -489,7 +489,7 @@ static void draw_glow(volatile u16 *pg, s32 wx, s32 wy, s32 h, s32 rad, int c_in
 // floating damage numbers
 typedef struct { s32 x,y,h; s16 v, life; u8 col; } FNum;
 EW static FNum fnum[8];
-static void add_fnum(s32 x, s32 y, int v, int col){ int k=0; for(int i=1;i<8;i++) if(fnum[i].life<fnum[k].life) k=i; fnum[k]=(FNum){x,y,0xC000,(s16)v,32,(u8)col}; }
+static void add_fnum(s32 x, s32 y, int v, int col){ if(!opt_nums) return; int k=0; for(int i=1;i<8;i++) if(fnum[i].life<fnum[k].life) k=i; fnum[k]=(FNum){x,y,0xC000,(s16)v,32,(u8)col}; }
 static void fnums_update(void){ for(int i=0;i<8;i++){ FNum *f=&fnum[i]; if(f->life>0){ f->life--; f->h+=0x0900; } } }
 static void draw_fnums(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16); if(!det) return;
@@ -575,7 +575,7 @@ static void dungeon_enter(void){
     depth_no++; stair_ok=0; st_floors++; ach_check(); sight=0; msg_timer=0;
     make_floor();
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
-    for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
+    obj_palette();
     for(int i=0;i<8;i++) BG_PAL[R_SPIDER+i]= endless ? w_mon[i] : zone_mon_pal[zone*8+i];
     if(endless && depth_no>best_depth) best_depth=depth_no;
     lantk = have_bug[BUG_FIRE] ? 74 : 58;

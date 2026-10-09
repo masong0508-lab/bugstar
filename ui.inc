@@ -61,27 +61,82 @@ static void card(volatile u16 *pg, const char *title, const char *const *ln, int
         text(pg,104,y0+h-11,"A: OK",(t&32)?C_CYAN:C_DGREY,1); }
     sfx(2); wait_release();
 }
-// how to play: four short pages
-static void help_screen(volatile u16 *pg){
-    static const char *const ttl[4]={"ON A PLANET","IN A DUNGEON","IN SPACE","GOOD TO KNOW"};
-    static const char *const ln[4][8]={
-      {"D-PAD: WALK OVER THE HILLS.","FOLLOW THE YELLOW ARROW.","SELECT: FIRST OR THIRD PERSON VIEW.","IN FIRST PERSON: LEFT/RIGHT TURN.","HOLD SELECT + L OR R: ARROW TARGET.","A: DOOR, SHIP, CAGE, SLUG, PLANT.","B: USE ITEM.  START: BUG, BAG, SAVE.",""},
-      {"UP / DOWN: WALK.","LEFT / RIGHT: TURN.","L / R: STEP SIDEWAYS.","A: BITE. HOLD A TO KEEP BITING.","A: OPEN CAGES, TAKE STAIRS, FISH.","B: USE ITEM.  SELECT: CAST A SPELL.","HOLD SELECT + UP/DOWN: PICK AN ITEM.","START: THE MAP."},
-      {"D-PAD: STEER.  B: GO.  R: BRAKE.","A: SHOOT.","FLY CLOSE TO THE PLANET. A: LAND.","THE WHITE BOX IS A STATION. A: DOCK.","SELECT: GALAXY MAP.","PICK A STAR AND PRESS A TO JUMP.","JUMPS USE FUEL. BUY IT AT STATIONS.",""},
-      {"THE GREEN BAR IS FOOD. EAT CRUMBS.","MINE TREES, ROCKS, WEBS AND FLOWERS.","SELL GOODS AT STATIONS, OR UPGRADE","GEAR AT YOUR SHIP'S WORKBENCH.","BEAT A BOSS AGAIN FOR A HARDER TIER.","START > FEATS SHOWS GOALS WITH REWARDS.","SAVE ON A PLANET: START > SYSTEM.",""}};
-    int p=0, dirty=1; wait_release();
+// ---------------------------------------------------------------- make your bug: name, shell colour, pattern, with a live preview
+static int make_bug(volatile u16 *pg, int first){
+    int sel=0, dirty=1, editing=0, cur=0, t=0; char nm[9]; scpy(nm,bug_name); int n=textlen(nm); if(n<1){ scpy(nm,"PIP"); n=3; }
+    static const char *const rows[3]={"NAME","SHELL","PATTERN"};
+    wait_release(); obj_palette();
     while(1){
-        if(dirty){ dirty=0; box(pg,6,20,228,136); rect(pg,7,21,226,12,6);
-            char b[24]; scpy(b,"HOW TO PLAY  "); ncat(b,p+1); scat(b,"/4"); text(pg,12,24,b,C_GREY,1);
-            text(pg,228-textlen(ttl[p])*4,24,ttl[p],C_GOLD,1);
-            for(int i=0;i<8;i++) if(ln[p][i][0]) text(pg,14,40+i*12,ln[p][i],C_WHITE,1);
-            text(pg,12,146,"LEFT/RIGHT: PAGE   B: BACK",C_CYAN,1); }
-        vsync(); read_keys();
-        if(HIT(K_RIGHT)||HIT(K_R)||HIT(K_A)){ if(p<3){ p++; dirty=1; sfx(7); } else if(HIT(K_A)) break; }
+        if(dirty){ dirty=0; char b[40];
+            panel(pg,12,20,216,136, first ? "MAKE YOUR BUG" : "THE MIRROR");
+            for(int i=0;i<3;i++){ int y=42+i*14; if(i==sel) rect(pg,18,y-3,120,12,6);
+                text(pg,24,y,rows[i], i==sel?C_WHITE:C_GREY,1);
+                if(i==0){ for(int k=0;k<8;k++){ char ch[2]={ k<n?nm[k]:'_',0 }; int c = (editing && k==cur) ? C_GOLD : k<n ? C_WHITE : C_DGREY; text(pg,72+k*6,y,ch,c,1); if(editing && k==cur && (t&16)) rect(pg,72+k*6,y+6,4,1,C_GOLD); } }
+                else if(i==1){ scpy(b,"< "); scat(b,col_name[bug_col]); scat(b," >"); text(pg,72,y,b,i==sel?C_GOLD:C_GREY,1); }
+                else { scpy(b,"< "); scat(b,pat_name[bug_pat]); scat(b," >"); text(pg,72,y,b,i==sel?C_GOLD:C_GREY,1); } }
+            // the preview card
+            rect(pg,146,38,74,62,1); frame1(pg,146,38,74,62,C_DGREY);
+            { char nb[12]; scpy(nb,nm); ctext(pg,183,92,nb,C_GOLD); }
+            static const char *const tip[3]={"UP/DOWN: LETTER  LEFT/RIGHT: MOVE  A: DONE","YOUR SHELL AND JAWS TAKE THIS COLOUR","MARKINGS ON YOUR SHELL"};
+            ctext(pg,120,110, editing ? tip[0] : sel==0 ? "A: TYPE A NAME" : tip[sel], C_GREY);
+            ctext(pg,120,130, first ? "THIS IS YOU. YOU CAN CHANGE IT AT YOUR SHIP'S MIRROR." : "CHANGE WHAT YOU LIKE", C_WHITE);
+            ctext(pg,120,146, editing ? "A OR B: FINISH THE NAME" : "A: CHOOSE   START: ALL DONE   B: BACK", C_CYAN);
+        }
+        // the bug walks on the spot in the preview
+        t++; int wf=(t>>3)&1;
+        set_affine(31, -128, 0, 0, 128);
+        shadow_oam[0].a0=((70-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((183-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf);
+        shadow_oam[1].a0=((70-2)&255)|(1<<14); shadow_oam[1].a1=((183-8)&511); shadow_oam[1].a2=T_SHADOW;
+        vsync(); oam_flush(); read_keys(); if(editing && (t&15)==0) dirty=1;
+        if(editing){
+            if(HIT(K_UP)||HIT(K_DOWN)){ if(cur>=n){ nm[cur]='A'; n=cur+1; nm[n]=0; } else { char c=nm[cur]; c = HIT(K_UP) ? (c=='Z'?' ':c==' '?'A':c+1) : (c=='A'?' ':c==' '?'Z':c-1); nm[cur]=c; } sfx(7); dirty=1; }
+            if(HIT(K_RIGHT) && cur<7){ cur++; if(cur>=n){ nm[cur]='A'; n=cur+1; nm[n]=0; } dirty=1; }
+            if(HIT(K_LEFT) && cur>0){ cur--; dirty=1; }
+            if(HIT(K_A)||HIT(K_B)||HIT(K_START)){ while(n>0 && nm[n-1]==' ') n--; nm[n]=0; if(n==0){ scpy(nm,"PIP"); n=3; } editing=0; dirty=1; sfx(2); }
+            continue; }
+        if(HIT(K_UP)){ sel=(sel+2)%3; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%3; dirty=1; sfx(7); }
+        int d = HIT(K_RIGHT)?1 : HIT(K_LEFT)?-1 : 0;
+        if(sel==1 && d){ bug_col=(bug_col+d+NCOL)%NCOL; obj_palette(); dirty=1; sfx(2); }
+        if(sel==2 && d){ bug_pat=(bug_pat+d+4)%4; dirty=1; sfx(2); }
+        if(HIT(K_A)){ if(sel==0){ editing=1; cur=0; dirty=1; } else if(sel==1){ bug_col=(bug_col+1)%NCOL; obj_palette(); dirty=1; sfx(2); } else { bug_pat=(bug_pat+1)%4; dirty=1; sfx(2); } }
+        if(HIT(K_START)){ break; }
+        if(HIT(K_B)){ if(first){ wait_release(); oam_hide_all(); oam_flush(); return 0; } break; }
+    }
+    scpy(bug_name,nm); sfx(6); wait_release(); oam_hide_all(); oam_flush(); return 1;
+}
+// how to play: lively pages with button badges, over the title planet, with your bug walking along
+typedef struct { const char *btn; const char *txt; } HelpLine;
+static const HelpLine help_pg[5][7]={
+  {{"D-PAD","WALK OVER THE HILLS"},{"SEL","SWITCH 3RD / 1ST PERSON VIEW"},{"A","DOOR, SHIP, CAGE, SLUG, PLANT, ORE"},{"B","USE THE PICKED ITEM"},{"L R","PICK AN ITEM (1ST PERSON: SIDESTEP)"},{"SEL+LR","ARROW: DOOR, SHIP OR NEAREST ORE"},{"START","YOUR BUG, BAG, MAP AND SAVING"}},
+  {{"UP DN","WALK FORWARD AND BACK"},{"LT RT","TURN (TAP A LITTLE, HOLD FOR MORE)"},{"L R","STEP SIDEWAYS. TAP TWICE TO DODGE"},{"A","BITE. HOLD IT. THREE IN A ROW = CRUNCH"},{"A","OPEN CAGES, TAKE STAIRS, FISH IN POOLS"},{"SEL","CAST A SPELL. HOLD + L/R PICKS THE SPELL"},{"START","THE MAP OF THIS FLOOR"}},
+  {{"D-PAD","STEER THE SHIP"},{"B","THRUST.  R: BRAKE"},{"A","SHOOT PIRATES AND ROCKS"},{"A","NEAR THE PLANET: LAND.  AT THE BOX: DOCK"},{"SEL","THE GALAXY MAP. PICK A STAR, A: JUMP"},{"","JUMPS BURN FUEL. BUY FUEL AT STATIONS"},{"","STATIONS BUY THE GOODS YOU MINE"}},
+  {{"!","A RED ! MEANS A MONSTER IS ABOUT TO BITE"},{"","STEP BACK OR DODGE, THEN BITE IT"},{"","BEETLES CHARGE. SIDESTEP: THEY HIT THE WALL"},{"","BUDDY FIGHTS BESIDE YOU. FEED HIM FISH"},{"","EAT CRUMBS WHEN THE GREEN BAR IS LOW"},{"","FAINTING LOSES YOUR BAG (NOT ON EASY)"},{"","SAVE ON A PLANET: START > SYSTEM"}},
+  {{"1","FOLLOW THE ARROW TO THE DOOR. GO DOWN"},{"2","BEAT THE BOSS AT THE BOTTOM"},{"3","AT YOUR SHIP: AUTOPILOT TO THE NEXT STAR"},{"","MINE ORE. SELL IT, OR UPGRADE GEAR"},{"","BEAT A BOSS AGAIN FOR A HARDER TIER"},{"","START > FEATS: GOALS THAT PAY GOLD"},{"","BEAT THE ANT KING TO OPEN THE GALAXY"}}};
+static const char *const help_ttl[5]={"ON A PLANET","IN A DUNGEON","IN SPACE","STAYING ALIVE","YOUR QUEST"};
+static int badge_col(const char *b){ if(!b[0]) return -1; if(b[0]=='A'&&!b[1]) return C_RED; if(b[0]=='B'&&!b[1]) return C_CYAN; if(b[0]=='!') return C_RED; if(b[0]>='1'&&b[0]<='3') return C_GOLD; if(b[0]=='S') return C_GOLD; if(b[0]=='D') return C_GREEN; return C_GREY; }
+static void help_screen(volatile u16 *pg){
+    int p=0, dirty=1, t=0; wait_release(); obj_palette();
+    while(1){
+        if(dirty){ dirty=0;
+            title_restore(pg,18,160);
+            rect(pg,8,22,224,126,0); frame1(pg,8,22,224,126,6); rect(pg,9,23,222,12,C_DGREY); rect(pg,9,35,222,1,6);
+            char b[24]; scpy(b,"HOW TO PLAY  "); ncat(b,p+1); scat(b,"/5"); text(pg,14,26,b,C_GREY,1);
+            rtext(pg,226,26,help_ttl[p],C_GOLD);
+            for(int i=0;i<7;i++){ const HelpLine *h=&help_pg[p][i]; int y=41+i*13; int c=badge_col(h->btn);
+                if(c>=0){ int w=textlen(h->btn)*4+6; rect(pg,14,y-2,w,9,c); text(pg,17,y,h->btn,0,1); }
+                else { rect(pg,16,y+2,3,2,C_DGREY); }
+                text(pg,50,y,h->txt,C_WHITE,1); }
+            for(int k=0;k<5;k++) rect(pg,106+k*7,140,4,3, k==p?C_GOLD:C_DGREY);
+            text(pg,14,140,"< >: PAGE",C_CYAN,1); rtext(pg,226,140,"B: BACK",C_CYAN); }
+        t++; int wf=(t>>3)&1; int bx=((t>>1)%300)-40;                    // the bug trots along the bottom
+        set_affine(31, -128, 0, 0, 128);
+        shadow_oam[0].a0=((150-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((bx-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf);
+        vsync(); oam_flush(); read_keys(); twinkle(pg,t);
+        if(HIT(K_RIGHT)||HIT(K_R)||HIT(K_A)){ if(p<4){ p++; dirty=1; sfx(7); } else if(HIT(K_A)) break; }
         if(HIT(K_LEFT)||HIT(K_L)){ if(p>0){ p--; dirty=1; sfx(7); } }
         if(HIT(K_B)||HIT(K_START)) break;
     }
-    wait_release();
+    oam_hide_all(); oam_flush(); wait_release();
 }
 // the end of the story: the Ant King is beaten
 static void credits(void){
@@ -90,7 +145,8 @@ static void credits(void){
     for(int k=0;k<70;k++){ int x=rndi(240), y=rndi(160); pix(pg,x,y,k&3?C_DGREY:C_WHITE); }
     text(pg,120-7*6+1,9,"THE END",C_DGREY,3); text(pg,120-7*6,8,"THE END",C_GOLD,3);
     char b[48];
-    static const char *const ln[8]={"...OF THE BEGINNING.","YOUR BUG FRIENDS ARE FREE.","THE ANT KING IS BEATEN.","BUGSTAR","A GAME BY DIPPINN PRODUCTIONS","MADE WITH CLAUDE (AI)"};
+    char l1[40]; scpy(l1,bug_name); scat(l1," FREED THE BUGS.");
+    const char *ln[6]={"...OF THE BEGINNING.",l1,"THE ANT KING IS BEATEN.","BUGSTAR","A GAME BY DIPPINN PRODUCTIONS","MADE WITH CLAUDE (AI)"};
     static const u8 ly[6]={28,42,50,64,72,80};
     for(int i=0;i<6;i++){ int c = i==3?C_GOLD : i==0?C_GREY : C_WHITE; text(pg,120-textlen(ln[i])*2,ly[i],ln[i],c,1); }
     scpy(b,"LEVEL "); ncat(b,level); scat(b,"   BUGS FREED "); ncat(b,bugs_freed); scat(b,"   FAME "); ncat(b,fame); text(pg,120-textlen(b)*2,94,b,C_CYAN,1);
@@ -140,7 +196,7 @@ static void char_screen(volatile u16 *pg){
             for(int t=0;t<7;t++){ int x=6+t*34; if(t==page) rect(pg,x-3,18,textlen(tabs[t])*4+5,12,0); text(pg,x,21,tabs[t], t==page?C_GOLD:C_GREY, 1); }
             int y=35;
             if(page==0){
-                scpy(b,"LEVEL "); ncat(b,level); text(pg,8,y,b,C_GOLD,1);
+                scpy(b,bug_name); scat(b,"  LEVEL "); ncat(b,level); text(pg,8,y,b,C_GOLD,1);
                 scpy(b,fame_rank()); scat(b,"  FAME "); ncat(b,fame); rtext(pg,232,y,b,C_GOLD); y+=9;
                 vbar(pg,34,y,86,hearts,maxh,C_RED,"HP"); vbar(pg,152,y,80,mp,maxmp,C_CYAN,"MP"); y+=9;
                 vbar(pg,34,y,86,food,100,food>25?C_GREEN:C_RED,"FOOD"); vbar(pg,152,y,80,xp,xp_next(),C_GOLD,"XP"); y+=12;
@@ -158,7 +214,7 @@ static void char_screen(volatile u16 *pg){
                 scpy(b,"BUDDY LV"); ncat(b,pet_lv+1); scat(b,": "); scat(b,pet_form_name[pet_form]); text(pg,8,y,b,C_CYAN,1);
                 if(pet_away_t) rtext(pg,232,y,"AWAY SELLING",C_GREY); else if(pet_down_t) rtext(pg,232,y,"RESTING",C_GREY); else { int pm=pet_maxhp*(pet_form==2?2:1); hbar(pg,152,y+2,80,pet_hp,pm,C_GREEN); } y+=10;
                 text(pg,8,y,"BUG FRIENDS",C_GOLD,1); y+=8; int any=0, x=8;
-                for(int t=0;t<6;t++) if(have_bug[t]){ any=1; scpy(b,bug_name[t]); scat(b," X"); ncat(b,have_bug[t]); text(pg,x,y,b,C_WHITE,1); x+=76; if(x>200){ x=8; y+=7; } }
+                for(int t=0;t<6;t++) if(have_bug[t]){ any=1; scpy(b,friend_name[t]); scat(b," X"); ncat(b,have_bug[t]); text(pg,x,y,b,C_WHITE,1); x+=76; if(x>200){ x=8; y+=7; } }
                 if(!any) text(pg,8,y,"NONE YET. OPEN CAGES TO FREE BUGS",C_DGREY,1);
             } else if(page==1){
                 const Gear *eq[3]={&eqw,&eqa,&eqc}; static const char *const lab[3]={"BITE","WEAR","CHARM"};
@@ -370,15 +426,15 @@ static int shop_menu(void){   // returns 1 to fly on
     oam_hide_all(); oam_flush();
     int sel=0; in_menu++; menu_msg[0]=0;
     while(1){
-        const char *main_opt[10]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","LEAVE"};
-#define NSHOP 10
+        const char *main_opt[10]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","LEAVE"};
+#define NSHOP 11
         int can_fly = 1, next_ok = !endless && zone_cleared && zone<5 && cluster_no==0; char nxt[40];
         if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); main_opt[0]=nxt; }
         int dirty=1; wait_release();
         while(1){
             if(dirty){ dirty=0; box(pg,12,20,216,136); text(pg,20,24,"YOUR SHIP",C_GOLD,1); char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
                 for(int i=0;i<NSHOP;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:C_GREY); if(i==sel) text(pg,16,34+i*9,">",C_CYAN,1); text(pg,22,34+i*9,main_opt[i],c,1); }
-                if(next_ok) text(pg,22,126,"OR LAUNCH YOURSELF: HOLD A ON LAUNCH",C_DGREY,1);
+                if(next_ok) text(pg,22,134,"OR LAUNCH YOURSELF: HOLD A ON LAUNCH",C_DGREY,1);
                 { char hb[40]; scpy(hb,"HOLD "); ncat(hb,cargo_n()); scat(hb,"/"); ncat(hb,cargo_cap); rtext(pg,224,34,hb,C_CYAN); }
                 if(q_type!=Q_NONE && q_done) text(pg,130,70,"! QUEST DONE",C_GREEN,1);
                 if(menu_msg[0]) text(pg,20,134,menu_msg,C_GREEN,1);
@@ -388,7 +444,8 @@ static int shop_menu(void){   // returns 1 to fly on
             if(HIT(K_B)){ in_menu--; wait_release(); return 0; }
             if(HIT(K_A)) break;
         }
-        if(sel==9){ in_menu--; wait_release(); return 0; }
+        if(sel==10){ in_menu--; wait_release(); return 0; }
+        if(sel==9){ make_bug(pg,0); box(pg,12,20,216,136); continue; }
         if(sel==8){ workbench(pg); continue; }
         if(sel==7){ trophy_case(pg); continue; }
         if(sel==0){ if(can_fly){ in_menu--; int held=0; for(int t=0;t<20 && HELD(K_A);t++){ vsync(); read_keys(); held=t; } wait_release(); return (next_ok && held<19) ? 2 : 1; } continue; }

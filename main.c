@@ -49,7 +49,7 @@ static int page_back=0;
 // options, save slots and menu requests (see save.inc)
 static volatile int opt_music=2;   // 0 off, 1 low, 2 full
 static volatile int opt_sfx=1;
-static int opt_autosave=1, opt_shake=1, opt_easy=0;
+static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1;   // easy = (opt_diff==0)
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;
@@ -118,6 +118,7 @@ static int cargo_n(void){ int n=0; for(int i=0;i<8;i++) n+=cargo[i]; return n; }
 #include "sound.inc"
 #include "game.inc"
 #include "save.inc"
+static void title_restore(volatile u16 *pg, int y0, int y1); static void twinkle(volatile u16 *pg, int t);
 #include "ui.inc"
 static int launch_flag=0, zone_card=0, arrow_ship=0;
 static void story_boss_beaten(void); static int hive_here(void); static int hive_boss_floor(void); static void hive_kill(void);
@@ -547,11 +548,12 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
       int dl=0; for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16); s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(fwd>0x40000||fwd<-0x40000||side>0x40000||side<-0x40000) continue; db[0]=0; scpy(db,"K"); ncat(db,o->kind); scat(db," F"); ncat(db,fwd>>8); scat(db," S"); ncat(db,side>>8); scat(db," W"); ncat(db,o->wind); scat(db," ST"); ncat(db,o->stag); text(pg,4,68+dl*7,db,C_WHITE,1); if(++dl>2) break; } }
 #endif
     if(sight || have_bug[BUG_ANT] || stairs_seen()) compass(pg,dirx,diry);
-    minimap(pg);
+    if(opt_minimap) minimap(pg);
     hud3d(pg);
     if(named){ char b[32]; b[0]=0; if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
     if(msg_timer){ text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
+    else if(!opt_hints){}
     else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);
     else if((here==D_UP && stair_ok)||here==D_DOWN){ const char *m2 = here==D_UP? "A: CLIMB UP" : "A: GO DEEPER"; text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
     else if(!fish_state && water_ahead(dirx,diry)) text(pg,120-9*4,24,"A: FISH",C_CYAN,2);
@@ -599,7 +601,7 @@ static int title_screen(void){
     enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT };
     static const char *const tn[5]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS"};
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
-    for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
+    obj_palette();
     hdma_on=0; title_paint(pg);
     REG_BLDCNT = 0x3F | (3<<6); REG_BLDY = 16;
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
@@ -625,7 +627,7 @@ static int title_screen(void){
             b[34]=0; stext(pg,120-textlen(b)*2,y,b,C_CYAN);
         }
         oam_hide_all(); set_affine(31,128,0,0,128);
-        shadow_oam[0].a0=((150-32-((blink>>3)&1))&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((120-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=T_BUGSIDE;
+        shadow_oam[0].a0=((150-32-((blink>>3)&1))&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((120-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile((blink>>4)&1);
         vsync(); oam_flush(); read_keys(); blink++; rng_s += blink;
         if(fading_in){ fading_in=0; fade(0); }
         twinkle(pg,blink);
@@ -634,7 +636,7 @@ static int title_screen(void){
         if(HIT(K_A)||HIT(K_START)){
             int a=it[sel]; sfx(2);
             if(a==TI_CONT){ cur_slot=cs; return 1; }
-            if(a==TI_NEW){ int s2=slot_picker(pg,SP_NEW,0); if(s2>=0){ cur_slot=s2; return 0; } full=1; }
+            if(a==TI_NEW){ int s2=slot_picker(pg,SP_NEW,0); if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug(pg,1)) return 0; } full=1; }
             if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; return 1; } full=1; }
             if(a==TI_OPT){ oam_hide_all(); oam_flush(); options_screen(pg); full=1; }
             if(a==TI_HELP){ oam_hide_all(); oam_flush(); help_screen(pg); full=1; }
@@ -648,7 +650,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     rng_s ^= vbl_count*2654435761u;
     fade(1);
     gen_cluster();
-    if(!(cont && load_game(1))){ cont=0; new_game(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
+    if(!(cont && load_game(1))){ cont=0; new_game(); cam_fp=opt_cam; planet_tables(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
     scene=0; launch_flag=0; enter_dungeon_flag=0; fish_state=0; msg_timer=0; invuln=0; shake_t=0; page_back=0; loot=0; depth_no=0;
     speed_t=strong_t=dizzy_t=stun_t=shield_t=0;
     restock(); arrow_ship = zone_cleared && !endless;
@@ -753,7 +755,7 @@ int main(void){
     while(1){
         in_game=0; sys_req=0; scene=0;
         cur_slot=last_slot;
-        new_game();
+        new_game(); bug_look_default();
         int cont=title_screen();
         start_game(cont);
         in_game=1;

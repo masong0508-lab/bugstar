@@ -14,6 +14,17 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | SELECT | Tap: switch between third person and first person. Hold SELECT + L/R: point the arrow at the door or your ship | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
 | START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM, MAP) | Opens on the MAP |
 
+## Your bug (new)
+- **Make your bug** when you start a new game: give it a name (up to 8 letters), pick a shell colour (steel, ruby, leaf, gold, violet, coral, onyx, pearl) and a pattern (plain, striped, spotted, banded). You see it live. Your jaws in first person take the same colour.
+- Change your look any time at your ship: **MIRROR**.
+- Your name shows on the BUG page and in the ending.
+
+## Options (new)
+Difficulty (easy / normal / hard: hard does more damage to you but pays +25% gold), which planet camera a new game starts with, music, sound effects, autosave, screen shake, minimap, damage numbers, button hints, and the guide arrow. All remembered on the cartridge.
+
+## How to play (redone)
+Five pages with colour-coded button badges: planet, dungeon, space, staying alive, and your quest. Your bug trots along the bottom.
+
 ## Things to do on planets (new)
 - **Mining.** Every world grows four kinds of resource: **amber trees, crystal rocks, silk webs and nectar flowers** (what grows depends on the world's economy). Stand next to one and press A three times. The goods go into your ship's hold (HOLD 3/10 on the ship menu). Sell them at any station, where prices differ by economy, or...
 - **The workbench** on your ship upgrades gear: thorns need crystals, shells need amber, charms need silk, plus gold. Each upgrade adds +2 levels, which raises damage or defence and strengthens magic effects. No cap except 97.
@@ -64,7 +75,7 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 The 3D view is heavy to draw, so it shows about 15 pictures a second. Your own movement (walking, strafing, turning) runs 60 times a second, and the rest of the dungeon (monsters, hunger, cooldowns, timers) ticks at a steady 15 a second, so nothing speeds up or slows down when drawing does. Walking and turning speeds are the `WALK_*` and `TURN_*` numbers at the top of the dungeon code in `main.c`.
 
 ## Saving, loading and options
-- **Title screen:** CONTINUE (your last slot), NEW GAME, LOAD GAME, HOW TO PLAY, OPTIONS. Up/down and A.
+- **Title screen:** CONTINUE (your last slot), NEW GAME (then MAKE YOUR BUG), LOAD GAME, HOW TO PLAY, OPTIONS. Up/down and A.
 - **Three save slots.** Each card shows the world, level, XP bar, gold, fame and play time. In the slot picker: SELECT erases a slot, R copies it to another. Old single-slot saves show up as slot 1.
 - **SYSTEM tab** (START, then L/R): SAVE GAME to your slot, SAVE TO ANOTHER SLOT, LOAD GAME, OPTIONS, QUIT TO TITLE. You can only save on the surface (not inside a dungeon). Loading and quitting work anywhere.
 - **Autosave** still happens at your ship, after dungeons and at stations. Turn it off in OPTIONS if you want to save by hand.

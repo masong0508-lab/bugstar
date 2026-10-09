@@ -7,7 +7,7 @@ static void scpy(char *d, const char *s); static void scat(char *d, const char *
 static void hud_now(void); static void say(const char *s); static void show_msg(const char *s); static void sfx(int n);
 static int have_bug[6];
 enum { BUG_PILL, BUG_LADY, BUG_FIRE, BUG_BEE, BUG_CRICKET, BUG_ANT };
-static const char *const bug_name[6]={"PILL BUG","LADYBUG","FIREFLY","BEE","CRICKET","RUNAWAY ANT"};
+static const char *const friend_name[6]={"PILL BUG","LADYBUG","FIREFLY","BEE","CRICKET","RUNAWAY ANT"};
 static const char *const bug_power[6]={"+10 GOLD","+5 HEALTH","LIGHTS THE DARK","STINGS ATTACKERS","FASTER LEGS","POINTS TO STAIRS"};
 // ---- endless galaxy (after the Ant King)
 static int endless=0, world_no=0, loot=0, best_depth=0, w_dlv=6; static u32 galaxy_seed=1;
@@ -25,6 +25,21 @@ static u16 w_tint[6], w_mon[8]; static u8 w_styles[3]; static char w_name[24];
 static u32 wseed;
 static int wr(int n){ wseed = wseed*1103515245u + 12345u; return (int)((wseed>>16)%(u32)n); }
 static u16 rgb15(int r,int g,int b){ if(r>255)r=255; if(g>255)g=255; if(b>255)b=255; return (r>>3)|((g>>3)<<5)|((b>>3)<<10); }
+// ---- your bug's look: a name, a shell colour and a shell pattern (saved with the grind block)
+static char bug_name[9]; static int bug_col=0, bug_pat=0;
+#define NCOL 8
+static const char *const col_name[NCOL]={"STEEL","RUBY","LEAF","GOLD","VIOLET","CORAL","ONYX","PEARL"};
+static const u8 col_rgb[NCOL][3][3]={{{46,56,86},{92,108,148},{152,172,210}},{{110,20,30},{190,50,60},{240,120,120}},{{20,80,30},{50,140,60},{120,210,110}},
+    {{120,80,10},{200,150,30},{250,220,110}},{{60,20,100},{120,60,180},{190,140,240}},{{150,50,40},{230,100,80},{255,170,150}},{{14,14,22},{44,44,60},{100,100,120}},{{140,140,160},{200,200,215},{245,245,255}}};
+static const char *const pat_name[4]={"PLAIN","STRIPED","SPOTTED","BANDED"};
+static void bug_look_default(void){ scpy(bug_name,"PIP"); bug_col=0; bug_pat=0; }
+static void obj_palette(void){                              // the sprite palette, with the shell colours swapped in
+    for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
+    for(int k=0;k<3;k++) OBJ_PAL[2+k]=rgb15(col_rgb[bug_col][k][0],col_rgb[bug_col][k][1],col_rgb[bug_col][k][2]);
+    for(int i=0;i<16;i++){ u16 c=OBJ_PAL[i]; int r=(c&31), g=(c>>5)&31, b=(c>>10)&31;
+        OBJ_PAL[16+i]=(r*11/16)|((g*11/16)<<5)|((b*11/16)<<10); OBJ_PAL[32+i]=(r*7/16)|((g*7/16)<<5)|((b*7/16)<<10); }
+}
+static int bug_tile(int frame){ static const u16 t[4][2]={{T_BUGSIDE,T_BUGSIDE2},{T_BUGP1A,T_BUGP1B},{T_BUGP2A,T_BUGP2B},{T_BUGP3A,T_BUGP3B}}; return t[bug_pat&3][frame&1]; }
 static void name_of(u32 wn, char *b){
     static const char *const syl[16]={"ZA","KOR","MI","LUX","PO","BRA","NU","TIK","VO","RAN","SPI","GLO","QUA","FEN","DOR","ULM"};
     static const char *const suf[6]={""," PRIME"," II"," MAJOR"," MINOR"," X"};
@@ -130,6 +145,7 @@ static void recalc(void){
     d_sting += have_bug[BUG_BEE]*2;
     if(eqa.it==IT_SHELL && eqa.sub==3 && eqa.rar!=R_UNIQUE) d_spd -= 15;        // the sticky shell slows you
     { int tp=trophy_points(); d_dmg += tp/15; gold_find += tp/5; maxh += tp/10; d_def += tp/30; }   // your trophy case
+    if(opt_diff==2) gold_find+=25;                                                   // hard mode pays better
     { int r = fame>=1200?5: fame>=700?4: fame>=350?3: fame>=150?2: fame>=50?1:0; gold_find += r*5; maxh += r*3; d_crit += r; }   // fame has its perks
     if(hearts>maxh) hearts=maxh; if(mp>maxmp) mp=maxmp;
 }
@@ -270,7 +286,7 @@ static void free_bug(int t){
     bugs_freed++; have_bug[t]++;
     if(t==BUG_PILL) earn(10);
     recalc(); if(t==BUG_LADY) hearts=maxh;
-    char b[40]; scpy(b,"FREED A "); scat(b,bug_name[t]); say(b); sfx(2);
+    char b[40]; scpy(b,"FREED A "); scat(b,friend_name[t]); say(b); sfx(2);
     if(q_type==Q_RESCUE){ q_have++; if(q_have>=q_need) q_done=1; }
     ach_check(); hud_now();
 }
@@ -279,12 +295,12 @@ static void free_bug(int t){
 static void hurt(int n){
     if(invuln) return;
     int def = d_def + (shield_t ? 5+st_mag/2 : 0);
-    n -= def/2; if(opt_easy) n=(n+1)/2; if(n<1) n=1;
+    n -= def/2; if(opt_easy) n=(n+1)/2; else if(opt_diff==2) n=n*3/2; if(n<1) n=1;
     if(rndi(100) < def){ say("BLOCKED!"); invuln=15; return; }
     hearts-=n; invuln=30; shake_t=opt_shake?10:0; sfx(4); hud_now();
 }
 static void hunger_tick(int every){
-    if(opt_easy) every+=every/2;
+    if(opt_easy) every+=every/2; else if(opt_diff==2) every=every*2/3;
     if(++hunger_t < every) return; hunger_t=0;
     if(food>0){ food--; if(food==20) say("YOU ARE HUNGRY"); if(food%5==0) hud_now(); }
     else { hearts-=1+maxh/20; say("STARVING! EAT SOMETHING"); hud_now(); }

@@ -28,15 +28,15 @@ typedef struct {
     u32 sum;
 } Save;
 _Static_assert(sizeof(Save) < SG_OFF, "Save must fit before the grind block");
-typedef struct { u32 magic; u8 tiers[6]; u16 kills[11]; u16 fish, barrels, mined, dodges, planets, uniq, tier_n, floors; u32 ach; u16 pet_xp, pet_lv; u32 sum; } SaveG;
+typedef struct { u32 magic; u8 tiers[6]; u16 kills[11]; u16 fish, barrels, mined, dodges, planets, uniq, tier_n, floors; u32 ach; u16 pet_xp, pet_lv; char name[9]; u8 col, pat, pad; u32 sum; } SaveG;
 static u32 sg_sum(const SaveG *g){ return fnv(g,sizeof(SaveG)-4); }
 static void grind_save(void){ SaveG g; memset(&g,0,sizeof g); g.magic=0x444E5247; for(int i=0;i<6;i++) g.tiers[i]=tiers[i]; for(int i=0;i<11;i++) g.kills[i]=st_kills[i];
-    g.fish=st_fish; g.barrels=st_barrels; g.mined=st_mined; g.dodges=st_dodges; g.planets=st_planets; g.uniq=st_uniq; g.tier_n=st_tiers; g.floors=st_floors; g.ach=ach_done; g.pet_xp=pet_xp; g.pet_lv=pet_lv;
+    g.fish=st_fish; g.barrels=st_barrels; g.mined=st_mined; g.dodges=st_dodges; g.planets=st_planets; g.uniq=st_uniq; g.tier_n=st_tiers; g.floors=st_floors; g.ach=ach_done; g.pet_xp=pet_xp; g.pet_lv=pet_lv; memcpy(g.name,bug_name,9); g.col=bug_col; g.pat=bug_pat;
     g.sum=sg_sum(&g); sram_write(slot_base(cur_slot)+SG_OFF,&g,sizeof g); }
 static void grind_load(void){ SaveG g; sram_read(slot_base(cur_slot)+SG_OFF,&g,sizeof g);
-    if(g.magic!=0x444E5247 || g.sum!=sg_sum(&g)){ for(int i=0;i<6;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; return; }
+    if(g.magic!=0x444E5247 || g.sum!=sg_sum(&g)){ for(int i=0;i<6;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; bug_look_default(); return; }
     for(int i=0;i<6;i++) tiers[i]=g.tiers[i]; for(int i=0;i<11;i++) st_kills[i]=g.kills[i];
-    st_fish=g.fish; st_barrels=g.barrels; st_mined=g.mined; st_dodges=g.dodges; st_planets=g.planets; st_uniq=g.uniq; st_tiers=g.tier_n; st_floors=g.floors; ach_done=g.ach; pet_xp=g.pet_xp; pet_lv=g.pet_lv; }
+    st_fish=g.fish; st_barrels=g.barrels; st_mined=g.mined; st_dodges=g.dodges; st_planets=g.planets; st_uniq=g.uniq; st_tiers=g.tier_n; st_floors=g.floors; ach_done=g.ach; pet_xp=g.pet_xp; pet_lv=g.pet_lv; memcpy(bug_name,g.name,9); bug_name[8]=0; bug_col=g.col&7; bug_pat=g.pat&3; }
 EW static Save sv;
 static u32 save_sum(const Save *s){ return fnv(s, sizeof(Save)-4); }
 
@@ -56,13 +56,13 @@ static int meta_read(int slot, Meta *m){
 typedef struct { u32 magic; u8 music, sfx, autosave, shake, last, pad[3]; u32 sum; } Settings;
 static void settings_save(void){
     Settings s; memset(&s,0,sizeof(s)); s.magic=0x53544553;
-    s.music=opt_music; s.sfx=opt_sfx; s.autosave=opt_autosave; s.shake=opt_shake; s.last=last_slot; s.pad[0]=opt_easy;
+    s.music=opt_music; s.sfx=opt_sfx; s.autosave=opt_autosave; s.shake=opt_shake; s.last=last_slot; s.pad[0]=opt_diff; s.pad[1]=(opt_minimap)|(opt_nums<<1)|(opt_hints<<2)|(opt_arrow<<3); s.pad[2]=opt_cam;
     s.sum=fnv(&s,sizeof(s)-4); sram_write(SET_OFF,&s,sizeof(s));
 }
 static void settings_load(void){
     Settings s; sram_read(SET_OFF,&s,sizeof(s));
     if(s.magic!=0x53544553 || s.sum!=fnv(&s,sizeof(s)-4) || s.music>2 || s.last>=NSLOT) return;   // first run: keep the defaults
-    opt_music=s.music; opt_sfx=s.sfx&1; opt_autosave=s.autosave&1; opt_shake=s.shake&1; last_slot=s.last; opt_easy=s.pad[0]&1;
+    opt_music=s.music; opt_sfx=s.sfx&1; opt_autosave=s.autosave&1; opt_shake=s.shake&1; last_slot=s.last; opt_diff=s.pad[0]%3; opt_easy=(opt_diff==0); opt_minimap=s.pad[1]&1; opt_nums=(s.pad[1]>>1)&1; opt_hints=(s.pad[1]>>2)&1; opt_arrow=(s.pad[1]>>3)&1; opt_cam=s.pad[2]&1;
 }
 static void music_apply(void){ if(opt_music==0){ SND(0x08)=0; SND(0x12)=0; } }
 
@@ -214,33 +214,35 @@ static int slot_picker(volatile u16 *pg, int mode, int src){
 
 // ---------------------------------------------------------------- the options screen
 static void options_screen(volatile u16 *pg){
-    static const char *const nm[5]={"EASY MODE","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE"};
-    static const char *const mv[3]={"OFF","LOW","FULL"}, *const yn[2]={"OFF","ON"};
-    static const char *const hlp[5]={"HALF DAMAGE TO YOU. SLOWER HUNGER. KEEP YOUR BAG","THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT"};
+    enum { OP_DIFF, OP_CAM, OP_MUSIC, OP_SFX, OP_AUTO, OP_SHAKE, OP_MAP, OP_NUMS, OP_HINTS, OP_ARROW, NOPT };
+    static const char *const nm[NOPT]={"DIFFICULTY","PLANET CAMERA","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE","MINIMAP","DAMAGE NUMBERS","BUTTON HINTS","GUIDE ARROW"};
+    static const char *const hlp[NOPT]={"EASY: HALF DAMAGE, KEEP YOUR BAG. HARD: MORE DAMAGE, +25% GOLD","WHICH VIEW A NEW GAME STARTS WITH","THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT","THE LITTLE MAP IN THE DUNGEON CORNER","NUMBERS THAT FLY OFF THINGS YOU BITE","THE 'A: ...' LINES THAT SAY WHAT A DOES","THE YELLOW ARROW ON PLANETS"};
+    static const char *const dif[3]={"EASY","NORMAL","HARD"}, *const cam[2]={"3RD PERSON","1ST PERSON"}, *const mv[3]={"OFF","LOW","FULL"}, *const yn[2]={"OFF","ON"};
     int sel=0, dirty=1; oam_hide_all(); oam_flush(); if(in_game) rect(pg,0,18,240,142,0); wait_release();
     while(1){
-        if(dirty){ dirty=0; char b[16];
+        if(dirty){ dirty=0; char b[20];
             panel(pg,12,20,216,136,"OPTIONS");
-            for(int i=0;i<5;i++){
-                int y=40+i*15; int v = i==0?opt_easy : i==1?opt_music : i==2?opt_sfx : i==3?opt_autosave : opt_shake;
-                if(i==sel) rect(pg,18,y-4,204,13,6);
+            for(int i=0;i<NOPT;i++){
+                int y=37+i*9; int *pv = i==OP_DIFF?&opt_diff : i==OP_CAM?&opt_cam : i==OP_MUSIC?&opt_music : i==OP_SFX?&opt_sfx : i==OP_AUTO?&opt_autosave : i==OP_SHAKE?&opt_shake : i==OP_MAP?&opt_minimap : i==OP_NUMS?&opt_nums : i==OP_HINTS?&opt_hints : &opt_arrow;
+                int v=*pv; if(i==sel) rect(pg,18,y-2,204,10,6);
                 text(pg,26,y,nm[i],i==sel?C_WHITE:C_GREY,1);
-                scpy(b,"< "); scat(b, i==1?mv[v]:yn[v]); scat(b," >");
-                rtext(pg,214,y,b,i==sel?C_GOLD: (i==0&&v)?C_GREEN:C_GREY);
+                scpy(b,"< "); scat(b, i==OP_DIFF?dif[v] : i==OP_CAM?cam[v] : i==OP_MUSIC?mv[v] : yn[v]); scat(b," >");
+                rtext(pg,214,y,b, i==sel?C_GOLD : (i==OP_DIFF ? (v==0?C_GREEN:v==2?C_RED:C_GREY) : C_GREY));
             }
-            ctext(pg,120,118,hlp[sel],C_GREY);
-            ctext(pg,120,146,"LEFT/RIGHT: CHANGE  B: BACK",C_CYAN);
+            rect(pg,18,128,204,1,C_DGREY);
+            { const char *h=hlp[sel]; int L=textlen(h); if(L>52){ char h1[56]; int k=0; while(k<52 && h[k]) k++; while(k>0 && h[k]!=' ') k--; for(int j=0;j<k;j++) h1[j]=h[j]; h1[k]=0; ctext(pg,120,132,h1,C_GREY); ctext(pg,120,140,h+k+1,C_GREY); } else ctext(pg,120,134,h,C_GREY); }
+            ctext(pg,120,148,"LEFT/RIGHT: CHANGE  B: BACK",C_CYAN);
         }
         vsync(); read_keys();
-        if(HIT(K_UP)){ sel=(sel+4)%5; sfx(7); dirty=1; }
-        if(HIT(K_DOWN)){ sel=(sel+1)%5; sfx(7); dirty=1; }
+        if(HIT(K_UP)){ sel=(sel+NOPT-1)%NOPT; sfx(7); dirty=1; }
+        if(HIT(K_DOWN)){ sel=(sel+1)%NOPT; sfx(7); dirty=1; }
         int d = HIT(K_RIGHT)||HIT(K_A) ? 1 : HIT(K_LEFT) ? -1 : 0;
         if(d){ dirty=1;
-            if(sel==0) opt_easy^=1;
-            else if(sel==1){ opt_music=(opt_music+d+3)%3; music_apply(); }
-            else if(sel==2){ opt_sfx^=1; }
-            else if(sel==3) opt_autosave^=1;
-            else opt_shake^=1;
+            if(sel==OP_DIFF){ opt_diff=(opt_diff+d+3)%3; opt_easy=(opt_diff==0); }
+            else if(sel==OP_CAM) opt_cam^=1;
+            else if(sel==OP_MUSIC){ opt_music=(opt_music+d+3)%3; music_apply(); }
+            else if(sel==OP_SFX) opt_sfx^=1; else if(sel==OP_AUTO) opt_autosave^=1; else if(sel==OP_SHAKE) opt_shake^=1;
+            else if(sel==OP_MAP) opt_minimap^=1; else if(sel==OP_NUMS) opt_nums^=1; else if(sel==OP_HINTS) opt_hints^=1; else opt_arrow^=1;
             sfx(2);
         }
         if(HIT(K_B)||HIT(K_START)){ settings_save(); wait_release(); return; }
