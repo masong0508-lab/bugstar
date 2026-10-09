@@ -161,7 +161,7 @@ static void build_space_palette(void){
     BG_PAL[52]=rgb15(120,255,120); BG_PAL[53]=rgb15(255,80,70); BG_PAL[54]=rgb15(220,230,240); BG_PAL[55]=rgb15(90,220,255); BG_PAL[56]=rgb15(90,100,120);
     BG_PAL[57]=rgb15(16,20,34); BG_PAL[58]=rgb15(60,80,120);
 }
-static int beast_stage=0, beast_fight=0, ambush_t=0, no_ambush=0, dawn_free=0; static u64 b3_hp, b3_max;
+static int beast_stage=0, beast_fight=0, ambush_t=0, no_ambush=0, dawn_free=0, chase_cam=1; static u64 b3_hp, b3_max;
 static int in_lair=0, tech_lv=0, beast_kills=0, beast_charge=0, beast_fire=0, beast_t=0, lair_out=0; static u64 beast_hp, beast_max; static char beast_dmg_txt[16]; static int beast_dmg_t=0;
 static int hive_active(void){ return beast_stage>=3 && hive_done<5; }
 static int hive_here(void){ return endless && hive_active() && cur_sys==hive_sys(); }
@@ -187,7 +187,7 @@ static void space_enter(int from_planet){
     if(sys[cur_sys].kind==6){ world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); }
     build_space_palette();
     pl_tex = (sys_id(cur_sys)&1)<<13; pl_rot=sys_id(cur_sys)*7;
-    if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("LAUNCHED. B: THRUST  R: BRAKE"); }
+    if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("LAUNCHED. B: THRUST  R: BRAKE  L: BURN"); }
     else { shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=20; }
     int danger=sys_dlv(cur_sys);
     in_lair=0;
@@ -239,7 +239,7 @@ static void cockpit(volatile u16 *pg){
     // bars on the left: shield, hull, fuel; speed on the right
     static const char *const lab[3]={"SHLD","HULL","FUEL"}; int val[3]={shield,hull,fuel}, mx[3]={20+shield_lv*20,100,70}, col[3]={55,53,50};
     for(int k=0;k<3;k++){ text(pg,4,131+k*9,lab[k],58,1); rect(pg,24,132+k*9,40,3,56); int w=val[k]*40/mx[k]; if(w<0) w=0; if(w>40) w=40; rect(pg,24,132+k*9,w,3,col[k]); }
-    text(pg,180,131,"SPEED",58,1); rect(pg,180,140,52,3,56); rect(pg,180,140,speed*52/60,3,52);
+    text(pg,180,131,HELD(K_L)&&fuel>0?"BURN!":"SPEED",HELD(K_L)&&fuel>0?53:58,1); rect(pg,180,140,52,3,56); { int w=speed*52/ship_top_speed(); if(w>52) w=52; rect(pg,180,140,w,3,52); }
     char b[24]; sys_name(cur_sys,b); b[12]=0; text(pg,180,148,b,54,1);
 }
 
@@ -376,34 +376,47 @@ static void ship_hit(int dm, int crash){            // shields first, then the h
 static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     // steer, throttle
     // the ship has weight: turning ramps up and settles, it banks into turns, and it drifts before the engines catch up
+    // ---- flight: real momentum. engines push along the nose, mass resists, fins settle the turn, wings bite in air
     int tr=ship_turn(); int ty = (HELD(K_LEFT) ? -40 : HELD(K_RIGHT) ? 40 : 0)*tr/100, tp = (HELD(K_UP) ? -28 : HELD(K_DOWN) ? 28 : 0)*tr/100;
-    { int dp=ship_damp(); yawv += (ty-yawv)/dp; pitv += (tp-pitv)/dp; }
+    { int dp=ship_damp()+ship_mass()/8; yawv += (ty-yawv)/dp; pitv += (tp-pitv)/dp; }
     yaw=(yaw+(yawv>>2))&1023; pitch+=pitv>>2; if(pitch>230) pitch=230; if(pitch<-230) pitch=-230;
-    roll_ += (yawv*3 - roll_)/6;
-    if(HELD(K_B)) speed+=2; if(HELD(K_R)) speed-=3; if(speed<0) speed=0; { int tsp=ship_top_speed(); if(speed>tsp) speed=tsp; }
+    roll_ += (yawv*(2+ship.wsize+(ship.wings?1:0)) - roll_)/6;
     basis();
     { s32 c=cosx(roll_>>2), s_=sinx(roll_>>2); for(int k=0;k<3;k++){ s32 r=br[k], u=bu[k]; br[k]=(r*c+u*s_)>>14; bu[k]=(u*c-r*s_)>>14; } }
-    svx_ += (((bf[0]*speed*3)>>14) - svx_)/12; svy_ += (((bf[1]*speed*3)>>14) - svy_)/12; svz_ += (((bf[2]*speed*3)>>14) - svz_)/12;
+    s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
+    int in_air = !in_lair && pd < PR*5/2;                                          // close to the planet there is air
+    { int a16=ship_accel16(); int burn = HELD(K_L) && fuel>0;
+      if(HELD(K_B)){ int a=a16*(burn?2:1); svx_ += (bf[0]*a)>>18; svy_ += (bf[1]*a)>>18; svz_ += (bf[2]*a)>>18; if(burn && (frames&15)==0) fuel--; }
+      if(HELD(K_R)){ int k=6+ship.fins*2; svx_ -= svx_*k/64; svy_ -= svy_*k/64; svz_ -= svz_*k/64; }           // retro thrusters
+      // drag: a whisper in space, a hand in the air. in the air the wings pull the ship round to where the nose points
+      if(in_air){ int g = 10 + ship.wsize*6 + (ship.wings?6:0); s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
+          svx_ += ((((bf[0]*sp3)>>14) - svx_)*g)>>7; svy_ += ((((bf[1]*sp3)>>14) - svy_)*g)>>7; svz_ += ((((bf[2]*sp3)>>14) - svz_)*g)>>7;
+          svx_ -= svx_/48; svy_ -= svy_/48; svz_ -= svz_/48; }
+      else { svx_ -= svx_/512; svy_ -= svy_/512; svz_ -= svz_/512; if(!HELD(K_B)&&!HELD(K_R)){ int g=ship.fins+1; s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
+          svx_ += ((((bf[0]*sp3)>>14) - svx_)*g)>>9; svy_ += ((((bf[1]*sp3)>>14) - svy_)*g)>>9; svz_ += ((((bf[2]*sp3)>>14) - svz_)*g)>>9; } }
+      s32 vmax = ship_top_speed()*3*(burn?5:4)/4; s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
+      if(sp3>vmax){ svx_=svx_*vmax/sp3; svy_=svy_*vmax/sp3; svz_=svz_*vmax/sp3; sp3=vmax; }
+      speed = sp3/3; }
     shx+=svx_; shy+=svy_; shz+=svz_;
     if(crash_cd) crash_cd--; if(sshake) sshake--;
-    s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
+    pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
     { s32 lim = in_lair ? 2400 : PR+300;                       // the planet's air, or the beast's hull: you bounce off
       if(pd<lim){ s32 k=lim*64/(pd?pd:1); shx=shx*k/64; shy=shy*k/64; shz=shz*k/64;
           s32 vn=(svx_*shx+svy_*shy+svz_*shz)/(pd?pd:1);
           if(vn<0){ svx_-=2*vn*shx/(pd?pd:1); svy_-=2*vn*shy/(pd?pd:1); svz_-=2*vn*shz/(pd?pd:1); }
           if(speed>12 && !crash_cd){ int dm = in_lair ? 10+speed/3 : speed/6; ship_hit(dm,1); space_say(in_lair?"YOU RAMMED THE BEAST!":"TOO FAST! THE AIR SLAMS YOU"); }
-          speed = in_lair ? 0 : (speed>10?10:speed); } }
+          { int ns = in_lair ? 0 : (speed>10?10:speed); if(speed>0){ svx_=svx_*ns/speed; svy_=svy_*ns/speed; svz_=svz_*ns/speed; } speed=ns; } } }
     // the station's hull: dock slowly, or crash
     { s32 dx=shx-stx_, dy=shy-sty_, dz=shz-stz_;
       if(!in_lair && dx>-640&&dx<640&&dy>-640&&dy<640&&dz>-640&&dz<640){ s32 l=isqrt((u32)((dx>>2)*(dx>>2)+(dy>>2)*(dy>>2)+(dz>>2)*(dz>>2)))<<2; if(l<1) l=1;
           if(l<620){ shx=stx_+dx*620/l; shy=sty_+dy*620/l; shz=stz_+dz*620/l; svx_=dx*speed/l; svy_=dy*speed/l; svz_=dz*speed/l;
-              if(speed>14 && !crash_cd){ ship_hit(speed/4,1); space_say("CRASH! SLOW DOWN TO DOCK"); } speed/=3; } } }
+              if(speed>14 && !crash_cd){ ship_hit(speed/4,1); space_say("CRASH! SLOW DOWN TO DOCK"); } speed/=3; svx_/=3; svy_/=3; svz_/=3; } } }
     // rocks and pirate hulls
     for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; if(!a->alive) continue; a->x+=a->vx; a->y+=a->vy; a->z+=a->vz; if(a->flash) a->flash--;
         if(in_lair) continue; s32 dx=shx-a->x, dy=shy-a->y, dz=shz-a->z, rr=a->r+110;
         if(dx>-rr&&dx<rr&&dy>-rr&&dy<rr&&dz>-rr&&dz<rr){ s32 l=isqrt((u32)(dx*dx+dy*dy+dz*dz)); if(l<1) l=1;
             if(l<rr){ shx=a->x+dx*rr/l; shy=a->y+dy*rr/l; shz=a->z+dz*rr/l; svx_=dx*(speed+6)/l; svy_=dy*(speed+6)/l; svz_=dz*(speed+6)/l;
-                a->vx-=dx*3/l; a->vz-=dz*3/l; if(!crash_cd){ ship_hit(2+speed/5,1); boom(a->x+dx*a->r/l,a->y+dy*a->r/l,a->z+dz*a->r/l,8,56); } speed=speed/2; } } }
+                a->vx-=dx*3/l; a->vz-=dz*3/l; if(!crash_cd){ ship_hit(2+speed/5,1); boom(a->x+dx*a->r/l,a->y+dy*a->r/l,a->z+dz*a->r/l,8,56); } speed=speed/2; svx_/=2; svy_/=2; svz_/=2; } } }
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue; s32 dx=shx-p->x, dy=shy-p->y, dz=shz-p->z;
         if(dx>-260&&dx<260&&dy>-260&&dy<260&&dz>-260&&dz<260 && !crash_cd){ ship_hit(6,1); p->hp-=8+speed/3; boom(p->x,p->y,p->z,10,53);
             svx_+=dx/8; svy_+=dy/8; svz_+=dz/8; p->x-=dx/2; p->y-=dy/2; p->z-=dz/2; space_say("RAMMED A PIRATE!");
@@ -414,7 +427,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(lair_out){ lair_out=0; lair_leave(); return 0; }
     if(ambush_t && !in_lair && --ambush_t==0){ hyperspace(); lair_enter(); return 0; }
     if(HIT(K_SEL)){ if(in_lair){ lair_leave(); return 0; } return 2; }
-    if(HIT(K_START)){ char b[40]; int n=0; for(int i=0;i<8;i++) n+=cargo[i]; scpy(b,"CARGO "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); scat(b,"  LASER MK"); ncat(b,laser_lv); space_say(b); }
+    if(HIT(K_START)){ chase_cam^=1; char b[40]; scpy(b, chase_cam?"CHASE VIEW. ":"COCKPIT VIEW. "); int n=0; for(int i=0;i<8;i++) n+=cargo[i]; scat(b,"CARGO "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); space_say(b); }
     // A: land, dock, or fire
     if(laser_cool) laser_cool--;
     if(HIT(K_A) && can_land){ return 1; }
@@ -514,6 +527,11 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(laser_t){ laser_t--; line2(pg,30,127,120,VCY,52); line2(pg,210,127,120,VCY,52); }
     // crosshair
     for(int k=4;k<9;k++){ dot2(pg,120+k,VCY,52); dot2(pg,120-k,VCY,52); dot2(pg,120,VCY+k,52); dot2(pg,120,VCY-k,52); }
+    // the chase camera: your own ship, seen from behind, banking into turns and nosing up and down
+    if(chase_cam){ ship_roll=(-roll_*2)&1023; int bob=(sinx((frames*3)&255)>>12);
+        ship_draw(pg, 120 + (yawv>>2), 100 + bob + (pitv>>2), 52 + speed/6, (-(yawv*2))&1023, (40 - pitv)&1023, 0,0, 0,0,240,128);
+        if(HELD(K_B)){ int fl = 3 + (frames&3); for(int k=-1;k<=1;k++) line2(pg,120+k*4+(yawv>>2),106+bob,120+k*6+(yawv>>2),106+bob+fl+(HELD(K_L)&&fuel>0?6:0),SHP_GLOW+6); }   // engine flame
+        ship_roll=0; }
     if(hit_t){ hit_t--; for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
     cockpit(pg);
     if(sv_yaw!=yaw || sv_pit!=pitch){ yaw=sv_yaw; pitch=sv_pit; }

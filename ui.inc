@@ -513,11 +513,11 @@ static void workbench(volatile u16 *pg){
 }
 static int make_ship(volatile u16 *pg, int first);
 static int shop_menu(void){   // returns 1 to fly on
-    volatile u16 *pg=VRAM;
+    volatile u16 *pg=VISPG;
     oam_hide_all(); oam_flush();
     int sel=0; in_menu++; menu_msg[0]=0;
     while(1){
-        const char *main_opt[10]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","HANGAR: REDESIGN YOUR SHIP","TALK TO BOLT","LEAVE"};
+        const char *main_opt[13]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","HANGAR: REDESIGN YOUR SHIP","TALK TO BOLT","LEAVE"};
 #define NSHOP 13
         int can_fly = 1, next_ok = !endless && zone_cleared && zone<5 && cluster_no==0; char nxt[40];
         if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); main_opt[0]=nxt; }

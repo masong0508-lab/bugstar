@@ -116,6 +116,7 @@ static const char *const eco_name[4]={"FARMING","MINING","TECH","HIVE"};
 static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MACHINES","MEDICINE","RELICS"};
 static u32 sys_id(int i); static int is_hive(int i);
 static int cargo_n(void){ int n=0; for(int i=0;i<8;i++) n+=cargo[i]; return n; }
+#define VISPG ((volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0xA000:0)))   // the page on screen right now
 #include "sound.inc"
 #include "game.inc"
 #include "ship.inc"
@@ -127,7 +128,6 @@ static int beast_stage;
 static int launch_flag=0, zone_card=0, arrow_ship=0, base_card=0;
 static void story_boss_beaten(void); static int hive_here(void); static int hive_boss_floor(void); static void hive_kill(void);
 
-#define VISPG ((volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0xA000:0)))   // the page on screen right now
 #define IWRAM_DATA
 #define TMR() (*(volatile u16*)0x04000100 | ((u32)*(volatile u16*)0x04000104<<16))
 static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10)&31)*k/16; return r|(g<<5)|(b<<10); }
