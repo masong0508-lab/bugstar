@@ -25,21 +25,74 @@ static u16 w_tint[6], w_mon[8]; static u8 w_styles[3]; static char w_name[24];
 static u32 wseed;
 static int wr(int n){ wseed = wseed*1103515245u + 12345u; return (int)((wseed>>16)%(u32)n); }
 static u16 rgb15(int r,int g,int b){ if(r>255)r=255; if(g>255)g=255; if(b>255)b=255; return (r>>3)|((g>>3)<<5)|((b>>3)<<10); }
-// ---- your bug's look: a name, a shell colour and a shell pattern (saved with the grind block)
-static char bug_name[9]; static int bug_col=0, bug_pat=0;
-#define NCOL 8
-static const char *const col_name[NCOL]={"STEEL","RUBY","LEAF","GOLD","VIOLET","CORAL","ONYX","PEARL"};
-static const u8 col_rgb[NCOL][3][3]={{{46,56,86},{92,108,148},{152,172,210}},{{110,20,30},{190,50,60},{240,120,120}},{{20,80,30},{50,140,60},{120,210,110}},
-    {{120,80,10},{200,150,30},{250,220,110}},{{60,20,100},{120,60,180},{190,140,240}},{{150,50,40},{230,100,80},{255,170,150}},{{14,14,22},{44,44,60},{100,100,120}},{{140,140,160},{200,200,215},{245,245,255}}};
-static const char *const pat_name[4]={"PLAIN","STRIPED","SPOTTED","BANDED"};
-static void bug_look_default(void){ scpy(bug_name,"PIP"); bug_col=0; bug_pat=0; }
-static void obj_palette(void){                              // the sprite palette, with the shell colours swapped in
+// ---- your bug's look: built in-game from parts, like a creature creator. Its sprite is drawn at run time
+// and uses sprite palette bank 3 all for itself: 1 outline, 2-4 shell, 5 shine, 6-7 head, 9 eye, 10 antenna, 11 legs, 12 markings, 13 horn
+typedef struct { char name[9]; u8 shell, ant, horn, eye, legs, pat; u16 col[8]; } BugLook;      // col: shell, head, eye, antenna, legs, markings, horn, (spare)
+static BugLook look;
+#define bug_name look.name
+enum { LC_SHELL, LC_HEAD, LC_EYE, LC_ANT, LC_LEGS, LC_MARK, LC_HORN };
+#define NPRESET 16
+#define C15(r,g,b) ((u16)(((r)>>3)|(((g)>>3)<<5)|(((b)>>3)<<10)))
+static const u16 preset_col[NPRESET]={ C15(92,108,148), C15(190,50,60), C15(50,140,60), C15(70,150,230), C15(230,100,80), C15(60,90,40), C15(120,60,180), C15(120,80,40), C15(220,170,40), C15(200,200,215), C15(245,245,255), C15(20,20,28), C15(250,220,60), C15(110,40,110), C15(240,130,180), C15(170,80,30) };
+static const char *const preset_name[NPRESET]={"STEEL","RUBY","LEAF","SKY","CORAL","MOSS","VIOLET","OAK","GOLD","PEARL","WHITE","BLACK","SUN","PLUM","ROSE","RUST"};
+static void bug_look_default(void){ scpy(look.name,"PIP"); look.shell=1; look.ant=0; look.horn=0; look.eye=0; look.legs=1; look.pat=0;
+    look.col[LC_SHELL]=preset_col[0]; look.col[LC_HEAD]=rgb15(70,84,120); look.col[LC_EYE]=rgb15(240,240,250); look.col[LC_ANT]=rgb15(14,16,28);
+    look.col[LC_LEGS]=rgb15(14,16,28); look.col[LC_MARK]=rgb15(30,36,60); look.col[LC_HORN]=rgb15(200,170,80); }
+static u16 shade15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10)&31)*k/16; if(r>31)r=31; if(g>31)g=31; if(b>31)b=31; return r|(g<<5)|(b<<10); }
+static u16 lift15(u16 c, int k){ int r=(c&31), g=((c>>5)&31), b=((c>>10)&31); r+=(31-r)*k/16; g+=(31-g)*k/16; b+=(31-b)*k/16; return r|(g<<5)|(b<<10); }
+static void obj_palette(void){
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
-    for(int k=0;k<3;k++) OBJ_PAL[2+k]=rgb15(col_rgb[bug_col][k][0],col_rgb[bug_col][k][1],col_rgb[bug_col][k][2]);
-    for(int i=0;i<16;i++){ u16 c=OBJ_PAL[i]; int r=(c&31), g=(c>>5)&31, b=(c>>10)&31;
-        OBJ_PAL[16+i]=(r*11/16)|((g*11/16)<<5)|((b*11/16)<<10); OBJ_PAL[32+i]=(r*7/16)|((g*7/16)<<5)|((b*7/16)<<10); }
+    u16 sh=look.col[LC_SHELL];
+    OBJ_PAL[2]=shade15(sh,8); OBJ_PAL[3]=sh; OBJ_PAL[4]=lift15(sh,7);              // the jaws in first person take the shell colour
+    for(int i=0;i<16;i++){ u16 c=OBJ_PAL[i]; OBJ_PAL[16+i]=shade15(c,11); OBJ_PAL[32+i]=shade15(c,7); }
+    volatile u16 *P=OBJ_PAL+48; for(int i=0;i<16;i++) P[i]=0;
+    P[1]=rgb15(14,16,28); P[2]=shade15(sh,8); P[3]=sh; P[4]=lift15(sh,7); P[5]=lift15(sh,13);
+    P[6]=shade15(look.col[LC_HEAD],9); P[7]=look.col[LC_HEAD]; P[8]=lift15(look.col[LC_HEAD],6);
+    P[9]=look.col[LC_EYE]; P[10]=look.col[LC_ANT]; P[11]=look.col[LC_LEGS]; P[12]=look.col[LC_MARK]; P[13]=look.col[LC_HORN]; P[14]=shade15(look.col[LC_HORN],9);
 }
-static int bug_tile(int frame){ static const u16 t[4][2]={{T_BUGSIDE,T_BUGSIDE2},{T_BUGP1A,T_BUGP1B},{T_BUGP2A,T_BUGP2B},{T_BUGP3A,T_BUGP3B}}; return t[bug_pat&3][frame&1]; }
+// draw one walking frame of the bug (28x14 art in a 32x16 box, facing left) from the parts
+EW static u8 bug_px[16*32];
+static void bug_draw(int frame){
+    for(int i=0;i<16*32;i++) bug_px[i]=0;
+    #define BP(x,y,v) do{ int xx_=(x), yy_=(y); if(xx_>=0&&xx_<28&&yy_>=0&&yy_<14) bug_px[(yy_+2)*32 + (2+27-xx_)]=(v); }while(0)
+    int a = 9+look.shell, cx=11+look.shell, hx=21+look.shell*2;        // shell half-width, shell centre, where the head sits
+    s32 cx8=cx*256, cy8=(int)(10.6*256), a8=a*256, b8=(int)(8.6*256);
+    for(int y=0;y<=10;y++) for(int x=0;x<28;x++){
+        s32 nx=((x*256+128)-cx8)*256/a8, ny=((y*256+128)-cy8)*256/b8;             // 8.8
+        s32 r2=(nx*nx+ny*ny)>>8;                                                   // 8.8, 256 = the rim
+        if(r2>256) continue;
+        if(r2>205 || y==10){ BP(x,y,1); continue; }
+        s32 lit=(-nx*115 - ny*243)>>8;                                             // light from the top and the front
+        int c = lit>192?5 : lit>107?4 : lit>13?3 : 2;
+        if(((x+1)%4==0) && y>2 && c>2) c--;                                        // the plates
+        int mark=0;
+        if(look.pat==1 && (x/3)%2==0 && y>2 && y<10) mark=1;                        // stripes
+        if(look.pat==2 && ((x*5+y*3)%7)==0 && y>1 && y<9 && x>2 && x<cx+a-3) mark=1; // spots
+        if(look.pat==3 && y>=6 && y<10) mark=1;                                     // a band
+        if(look.pat==4 && ((x+y)&3)==0 && y>1 && y<9) mark=1;                       // checks
+        BP(x,y, mark?12:c);
+    }
+    if(look.horn){ int bx=cx-2; BP(bx,2,13); BP(bx,1,13); BP(bx+1,0,14); BP(bx-1,2,13); BP(bx+1,1,13); }
+    for(int y=0;y<14;y++) for(int x=0;x<28;x++){                                   // the head: a small ellipse in front
+        s32 dx=(x*256+128)-(hx*256+128), dy=(y*256+128)-(int)(8.5*256);
+        s32 r2=((dx*dx)/(int)(3.2*3.2*256) + (dy*dy)/(int)(2.6*2.6*256));         // 8.8-ish
+        if(r2>256) continue; int cur=bug_px[(y+2)*32+(2+27-x)]; if(cur>1) continue;
+        BP(x,y, r2>158 ? 1 : (y<8?7:6)); }
+    if(look.eye==0) BP(hx+1,8,9); else { BP(hx,7,9); BP(hx+1,7,9); BP(hx,8,9); BP(hx+1,8,9); BP(hx+2,8,1); }
+    { static const s8 antA[3][9][2]={{{2,5},{3,4},{4,3},{5,2},{6,2},{1,5},{1,4},{2,3},{2,2}},{{2,5},{2,4},{2,3},{2,2},{2,1},{3,5},{3,4},{3,3},{3,2}},{{2,5},{3,5},{4,5},{5,6},{6,7},{1,5},{2,4},{3,4},{4,4}}};
+      for(int k=0;k<9;k++) BP(hx+antA[look.ant][k][0], antA[look.ant][k][1], 10); }
+    { static const u8 legx[3][8]={{3,8,13,18,0,0,0,0},{3,6,9,12,15,18,0,0},{2,4,7,9,12,14,16,18}}; static const u8 legn[3]={4,6,8};
+      for(int k=0;k<legn[look.legs];k++){ int lx=legx[look.legs][k]+look.shell; int fwd=((k+frame)&1)==0; int d=fwd?1:-1; BP(lx,11,11); BP(lx+d,12,11); BP(lx+d,13,11); } }
+    #undef BP
+}
+static void bug_tiles_to_vram(int frame, int tile){                                  // pack the 32x16 picture into 8 4bpp tiles
+    bug_draw(frame); volatile u16 *v = OBJ_VRAM + (tile-512)*16;
+    for(int ty=0;ty<2;ty++) for(int tx=0;tx<4;tx++) for(int y=0;y<8;y++) for(int x=0;x<8;x+=4){
+        const u8 *p=&bug_px[(ty*8+y)*32 + tx*8+x]; *v++ = (p[0]|(p[1]<<4)) | ((p[2]|(p[3]<<4))<<8); }
+}
+static void bug_build(void){ obj_palette(); bug_tiles_to_vram(0,T_BUGSIDE); bug_tiles_to_vram(1,T_BUGSIDE2); }
+static int bug_tile(int frame){ return frame&1 ? T_BUGSIDE2 : T_BUGSIDE; }
+#define BUG_BANK (3<<12)
 static void name_of(u32 wn, char *b){
     static const char *const syl[16]={"ZA","KOR","MI","LUX","PO","BRA","NU","TIK","VO","RAN","SPI","GLO","QUA","FEN","DOR","ULM"};
     static const char *const suf[6]={""," PRIME"," II"," MAJOR"," MINOR"," X"};

@@ -15,9 +15,14 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM, MAP) | Opens on the MAP |
 
 ## Your bug (new)
-- **Make your bug** when you start a new game: give it a name (up to 8 letters), pick a shell colour (steel, ruby, leaf, gold, violet, coral, onyx, pearl) and a pattern (plain, striped, spotted, banded). You see it live. Your jaws in first person take the same colour.
-- Change your look any time at your ship: **MIRROR**.
-- Your name shows on the BUG page and in the ending.
+**Make your bug** when you start a new game, or any time at your ship's **MIRROR**. It is built from parts, like a creature creator, and you watch it change as you go:
+- **Name** (up to 8 letters).
+- **Shell:** short, normal or long, with its own colour. Your jaws in first person take the shell colour.
+- **Pattern:** plain, striped, spotted, banded or checked, and a **markings** colour for it.
+- **Head** colour. **Eyes:** small or big, any colour. **Antennae:** curled, straight or droopy. **Legs:** four, six or eight. A **horn** if you like.
+- Every colour has a **simple picker** (16 presets) and a **mix-your-own** mode with red, green and blue sliders (START switches between them).
+- **SELECT: surprise me** rolls a random bug.
+The bug's sprite is drawn by the game from your choices, so every bug is different.
 
 ## Options (new)
 Difficulty (easy / normal / hard: hard does more damage to you but pays +25% gold), which planet camera a new game starts with, music, sound effects, autosave, screen shake, minimap, damage numbers, button hints, and the guide arrow. All remembered on the cartridge.

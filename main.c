@@ -601,7 +601,7 @@ static int title_screen(void){
     enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT };
     static const char *const tn[5]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS"};
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
-    obj_palette();
+    bug_build();
     hdma_on=0; title_paint(pg);
     REG_BLDCNT = 0x3F | (3<<6); REG_BLDY = 16;
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
@@ -627,7 +627,7 @@ static int title_screen(void){
             b[34]=0; stext(pg,120-textlen(b)*2,y,b,C_CYAN);
         }
         oam_hide_all(); set_affine(31,128,0,0,128);
-        shadow_oam[0].a0=((150-32-((blink>>3)&1))&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((120-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile((blink>>4)&1);
+        shadow_oam[0].a0=((150-32-((blink>>3)&1))&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((120-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile((blink>>4)&1)|BUG_BANK;
         vsync(); oam_flush(); read_keys(); blink++; rng_s += blink;
         if(fading_in){ fading_in=0; fade(0); }
         twinkle(pg,blink);

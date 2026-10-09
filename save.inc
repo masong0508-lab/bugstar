@@ -28,15 +28,15 @@ typedef struct {
     u32 sum;
 } Save;
 _Static_assert(sizeof(Save) < SG_OFF, "Save must fit before the grind block");
-typedef struct { u32 magic; u8 tiers[6]; u16 kills[11]; u16 fish, barrels, mined, dodges, planets, uniq, tier_n, floors; u32 ach; u16 pet_xp, pet_lv; char name[9]; u8 col, pat, pad; u32 sum; } SaveG;
+typedef struct { u32 magic; u8 tiers[6]; u16 kills[11]; u16 fish, barrels, mined, dodges, planets, uniq, tier_n, floors; u32 ach; u16 pet_xp, pet_lv; BugLook look; u8 pad; u32 sum; } SaveG;
 static u32 sg_sum(const SaveG *g){ return fnv(g,sizeof(SaveG)-4); }
 static void grind_save(void){ SaveG g; memset(&g,0,sizeof g); g.magic=0x444E5247; for(int i=0;i<6;i++) g.tiers[i]=tiers[i]; for(int i=0;i<11;i++) g.kills[i]=st_kills[i];
-    g.fish=st_fish; g.barrels=st_barrels; g.mined=st_mined; g.dodges=st_dodges; g.planets=st_planets; g.uniq=st_uniq; g.tier_n=st_tiers; g.floors=st_floors; g.ach=ach_done; g.pet_xp=pet_xp; g.pet_lv=pet_lv; memcpy(g.name,bug_name,9); g.col=bug_col; g.pat=bug_pat;
+    g.fish=st_fish; g.barrels=st_barrels; g.mined=st_mined; g.dodges=st_dodges; g.planets=st_planets; g.uniq=st_uniq; g.tier_n=st_tiers; g.floors=st_floors; g.ach=ach_done; g.pet_xp=pet_xp; g.pet_lv=pet_lv; g.look=look;
     g.sum=sg_sum(&g); sram_write(slot_base(cur_slot)+SG_OFF,&g,sizeof g); }
 static void grind_load(void){ SaveG g; sram_read(slot_base(cur_slot)+SG_OFF,&g,sizeof g);
     if(g.magic!=0x444E5247 || g.sum!=sg_sum(&g)){ for(int i=0;i<6;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; bug_look_default(); return; }
     for(int i=0;i<6;i++) tiers[i]=g.tiers[i]; for(int i=0;i<11;i++) st_kills[i]=g.kills[i];
-    st_fish=g.fish; st_barrels=g.barrels; st_mined=g.mined; st_dodges=g.dodges; st_planets=g.planets; st_uniq=g.uniq; st_tiers=g.tier_n; st_floors=g.floors; ach_done=g.ach; pet_xp=g.pet_xp; pet_lv=g.pet_lv; memcpy(bug_name,g.name,9); bug_name[8]=0; bug_col=g.col&7; bug_pat=g.pat&3; }
+    st_fish=g.fish; st_barrels=g.barrels; st_mined=g.mined; st_dodges=g.dodges; st_planets=g.planets; st_uniq=g.uniq; st_tiers=g.tier_n; st_floors=g.floors; ach_done=g.ach; pet_xp=g.pet_xp; pet_lv=g.pet_lv; look=g.look; look.name[8]=0; look.shell%=3; look.ant%=3; look.eye&=1; look.legs%=3; look.pat%=5; look.horn&=1; }
 EW static Save sv;
 static u32 save_sum(const Save *s){ return fnv(s, sizeof(Save)-4); }
 

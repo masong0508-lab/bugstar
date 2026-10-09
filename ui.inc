@@ -61,31 +61,73 @@ static void card(volatile u16 *pg, const char *title, const char *const *ln, int
         text(pg,104,y0+h-11,"A: OK",(t&32)?C_CYAN:C_DGREY,1); }
     sfx(2); wait_release();
 }
-// ---------------------------------------------------------------- make your bug: name, shell colour, pattern, with a live preview
+// ---------------------------------------------------------------- the colour picker: 16 presets, or mix your own with red, green and blue sliders
+static void swatch(volatile u16 *pg, int x, int y, int w, int h, u16 c){ BG_PAL[239]=c; rect(pg,x,y,w,h,239); }      // one BG palette slot per swatch
+static u16 pick_colour(volatile u16 *pg, const char *what, u16 cur){
+    int sel=0, zone=0, dirty=1, r=cur&31, g=(cur>>5)&31, b=(cur>>10)&31, rep=0;                  // zone 0: presets, 1: sliders
+    for(int i=0;i<NPRESET;i++) if(preset_col[i]==cur) sel=i;
+    wait_release();
+    while(1){
+        u16 mix = zone ? (u16)(r|(g<<5)|(b<<10)) : preset_col[sel];
+        if(dirty){ dirty=0; char t[40];
+            panel(pg,12,20,216,136,what);
+            text(pg,20,37,"PRESETS",C_GREY,1);
+            for(int i=0;i<NPRESET;i++){ int x=20+(i&7)*14, y=46+(i>>3)*16; BG_PAL[224+i]=preset_col[i]; rect(pg,x,y,11,11,224+i);
+                if(zone==0 && i==sel){ frame1(pg,x-2,y-2,15,15,C_GOLD); frame1(pg,x-1,y-1,13,13,0); } }
+            text(pg,20,82,zone==0?preset_name[sel]:"CUSTOM MIX",C_WHITE,1);
+            text(pg,140,37,"MIX YOUR OWN",C_GREY,1);
+            static const char *const sl[3]={"RED","GREEN","BLUE"}; int vals[3]={r,g,b}; static const int sc[3]={C_RED,C_GREEN,C_CYAN};
+            for(int k=0;k<3;k++){ int y=47+k*12; text(pg,140,y,sl[k],(zone==1&&sel==k)?C_WHITE:C_GREY,1); rect(pg,166,y+1,64,5,C_DGREY); rect(pg,166,y+1,vals[k]*2+2,5,sc[k]);
+                if(zone==1&&sel==k){ rect(pg,166+vals[k]*2,y-1,3,9,C_WHITE); } }
+            swatch(pg,140,84,88,22,mix); frame1(pg,140,84,88,22,6);
+            scpy(t,"R"); ncat(t,r); scat(t," G"); ncat(t,g); scat(t," B"); ncat(t,b); text(pg,144,110,t,C_GREY,1);
+            ctext(pg,120,126, zone==0 ? "LEFT/RIGHT/UP/DOWN: PICK   A: USE IT" : "LEFT/RIGHT: SLIDE   UP/DOWN: NEXT   A: USE IT",C_CYAN);
+            ctext(pg,120,138,"START: SWITCH PRESETS / MIX    B: KEEP THE OLD ONE",C_DGREY);
+        }
+        vsync(); read_keys();
+        if(HIT(K_START)){ zone^=1; if(zone==1){ r=mix&31; g=(mix>>5)&31; b=(mix>>10)&31; sel=0; } dirty=1; sfx(7); }
+        if(zone==0){
+            if(HIT(K_LEFT)){ sel=(sel+NPRESET-1)%NPRESET; dirty=1; sfx(7); } if(HIT(K_RIGHT)){ sel=(sel+1)%NPRESET; dirty=1; sfx(7); }
+            if(HIT(K_UP)||HIT(K_DOWN)){ sel^=8; dirty=1; sfx(7); }
+        } else {
+            if(HIT(K_UP)){ sel=(sel+2)%3; dirty=1; } if(HIT(K_DOWN)){ sel=(sel+1)%3; dirty=1; }
+            int d=0; if(HELD(K_LEFT)||HELD(K_RIGHT)){ rep++; if(rep==1 || (rep>12 && (rep&1))) d = HELD(K_RIGHT)?1:-1; } else rep=0;
+            if(d){ int *v = sel==0?&r : sel==1?&g : &b; *v+=d; if(*v<0) *v=0; if(*v>31) *v=31; dirty=1; }
+        }
+        if(HIT(K_A)){ sfx(2); wait_release(); return mix; }
+        if(HIT(K_B)){ wait_release(); return cur; }
+    }
+}
+// ---------------------------------------------------------------- make your bug: parts, shapes and colours, with a live preview
 static int make_bug(volatile u16 *pg, int first){
-    int sel=0, dirty=1, editing=0, cur=0, t=0; char nm[9]; scpy(nm,bug_name); int n=textlen(nm); if(n<1){ scpy(nm,"PIP"); n=3; }
-    static const char *const rows[3]={"NAME","SHELL","PATTERN"};
-    wait_release(); obj_palette();
+    enum { R_NAME, R_SHELL, R_PAT, R_MARK, R_HEAD, R_EYES, R_ANT, R_LEGS, R_HORN, NROWS };
+    static const char *const rows[NROWS]={"NAME","SHELL","PATTERN","MARKINGS","HEAD","EYES","ANTENNAE","LEGS","HORN"};
+    static const char *const shell_n[3]={"SHORT","NORMAL","LONG"}, *const pat_n[5]={"PLAIN","STRIPED","SPOTTED","BANDED","CHECKED"}, *const eye_n[2]={"SMALL","BIG"}, *const ant_n[3]={"CURLED","STRAIGHT","DROOPY"}, *const legs_n[3]={"FOUR","SIX","EIGHT"}, *const horn_n[2]={"NONE","HORN"};
+    static const s8 col_of[NROWS]={-1,LC_SHELL,-1,LC_MARK,LC_HEAD,LC_EYE,LC_ANT,LC_LEGS,LC_HORN};
+    int sel=0, dirty=1, editing=0, cur=0, t=0; char nm[9]; scpy(nm,look.name); int n=textlen(nm); if(n<1){ scpy(nm,"PIP"); n=3; }
+    BugLook before=look;
+    wait_release(); bug_build();
     while(1){
         if(dirty){ dirty=0; char b[40];
             panel(pg,12,20,216,136, first ? "MAKE YOUR BUG" : "THE MIRROR");
-            for(int i=0;i<3;i++){ int y=42+i*14; if(i==sel) rect(pg,18,y-3,120,12,6);
-                text(pg,24,y,rows[i], i==sel?C_WHITE:C_GREY,1);
-                if(i==0){ for(int k=0;k<8;k++){ char ch[2]={ k<n?nm[k]:'_',0 }; int c = (editing && k==cur) ? C_GOLD : k<n ? C_WHITE : C_DGREY; text(pg,72+k*6,y,ch,c,1); if(editing && k==cur && (t&16)) rect(pg,72+k*6,y+6,4,1,C_GOLD); } }
-                else if(i==1){ scpy(b,"< "); scat(b,col_name[bug_col]); scat(b," >"); text(pg,72,y,b,i==sel?C_GOLD:C_GREY,1); }
-                else { scpy(b,"< "); scat(b,pat_name[bug_pat]); scat(b," >"); text(pg,72,y,b,i==sel?C_GOLD:C_GREY,1); } }
-            // the preview card
+            for(int i=0;i<NROWS;i++){ int y=37+i*10; if(i==sel) rect(pg,16,y-2,124,10,6);
+                text(pg,20,y,rows[i], i==sel?C_WHITE:C_GREY,1);
+                const char *opt=0;
+                switch(i){ case R_NAME: break; case R_SHELL: opt=shell_n[look.shell]; break; case R_PAT: opt=pat_n[look.pat]; break; case R_EYES: opt=eye_n[look.eye]; break;
+                           case R_ANT: opt=ant_n[look.ant]; break; case R_LEGS: opt=legs_n[look.legs]; break; case R_HORN: opt=horn_n[look.horn]; break; default: break; }
+                if(i==R_NAME){ for(int k=0;k<8;k++){ char ch[2]={ k<n?nm[k]:'_',0 }; int c = (editing && k==cur) ? C_GOLD : k<n ? C_WHITE : C_DGREY; text(pg,64+k*6,y,ch,c,1); if(editing && k==cur && (t&16)) rect(pg,64+k*6,y+6,4,1,C_GOLD); } }
+                else if(opt){ scpy(b,"<"); scat(b,opt); scat(b,">"); text(pg,64,y,b,i==sel?C_GOLD:C_GREY,1); }
+                if(col_of[i]>=0 && !(i==R_HORN && !look.horn) && !(i==R_MARK && !look.pat)){ BG_PAL[224+i]=look.col[col_of[i]]; rect(pg,122,y-1,12,8,224+i); frame1(pg,122,y-1,12,8,i==sel?C_WHITE:C_DGREY); } }
             rect(pg,146,38,74,62,1); frame1(pg,146,38,74,62,C_DGREY);
             { char nb[12]; scpy(nb,nm); ctext(pg,183,92,nb,C_GOLD); }
-            static const char *const tip[3]={"UP/DOWN: LETTER  LEFT/RIGHT: MOVE  A: DONE","YOUR SHELL AND JAWS TAKE THIS COLOUR","MARKINGS ON YOUR SHELL"};
-            ctext(pg,120,110, editing ? tip[0] : sel==0 ? "A: TYPE A NAME" : tip[sel], C_GREY);
-            ctext(pg,120,130, first ? "THIS IS YOU. YOU CAN CHANGE IT AT YOUR SHIP'S MIRROR." : "CHANGE WHAT YOU LIKE", C_WHITE);
-            ctext(pg,120,146, editing ? "A OR B: FINISH THE NAME" : "A: CHOOSE   START: ALL DONE   B: BACK", C_CYAN);
+            const char *tip = editing ? "UP/DOWN: LETTER  LEFT/RIGHT: MOVE  A: DONE" : sel==R_NAME ? "A: TYPE A NAME" : col_of[sel]>=0 ? "LEFT/RIGHT: SHAPE   A: ITS COLOUR" : "LEFT/RIGHT: CHANGE IT";
+            ctext(pg,120,128,tip,C_GREY);
+            ctext(pg,120,138, first ? "SELECT: SURPRISE ME        START: ALL DONE" : "SELECT: SURPRISE ME   START: DONE   B: UNDO ALL", C_CYAN);
+            if(first) ctext(pg,120,147,"YOU CAN CHANGE THIS LATER AT YOUR SHIP'S MIRROR",C_DGREY);
         }
-        // the bug walks on the spot in the preview
         t++; int wf=(t>>3)&1;
         set_affine(31, -128, 0, 0, 128);
-        shadow_oam[0].a0=((70-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((183-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf);
+        shadow_oam[0].a0=((70-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((183-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
         shadow_oam[1].a0=((70-2)&255)|(1<<14); shadow_oam[1].a1=((183-8)&511); shadow_oam[1].a2=T_SHADOW;
         vsync(); oam_flush(); read_keys(); if(editing && (t&15)==0) dirty=1;
         if(editing){
@@ -94,15 +136,21 @@ static int make_bug(volatile u16 *pg, int first){
             if(HIT(K_LEFT) && cur>0){ cur--; dirty=1; }
             if(HIT(K_A)||HIT(K_B)||HIT(K_START)){ while(n>0 && nm[n-1]==' ') n--; nm[n]=0; if(n==0){ scpy(nm,"PIP"); n=3; } editing=0; dirty=1; sfx(2); }
             continue; }
-        if(HIT(K_UP)){ sel=(sel+2)%3; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%3; dirty=1; sfx(7); }
+        if(HIT(K_UP)){ sel=(sel+NROWS-1)%NROWS; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%NROWS; dirty=1; sfx(7); }
         int d = HIT(K_RIGHT)?1 : HIT(K_LEFT)?-1 : 0;
-        if(sel==1 && d){ bug_col=(bug_col+d+NCOL)%NCOL; obj_palette(); dirty=1; sfx(2); }
-        if(sel==2 && d){ bug_pat=(bug_pat+d+4)%4; dirty=1; sfx(2); }
-        if(HIT(K_A)){ if(sel==0){ editing=1; cur=0; dirty=1; } else if(sel==1){ bug_col=(bug_col+1)%NCOL; obj_palette(); dirty=1; sfx(2); } else { bug_pat=(bug_pat+1)%4; dirty=1; sfx(2); } }
-        if(HIT(K_START)){ break; }
-        if(HIT(K_B)){ if(first){ wait_release(); oam_hide_all(); oam_flush(); return 0; } break; }
+        if(d){ int ch=1; switch(sel){ case R_SHELL: look.shell=(look.shell+d+3)%3; break; case R_PAT: look.pat=(look.pat+d+5)%5; break; case R_EYES: look.eye^=1; break;
+                 case R_ANT: look.ant=(look.ant+d+3)%3; break; case R_LEGS: look.legs=(look.legs+d+3)%3; break; case R_HORN: look.horn^=1; break; default: ch=0; }
+               if(ch){ bug_build(); dirty=1; sfx(2); } }
+        if(HIT(K_A)){ if(sel==R_NAME){ editing=1; cur=0; dirty=1; }
+            else if(col_of[sel]>=0){ oam_hide_all(); oam_flush(); look.col[col_of[sel]]=pick_colour(pg,rows[sel],look.col[col_of[sel]]); bug_build(); dirty=1; }
+            else { d=1; if(sel==R_PAT) look.pat=(look.pat+1)%5; bug_build(); dirty=1; sfx(2); } }
+        if(HIT(K_SEL)){ look.shell=rndi(3); look.pat=rndi(5); look.eye=rndi(2); look.ant=rndi(3); look.legs=rndi(3); look.horn=rndi(3)==0;
+            look.col[LC_SHELL]=preset_col[rndi(NPRESET)]; look.col[LC_HEAD]=preset_col[rndi(NPRESET)]; look.col[LC_MARK]=preset_col[rndi(NPRESET)]; look.col[LC_EYE]=preset_col[rndi(NPRESET)]; look.col[LC_HORN]=preset_col[rndi(NPRESET)];
+            bug_build(); dirty=1; sfx(6); }
+        if(HIT(K_START)) break;
+        if(HIT(K_B)){ if(first){ look=before; bug_build(); wait_release(); oam_hide_all(); oam_flush(); return 0; } look=before; scpy(nm,before.name); n=textlen(nm); bug_build(); dirty=1; sfx(4); }
     }
-    scpy(bug_name,nm); sfx(6); wait_release(); oam_hide_all(); oam_flush(); return 1;
+    scpy(look.name,nm); sfx(6); wait_release(); oam_hide_all(); oam_flush(); return 1;
 }
 // how to play: lively pages with button badges, over the title planet, with your bug walking along
 typedef struct { const char *btn; const char *txt; } HelpLine;
@@ -115,7 +163,7 @@ static const HelpLine help_pg[5][7]={
 static const char *const help_ttl[5]={"ON A PLANET","IN A DUNGEON","IN SPACE","STAYING ALIVE","YOUR QUEST"};
 static int badge_col(const char *b){ if(!b[0]) return -1; if(b[0]=='A'&&!b[1]) return C_RED; if(b[0]=='B'&&!b[1]) return C_CYAN; if(b[0]=='!') return C_RED; if(b[0]>='1'&&b[0]<='3') return C_GOLD; if(b[0]=='S') return C_GOLD; if(b[0]=='D') return C_GREEN; return C_GREY; }
 static void help_screen(volatile u16 *pg){
-    int p=0, dirty=1, t=0; wait_release(); obj_palette();
+    int p=0, dirty=1, t=0; wait_release(); bug_build();
     while(1){
         if(dirty){ dirty=0;
             title_restore(pg,18,160);
@@ -130,7 +178,7 @@ static void help_screen(volatile u16 *pg){
             text(pg,14,140,"< >: PAGE",C_CYAN,1); rtext(pg,226,140,"B: BACK",C_CYAN); }
         t++; int wf=(t>>3)&1; int bx=((t>>1)%300)-40;                    // the bug trots along the bottom
         set_affine(31, -128, 0, 0, 128);
-        shadow_oam[0].a0=((150-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((bx-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf);
+        shadow_oam[0].a0=((150-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((bx-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
         vsync(); oam_flush(); read_keys(); twinkle(pg,t);
         if(HIT(K_RIGHT)||HIT(K_R)||HIT(K_A)){ if(p<4){ p++; dirty=1; sfx(7); } else if(HIT(K_A)) break; }
         if(HIT(K_LEFT)||HIT(K_L)){ if(p>0){ p--; dirty=1; sfx(7); } }

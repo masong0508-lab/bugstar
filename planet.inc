@@ -283,7 +283,7 @@ static void planet_frame(void){
       set_affine(31, up ? 256 : facing? -128:128, up ? 0 : facing? lean:-lean, 0, up ? 256 : 128+sq);
       if(pvis){ shadow_oam[slot].a0 = ((up ? sy-96-bob : sy-32-bob)&255) | (1<<8)|(1<<9) | (up?(0<<14):(1<<14));
                 shadow_oam[slot].a1 = ((up ? 120-64 : 120-32)&511) | (31<<9) | (up?(3<<14):(2<<14));
-                shadow_oam[slot].a2 = up ? T_BACK : bug_tile(moved && ((frames>>3)&1)); slot++; }
+                shadow_oam[slot].a2 = (up ? T_BACK : bug_tile(moved && ((frames>>3)&1))) | BUG_BANK; slot++; }
       if(slot<120){ shadow_oam[slot].a0 = ((sy-6)&255) | (1<<14); shadow_oam[slot].a1 = ((120-8)&511); shadow_oam[slot].a2 = T_SHADOW; slot++; }
     } else {                                                                            // first person: your own jaws, swaying as you walk
       if(!(invuln && (frames&4))){
@@ -346,6 +346,7 @@ static void planet_enter(void){
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BG2CNT=3; hdma_on=0; REG_BLDCNT=0;
     planet_tables(); planet_palette(); planet_hud(); page_back=0; p_last=vbl_count;
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
+    bug_build();
     cam_h = ground_h(ppx,ppy)+CAM_UP;
     for(int p=0;p<2;p++){ volatile u16 *pg=(volatile u16*)(0x06000000 + p*0xA000); for(int i=18*120;i<160*120;i++) pg[i]=0; }
 }
