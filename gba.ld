@@ -12,6 +12,6 @@ SECTIONS {
   .data : { __data_start = .; *(.data*) . = ALIGN(4); __data_end = .; } > iwram AT > rom
   __data_lma = LOADADDR(.data);
   .bss (NOLOAD) : { __bss_start = .; *(.bss*) *(COMMON) . = ALIGN(4); __bss_end = .; } > iwram
-  .ewram (NOLOAD) : { __ewram_start = .; *(.ewram*) . = ALIGN(4); __ewram_end = .; } > ewram
+  .ewram (NOLOAD) : { __ewram_start = .; *(.ewram*) *(.sbss*) . = ALIGN(4); __ewram_end = .; } > ewram
   /DISCARD/ : { *(.ARM.attributes) *(.comment) }
 }

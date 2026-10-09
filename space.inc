@@ -41,7 +41,7 @@ static int can_jump(int i){ if(i==cur_sys) return 0; if(sys[i].kind<6) return sy
 
 // where you are when you land: the planet of the current system
 static void land_on_current(void){
-    if(sys[cur_sys].kind<6){ endless=0; zone=sys[cur_sys].kind; zone_cleared=(cleared_mask>>zone)&1; }
+    if(sys[cur_sys].kind<6){ endless=0; zone=sys[cur_sys].kind; zone_cleared=(cleared_mask>>zone)&1; story_dna(zone); }
     else { endless=1; world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); zone_cleared=0; }
 }
 

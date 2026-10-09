@@ -1,5 +1,6 @@
 // BUGSTAR prototype: a pill bug on a turning planet, and a colour 3D dungeon underneath.
 #include "assets.h"
+#include "logo.h"
 typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; typedef signed short s16; typedef signed char s8; typedef int s32; typedef unsigned long long u64;
 #define REG_DISPCNT  (*(volatile u16*)0x04000000)
 #define REG_VCOUNT   (*(volatile u16*)0x04000006)
@@ -665,11 +666,18 @@ static int title_screen(void){
 }
 
 // ================================================================= starting, running and leaving a game
+static void arrive_on_planet(void);
 static void start_game(int cont){       // fades out, sets the world up from cur_slot (or fresh) and fades in on the planet
     rng_s ^= vbl_count*2654435761u;
     fade(1);
     gen_cluster();
-    if(!(cont && load_game(1))){ cont=0; new_game(); cam_fp=opt_cam; planet_tables(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
+    if(!(cont && load_game(1))){ cont=0; new_game(); story_dna(0); cam_fp=opt_cam; planet_tables(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
+#ifdef TEST_WORLD
+    endless=1; world_no=TEST_WORLD; make_world();
+#endif
+#ifdef TEST_ARRIVE
+    cur_sys=TEST_ARRIVE; fade(0); arrive_on_planet(); return;
+#endif
     scene=0; launch_flag=0; enter_dungeon_flag=0; fish_state=0; msg_timer=0; invuln=0; shake_t=0; page_back=0; loot=0; depth_no=0;
     speed_t=strong_t=dizzy_t=stun_t=shield_t=0;
     restock(); arrow_ship = zone_cleared && !endless;
@@ -692,6 +700,7 @@ static void arrive_on_planet(void){      // after landing (or the autopilot): se
     land_on_current(); st_planets++; ach_check(); portal_depth=0; scene=0; msg_timer=0;
     new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game();
     char b[40]; scpy(b,world_name()); if(!endless && !zone_cleared) scat(b,": FIND THE DOOR"); show_msg(b); oam_hide_all(); oam_flush(); music(0);
+    { REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_flush(); fade(0); planet_card(VISPG); p_last=vbl_count; }
 }
 static void pet_away_tick(void){
     if(pet_away_t && --pet_away_t==0){ gold+=pet_sold_g; char b[40]; scpy(b,"BUDDY SOLD "); ncat(b,pet_sold_n); scat(b," THINGS: +"); ncat(b,pet_sold_g); scat(b,"G"); say(b); sfx(7); hud_now(); pet_x=px_; pet_y=py_; }
@@ -773,6 +782,11 @@ static void run_game(void){
 int main(void){
     REG_DISPCNT = 0x80;
     REG_WAITCNT = 0x4317;
+#ifndef NO_LOGO
+    logo_play();
+#endif                                             // the DIPPINN PRODUCTIONS boot logo (logo.c, the same one BORE plays)
+    { volatile u16 *io=(volatile u16*)0x04000000; for(int r=0x08/2;r<0x20/2;r++) io[r]=0; for(int r=0x40/2;r<0x56/2;r++) io[r]=0; }   // undo its layers, scroll, windows and blend
+    { volatile u16 *v=(volatile u16*)0x06000000; for(int i=0;i<0x18000/2;i++) v[i]=0; } REG_DISPCNT = 0x80;
     *(volatile u16*)0x04000100=0; *(volatile u16*)0x04000104=0; *(volatile u16*)0x04000106=0x84; *(volatile u16*)0x04000102=0x80;
     sound_init();
     rng_s ^= 0x9E3779B9;

@@ -47,6 +47,20 @@ Difficulty (easy / normal / hard: hard does more damage to you but pays +25% gol
 ## How to play (redone)
 Five pages with colour-coded button badges: planet, dungeon, space, staying alive, and your quest. Your bug trots along the bottom.
 
+## Living planets: cities, creatures, jobs (new)
+- **Every planet is grown from its own DNA**: the shape of the land (rolling hills, mesas, dunes, islands, craters, canyons, ridges or plains), cliffs, beaches, snow caps, the sea level, the time of day (day, dusk, night), the weather (clear, rain, snow, dust), gravity (it changes how fast you walk), the sky and ground colours, what grows there, its two creature species, and what it is **known for** ("ITS SOUP", "A MAYOR WHO IS A MOTH", "RAIN THAT FALLS UP"...). Put together that is about **10^98 different planets**, far past an unvigintillion (10^66). The galaxy keeps making new clusters of them for as long as you fly.
+- **Cities.** About one world in three has a town or a big city, built right into the 3D land: streets, plazas, blocks and towers with lit windows (they glow at night). Walk the streets and press A at the doors:
+  - **THE MARKET** buys your hold's goods and sells local goods to trade elsewhere.
+  - **THE CANTINA**: soup, gossip (real tips), buy a round for fame, or arm-wrestle the bartender (he is a beetle).
+  - **THE BOUNTY OFFICE** gives a job for that planet: squash slugs, beat beetles, dig fossils, win the race, meet the locals, hunt a creature or mine ore. It pays the moment you finish.
+  - **THE RACE POST** starts a flag race over the hills. Beat the par time for gold and fame.
+  - **Houses**: knock and see who answers.
+  - **Locals** walk the streets. Talk to them. Some give gifts. Most say odd things.
+- **Creatures.** Two species live on each world, each with a body (hopper, grazer or flyer), a size, a colour and a temper: **timid** ones run, **curious** ones come to look, **hostile** ones bite. They live in herds, wander, and breed back slowly if you leave some. Press A to catch one (food).
+- **Fossils** to dig up (relics for your hold), **surface beetles** that charge you, and old **ruins** that ask a riddle (right answer: gold and a relic; wrong answer: bonk).
+- **The arrival card**: when you land you get the planet's name, what it is known for, its land and weather, who lives there, and a remark from Bolt.
+- **Boot logo**: the DIPPINN PRODUCTIONS logo from BORE plays at power on (A or START skips it).
+
 ## Things to do on planets (new)
 - **Mining.** Every world grows four kinds of resource: **amber trees, crystal rocks, silk webs and nectar flowers** (what grows depends on the world's economy). Stand next to one and press A three times. The goods go into your ship's hold (HOLD 3/10 on the ship menu). Sell them at any station, where prices differ by economy, or...
 - **The workbench** on your ship upgrades gear: thorns need crystals, shells need amber, charms need silk, plus gold. Each upgrade adds +2 levels, which raises damage or defence and strengthens magic effects. No cap except 97.
@@ -122,7 +136,7 @@ Needs an ARM GBA toolchain (`arm-none-eabi-gcc`, e.g. devkitARM), `gbafix`, and 
 ```
 make            # or: make TC=/path/to/arm-none-eabi-
 ```
-Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `gen.py` + `texgen.py` (make `assets.h`: palettes, textures, sprites, tables), `crt0.s` + `gba.ld`.
+Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `planet.inc` (the 3D planet), `town.inc` (cities, creatures, jobs, races, ruins), `ship.inc` + `hangar.inc` (your ship), `space.inc`, `logo.c` (the DIPPINN PRODUCTIONS boot logo, shared with BORE), `gen.py` + `texgen.py` (make `assets.h`: palettes, textures, sprites, tables), `crt0.s` + `gba.ld`.
 
 ## Space (new)
 At your ship, pick **LAUNCH INTO SPACE**.

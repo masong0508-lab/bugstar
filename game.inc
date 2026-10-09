@@ -96,13 +96,38 @@ static void bug_build(void){ obj_palette(); bug_tiles_to_vram(0,T_BUGSIDE); bug_
 static int bug_tile(int frame){ return frame&1 ? T_BUGSIDE2 : T_BUGSIDE; }
 #define BUG_BANK (3<<12)
 static void name_of(u32 wn, char *b){
-    static const char *const syl[16]={"ZA","KOR","MI","LUX","PO","BRA","NU","TIK","VO","RAN","SPI","GLO","QUA","FEN","DOR","ULM"};
-    static const char *const suf[6]={""," PRIME"," II"," MAJOR"," MINOR"," X"};
-    wseed = galaxy_seed ^ (wn*2654435761u);
-    b[0]=0; int n=2+wr(2); for(int i=0;i<n;i++) scat(b,syl[wr(16)]); scat(b,suf[wr(6)]);
+    static const char *const syl[32]={"ZA","KOR","MI","LUX","PO","BRA","NU","TIK","VO","RAN","SPI","GLO","QUA","FEN","DOR","ULM","OB","TEL","YAR","SNU","GRIB","OLO","PEM","VAX","HU","LIM","CRO","DIZ","WOB","ESK","TAN","JIB"};
+    static const char *const suf[8]={""," PRIME"," II"," MAJOR"," MINOR"," X"," IX"," B"};
+    wseed = galaxy_seed ^ (wn*2654435761u) ^ (wn>>7)*0x85EBCA6Bu;
+    b[0]=0; int n=2+wr(2); for(int i=0;i<n;i++) scat(b,syl[wr(32)]); scat(b,suf[wr(8)]);
+}
+// ---- planet DNA. Every world is grown from its own code: the shape of the land, the sea, the sky, the hour, the weather,
+// what grows there, whether a city stands on it, what it is known for. The parts multiply out to more than an unvigintillion
+// (10 to the 66th) different planets, and the galaxy keeps making new clusters of them for as long as you fly.
+typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u32 tseed; } WorldDNA;
+static WorldDNA wd;
+static const char *const style_name[8]={"ROLLING HILLS","MESAS","DUNES","ISLANDS","CRATERS","CANYONS","RIDGES","PLAINS"};
+static const char *const hour_name[3]={"DAY","DUSK","NIGHT"};
+static const char *const weather_name[4]={"CLEAR SKIES","RAIN","SNOW","DUST"};
+#define NTAG 48
+static const char *const tagline[NTAG]={"ITS SOUP","A VERY LOUD FROG","THE WORLD'S FLATTEST ROCK","EXCELLENT NAPS","BEING SLIGHTLY DAMP","ONE REALLY GOOD TREE","A FESTIVAL OF BEANS","MUD. ALL THE MUD.",
+    "ITS HAT MUSEUM","THE BIG SNAIL RACE","A SMELL NOBODY CAN PLACE","POLITE WEATHER","THE GREAT PEBBLE SHORTAGE","VERY STRONG TEA","A HOLE THAT HUMS","GRUMPY SUNSETS",
+    "THE ANNUAL LEAF COUNT","A STATUE OF A SLUG","FREE HUGS (FROM BEETLES)","ITS NINE TINY MOONS","A LIBRARY WITH ONE BOOK","CHEESE SHAPED CLOUDS","THE FASTEST ANT ALIVE","DOING NOTHING, LOUDLY",
+    "ITS BOTTOMLESS PUDDLE","A MAYOR WHO IS A MOTH","PANCAKE ROCKS","THE SONG EVERYONE HUMS","LOST SOCKS","A VERY TALL FENCE","ITS BUG BALLET","WIND THAT WHISTLES TUNES",
+    "ANTS WHO SAY SORRY","A PIE CONTEST NOBODY WINS","A SHINY THING ON A HILL","THE LONGEST YAWN","MOSS YOU CAN SIT ON","SOUP (AGAIN)","THE DANCING STONES","TWELVE KINDS OF DEW",
+    "A BRIDGE TO NOWHERE","ITS SLEEPY VOLCANO","A COLD THAT IS KIND","AN ECHO THAT TALKS BACK","GOLD THAT IS JUST YELLOW","CROWS WHO PLAY CARDS","RAIN THAT FALLS UP","BEING FAMOUS FOR NOTHING"};
+static void story_dna(int z){                                                            // the six story worlds have fixed DNA (they are Bolt's garden)
+    static const u8 sd[6][8]={{0,1,0,0,1,1,1,0},{3,1,0,1,0,1,0,0},{1,2,1,0,1,1,2,1},{6,2,2,0,2,1,2,0},{4,1,0,3,1,0,0,0},{5,3,1,0,1,1,3,1}};  // style rough hour weather grav city csize ruins
+    memset(&wd,0,sizeof wd);
+    wd.style=sd[z][0]; wd.rough=sd[z][1]; wd.hour=sd[z][2]; wd.weather=sd[z][3]; wd.grav=sd[z][4]; wd.city=sd[z][5]; wd.csize=sd[z][6]; wd.ruins=sd[z][7];
+    wd.fossils=1+z/2; wd.beetles=z>=2 ? 1+z/2 : 0; wd.tagline=(z*7+3)%NTAG; wd.fauna=z%6; wd.tseed=(u32)z*977+13;
+    static const u16 bl[6]={C15(150,140,120),C15(90,120,160),C15(170,80,80),C15(90,70,140),C15(190,150,70),C15(150,90,60)};
+    wd.bld=bl[z]; wd.sky=C15(120,170,230); wd.road=C15(60,56,60); wd.snow=z==3; wd.sand=z==1||z==2; wd.alt=0;
+    for(int i=0;i<4;i++) wd.flora[i]=3;
 }
 static void make_world(void){
     name_of((u32)world_no,w_name);
+    wseed = galaxy_seed ^ ((u32)world_no*0x9E3779B1u) ^ 0x7F4A7C15u; wr(2);
     int r=40+wr(216), g=40+wr(216), b=40+wr(216); int k=wr(3); if(k==0) r=230; else if(k==1) g=230; else b=230;
     static const u8 mul[5]={8,30,55,80,100};
     for(int i=0;i<5;i++){ int m=mul[i]; int w = i==4 ? 120 : (i==3?30:0); w_tint[i]=rgb15(r*m/100+w, g*m/100+w, b*m/100+w); }
@@ -111,6 +136,14 @@ static void make_world(void){
     for(int i=0;i<7;i++){ int m=6+i*16; w_mon[i]=rgb15(mr*m/100+(i>4?(i-4)*40:0), mg*m/100+(i>4?(i-4)*40:0), mb*m/100+(i>4?(i-4)*40:0)); }
     w_mon[7] = wr(2) ? rgb15(255,240,110) : rgb15(120,255,230);
     for(int i=0;i<3;i++) w_styles[i]=wr(5);
+    // the DNA
+    wd.style=wr(8); wd.rough=wr(4); { int h=wr(8); wd.hour = h<5?0 : h<6?1 : 2; }
+    { int w=wr(10); wd.weather = w<6?0 : w<8?1 : w<9?2 : 3; }
+    wd.grav=wr(4); wd.city = wr(3)==0; wd.csize = wd.city ? wr(4) : 0; wd.snow=wr(3)==0; wd.sand=wr(2); wd.twotone=wr(3)==0; wd.cliffs=wr(4)==0;
+    wd.tagline=wr(NTAG); wd.fauna=wr(6); wd.ruins=wr(3)==0; wd.fossils=wr(4); wd.beetles=wr(4); wd.alt=wr(2) ? rgb15(40+wr(216),40+wr(216),40+wr(216)) : 0;
+    wd.bld=rgb15(60+wr(160),60+wr(160),60+wr(160)); wd.sky=rgb15(40+wr(200),60+wr(180),100+wr(156)); wd.road=rgb15(30+wr(60),30+wr(60),30+wr(60));
+    for(int i=0;i<4;i++) wd.flora[i]=wr(8);
+    wd.tseed = wseed ^ ((u32)world_no*2654435761u+7);
 }
 static const char *world_name(void){ return endless ? w_name : tint_name[zone]; }
 

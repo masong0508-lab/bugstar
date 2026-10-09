@@ -106,7 +106,7 @@ static int load_game(int apply){
     q_type=s->q_type; q_need=s->q_need; q_have=s->q_have; q_floor=s->q_floor; q_done=s->q_done; q_gold=s->q_gold; q_fame=s->q_fame; q_zone=s->q_zone; q_world=s->q_world; memcpy(q_name,s->q_name,24);
     pet_form=s->pet_form; pet_form_t=s->pet_form_t; pet_maxhp=s->pet_maxhp; pet_hp=s->pet_hp; pet_away_t=0; pet_down_t=0;
     load_ext(); grind_load();
-    if(endless) make_world();
+    if(endless) make_world(); else story_dna(zone);
     recalc(); hearts=s->hp; mp=s->mp; if(hearts<1) hearts=maxh;
     Meta m; meta_read(cur_slot,&m); play_reset(m.secs);
     last_slot=cur_slot; settings_save();
