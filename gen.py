@@ -251,7 +251,23 @@ def gen_side(frame):
         g[11][lx]='1'; g[12][lx+(1 if fwd else -1)]='1'; g[13][lx+(1 if fwd else -1)]='1'
     return [''.join(r) for r in g]
 BUG=[r[::-1] for r in gen_side(0)]; BUG2=[r[::-1] for r in gen_side(1)]      # drawn facing right; the game mirrors it
-sprs=[("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
+ARROW=["................",
+       "................",
+       "................",
+       "........1.......",
+       "........11......",
+       "........1d1.....",
+       ".111111.1dd1....",
+       ".1ddddd11ddd1...",
+       ".1ddddddddddd1..",
+       ".1ddddd11ddd1...",
+       ".111111.1dd1....",
+       "........1d1.....",
+       "........11......",
+       "........1.......",
+       "................",
+       "................"]
+sprs=[("ARROW",ARROW,16,16,1),("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
       ("PLANT",PLANT,8,8,1),("PEBBLE",PEBBLE,8,8,1),("TUFT",TUFT,8,8,1),("BACK",BACK,64,64,2)]
 allt=[]; t=0
 for name,rows,w,h,s in sprs:

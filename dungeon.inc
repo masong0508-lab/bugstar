@@ -9,6 +9,7 @@ enum { ST_HALL, ST_CRYPT, ST_CAVE, ST_GROTTO, ST_CRYSTAL, NSTYLE };
 static const u8 style_wall[NSTYLE]={M_BRICK,M_STONE,M_EARTH,M_MOSS,M_CRYSTAL};
 static const u8 style_floor[NSTYLE]={FL_FLAG,FL_TILE,FL_DIRT,FL_MOSS,FL_TILE};
 static u8 dmap[MW*MW];
+EW static u8 seen[MW*MW]; static u8 room_seen[10];     // what you have seen on this floor (for the map)
 EW static u8 wmat[MW*MW], fmat[MW*MW], rid[MW*MW], wdec[MW*MW];
 static u16 lampcell[12]; static int nlamps;
 typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; s32 kvx, kvy; u8 stag, lunge; } DObj;
@@ -54,6 +55,7 @@ static int room_floor_cell(Room *r){
 static void make_floor(void){
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_BRICK; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
     nrooms=0; nlights=0; nlamps=0; ntorch=0;
+    for(int i=0;i<MW*MW;i++) seen[i]=0; for(int i=0;i<10;i++) room_seen[i]=0;
     for(int t=0;t<400 && nrooms<8;t++){
         static const u8 zst[6][3]={{ST_HALL,ST_CAVE,ST_GROTTO},{ST_GROTTO,ST_GROTTO,ST_CRYPT},{ST_HALL,ST_CRYPT,ST_HALL},{ST_CRYSTAL,ST_CRYSTAL,ST_CAVE},{ST_CRYSTAL,ST_HALL,ST_CRYPT},{ST_CAVE,ST_CAVE,ST_CRYPT}};
         const u8 *zs = endless ? w_styles : zst[zone];
@@ -241,7 +243,7 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
         }
         s32 perp = side==0 ? tx-ddx : ty-ddy; if(perp<0x1000) perp=0x1000;
         ctyp[c]=t; zbuf[c]=perp;
-        int cell=my*MW+mx; ccell[c]=cell;
+        int cell=my*MW+mx; ccell[c]=cell; seen[cell]=1;
         s32 hx = px_+(s32)(((long long)perp*rx)>>16), hy = py_+(s32)(((long long)perp*ry)>>16);
         u32 u = (u32)((side==0 ? hy : hx)&0xFFFF); if((side==0&&rx>0)||(side==1&&ry<0)) u=0xFFFF-u;
         int w=wtex[cell]; ctex[c]=w;
@@ -497,17 +499,61 @@ static void draw_fnums(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
         text(pg,x+1,y+1,b,0,1); text(pg,x,y,b,f->col,1);
     }
 }
+// ---------------------------------------------------------------- the map: rooms you walk into are drawn whole, corridors as you pass
+static void map_reveal(void){
+    int cx=px_>>16, cy=py_>>16; if(cx<0||cy<0||cx>=MW||cy>=MW) return;
+    int r=rid[cy*MW+cx];
+    if(r<nrooms && !room_seen[r]){ room_seen[r]=1; Room *R=&rooms[r];
+        for(int y=R->y-1;y<=R->y+R->h;y++) for(int x=R->x-1;x<=R->x+R->w;x++) if(x>=0&&y>=0&&x<MW&&y<MW) seen[y*MW+x]=1; }
+    for(int y=cy-1;y<=cy+1;y++) for(int x=cx-1;x<=cx+1;x++) if(x>=0&&y>=0&&x<MW&&y<MW) seen[y*MW+x]=1;
+}
+static int stairs_seen(void){ int c=(tgt_y>>16)*MW+(tgt_x>>16); return seen[c] && dmap[c]==D_DOWN; }
+static void map_page(volatile u16 *pg){
+    if(scene!=1){ text(pg,8,40,"THE MAP WORKS IN DUNGEONS.",C_WHITE,1); text(pg,8,52,"ON A PLANET, FOLLOW THE YELLOW ARROW.",C_GREY,1); return; }
+    int ox=8, oy=31;
+    for(int y=0;y<MW;y++) for(int x=0;x<MW;x++){ int i=y*MW+x; if(!seen[i] && !sight) continue;
+        int t=dmap[i], c;
+        if(t==D_WALL){ int any=0; for(int k=0;k<4;k++){ static const s8 d4[4][2]={{1,0},{-1,0},{0,1},{0,-1}}; int xx=x+d4[k][0], yy=y+d4[k][1];
+                if(xx>=0&&yy>=0&&xx<MW&&yy<MW && dmap[yy*MW+xx]!=D_WALL) any=1; } if(!any) continue; c=R_STONE+3; }
+        else if(t==D_PILLAR) c=R_STONE+5;
+        else if(t==D_DOWN) c=C_GOLD; else if(t==D_UP) c=C_CYAN;
+        else if(fmat[i]==FL_WATER) c=R_WATER+3;
+        else c=C_DGREY;
+        if(!seen[i]) c = t==D_DOWN ? C_GOLD : R_STONE+1;           // a sight berry shows the whole floor, dimly
+        rect(pg,ox+x*4,oy+y*4,4,4,c); }
+    for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; int x=o->x>>16, y=o->y>>16; if(!seen[y*MW+x]) continue;
+        int c = o->kind==K_CAGE ? C_GREEN : o->kind==K_CHEST ? C_GOLD : o->kind==K_BOSS ? C_RED : -1;
+        if(c>=0){ rect(pg,ox+x*4+1,oy+y*4+1,2,2,c); } }
+    int px=ox+(px_>>14), py=oy+(py_>>14);
+    rect(pg,px-1,py-1,3,3,C_RED);
+    { s32 dx=cosx(pang>>2), dy=sinx(pang>>2); for(int k=2;k<5;k++) pix(pg,px+(dx*k>>14),py+(dy*k>>14),C_WHITE); }
+    int lx=144, y=40; char b[32];
+    scpy(b,world_name()); b[22]=0; text(pg,lx,y,b,C_GOLD,1); y+=8;
+    scpy(b,"FLOOR B"); ncat(b,depth_no); if(!endless){ scat(b," OF "); ncat(b,zone_floors()); } text(pg,lx,y,b,C_WHITE,1); y+=14;
+    rect(pg,lx,y,5,5,C_RED); text(pg,lx+9,y,"YOU",C_WHITE,1); y+=9;
+    rect(pg,lx,y,5,5,C_GOLD); text(pg,lx+9,y,"STAIRS DOWN",C_WHITE,1); y+=9;
+    rect(pg,lx,y,5,5,C_CYAN); text(pg,lx+9,y,"STAIRS UP",C_WHITE,1); y+=9;
+    rect(pg,lx+1,y+1,3,3,C_GREEN); text(pg,lx+9,y,"CAGED BUG",C_WHITE,1); y+=9;
+    rect(pg,lx+1,y+1,3,3,C_RED); text(pg,lx+9,y,"BOSS",C_WHITE,1); y+=14;
+    if(!endless && depth_no>=zone_floors()) text(pg,lx,y,zone_cleared?"BOSS BEATEN!":"THE BOSS IS HERE",zone_cleared?C_GREEN:C_RED,1);
+    else text(pg,lx,y,stairs_seen()?"YOU FOUND THE STAIRS":"FIND THE STAIRS",stairs_seen()?C_GREEN:C_GREY,1);
+}
+static int boss_floor(void){ for(int i=0;i<ndo;i++) if(dob[i].alive && dob[i].kind==K_BOSS) return 1; return 0; }
 static DObj petobj;
 static s32 pet_x, pet_y;
 
-static void dungeon_hud(void){
-    char b[40]; scpy(b,world_name()); scat(b," B"); char n2[6];
+static void dungeon_label(char *b){
+    scpy(b,world_name()); scat(b," B"); char n2[6];
     if(endless){ num(n2,depth_no,depth_no>99?3:depth_no>9?2:1); scat(b,n2); }
     else { num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,zone_floors(),1); scat(b,n2); }
-    for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b);
 }
+// the status bar is drawn only into the page you can't see, so it never flickers: once for each of the two pages
+static int hud_dirty=0;
+static void dungeon_hud(void){ hud_dirty=2; }
+static void dungeon_hud_both(void){ char b[40]; dungeon_label(b); for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b); hud_dirty=0; }
+static int stair_ok;
 static void dungeon_enter(void){
-    depth_no++; sight=0; msg_timer=0;
+    depth_no++; stair_ok=0; sight=0; msg_timer=0;
     make_floor();
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
@@ -533,5 +579,5 @@ static void dungeon_enter(void){
     for(int i=0;i<MW*MW;i++){ int t=dmap[i], f=fmat[i], x=i%MW, y=i/MW;
         fcode[i] = t==D_UP?7 : t==D_DOWN?8 : f==FL_FLAG?((x+y)&1) : f==FL_TILE?2 : f==FL_DIRT?3 : f==FL_MOSS?4 : f==FL_WATER?5 : 6; }
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
-    dungeon_hud();
+    dungeon_hud_both();
 }

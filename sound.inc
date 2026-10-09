@@ -22,10 +22,26 @@ static const u8 mel_title[64]={72,H,76,H,79,H,84,H, H,H,83,H,79,H,76,H, 77,H,81,
                                79,H,H,H,77,H,76,H, 74,H,H,H,72,H,74,H, 76,H,H,H,79,H,H,H, 72,H,H,H,H,H,_,_};
 static const u8 bas_title[64]={48,H,H,H,H,H,H,H, 52,H,H,H,H,H,H,H, 53,H,H,H,H,H,H,H, 57,H,H,H,H,H,H,H,
                                55,H,H,H,H,H,H,H, 53,H,H,H,H,H,H,H, 55,H,H,H,H,H,H,H, 48,H,H,H,H,H,H,H};
+// space: slow, starry arpeggios
+static const u8 mel_space[64]={69,H,72,H,76,H,72,H, 69,H,72,H,76,H,79,H, 77,H,74,H,69,H,74,H, 77,H,H,H,76,H,74,H,
+                               72,H,76,H,79,H,76,H, 72,H,76,H,79,H,84,H, 83,H,79,H,76,H,74,H, 76,H,H,H,H,H,_,_};
+static const u8 bas_space[64]={45,H,H,H,H,H,H,H, 45,H,H,H,52,H,H,H, 50,H,H,H,H,H,H,H, 50,H,H,H,57,H,H,H,
+                               48,H,H,H,H,H,H,H, 48,H,H,H,55,H,H,H, 43,H,H,H,H,H,H,H, 40,H,H,H,47,H,H,H};
+// the boss: fast and tense
+static const u8 mel_boss[64]={64,H,67,_,64,H,71,_, 70,H,67,_,64,H,62,H, 64,H,67,_,64,H,72,_, 71,H,67,_,66,H,H,_,
+                              76,H,74,H,72,H,71,H, 72,H,71,H,69,H,67,H, 69,H,71,H,72,H,74,H, 75,H,H,H,71,H,H,_};
+static const u8 bas_boss[64]={40,_,40,_,52,_,40,_, 40,_,40,_,52,_,40,_, 36,_,36,_,48,_,36,_, 35,_,35,_,47,_,35,_,
+                              40,_,40,_,52,_,40,_, 38,_,38,_,50,_,38,_, 36,_,36,_,48,_,36,_, 35,_,35,_,47,_,47,_};
+// the ending: warm and slow
+static const u8 mel_end[64]={72,H,H,H,74,H,76,H, 79,H,H,H,76,H,H,H, 77,H,H,H,76,H,74,H, 72,H,H,H,H,H,_,_,
+                             69,H,H,H,72,H,74,H, 76,H,H,H,79,H,H,H, 77,H,76,H,74,H,71,H, 72,H,H,H,H,H,H,_};
+static const u8 bas_end[64]={48,H,H,H,H,H,H,H, 52,H,H,H,H,H,H,H, 53,H,H,H,H,H,H,H, 48,H,H,H,55,H,H,H,
+                             45,H,H,H,H,H,H,H, 52,H,H,H,H,H,H,H, 50,H,H,H,43,H,H,H, 48,H,H,H,H,H,H,H};
 #undef _
 #undef H
 typedef struct { const u8 *mel, *bas; u8 tempo, vol; } Track;
-static const Track tracks[3]={{mel_planet,bas_planet,9,0xA},{mel_dun,bas_dun,12,0x8},{mel_title,bas_title,8,0xB}};
+// 0 planet, 1 dungeon, 2 title, 3 space, 4 boss, 5 ending
+static const Track tracks[6]={{mel_planet,bas_planet,9,0xA},{mel_dun,bas_dun,12,0x8},{mel_title,bas_title,8,0xB},{mel_space,bas_space,11,0x9},{mel_boss,bas_boss,6,0xA},{mel_end,bas_end,12,0xA}};
 static volatile int mus_track=-1, mus_step=0, mus_t=0;
 static volatile int vbl_count=0;
 

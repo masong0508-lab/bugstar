@@ -52,7 +52,8 @@ static volatile int opt_sfx=1;
 static int opt_autosave=1, opt_shake=1;
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
-static int sys_req=0;                 // set by the SYSTEM page: 1 = load cur_slot, 2 = quit to the title
+static int sys_req=0;
+static int in_menu=0; static char menu_msg[40];   // inside a menu, messages go on a line in the menu instead of over it                 // set by the SYSTEM page: 1 = load cur_slot, 2 = quit to the title
 
 // ---------------------------------------------------------------- mode 4 text
 static void pix(volatile u16 *pg, int x, int y, int c){
@@ -96,7 +97,7 @@ static void set_affine(int m, int pa, int pb, int pc, int pd){ volatile u16 *o=O
 #include "game.inc"
 #include "save.inc"
 #include "ui.inc"
-static int launch_flag=0;
+static int launch_flag=0, zone_card=0, arrow_ship=0;
 static void story_boss_beaten(void); static int hive_here(void); static int hive_boss_floor(void); static void hive_kill(void);
 
 // ================================================================= THE PLANET
@@ -132,11 +133,15 @@ static void planet_palette(void){
     for(int i=0;i<6;i++) BG_PAL[16+i]= endless ? w_tint[i] : tint_pal[zone*6+i];
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
 }
+static int prompt_k=-2;
 static void planet_draw_bg(void){
+    prompt_k=-2;
     volatile u16 *pg=VRAM; const u16 *src=(const u16*)planet_img;
     for(int i=0;i<240*160/2;i++) pg[i]=src[i];
 }
+static u32 phud_sig=0;
 static void planet_hud(void){
+    phud_sig=hud_sig();
     char b[24]; scpy(b,world_name()); if(zone_cleared && !endless) scat(b," *");
     draw_hud(VRAM, b);
 }
@@ -199,10 +204,20 @@ static void planet_frame(void){
     }
     bag_input(); tick_timers(); hunger_tick(240); regen_tick(120);
     if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen(VRAM); planet_draw_bg(); planet_hud(); msg_timer=0; return; }
+    if(cast_flag>=0){ arrow_ship^=1; show_msg(arrow_ship?"ARROW: TO YOUR SHIP":"ARROW: TO THE DOOR"); sfx(7); }
     escape_flag=call_flag=blast_flag=0; cast_flag=-1;
     if(hearts<=0){ hearts=maxh; food=60; gold/=2; bag_n=0; bag_sel=0; show_msg("YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }
     if(msg_timer && --msg_timer==0) show_msg("");
-    if(frames%60==0) planet_hud();
+    if(frames%30==0 && hud_sig()!=phud_sig) planet_hud();
+    // what A would do right now, written along the bottom
+    { int best=-1; s32 bd=16150;
+      for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_SLUG){ s32 d=dot_p0(&po[i]); if(d>bd){ bd=d; best=i; } }
+      int pk = best<0 ? -1 : po[best].kind;
+      if(pk!=prompt_k){ prompt_k=pk;
+          volatile u16 *pg=VRAM; const u16 *src=(const u16*)planet_img;
+          for(int i=37*120;i<45*120;i++) pg[i]=src[i];
+          static const char *const pt[4]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG"};
+          if(pk>=0){ const char *s=pt[pk]; stext(pg,120-textlen(s)*2,38,s,C_GOLD); } } }
     // sprites: project, scale, sort by height on screen
     EW static u8 order[NPO]; EW static s16 sy_[NPO]; int n=0;
     for(int i=0;i<NPO;i++){ if(!po[i].alive || po[i].z<300) continue; s32 sy=292+((232*po[i].y)>>14); if(sy>170) continue; sy_[i]=sy; order[n++]=i; }
@@ -217,7 +232,20 @@ static void planet_frame(void){
     if(pvis){ shadow_oam[0].a0 = ((150-16-16-bob)&255) | (1<<8)|(1<<9) | (1<<14);
               shadow_oam[0].a1 = ((120-32)&511) | (31<<9) | (2<<14);
               shadow_oam[0].a2 = moved && ((frames>>3)&1) ? T_BUGSIDE2 : T_BUGSIDE; }
+    // the guide arrow: it circles your bug and points the shortest way to the door (or to your ship once the boss is beaten)
     int slot=1;
+    { int ti = arrow_ship ? 0 : 1; PObj *o=&po[ti];
+      s32 d=dot_p0(o), tx=o->x-((d*P0x)>>14), ty=o->y-((d*P0y)>>14);
+      int near_t = d>16150;
+      s32 l=isqrt((u32)((tx>>4)*(tx>>4)+(ty>>4)*(ty>>4)));
+      if(!near_t && l>0){
+          s32 ux=(tx>>4)*256/l, uy=(ty>>4)*256/l;
+          set_affine(30, ux, uy, -uy, ux);
+          int pulse = (sinx(frames*6)>>12);                     // it bobs gently toward the target
+          int cx=120+ux*(34+pulse)/256, cy=128+uy*(24+pulse)/256;
+          shadow_oam[slot].a0 = ((cy-16)&255) | (1<<8)|(1<<9);
+          shadow_oam[slot].a1 = ((cx-16)&511) | (30<<9) | (1<<14);
+          shadow_oam[slot].a2 = T_ARROW; slot++; } }
     for(int k=0;k<n && slot<128;k++){
         PObj *o=&po[order[k]];
         int sx=128+((232*o->x)>>14), sy=sy_[order[k]];
@@ -244,6 +272,7 @@ static void planet_enter(void){
 
 static void hud_now(void){ if(scene==2) return; if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
+    if(in_menu){ int n=0; while(t[n] && n<39){ menu_msg[n]=t[n]; n++; } menu_msg[n]=0; return; }
     if(scene==0){ show_msg(t); return; }
     int n=0; while(t[n] && n<39){ msg[n]=t[n]; n++; } msg[n]=0; msg_timer=24;
 }
@@ -294,7 +323,8 @@ static void kill_mon(DObj *o){
     if(o->champ==2 && q_type==Q_CHAMP){ q_done=1; say("QUEST TARGET SLAIN!"); }
     sfx(9); debris(o->x,o->y,0x6000,boss?16:10,3,o->kvx,o->kvy); burst(o->x,o->y,0x6000,4,1);
     int ilvl=dlv()*3+depth_no;
-    if(boss){ if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
+    if(boss){ music(1); if(!endless) zone_card=1+zone;
+        if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
     gain_xp(xpv);
     Gear g; int drop=0;
     int uq_chance = hive ? 1000 : boss ? 300 : o->champ ? 50 : 4;          // in 1000
@@ -420,7 +450,7 @@ static int spark_t=0, spark_c=60, spark_y=80;
 #define TURN_MAX   9           // ...holding speeds up to this
 #define TURN_RAMP  16          // 60ths of holding to reach TURN_MAX
 static int skip_draw=0, wtick=1, turn_held=0, hud_f=0, dt_last=0, wacc=0, mv_now=0, near_cage_p=-1, atk_len=9;
-static DObj *named_p=0;
+static DObj *named_p=0; static u32 dhud_sig=0;
 // is there something to bite right in front of you? (same box the bite uses)
 static int foe_ahead(s32 dirx, s32 diry){
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
@@ -450,12 +480,12 @@ static int dungeon_frame_(void);
 static int dungeon_frame(void){ u32 t=TMR(); int r=dungeon_frame_(); prof[5]=TMR()-t; return r; }
 static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint, 3 when you warp out
     int freeze = hitstop>0; if(freeze){ hitstop--; wtick=0; }      // a blink of stillness when a hit lands
-    if(wtick){ tick_timers(); hunger_tick(40); regen_tick(45); }
+    if(wtick){ tick_timers(); hunger_tick(40); regen_tick(45); map_reveal(); }
     bag_input();
     if(!skip_draw){ int f=frames; int fl=(sin_tab[(f*29)&255]+sin_tab[(f*47+80)&255])>>12;
       for(int i=0;i<8;i++){ int k=i+(fl>2?1:fl<-2?-1:0); if(k<0)k=0; if(k>7)k=7; BG_PAL[R_FLAME+i]=bg_pal[R_FLAME+k]; }
       for(int i=2;i<7;i++){ int k=i+((((f>>2)+i)&3)==0); BG_PAL[R_WATER+i]=bg_pal[R_WATER+(k>7?7:k)]; BG_PAL[R_CRYSTAL+i]=bg_pal[R_CRYSTAL+((((f>>3)+i*3)%5)==0 && i<6 ? i+1 : i)]; } }
-    if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen((volatile u16*)(0x06000000 + (page_back?0:0xA000))); dungeon_hud(); }
+    if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen((volatile u16*)(0x06000000 + (page_back?0:0xA000))); dungeon_hud_both(); }
     int kl=K_LEFT, kr=K_RIGHT, ku=K_UP, kd=K_DOWN, ksl=K_L, ksr=K_R;
     if(dizzy_t){ kl=K_RIGHT; kr=K_LEFT; ku=K_DOWN; kd=K_UP; ksl=K_R; ksr=K_L; }
     if(HELD(K_SEL)){ kl=kr=ku=kd=ksl=ksr=0; }          // SELECT held: d-pad and L/R pick items and spells instead
@@ -573,6 +603,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     }
     // ---- A: open a cage, take the stairs, fish, or bite
     int here=dmap[(py_>>16)*MW+(px_>>16)];
+    if(here!=D_UP) stair_ok=1;           // you arrive standing on the up stairs: step off once before they work
     if(wtick && fish_state==1 && --fish_t<=0){ fish_state=2; fish_t=14; sfx(8); say("! A BITE ! PRESS A"); }
     else if(wtick && fish_state==2 && --fish_t<=0){ fish_state=0; say("IT GOT AWAY"); }
     int foe = foe_ahead(dirx,diry);
@@ -580,8 +611,8 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     else if(HELD(K_A) && foe){ if(!atk_t) do_bite(dirx,diry); }          // something in front always gets bitten, and holding A keeps biting
     else if(HIT(K_A)){
         if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
-        else if(here==D_UP) return 1;
-        else if(here==D_DOWN){ wacc=WDIV-1; fade(1); dungeon_enter(); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; }
+        else if(here==D_UP && stair_ok) return 1;
+        else if(here==D_DOWN){ wacc=WDIV-1; fade(1); dungeon_enter(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; }
         else if(fish_state==1){ fish_state=0; say("YOU REEL IN"); }
         else if(water_ahead(dirx,diry)){ fish_state=1; fish_t=25+rndi(50); say("FISHING... WAIT FOR A BITE"); sfx(8); }
         else if(!atk_t) do_bite(dirx,diry);
@@ -621,17 +652,18 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             c=c2; y=y2; } }
     if(fish_state){ int by = 118 + (fish_state==2 ? 4 : (sinI[(frames*20)&255]>>12)); for(int y=100;y<by;y+=2) pg[y*120+66]=(R_STONE+6)|((R_STONE+6)<<8);
         for(int y=by;y<by+4;y++){ pg[y*120+66]=216|(216<<8); pg[y*120+67]=216|(216<<8); } }
-    if(sight || have_bug[BUG_ANT]) compass(pg,dirx,diry);
+    if(sight || have_bug[BUG_ANT] || stairs_seen()) compass(pg,dirx,diry);
     hud3d(pg);
     if(named){ char b[32]; b[0]=0; if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
     if(msg_timer){ text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
     else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);
-    else if(here==D_UP||here==D_DOWN){ const char *m2 = here==D_UP? "A: CLIMB UP" : "A: GO DEEPER"; text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
+    else if((here==D_UP && stair_ok)||here==D_DOWN){ const char *m2 = here==D_UP? "A: CLIMB UP" : "A: GO DEEPER"; text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
     else if(!fish_state && water_ahead(dirx,diry)) text(pg,120-9*4,24,"A: FISH",C_CYAN,2);
     if(shield_t && (frames&16)){ for(int c=0;c<120;c+=6){ pg[18*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); pg[159*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); } }
     if(hurt_flash){ for(int y=18;y<22;y++) for(int x=0;x<120;x++) pg[y*120+x]=C_RED|(C_RED<<8); }
-    if(frames-hud_f>=60){ hud_f=frames; dungeon_hud(); }
+    if(frames-hud_f>=15){ hud_f=frames; u32 hs=hud_sig(); if(hs!=dhud_sig){ dhud_sig=hs; dungeon_hud(); } }
+    if(hud_dirty){ char lb[40]; dungeon_label(lb); draw_hud(pg,lb); hud_dirty--; }
     oam_hide_all();
     // your jaws: they sway as you walk, snap shut when you bite, and jolt when you are hit
     if(!(invuln && (frames&4))){
@@ -669,23 +701,23 @@ static void twinkle(volatile u16 *pg, int t){        // a few stars blink in the
 // returns 1 to continue or load the game in cur_slot, 0 to start a new one there
 static int title_screen(void){
     volatile u16 *pg=VRAM;
-    enum { TI_CONT, TI_NEW, TI_LOAD, TI_OPT };
-    static const char *const tn[4]={"CONTINUE","NEW GAME","LOAD GAME","OPTIONS"};
+    enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT };
+    static const char *const tn[5]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS"};
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
     title_paint(pg);
     REG_BLDCNT = 0x3F | (3<<6); REG_BLDY = 16;
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
     music(2);
-    int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1; int it[4];
+    int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1; int it[5];
     wait_release();
     int fading_in=1;
     while(1){
         if(full){ full=0; title_paint(pg); slots_refresh(); cs=first_good_slot();
-            n=0; if(cs>=0) it[n++]=TI_CONT; it[n++]=TI_NEW; if(cs>=0) it[n++]=TI_LOAD; it[n++]=TI_OPT;
+            n=0; if(cs>=0) it[n++]=TI_CONT; it[n++]=TI_NEW; if(cs>=0) it[n++]=TI_LOAD; it[n++]=TI_HELP; it[n++]=TI_OPT;
             if(sel>=n) sel=0; dirty=1; }
         if(dirty){ dirty=0; char b[40];
-            title_restore(pg,56,118);
+            title_restore(pg,56,128);
             for(int i=0;i<n;i++){ int y=62+i*11; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
                 if(i==sel){ rect(pg,66,y-2,108,10,6); text(pg,x,y,nm,C_GOLD,1); text(pg,70,y,">",C_GOLD,1); text(pg,166,y,"<",C_GOLD,1); }
                 else stext(pg,x,y,nm,C_WHITE); }
@@ -693,6 +725,7 @@ static int title_screen(void){
             if(it[sel]==TI_CONT){ const SlotInfo *o=&sinf[cs]; char w[28]; slot_where(o,w); scpy(b,"SLOT "); ncat(b,cs+1); scat(b,"  LV "); ncat(b,o->level); scat(b,"  "); scat(b,w); }
             else if(it[sel]==TI_NEW) scpy(b,"START A NEW ADVENTURE");
             else if(it[sel]==TI_LOAD) scpy(b,"PICK ONE OF YOUR 3 SAVE SLOTS");
+            else if(it[sel]==TI_HELP) scpy(b,"THE BUTTONS, AND TIPS");
             else scpy(b,"SOUND, AUTOSAVE AND MORE");
             b[34]=0; stext(pg,120-textlen(b)*2,y,b,C_CYAN);
         }
@@ -708,7 +741,8 @@ static int title_screen(void){
             if(a==TI_CONT){ cur_slot=cs; return 1; }
             if(a==TI_NEW){ int s2=slot_picker(pg,SP_NEW,0); if(s2>=0){ cur_slot=s2; return 0; } full=1; }
             if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; return 1; } full=1; }
-            if(a==TI_OPT){ options_screen(pg); full=1; }
+            if(a==TI_OPT){ oam_hide_all(); oam_flush(); options_screen(pg); full=1; }
+            if(a==TI_HELP){ oam_hide_all(); oam_flush(); help_screen(pg); full=1; }
             wait_release();
         }
     }
@@ -722,10 +756,21 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     if(!(cont && load_game(1))){ cont=0; new_game(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
     scene=0; launch_flag=0; enter_dungeon_flag=0; fish_state=0; msg_timer=0; invuln=0; shake_t=0; page_back=0; loot=0; depth_no=0;
     speed_t=strong_t=dizzy_t=stun_t=shield_t=0;
-    restock();
+    restock(); arrow_ship = zone_cleared && !endless;
     planet_enter(); new_planet(); show_msg(cont ? "WELCOME BACK" : "THE GARDEN: FIND THE DOOR");
     oam_hide_all(); oam_flush(); fade(0);
     music(0);
+    if(!cont){ static const char *const t[6]={"YOU ARE A LITTLE PILL BUG.","THE ANT KING HAS CAGED YOUR BUG FRIENDS.","","FOLLOW THE YELLOW ARROW TO THE DOOR.","GO DOWN. BEAT THE BOSS AT THE BOTTOM.","THEN FLY YOUR SHIP TO THE NEXT STAR."};
+        card(VRAM,"BUGSTAR",t,6); planet_draw_bg(); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
+#ifdef TEST_DUNGEON
+    enter_dungeon_flag=1;
+#endif
+#ifdef TEST_CREDITS
+    fade(1); credits(); planet_enter(); fade(0);
+#endif
+#ifdef TEST_BOSS
+    zone=TEST_BOSS; portal_depth=zone_floors(); st_str=300; recalc(); hearts=maxh;
+#endif
 }
 static void pet_away_tick(void){
     if(pet_away_t && --pet_away_t==0){ gold+=pet_sold_g; char b[40]; scpy(b,"BUDDY SOLD "); ncat(b,pet_sold_n); scat(b," THINGS: +"); ncat(b,pet_sold_g); scat(b,"G"); say(b); sfx(7); hud_now(); pet_x=px_; pet_y=py_; }
@@ -744,17 +789,21 @@ static void run_game(void){
             if(r==2) galaxy_map();
             else if(r==3){ station_menu(); save_game(); }
             else if(r==1){ fade(1); land_on_current(); portal_depth=0; scene=0; msg_timer=0;
-                planet_enter(); new_planet(); planet_palette(); planet_draw_bg(); planet_hud(); restock(); save_game();
+                planet_enter(); new_planet(); arrow_ship=0; planet_palette(); planet_draw_bg(); planet_hud(); restock(); save_game();
                 show_msg(world_name()); oam_hide_all(); oam_flush(); music(0); fade(0); }
             continue;
         }
         if(scene==0){
             planet_frame();
             vsync(); oam_flush();
-            if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(2); fade(0); continue; }
+            if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }
             if(enter_dungeon_flag){ enter_dungeon_flag=0; fade(1); oam_hide_all(); oam_flush();
                 depth_no=0; if(portal_depth>0){ depth_no=portal_depth-1; portal_depth=0; }
-                scene=1; dungeon_enter(); pvx=pvy=0; hitstop=kick_t=pknock_t=0; page_back=1; music(1); fade(0); wacc=WDIV-1; dt_last=vbl_count; }
+                scene=1; dungeon_enter();
+#ifdef TEST_BOSS
+                for(int i=0;i<ndo;i++) if(dob[i].kind==K_BOSS){ dob[i].x=px_+(cosx(pang>>2)<<3); dob[i].y=py_+(sinx(pang>>2)<<3); }
+#endif
+                pvx=pvy=0; hitstop=kick_t=pknock_t=0; page_back=1; music(boss_floor()?4:1); fade(0); wacc=WDIV-1; dt_last=vbl_count; }
         } else {
             int r=0;
             int n = vbl_count - dt_last; dt_last = vbl_count;          // 60ths of a second since the last picture
@@ -779,7 +828,12 @@ static void run_game(void){
                    else if(r==3 && portal_depth) scpy(mb,"PORTAL OPEN: THE DOOR TAKES YOU BACK");
                    else scpy(mb, zone_cleared?"ZONE CLEARED! GO TO YOUR SHIP":"BACK ON THE SURFACE");
                    restock(); save_game();
-                   planet_enter(); show_msg(mb); oam_flush(); music(0); fade(0); }
+                   planet_enter(); arrow_ship = zone_cleared && !endless; show_msg(mb); oam_flush(); music(0); fade(0);
+                   if(zone_card){ int z=zone_card-1; zone_card=0;
+                       if(z==5){ fade(1); credits(); planet_enter(); fade(0); }
+                       else { static const char *const t[6]={"A NEW STAR IS OPEN.","","1. GO TO YOUR SHIP. FOLLOW THE ARROW.","2. PICK LAUNCH INTO SPACE.","3. PRESS SELECT FOR THE GALAXY MAP.","4. PICK THE NEW STAR AND PRESS A."};
+                           card(VRAM,"BOSS BEATEN! ZONE CLEARED",t,6); }
+                       planet_draw_bg(); planet_hud(); show_msg("GO TO YOUR SHIP"); } }
         }
     }
 }

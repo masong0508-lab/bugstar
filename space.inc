@@ -359,7 +359,7 @@ static void beast_hud(volatile u16 *pg){
     else if(!(frames&64)) text(pg,64,18,"SELECT: WARP OUT",56,1);
 }
 static void lair_enter(void){
-    no_ambush=1; space_enter(0); no_ambush=0; in_lair=1; ambush_t=0;
+    music(4); no_ambush=1; space_enter(0); no_ambush=0; in_lair=1; ambush_t=0;
     beast_fight = beast_stage>=2 ? 3 : beast_stage+1;
     if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"WITHOUT ITS KING. THE BEAST WAKES.","IT ATE A WHOLE MOON. 1 TRILLION HP.","YOU CANNOT WIN TODAY. HIT IT AND WARP OUT.","GET STRONGER. AND COME BACK.","ITS WOUNDS WILL NEVER HEAL."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); hive_card=1; hive_done=0; }
         beast_stage=3; beast_max=b3_max; beast_hp=b3_hp; }
@@ -370,7 +370,7 @@ static void lair_enter(void){
     BG_PAL[57]=rgb15(34,12,16); BG_PAL[58]=rgb15(130,50,60);
     space_say(beast_fight==3?"THE TECHNOBEAST AWAKENS":"IT ATTACKS!");
 }
-static void lair_leave(void){ int f=beast_fight; in_lair=0; hyperspace(); no_ambush=1; space_enter(0); no_ambush=0; if(hive_card) show_hive_card(); space_say(f<3 && beast_stage>=f ? "IT GOT AWAY... FOR NOW" : "WARPED OUT. COME BACK STRONGER"); do_save(); }
+static void lair_leave(void){ int f=beast_fight; in_lair=0; music(3); hyperspace(); no_ambush=1; space_enter(0); no_ambush=0; if(hive_card) show_hive_card(); space_say(f<3 && beast_stage>=f ? "IT GOT AWAY... FOR NOW" : "WARPED OUT. COME BACK STRONGER"); do_save(); }
 
 static void ship_hit(int dm, int crash){            // shields first, then the hull; the cockpit shakes
     if(shield>=dm) shield-=dm; else { hull-=dm-shield; shield=0; }
@@ -545,7 +545,9 @@ static void hyperspace(void){
 // ---------------------------------------------------------------- the galaxy map (Elite-style chart)
 static int galaxy_map(void){     // returns 1 if you jumped
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));     // draw on the page you are looking at
-    int cx=sys[cur_sys].x*8, cy=sys[cur_sys].y*8, sel=cur_sys, dirty=1;
+    int sel=cur_sys, dirty=1, rep=0;
+    for(int k=0;k<6;k++) if(k<zones_open && !((cleared_mask>>k)&1) && k!=cur_sys && sys[k].kind==k){ sel=k; break; }     // start on the star you should go to next
+    if(hive_active() && sel==cur_sys) sel=hive_sys();
     wait_release();
     while(1){
         if(dirty){ dirty=0;
@@ -571,13 +573,21 @@ static int galaxy_map(void){     // returns 1 if you jumped
             const char *st = sel==cur_sys ? "YOU ARE HERE" : !can_jump(sel) ? (sys[sel].kind<6 ? "LOCKED: BEAT THE BOSS BEFORE IT" : "LOCKED: BEAT THE ANT KING") : d>fuel ? "TOO FAR: REFUEL AT A STATION" : "A: JUMP HERE";
             text(pg,236-textlen(st)*4,151,st, (sel!=cur_sys && can_jump(sel) && d<=fuel)?C_GREEN:C_RED,1);
             text(pg,150,3,ant_king?"START: NEW CLUSTER":"B: BACK",C_DGREY,1);
+            text(pg,4,10,"D-PAD: PICK A STAR",C_DGREY,1);
             if(beast_stage>=3) text(pg,4,122,"L: FIGHT THE TECHNOBEAST - 2.0 LY",C_RED,1);
         }
         vsync(); read_keys();
-        int mv=0;
-        if(HELD(K_LEFT)){ cx-=12; mv=1; } if(HELD(K_RIGHT)){ cx+=12; mv=1; } if(HELD(K_UP)){ cy-=12; mv=1; } if(HELD(K_DOWN)){ cy+=12; mv=1; }
-        if(cx<0) cx=0; if(cx>239*8) cx=239*8; if(cy<16*8) cy=16*8; if(cy>130*8) cy=130*8;
-        if(mv){ int best=sel, bd=1<<30; for(int i=0;i<NSYS;i++){ int dx=sys[i].x*8-cx, dy=sys[i].y*8-cy, dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } } if(best!=sel){ sel=best; dirty=1; } }
+        // a tap jumps to the nearest star that way; holding keeps going
+        int ddx = HELD(K_LEFT)?-1 : HELD(K_RIGHT)?1 : 0, ddy = HELD(K_UP)?-1 : HELD(K_DOWN)?1 : 0;
+        if(ddx||ddy){ if(HIT(K_LEFT)||HIT(K_RIGHT)||HIT(K_UP)||HIT(K_DOWN)) rep=0; else rep++; } else rep=0;
+        if((ddx||ddy) && (rep==0 || (rep>=14 && rep%7==0))){
+            int best=-1, bd=1<<30;
+            for(int i=0;i<NSYS;i++){ if(i==sel) continue; int dx=sys[i].x-sys[sel].x, dy=sys[i].y-sys[sel].y;
+                int along = dx*ddx + dy*ddy; if(along<=0) continue;
+                int side = ddx&&ddy ? 0 : (ddx ? (dy<0?-dy:dy) : (dx<0?-dx:dx));
+                if(!(ddx&&ddy) && side>along*2) continue;
+                int cost = dx*dx+dy*dy + side*side*3; if(cost<bd){ bd=cost; best=i; } }
+            if(best>=0){ sel=best; dirty=1; sfx(7); } }
         if(HIT(K_B)){ wait_release(); return 0; }
         if(HIT(K_L) && beast_stage>=3){
             if(fuel<20){ space_say("NEED 2.0 LY OF FUEL FOR THE LAIR"); wait_release(); return 0; }

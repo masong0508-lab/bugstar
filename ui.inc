@@ -28,6 +28,60 @@ static void describe(const Gear *g, char *b){
 }
 static void box(volatile u16 *pg, int x, int y, int w, int h){ rect(pg,x,y,w,h,0); rect(pg,x,y,w,1,6); rect(pg,x,y+h-1,w,1,6); rect(pg,x,y,1,h,6); rect(pg,x+w-1,y,1,h,6); }
 
+// ---------------------------------------------------------------- story cards: a few short lines, then A
+static void card(volatile u16 *pg, const char *title, const char *const *ln, int n){
+    int h=34+n*11+14, y0=88-h/2;
+    box(pg,10,y0,220,h); rect(pg,11,y0+1,218,12,6);
+    text(pg,120-textlen(title)*2,y0+4,title,C_GOLD,1);
+    for(int i=0;i<n;i++) text(pg,120-textlen(ln[i])*2,y0+20+i*11,ln[i],C_WHITE,1);
+    wait_release();
+    for(int t=0;;t++){ vsync(); read_keys(); if(HIT(K_A)||HIT(K_START)) break;
+        text(pg,104,y0+h-11,"A: OK",(t&32)?C_CYAN:C_DGREY,1); }
+    sfx(2); wait_release();
+}
+// how to play: four short pages
+static void help_screen(volatile u16 *pg){
+    static const char *const ttl[4]={"ON A PLANET","IN A DUNGEON","IN SPACE","GOOD TO KNOW"};
+    static const char *const ln[4][8]={
+      {"D-PAD: WALK. THE PLANET TURNS.","FOLLOW THE YELLOW ARROW.","SELECT: ARROW TO THE DOOR OR SHIP.","A: USE THE DOOR, SHIP, CAGE, SLUG.","B: USE YOUR ITEM.","L / R: PICK AN ITEM.","START: YOUR BUG, BAG AND SAVING.",""},
+      {"UP / DOWN: WALK.","LEFT / RIGHT: TURN.","L / R: STEP SIDEWAYS.","A: BITE. HOLD A TO KEEP BITING.","A: OPEN CAGES, TAKE STAIRS, FISH.","B: USE ITEM.  SELECT: CAST A SPELL.","HOLD SELECT + UP/DOWN: PICK AN ITEM.","START: THE MAP."},
+      {"D-PAD: STEER.  B: GO.  R: BRAKE.","A: SHOOT.","FLY CLOSE TO THE PLANET. A: LAND.","THE WHITE BOX IS A STATION. A: DOCK.","SELECT: GALAXY MAP.","PICK A STAR AND PRESS A TO JUMP.","JUMPS USE FUEL. BUY IT AT STATIONS.",""},
+      {"THE GREEN BAR IS FOOD. EAT CRUMBS.","TRY BERRIES AND SEEDS TO LEARN THEM.","FREE CAGED BUGS. THEY HELP YOU.","SPEND LEVEL POINTS ON START > BUG.","IF YOU FAINT, YOU LOSE YOUR BAG.","SAVE ON A PLANET: START > SYSTEM.","YOUR SHIP HEALS YOU AND SELLS GEAR.",""}};
+    int p=0, dirty=1; wait_release();
+    while(1){
+        if(dirty){ dirty=0; box(pg,6,20,228,136); rect(pg,7,21,226,12,6);
+            char b[24]; scpy(b,"HOW TO PLAY  "); ncat(b,p+1); scat(b,"/4"); text(pg,12,24,b,C_GREY,1);
+            text(pg,228-textlen(ttl[p])*4,24,ttl[p],C_GOLD,1);
+            for(int i=0;i<8;i++) if(ln[p][i][0]) text(pg,14,40+i*12,ln[p][i],C_WHITE,1);
+            text(pg,12,146,"LEFT/RIGHT: PAGE   B: BACK",C_CYAN,1); }
+        vsync(); read_keys();
+        if(HIT(K_RIGHT)||HIT(K_R)||HIT(K_A)){ if(p<3){ p++; dirty=1; sfx(7); } else if(HIT(K_A)) break; }
+        if(HIT(K_LEFT)||HIT(K_L)){ if(p>0){ p--; dirty=1; sfx(7); } }
+        if(HIT(K_B)||HIT(K_START)) break;
+    }
+    wait_release();
+}
+// the end of the story: the Ant King is beaten
+static void credits(void){
+    volatile u16 *pg=VRAM; music(5);
+    rect(pg,0,0,240,160,0);
+    for(int k=0;k<70;k++){ int x=rndi(240), y=rndi(160); pix(pg,x,y,k&3?C_DGREY:C_WHITE); }
+    text(pg,120-7*6+1,9,"THE END",C_DGREY,3); text(pg,120-7*6,8,"THE END",C_GOLD,3);
+    char b[48];
+    static const char *const ln[8]={"...OF THE BEGINNING.","YOUR BUG FRIENDS ARE FREE.","THE ANT KING IS BEATEN.","BUGSTAR","A GAME BY DIPPINN PRODUCTIONS","MADE WITH CLAUDE (AI)"};
+    static const u8 ly[6]={28,42,50,64,72,80};
+    for(int i=0;i<6;i++){ int c = i==3?C_GOLD : i==0?C_GREY : C_WHITE; text(pg,120-textlen(ln[i])*2,ly[i],ln[i],c,1); }
+    scpy(b,"LEVEL "); ncat(b,level); scat(b,"   BUGS FREED "); ncat(b,bugs_freed); scat(b,"   FAME "); ncat(b,fame); text(pg,120-textlen(b)*2,94,b,C_CYAN,1);
+    scpy(b,"TIME PLAYED "); { char t[16]; fmt_time(t,play_secs()); scat(b,t); } text(pg,120-textlen(b)*2,102,b,C_CYAN,1);
+    text(pg,120-22*2,116,"THANK YOU FOR PLAYING!",C_GREEN,1);
+    text(pg,120-31*2,128,"NOW THE ENDLESS GALAXY IS OPEN.",C_WHITE,1);
+    text(pg,120-31*2,136,"AND THE TECHNOBEAST IS AWAKE...",C_RED,1);
+    fade(0); wait_release();
+    for(int t=0;;t++){ vsync(); read_keys(); if(t>90 && (HIT(K_A)||HIT(K_START))) break;
+        if(t>90) text(pg,120-16*2,150,"A: KEEP PLAYING",(t&32)?C_CYAN:C_DGREY,1); }
+    wait_release(); fade(1); music(0);
+}
+
 // ---------------------------------------------------------------- the character screen (START): four pages
 static int send_pet_to_sell(void){
     if(pet_away_t||pet_down_t){ say("BUDDY ISN'T HERE"); return 0; }
@@ -51,17 +105,18 @@ static void sys_action(volatile u16 *pg, int cur){
     else if(confirm(pg,"QUIT TO THE TITLE?","UNSAVED PROGRESS IS LOST")) sys_req=2;
 }
 
+static void map_page(volatile u16 *pg);
 static void char_screen(volatile u16 *pg){
-    int page=0, cur=0, dirty=1; sys_msg[0]=0;
-    static const char *const tabs[5]={"BUG","GEAR","MAGIC","QUEST","SYSTEM"};
+    int page=scene==1?5:0, cur=0, dirty=1; sys_msg[0]=0; in_menu++; menu_msg[0]=0;
+    static const char *const tabs[6]={"BUG","GEAR","MAGIC","QUEST","SYSTEM","MAP"};
     static const char *const stn[4]={"STRENGTH","DEXTERITY","VITALITY","MAGIC"};
     static const char *const std[4]={"BITE DAMAGE","CRITS, FASTER BITES","HEALTH, DEFENCE","MANA, SPELL POWER"};
     wait_release();
     while(1){
         if(dirty){ dirty=0; char b[64];
             rect(pg,0,18,240,142,0);
-            for(int t=0;t<5;t++) text(pg,8+t*46,21,tabs[t], t==page?C_GOLD:C_DGREY, 1);
-            rect(pg,8+page*46,28,textlen(tabs[page])*4,1,C_GOLD);
+            for(int t=0;t<6;t++) text(pg,8+t*39,21,tabs[t], t==page?C_GOLD:C_DGREY, 1);
+            rect(pg,8+page*39,28,textlen(tabs[page])*4,1,C_GOLD);
             int y=34;
             if(page==0){
                 scpy(b,"LEVEL "); ncat(b,level); scat(b,"   XP "); ncat(b,xp); scat(b,"/"); ncat(b,xp_next()); text(pg,8,y,b,C_WHITE,1); y+=8;
@@ -107,6 +162,7 @@ static void char_screen(volatile u16 *pg){
                 for(int i=0;i<8;i++){ scpy(b,berry_col[i]); scat(b,":"); scat(b, berry_known[i]?berry_eff[berry_map[i]]:"?"); text(pg,8+(i&3)*58,y+(i>>2)*7,b,berry_known[i]?C_WHITE:C_DGREY,1); }
                 y+=16;
                 for(int i=0;i<6;i++){ scpy(b,seed_look[i]); scat(b,":"); scat(b, seed_known[i]?seed_eff[seed_map[i]]:"?"); text(pg,8+(i%3)*76,y+(i/3)*7,b,seed_known[i]?C_WHITE:C_DGREY,1); }
+            } else if(page==5){ map_page(pg);
             } else {
                 static const char *const sn[5]={"SAVE GAME","SAVE TO ANOTHER SLOT","LOAD GAME","OPTIONS","QUIT TO TITLE"};
                 scpy(b,"SLOT "); ncat(b,cur_slot+1); text(pg,8,y,b,C_CYAN,1);
@@ -124,11 +180,12 @@ static void char_screen(volatile u16 *pg){
                 text(pg,8,147,"A: CHOOSE",C_CYAN,1);
             }
             text(pg,148,154,"L/R: PAGE  START: BACK",C_DGREY,1);
+            if(menu_msg[0]){ char mm[40]; scpy(mm,menu_msg); mm[34]=0; text(pg,8,154,mm,C_GREEN,1); }
         }
         vsync(); read_keys();
         if(HIT(K_START)) break;
-        if(HIT(K_L)){ page=(page+4)%5; cur=0; dirty=1; sys_msg[0]=0; }
-        if(HIT(K_R)){ page=(page+1)%5; cur=0; dirty=1; sys_msg[0]=0; }
+        if(HIT(K_L)){ page=(page+5)%6; cur=0; dirty=1; sys_msg[0]=0; }
+        if(HIT(K_R)){ page=(page+1)%6; cur=0; dirty=1; sys_msg[0]=0; }
         int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : page==4?5 : 0;
         if(nmax){ if(HIT(K_UP)){ cur=(cur+nmax-1)%nmax; dirty=1; } if(HIT(K_DOWN)){ cur=(cur+1)%nmax; dirty=1; } }
         if(HIT(K_A)){
@@ -143,8 +200,9 @@ static void char_screen(volatile u16 *pg){
             else drop_at(cur);
             if(cur>=bag_n && cur) cur--; dirty=1; }
         if(HIT(K_SEL) && page==1){ send_pet_to_sell(); dirty=1; }
+        if(HIT(K_UP)||HIT(K_DOWN)||HIT(K_L)||HIT(K_R)) menu_msg[0]=0;
     }
-    wait_release();
+    in_menu--; wait_release();
 }
 
 // ---------------------------------------------------------------- the ship: shops, quest board
@@ -174,10 +232,11 @@ static int list_pick(volatile u16 *pg, const char *title, int n, void (*row)(int
             char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
             for(int i=0;i<n;i++){ c=C_GREY; row(i,b,&c); b[48]=0; if(i==*sel){ text(pg,16,34+i*8,">",C_CYAN,1); if(c==C_GREY) c=C_WHITE; } text(pg,22,34+i*8,b,c,1); }
             text(pg,20,148,help,C_CYAN,1);
+            if(menu_msg[0]) text(pg,20,139,menu_msg,C_GREEN,1);
         }
         vsync(); read_keys();
         if(keys!=keys_old) dirty=1;
-        if(n){ if(HIT(K_UP)) *sel=(*sel+n-1)%n; if(HIT(K_DOWN)) *sel=(*sel+1)%n; }
+        if(n){ if(HIT(K_UP)){ *sel=(*sel+n-1)%n; menu_msg[0]=0; } if(HIT(K_DOWN)){ *sel=(*sel+1)%n; menu_msg[0]=0; } }
         if(HIT(K_B)) return -1;
         if(HIT(K_A)) return *sel;
     }
@@ -208,7 +267,7 @@ static void trophy_case(volatile u16 *pg){
                 else { scpy(b,"IN CASE: "); scat(b,uq_name[uq[i-ng]]); text(pg,22,y,b,C_UNIQ,1); text(pg,180,y,"TAKE OUT",C_DGREY,1); }
                 if(i==sel) text(pg,16,y,">",C_CYAN,1); }
             text(pg,20,140, sel<ng ? "A: KEEP IT FOREVER  B: SCRAP IT  START: BACK" : "A: TAKE IT OUT TO USE  START: BACK",C_CYAN,1);
-            text(pg,20,148,"KEPT THINGS ARE SAFE, EVEN IF YOU FAINT",C_DGREY,1);
+            if(menu_msg[0]) text(pg,20,148,menu_msg,C_GREEN,1); else text(pg,20,148,"KEPT THINGS ARE SAFE, EVEN IF YOU FAINT",C_DGREY,1);
         }
         vsync(); read_keys(); if(keys!=keys_old) dirty=1;
         if(n){ if(HIT(K_UP)) sel=(sel+n-1)%n; if(HIT(K_DOWN)) sel=(sel+1)%n; }
@@ -225,7 +284,7 @@ static void trophy_case(volatile u16 *pg){
 static int shop_menu(void){   // returns 1 to fly on
     volatile u16 *pg=VRAM;
     oam_hide_all(); oam_flush();
-    int sel=0;
+    int sel=0; in_menu++; menu_msg[0]=0;
     while(1){
         const char *main_opt[9]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","LEAVE"};
         int can_fly = 1;
@@ -234,16 +293,16 @@ static int shop_menu(void){   // returns 1 to fly on
             if(dirty){ dirty=0; box(pg,12,20,216,136); text(pg,20,24,"YOUR SHIP",C_GOLD,1); char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
                 for(int i=0;i<9;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:C_GREY); if(i==sel) text(pg,16,36+i*10,">",C_CYAN,1); text(pg,22,36+i*10,main_opt[i],c,1); }
                 if(q_type!=Q_NONE && q_done) text(pg,120,76,"! QUEST DONE",C_GREEN,1);
-                if(!can_fly) text(pg,20,124,"BEAT THE BOSS BELOW TO FLY ON",C_DGREY,1);
+                if(menu_msg[0]) text(pg,20,134,menu_msg,C_GREEN,1);
                 text(pg,20,148,"A: CHOOSE  B: LEAVE",C_CYAN,1); }
             vsync(); read_keys(); if(keys!=keys_old) dirty=1;
-            if(HIT(K_UP)) sel=(sel+8)%9; if(HIT(K_DOWN)) sel=(sel+1)%9;
-            if(HIT(K_B)){ wait_release(); return 0; }
+            if(HIT(K_UP)){ sel=(sel+8)%9; menu_msg[0]=0; } if(HIT(K_DOWN)){ sel=(sel+1)%9; menu_msg[0]=0; }
+            if(HIT(K_B)){ in_menu--; wait_release(); return 0; }
             if(HIT(K_A)) break;
         }
-        if(sel==8){ wait_release(); return 0; }
+        if(sel==8){ in_menu--; wait_release(); return 0; }
         if(sel==7){ trophy_case(pg); continue; }
-        if(sel==0){ if(can_fly){ wait_release(); return 1; } continue; }
+        if(sel==0){ if(can_fly){ in_menu--; wait_release(); return 1; } continue; }
         if(sel==1){ int s2=0; int r; while((r=list_pick(pg,"SUPPLIES",6,sup_row,&s2,"A: BUY  B: BACK"))>=0){
                 if(gold<sup_cost[r]){ say("NOT ENOUGH GOLD"); continue; }
                 Gear gg={0,0,0,0,0,0};

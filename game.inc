@@ -237,6 +237,10 @@ static void draw_hud(volatile u16 *pg, const char *l1){
     if(stat_pts){ text(pg,226,10,"+",C_GREEN,1); }
 }
 
+static u32 hud_sig(void){      // changes whenever something on the status bar changes
+    u32 h=2166136261u; int v[13]={hearts,mp,maxh,maxmp,food,level,xp,gold,loot,bag_n,bag_sel,bugs_freed,stat_pts};
+    for(int i=0;i<13;i++){ h^=(u32)v[i]; h*=16777619u; } if(bag_n){ h^=bag[bag_sel].it*31+bag[bag_sel].sub; h*=16777619u; } return h; }
+
 // ---------------------------------------------------------------- freeing bugs
 static void free_bug(int t){
     bugs_freed++; have_bug[t]++;

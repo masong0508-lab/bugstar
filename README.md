@@ -8,17 +8,30 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | Button | On a planet | In a dungeon |
 | --- | --- | --- |
 | D-pad | Walk; the planet turns under you | Up/down walk, left/right turn (a tap turns a little, holding turns faster) |
-| A | Door, ship, cage, slug | Bite (hold A to keep biting). With nothing to bite: open cages, stairs, fish at water |
+| A | Door, ship, cage, slug (the gold line at the top says what A will do) | Bite (hold A to keep biting). With nothing to bite: open cages, stairs, fish at water |
 | B | Use the picked item | Use the picked item |
 | L / R | Pick an item in your bag | Strafe left / right |
-| SELECT | | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
-| START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM) | Character screen |
+| SELECT | Switch the yellow arrow between the door and your ship | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
+| START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM, MAP) | Opens on the MAP |
+
+## New in this update
+- **Yellow arrow** on every planet. It points the short way to the door (or your ship). SELECT switches it.
+- **A-button hints** on planets: "A: GO DOWN THE DOOR", "A: YOUR SHIP" and so on.
+- **Dungeon map** (START). Rooms show up when you walk in. Gold = stairs down, blue = stairs up, green = caged bug.
+- **Compass to the stairs** turns on once you have seen the stairs.
+- **No more falling out by accident:** you start each floor on the up stairs, and they only work after you step off once.
+- **How to play** on the title screen: 4 short pages.
+- **Story cards:** a short intro on a new game, and a "what to do next" card after each boss.
+- **An ending:** beat the Ant King to see THE END, your stats, and the credits. Then the endless galaxy opens.
+- **New music:** space, boss fights (also the Technobeast), and the ending.
+- **Galaxy map:** opens on the star you should go to next. Each tap jumps to the next star.
+- **Fixes:** the dungeon status bar no longer flickers; shop and menu messages stay on screen inside the menu.
 
 ## Speed
 The 3D view is heavy to draw, so it shows about 15 pictures a second. Your own movement (walking, strafing, turning) runs 60 times a second, and the rest of the dungeon (monsters, hunger, cooldowns, timers) ticks at a steady 15 a second, so nothing speeds up or slows down when drawing does. Walking and turning speeds are the `WALK_*` and `TURN_*` numbers at the top of the dungeon code in `main.c`.
 
 ## Saving, loading and options
-- **Title screen:** CONTINUE (your last slot), NEW GAME, LOAD GAME, OPTIONS. Up/down and A.
+- **Title screen:** CONTINUE (your last slot), NEW GAME, LOAD GAME, HOW TO PLAY, OPTIONS. Up/down and A.
 - **Three save slots.** Each card shows the world, level, XP bar, gold, fame and play time. In the slot picker: SELECT erases a slot, R copies it to another. Old single-slot saves show up as slot 1.
 - **SYSTEM tab** (START, then L/R): SAVE GAME to your slot, SAVE TO ANOTHER SLOT, LOAD GAME, OPTIONS, QUIT TO TITLE. You can only save on the surface (not inside a dungeon). Loading and quitting work anywhere.
 - **Autosave** still happens at your ship, after dungeons and at stations. Turn it off in OPTIONS if you want to save by hand.
