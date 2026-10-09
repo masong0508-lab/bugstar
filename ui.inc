@@ -26,6 +26,28 @@ static void describe(const Gear *g, char *b){
         if(g->suf){ scat(b,". "); scat(b,suff_txt[g->suf]); }
     }
 }
+// what would change if you wore this: damage, defence, health, mana, crit, speed, gold
+typedef struct { int dmg, def, hp, mp, crit, spd, gold; } Delta;
+static Delta gear_delta(const Gear *g){
+    Delta d={0,0,0,0,0,0,0}; if(!is_gear(g)) return d;
+    Gear *slot = g->it==IT_THORN ? &eqw : g->it==IT_SHELL ? &eqa : &eqc; Gear old=*slot; int oh=hearts, om=mp;
+    int b_dmg=d_dmg+d_fire+d_venom, b_def=d_def, b_hp=maxh, b_mp=maxmp, b_crit=d_crit, b_spd=d_spd, b_gold=gold_find;
+    *slot=*g; recalc();
+    d.dmg=d_dmg+d_fire+d_venom-b_dmg; d.def=d_def-b_def; d.hp=maxh-b_hp; d.mp=maxmp-b_mp; d.crit=d_crit-b_crit; d.spd=d_spd-b_spd; d.gold=gold_find-b_gold;
+    *slot=old; recalc(); hearts=oh; mp=om; return d;
+}
+static int delta_text(const Gear *g, char *b){     // "DMG +2  DEF -1" in b; returns 1 better, -1 worse, 0 same/none
+    b[0]=0; if(!is_gear(g)) return 0; Delta d=gear_delta(g); int sc=0;
+    struct { const char *n; int v; } f[7]={{"DMG",d.dmg},{"DEF",d.def},{"HP",d.hp},{"MP",d.mp},{"CRIT",d.crit},{"SPD",d.spd},{"GOLD",d.gold}};
+    for(int i=0;i<7;i++) if(f[i].v){ if(b[0]) scat(b,"  "); scat(b,f[i].n); scat(b,f[i].v>0?" +":" "); ncat(b,f[i].v); sc+=f[i].v>0?1:-1; }
+    if(!b[0]) scpy(b,"SAME AS NOW");
+    return sc>0?1:sc<0?-1:0;
+}
+static void vbar(volatile u16 *pg, int x, int y, int w, int val, int max, int col, const char *lab){     // a labelled bar with the numbers on it
+    rect(pg,x,y,w,7,C_DGREY); int f = max>0 ? val*(w-2)/max : 0; if(f>w-2) f=w-2; if(f<0) f=0; if(f) rect(pg,x+1,y+1,f,5,col);
+    frame1(pg,x,y,w,7,6); char b[16]; b[0]=0; ncat(b,val); scat(b,"/"); ncat(b,max);
+    text(pg,x-textlen(lab)*4-3,y+1,lab,C_GREY,1); text(pg,x+w-textlen(b)*4-2,y+1,b,C_WHITE,1);
+}
 static void box(volatile u16 *pg, int x, int y, int w, int h){ rect(pg,x,y,w,h,0); rect(pg,x,y,w,1,6); rect(pg,x,y+h-1,w,1,6); rect(pg,x,y,1,h,6); rect(pg,x+w-1,y,1,h,6); }
 
 // ---------------------------------------------------------------- story cards: a few short lines, then A
@@ -114,33 +136,47 @@ static void char_screen(volatile u16 *pg){
     wait_release();
     while(1){
         if(dirty){ dirty=0; char b[64];
-            rect(pg,0,18,240,142,0);
-            for(int t=0;t<6;t++) text(pg,8+t*39,21,tabs[t], t==page?C_GOLD:C_DGREY, 1);
-            rect(pg,8+page*39,28,textlen(tabs[page])*4,1,C_GOLD);
-            int y=34;
+            rect(pg,0,18,240,142,0); rect(pg,0,18,240,12,C_DGREY); rect(pg,0,30,240,1,6);
+            for(int t=0;t<6;t++){ int x=8+t*39; if(t==page) rect(pg,x-4,18,textlen(tabs[t])*4+7,12,0); text(pg,x,21,tabs[t], t==page?C_GOLD:C_GREY, 1); }
+            int y=35;
             if(page==0){
-                scpy(b,"LEVEL "); ncat(b,level); scat(b,"   XP "); ncat(b,xp); scat(b,"/"); ncat(b,xp_next()); text(pg,8,y,b,C_WHITE,1); y+=8;
-                scpy(b,"FAME "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); text(pg,8,y,b,C_GOLD,1); y+=11;
+                scpy(b,"LEVEL "); ncat(b,level); text(pg,8,y,b,C_GOLD,1);
+                scpy(b,fame_rank()); scat(b,"  FAME "); ncat(b,fame); rtext(pg,232,y,b,C_GOLD); y+=9;
+                vbar(pg,34,y,86,hearts,maxh,C_RED,"HP"); vbar(pg,152,y,80,mp,maxmp,C_CYAN,"MP"); y+=9;
+                vbar(pg,34,y,86,food,100,food>25?C_GREEN:C_RED,"FOOD"); vbar(pg,152,y,80,xp,xp_next(),C_GOLD,"XP"); y+=12;
                 int *sv[4]={&st_str,&st_dex,&st_vit,&st_mag};
-                for(int i=0;i<4;i++){ if(cur==i) text(pg,4,y,">",C_CYAN,1); text(pg,10,y,stn[i],cur==i?C_WHITE:C_GREY,1); b[0]=0; ncat(b,*sv[i]); text(pg,58,y,b,C_WHITE,1); text(pg,76,y,std[i],C_DGREY,1); y+=8; }
-                scpy(b,"POINTS TO SPEND: "); ncat(b,stat_pts); text(pg,10,y,b,stat_pts?C_GREEN:C_DGREY,1); if(stat_pts) text(pg,120,y,"A: ADD A POINT",C_GREEN,1); y+=11;
-                scpy(b,"DAMAGE "); ncat(b,d_dmg+d_fire+d_venom); scat(b,"  DEFENCE "); ncat(b,d_def); scat(b,"  CRIT "); ncat(b,d_crit); scat(b,"%  GOLD "); ncat(b,gold_find); scat(b,"%"); text(pg,8,y,b,C_WHITE,1); y+=8;
-                scpy(b,"HEALTH "); ncat(b,hearts); scat(b,"/"); ncat(b,maxh); scat(b,"  MANA "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); scat(b,"  FOOD "); ncat(b,food); text(pg,8,y,b,C_WHITE,1); y+=11;
-                scpy(b,"PET: "); scat(b,pet_form_name[pet_form]); scat(b,"  HP "); ncat(b,pet_hp); scat(b,"/"); ncat(b,pet_maxhp*(pet_form==2?2:1));
-                if(pet_away_t) scat(b,"  (AWAY SELLING)"); else if(pet_down_t) scat(b,"  (RESTING)");
-                text(pg,8,y,b,C_CYAN,1); y+=11;
+                rect(pg,4,y-2,118,36,1);
+                for(int i=0;i<4;i++){ if(cur==i) rect(pg,4,y-1,118,8,6); if(cur==i) text(pg,6,y,">",C_CYAN,1); text(pg,12,y,stn[i],cur==i?C_WHITE:C_GREY,1); b[0]=0; ncat(b,*sv[i]); text(pg,58,y,b,C_WHITE,1);
+                    for(int k=0;k<10;k++) rect(pg,72+k*4,y+1,3,4, k<*sv[i]? (i==0?C_RED:i==1?C_GOLD:i==2?C_GREEN:C_CYAN) : C_DGREY); y+=8; }
+                y+=2; if(stat_pts){ scpy(b,"A: ADD A POINT ("); ncat(b,stat_pts); scat(b," LEFT)"); text(pg,8,y,b,C_GREEN,1); } else text(pg,8,y,"LEVEL UP TO GET MORE POINTS",C_DGREY,1);
+                int yy=y-38; text(pg,130,yy,std[cur],C_GREY,1); yy+=10;
+                scpy(b,"DAMAGE  "); ncat(b,d_dmg+d_fire+d_venom); text(pg,130,yy,b,C_WHITE,1); scpy(b,"DEFENCE "); ncat(b,d_def); text(pg,186,yy,b,C_WHITE,1); yy+=8;
+                scpy(b,"CRIT "); ncat(b,d_crit); scat(b,"%"); text(pg,130,yy,b,C_WHITE,1); scpy(b,"GOLD "); ncat(b,gold_find); scat(b,"%"); text(pg,186,yy,b,C_WHITE,1); yy+=8;
+                if(d_spd){ scpy(b,"SPEED "); ncat(b,d_spd>0?d_spd:-d_spd); scat(b,"%"); text(pg,130,yy,b,d_spd>0?C_GREEN:C_RED,1); }
+                if(d_haste){ scpy(b,"BITES +"); ncat(b,d_haste); text(pg,186,yy,b,C_GREEN,1); } yy+=8;
+                y+=12; rect(pg,4,y-2,232,1,6); y+=3;
+                scpy(b,"BUDDY: "); scat(b,pet_form_name[pet_form]); text(pg,8,y,b,C_CYAN,1);
+                if(pet_away_t) rtext(pg,232,y,"AWAY SELLING",C_GREY); else if(pet_down_t) rtext(pg,232,y,"RESTING",C_GREY); else { int pm=pet_maxhp*(pet_form==2?2:1); hbar(pg,152,y+2,80,pet_hp,pm,C_GREEN); } y+=10;
                 text(pg,8,y,"BUG FRIENDS",C_GOLD,1); y+=8; int any=0, x=8;
                 for(int t=0;t<6;t++) if(have_bug[t]){ any=1; scpy(b,bug_name[t]); scat(b," X"); ncat(b,have_bug[t]); text(pg,x,y,b,C_WHITE,1); x+=76; if(x>200){ x=8; y+=7; } }
                 if(!any) text(pg,8,y,"NONE YET. OPEN CAGES TO FREE BUGS",C_DGREY,1);
             } else if(page==1){
-                const Gear *eq[3]={&eqw,&eqa,&eqc}; static const char *const lab[3]={"BITE ","WEAR ","CHARM"};
-                for(int i=0;i<3;i++){ text(pg,8,y,lab[i],C_GOLD,1); if(eq[i]->it){ gear_name(eq[i],b); b[44]=0; text(pg,32,y,b,rar_color(eq[i]),1); } else text(pg,32,y,"NOTHING",C_DGREY,1); y+=7; }
-                y+=4; text(pg,8,y,"YOUR BAG",C_GOLD,1); y+=8;
-                for(int i=0;i<bag_n;i++){ if(cur==i) text(pg,4,y,">",C_CYAN,1); gear_name(&bag[i],b); b[44]=0; text(pg,10,y,b,rar_color(&bag[i]),1); y+=7; }
-                if(!bag_n) text(pg,10,y,"EMPTY",C_DGREY,1);
-                if(bag_n){ describe(&bag[cur],b); b[56]=0; text(pg,8,139,b,C_WHITE,1); scpy(b,"WORTH "); ncat(b,item_value(&bag[cur])); scat(b,"G");
+                const Gear *eq[3]={&eqw,&eqa,&eqc}; static const char *const lab[3]={"BITE","WEAR","CHARM"};
+                for(int i=0;i<3;i++){ int x=8+i*78; rect(pg,x-2,y-2,74,18,1); frame1(pg,x-2,y-2,74,18,C_DGREY); text(pg,x,y,lab[i],C_GOLD,1);
+                    if(eq[i]->it){ gear_name(eq[i],b); b[17]=0; text(pg,x,y+8,b,rar_color(eq[i]),1); } else text(pg,x,y+8,"NOTHING",C_DGREY,1); }
+                y+=20; scpy(b,"YOUR BAG  "); ncat(b,bag_n); scat(b,"/"); ncat(b,BAGMAX); text(pg,8,y,b,C_GOLD,1); y+=8;
+                int y0=y;
+                for(int i=0;i<bag_n;i++){ int col=i/6, yy=y0+(i%6)*8, x=8+col*116;
+                    if(cur==i){ rect(pg,x-4,yy-1,114,8,6); text(pg,x-3,yy,">",C_CYAN,1); }
+                    gear_name(&bag[i],b); b[26]=0; text(pg,x+3,yy,b,rar_color(&bag[i]),1);
+                    if(is_gear(&bag[i])){ Delta d=gear_delta(&bag[i]); int v=d.dmg+d.def+d.hp/4; if(v) text(pg,x+100,yy,v>0?"+":"-",v>0?C_GREEN:C_RED,1); } }
+                if(!bag_n) text(pg,10,y0,"EMPTY. PICK THINGS UP IN DUNGEONS",C_DGREY,1);
+                y=y0+50; rect(pg,4,y-2,232,1,6);
+                if(bag_n){ describe(&bag[cur],b); b[56]=0; text(pg,8,y+1,b,C_WHITE,1);
+                    int sc=delta_text(&bag[cur],b); b[56]=0; text(pg,8,y+9,b, sc>0?C_GREEN:sc<0?C_RED:C_GREY,1);
+                    scpy(b,"WORTH "); ncat(b,item_value(&bag[cur])); scat(b,"G");
                     if(is_gear(&bag[cur])){ scat(b,"  SCRAP "); ncat(b,scrap_of(bag[cur].rar)); scat(b,"  KEEP +"); ncat(b,keep_points(bag[cur].rar)); }
-                    text(pg,236-textlen(b)*4,131,b,C_GOLD,1); }
+                    rtext(pg,232,y+17,b,C_GOLD); }
                 text(pg,8,147, bag_n && is_gear(&bag[cur]) ? "A: WEAR  B: SCRAP IT  SELECT: BUDDY SELLS GEAR" : "A: USE  B: DROP  SELECT: BUDDY SELLS GEAR",C_CYAN,1);
             } else if(page==2){
                 scpy(b,"MANA "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); scat(b,"   SPELL POWER "); ncat(b,st_mag); text(pg,8,y,b,C_CYAN,1); y+=12;
@@ -187,7 +223,8 @@ static void char_screen(volatile u16 *pg){
         if(HIT(K_L)){ page=(page+5)%6; cur=0; dirty=1; sys_msg[0]=0; }
         if(HIT(K_R)){ page=(page+1)%6; cur=0; dirty=1; sys_msg[0]=0; }
         int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : page==4?5 : 0;
-        if(nmax){ if(HIT(K_UP)){ cur=(cur+nmax-1)%nmax; dirty=1; } if(HIT(K_DOWN)){ cur=(cur+1)%nmax; dirty=1; } }
+        if(nmax){ if(HIT(K_UP)){ cur=(cur+nmax-1)%nmax; dirty=1; } if(HIT(K_DOWN)){ cur=(cur+1)%nmax; dirty=1; }
+            if(page==1){ if(HIT(K_RIGHT) && cur+6<nmax){ cur+=6; dirty=1; } if(HIT(K_LEFT) && cur>=6){ cur-=6; dirty=1; } } }
         if(HIT(K_A)){
             dirty=1;
             if(page==0 && stat_pts){ int *sv[4]={&st_str,&st_dex,&st_vit,&st_mag}; (*sv[cur])++; stat_pts--; int oldmax=maxh; recalc(); hearts+=maxh-oldmax; sfx(2); }
@@ -223,6 +260,7 @@ static void make_quest(void){
     }
     b[23]=0; scpy(q_name,b);
 }
+static void (*list_desc)(int,char*,int*)=0;      // an optional second line about the picked row
 static int list_pick(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help){
     int dirty=1;
     wait_release();
@@ -232,7 +270,8 @@ static int list_pick(volatile u16 *pg, const char *title, int n, void (*row)(int
             char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
             for(int i=0;i<n;i++){ c=C_GREY; row(i,b,&c); b[48]=0; if(i==*sel){ text(pg,16,34+i*8,">",C_CYAN,1); if(c==C_GREY) c=C_WHITE; } text(pg,22,34+i*8,b,c,1); }
             text(pg,20,148,help,C_CYAN,1);
-            if(menu_msg[0]) text(pg,20,139,menu_msg,C_GREEN,1);
+            if(list_desc && n){ int c2=C_GREY; list_desc(*sel,b,&c2); b[52]=0; text(pg,20,124,b,c2,1); }
+            if(menu_msg[0]) text(pg,20,139,menu_msg,C_GREEN,1); else if(list_desc && n){ int c2=C_GREY; list_desc(-1-*sel,b,&c2); b[52]=0; text(pg,20,132,b,c2,1); }
         }
         vsync(); read_keys();
         if(keys!=keys_old) dirty=1;
@@ -244,6 +283,13 @@ static int list_pick(volatile u16 *pg, const char *title, int n, void (*row)(int
 static const char *const sup_name[6]={"CRUMB","HEALTH POTION","MANA POTION","MYSTERY BERRY","MYSTERY SEED","WARP CRYSTAL"};
 static const u8 sup_cost[6]={10,25,25,15,20,120};
 static void sup_row(int i, char *b, int *c){ scpy(b,sup_name[i]); while(textlen(b)<16) scat(b," "); ncat(b,sup_cost[i]); scat(b,"G"); }
+static void gear_desc(const Gear *g, int which, char *b, int *c){       // which 0: what it does. 1: how it compares
+    if(which==0){ if(!g->it){ b[0]=0; return; } describe(g,b); *c=C_WHITE; }
+    else { int sc=delta_text(g,b); *c = sc>0?C_GREEN:sc<0?C_RED:C_GREY; if(!is_gear(g)) b[0]=0; }
+}
+static void stock_desc(int i, char *b, int *c){ if(i<0) gear_desc(&stock[-1-i],1,b,c); else gear_desc(&stock[i],0,b,c); }
+static void sell_desc(int i, char *b, int *c){ if(i<0){ b[0]=0; } else gear_desc(&bag[i],0,b,c); }
+static void sup_desc(int i, char *b, int *c){ static const char *const d[6]={"FOOD +40","HEALTH BACK","MANA BACK","A RANDOM BERRY. TRY IT TO LEARN IT","A RANDOM SEED. TRY IT TO LEARN IT","A PORTAL HOME FROM ANY DUNGEON FLOOR"}; if(i<0){ b[0]=0; return; } scpy(b,d[i]); *c=C_WHITE; }
 static void stock_row(int i, char *b, int *c){ if(!stock[i].it){ scpy(b,"SOLD"); *c=C_DGREY; return; } gear_name(&stock[i],b); b[34]=0; while(textlen(b)<35) scat(b," "); ncat(b,item_value(&stock[i])*2); scat(b,"G"); *c=rar_color(&stock[i]); }
 static void sell_row(int i, char *b, int *c){ gear_name(&bag[i],b); b[34]=0; while(textlen(b)<35) scat(b," "); ncat(b,item_value(&bag[i])); scat(b,"G"); *c=rar_color(&bag[i]); }
 // ---------------------------------------------------------------- the trophy case: keep it forever, or scrap it for tech
@@ -287,11 +333,13 @@ static int shop_menu(void){   // returns 1 to fly on
     int sel=0; in_menu++; menu_msg[0]=0;
     while(1){
         const char *main_opt[9]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","LEAVE"};
-        int can_fly = 1;
+        int can_fly = 1, next_ok = !endless && zone_cleared && zone<5 && cluster_no==0; char nxt[40];
+        if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); main_opt[0]=nxt; }
         int dirty=1; wait_release();
         while(1){
             if(dirty){ dirty=0; box(pg,12,20,216,136); text(pg,20,24,"YOUR SHIP",C_GOLD,1); char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
-                for(int i=0;i<9;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:C_GREY); if(i==sel) text(pg,16,36+i*10,">",C_CYAN,1); text(pg,22,36+i*10,main_opt[i],c,1); }
+                for(int i=0;i<9;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:C_GREY); if(i==sel) text(pg,16,36+i*10,">",C_CYAN,1); text(pg,22,36+i*10,main_opt[i],c,1); }
+                if(next_ok) text(pg,22,124,"OR LAUNCH YOURSELF: HOLD A ON LAUNCH",C_DGREY,1);
                 if(q_type!=Q_NONE && q_done) text(pg,120,76,"! QUEST DONE",C_GREEN,1);
                 if(menu_msg[0]) text(pg,20,134,menu_msg,C_GREEN,1);
                 text(pg,20,148,"A: CHOOSE  B: LEAVE",C_CYAN,1); }
@@ -302,17 +350,18 @@ static int shop_menu(void){   // returns 1 to fly on
         }
         if(sel==8){ in_menu--; wait_release(); return 0; }
         if(sel==7){ trophy_case(pg); continue; }
-        if(sel==0){ if(can_fly){ in_menu--; wait_release(); return 1; } continue; }
-        if(sel==1){ int s2=0; int r; while((r=list_pick(pg,"SUPPLIES",6,sup_row,&s2,"A: BUY  B: BACK"))>=0){
+        if(sel==0){ if(can_fly){ in_menu--; int held=0; for(int t=0;t<20 && HELD(K_A);t++){ vsync(); read_keys(); held=t; } wait_release(); return (next_ok && held<19) ? 2 : 1; } continue; }
+        if(sel==1){ int s2=0; int r; list_desc=sup_desc; while((r=list_pick(pg,"SUPPLIES",6,sup_row,&s2,"A: BUY  B: BACK"))>=0){
                 if(gold<sup_cost[r]){ say("NOT ENOUGH GOLD"); continue; }
                 Gear gg={0,0,0,0,0,0};
                 if(r==0) gg.it=IT_CRUMB; else if(r<3){ gg.it=IT_POTION; gg.sub=r-1; } else if(r==3){ gg.it=IT_BERRY; gg.sub=rndi(8); } else if(r==4){ gg.it=IT_SEED; gg.sub=rndi(6); } else gg.it=IT_WARP;
                 if(add_gear(gg)){ gold-=sup_cost[r]; hud_now(); sfx(7); } } }
-        if(sel==2){ int s2=0; int r; while((r=list_pick(pg,"GEAR SHOP",6,stock_row,&s2,"A: BUY  B: BACK"))>=0){
+        if(sel==2){ int s2=0; int r; list_desc=stock_desc; while((r=list_pick(pg,"GEAR SHOP",6,stock_row,&s2,"A: BUY  B: BACK"))>=0){
                 if(!stock[r].it) continue; int cost=item_value(&stock[r])*2; if(gold<cost){ say("NOT ENOUGH GOLD"); continue; }
                 if(add_gear(stock[r])){ gold-=cost; stock[r].it=0; hud_now(); sfx(7); } } }
-        if(sel==3){ int s2=0; int r; while(bag_n && (r=list_pick(pg,"SELL",bag_n,sell_row,&s2,"A: SELL  B: BACK"))>=0){
+        if(sel==3){ int s2=0; int r; list_desc=sell_desc; while(bag_n && (r=list_pick(pg,"SELL",bag_n,sell_row,&s2,"A: SELL  B: BACK"))>=0){
                 gold+=item_value(&bag[r]); drop_at(r); if(s2>=bag_n && s2) s2--; hud_now(); sfx(7); } }
+        list_desc=0;
         if(sel==4){
             char b[48]; int dirty2=1; wait_release();
             if(q_type==Q_NONE) make_quest(), q_type=-q_type;     // an offer, not taken yet

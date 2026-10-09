@@ -6,7 +6,7 @@
 #define NSYS 32
 typedef struct { u8 x,y,kind,eco; } Sys;            // kind 0..5 = story zone, 6 = uncharted world
 EW static Sys sys[NSYS];
-static int cur_sys=0, cluster_no=0, fuel=70, hull=100, shield=40, shield_lv=1, laser_lv=1, cargo_cap=10, ant_king=0, cleared_mask=0, zones_open=1, visits=0;
+static int cur_sys=0, fuel=70, hull=100, shield=40, shield_lv=1, laser_lv=1, cargo_cap=10, ant_king=0, cleared_mask=0, zones_open=1, visits=0;
 static u8 cargo[8];
 static const char *const eco_name[4]={"FARMING","MINING","TECH","HIVE"};
 static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MACHINES","MEDICINE","RELICS"};

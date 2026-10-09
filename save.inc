@@ -46,13 +46,13 @@ static int meta_read(int slot, Meta *m){
 typedef struct { u32 magic; u8 music, sfx, autosave, shake, last, pad[3]; u32 sum; } Settings;
 static void settings_save(void){
     Settings s; memset(&s,0,sizeof(s)); s.magic=0x53544553;
-    s.music=opt_music; s.sfx=opt_sfx; s.autosave=opt_autosave; s.shake=opt_shake; s.last=last_slot;
+    s.music=opt_music; s.sfx=opt_sfx; s.autosave=opt_autosave; s.shake=opt_shake; s.last=last_slot; s.pad[0]=opt_easy;
     s.sum=fnv(&s,sizeof(s)-4); sram_write(SET_OFF,&s,sizeof(s));
 }
 static void settings_load(void){
     Settings s; sram_read(SET_OFF,&s,sizeof(s));
     if(s.magic!=0x53544553 || s.sum!=fnv(&s,sizeof(s)-4) || s.music>2 || s.last>=NSLOT) return;   // first run: keep the defaults
-    opt_music=s.music; opt_sfx=s.sfx&1; opt_autosave=s.autosave&1; opt_shake=s.shake&1; last_slot=s.last;
+    opt_music=s.music; opt_sfx=s.sfx&1; opt_autosave=s.autosave&1; opt_shake=s.shake&1; last_slot=s.last; opt_easy=s.pad[0]&1;
 }
 static void music_apply(void){ if(opt_music==0){ SND(0x08)=0; SND(0x12)=0; } }
 
@@ -204,31 +204,32 @@ static int slot_picker(volatile u16 *pg, int mode, int src){
 
 // ---------------------------------------------------------------- the options screen
 static void options_screen(volatile u16 *pg){
-    static const char *const nm[4]={"MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE"};
+    static const char *const nm[5]={"EASY MODE","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE"};
     static const char *const mv[3]={"OFF","LOW","FULL"}, *const yn[2]={"OFF","ON"};
-    static const char *const hlp[4]={"THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT"};
+    static const char *const hlp[5]={"HALF DAMAGE TO YOU. SLOWER HUNGER. KEEP YOUR BAG","THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT"};
     int sel=0, dirty=1; oam_hide_all(); oam_flush(); if(in_game) rect(pg,0,18,240,142,0); wait_release();
     while(1){
         if(dirty){ dirty=0; char b[16];
             panel(pg,12,20,216,136,"OPTIONS");
-            for(int i=0;i<4;i++){
-                int y=42+i*17; int v = i==0?opt_music : i==1?opt_sfx : i==2?opt_autosave : opt_shake;
+            for(int i=0;i<5;i++){
+                int y=40+i*15; int v = i==0?opt_easy : i==1?opt_music : i==2?opt_sfx : i==3?opt_autosave : opt_shake;
                 if(i==sel) rect(pg,18,y-4,204,13,6);
                 text(pg,26,y,nm[i],i==sel?C_WHITE:C_GREY,1);
-                scpy(b,"< "); scat(b, i==0?mv[v]:yn[v]); scat(b," >");
-                rtext(pg,214,y,b,i==sel?C_GOLD:C_GREY);
+                scpy(b,"< "); scat(b, i==1?mv[v]:yn[v]); scat(b," >");
+                rtext(pg,214,y,b,i==sel?C_GOLD: (i==0&&v)?C_GREEN:C_GREY);
             }
             ctext(pg,120,118,hlp[sel],C_GREY);
             ctext(pg,120,146,"LEFT/RIGHT: CHANGE  B: BACK",C_CYAN);
         }
         vsync(); read_keys();
-        if(HIT(K_UP)){ sel=(sel+3)%4; sfx(7); dirty=1; }
-        if(HIT(K_DOWN)){ sel=(sel+1)%4; sfx(7); dirty=1; }
+        if(HIT(K_UP)){ sel=(sel+4)%5; sfx(7); dirty=1; }
+        if(HIT(K_DOWN)){ sel=(sel+1)%5; sfx(7); dirty=1; }
         int d = HIT(K_RIGHT)||HIT(K_A) ? 1 : HIT(K_LEFT) ? -1 : 0;
         if(d){ dirty=1;
-            if(sel==0){ opt_music=(opt_music+d+3)%3; music_apply(); }
-            else if(sel==1){ opt_sfx^=1; }
-            else if(sel==2) opt_autosave^=1;
+            if(sel==0) opt_easy^=1;
+            else if(sel==1){ opt_music=(opt_music+d+3)%3; music_apply(); }
+            else if(sel==2){ opt_sfx^=1; }
+            else if(sel==3) opt_autosave^=1;
             else opt_shake^=1;
             sfx(2);
         }

@@ -93,6 +93,7 @@ static void sfx(int n){
         case 11: SND(0x18)=(0x3<<12)|(1<<8); SND(0x1C)=0x8000|(6<<4)|5; break;
         case 12: SND(0x18)=(0xD<<12)|(2<<8); SND(0x1C)=0x8000|(7<<4)|6; SND(0x00)=(2<<4)|(1<<3)|4; SND(0x02)=(0xA<<12)|(2<<8)|(2<<6); SND(0x04)=0x8000|900; break;
         case 13: SND(0x18)=(0xF<<12)|(3<<8); SND(0x1C)=0x8000|(4<<4)|(1<<3)|2; break;
+        case 14: SND(0x18)=(0x6<<12)|(2<<8); SND(0x1C)=0x8000|(2<<4)|(1<<3)|1; break;      // a hiss: something winds up to bite
         case 10: SND(0x18)=(0xF<<12)|(1<<8); SND(0x1C)=0x8000|(1<<4)|0; SND(0x00)=(1<<4)|(1<<3)|1; SND(0x02)=(0xE<<12)|(1<<8)|(0<<6); SND(0x04)=0x8000|1980; break;
     }
 }

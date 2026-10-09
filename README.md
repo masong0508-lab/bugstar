@@ -14,6 +14,24 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | SELECT | Switch the yellow arrow between the door and your ship | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
 | START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM, MAP) | Opens on the MAP |
 
+## Fighting (new)
+- **Monsters wind up before they bite.** A red **!** flashes over them and they hiss. Step back, strafe, or dodge, and they snap at empty air and are open for a moment.
+- **Dodge:** tap L or R twice to dash sideways. You can't be hurt while you dash. Dodge a bite at the right moment for "DODGED!".
+- **Combos:** bites in a row count up (COMBO X2, X3). The third bite is a **CRUNCH**: double damage and a huge shove.
+- **Extra damage** on anything staggered or winding up.
+- **Beetles charge** from a distance. Sidestep and they slam into the wall and are stunned.
+- **The Queen calls her brood** at half health.
+- **Health bars** over every hurt monster. Buddy fights from the side now, so he doesn't block your bite.
+
+## New screens
+- **Minimap** in the corner of the dungeon view: walls, you, stairs, monsters (blinking red), cages, treasure.
+- **Character screen** redone: health, mana, food and XP bars, stat pips, Buddy's health, and a bag in two columns (left/right to switch). Gear shows **+ or -** next to it if it would be better or worse than what you wear, with the exact change below.
+- **Shops** show what an item does and how it compares to your gear.
+- **Easy mode** in OPTIONS: half damage to you, slower hunger, you keep your bag when you faint.
+- **Autopilot:** after you beat a zone's boss, the ship's first choice flies you straight to the next star. Hold A on it to launch by hand instead.
+- **Planets:** search plants (A) for leaves to eat, berries, seeds and the odd shiny pebble. Plants grow back.
+- **Planets look deeper:** things fade as they go over the edge, soft shadows, see-through clouds, a darker rim and a glow of air around the world.
+
 ## New in this update
 - **Yellow arrow** on every planet. It points the short way to the door (or your ship). SELECT switches it.
 - **A-button hints** on planets: "A: GO DOWN THE DOOR", "A: YOUR SHIP" and so on.

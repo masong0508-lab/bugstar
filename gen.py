@@ -92,11 +92,13 @@ nz=np.sqrt(np.clip(1-d2,0,1)); L=np.array([-.5,-.65,.57]); L/=np.linalg.norm(L)
 lam=np.clip(dx*L[0]+dy*L[1]+nz*L[2],0,1)
 pat=(np.sin(dx*9+dy*3)+np.sin(dy*11-nz*5)+np.sin(nz*13+dx*4))/3
 v=0.35+3.4*lam+0.35*pat
-v=np.where(d2>0.93,v-0.6*(d2-0.93)/0.07,v)
+v=np.where(d2>0.86,v-0.9*(d2-0.86)/0.14,v)
 img=1+quant(np.clip((yy/H)*1.2,0,1),yy,xx)
 for _ in range(90):
     x,y=rng.integers(0,W),rng.integers(18,H); img[y,x]=5 if rng.random()<.35 else 4
 img[(d2>=1)&(d2<1.03)]=21
+glow1=(d2>=1.03)&(d2<1.075)&(((xx+yy)&1)==0); img[glow1]=21
+glow2=(d2>=1.075)&(d2<1.12)&(((xx+yy)&3)==0); img[glow2]=21
 img[inside]=16+quant(v,yy,xx)[inside]
 img[0:17,:]=0; img[17,:]=6
 arr("planet_img","unsigned char",img.flatten().tolist(),per=40)
@@ -267,7 +269,23 @@ ARROW=["................",
        "........1.......",
        "................",
        "................"]
-sprs=[("ARROW",ARROW,16,16,1),("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
+SHADOW=["....11111111....",
+        "..111111111111..",
+        ".11111111111111.",
+        "..111111111111..",
+        "....11111111....",
+        "................",
+        "................",
+        "................"]
+CLOUD=["..........5555..................",
+       "......555555555555..5555........",
+       "...5555555555555555555555555....",
+       ".5555555555555555555555555555...",
+       "55555555555555555555555555555555",
+       ".4444555555555555555555555555554",
+       "...44444444444444444444444444...",
+       "......4444444444444444444......."]
+sprs=[("ARROW",ARROW,16,16,1),("SHADOW",SHADOW,16,8,1),("CLOUD",CLOUD,32,8,1),("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
       ("PLANT",PLANT,8,8,1),("PEBBLE",PEBBLE,8,8,1),("TUFT",TUFT,8,8,1),("BACK",BACK,64,64,2)]
 allt=[]; t=0
 for name,rows,w,h,s in sprs:

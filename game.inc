@@ -255,11 +255,12 @@ static void free_bug(int t){
 static void hurt(int n){
     if(invuln) return;
     int def = d_def + (shield_t ? 5+st_mag/2 : 0);
-    n -= def/2; if(n<1) n=1;
+    n -= def/2; if(opt_easy) n=(n+1)/2; if(n<1) n=1;
     if(rndi(100) < def){ say("BLOCKED!"); invuln=15; return; }
     hearts-=n; invuln=30; shake_t=opt_shake?10:0; sfx(4); hud_now();
 }
 static void hunger_tick(int every){
+    if(opt_easy) every+=every/2;
     if(++hunger_t < every) return; hunger_t=0;
     if(food>0){ food--; if(food==20) say("YOU ARE HUNGRY"); if(food%5==0) hud_now(); }
     else { hearts-=1+maxh/20; say("STARVING! EAT SOMETHING"); hud_now(); }

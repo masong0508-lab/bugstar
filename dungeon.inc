@@ -12,7 +12,7 @@ static u8 dmap[MW*MW];
 EW static u8 seen[MW*MW]; static u8 room_seen[10];     // what you have seen on this floor (for the map)
 EW static u8 wmat[MW*MW], fmat[MW*MW], rid[MW*MW], wdec[MW*MW];
 static u16 lampcell[12]; static int nlamps;
-typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; s32 kvx, kvy; u8 stag, lunge; } DObj;
+typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; s32 kvx, kvy; u8 stag, lunge, wind, ph; } DObj;     // wind: ticks of wind-up before it bites. ph: boss phase
 enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL };
 static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT","VILE","FROST","ROTTEN"};
 static const char *const kind_name[11]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL"};
@@ -416,6 +416,12 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
             u16 p2=ix|(ix<<8); pg[y*120+c]=p2; if(y+1<bot && y+1<160) pg[y*120+120+c]=p2;
         }
     }
+    // a health bar over every hurt monster, and a red ! while it winds up to bite
+    if(is_mon(o->kind) && (o->hp<o->maxhp || o->wind) && tY<0x80000){
+        int by=top-4; if(by<20) by=20; int w=wcols<8?8:wcols>24?24:wcols; int bx=scx-w/2;
+        if(o->hp<o->maxhp){ int f=o->hp*w/(o->maxhp>0?o->maxhp:1); for(int c=bx;c<bx+w;c++){ if(c<0||c>=120||tY>=zbuf[c]) continue; int ix=(c-bx<f)?(o->kind==K_BOSS?C_RED:C_GREEN):C_DGREY; pg[by*120+c]=ix|(ix<<8); pg[(by+1)*120+c]=ix|(ix<<8); } }
+        if(o->wind && (frames&2)){ int cx=scx; int y0=by-9; if(y0<19) y0=19; for(int y=y0;y<y0+5;y++) if(cx>=0&&cx<120&&tY<zbuf[cx]) pg[y*120+cx]=C_RED|(C_RED<<8); if(cx>=0&&cx<120&&tY<zbuf[cx]) pg[(y0+6)*120+cx]=C_RED|(C_RED<<8); }
+    }
 }
 
 // ---------------------------------------------------------------- embers off the torches, dust in the light
@@ -506,6 +512,20 @@ static void map_reveal(void){
     if(r<nrooms && !room_seen[r]){ room_seen[r]=1; Room *R=&rooms[r];
         for(int y=R->y-1;y<=R->y+R->h;y++) for(int x=R->x-1;x<=R->x+R->w;x++) if(x>=0&&y>=0&&x<MW&&y<MW) seen[y*MW+x]=1; }
     for(int y=cy-1;y<=cy+1;y++) for(int x=cx-1;x<=cx+1;x++) if(x>=0&&y>=0&&x<MW&&y<MW) seen[y*MW+x]=1;
+}
+// a little map in the corner: 15x15 cells around you, north up. one cell = one column by two rows
+static void minimap(volatile u16 *pg){
+    int cx=px_>>16, cy=py_>>16, ox=2, oy=30;
+    for(int j=0;j<15;j++) for(int i=0;i<15;i++){ int x=cx-7+i, y=cy-7+j; int ix=0;
+        if(x>=0&&y>=0&&x<MW&&y<MW && seen[y*MW+x]){ int t=dmap[y*MW+x];
+            ix = t==D_WALL||t==D_PILLAR ? R_STONE+3 : t==D_DOWN ? C_GOLD : t==D_UP ? C_CYAN : 2; }
+        else if(!(x>=0&&y>=0&&x<MW&&y<MW)) ix=0; else ix=1;
+        u16 p2=ix|(ix<<8); pg[(oy+j*2)*120+ox+i]=p2; pg[(oy+j*2+1)*120+ox+i]=p2; }
+    for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(!o->alive) continue; int x=(o->x>>16)-cx+7, y=(o->y>>16)-cy+7; if(x<0||y<0||x>14||y>14||!seen[(o->y>>16)*MW+(o->x>>16)]) continue;
+        int ix = is_mon(o->kind) ? (o->kind==K_BOSS?C_RED:C_RED) : o->kind==K_CAGE ? C_GREEN : o->kind==K_CHEST||(o->kind==K_ITEM&&o->rar) ? C_GOLD : -1; if(ix<0) continue;
+        if(is_mon(o->kind) && (frames&4)) continue; pg[(oy+y*2)*120+ox+x]=ix|(ix<<8); pg[(oy+y*2+1)*120+ox+x]=ix|(ix<<8); }
+    pg[(oy+14)*120+ox+7]=C_WHITE|(C_WHITE<<8); pg[(oy+15)*120+ox+7]=C_WHITE|(C_WHITE<<8);
+    { s32 dx=cosx(pang>>2), dy=sinx(pang>>2); int fx=ox+7+((dx*3)>>14), fy=oy+14+((dy*6)>>14); if(fx>=0&&fx<120&&fy>=18&&fy<160) pg[fy*120+fx]=C_WHITE|(C_WHITE<<8); }
 }
 static int stairs_seen(void){ int c=(tgt_y>>16)*MW+(tgt_x>>16); return seen[c] && dmap[c]==D_DOWN; }
 static void map_page(volatile u16 *pg){
