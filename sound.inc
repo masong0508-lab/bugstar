@@ -59,7 +59,7 @@ IWRAM static void music_tick(void){
 }
 IWRAM static void irq_handler(void){
     u16 f=REG_IF;
-    if(f&1){ music_tick(); hdma_vbl(); }
+    if(f&1) music_tick();
     REG_IF=f; *(volatile u16*)0x03007FF8 |= f;
 }
 static void music(int n){ if(mus_track==n) return; mus_track=n; mus_step=0; mus_t=1; if(n<0){ SND(0x08)=0; SND(0x12)=0; } }

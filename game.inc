@@ -339,7 +339,7 @@ static void bag_input(void){
     if(HELD(K_SEL)){                         // hold SELECT + L/R to pick a spell
         if(HIT(K_SEL)){ sel_held=1; sel_used=0; }
         if(bag_n && (HIT(K_UP)||HIT(K_DOWN))){ sel_used=1; bag_sel=(bag_sel+(HIT(K_DOWN)?1:bag_n-1))%bag_n; hud_now(); }   // SELECT + up/down: pick an item
-        if(HIT(K_L)||HIT(K_R)){ sel_used=1; for(int k=0;k<NSPELL;k++){ spell_sel=(spell_sel+(HIT(K_R)?1:NSPELL-1))%NSPELL; if(spell_known[spell_sel]) break; }
+        if(scene!=0 && (HIT(K_L)||HIT(K_R))){ sel_used=1; for(int k=0;k<NSPELL;k++){ spell_sel=(spell_sel+(HIT(K_R)?1:NSPELL-1))%NSPELL; if(spell_known[spell_sel]) break; }
             char b[32]; scpy(b,"SPELL: "); scat(b,spell_name[spell_sel]); say(b); }
         return;
     }

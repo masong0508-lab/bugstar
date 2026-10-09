@@ -7,11 +7,11 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 ## Controls
 | Button | On a planet | In a dungeon |
 | --- | --- | --- |
-| D-pad | Walk; the planet turns under you | Up/down walk, left/right turn (a tap turns a little, holding turns faster) |
+| D-pad | Walk over the hills (in first person: up/down walk, left/right turn) | Up/down walk, left/right turn (a tap turns a little, holding turns faster) |
 | A | Door, ship, cage, slug (the gold line at the top says what A will do) | Bite (hold A to keep biting). With nothing to bite: open cages, stairs, fish at water |
 | B | Use the picked item | Use the picked item |
 | L / R | Pick an item in your bag | Strafe left / right |
-| SELECT | Switch the yellow arrow between the door and your ship | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
+| SELECT | Tap: switch between third person and first person. Hold SELECT + L/R: point the arrow at the door or your ship | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
 | START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM, MAP) | Opens on the MAP |
 
 ## Fighting (new)
@@ -30,7 +30,9 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 - **Easy mode** in OPTIONS: half damage to you, slower hunger, you keep your bag when you faint.
 - **Autopilot:** after you beat a zone's boss, the ship's first choice flies you straight to the next star. Hold A on it to launch by hand instead.
 - **Planets:** search plants (A) for leaves to eat, berries, seeds and the odd shiny pebble. Plants grow back.
-- **Planets have hills now.** The ground rises and falls as you walk: your bug climbs up on hills (its shadow stays on the ground), things on high ground sit higher, the ground stretches under you when you are up, and hills show as domes on the horizon. Plus: things fade as they go over the edge, soft shadows, drifting clouds, a darker rim and a glow of air around the world.
+- **Planets are real 3D terrain now.** Every world is a height map that wraps around: rolling hills, valleys and lakes, drawn in 3D every frame (voxel style, like the old game Comanche). The ground rises and falls under you, the horizon curves like a small planet, far things are dimmer, and the sun lights the slopes.
+- **Two cameras:** third person (behind your bug) or first person (through your own jaws, like the dungeons). Tap SELECT to switch. In first person, left/right turn and L/R step sideways.
+- Lakes slow you down. Steep slopes are slow to climb.
 
 ## New in this update
 - **Yellow arrow** on every planet. It points the short way to the door (or your ship). SELECT switches it.
