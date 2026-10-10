@@ -704,12 +704,13 @@ static void save_ext(void){
     s->ant_king=ant_king; s->cleared_mask=cleared_mask; s->zones_open=zones_open; s->visits=visits; s->w_dlv=w_dlv; memcpy(s->cargo,cargo,8);
     s->sum=sx_sum(s); const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) SRAM[slot_base(cur_slot)+SX_OFF+i]=p[i];
     beast_save(); trophy_save();
-    { u32 a[NCW+6]; a[0]=0x33444441u; a[1]=galaxy_no; for(int w=0;w<NCW;w++) a[2+w]=clus[w]; a[NCW+2]=relic_bits; a[NCW+3]=(u32)weird_seen; a[NCW+4]=(u32)relic_gold;
-      u32 h=2166136261u; for(int i=0;i<NCW+5;i++){ h^=a[i]; h*=16777619u; } a[NCW+5]=h; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
+    { u32 a[NCW+7]; a[0]=0x34444441u; a[1]=galaxy_no; for(int w=0;w<NCW;w++) a[2+w]=clus[w]; a[NCW+2]=relic_bits; a[NCW+3]=(u32)weird_seen; a[NCW+4]=(u32)relic_gold; a[NCW+5]=mark_perm;
+      u32 h=2166136261u; for(int i=0;i<NCW+6;i++){ h^=a[i]; h*=16777619u; } a[NCW+6]=h; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
 }
-static void addr_load(void){ u32 a[NCW+6]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h=2166136261u; for(int i=0;i<NCW+5;i++){ h^=a[i]; h*=16777619u; }
-    relic_bits=0; weird_seen=0; relic_gold=0; for(int w=0;w<NCW;w++) clus[w]=0; galaxy_no=0;
-    if(a[0]==0x33444441u && a[NCW+5]==h){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; }
+static void addr_load(void){ u32 a[NCW+7]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h=2166136261u, h5=2166136261u; for(int i=0;i<NCW+6;i++){ h^=a[i]; h*=16777619u; if(i<NCW+5){ h5^=a[i]; h5*=16777619u; } }
+    relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; for(int k=0;k<NMK;k++) mark_t[k]=0; for(int w=0;w<NCW;w++) clus[w]=0; galaxy_no=0;
+    if(a[0]==0x34444441u && a[NCW+6]==h){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; mark_perm=a[NCW+5]; }
+    else if(a[0]==0x33444441u && a[NCW+5]==h5){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; }
     else if(a[0]==0x52444441u && a[4]==(a[0]^a[1]*31^a[2]*131^a[3]*1031^0x5A5A)){ galaxy_no=a[1]; clus[0]=a[2]; clus[1]=a[3]; }   // last version's save
     else clus[0]=(u32)cluster_no; }    // an older save: its cluster count becomes its address
 typedef struct { u32 magic, hp_lo, hp_hi, mx_lo, mx_hi; u16 tech, kills, stage, hives; u32 sum; } SaveB;
@@ -742,7 +743,7 @@ static void trophy_load(void){
 static void load_ext_defaults(void){
     for(int i=0;i<4;i++) tr_n[i]=0; tr_uq=0; scrap=0;
 
-    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; relic_bits=0; weird_seen=0; relic_gold=0; memset(cargo,0,8);
+    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; for(int k=0;k<NMK;k++) mark_t[k]=0; memset(cargo,0,8);
     if(endless){ ant_king=1; zones_open=6; cleared_mask=63; w_dlv=6+world_no/2; cur_sys=6; }
     else { ant_king=0; zones_open=zone+1+(zone_cleared?1:0); if(zones_open>6) zones_open=6; cleared_mask=((1<<zone)-1)|(zone_cleared?1<<zone:0); cur_sys=zone; }
     beast_defaults(); gen_cluster();

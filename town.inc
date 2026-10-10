@@ -18,6 +18,7 @@ static void make_species(void){
         p->col=rgb15(40+wr(216),40+wr(216),40+wr(216));
         scpy(p->name,adj[wr(16)]); scat(p->name," "); scat(p->name,noun[p->body][wr(4)]); }
     if(!endless && zone==0){ spc[0].temper=0; spc[1].temper=1; }                      // the first planet's creatures are gentle
+    if(WL(MW_SHY)){ spc[0].temper=0; spc[1].temper=0; } if(WL(MW_ANGRY)){ spc[0].temper=2; spc[1].temper=2; }
     wseed=keep;
 }
 static void species_palette(void){                                                    // sprite banks 4 and 5: the two species' colours
@@ -92,14 +93,16 @@ static void relic_found(void){
     sfx(6); card(pg,"!!! A LEGENDARY RELIC !!!",ln,5); save_game();
 }
 static int relic_roll(int one_in){                                                     // a very rare find. Weird worlds are far luckier
-    if(wd.weird) one_in/=12; if(wd.weird==7) one_in/=3; if(one_in<1) one_in=1;
+    if(wd.weird) one_in/=12; if(WL(MW_METAL)) one_in/=2; if(WL(MW_LUCK)) one_in/=1+WL(MW_LUCK)/4; if(one_in<1) one_in=1;
     if(rndi(one_in)) return 0; relic_found(); return 1;
 }
 static void planet_life(int *k){
     make_species();
-    if(wd.weird==5) for(int s=0;s<2;s++){ spc[s].size=2; spc[s].maxpop=spc[s].pop=24; }                 // GIANT WORLD: huge, and lots of them
+    if(WL(MW_GIANTS)) for(int s=0;s<2;s++){ spc[s].size=2; spc[s].maxpop=spc[s].pop=10+WL(MW_GIANTS)/2; }    // GIANTS: huge, and lots of them
+    if(WL(MW_SWARM)) for(int i=0;i<2+WL(MW_SWARM)/2 && *k<NPO-16;i++) place(&po[(*k)++],O_SLUG,6,40);          // SLUG SWARM
+    if(WL(MW_JUNGLE)) for(int i=0;i<2+WL(MW_JUNGLE)/2 && *k<NPO-16;i++) place(&po[(*k)++],(i&1)?O_PLANT:O_TREE,4,60);   // JUNGLE
     if(wd.weird && *k<NPO-10){ place(&po[*k],O_SHRINE,10,30); po[*k].hp=1; (*k)++; }                // every weird world hides one relic shrine
-    if(wd.weird==7) for(int i=0;i<12 && *k<NPO-12;i++) place(&po[(*k)++],O_ROCK,6,60);              // GOLD WORLD: ore everywhere
+    if(WL(MW_METAL)) for(int i=0;i<4+WL(MW_METAL)/3 && *k<NPO-12;i++) place(&po[(*k)++],O_ROCK,6,60);   // METAL GROUND: ore everywhere
     for(int s=0;s<2;s++){ int a=wr(256), d=12+wr(40); s32 hx=(64<<16)+cosx(a)*d*4, hy=(64<<16)+sinx(a)*d*4;    // a herd around a home spot
         for(int i=0;i<spc[s].pop && *k<NPO-10;i++) spawn_crit(s, hx+(wr(9)-4)*(1<<16), hy+(wr(9)-4)*(1<<16), k); }
     for(int i=0;i<wd.fossils && *k<NPO-8;i++) place(&po[(*k)++],O_FOSSIL,8,60);
@@ -114,16 +117,21 @@ static void life_tick(int n){                                                   
                 cvx[i]=(cosx(a)*sp)>>14; cvy[i]=(sinx(a)*sp)>>14; if(wr(3)==0) cvx[i]=cvy[i]=0; }
             s32 mx=cvx[i]*n, my=cvy[i]*n;
             if(p->temper==0 && ad<(7<<16)){ mx=-(dx>>6)*n; my=-(dy>>6)*n; }          // timid: run from you
+            else if(p->temper==2 && WL(MW_ANGRY) && ad<(10<<16)){ mx=(dx>>6)*n*(8+WL(MW_ANGRY))/8; my=(dy>>6)*n*(8+WL(MW_ANGRY))/8; if(ad<0x16000 && !invuln){ hurt(4+dlv()*2+WL(MW_ANGRY)/5); show_msg("OUCH! IT IS FURIOUS"); pknock(dx,dy,40); } }
             else if(p->temper==1 && ad<(9<<16) && ad>(2<<16)){ mx=(dx>>7)*n; my=(dy>>7)*n; }   // curious: come and look
             else if(p->temper==2 && ad<(10<<16)){ mx=(dx>>6)*n; my=(dy>>6)*n; if(ad<0x16000 && !invuln){ hurt(4+dlv()*2); show_msg("OUCH! IT BIT YOU"); pknock(dx,dy,40); } }
             s32 nx=o->x+mx, ny=o->y+my; if(p->body!=2 && (hm_at(nx,ny)<water_lv || in_city_cell(nx>>16,ny>>16))){ ctim[i]=0; continue; }
             o->x=nx&((TW<<16)-1); o->y=ny&((TW<<16)-1); }
         else if(o->kind==O_BEETLE){ s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
-            if(ad<(12<<16) && ad>0x8000){ o->x=(o->x+((dx>>6)*n))&((TW<<16)-1); o->y=(o->y+((dy>>6)*n))&((TW<<16)-1); }
+            if(ad<(12<<16) && ad>0x8000){ int sg=WL(MW_SHY)?-1:1, ml=8+WL(MW_ANGRY); o->x=(o->x+sg*((dx>>6)*n)*ml/8)&((TW<<16)-1); o->y=(o->y+sg*((dy>>6)*n)*ml/8)&((TW<<16)-1); }
             if(ad<0x14000 && !invuln){ hurt(5+dlv()*2); show_msg("A BEETLE RAMMED YOU"); pknock(dx,dy,48); } }
         else if(o->kind==O_LOCAL){ if(ctim[i]>n) ctim[i]-=n; else { ctim[i]=60+wr(120); int a=wr(256); cvx[i]=(cosx(a)*120)>>14; cvy[i]=(sinx(a)*120)>>14; if(wr(2)) cvx[i]=cvy[i]=0; }
             s32 nx=o->x+cvx[i]*n, ny=o->y+cvy[i]*n; int c=cmap[((ny>>15)&HMASK)*HW+((nx>>15)&HMASK)]; if(c==74||c==75||c==80||c==81){ o->x=nx; o->y=ny; } else ctim[i]=0; }
     }
+    if(WL(MW_MAGNET)||WL(MW_SHYORE)) for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive || o->kind<O_TREE || o->kind>O_FLOWER) continue;   // MAGNET / SHY ORE
+        s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(ad>(10<<16)) continue;
+        int lv = WL(MW_MAGNET) ? WL(MW_MAGNET) : -WL(MW_SHYORE); if(lv>0 && ad<0x18000) continue;
+        o->x=(o->x+((dx>>9)*n*lv)/4)&((TW<<16)-1); o->y=(o->y+((dy>>9)*n*lv)/4)&((TW<<16)-1); }
     if(frames%900==0){ for(int s=0;s<2;s++){ int c=crit_count(s); if(c>0 && c<spc[s].maxpop){ for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_CRIT && po[i].var==s){
         for(int j=0;j<NPO;j++) if(!po[j].alive){ int k=j; spawn_crit(s, po[i].x+(1<<16), po[i].y, &k); break; } break; } } } }
 }
@@ -140,22 +148,46 @@ static const char *const talk_ln[NTALK]={"I HAVE SEEN THINGS. MOSTLY MUD.","DO N
 static const char *const bolt_quip[12]={"I DID NOT PACK A TOWEL.","MY SENSORS SAY: HILLS. GOOD WORK, SENSORS.","A CITY. TRY NOT TO GET US ARRESTED.","IT IS NIGHT. MY NIGHT MODE IS JUST ME, DARKER.",
     "IT RAINS HERE. I AM TIN. THIS IS A PROBLEM.","SNOW. I HAVE DECIDED I LIKE SNOW.","DUST. IN MY GEARS. LOVELY.","THE LOCALS LOOK NICE. THE LOCALS LOOK AT US.",
     "I SMELL SOUP. I CANNOT SMELL.","GRAVITY FEELS WRONG. OR I AM TIRED.","THE CREATURES HERE HAVE OPINIONS ABOUT US.","HOME WAS LIKE THIS. BEFORE THE FALL. I THINK."};
-static void planet_card(volatile u16 *pg){                                              // on arrival: name, what it is known for, its DNA, Bolt's two cents
-    char l1[48], l2[48], l3[48]; const char *ln[4];
+static void scan_text(char *b){                                                         // SCAN: gravity, temperature, day length (silly on weird worlds)
+    int gr=35+wd.grav*35; if(WL(MW_ZEROG)) gr=0; if(WL(MW_GIANTS)) gr*=2; if(WL(MW_SPIKES)) gr+=100+WL(MW_SPIKES)*10;
+    int tc = wd.sand ? 38 : wd.snow ? -12 : 18; if(wd.hour==2) tc-=14; else if(wd.hour==1) tc-=5; if(wd.weather==2) tc-=20;
+    tc += WL(MW_HEAT)*40 - WL(MW_FROST)*12 + (int)(wd.tseed%11) - 5; if(WL(MW_VOID)) tc=-270;
+    int day = 6+(int)((wd.tseed>>8)%70);
+    scpy(b,"SCAN: ");
+    if(WL(MW_GLITCH)) scat(b,"GRAVITY NAN  TEMP ERR  DAY ???");
+    else { scat(b,"GRAVITY "); ncat(b,gr/100); scat(b,"."); if(gr%100<10) scat(b,"0"); ncat(b,gr%100); scat(b,"G  TEMP "); ncat(b,tc); scat(b,"C  DAY ");
+        if(WL(MW_TINY)){ ncat(b,60-WL(MW_TINY)*2); scat(b," MIN"); } else { ncat(b,day); scat(b,"H"); } }
+}
+static void give_marks(char *out){                                                      // a weird world may change you: for a while, or (rarely) forever
+    out[0]=0; int given=0;
+    for(int k=0;k<wd.ntr && given<2;k++){ if(rndi(2)) continue; int lv=wd.tr[k]/NMW+1;
+        int good = rndi(100)<70; int mk = good ? rndi(MK_GOOD) : MK_GOOD+rndi(NMK-MK_GOOD);
+        int perm = rndi(100) < 6+lv && (good || rndi(3)==0);
+        if(perm){ if((mark_perm>>mk)&1) continue; mark_perm|=1u<<mk; } else mark_t[mk]=60+lv*15;
+        if(out[0]) scat(out,". "); scat(out, perm?"FOREVER ":""); scat(out,mk_name[mk]); if(!perm){ scat(out," "); ncat(out,(60+lv*15)/60); scat(out,"M"); } given++; }
+    if(given){ recalc(); save_game(); }
+}
+static void planet_card(volatile u16 *pg){                                              // on arrival: name, what it is known for, its DNA, a scan, Bolt's two cents
+    char l1[48], l2[48], l3[48], sc[48]; const char *ln[8];
     scpy(l1,"KNOWN FOR: "); scat(l1,tagline[wd.tagline]);
     scpy(l2,style_name[wd.style]); scat(l2,". "); scat(l2,hour_name[wd.hour]); scat(l2,". "); scat(l2,weather_name[wd.weather]); scat(l2,".");
     if(wd.city) scat(l2, wd.csize>=2 ? " A CITY." : " A TOWN.");
     scpy(l3,"LIFE: "); ncat(l3,spc[0].pop); scat(l3," "); scat(l3,spc[0].name); scat(l3,"S, "); ncat(l3,spc[1].pop); scat(l3," "); scat(l3,spc[1].name); scat(l3,"S");
+    scan_text(sc);
     int q = wd.weather==1 ? 4 : wd.weather==2 ? 5 : wd.weather==3 ? 6 : wd.hour==2 ? 3 : wd.city ? 2 : wd.grav!=1 ? 9 : (wd.tseed%3)==0 ? 0 : (wd.tseed%3)==1 ? 1 : 10;
     if(!endless && zone==0) q=11;
-    ln[0]=l1; ln[1]=l2; ln[2]=l3; ln[3]=bolt_quip[q];
-    if(wd.weird){ static const char *const wn[8]={"GLITCH WORLD: THIS PLANET SHOULD NOT EXIST","RAINBOW WORLD: THE GROUND WILL NOT HOLD STILL","TINY WORLD: YOU CAN SEE IT CURVE","SPIKE WORLD: NEEDLES TO THE SKY",
-            "GIANT WORLD: EVERYTHING IS ENORMOUS","ZERO-G WORLD: YOU BOUNCE. A LOT.","GOLD WORLD: THE DIRT IS SHINY","VOID WORLD: NEON IN THE DARK"};
-        static const char *const wq[8]={"BOLT: MY SENSORS SAY... ERROR. ERROR. HELLO?","BOLT: I FEEL SICK. I DO NOT HAVE A STOMACH.","BOLT: I CAN SEE MY OWN BACK FROM HERE.","BOLT: DO NOT SIT DOWN.",
-            "BOLT: I FEEL SMALL. SMALLER. TINY. HELP.","BOLT: WHEEEEEE. SORRY. WHEEEE.","BOLT: WE ARE RICH. DO NOT TELL ANYONE.","BOLT: I AM NOT SCARED. YOU ARE SCARED."};
-        weird_seen++; ln[0]=wn[wd.weird-1]; ln[3]=wq[wd.weird-1]; static char tl[32]; scpy(tl,"??? "); scat(tl,world_name()); scat(tl," ???");
-        static char l4[40]; scpy(l4,"A RELIC SHRINE IS HIDDEN HERE. FIND IT!"); const char *l5[5]={ln[0],ln[1],ln[2],l4,ln[3]}; sfx(6); card(pg,tl,l5,5); return; }
-    card(pg,world_name(),ln,4);
+    if(wd.weird){
+        static char ta[56], tb[56], mk[56], q2[48], tl[32]; char nb[28]; ta[0]=tb[0]=0;
+        for(int k=0;k<wd.ntr;k++){ trait_name(wd.tr[k],nb); char *d = k<2 ? ta : tb; if(d[0]) scat(d," + "); scat(d,nb); }
+        weird_seen++; give_marks(mk);
+        scpy(tl,"??? "); scat(tl,world_name()); scat(tl," ???");
+        scpy(q2,"BOLT: "); scat(q2,mw_quip[wd.tr[0]%NMW]);
+        int n=0; ln[n++]=ta; if(tb[0]) ln[n++]=tb; ln[n++]=sc; ln[n++]=l3;
+        static char mk2[60]; if(mk[0]){ scpy(mk2,"IT CHANGED YOU: "); scat(mk2,mk); mk2[52]=0; ln[n++]=mk2; }
+        ln[n++]="A RELIC SHRINE IS HIDDEN HERE. FIND IT!"; ln[n++]=q2;
+        sfx(6); card(pg,tl,ln,n); return; }
+    ln[0]=l1; ln[1]=l2; ln[2]=sc; ln[3]=l3; ln[4]=bolt_quip[q];
+    card(pg,world_name(),ln,5);
 }
 static void local_talk(PObj *o){
     volatile u16 *pg=VISPG; const char *ln[2]; char g[40];

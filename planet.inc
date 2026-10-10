@@ -46,6 +46,11 @@ static void heading_rays(void){
     for(int c=0;c<120;c++){ rayvx[c]=(s16)(hsn + ((hcs*raydx[c])>>8)); rayvy[c]=(s16)(hcs - ((hsn*raydx[c])>>8)); }
 }
 static int pw_h=0, pw_v=0, pw_step=0, mine_t=0;
+IWRAM_DATA static s8 wob64[64];                            // WOBBLE: how far each spot of the hills is breathing this frame
+static int g_nst=NSTEP, g_wob=0, g_fog=0;                  // FOG: how far the view reaches; WOBBLE on or off
+static u16 gbase[16], skybase[8];                          // the ground and sky colours before the animated traits touch them
+static int tiny_sh(void){ return WL(MW_TINY) ? 14 - WL(MW_TINY)/7 : 15; }            // TINY PLANET: the horizon falls away faster
+static s32 tiny_sub(void){ return WL(MW_TINY) ? ((cam_back()>>8)*(cam_back()>>8))>>tiny_sh() : 0; }
 static void pknock(s32 dx, s32 dy, int k){                    // push the bug away along (dx,dy) (map direction, bug minus enemy), in walk-input terms
     s32 side=((dx>>8)*hcs - (dy>>8)*hsn), fwd=((dx>>8)*hsn + (dy>>8)*hcs);
     pw_h = side>0 ? k : side<0 ? -k : 0; pw_v = fwd>0 ? -k*3/5 : fwd<0 ? k*3/5 : 0; }
@@ -77,8 +82,16 @@ static void planet_palette(void){
     BG_PAL[74]=wd.road; BG_PAL[75]=lift15(wd.road,8); BG_PAL[80]=lift15(wd.road,5); BG_PAL[81]=lift15(wd.road,3);
     BG_PAL[82]=rgb15(220,200,140); BG_PAL[83]=rgb15(236,220,160); BG_PAL[84]=rgb15(250,250,255); BG_PAL[85]=rgb15(210,220,240); BG_PAL[86]=rgb15(236,240,250); BG_PAL[87]=rgb15(200,210,235);
     if(wd.hour==2) for(int i=64;i<88;i++) BG_PAL[i]=dim15(BG_PAL[i],9);
-    if(wd.weird==7) for(int i=0;i<16;i++) BG_PAL[GND_B+i]=rgb15(60+i*12,40+i*10,i*3);                   // GOLD WORLD
-    if(wd.weird==8){ for(int i=0;i<16;i++) BG_PAL[GND_B+i]= (i&3)==3 ? rgb15(80,255,230) : rgb15(10+i,0,20+i*3); for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=0; }   // VOID WORLD: neon in the dark
+    if(WL(MW_METAL)) for(int i=0;i<16;i++) BG_PAL[GND_B+i] = i<8 ? shade15(wcol[MW_METAL],4+i) : lift15(wcol[MW_METAL],(i-8)*2);   // METAL GROUND
+    if(WL(MW_VOID)){ for(int i=0;i<16;i++) BG_PAL[GND_B+i]= (i&3)==3 ? wcol[MW_VOID] : rgb15(10+i,0,20+i*3); for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=0; }   // VOID: neon in the dark
+    if(WL(MW_MIRROR)) for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=BG_PAL[GND_B+15-i*2];                                   // MIRROR SKY: the sky is the ground
+    if(WL(MW_HEAT)) for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=lerp15(BG_PAL[SKY_B+i],rgb15(255,60,20),WL(MW_HEAT)/2);
+    if(WL(MW_FROST)) for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=lerp15(BG_PAL[SKY_B+i],rgb15(210,235,255),WL(MW_FROST)/2);
+    BG_PAL[88]=wcol[MW_SUNS]; BG_PAL[89]=lift15(wcol[MW_SUNS],10); BG_PAL[90]=wcol[MW_RINGS]; BG_PAL[91]=lift15(wcol[MW_MOONS],6); BG_PAL[92]=shade15(wcol[MW_MOONS],9); BG_PAL[93]=lift15(wcol[MW_RINGS],8); BG_PAL[94]=rgb15(255,240,200);
+    if(WL(MW_NEGATIVE)) for(int i=8;i<96;i++) if(i<30||i>=40) BG_PAL[i]=lerp15(BG_PAL[i],BG_PAL[i]^0x7FFF,6+WL(MW_NEGATIVE)/3);       // NEGATIVE: colours turn inside out
+    if(WL(MW_SEPIA)) for(int i=8;i<96;i++){ if(i>=30&&i<40) continue; u16 c=BG_PAL[i]; int gy=((c&31)+((c>>5)&31)+((c>>10)&31))*8/3;        // OLD PHOTO: brown and faded
+        BG_PAL[i]=lerp15(c,rgb15(gy*11/10,gy,gy*7/10),6+WL(MW_SEPIA)/3); }
+    for(int i=0;i<16;i++) gbase[i]=BG_PAL[GND_B+i]; for(int i=0;i<8;i++) skybase[i]=BG_PAL[SKY_B+i];
     obj_palette(); species_palette();
 }
 static void planet_draw_bg(void){                           // the title screen still uses the painted planet picture
@@ -124,7 +137,8 @@ static void gen_terrain(u32 seed){
     if(wd.style==4) for(int c=0;c<6+wd.rough*2;c++){ int cx=wr(TW), cy=wr(TW), r=5+wr(9);          // craters: a bowl with a raised rim
         for(int y=-r;y<=r;y++) for(int x=-r;x<=r;x++){ int d2=x*x+y*y; if(d2>r*r) continue; int i=((cy+y)&TMASK)*TW+((cx+x)&TMASK);
             int t=256-d2*256/(r*r); int v=hmap[i]-(70*t>>8)+(d2>r*r*2/3?25:0); hmap[i]=v<0?0:v>255?255:v; } }
-    if(wd.weird==4) for(int i=0;i<TW*TW;i++){ int v=hmap[i]; hmap[i] = v>150 ? 255 : v>120 ? (v-120)*8+15 : v/8; }   // SPIKE WORLD: needles
+    if(WL(MW_SPIKES)){ int th=175-WL(MW_SPIKES)*2; for(int i=0;i<TW*TW;i++){ int v=hmap[i]; hmap[i] = v>th ? 255 : v>th-30 ? (v-th+30)*8+15 : v/8; } }   // SPIKES: needles
+    if(WL(MW_TERRACES)){ int st=6+WL(MW_TERRACES)*2; for(int i=0;i<TW*TW;i++) hmap[i]=(hmap[i]/st)*st; }                                      // TERRACES: giant stairs
     if(wd.cliffs) for(int i=0;i<TW*TW;i++){ int v=hmap[i]; if(v>120 && v<150) v = v<135 ? 120 : 150; hmap[i]=v; }   // a cliff line through the middle heights
     city_flatten();
     // a flat landing field at the start
@@ -143,9 +157,13 @@ static void gen_terrain(u32 seed){
         if(wd.twotone && ((hfine[((y+3)&HMASK)*HW+((x+5)&HMASK)]>>4)&1)) s+=2;        // patches of a second shade
         if(s<0) s=0; if(s>15) s=15; cmap[i]=GND_B+s;
         if(wd.sand && h<water_lv+8) cmap[i]=82+((x+y)&1);               // a sandy beach
-        if(wd.snow && h>200) cmap[i]=84+(((h-200)>>5)*2)+((bay4[((y&3)<<2)|(x&3)]>(h&15))?0:1); }   // snow caps
+        { int sl = WL(MW_FROST) ? 200-WL(MW_FROST)*5 : 200; if(wd.snow && h>sl){ int q=(h-sl)>>5; if(q>1) q=1; cmap[i]=84+q*2+((bay4[((y&3)<<2)|(x&3)]>(h&15))?0:1); } }   // snow caps (FROST brings them down)
+        if(cmap[i]>=GND_B && cmap[i]<GND_B+16){ int c=cmap[i];
+            if(WL(MW_STRIPES)){ int w=2+WL(MW_STRIPES)/2; if(((x+y)/w)&1){ c+=3; if(c>GND_B+15) c=GND_B+15; } }                          // STRIPES
+            if(WL(MW_CHECKER)){ int w=2+WL(MW_CHECKER)/2; if(((x/w)^(y/w))&1){ c-=4; if(c<GND_B) c=GND_B; } }                             // CHECKERS
+            cmap[i]=c; } }
     city_stamp();
-    if(wd.weird==1){ u32 r=wd.tseed; for(int b=0;b<900;b++){ r=hmix(r+b); int x=r&HMASK, y=(r>>8)&HMASK, w=2+((r>>16)&7), h=1+((r>>20)&3), c=40+((r>>24)%48);   // GLITCH: torn blocks of wrong colour
+    if(WL(MW_GLITCH)){ u32 r=wd.tseed; for(int b=0;b<200+WL(MW_GLITCH)*60;b++){ r=hmix(r+b); int x=r&HMASK, y=(r>>8)&HMASK, w=2+((r>>16)&7), h=1+((r>>20)&3), c=40+((r>>24)%48);   // GLITCH: torn blocks of wrong colour
         for(int j=0;j<h;j++) for(int i=0;i<w;i++) cmap[((y+j)&HMASK)*HW+((x+i)&HMASK)]=c; } }
 }
 static void place(PObj *o, int kind, int minr, int maxr){ o->kind=kind; o->alive=1; o->hp=3; int a=wr(256), r=minr+wr(maxr-minr+1); o->x=(64<<16)+cosx(a)*r*4; o->y=(64<<16)+sinx(a)*r*4; }
@@ -154,6 +172,8 @@ static s32 wrapd(s32 d){ return ((d + (64<<16)) & ((TW<<16)-1)) - (64<<16); }   
 static char tdbg[40];
 static void new_planet(void){
     water_lv = endless ? 30+wr(60) : (zone==1 ? 100 : zone==0||zone==3 ? 70 : zone==5 ? 10 : 45);
+    if(WL(MW_FLOOD)){ water_lv += WL(MW_FLOOD)*3; if(water_lv>92) water_lv=92; }                                   // FLOOD (the landing field stays dry)
+    if(WL(MW_DROUGHT)) water_lv=0;                                                                                // DROUGHT
     gen_terrain(wd.tseed);                                                              // the land comes from its own seed
     for(int i=0;i<NPO;i++) po[i].alive=0;
     int k=0;
@@ -199,23 +219,24 @@ static void planet_tables(void){
 }
 IWRAM static void render_planet(volatile u16 *pg){
     s32 cb=cam_back(); s32 cam_x = ppx - ((hsn*cb)>>8), cam_y = ppy - ((hcs*cb)>>8);
-    int csh = wd.weird==3 ? 12 : 15; s32 csub = wd.weird==3 ? ((cb>>8)*(cb>>8))>>12 : 0;   // TINY WORLD: the horizon falls away eight times faster (measured from the bug)
+    int csh = tiny_sh(); s32 csub = tiny_sub();                                     // TINY PLANET: the horizon falls away faster (measured from the bug)
     for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((z*z)>>(csh)) - csub;             // the world drops away: z*z/128 cells
         stp_base[i] = ((cam_h + curve) * stp_f[i])>>8; }                             // (8.8 cells) * (8.8 px/cell) >> 8 = 8.8 px
     u32 sparkle=frames;
     for(int c=0;c<120;c++){
         int ytop=160; s32 vx=rayvx[c], vy=rayvy[c]; int bin=0;
         volatile u16 *col=pg+c;
-        for(int i=0;i<NSTEP;i++){
+        for(int i=0;i<g_nst;i++){
             s32 z=stp_z[i];
             s32 mx = cam_x + vx*z, my = cam_y + vy*z;
             int ti = ((my>>15)&HMASK)*HW + ((mx>>15)&HMASK);                             // texel: half a cell
-            int h = hfine[ti];
+            int h = hfine[ti]; if(g_wob){ h += wob64[(i*3+c)&63]; if(h<0) h=0; if(h>255) h=255; }
             s32 hh = h*3;                                                              // 8.8 cells
             int y = PHZ + ((stp_base[i] - ((hh*stp_f[i])>>8))>>8);
             if(y<ytop){
                 int ix = cmap[ti];
                 if(i<NEAR_STEPS && ix>=GND_B+1 && ix<GND_B+15) ix += gtex[(((my>>11)&15)<<4)|((mx>>11)&15)];    // grass texture up close
+                if(g_fog && i>=g_nst-6) ix=SKY_B+7-((g_nst-i)>>1);                                // FOG: the far ground fades into the mist
                 if(ix<GND_B && ((((c+sparkle)*7+i*3)&31)==0)) ix=WAT_B+7;              // sparkles on the water
                 u16 p2=ix|(ix<<8);
                 int y0 = y<18 ? 18 : y;
@@ -245,6 +266,44 @@ static void show_msg(const char *s){ int n=0; while(s[n] && n<39){ msg[n]=s[n]; 
 
 // ---------------------------------------------------------------- one frame on the surface
 static int p_last=0;
+static void sky_put(volatile u16 *pg, int c, int y, int ix){                            // paint one pixel pair, only where the sky shows
+    if(c<0||c>=120||y<19||y>=150) return; int v=pg[y*120+c]&0xFF; if((v>=SKY_B && v<SKY_B+8) || v==4 || v==5 || v==0) pg[y*120+c]=ix|(ix<<8); }
+static void sky_decor(volatile u16 *pg){
+    int ho=(heading*120)>>10;
+    if(WL(MW_SUNS)){ int ns=2+WL(MW_SUNS)/7, r=3+WL(MW_SUNS)/4;                         // SUNS: two to five of them
+        for(int k=0;k<ns;k++){ int cx=(20+k*29+120-ho)%120, cy=30+k*9;
+            for(int dy=-r;dy<=r;dy++) for(int dx=-r;dx<=r;dx++){ int d=dx*dx*4+dy*dy; if(d<=r*r) sky_put(pg,cx+dx,cy+dy, d<r*r/3?94:d<r*r*2/3?89:88); } } }
+    if(WL(MW_MOONS)){ int nm=1+WL(MW_MOONS)/5;                                          // MOONS
+        for(int k=0;k<nm;k++){ int cx=(k*23+60+120-ho)%120, cy=24+(k*13)%34, r=2+(k%3);
+            for(int dy=-r;dy<=r;dy++) for(int dx=-r;dx<=r;dx++){ int d=dx*dx*4+dy*dy; if(d<=r*r) sky_put(pg,cx+dx,cy+dy, dx>0?92:91); } } }
+    if(WL(MW_RINGS)){ int t=WL(MW_RINGS);                                               // RINGS: a band across the sky
+        for(int c=0;c<120;c++){ int dc=((c+ho)%120)-60; int y=26+t/2+dc*dc*(4+t/4)/900; sky_put(pg,c,y,90); sky_put(pg,c,y+1,93); if(t>12) sky_put(pg,c,y+3,90); } }
+    if(WL(MW_METEOR)){ int t=(frames*3)%200; int x0=(frames/67*37)%120;                 // METEORS: streaks
+        for(int k=0;k<8;k++) sky_put(pg,(x0+t/2+k)%120,20+t/3+k,94); }
+}
+static void weird_frame(int n){
+    if(!wd.weird){ g_nst=NSTEP; g_wob=0; g_fog=0; return; }
+    g_fog = WL(MW_FOG)!=0; g_nst = g_fog ? NSTEP-WL(MW_FOG) : NSTEP; if(g_nst<22) g_nst=22;
+    g_wob = WL(MW_WOBBLE)!=0;
+    if(g_wob){ int a=WL(MW_WOBBLE), sp=2+a/4; for(int k=0;k<64;k++) wob64[k]=(s8)((sinx((k*8+frames*sp)&255)*a*3)>>14); }
+    if(WL(MW_RAINBOW)){ int every=1+(25-WL(MW_RAINBOW))/4; if(frames%every==0){                                     // RAINBOW: the ground's colours roll
+        if(WL(MW_RAINBOW)&1){ u16 c0=BG_PAL[GND_B]; for(int i=0;i<15;i++) BG_PAL[GND_B+i]=BG_PAL[GND_B+i+1]; BG_PAL[GND_B+15]=c0; }
+        else { u16 c0=BG_PAL[GND_B+15]; for(int i=15;i>0;i--) BG_PAL[GND_B+i]=BG_PAL[GND_B+i-1]; BG_PAL[GND_B]=c0; } } }
+    if(WL(MW_GLITCH)){ int every=16-WL(MW_GLITCH)/2; if(every<2) every=2; if(frames%every==0){ int k=rndi(8); BG_PAL[SKY_B+k]=rgb15(rndi(256),rndi(256),rndi(256)); } }   // GLITCH: the sky flickers
+    if(WL(MW_DISCO)){ int per=32-WL(MW_DISCO); if(frames%per==0){ int ph=(frames/per)&3;                                // DISCO
+        u16 dc = ph==0 ? wcol[MW_DISCO] : ph==1 ? rgb15(255,40,80) : ph==2 ? rgb15(40,255,120) : rgb15(60,120,255);
+        for(int i=0;i<16;i++) BG_PAL[GND_B+i]=lerp15(gbase[i],dc,4+WL(MW_DISCO)/3); } }
+    if(WL(MW_AURORA) && (frames&3)==0) for(int i=0;i<4;i++){ int s=sinx((frames*2+i*40)&255); int t=((s+16384)*(4+WL(MW_AURORA)/3))>>15; BG_PAL[SKY_B+i]=lerp15(skybase[i],wcol[MW_AURORA],t>16?16:t); }   // AURORA
+    if(WL(MW_SING)){ int every=100-WL(MW_SING)*3; if(frames%every==0){ static const u8 nt[4]={2,7,10,13}; sfx(nt[(frames/every)&3]); } }   // SINGING ROCKS
+    if(WL(MW_HEALING)){ int every=200-WL(MW_HEALING)*6; if(frames%every==0 && hearts<maxh){ hearts++; hud_now(); } }     // HEALING AIR
+    if(WL(MW_BADAIR)){ int every=260-WL(MW_BADAIR)*8; if(frames%every==0 && hearts>1){ hearts--; if(rndi(4)==0) show_msg("COUGH. THE AIR HERE IS BAD"); hud_now(); } }   // BAD AIR
+    if(WL(MW_HEAT)){ int every=240-WL(MW_HEAT)*7; if(frames%every==0 && food>0){ food--; } }                              // HEAT: you get hungry
+    if(WL(MW_METEOR)){ int every=720-WL(MW_METEOR)*25; if(frames%every==every-1){                                        // METEORS: one lands near you
+        int j=-1; for(int i=0;i<NPO;i++) if(!po[i].alive || po[i].kind>=O_PEBBLE){ j=i; break; }
+        if(j>=0){ int a=rndi(256), d=3+rndi(4); po[j].kind=O_ROCK; po[j].alive=1; po[j].hp=3; po[j].x=(ppx+cosx(a)*d*4)&((TW<<16)-1); po[j].y=(ppy+sinx(a)*d*4)&((TW<<16)-1);
+            sfx(12); show_msg("A METEOR LANDED! A CRYSTAL ROCK NEARBY"); } } }
+    (void)n;
+}
 static void planet_frame(void){
     u32 t_f0=TMR();
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
@@ -257,8 +316,11 @@ static void planet_frame(void){
         if(turn){ heading=(heading+turn*n*5/8)&1023; heading_rays(); }
     } else { if(HELD(K_LEFT)) facing=0; if(HELD(K_RIGHT)) facing=1; }
     for(int k=0;k<n;k++){
-        pw_h += th ? (th-pw_h)/4 + (th>pw_h?1:th<pw_h?-1:0) : -pw_h/3; pw_v += tv ? (tv-pw_v)/4 + (tv>pw_v?1:tv<pw_v?-1:0) : -pw_v/3;
-        s32 sp = 0x1600 + (wd.grav-1)*0x200; if(wd.weird==6) sp=sp*5/2;                  // ZERO-G WORLD: you bounce along                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
+        { int ph0=pw_h, pv0=pw_v, ik = WL(MW_ICE) ? 2+WL(MW_ICE)/3 : 0;                 // ICE: you keep sliding
+          pw_h += th ? (th-pw_h)/4 + (th>pw_h?1:th<pw_h?-1:0) : -pw_h/3; pw_v += tv ? (tv-pw_v)/4 + (tv>pw_v?1:tv<pw_v?-1:0) : -pw_v/3;
+          if(ik && (frames+k)%ik){ if(!th) pw_h=ph0; else pw_h=ph0+(pw_h-ph0)/2; if(!tv) pw_v=pv0; else pw_v=pv0+(pw_v-pv0)/2; } }
+        s32 sp = 0x1600 + (wd.grav-1)*0x200; if(WL(MW_ZEROG)) sp=sp*(14+WL(MW_ZEROG))/10;   // ZERO-G: you bounce along
+        if(WL(MW_STICKY)) sp=sp*10/(12+WL(MW_STICKY)); if(d_spd) sp=sp*(100+d_spd)/100;      // STICKY GROUND; your marks and gear                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
         if(hm_at(ppx,ppy)<water_lv) sp=sp*2/3;                                          // wading is slow
         s32 mvx=(pw_h*sp)>>4, mvy=(pw_v*sp)>>4;
         { s32 fwd=-mvy, side=mvx; mvx=((hsn*fwd)>>8)+((hcs*side)>>8); mvy=((hcs*fwd)>>8)-((hsn*side)>>8); }   // UP walks away from the camera (into the screen), in both views
@@ -277,7 +339,8 @@ static void planet_frame(void){
     // slugs crawl toward you
     for(int i=0;i<NPO;i++) if(po[i].kind==O_SLUG && po[i].alive){ PObj *o=&po[i]; s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y);
         s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
-        if(ad<(14<<16)){ o->x=(o->x+((dx>>7)*n))&((TW<<16)-1); o->y=(o->y+((dy>>7)*n))&((TW<<16)-1); }
+        if(ad<(14<<16)){ int sg = WL(MW_SHY) ? -1 : 1, ml = 8+WL(MW_ANGRY);                 // SHY LIFE runs away; ANGRY LIFE hurries
+            o->x=(o->x+sg*((dx>>7)*n)*ml/8)&((TW<<16)-1); o->y=(o->y+sg*((dy>>7)*n)*ml/8)&((TW<<16)-1); }
         if(ad<0x14000 && !invuln){ hurt(3+dlv()*2); if(invuln>20) show_msg("OUCH! A SLUG"); pknock(dx,dy,40); } }
     // what is next to you
     int best=-1; s32 bd=0x1A000;
@@ -339,8 +402,7 @@ static void planet_frame(void){
     if(msg_timer){ msg_timer-=n; if(msg_timer<0) msg_timer=0; }
     if(frames%30==0 && hud_sig()!=phud_sig) planet_hud();
     // ---- draw the world
-    if(wd.weird==2 && (frames&3)==0){ u16 c0=BG_PAL[GND_B]; for(int i=0;i<15;i++) BG_PAL[GND_B+i]=BG_PAL[GND_B+i+1]; BG_PAL[GND_B+15]=c0; }   // RAINBOW WORLD: the ground's colours roll
-    if(wd.weird==1 && (frames&15)==0){ int k=rndi(8); BG_PAL[SKY_B+k]=rgb15(rndi(256),rndi(256),rndi(256)); }                                   // GLITCH: the sky flickers
+    weird_frame(n);
     u32 t_r0=TMR(); render_planet(pg); u32 t_r1=TMR();
     if(msg_timer){ int L=textlen(msg); if(L<=29) text(pg,120-L*4,24,msg,C_WHITE,2); else stext(pg,120-L*2,26,msg,C_WHITE); }
 #ifdef TEST_FPS
@@ -352,7 +414,7 @@ static void planet_frame(void){
       if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
       if(race_on){ char rb[24]; scpy(rb,"RACE "); ncat(rb,race_t/60); scat(rb,"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/5"); stext(pg,4,151,rb,C_CYAN); }
       else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
-      weather_draw(pg);
+      weather_draw(pg); if(wd.weird) sky_decor(pg);
 #ifdef TEST_CITY
       stext(pg,4,140,tdbg,C_RED);
 #endif
@@ -367,16 +429,18 @@ static void planet_frame(void){
     oam_hide_all();
     int slot=0;
     s32 bug_sy;
-    { s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=((dz>>8)*(dz>>8))>>(wd.weird==3?12:15); if(wd.weird==3) curve-=((cam_back()>>8)*(cam_back()>>8))>>12;
+    { s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=(((dz>>8)*(dz>>8))>>tiny_sh()) - tiny_sub();
       bug_sy = PHZ + (((cam_h + curve - gh) * f)>>16); }
     if(!cam_fp){                                                                        // the bug, standing on the ground ahead of the camera
       int sy=bug_sy;
-      int bob = moved ? ((frames>>3)&1) : 0; if(wd.weird==6) bob += 6+(sinx((frames*3)&255)>>11);
+      int bob = moved ? ((frames>>3)&1) : 0; if(WL(MW_ZEROG)) bob += 3+WL(MW_ZEROG)/3+(sinx((frames*3)&255)>>11);
       int pvis = !(invuln && (frames&4));
       if(mine_t) mine_t--;
       int lean = moved ? 10 : (mine_t ? 24 : 0), sq = (moved && ((frames>>3)&1)) || mine_t ? 8 : 0;
       int up = tv<0 && !th;
-      set_affine(31, up ? 256 : facing? -128:128, up ? 0 : facing? lean:-lean, 0, up ? 256 : 128+sq);
+      int shr=WL(MW_SHRINK)*5;                                                          // SHRINK RAY: you are smaller
+      set_affine(31, up ? 256+shr*2 : facing? -(128+shr):128+shr, up ? 0 : facing? lean:-lean, 0, up ? 256+shr*2 : 128+sq+shr);
+      if(shr) sy += up ? 32-8192/(256+shr*2) : 16-2048/(128+shr);
       if(pvis){ shadow_oam[slot].a0 = ((up ? sy-96-bob : sy-32-bob)&255) | (1<<8)|(1<<9) | (up?(0<<14):(1<<14));
                 shadow_oam[slot].a1 = ((up ? 120-64 : 120-32)&511) | (31<<9) | (up?(3<<14):(2<<14));
                 shadow_oam[slot].a2 = (up ? T_BACK : bug_tile(moved && ((frames>>3)&1))) | BUG_BANK; slot++; }
@@ -416,7 +480,7 @@ static void planet_frame(void){
         s32 zc=dz>>8;                                                                  // 8.8 cells
         s32 f=(FOCP<<16)/zc;                                                           // 8.8 px per cell
         int sx = 120 + (s32)(((long long)dx*f)>>24);                                   // (16.16 cells * 8.8) >> 24 = px
-        s32 gh=ground_h(o->x,o->y); s32 curve=(zc*zc)>>(wd.weird==3?12:15); if(wd.weird==3) curve-=((cam_back()>>8)*(cam_back()>>8))>>12;
+        s32 gh=ground_h(o->x,o->y); s32 curve=((zc*zc)>>tiny_sh()) - tiny_sub();
         int sy = PHZ + (((cam_h + curve - gh) * f)>>16);                                // (8.8 cells * 8.8) >> 16 = px
         if(sx<-40||sx>280||sy<10||sy>190) continue;
         if(o->kind==O_SHIP){                                                           // your ship: the real 3D model, parked
@@ -438,7 +502,9 @@ static void planet_frame(void){
         int tl=tile_of[o->kind];
         if(o->kind==O_CRIT){ Species *sp=&spc[o->var]; tl = sp->body==0 ? T_HOPPER : sp->body==1 ? T_GRAZER : T_FLYER; pb=4+o->var;
             if(sp->body==2){ oy += (sinx((frames*6+order[k]*40)&255)>>13) - 10; } else if(sp->body==0 && (cvx[order[k]]||cvy[order[k]])) oy -= ((frames>>2)&1)*3;
-            if(sp->size==0 && m>2) m-=2; if(sp->size==2 && m<27) m+=2; if(wd.weird==5){ m+=8; if(m>27) m=27; } }
+            if(sp->size==0 && m>2) m-=2; if(sp->size==2 && m<27) m+=2; if(WL(MW_GIANTS)){ m+=2+WL(MW_GIANTS)/3; if(m>27) m=27; }
+            if(WL(MW_GHOSTS) && (((frames>>3)+order[k])%(2+(25-WL(MW_GHOSTS))/5))==0) continue; }                   // GHOSTS: creatures blink out
+        if(WL(MW_JUNGLE) && (o->kind==O_PLANT || (o->kind>=O_TREE && o->kind<=O_FLOWER) || o->kind==O_TUFT)){ m+=WL(MW_JUNGLE)/3; if(m>27) m=27; }   // JUNGLE: giant plants
         if(o->kind==O_LOCAL) tl = o->var ? T_LOCAL2 : T_LOCAL1;
         shadow_oam[slot].a0 = (oy&255) | (1<<8)|(1<<9) | (shape_of[o->kind]<<14);
         shadow_oam[slot].a1 = (ox&511) | (m<<9) | (size_of[o->kind]<<14);

@@ -104,8 +104,40 @@ static void name_of(u32 wn, char *b){
 // ---- planet DNA. Every world is grown from its own code: the shape of the land, the sea, the sky, the hour, the weather,
 // what grows there, whether a city stands on it, what it is known for. The parts multiply out to more than an unvigintillion
 // (10 to the 66th) different planets, and the galaxy keeps making new clusters of them for as long as you fly.
-typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u8 weird; u32 tseed, cseed; } WorldDNA;
+typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u8 weird, ntr; u16 tr[4]; u32 tseed, cseed; } WorldDNA;
 static WorldDNA wd;
+// ---- WEIRD TRAITS: 40 kinds of weirdness x 25 strengths = 1000 traits, each with its own name. A weird world (one in 111, out in the
+// galaxy) stacks 1 to 4 of them. wlv[kind] is how strong that kind is on this world (0 = not here, 1..25), wcol[kind] its colour.
+enum { MW_GLITCH, MW_RAINBOW, MW_TINY, MW_SPIKES, MW_GIANTS, MW_ZEROG, MW_METAL, MW_VOID, MW_METEOR, MW_MIRROR, MW_DISCO, MW_WOBBLE, MW_SHRINK, MW_JUNGLE,
+       MW_SHY, MW_ANGRY, MW_STICKY, MW_ICE, MW_SING, MW_SUNS, MW_RINGS, MW_STRIPES, MW_CHECKER, MW_FOG, MW_GHOSTS, MW_SWARM, MW_HEAT, MW_FROST, MW_FLOOD,
+       MW_DROUGHT, MW_NEGATIVE, MW_SEPIA, MW_MOONS, MW_AURORA, MW_LUCK, MW_HEALING, MW_BADAIR, MW_MAGNET, MW_SHYORE, MW_TERRACES, NMW };
+#define NTRAIT (NMW*25)
+static u8 wlv[NMW]; static u16 wcol[NMW];
+#define WL(m) (wlv[m])
+static const char *const mw_name[NMW]={"GLITCH","RAINBOW","TINY PLANET","SPIKES","GIANTS","ZERO-G","METAL GROUND","VOID","METEORS","MIRROR SKY","DISCO","WOBBLE","SHRINK RAY","JUNGLE",
+    "SHY LIFE","ANGRY LIFE","STICKY GROUND","ICE","SINGING ROCKS","SUNS","RINGS","STRIPES","CHECKERS","FOG","GHOSTS","SLUG SWARM","HEAT","FROST","FLOOD",
+    "DROUGHT","NEGATIVE","OLD PHOTO","MOONS","AURORA","LUCK","HEALING AIR","BAD AIR","MAGNET","SHY ORE","TERRACES"};
+static const char *const mw_adj[25]={"FAINT","MILD","SOFT","LAZY","GENTLE","ODD","RESTLESS","BUSY","STRONG","WILD","LOUD","GRUMPY","FIERCE","MAD","FURIOUS",
+    "FERAL","CRAZY","SAVAGE","EXTREME","INSANE","CHAOTIC","ABSURD","MONSTROUS","IMPOSSIBLE","FORBIDDEN"};
+static const char *const mw_quip[NMW]={"MY SENSORS SAY... ERROR. HELLO?","I FEEL SICK. I HAVE NO STOMACH.","I CAN SEE MY OWN BACK FROM HERE.","DO NOT SIT DOWN.","I FEEL SMALL. SMALLER. HELP.",
+    "WHEEEEE. SORRY. WHEEEEE.","WE ARE RICH. OR SHINY. OR BOTH.","I AM NOT SCARED. YOU ARE SCARED.","HEADS UP. NO, REALLY. UP.","THE SKY IS THE GROUND. GOOD LUCK.",
+    "I CANNOT DANCE. I AM DANCING.","THE HILLS ARE BREATHING. NORMAL.","YOU LOOK... COMPACT.","THE PLANTS ARE WINNING.","EVERYTHING RUNS FROM US. RUDE.",
+    "EVERYTHING HATES US. ALSO RUDE.","MY WHEELS ARE STUCK. SO ARE YOU.","WE ARE NOT WALKING. WE ARE SLIDING.","THE ROCKS ARE SINGING. OFF KEY.","TOO MANY SUNS. PICK ONE.",
+    "NICE RINGS. VERY FANCY PLANET.","WHO PAINTED THE GROUND?","IT IS A GAME BOARD. WE ARE THE PIECES.","I CANNOT SEE. THAT IS FINE. PROBABLY.","THE CREATURES BLINK OUT. SPOOKY.",
+    "SO. MANY. SLUGS.","IT IS HOT. I AM MELTING. A BIT.","MY BOLTS ARE FROZEN.","HOPE YOU CAN SWIM.","WHERE DID THE WATER GO?",
+    "THE COLOURS ARE BACKWARDS. OR WE ARE.","THIS PLANET LOOKS A HUNDRED YEARS OLD.","COUNT THE MOONS. I GOT BORED.","THE SKY IS DANCING. SHOW OFF.","I FEEL LUCKY. DO YOU FEEL LUCKY?",
+    "THE AIR HEALS. BREATHE DEEP.","DO NOT BREATHE. OR DO. QUICKLY.","THE ORE LIKES YOU.","THE ORE DOES NOT LIKE YOU.","STAIRS. GIANT STAIRS. EVERYWHERE."};
+static void trait_name(int id, char *b){ scpy(b,mw_adj[(id/NMW)%25]); scat(b," "); scat(b,mw_name[id%NMW]); }
+static u32 hmix(u32 h);
+static void traits_apply(void){ for(int m=0;m<NMW;m++){ wlv[m]=0; wcol[m]=0; }
+    for(int k=0;k<wd.ntr;k++){ int id=wd.tr[k]%NTRAIT, m=id%NMW, lv=id/NMW+1; if(lv>wlv[m]) wlv[m]=lv; u32 h=hmix(id*2654435761u+wd.tseed); wcol[m]=rgb15(60+(h&127)+((h>>21)&63),60+((h>>7)&127)+((h>>27)&31),60+((h>>14)&127)); } }
+// ---- MARKS: what a weird world can do to YOU. Some last a few minutes, a few last forever. Most of them help.
+enum { MK_SWIFT, MK_TOUGH, MK_LUCKY, MK_STRONG, MK_SHARP, MK_REGEN, MK_FULL, MK_THICK, MK_SLUGGISH, MK_FRAIL, MK_UNLUCKY, MK_WEAK, MK_HUNGRY, MK_DULL, NMK };
+#define MK_GOOD 8
+static const char *const mk_name[NMK]={"SWIFT","TOUGH","LUCKY","STRONG","SHARP","REGROWING","WELL FED","THICK SHELL","SLUGGISH","FRAIL","UNLUCKY","WEAK","HUNGRY","DULL"};
+static const char *const mk_what[NMK]={"+15% SPEED","+8 MAX HEALTH","+15% GOLD","+3 DAMAGE","+5% CRIT","HEALS OVER TIME","HUNGER IS SLOWER","+3 DEFENCE","-15% SPEED","-6 MAX HEALTH","-10% GOLD","-2 DAMAGE","HUNGER IS FASTER","-4% CRIT"};
+static u32 mark_perm=0; static int mark_t[NMK];
+static int mark_on(int k){ return ((mark_perm>>k)&1) || mark_t[k]>0; }
 static const char *const style_name[8]={"ROLLING HILLS","MESAS","DUNES","ISLANDS","CRATERS","CANYONS","RIDGES","PLAINS"};
 static const char *const hour_name[3]={"DAY","DUSK","NIGHT"};
 static const char *const weather_name[4]={"CLEAR SKIES","RAIN","SNOW","DUST"};
@@ -120,7 +152,7 @@ static void story_dna(int z){                                                   
     static const u8 sd[6][8]={{0,1,0,0,1,1,1,0},{3,1,0,1,0,1,0,0},{1,2,1,0,1,1,2,1},{6,2,2,0,2,1,2,0},{4,1,0,3,1,0,0,0},{5,3,1,0,1,1,3,1}};  // style rough hour weather grav city csize ruins
     memset(&wd,0,sizeof wd);
     wd.style=sd[z][0]; wd.rough=sd[z][1]; wd.hour=sd[z][2]; wd.weather=sd[z][3]; wd.grav=sd[z][4]; wd.city=sd[z][5]; wd.csize=sd[z][6]; wd.ruins=sd[z][7];
-    wd.fossils=1+z/2; wd.beetles=z>=2 ? 1+z/2 : 0; wd.tagline=(z*7+3)%NTAG; wd.fauna=z%6; wd.tseed=(u32)z*977+13; wd.cseed=(u32)z*31+5;
+    wd.fossils=1+z/2; wd.beetles=z>=2 ? 1+z/2 : 0; wd.tagline=(z*7+3)%NTAG; wd.fauna=z%6; for(int m=0;m<NMW;m++) wlv[m]=0; wd.tseed=(u32)z*977+13; wd.cseed=(u32)z*31+5;
     static const u16 bl[6]={C15(150,140,120),C15(90,120,160),C15(170,80,80),C15(90,70,140),C15(190,150,70),C15(150,90,60)};
     wd.bld=bl[z]; wd.sky=C15(120,170,230); wd.road=C15(60,56,60); wd.snow=z==3; wd.sand=z==1||z==2; wd.alt=0;
     for(int i=0;i<4;i++) wd.flora[i]=3;
@@ -147,13 +179,22 @@ static void make_world(void){                                   // three indepen
     wd.bld=rgb15(60+wr(160),60+wr(160),60+wr(160)); wd.sky=rgb15(40+wr(200),60+wr(180),100+wr(156)); wd.road=rgb15(30+wr(60),30+wr(60),30+wr(60));
     for(int i=0;i<4;i++) wd.flora[i]=wr(8);
     wd.tseed = B; wd.cseed = C;
-    // a very weird world: about one planet in 777, and only out in the galaxy. It bends the rules (see WEIRD in planet.inc)
-    { u32 F = gal ? amix(galaxy_seed^0xF6u,cur_sys) : base*0x2545F491u; wd.weird = (F%777u)==0 ? 1+(int)((F>>16)%8u) : 0;
+    // a weird world: one planet in 111, only out in the galaxy. It stacks 1 to 4 of the 1000 traits
+    { u32 F = gal ? amix(galaxy_seed^0xF6u,cur_sys) : base*0x2545F491u; wd.ntr=0;
+      if((F%111u)==0 && gal){ int n = 1 + ((F>>8)%3u==0) + ((F>>12)%5u==0) + ((F>>20)%9u==0); u32 h=F;
+          for(int t=0;t<40 && wd.ntr<n;t++){ h=hmix(h+0x9E3779B9u); int id=(int)(h%NTRAIT), m=id%NMW, ok=1;
+              for(int j=0;j<wd.ntr;j++){ int mj=wd.tr[j]%NMW; if(mj==m || (mj==MW_SHY&&m==MW_ANGRY) || (mj==MW_ANGRY&&m==MW_SHY) || (mj==MW_FLOOD&&m==MW_DROUGHT) || (mj==MW_DROUGHT&&m==MW_FLOOD) || (mj==MW_MAGNET&&m==MW_SHYORE) || (mj==MW_SHYORE&&m==MW_MAGNET)) ok=0; }
+              if(ok) wd.tr[wd.ntr++]=(u16)id; } }
 #ifdef TEST_WEIRD
-      wd.weird=TEST_WEIRD;
+      wd.ntr=1; wd.tr[0]=TEST_WEIRD;
 #endif
-      if(wd.weird==1){ static const char gl[8]={'#','%','&','@','?','!','*','$'}; for(int i=0;w_name[i];i++) if(w_name[i]!=' ' && (i%3)==1) w_name[i]=gl[(F>>i)&7]; }   // GLITCH: even its name is broken
-      if(wd.weird==4){ wd.style=6; wd.rough=3; } if(wd.weird==8){ wd.hour=2; wd.weather=0; } if(wd.weird==5){ wd.city=0; } }
+#ifdef TEST_WEIRD2
+      wd.ntr=2; wd.tr[1]=TEST_WEIRD2;
+#endif
+      wd.weird=wd.ntr; traits_apply();
+      if(WL(MW_GLITCH)){ static const char gl[8]={'#','%','&','@','?','!','*','$'}; for(int i=0;w_name[i];i++) if(w_name[i]!=' ' && (i%3)==1) w_name[i]=gl[(F>>i)&7]; }   // GLITCH: even its name is broken
+      if(WL(MW_SPIKES)){ wd.style=6; wd.rough=3; } if(WL(MW_VOID)){ wd.hour=2; wd.weather=0; } if(WL(MW_GIANTS)) wd.city=0;
+      if(WL(MW_FROST)){ wd.snow=1; if(WL(MW_FROST)>12) wd.weather=2; } if(WL(MW_HEAT)>15) wd.weather=3; }
 }
 static const char *world_name(void){ return endless ? w_name : tint_name[zone]; }
 
@@ -236,11 +277,13 @@ static void recalc(void){
     gold_find=100; d_dmg=0; d_def=0; d_crit=0; d_spd=0; d_regen=0; d_reflect=0; d_vamp=0; d_haste=0; d_sting=0; d_fire=0; d_light=0; d_venom=0;
     maxh = 20 + st_vit*3 + level*2 + have_bug[BUG_LADY]*5;
     { int rn=0; for(u32 r=relic_bits;r;r>>=1) rn+=r&1; gold_find+=rn*5; maxh+=rn*2; }     // every legendary relic: +5% gold, +2 max health, forever
+    if(mark_on(MK_TOUGH)) maxh+=8; if(mark_on(MK_FRAIL)) maxh-=6; if(mark_on(MK_LUCKY)) gold_find+=15; if(mark_on(MK_UNLUCKY)) gold_find-=10;
     maxmp = 5 + st_mag*3;
     gear_affix(&eqw); gear_affix(&eqa); gear_affix(&eqc);
-    d_dmg += 2 + st_str/2 + weapon_base(&eqw);
-    d_def += st_vit/4 + armor_base(&eqa);
-    d_crit += st_dex;
+    d_dmg += 2 + st_str/2 + weapon_base(&eqw) + (mark_on(MK_STRONG)?3:0) - (mark_on(MK_WEAK)?2:0);
+    d_def += st_vit/4 + armor_base(&eqa) + (mark_on(MK_THICK)?3:0);
+    d_crit += st_dex + (mark_on(MK_SHARP)?5:0) - (mark_on(MK_DULL)?4:0);
+    if(mark_on(MK_SWIFT)) d_spd+=15; if(mark_on(MK_SLUGGISH)) d_spd-=15; if(mark_on(MK_REGEN)) d_regen+=1;
     d_haste += st_dex/6;
     d_sting += have_bug[BUG_BEE]*2;
     if(eqa.it==IT_SHELL && eqa.sub==3 && eqa.rar!=R_UNIQUE) d_spd -= 15;        // the sticky shell slows you
@@ -402,6 +445,7 @@ static void hurt(int n){
 }
 static void hunger_tick(int every){
     if(opt_easy) every+=every/2; else if(opt_diff==2) every=every*2/3;
+    if(mark_on(MK_FULL)) every+=every/2; if(mark_on(MK_HUNGRY)) every=every*2/3;
     if(++hunger_t < every) return; hunger_t=0;
     if(food>0){ food--; if(food==20) say("YOU ARE HUNGRY"); if(food%5==0) hud_now(); }
     else { hearts-=1+maxh/20; say("STARVING! EAT SOMETHING"); hud_now(); }
@@ -500,7 +544,10 @@ static int bite_power(int *crit){
     if(d_vamp && hearts<maxh){ hearts+=d_vamp; }
     return p;
 }
-static void tick_timers(void){ if(speed_t) speed_t--; if(strong_t) strong_t--; if(dizzy_t) dizzy_t--; if(stun_t) stun_t--; if(shield_t) shield_t--;
+static void mark_tick(void){                                   // once a second: passing marks run down
+    static int last=0; if((u32)(vbl_count-last)<60) return; last=vbl_count;
+    for(int k=0;k<NMK;k++) if(mark_t[k]>0 && --mark_t[k]==0){ recalc(); char b[40]; scpy(b,mk_name[k]); scat(b," WORE OFF"); say(b); hud_now(); } }
+static void tick_timers(void){ mark_tick(); if(speed_t) speed_t--; if(strong_t) strong_t--; if(dizzy_t) dizzy_t--; if(stun_t) stun_t--; if(shield_t) shield_t--;
     if(pet_form_t && --pet_form_t==0){ say("BUDDY CHANGES BACK"); pet_form=0; } }
 
 // ---------------------------------------------------------------- experience and levels
