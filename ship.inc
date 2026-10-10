@@ -33,6 +33,11 @@ static int ship_accel16(void){ int a=ship_thrust()*24/ship_mass(); if(a<4) a=4; 
 EW static s16 shv[SV_MAX*3]; EW static u8 she[SE_MAX*3]; static int snv, sne, snf;
 typedef struct { u8 n, grp, two; u8 v[8]; } Face;          // grp 0 paint, 1 trim. two: visible from both sides (wings, fins)
 EW static Face shf[SF_MAX];
+EW static s16 shn[SF_MAX*3];                 // per face: unit normal in model space, 256 = 1.0
+EW static u8 sh_ord[SF_MAX]; static int sh_ord_n=-1;   // the draw order is kept from frame to frame: it barely changes, so re-sorting it is almost free
+EW static u32 sh_rt[256]; static int sh_rt_ok=0;       // 65536/i, so lines and polygon edges need no division
+EW static s16 sh_l[160], sh_r[160];                    // polygon fill: the left and right end of every row
+static void sh_rt_init(void){ sh_rt[0]=0; for(int i=1;i<256;i++) sh_rt[i]=(65536+i/2)/i; sh_rt_ok=1; }
 static int sv_add(int x,int y,int z){ if(snv>=SV_MAX) return snv-1; shv[snv*3]=x; shv[snv*3+1]=y; shv[snv*3+2]=z; return snv++; }
 static void se_add(int a,int b,int c){ if(sne>=SE_MAX) return; she[sne*3]=a; she[sne*3+1]=b; she[sne*3+2]=c; sne++; }
 static void sf_add(int grp,int two,int n,int a,int b,int c,int d,int e,int f,int g,int h){ if(snf>=SF_MAX) return; Face *F=&shf[snf++]; F->n=n; F->grp=grp; F->two=two; int vv[8]={a,b,c,d,e,f,g,h}; for(int i=0;i<8;i++) F->v[i]=vv[i]; }
@@ -90,6 +95,14 @@ static void ship_build_model(void){
     if(ship.decal==1){ int a=sv_add(0,hh+1,nose-8), b=sv_add(0,hh+1,tail+4); se_add(a,b,1); int c=sv_add(-4,hh+1,nose-12), d=sv_add(-4,hh+1,tail+4); se_add(c,d,1); }
     else if(ship.decal==2){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*hw,2,nose-15), b=sv_add(sx*hw,2,tail+6); se_add(a,b,2); } }
     else if(ship.decal==3){ for(int k=0;k<3;k++){ int z=tail+20+k*LX(22); int a=sv_add(0,hh,z), b=sv_add(0,hh+10,z-6); se_add(a,b,1); } }
+    for(int f=0;f<snf;f++){                                                       // each face's unit normal (256 = 1.0), worked out once here instead of every frame
+        const Face *F=&shf[f]; const s16 *A=&shv[F->v[0]*3], *B=&shv[F->v[1]*3], *C=&shv[F->v[2]*3];
+        s32 ux=B[0]-A[0], uy=B[1]-A[1], uz=B[2]-A[2], vx=C[0]-A[0], vy=C[1]-A[1], vz=C[2]-A[2];
+        s32 nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+        s32 len=isqrt((u32)((nx>>4)*(nx>>4)+(ny>>4)*(ny>>4)+(nz>>4)*(nz>>4)))<<4;
+        if(len<1){ shn[f*3]=shn[f*3+1]=shn[f*3+2]=0; } else { shn[f*3]=(s16)(nx*256/len); shn[f*3+1]=(s16)(ny*256/len); shn[f*3+2]=(s16)(nz*256/len); }
+    }
+    sh_ord_n=-1;                                                                  // the face order is rebuilt on the next draw
 }
 // ---- drawing it: solid, lit, with dark outlines. paint shades live in BG palette 200..207, trim in 208..215
 #define SHP_PAINT 200
@@ -99,43 +112,58 @@ static void ship_ramps(void){ for(int k=0;k<8;k++){ BG_PAL[SHP_PAINT+k] = k<4 ? 
 static void linep(volatile u16 *pg, int x0, int y0, int x1, int y1, int c, int cx0, int cy0, int cx1, int cy1){
     int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(n>300) return;
     if(!n){ if(x0>=cx0&&x0<cx1&&y0>=cy0&&y0<cy1) pix(pg,x0,y0,c); return; }
-    s32 fx=x0<<16, fy=y0<<16, sx=(dx<<16)/n, sy=(dy<<16)/n;
-    for(int i=0;i<=n;i++){ int x=(fx+0x8000)>>16, y=(fy+0x8000)>>16; if(x>=cx0&&x<cx1&&y>=cy0&&y<cy1) pix(pg,x,y,c); fx+=sx; fy+=sy; }
+    s32 sx, sy; if(n<256){ sx=dx*(s32)sh_rt[n]; sy=dy*(s32)sh_rt[n]; } else { sx=(dx<<16)/n; sy=(dy<<16)/n; }
+    s32 fx=(x0<<16)+0x8000, fy=(y0<<16)+0x8000; u16 lo=(u16)c, hi=(u16)(c<<8);
+    if(x0>=cx0&&x0<cx1&&x1>=cx0&&x1<cx1&&y0>=cy0&&y0<cy1&&y1>=cy0&&y1<cy1){        // both ends inside: no clipping per pixel
+        for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|hi; else *p=(*p&0xFF00)|lo; fx+=sx; fy+=sy; }
+        return; }
+    for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; if(x>=cx0&&x<cx1&&y>=cy0&&y<cy1){ volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|hi; else *p=(*p&0xFF00)|lo; } fx+=sx; fy+=sy; }
+}
+static void hspan(volatile u16 *pg, int y, int x0, int x1, int c){                 // a row of pixels, x0..x1 inclusive, written two at a time
+    volatile u16 *row=pg+y*120;
+    if(x0&1){ volatile u16 *p=row+(x0>>1); *p=(*p&0x00FF)|(c<<8); x0++; }
+    if(x1>=x0 && !(x1&1)){ volatile u16 *p=row+(x1>>1); *p=(*p&0xFF00)|c; x1--; }
+    u16 cc=(u16)(c|(c<<8)); for(int k=x0>>1, e=x1>>1; k<=e && x0<=x1; k++) row[k]=cc;
 }
 static void polyfill(volatile u16 *pg, const int *px, const int *py, int n, int c, int cx0, int cy0, int cx1, int cy1){
     int ymin=py[0], ymax=py[0]; for(int i=1;i<n;i++){ if(py[i]<ymin) ymin=py[i]; if(py[i]>ymax) ymax=py[i]; }
-    if(ymin<cy0) ymin=cy0; if(ymax>=cy1) ymax=cy1-1;
-    for(int y=ymin;y<=ymax;y++){ int xl=9999, xr=-9999;
-        for(int i=0;i<n;i++){ int j=(i+1)%n; int ya=py[i], yb=py[j]; if(ya==yb) continue; if((y<ya && y<yb) || (y>ya && y>yb)) continue;
-            int x = px[i] + (y-ya)*(px[j]-px[i])/(yb-ya); if(x<xl) xl=x; if(x>xr) xr=x; }
-        if(xl>xr) continue; if(xl<cx0) xl=cx0; if(xr>=cx1) xr=cx1-1; if(xl>xr) continue;
-        rect(pg,xl,y,xr-xl+1,1,c); }
+    if(ymin<cy0) ymin=cy0; if(ymax>=cy1) ymax=cy1-1; if(ymin>ymax) return;
+    for(int y=ymin;y<=ymax;y++){ sh_l[y]=32767; sh_r[y]=-32768; }
+    for(int i=0;i<n;i++){ int j=i+1; if(j==n) j=0; int x0=px[i], y0=py[i], x1=px[j], y1=py[j];      // walk each edge once, noting where it crosses every row
+        if(y0==y1){ if(y0>=ymin && y0<=ymax){ int a=x0<x1?x0:x1, b=x0<x1?x1:x0; if(a<sh_l[y0]) sh_l[y0]=a; if(b>sh_r[y0]) sh_r[y0]=b; } continue; }
+        if(y0>y1){ int t=x0; x0=x1; x1=t; t=y0; y0=y1; y1=t; }
+        int ys=y0<ymin?ymin:y0, ye=y1>ymax?ymax:y1; if(ys>ye) continue;
+        s32 dy=y1-y0, dx=x1-x0, sl = dy<256 ? dx*(s32)sh_rt[dy] : (dx<<16)/dy;
+        s32 x=(x0<<16)+0x8000+sl*(ys-y0);
+        for(int y=ys;y<=ye;y++){ int xi=x>>16; if(xi<sh_l[y]) sh_l[y]=xi; if(xi>sh_r[y]) sh_r[y]=xi; x+=sl; } }
+    for(int y=ymin;y<=ymax;y++){ int xl=sh_l[y], xr=sh_r[y]; if(xl>xr) continue; if(xl<cx0) xl=cx0; if(xr>=cx1) xr=cx1-1; if(xl>xr) continue; hspan(pg,y,xl,xr,c); }
 }
 static int ship_roll=0;                                                        // extra bank applied on screen (the chase camera)
 static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pitch_, int cpaint, int ctrim, int cx0,int cy0,int cx1,int cy1){
-    static s16 px[SV_MAX], py[SV_MAX]; static s16 rx_[SV_MAX], ry_[SV_MAX], rz_[SV_MAX];
-    (void)cpaint; (void)ctrim; ship_ramps(); s32 rc=cosx(ship_roll>>2), rs=sinx(ship_roll>>2);
+    static s16 px[SV_MAX], py[SV_MAX], rz_[SV_MAX]; static s16 fz[SF_MAX];
+    (void)cpaint; (void)ctrim; if(!sh_rt_ok) sh_rt_init(); ship_ramps(); s32 rc=cosx(ship_roll>>2), rs=sinx(ship_roll>>2); int rolled = !(rs==0 && rc>0);
     s32 cy_=cosx(yaw_>>2), sy_=sinx(yaw_>>2), cp=cosx(pitch_>>2), sp=sinx(pitch_>>2);
     for(int i=0;i<snv;i++){ s32 x=shv[i*3], y=shv[i*3+1], z=shv[i*3+2];
         s32 rx=(x*cy_ + z*sy_)>>14, rz=(-x*sy_ + z*cy_)>>14;
         s32 ry=(y*cp - rz*sp)>>14; rz=(y*sp + rz*cp)>>14;
-        rx_[i]=rx; ry_[i]=ry; rz_[i]=rz;
+        rz_[i]=(s16)rz;
         s32 d = 400 + rz; if(d<60) d=60;
-        { s32 X=(rx*sc*400/d)/256, Y=-(ry*sc*400/d)/256; s32 X2=(X*rc - Y*rs)>>14, Y2=(X*rs + Y*rc)>>14; X=cx+X2; Y=cy+Y2; if(X<-2000) X=-2000; if(X>2000) X=2000; if(Y<-2000) Y=-2000; if(Y>2000) Y=2000; px[i]=X; py[i]=Y; } }
-    // sort faces far to near
-    static u8 ord[SF_MAX]; static s16 fz[SF_MAX];
-    for(int f=0;f<snf;f++){ Face *F=&shf[f]; int z=0; for(int k=0;k<F->n;k++) z+=rz_[F->v[k]]; fz[f]=z/F->n; ord[f]=f; }
-    for(int i=1;i<snf;i++){ u8 t=ord[i]; int j=i; while(j>0 && fz[ord[j-1]]>fz[t]){ ord[j]=ord[j-1]; j--; } ord[j]=t; }
-    for(int o=0;o<snf;o++){ Face *F=&shf[ord[o]]; int a=F->v[0], b=F->v[1], c=F->v[2];
-        // facing: screen-space winding
-        int area=(px[b]-px[a])*(py[c]-py[a]) - (px[c]-px[a])*(py[b]-py[a]);
-        // light: the face normal (in camera space) against a lamp up-front-left
-        s32 ux=rx_[b]-rx_[a], uy=ry_[b]-ry_[a], uz=rz_[b]-rz_[a], vx=rx_[c]-rx_[a], vy=ry_[c]-ry_[a], vz=rz_[c]-rz_[a];
-        s32 nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
-        s32 len=isqrt((u32)((nx>>4)*(nx>>4)+(ny>>4)*(ny>>4)+(nz>>4)*(nz>>4)))<<4; if(len<1) len=1;
-        s32 dot=(-nx*5 + ny*11 - nz*8)/len;                                   // light from (-0.35, 0.75, -0.55), scaled by 16
+        s32 f=(sc*25600)/d;                                                     // one division per vertex: the scale at this depth
+        s32 X=(rx*f)>>14, Y=-((ry*f)>>14);
+        if(rolled){ s32 X2=(X*rc - Y*rs)>>14, Y2=(X*rs + Y*rc)>>14; X=X2; Y=Y2; }
+        X+=cx; Y+=cy; if(X<-2000) X=-2000; if(X>2000) X=2000; if(Y<-2000) Y=-2000; if(Y>2000) Y=2000; px[i]=(s16)X; py[i]=(s16)Y; }
+    if(sh_ord_n!=snf){ for(int i=0;i<snf;i++) sh_ord[i]=(u8)i; sh_ord_n=snf; }       // last frame's order is the starting point: almost always a few swaps
+    { static const u8 rn[9]={0,0,0,85,64,51,43,37,32};                          // 256/n
+      for(int f=0;f<snf;f++){ const Face *F=&shf[f]; int z=0; for(int k=0;k<F->n;k++) z+=rz_[F->v[k]]; fz[f]=(s16)((z*rn[F->n])>>8); } }
+    for(int i=1;i<snf;i++){ u8 t=sh_ord[i]; int zt=fz[t], j=i; while(j>0 && fz[sh_ord[j-1]]>zt){ sh_ord[j]=sh_ord[j-1]; j--; } sh_ord[j]=t; }
+    for(int o=0;o<snf;o++){ int fi=sh_ord[o]; const Face *F=&shf[fi]; int a=F->v[0], b=F->v[1], c=F->v[2];
+        int area=(px[b]-px[a])*(py[c]-py[a]) - (px[c]-px[a])*(py[b]-py[a]);        // facing: screen-space winding
+        s32 mx=shn[fi*3], my=shn[fi*3+1], mz=shn[fi*3+2];                          // the stored normal, turned the same way as the ship
+        s32 nx=(mx*cy_ + mz*sy_)>>14, nz0=(-mx*sy_ + mz*cy_)>>14;
+        s32 ny=(my*cp - nz0*sp)>>14, nz=(my*sp + nz0*cp)>>14;
+        s32 dot=(-nx*5 + ny*11 - nz*8)>>8;                                         // light from (-0.35, 0.75, -0.55), scaled by 16
         if(area>=0) dot=-dot;
-        int sh = 3 + dot*4/15; if(sh<0) sh=0; if(sh>7) sh=7;
+        int sh = 3 + ((dot*273)>>10); if(sh<0) sh=0; if(sh>7) sh=7;
         int X[8], Y[8]; for(int k=0;k<F->n;k++){ X[k]=px[F->v[k]]; Y[k]=py[F->v[k]]; }
         int base = F->grp==2 ? SHP_GLOW : F->grp ? SHP_TRIM : SHP_PAINT; if(F->grp==2) sh = 5+((frames>>2)&1)*2;      // engines glow and flicker
         polyfill(pg,X,Y,F->n,base+sh,cx0,cy0,cx1,cy1); }

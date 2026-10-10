@@ -1,16 +1,16 @@
 // ================================================================= THE RPG: zones, stats, gear, magic, pet, quests
 // zone 0..5: The Garden .. The Anthill. Zone z has z+3 dungeon floors; the last one has a boss.
-static int zone=0, zone_cleared=0, maxh=30, food=100, bugs_freed=0, scene=0;
-static int level, xp;
+static s64 maxh=30; static int zone=0, zone_cleared=0, food=100, bugs_freed=0, scene=0;
+static s64 level, xp;
 static void ach_check(void);
-static void scpy(char *d, const char *s); static void scat(char *d, const char *s); static void gain_xp(int n);
+static void scpy(char *d, const char *s); static void scat(char *d, const char *s); static void gain_xp(int n); static s64 xp_next(void);
 static void hud_now(void); static void say(const char *s); static void show_msg(const char *s); static void sfx(int n);
 static int have_bug[6];
 enum { BUG_PILL, BUG_LADY, BUG_FIRE, BUG_BEE, BUG_CRICKET, BUG_ANT };
 static const char *const friend_name[6]={"PILL BUG","LADYBUG","FIREFLY","BEE","CRICKET","RUNAWAY ANT"};
 static const char *const bug_power[6]={"+10 GOLD","+5 HEALTH","LIGHTS THE DARK","STINGS ATTACKERS","FASTER LEGS","POINTS TO STAIRS"};
 // ---- endless galaxy (after the Ant King)
-static int endless=0, world_no=0, loot=0, best_depth=0, w_dlv=6; static u32 galaxy_seed=1;
+static int endless=0, world_no=0, best_depth=0, w_dlv=6; static s64 loot=0; static u32 galaxy_seed=1;
 // ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
 static u8 tiers[6];                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
 static int st_kills[11], st_fish, st_barrels, st_mined, st_dodges, st_planets, st_uniq, st_tiers, st_floors;
@@ -29,7 +29,7 @@ static const char *const fe_name[NFE]={"","TREASURE VAULT","MONSTER NEST","ELITE
 static const char *const fe_what[NFE]={"","CHESTS EVERYWHERE. SO ARE THE GUARDS","EXTRA MONSTERS. EXTRA GOLD","SLAY THE ELITES FOR A BIG REWARD","LESS LIGHT. DOUBLE LOOT","REACH THE STAIRS IN 60 SECONDS",
     "TOUGHER MONSTERS. BETTER LOOT","GOLD, GOLD, GOLD","A SHRINE BLESSES YOU","THEY ARE WAITING AT THE STAIRS","NOTHING HERE WANTS TO FIGHT. BREATHE"};
 static int fl_ev=0, fl_need=0, fl_have=0, fl_bonus=100, fl_done=0; static u32 fl_end=0;
-static void earn(int g){ g = g*gold_find/100; if(fl_bonus!=100) g=g*fl_bonus/100; if(endless && scene==1) loot+=g; else gold+=g; }
+static void earn(int g){ s64 v=sdiv((s64)g*gold_find,100); if(fl_bonus!=100) v=sdiv(v*fl_bonus,100); if(endless && scene==1) loot=sadd(loot,v); else gold=sadd(gold,v); }
 static u16 w_tint[6], w_mon[8]; static u8 w_styles[3]; static char w_name[24];
 static u32 wseed;
 static int wr(int n){ wseed = wseed*1103515245u + 12345u; return (int)((wseed>>16)%(u32)n); }
@@ -296,9 +296,9 @@ static Gear eqw, eqa, eqc;           // what you bite with, what you wear, your 
 static u8 berry_map[8], seed_map[6], berry_known[8], seed_known[6];
 
 // ---------------------------------------------------------------- your bug: stats and everything worked out from them
-static int st_str, st_dex, st_vit, st_mag, stat_pts;
-static int mp, maxmp, fame;
-static int d_dmg, d_def, d_crit, d_spd, d_regen, d_reflect, d_vamp, d_haste, d_sting, d_fire, d_light, d_venom;
+static s64 st_str, st_dex, st_vit, st_mag, stat_pts, mp, maxmp;
+static int fame;
+static s64 d_dmg, d_def; static int d_crit, d_spd, d_regen, d_reflect, d_vamp, d_haste, d_sting, d_fire, d_light, d_venom;
 static u8 spell_known[NSPELL]; static int spell_sel=0;
 static int shake_t=0, bob_ph=0;
 static int speed_t=0, strong_t=0, dizzy_t=0, stun_t=0, sight=0, hunger_t=0, shield_t=0, regen_t=0;
@@ -308,7 +308,17 @@ static int portal_depth=0;
 static void scpy(char *d, const char *s){ while(*s) *d++=*s++; *d=0; }
 static void scat(char *d, const char *s){ while(*d) d++; scpy(d,s); }
 static void unum(char *d, u32 v){ char t[12]; int n=0; do { t[n++]='0'+v%10; v/=10; } while(v); char r[12]; for(int i=0;i<n;i++) r[i]=t[n-1-i]; r[n]=0; scat(d,r); }
-static void ncat(char *d, int v){ char t[8]; int n=0; if(v<0){ scat(d,"-"); v=-v; } do { t[n++]='0'+v%10; v/=10; } while(v && n<7); char r[8]; for(int i=0;i<n;i++) r[i]=t[n-1-i]; r[n]=0; scat(d,r); }
+static void ncatx(char *d, s64 v, int tight){
+    if(v<0){ scat(d,"-"); v = v==-S64_MAX-1 ? S64_MAX : -v; }
+    char t[24]; int L=0;
+    if(v<1000000){ int x=(int)v; char r[8]; int n=0; do { r[n++]=(char)('0'+x%10); x/=10; } while(x); for(int i=0;i<n;i++) t[i]=r[n-1-i]; L=n; if(!(tight && L>=5)){ t[L]=0; scat(d,t); return; } }
+    else { s64 q1=sdiv(v,1000000000u); u32 c=(u32)(v-q1*1000000000LL); s64 q2=sdiv(q1,1000000000u); u32 b=(u32)(q1-q2*1000000000LL), a=(u32)q2;
+        static const u32 pw[9]={100000000,10000000,1000000,100000,10000,1000,100,10,1}; int st=0; if(a){ t[L++]=(char)('0'+a); st=1; }
+        for(int p=0;p<2;p++){ u32 x=p?c:b; for(int k=0;k<9;k++){ u32 dg=x/pw[k]; x-=dg*pw[k]; if(st||dg){ t[L++]=(char)('0'+dg); st=1; } } } }
+    static const char *const suf[7]={"","K","M","B","T","QA","QI"}; int gp=(L-1)/3, w=L-3*gp;
+    char o[12]; int n=0; for(int i=0;i<w;i++) o[n++]=t[i]; if(!tight && w<3 && gp>=2){ o[n++]='.'; for(int i=w;i<3;i++) o[n++]=t[i]; } o[n]=0; scat(d,o); scat(d,suf[gp]);
+}
+static void ncat(char *d, s64 v){ ncatx(d,v,0); }
 
 static int weapon_base(const Gear *g){ static const u8 b[5]={2,4,6,5,10}; return g->it!=IT_THORN ? 0 : g->rar==R_UNIQUE ? 12+g->lvl/2 : b[g->sub%5]+g->lvl/2; }
 static int armor_base(const Gear *g){ static const u8 b[5]={2,4,6,5,10}; return g->it!=IT_SHELL ? 0 : g->rar==R_UNIQUE ? 12+g->lvl/3 : b[g->sub%5]+g->lvl/3; }
@@ -331,25 +341,27 @@ static void gear_affix(const Gear *g){
 }
 static void recalc(void){
     gold_find=100; d_dmg=0; d_def=0; d_crit=0; d_spd=0; d_regen=0; d_reflect=0; d_vamp=0; d_haste=0; d_sting=0; d_fire=0; d_light=0; d_venom=0;
-    maxh = 20 + st_vit*3 + level*2 + have_bug[BUG_LADY]*5;
+    maxh = have_bug[BUG_LADY]*5; maxmp = 0;
     { int rn=0; for(u32 r=relic_bits;r;r>>=1) rn+=r&1; gold_find+=rn*5; maxh+=rn*2; }     // every legendary relic: +5% gold, +2 max health, forever
     if(mark_on(MK_TOUGH)) maxh+=8; if(mark_on(MK_FRAIL)) maxh-=6; if(mark_on(MK_LUCKY)) gold_find+=15; if(mark_on(MK_UNLUCKY)) gold_find-=10;
-    maxmp = 5 + st_mag*3;
     gear_affix(&eqw); gear_affix(&eqa); gear_affix(&eqc);
-    d_dmg += 2 + st_str/2 + weapon_base(&eqw) + (mark_on(MK_STRONG)?3:0) - (mark_on(MK_WEAK)?2:0);
-    d_def += st_vit/4 + armor_base(&eqa) + (mark_on(MK_THICK)?3:0);
-    d_crit += st_dex + (mark_on(MK_SHARP)?5:0) - (mark_on(MK_DULL)?4:0);
+    d_dmg += 2 + weapon_base(&eqw) + (mark_on(MK_STRONG)?3:0) - (mark_on(MK_WEAK)?2:0);
+    d_def += armor_base(&eqa) + (mark_on(MK_THICK)?3:0);
+    d_crit += clampi(st_dex) + (mark_on(MK_SHARP)?5:0) - (mark_on(MK_DULL)?4:0);
     if(mark_on(MK_SWIFT)) d_spd+=15; if(mark_on(MK_SLUGGISH)) d_spd-=15; if(mark_on(MK_REGEN)) d_regen+=1;
     if(form==FORM_CREATURE){ if(form_body==0) d_spd+=25; else if(form_body==1){ maxh+=15; d_spd-=10; d_def+=2; } else { d_spd+=35; maxh-=5; } d_dmg-=1; }   // a creature: hoppers are quick, grazers tough, flyers fastest
     if(form==FORM_HUMAN){ d_dmg+=2;                                                                                 // a humanoid: what you hold matters
         if(holding(TL_SWORD)) d_dmg+=6; if(holding(TL_BLASTER)){ d_dmg+=4; d_crit+=10; } if(holding(TL_LANTERN)) d_light+=1;
         if(holding(TL_JETPACK)) d_spd+=30; if(holding(TL_SHIELD)) d_def+=4; if(holding(TL_GLOVE)) gold_find+=20; }
-    d_haste += st_dex/6;
+    d_haste += clampi(sdiv(st_dex,6));
     d_sting += have_bug[BUG_BEE]*2;
     if(eqa.it==IT_SHELL && eqa.sub==3 && eqa.rar!=R_UNIQUE) d_spd -= 15;        // the sticky shell slows you
     { int tp=trophy_points(); d_dmg += tp/15; gold_find += tp/5; maxh += tp/10; d_def += tp/30; }   // your trophy case
     if(opt_diff==2) gold_find+=25;                                                   // hard mode pays better
     { int r = fame>=1200?5: fame>=700?4: fame>=350?3: fame>=150?2: fame>=50?1:0; gold_find += r*5; maxh += r*3; d_crit += r; }   // fame has its perks
+    maxh=sadd(maxh,sadd(20,sadd(smul(st_vit,3),smul(level,2)))); if(maxh<1) maxh=1;
+    maxmp=sadd(maxmp,sadd(5,smul(st_mag,3))); if(maxmp<0) maxmp=0;
+    d_dmg=sadd(d_dmg,sdiv(st_str,2)); d_def=sadd(d_def,sdiv(st_vit,4));
     if(hearts>maxh) hearts=maxh; if(mp>maxmp) mp=maxmp;
 }
 static void shuffle(u8 *a, int n){ for(int i=0;i<n;i++) a[i]=i; for(int i=n-1;i>0;i--){ int j=rndi(i+1); u8 t=a[i]; a[i]=a[j]; a[j]=t; } }
@@ -357,7 +369,7 @@ static void shuffle(u8 *a, int n){ for(int i=0;i<n;i++) a[i]=i; for(int i=n-1;i>
 // ---------------------------------------------------------------- the pet (like Fate's dog): it follows you, fights, and changes when fed fish
 static int pet_hp, pet_maxhp, pet_form, pet_form_t, pet_away_t, pet_down_t, pet_cool, pet_sold_n, pet_sold_g;
 static const char *const pet_form_name[4]={"BUDDY","FIRE BEETLE","STONE BEETLE","STAG KING"};
-static int pet_dmg(void){ static const u8 m[4]={2,4,3,6}; return (2 + (level+pet_lv)/2 + pet_lv/2) * m[pet_form] / 2; }
+static int pet_dmg(void){ static const u8 m[4]={2,4,3,6}; s64 b=sadd(sadd(2,sdiv(sadd(level,pet_lv),2)),pet_lv/2); return clampi(sdiv(smul(b,m[pet_form]),2)); }
 static int pet_xp_next(void){ return 40+pet_lv*pet_lv*12; }
 
 // ---------------------------------------------------------------- quests and fame
@@ -376,7 +388,7 @@ static const Ach ach[NACH]={
     {"DEEP DIVER","GO DOWN 30 FLOORS",30,300,40},{"COLLECTOR","FIND 3 UNIQUE ITEMS",3,400,50},{"CHAMPION","CLEAR 3 ZONE TIERS",3,500,80},
     {"BUG LEGEND","REACH LEVEL 20",20,999,150}};
 static int ach_have(int i){ switch(i){ case 0: return st_kills[0]; case 1: return st_kills[7]; case 2: return st_kills[8]; case 3: return bugs_freed; case 4: return st_fish;
-    case 5: return st_barrels; case 6: return st_mined; case 7: return st_dodges; case 8: return st_planets; case 9: return st_floors; case 10: return st_uniq; case 11: return st_tiers; default: return level; } }
+    case 5: return st_barrels; case 6: return st_mined; case 7: return st_dodges; case 8: return st_planets; case 9: return st_floors; case 10: return st_uniq; case 11: return st_tiers; default: return clampi(level); } }
 static void ach_check(void){
     for(int i=0;i<NACH;i++) if(!(ach_done>>i&1) && ach_have(i)>=ach[i].goal){ ach_done|=1u<<i; gold+=ach[i].gold; fame+=ach[i].fame;
         char b[40]; scpy(b,"FEAT: "); scat(b,ach[i].name); scat(b," +"); ncat(b,ach[i].gold); scat(b,"G"); say(b); sfx(6); hud_now(); }
@@ -467,24 +479,24 @@ static int item_value(const Gear *g){
 static void draw_hud(volatile u16 *pg, const char *l1){
     rect(pg,0,0,240,17,0); rect(pg,0,17,240,1,6);
     char b[32]; b[0]=0;
-    scpy(b,"HP "); ncat(b,hearts<0?0:hearts); scat(b,"/"); ncat(b,maxh); text(pg,3,3,b,C_RED,1);
-    b[0]=0; scpy(b,"MP "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); text(pg,3,10,b,C_CYAN,1);
-    rect(pg,52,4,30,3,C_DGREY); rect(pg,52,4,(hearts>0?hearts:0)*30/(maxh?maxh:1),3,C_RED);
+    scpy(b,"HP "); ncat(b,hearts<0?0:hearts); scat(b,"/"); ncat(b,maxh); if(textlen(b)>12){ scpy(b,"HP "); ncat(b,maxh); } text(pg,3,3,b,C_RED,1);
+    b[0]=0; scpy(b,"MP "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); if(textlen(b)>12){ scpy(b,"MP "); ncat(b,maxmp); } text(pg,3,10,b,C_CYAN,1);
+    rect(pg,52,4,30,3,C_DGREY); rect(pg,52,4,ratio(hearts,maxh,30),3,C_RED);
     rect(pg,52,11,30,3,C_DGREY); rect(pg,52,11,food*30/100,3, food>25?C_GREEN:C_RED);
-    { char lv[8]="LV"; ncat(lv,level); text(pg,86,3,lv,C_GOLD,1); }
-    { int xb = xp*16/((6*level*level+4)*3); if(xb>16) xb=16; rect(pg,86,11,16,2,C_DGREY); rect(pg,86,11,xb,2,C_GOLD); }
+    { char lv[16]; scpy(lv, level<1000 ? "LV" : "L"); ncatx(lv,level,1); text(pg,86,3,lv,C_GOLD,1); }
+    { int xb = ratio(xp,xp_next(),16); rect(pg,86,11,16,2,C_DGREY); rect(pg,86,11,xb,2,C_GOLD); }
     text(pg,106,3,l1,C_WHITE,1);
     if(bag_n){ char nm[40]; gear_name(&bag[bag_sel],nm); b[0]='0'+(bag_sel+1)%10; b[1]=' '; b[2]=0; scat(b,nm); b[25]=0; text(pg,106,10,b,rar_color(&bag[bag_sel]),1); }
     else text(pg,106,10,"BAG EMPTY",C_GREY,1);
-    if(endless && scene==1){ text(pg,206,3,"+",C_GOLD,1); num(b,loot,4); text(pg,212,3,b,C_GOLD,1); }
-    else { text(pg,206,3,"G",C_GOLD,1); num(b,gold>9999?9999:gold,4); text(pg,212,3,b,C_WHITE,1); }
+    if(endless && scene==1){ text(pg,206,3,"+",C_GOLD,1); b[0]=0; ncatx(b,loot,0); text(pg,212,3,b,C_GOLD,1); }
+    else { text(pg,206,3,"G",C_GOLD,1); b[0]=0; ncatx(b,gold,0); text(pg,212,3,b,C_WHITE,1); }
     text(pg,206,10,"*",C_RED,1); num(b,bugs_freed,2); text(pg,212,10,b,C_WHITE,1);
     if(stat_pts){ text(pg,226,10,"+",C_GREEN,1); }
 }
 
 static u32 hud_sig(void){      // changes whenever something on the status bar changes
-    u32 h=2166136261u; int v[13]={hearts,mp,maxh,maxmp,food,level,xp,gold,loot,bag_n,bag_sel,bugs_freed,stat_pts};
-    for(int i=0;i<13;i++){ h^=(u32)v[i]; h*=16777619u; } if(bag_n){ h^=bag[bag_sel].it*31+bag[bag_sel].sub; h*=16777619u; } return h; }
+    u32 h=2166136261u; s64 v[13]={hearts,mp,maxh,maxmp,food,level,xp,gold,loot,bag_n,bag_sel,bugs_freed,stat_pts};
+    for(int i=0;i<13;i++){ h^=(u32)v[i]; h*=16777619u; h^=(u32)(v[i]>>32); h*=16777619u; } if(bag_n){ h^=bag[bag_sel].it*31+bag[bag_sel].sub; h*=16777619u; } return h; }
 
 // ---------------------------------------------------------------- freeing bugs
 static void free_bug(int t){
@@ -499,10 +511,10 @@ static void free_bug(int t){
 // ---------------------------------------------------------------- getting hurt, hunger
 static void hurt(int n){
     if(invuln) return;
-    int def = d_def + (shield_t ? 5+st_mag/2 : 0);
-    n -= def/2; if(opt_easy) n=(n+1)/2; else if(opt_diff==2) n=n*3/2; if(n<1) n=1;
-    if(rndi(100) < def){ say("BLOCKED!"); invuln=15; return; }
-    hearts-=n; invuln=30; shake_t=opt_shake?10:0; sfx(4); hud_now();
+    s64 def = sadd(d_def, shield_t ? sadd(5,sdiv(st_mag,2)) : 0);
+    s64 nn = n - sdiv(def,2); if(nn>=1){ if(opt_easy) nn=(nn+1)>>1; else if(opt_diff==2) nn=(nn*3)>>1; } if(nn<1) nn=1;
+    if(def>=100 || rndi(100) < (int)def){ say("BLOCKED!"); invuln=15; return; }
+    hearts-=nn; invuln=30; shake_t=opt_shake?10:0; sfx(4); hud_now();
 }
 static void hunger_tick(int every){
     if(opt_easy) every+=every/2; else if(opt_diff==2) every=every*2/3;
@@ -544,12 +556,12 @@ static void use_index(int i){
     Gear g=bag[i]; int it=g.it, sub=g.sub; char b[48];
     switch(it){
     case IT_CRUMB: eat(40); say("CRUNCH. FOOD +40"); break;
-    case IT_POTION: if(sub==0){ hearts+=maxh/2+10; if(hearts>maxh) hearts=maxh; say("GLUG. HEALTH BACK"); } else { mp=maxmp; say("GLUG. MANA FULL"); } break;
+    case IT_POTION: if(sub==0){ hearts=sadd(hearts,sadd(sdiv(maxh,2),10)); if(hearts>maxh) hearts=maxh; say("GLUG. HEALTH BACK"); } else { mp=maxmp; say("GLUG. MANA FULL"); } break;
     case IT_BERRY: { int e=berry_map[sub]; berry_known[sub]=1; scpy(b,berry_col[sub]); scat(b," BERRY: ");
         switch(e){
             case BE_FOOD: eat(60); scat(b,"FOOD!"); break;
             case BE_HEAL: hearts=maxh; scat(b,"HEALED!"); break;
-            case BE_POISON: hearts-=maxh/5; scat(b,"POISON!"); break;
+            case BE_POISON: hearts-=sdiv(maxh,5); scat(b,"POISON!"); break;
             case BE_SPEED: speed_t=240; scat(b,"SPEED!"); break;
             case BE_SIGHT: sight=1; scat(b,"YOU SEE THE WAY"); break;
             case BE_DIZZY: dizzy_t=200; scat(b,"DIZZY!"); break;
@@ -564,7 +576,7 @@ static void use_index(int i){
             case SE_ESCAPE: if(scene==0){ say("NOTHING TO ESCAPE"); return; } escape_flag=1; scat(b,"ESCAPE!"); break;
             case SE_CALL: call_flag=1; scat(b,"CALLS A BUG"); break;
             case SE_BLAST: blast_flag=1; scat(b,"BLAST!"); break;
-            default: hearts+=maxh/3; if(hearts>maxh) hearts=maxh; scat(b,"HEALTH +"); break;
+            default: hearts=sadd(hearts,sdiv(maxh,3)); if(hearts>maxh) hearts=maxh; scat(b,"HEALTH +"); break;
         }
         say(b); break; }
     case IT_SHELL: case IT_THORN: case IT_CHARM: equip(i); hud_now(); return;
@@ -572,7 +584,7 @@ static void use_index(int i){
         if(scene==0){ say("KEEP IT FOR A DUNGEON"); return; }
         escape_flag=1; portal_depth=depth_no; say("A PORTAL OPENS!"); break;
     case IT_GEM: { int t=sub&3; scpy(b,gem_name[t]); scat(b,": "); scat(b,gem_use[t]);
-        if(t==0) hearts=maxh; else if(t==1) gain_xp(20+depth_no*3); else if(t==2) food=100; else { st_str+=2; recalc(); }
+        if(t==0) hearts=maxh; else if(t==1) gain_xp(20+depth_no*3); else if(t==2) food=100; else { st_str=sadd(st_str,2); recalc(); }
         say(b); break; }
     case IT_BOOK: if(spell_known[sub]){ say("YOU KNOW THAT SPELL"); return; } spell_known[sub]=1; spell_sel=sub; scpy(b,"LEARNED "); scat(b,spell_name[sub]); say(b); break;
     case IT_FISH: if(!feed_pet(sub)) return; break;
@@ -598,7 +610,7 @@ static void bag_input(void){
     if(HIT(K_B)) use_item();
 }
 static int bite_power(int *crit){
-    int p = d_dmg + d_fire + d_venom;
+    s64 pp = sadd(d_dmg,(s64)d_fire+d_venom); int p = pp>250000000 ? 250000000 : pp<-250000000 ? -250000000 : (int)pp;
     if(strong_t) p*=2;
     *crit = rndi(100) < d_crit; if(*crit) p*=2;
     if(eqw.it==IT_THORN && eqw.sub==3 && rndi(6)==0){ say("THE DARK THORN BITES YOU"); hearts-=2; hud_now(); }
@@ -613,14 +625,30 @@ static void tick_timers(void){ mark_tick(); if(speed_t) speed_t--; if(strong_t) 
     if(pet_form_t && --pet_form_t==0){ say("BUDDY CHANGES BACK"); pet_form=0; } }
 
 // ---------------------------------------------------------------- experience and levels
-static int xp_next(void){ return (6*level*level+4)*3; }
+static s64 xp_next(void){ return sadd(smul(smul(level,level),18),12); }
+// ---- RUBBERBANDING: xp bends toward where you should be. Behind the content = big catch-up bonus, way ahead = gentle brake (never below 40%).
+// A kill streak (kills within ~6s of each other) adds momentum. Every 5th level is a milestone, every 10th a big one.
+static int xp_streak=0; static u32 xp_last=0;
+static int content_level(void){ return 2 + dlv()*3 + depth_no; }
 static void gain_xp(int n){
-    xp+=n; pet_xp+=n/2+1; if(pet_xp>=pet_xp_next()){ pet_xp-=pet_xp_next(); pet_lv++; pet_maxhp+=3; pet_hp=pet_maxhp; char pb[32]; scpy(pb,"BUDDY IS LV "); ncat(pb,pet_lv+1); scat(pb,"!"); say(pb); }
-    while(xp>=xp_next()){
-        xp-=xp_next(); level++; stat_pts+=5;
+    int pct=100;
+    { s64 gap = (s64)content_level() - level;
+      if(gap>0) pct += gap>12 ? 300 : (int)gap*25;                               // behind: up to +300%
+      else if(gap<-4){ int over=(int)(-gap)-4; pct -= over>12 ? 60 : over*5; } } // ahead: down to 40%
+    if((u32)(vbl_count-xp_last)<360) { if(xp_streak<20) xp_streak++; } else xp_streak=0;
+    xp_last=vbl_count; pct += xp_streak*3;                                       // momentum: up to +60%
+    s64 gain = sdiv((s64)n*pct,100); if(gain<1) gain=1;
+    xp=sadd(xp,gain); pet_xp+=n/2+1; if(pet_xp>=pet_xp_next()){ pet_xp-=pet_xp_next(); pet_lv++; pet_maxhp+=3; pet_hp=pet_maxhp; char pb[32]; scpy(pb,"BUDDY IS LV "); ncat(pb,pet_lv+1); scat(pb,"!"); say(pb); }
+    int ups=0;
+    while(level<S64_MAX && xp>=xp_next() && ups<64){
+        xp-=xp_next(); level++; ups++; stat_pts=sadd(stat_pts,5);
+        s64 q5=sdiv(level,5); int lv5 = level==q5*5; int lv10 = lv5 && sdiv(q5,2)*2==q5;
+        if(lv5) stat_pts=sadd(stat_pts,5);
+        if(lv10){ stat_pts=sadd(stat_pts,10); earn(100+(int)(level>100000?100000:level)*10); }
         recalc(); hearts=maxh; mp=maxmp; pet_maxhp+=4; pet_hp=pet_maxhp;
-        char b[40]; scpy(b,"LEVEL UP! LV "); ncat(b,level); scat(b,". START: SPEND POINTS"); say(b); sfx(6);
+        char b[40]; scpy(b, lv10?"MILESTONE! LV " : lv5?"BONUS LEVEL! LV " : "LEVEL UP! LV "); ncat(b,level); scat(b,". START: SPEND POINTS"); say(b); sfx(6);
     }
+    if(ups>=3){ char b[40]; scpy(b,"SURGE! +"); ncat(b,ups); scat(b," LEVELS"); say(b); }
     ach_check(); hud_now();
 }
 

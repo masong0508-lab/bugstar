@@ -232,7 +232,7 @@ static void planet_card(volatile u16 *pg){                                      
 // gift limits: a local hands out at most GIFT_MAX gifts, then goes quiet for 30 minutes of play time (not saved: a restart clears it)
 #define GIFT_MAX 3
 #define GIFT_COOL (60*60*30)
-static u8 gift_n[NPO]; static s32 gift_until[NPO]; static u32 gift_world=0;
+EW static u8 gift_n[NPO]; EW static s32 gift_until[NPO]; static u32 gift_world=0;   // in EWRAM: IWRAM is nearly full
 static void local_talk(PObj *o){
     volatile u16 *pg=VISPG; const char *ln[2]; char g[40];
     int gi=(int)(o-po), cooling=0;
@@ -319,7 +319,7 @@ static void cantina(volatile u16 *pg){
         if(r==0){ if(gold<8) say("NOT ENOUGH GOLD"); else { gold-=8; eat(40); say("SLURP. DO NOT ASK WHAT WAS IN IT"); sfx(11); } }
         if(r==1){ say(gossip[wr(16)]); }
         if(r==2){ if(gold<20) say("NOT ENOUGH GOLD"); else { gold-=20; fame+=6; say("CHEERS! EVERYONE LIKES YOU NOW. +FAME"); sfx(6); } }
-        if(r==3){ if(gold<10) say("NOT ENOUGH GOLD"); else { gold-=10; int win = rndi(100) < 35+st_str*3; if(win){ gold+=30; say("SLAM! HE CRIES A LITTLE. +30G"); sfx(6); } else say("HE WINS. HE ALWAYS WINS. HE IS A BEETLE"); } }
+        if(r==3){ if(gold<10) say("NOT ENOUGH GOLD"); else { gold-=10; int win = rndi(100) < 35+clampi(st_str>100?100:st_str)*3; if(win){ gold+=30; say("SLAM! HE CRIES A LITTLE. +30G"); sfx(6); } else say("HE WINS. HE ALWAYS WINS. HE IS A BEETLE"); } }
     }
 }
 // ---------------------------------------------------------------- races, ruins, fossils, beetles

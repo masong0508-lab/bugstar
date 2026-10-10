@@ -193,7 +193,7 @@ static int hive_active(void){ return beast_stage>=3 && hive_done<5; }
 static int hive_here(void){ return endless && !forge_on && hive_active() && cur_sys==hive_sys(); }
 static int hive_boss_floor(void){ return hive_here() && depth_no==hive_floors[hive_done]; }
 static void hive_kill(void){ hive_done++; hive_card=hive_done+1; }
-static int space_danger(void){ return in_lair ? (beast_fight==1 ? 1+level/3 : beast_fight==2 ? 4+tech_lv*2+level/3 : 8 + tech_lv*2 + beast_kills*6 + level/3) : sys_dlv(cur_sys) + level/4; }
+static int space_danger(void){ return in_lair ? (beast_fight==1 ? 1+clampi(sdiv(level,3)) : beast_fight==2 ? 4+tech_lv*2+clampi(sdiv(level,3)) : 8 + tech_lv*2 + beast_kills*6 + clampi(sdiv(level,3))) : sys_dlv(cur_sys) + clampi(sdiv(level,4)); }
 static void spawn_pirates(int n){
     for(int i=0;i<NPIR && n;i++) if(!pir[i].alive){ Pirate *p=&pir[i];
         s16 d[3]={(s16)(lr(32768)-16384),(s16)(lr(16384)-8192),(s16)(lr(32768)-16384)}; norm3(d);
@@ -568,7 +568,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         if(dx>-500&&dx<500&&dy>-500&&dy<500&&dz>-500&&dz<500){ cans[k].alive=0; int n=0; for(int i=0;i<8;i++) n+=cargo[i];
             if(n<cargo_cap){ int g=cans[k].good<8 ? cans[k].good : lr(8); cargo[g]++; char b[32]; scpy(b,"SCOOPED "); scat(b,goods[g]); space_say(b); sfx(2); } else space_say("CARGO HOLD FULL"); } }
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; p->life--; p->x+=p->vx; p->y+=p->vy; p->z+=p->vz; }
-    if(hull<=0){ if(in_lair){ in_lair=0; no_ambush=1; space_enter(0); no_ambush=0; } hull=100; for(int i=0;i<8;i++) cargo[i]=0; gold/=2; for(int i=0;i<NPIR;i++) pir[i].alive=0; battle_on=0;
+    if(hull<=0){ if(in_lair){ in_lair=0; no_ambush=1; space_enter(0); no_ambush=0; } hull=100; for(int i=0;i<8;i++) cargo[i]=0; gold=sdiv(gold,2); for(int i=0;i<NPIR;i++) pir[i].alive=0; battle_on=0;
         shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=10; svx_=svy_=svz_=0; space_say("SHIP WRECKED! CARGO LOST"); sfx(9); }
     // ---- draw
     int sv_yaw=yaw, sv_pit=pitch;

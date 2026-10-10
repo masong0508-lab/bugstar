@@ -14,11 +14,11 @@ typedef struct { u32 magic; FDes d[8]; u32 sum; } FStore;
 #define FG_OFF 0x6C00
 EW static FStore fst;
 static DDna fg; static int fg_ready=0, fg_slot=0, fg_cur=-1;                 // fg_cur: the saved design the current run came from
-static int fg_sv_end, fg_sv_dlv, fg_sv_portal, fg_sv_loot;
+static int fg_sv_end, fg_sv_dlv, fg_sv_portal; static s64 fg_sv_loot;
 static void fst_load(void){ sram_read(FG_OFF,&fst,sizeof fst); if(fst.magic!=0x4746524Fu || fst.sum!=fnv(&fst,sizeof fst-4)){ memset(&fst,0,sizeof fst); fst.magic=0x4746524Fu; } }
 static void fst_save(void){ fst.sum=fnv(&fst,sizeof fst-4); sram_write(FG_OFF,&fst,sizeof fst); }
 static void fg_random(void){ u32 h=hmix(rng_s^vbl_count*2654435761u); fg.seed=h&0xFFFF; fg.layout=(h>>16)%NLY; fg.wall=(h>>19)%7; fg.mix=(h>>22)&3; fg.dens=(h>>24)%3; fg.haz=(h>>26)%5; fg.boss=0; }
-static void fg_default(void){ fg.on=1; fg.layout=0; fg.wall=6; fg.mix=1; fg.dens=1; fg.haz=0; fg.boss=0; fg.floors=3; fg.lvl=level/2<1?1:level/2>30?30:level/2; fg.seed=(u16)(rng_s>>8); }
+static void fg_default(void){ fg.on=1; fg.layout=0; fg.wall=6; fg.mix=1; fg.dens=1; fg.haz=0; fg.boss=0; fg.floors=3; { int h=clampi(sdiv(level,2)); fg.lvl=h<1?1:h>30?30:h; } fg.seed=(u16)(rng_s>>8); }
 static void fg_adj(int r, int d){
     int v;
     switch(r){
@@ -80,9 +80,9 @@ static void forge_begin(void){                                                //
     ddna=fg; ddna.on=1; endless=1; w_dlv=fg.lvl; portal_depth=0; loot=0; forge_on=1;
 }
 static void forge_end(int r, char *mb){                                       // back on the surface: pay out, record the design, restore the world
-    int won = depth_no>=fg.floors && !boss_floor(), bonus=0;
+    int won = depth_no>=fg.floors && !boss_floor(); s64 bonus=0;
     if(r==2){ recalc(); hearts=maxh; food=60; scpy(mb,"FORGE: YOU FAINTED. NO HARM DONE"); }
-    else { bonus = loot*(100+depth_no*15)/100; if(won) bonus += 100+fg.lvl*20*fg.floors; gold+=bonus; scpy(mb, won?"FORGE CLEARED! +":"FORGE ESCAPED: +"); ncat(mb,bonus); scat(mb,"G"); }
+    else { bonus = sdiv(smul(loot,100+depth_no*15),100); if(won) bonus=sadd(bonus,100+fg.lvl*20*fg.floors); gold=sadd(gold,bonus); scpy(mb, won?"FORGE CLEARED! +":"FORGE ESCAPED: +"); ncat(mb,bonus); scat(mb,"G"); }
     if(fg_cur>=0 && fst.d[fg_cur].used){ FDes *d=&fst.d[fg_cur]; if(depth_no>d->best) d->best=depth_no; if(won) d->done=1; fst_save(); }
     forge_on=0; endless=fg_sv_end; w_dlv=fg_sv_dlv; portal_depth=fg_sv_portal; loot=fg_sv_loot;
 }

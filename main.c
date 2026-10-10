@@ -1,7 +1,7 @@
 // BUGSTAR prototype: a pill bug on a turning planet, and a colour 3D dungeon underneath.
 #include "assets.h"
 #include "logo.h"
-typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; typedef signed short s16; typedef signed char s8; typedef int s32; typedef unsigned long long u64;
+typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; typedef signed short s16; typedef signed char s8; typedef int s32; typedef unsigned long long u64; typedef long long s64;
 #define REG_DISPCNT  (*(volatile u16*)0x04000000)
 #define REG_VCOUNT   (*(volatile u16*)0x04000006)
 #define REG_BG2CNT   (*(volatile u16*)0x0400000C)
@@ -40,11 +40,21 @@ static void read_keys(void){ keys_old=keys; keys = ~REG_KEYINPUT & 0x3FF; }
 #define HIT(k) ((keys&(k)) && !(keys_old&(k)))
 static void vsync(void){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); }
 static int isqrt(u32 n){ u32 r=0, b=1u<<30; while(b>n) b>>=2; while(b){ if(n>=r+b){ n-=r+b; r=(r>>1)+b; } else r>>=1; b>>=2; } return (int)r; }
+#define S64_MAX 0x7FFFFFFFFFFFFFFFLL
+static s64 sadd(s64 a, s64 b){ if(b>0){ if(a>S64_MAX-b) return S64_MAX; } else if(b<0){ if(a<-S64_MAX-1-b) return -S64_MAX-1; } return a+b; }
+static s64 smul(s64 a, s64 b){ if(a<=0||b<=0) return 0; u64 ua=(u64)a, ub=(u64)b; u32 ah=(u32)(ua>>32), al=(u32)ua, bh=(u32)(ub>>32), bl=(u32)ub;
+    if(ah && bh) return S64_MAX; u64 hi=(u64)ah*bl+(u64)al*bh; if(hi>>31) return S64_MAX;
+    u64 lo=(u64)al*bl, r=(hi<<32)+lo; if(r<lo || r>(u64)S64_MAX) return S64_MAX; return (s64)r; }
+static s64 sdiv(s64 n, u32 d){ int neg = n<0; u64 un = neg ? (u64)(-(n+1))+1 : (u64)n; u32 hi=(u32)(un>>32), lo=(u32)un, qh=hi/d, r=hi%d, ql=0;
+    for(int i=31;i>=0;i--){ u32 top=r>>31; r=(r<<1)|((lo>>i)&1); ql<<=1; if(top||r>=d){ r-=d; ql|=1; } }
+    u64 q=((u64)qh<<32)|ql; return neg ? -(s64)q : (s64)q; }
+static int clampi(s64 v){ return v>1000000000LL ? 1000000000 : v<-1000000000LL ? -1000000000 : (int)v; }
+static int ratio(s64 a, s64 b, int scale){ if(b<=0||a<=0) return 0; if(a>=b) return scale; while(b>0x3FFFFFFLL){ a>>=1; b>>=1; } if(b<1) b=1; return (int)(((u32)a*(u32)scale)/(u32)b); }
 static int sinx(int a){ return sin_tab[a&255]; }
 static int cosx(int a){ return sin_tab[(a+64)&255]; }
 
 // ---------------------------------------------------------------- shared state
-static int hearts=5, gold=0, crew=0, frames=0, planet_no=0, depth_no=0, invuln=0;
+static s64 hearts=5, gold=0; static int crew=0, frames=0, planet_no=0, depth_no=0, invuln=0;
 static volatile u16 *page;         // the page we draw into (mode 4)
 static int page_back=0;
 // options, save slots and menu requests (see save.inc)
@@ -173,8 +183,8 @@ static void compass(volatile u16 *pg, s32 dirx, s32 diry){
     for(int k=-3;k<=3;k++){ int x=cx+ax*k, y=cy+ay*k*2; for(int j=0;j<2;j++) pg[(y+j)*120+x]=C_CYAN|(C_CYAN<<8); }
     int hx=cx+ax*4, hy=cy+ay*8; for(int j=-2;j<=2;j++) for(int i=-1;i<=1;i++){ int y=hy+j, x=hx+i; if(x>=0&&x<120&&y>=18&&y<160) pg[y*120+x]=C_WHITE|(C_WHITE<<8); }
 }
-static void bar(volatile u16 *pg, int c0, int val, int max, int col){
-    int h=34, f = max>0 ? val*h/max : 0; if(f>h) f=h; if(f<0) f=0;
+static void bar(volatile u16 *pg, int c0, s64 val, s64 max, int col){
+    int h=34, f = ratio(val,max,h); if(f>h) f=h; if(f<0) f=0;
     for(int y=0;y<h+2;y++){ int yy=124+y; u16 e=6|(6<<8); pg[yy*120+c0]=e; pg[yy*120+c0+2]=e; }
     for(int y=0;y<h;y++){ int yy=125+y; int ci = (h-y<=f) ? col : 0; pg[yy*120+c0+1]=ci|(ci<<8); }
 }
@@ -319,13 +329,13 @@ static void knock_tick(void){           // things that were hit slide, slam into
         s32 ny=o->y+o->kvy; if(!box_solid(o->x,ny,wr)){ o->y=ny; } else { s32 h=iabs(o->kvy); if(h>hit) hit=h; o->kvy=-o->kvy/3; }
         if(hit>0xC00){ burst(o->x,o->y,0x3000,4,1); thump(1);
             if(o->kind==K_BARREL){ barrel_break(o); continue; }
-            if(is_mon(o->kind)){ int dm=2+level/2+hit/0x800; add_fnum(o->x,o->y,dm,C_GOLD); o->hp-=dm; o->flash=6; if(o->hp<=0){ kill_mon(o); continue; } } }
+            if(is_mon(o->kind)){ int dm=2+clampi(sdiv(level,2))+hit/0x800; add_fnum(o->x,o->y,dm,C_GOLD); o->hp-=dm; o->flash=6; if(o->hp<=0){ kill_mon(o); continue; } } }
         s32 sp=iabs(o->kvx)+iabs(o->kvy);
         if(sp>0x2000 && is_mon(o->kind) && !invuln && iabs(o->x-px_)<r+PRAD+0x2000 && iabs(o->y-py_)<r+PRAD+0x2000){
-            int before=hearts; hurt(mon_dmg(o)*3/2); if(hearts<before){ hurt_flash=8; hitstop=5; kick_t=8; pknock_t=14; combo=0; pvx+=o->kvx; pvy+=o->kvy; say("RAMMED!"); } o->kvx/=4; o->kvy/=4; }
+            s64 before=hearts; hurt(mon_dmg(o)*3/2); if(hearts<before){ hurt_flash=8; hitstop=5; kick_t=8; pknock_t=14; combo=0; pvx+=o->kvx; pvy+=o->kvy; say("RAMMED!"); } o->kvx/=4; o->kvy/=4; }
         if(sp>0x1200) for(int j=0;j<ndo;j++){ DObj *b=&dob[j]; if(j==i||!b->alive||!is_mon(b->kind)) continue;
             s32 rr=(r?r:0x2000)+body_r(b); if(iabs(b->x-o->x)>=rr||iabs(b->y-o->y)>=rr) continue;
-            int dm=3+level/2; b->kvx+=o->kvx/2; b->kvy+=o->kvy/2; b->stag=4; o->kvx/=3; o->kvy/=3; thump(1);
+            int dm=3+clampi(sdiv(level,2)); b->kvx+=o->kvx/2; b->kvy+=o->kvy/2; b->stag=4; o->kvx/=3; o->kvy/=3; thump(1);
             hit_mon(b,dm,0); if(o->kind==K_BARREL){ barrel_break(o); } else if(is_mon(o->kind)) hit_mon(o,dm/2+1,0);
             break; }
         if(!o->alive) continue;
@@ -427,10 +437,10 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         if(!spell_known[s]) say("FIND A SPELL BOOK FIRST");
         else if(mp<spell_cost[s]){ say("NOT ENOUGH MANA"); }
         else { mp-=spell_cost[s];
-            if(s==SP_FIRE){ fire_proj(0, px_+(dirx>>2), py_+(diry>>2), 0x7000, (dirx*3)>>5, (diry*3)>>5, 6+st_mag*2+level); sfx(3); }
+            if(s==SP_FIRE){ fire_proj(0, px_+(dirx>>2), py_+(diry>>2), 0x7000, (dirx*3)>>5, (diry*3)>>5, clampi(sadd(sadd(6,smul(st_mag,2)),level))); sfx(3); }
             else if(s==SP_SPARK){ int best=-1; s32 bd=0x60000;
                 for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; s32 d=dist8(o->x-px_,o->y-py_); if(d<bd){ bd=d; best=i; } }
-                if(best>=0){ DObj *o=&dob[best]; hit_mon(o, 5+st_mag*2+level, 0); burst(o->x,o->y,0x8000,8,2); spark_t=6;
+                if(best>=0){ DObj *o=&dob[best]; hit_mon(o, clampi(sadd(sadd(5,smul(st_mag,2)),level)), 0); burst(o->x,o->y,0x8000,8,2); spark_t=6;
                     s32 det=(s32)((((long long)plx*diry)-((long long)dirx*ply))>>16); s32 sx=o->x-px_, sy=o->y-py_;
                     s32 tY=(s32)((((long long)-ply*sx)+((long long)plx*sy))/det), tX=(s32)((((long long)diry*sx)-((long long)dirx*sy))/det);
                     if(tY>0x2000){ spark_c=60+(s32)(((long long)tX*60)/tY); spark_y=hz; } else { spark_c=60; spark_y=60; } }
@@ -466,13 +476,13 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     s32 named_d=0x60000; if(wtick){ near_cage_p=-1; named_p=0; }
     for(int i=0;wtick && i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(o->flash) o->flash--;
         s32 dx=px_-o->x, dy=py_-o->y, d=dist8(dx,dy);
-        if(o->kind==K_CORE){ if(d<named_d){ named_p=o; named_d=d; } if(blast_flag && d<0x30000) hit_mon(o,8+level*2,0); continue; }
+        if(o->kind==K_CORE){ if(d<named_d){ named_p=o; named_d=d; } if(blast_flag && d<0x30000) hit_mon(o,clampi(sadd(8,smul(level,2))),0); continue; }
         if(is_mon(o->kind)){
             int boss=o->kind==K_BOSS, bat=o->kind==K_BAT, wasp=o->kind==K_WASP;
             s32 contact = 0x7800 + body_r(o), reach = contact + 0x2800;     // they walk up until they touch you, then bite
             if((o->champ||boss) && d<named_d){ named_p=o; named_d=d; }
             if(o->venom){ o->venom--; if((o->venom%15)==0){ int vd=1+d_venom/3; o->hp-=vd; add_fnum(o->x,o->y,vd,C_GREEN); if(o->hp<=0){ kill_mon(o); continue; } } }
-            if(blast_flag && d<0x30000){ hit_mon(o, 8+level*2, 0); if(!o->alive) continue; }
+            if(blast_flag && d<0x30000){ hit_mon(o, clampi(sadd(8,smul(level,2))), 0); if(!o->alive) continue; }
             // go after whoever is closer: you or Buddy
             s32 pdx=pet_x-o->x, pdy=pet_y-o->y, pd = pet_here ? dist8(pdx,pdy) : 0x7FFFFFFF;
             int at_pet = pd < d;
@@ -499,7 +509,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
                         if(td>0x100){ o->kvx += (s32)(((long long)tdx*(boss?0x1400:0x0C00))/td); o->kvy += (s32)(((long long)tdy*(boss?0x1400:0x0C00))/td); }   // it lunges
                         if(at_pet){ pet_hp-=mon_dmg(o)/2; petobj.flash=6; }
                         else { if(invuln && dodge_msg_t){ say("DODGED!"); st_dodges++; gain_xp(1); }
-                               else if(!invuln){ int before=hearts; hurt(mon_dmg(o)); if(hearts<before){ hurt_flash=8; hitstop=5; kick_t=7; pknock_t=12; combo=0;
+                               else if(!invuln){ s64 before=hearts; hurt(mon_dmg(o)); if(hearts<before){ hurt_flash=8; hitstop=5; kick_t=7; pknock_t=12; combo=0;
                                    s32 kp = boss?0x2400 : o->kind==K_BEETLE?0x1A00 : 0x1000; if(d>0x100){ pvx+=(s32)(((long long)dx*kp)/d); pvy+=(s32)(((long long)dy*kp)/d); } } }
                                int ret=d_reflect+d_sting; if(ret){ hit_mon(o,ret,0); if(!o->alive) continue; } }
                     } else { o->stag=3; }                      // it snapped at empty air and is open for a moment
@@ -529,7 +539,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(!o->alive||!(is_mon(o->kind)||o->kind==K_BARREL)) continue;
                 if(dist8(o->x-p->x,o->y-p->y)<0x9000){ o->kvx+=p->vx; o->kvy+=p->vy; p->alive=0; burst(p->x,p->y,p->h,12,0); hitstop=2;
                     if(o->kind==K_BARREL) barrel_break(o); else hit_mon(o,p->dmg,0); break; } } }
-        else if(dist8(px_-p->x,py_-p->y)<0x7000){ p->alive=0; int before=hearts; hurt(p->dmg); if(hearts<before){ hurt_flash=8; kick_t=4; pknock_t=6; pvx+=p->vx>>1; pvy+=p->vy>>1; } }
+        else if(dist8(px_-p->x,py_-p->y)<0x7000){ p->alive=0; s64 before=hearts; hurt(p->dmg); if(hearts<before){ hurt_flash=8; kick_t=4; pknock_t=6; pvx+=p->vx>>1; pvy+=p->vy>>1; } }
     }
     // ---- A: open a cage, take the stairs, fish, or bite
     int here=dmap[(py_>>16)*MW+(px_>>16)];
@@ -804,8 +814,8 @@ static void run_game(void){
             if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; tier_lock=-1; msg_timer=0; fish_state=0;
                    char mb[40];
                    if(forge_on) forge_end(r,mb);
-                   else if(r==2){ recalc(); hearts=maxh; food=60; if(!endless) gold/=2; loot=0; if(!opt_easy){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, opt_easy ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
-                   else if(endless){ int bonus = loot*(100+depth_no*15)/100; gold+=bonus; loot=0; scpy(mb,"ESCAPED B"); ncat(mb,depth_no); scat(mb,": +"); ncat(mb,bonus); scat(mb,"G"); }
+                   else if(r==2){ recalc(); hearts=maxh; food=60; if(!endless) gold=sdiv(gold,2); loot=0; if(!opt_easy){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, opt_easy ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
+                   else if(endless){ s64 bonus = sdiv(smul(loot,100+depth_no*15),100); gold=sadd(gold,bonus); loot=0; scpy(mb,"ESCAPED B"); ncat(mb,depth_no); scat(mb,": +"); ncat(mb,bonus); scat(mb,"G"); }
                    else if(base_mode && base_card) scpy(mb,"THE OUTPOST IS DEAD");
                    else if(base_mode) scpy(mb,"BACK ON THE SURFACE");
                    else if(r==3 && portal_depth) scpy(mb,"PORTAL OPEN: THE DOOR TAKES YOU BACK");

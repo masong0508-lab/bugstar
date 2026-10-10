@@ -30,10 +30,10 @@ static void describe(const Gear *g, char *b){
 typedef struct { int dmg, def, hp, mp, crit, spd, gold; } Delta;
 static Delta gear_delta(const Gear *g){
     Delta d={0,0,0,0,0,0,0}; if(!is_gear(g)) return d;
-    Gear *slot = g->it==IT_THORN ? &eqw : g->it==IT_SHELL ? &eqa : &eqc; Gear old=*slot; int oh=hearts, om=mp;
-    int b_dmg=d_dmg+d_fire+d_venom, b_def=d_def, b_hp=maxh, b_mp=maxmp, b_crit=d_crit, b_spd=d_spd, b_gold=gold_find;
+    Gear *slot = g->it==IT_THORN ? &eqw : g->it==IT_SHELL ? &eqa : &eqc; Gear old=*slot; s64 oh=hearts, om=mp;
+    s64 b_dmg=sadd(d_dmg,(s64)d_fire+d_venom), b_def=d_def, b_hp=maxh, b_mp=maxmp; int b_crit=d_crit, b_spd=d_spd, b_gold=gold_find;
     *slot=*g; recalc();
-    d.dmg=d_dmg+d_fire+d_venom-b_dmg; d.def=d_def-b_def; d.hp=maxh-b_hp; d.mp=maxmp-b_mp; d.crit=d_crit-b_crit; d.spd=d_spd-b_spd; d.gold=gold_find-b_gold;
+    d.dmg=clampi(sadd(sadd(d_dmg,(s64)d_fire+d_venom),-b_dmg)); d.def=clampi(sadd(d_def,-b_def)); d.hp=clampi(sadd(maxh,-b_hp)); d.mp=clampi(sadd(maxmp,-b_mp)); d.crit=d_crit-b_crit; d.spd=d_spd-b_spd; d.gold=gold_find-b_gold;
     *slot=old; recalc(); hearts=oh; mp=om; return d;
 }
 static int delta_text(const Gear *g, char *b){     // "DMG +2  DEF -1" in b; returns 1 better, -1 worse, 0 same/none
@@ -43,8 +43,8 @@ static int delta_text(const Gear *g, char *b){     // "DMG +2  DEF -1" in b; ret
     if(!b[0]) scpy(b,"SAME AS NOW");
     return sc>0?1:sc<0?-1:0;
 }
-static void vbar(volatile u16 *pg, int x, int y, int w, int val, int max, int col, const char *lab){     // a labelled bar with the numbers on it
-    rect(pg,x,y,w,7,C_DGREY); int f = max>0 ? val*(w-2)/max : 0; if(f>w-2) f=w-2; if(f<0) f=0; if(f) rect(pg,x+1,y+1,f,5,col);
+static void vbar(volatile u16 *pg, int x, int y, int w, s64 val, s64 max, int col, const char *lab){     // a labelled bar with the numbers on it
+    rect(pg,x,y,w,7,C_DGREY); int f = ratio(val,max,w-2); if(f) rect(pg,x+1,y+1,f,5,col);
     frame1(pg,x,y,w,7,6); char b[16]; b[0]=0; ncat(b,val); scat(b,"/"); ncat(b,max);
     text(pg,x-textlen(lab)*4-3,y+1,lab,C_GREY,1); text(pg,x+w-textlen(b)*4-2,y+1,b,C_WHITE,1);
 }
@@ -337,7 +337,7 @@ static void char_screen(volatile u16 *pg){
                 scpy(b,fame_rank()); scat(b,"  FAME "); ncat(b,fame); rtext(pg,232,y,b,C_GOLD); y+=9;
                 vbar(pg,34,y,86,hearts,maxh,C_RED,"HP"); vbar(pg,152,y,80,mp,maxmp,C_CYAN,"MP"); y+=9;
                 vbar(pg,34,y,86,food,100,food>25?C_GREEN:C_RED,"FOOD"); vbar(pg,152,y,80,xp,xp_next(),C_GOLD,"XP"); y+=12;
-                int *sv[4]={&st_str,&st_dex,&st_vit,&st_mag};
+                s64 *sv[4]={&st_str,&st_dex,&st_vit,&st_mag};
                 rect(pg,4,y-2,118,36,1);
                 for(int i=0;i<4;i++){ if(cur==i) rect(pg,4,y-1,118,8,6); if(cur==i) text(pg,6,y,">",C_CYAN,1); text(pg,12,y,stn[i],cur==i?C_WHITE:C_GREY,1); b[0]=0; ncat(b,*sv[i]); text(pg,58,y,b,C_WHITE,1);
                     for(int k=0;k<10;k++) rect(pg,72+k*4,y+1,3,4, k<*sv[i]? (i==0?C_RED:i==1?C_GOLD:i==2?C_GREEN:C_CYAN) : C_DGREY); y+=8; }
@@ -425,7 +425,7 @@ static void char_screen(volatile u16 *pg){
             if(page==1){ if(HIT(K_RIGHT) && cur+6<nmax){ cur+=6; dirty=1; } if(HIT(K_LEFT) && cur>=6){ cur-=6; dirty=1; } } }
         if(HIT(K_A)){
             dirty=1;
-            if(page==0 && stat_pts){ int *sv[4]={&st_str,&st_dex,&st_vit,&st_mag}; (*sv[cur])++; stat_pts--; int oldmax=maxh; recalc(); hearts+=maxh-oldmax; sfx(2); }
+            if(page==0 && stat_pts){ s64 *sv[4]={&st_str,&st_dex,&st_vit,&st_mag}; (*sv[cur])=sadd(*sv[cur],1); stat_pts--; s64 oldmax=maxh; recalc(); hearts=sadd(hearts,sadd(maxh,-oldmax)); sfx(2); }
             if(page==1 && bag_n){ use_index(cur); if(cur>=bag_n && cur) cur--; }
             if(page==2 && spell_known[cur]) spell_sel=cur;
             if(page==5){ sys_action(pg,cur); if(sys_req) break; }
@@ -442,7 +442,7 @@ static void char_screen(volatile u16 *pg){
 
 // ---------------------------------------------------------------- the ship: shops, quest board
 EW static Gear stock[6];
-static void restock(void){ int il=dlv()*3+level; for(int i=0;i<6;i++) stock[i]=roll_gear(i<2?IT_THORN:i<4?IT_SHELL:IT_CHARM, il, 10); }
+static void restock(void){ int il=dlv()*3+clampi(level); for(int i=0;i<6;i++) stock[i]=roll_gear(i<2?IT_THORN:i<4?IT_SHELL:IT_CHARM, il, 10); }
 static void make_quest(void){
     q_type=1+rndi(NQ-1); if(q_type==Q_BOSS && endless) q_type=Q_HUNT; q_have=0; q_done=0; q_zone=zone; q_world=world_no;
     int maxf = endless ? (best_depth>3?best_depth:3) : zone_floors();
@@ -625,7 +625,7 @@ static int shop_menu(void){   // returns 1 to fly on
                 if(HIT(K_B)){ if(q_type<0) q_type=Q_NONE; break; }
                 if(HIT(K_A)){
                     if(q_type<0){ q_type=-q_type; say("QUEST TAKEN"); save_game(); break; }
-                    if(q_done){ quest_take(); gold+=q_gold; fame+=q_fame; Gear pz=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, dlv()*3+level+2, 30); add_gear(pz); q_type=Q_NONE; say("REWARD CLAIMED!"); sfx(6); save_game(); hud_now(); break; }
+                    if(q_done){ quest_take(); gold=sadd(gold,q_gold); fame+=q_fame; Gear pz=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, dlv()*3+clampi(level)+2, 30); add_gear(pz); q_type=Q_NONE; say("REWARD CLAIMED!"); sfx(6); save_game(); hud_now(); break; }
                     q_type=Q_NONE; say("QUEST DROPPED"); break;
                 }
             }

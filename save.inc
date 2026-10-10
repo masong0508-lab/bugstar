@@ -1,7 +1,7 @@
 // ================================================================= SAVE SYSTEM: three slots on the cartridge, options, and the menus for them
 // SRAM map (32 KB):  slot n lives at n*0x1000:  +0x000 Save (the bug)  +0x800 SaveX (the ship, see space.inc)  +0xC00 Meta (play time)
 //                    options live at 0x7F00.  Slot 1 sits exactly where the old single save did, so old saves still load.
-__attribute__((used, aligned(4))) const char sram_tag[]="SRAM_V113";
+__attribute__((used, aligned(4))) const char sram_tag[]="SRAM_V114";
 #define SRAM ((volatile u8*)0x0E000000)
 #define NSLOT 3
 #define SLOT_STRIDE 0x1000
@@ -22,8 +22,8 @@ static void wait_release(void){ do { vsync(); read_keys(); } while(keys); }
 // ---------------------------------------------------------------- the bug's save block (same layout as before)
 typedef struct {
     u32 magic; u16 ver;
-    s16 zone, zone_cleared, endless, world_no, best_depth, level, st[4], stat_pts, hp, mp, food, bugs, fame, portal, spell_sel;
-    s32 xp, gold; u32 galaxy_seed;
+    s16 zone, zone_cleared, endless, world_no, best_depth, food, bugs, fame, portal, spell_sel;
+    s64 level, st[4], stat_pts, hp, mp, xp, gold; u32 galaxy_seed;      // 64-bit: level, stats, gold and xp can go to the limit (save format v2: old saves are not read)
     u8 have_bug[6], berry_map[8], seed_map[6], berry_known[8], seed_known[6], spell_known[4];
     Gear eq[3]; u8 bag_n; Gear bag[BAGMAX];
     s16 q_type, q_need, q_have, q_floor, q_done, q_gold, q_fame, q_zone, q_world; char q_name[24];
@@ -75,7 +75,7 @@ static int forge_on;
 static void do_save(void){        // always saves, into the slot you are playing
     if(forge_on) return;                                         // a Dungeon Forge run borrows the world: never save it half-changed
     Save *s=&sv; memset(s,0,sizeof(Save));
-    s->magic=0x53475542; s->ver=1;
+    s->magic=0x53475542; s->ver=2;
     s->zone=zone; s->zone_cleared=zone_cleared; s->endless=endless; s->world_no=world_no; s->best_depth=best_depth; s->level=level;
     s->st[0]=st_str; s->st[1]=st_dex; s->st[2]=st_vit; s->st[3]=st_mag; s->stat_pts=stat_pts; s->hp=hearts; s->mp=mp; s->food=food; s->bugs=bugs_freed; s->fame=fame; s->portal=portal_depth; s->spell_sel=spell_sel;
     s->xp=xp; s->gold=gold; s->galaxy_seed=galaxy_seed;
@@ -96,7 +96,7 @@ static void save_game(void){ if(opt_autosave) do_save(); }     // the quiet save
 
 static int slot_read(int slot){   // loads a slot into sv, and says if it is a good save
     sram_read(slot_base(slot), &sv, sizeof(Save));
-    return sv.magic==0x53475542 && sv.ver==1 && sv.sum==save_sum(&sv);
+    return sv.magic==0x53475542 && sv.ver==2 && sv.sum==save_sum(&sv);
 }
 static int load_game(int apply){
     if(!slot_read(cur_slot)) return 0;
@@ -121,7 +121,7 @@ static void slot_erase(int i){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(i)+
 static void slot_copy(int from, int to){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(to)+k]=SRAM[slot_base(from)+k]; for(int k=0;k<XT_STRIDE;k++) SRAM[xt_base(to)+k]=SRAM[xt_base(from)+k]; }
 
 // ---------------------------------------------------------------- a peek at each slot, for the cards
-typedef struct { u8 ok; s16 zone, endless, world_no, level; s32 gold, fame, xp; u32 secs; } SlotInfo;
+typedef struct { u8 ok; s16 zone, endless, world_no; s64 level, gold, xp; s32 fame; u32 secs; } SlotInfo;
 static SlotInfo sinf[NSLOT];
 static void slots_refresh(void){
     for(int i=0;i<NSLOT;i++){
@@ -146,8 +146,8 @@ static void panel(volatile u16 *pg, int x, int y, int w, int h, const char *titl
     rect(pg,x+1,y+1,w-2,11,C_DGREY); rect(pg,x+1,y+12,w-2,1,6);
     text(pg,x+7,y+4,title,0,1); text(pg,x+6,y+3,title,C_GOLD,1);
 }
-static void hbar(volatile u16 *pg, int x, int y, int w, int val, int max, int col){
-    rect(pg,x,y,w,3,C_DGREY); int f = max>0 ? val*w/max : 0; if(f>w) f=w; if(f<0) f=0; if(f) rect(pg,x,y,f,3,col);
+static void hbar(volatile u16 *pg, int x, int y, int w, s64 val, s64 max, int col){
+    rect(pg,x,y,w,3,C_DGREY); int f = ratio(val,max,w); if(f) rect(pg,x,y,f,3,col);
 }
 static int confirm(volatile u16 *pg, const char *l1, const char *l2){
     panel(pg,30,62,180,54,"ARE YOU SURE?");
@@ -174,7 +174,7 @@ static void slot_card(volatile u16 *pg, int i, int y, int sel, int mode){
     slot_where(o,b); text(pg,cx+8,y+15,b,sel?C_WHITE:C_GREY,1);
     scpy(b,"LV "); ncat(b,o->level); rtext(pg,cx+w-8,y+15,b,C_GOLD);
     scpy(b,"G "); ncat(b,o->gold); scat(b,"  FAME "); ncat(b,o->fame); text(pg,cx+8,y+24,b,sel?C_GREY:C_DGREY,1);
-    int need=(6*o->level*o->level+4)*3; hbar(pg,cx+w-8-48,y+25,48,o->xp,need,C_GOLD);
+    s64 need=sadd(smul(smul(o->level,o->level),18),12); hbar(pg,cx+w-8-48,y+25,48,o->xp,need,C_GOLD);
 }
 static int slot_picker(volatile u16 *pg, int mode, int src){
     static const char *const ttl[4]={"LOAD GAME","NEW GAME","SAVE GAME","COPY TO WHICH SLOT?"};
