@@ -234,13 +234,13 @@ static void kill_mon(DObj *o){
     if(boss && nbo){ char t[32]; scpy(t,"BOSS DOWN! "); ncat(t,nbo); scat(t," LEFT"); say(t); xpv+=30+dlv()*10; }
     else if(boss){ music(1); if(!endless||forge_on){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
        
-        if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else if(zone_cleared){ if(tiers[TZ]<(opt_diff==5?53:9)) tiers[TZ]++; st_tiers++; char tb[40]; scpy(tb,"TIER "); ncat(tb,tiers[TZ]); scat(tb," CLEARED! LOOT GETS BETTER"); say(tb); }
+        if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless && cur_moon){ int mt=moon_tier(); char mb[40]; scpy(mb,"MOON GUARDIAN DOWN! +"); ncat(mb,200*mt); scat(mb,"G"); say(mb); earn(200*mt); } else if(endless) say("GUARDIAN BEATEN!"); else if(zone_cleared){ if(tiers[TZ]<(opt_diff==5?53:9)) tiers[TZ]++; st_tiers++; char tb[40]; scpy(tb,"TIER "); ncat(tb,tiers[TZ]); scat(tb," CLEARED! LOOT GETS BETTER"); say(tb); }
               else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
     if(boss && mboss){ say("THE LABYRINTH FALLS SILENT"); earn(150+dlv()*30); xpv+=40+dlv()*8; }
     if(boss && !endless && !forge_on && zone==5 && opt_diff==4 && !opt_insane){ opt_insane=1; settings_save(); say("INSANE-SECT UNLOCKED! SEE OPTIONS"); sfx(6); }
     gain_xp(xpv);
     Gear g; int drop=0;
-    int uq_chance = hive ? 1000 : boss ? (mboss?600:300) : o->champ ? 50 : 4;          // in 1000
+    int uq_chance = hive ? 1000 : boss ? (mboss?600:(endless&&cur_moon)?450:300) : o->champ ? 50 : 4;          // in 1000
     if(rndi(1000) < uq_chance){ g=roll_unique(ilvl); drop=1; st_uniq++; say("A UNIQUE ITEM DROPPED!"); sfx(6); }
     else if(boss || o->champ){ g=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, ilvl+4, 40); drop=1; }
     else if(rndi(3)==0){ g=roll_drop(ilvl,0); drop=1; }
@@ -517,7 +517,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     s32 spf = (HELD(ku) || auto_run) ? WALK_FWD : HELD(kd) ? -WALK_BACK : 0;
     s32 sps = HELD(ksr) ? WALK_SIDE : HELD(ksl) ? -WALK_SIDE : 0;
     if(spf && sps){ spf=spf*3/4; sps=sps*3/4; }          // diagonals are not faster
-    spf = spf*(100+d_spd+have_bug[BUG_CRICKET]*25)/100; sps = sps*(100+d_spd+have_bug[BUG_CRICKET]*25)/100;
+    spf = spf*(100+d_spd+(endless&&cur_moon?15:0)+have_bug[BUG_CRICKET]*25)/100; sps = sps*(100+d_spd+(endless&&cur_moon?15:0)+have_bug[BUG_CRICKET]*25)/100;
     if(speed_t){ spf=spf*8/5; sps=sps*8/5; }
     if(auto_run){ spf=spf*7/5; sps=sps*7/5; }
     int sp = (spf||sps);

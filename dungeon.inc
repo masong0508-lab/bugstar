@@ -62,7 +62,8 @@ static void build_light(void); static void build_walls(void); static int base_fl
 // ---- dungeon DNA: every endless world (and every Dungeon Forge design) has a layout, wall material, creature mix, density and hazard
 typedef struct { u8 on, layout, wall, mix, dens, haz, floors, lvl, boss; u16 seed; } DDna;
 enum { LY_ROOMS, LY_HALLS, LY_CAVERNS, LY_TEMPLE, LY_CATA, LY_MAZE, NLY };
-static DDna ddna; static int forge_on;                       // forge_on: a Dungeon Forge run is in progress
+static DDna ddna; static int forge_on;
+static int moon_tier(void){ return 1+(depth_no>0?depth_no-1:0)/5; }                   // MOON DUNGEONS: a new tier every 5 floors, the guardian waits at the bottom of each one                       // forge_on: a Dungeon Forge run is in progress
 static const u8 mx_w[4][2]={{8,1},{5,2},{3,6},{2,2}};        // creature mix: spider and beetle weights out of 10, the rest are wasps
 static const u8 lay_wall[NLY]={7,7,7,M_MARBLE,M_STONE,7};    // a layout's own wall when the walls are on AUTO
 static int mboss=0, hunt_t=0, flow_cell=-1; EW static u16 flow[MW*MW];   // mboss: this boss floor is the rare labyrinth. hunt_t: ticks before the boss wakes. flow: path distance to you
@@ -125,8 +126,9 @@ static void make_floor(void){
             ddna.layout = lr<3?LY_ROOMS : lr<4?LY_HALLS : lr<6?LY_CAVERNS : lr<8?LY_TEMPLE : LY_CATA;
             ddna.wall=(h>>8)%8; ddna.mix=(h>>12)&3; ddna.dens=(h>>16)%3; ddna.haz = hz<3?0 : hz-2; ddna.boss=0;
             if(hellw()){ static const u8 hw[6]={0,2,4,5,0,4}; ddna.wall=hw[wd.cls-PC_INFERNO]; ddna.haz = wd.cls==PC_OBSIDIAN ? 1 : 2; ddna.dens=2; ddna.mix = wd.cls==PC_INFERNO||wd.cls==PC_BONE ? 3 : 2; } } }
+    if(ddna.on && !forge_on && cur_moon){ ddna.layout = wd.cls==PC_ICE ? LY_CATA : LY_CAVERNS; ddna.wall = wd.cls==PC_ICE ? M_MARBLE : wd.cls==PC_DESERT ? M_EARTH : M_CRYSTAL; ddna.mix=3; ddna.dens=2; ddna.haz=1; }   // a moon dungeon: ice catacombs or lunar caverns, glittering walls, swarms of wasps, dark floors with double loot
     int mz_last = forge_on ? depth_no>=ddna.floors : base_mode ? depth_no>=base_floors() : (!endless && depth_no>=zone_floors());
-    int bossfl = !base_mode && (forge_on ? mz_last : endless ? (depth_no%10==0 && !hive_boss_floor()) : mz_last);
+    int bossfl = !base_mode && (forge_on ? mz_last : endless ? (depth_no%(cur_moon?5:10)==0 && !hive_boss_floor()) : mz_last);
     mboss=0; hunt_t=0; flow_cell=-1;
     if(bossfl){ if(forge_on) mboss = ddna.boss==1 || (ddna.boss==0 && rndi(100)<8);
                 else if(endless || zone>0 || tier_now()) mboss = rndi(100) < 10+tier_now()*4; }      // RARE: a boss floor that is a labyrinth, and the boss hunts you through it
@@ -219,7 +221,7 @@ static void make_floor(void){
     up_x=((up%MW)<<16)+0x8000; up_y=((up/MW)<<16)+0x8000;
     ndo=0;
     #define SPAWN(k_,cell_,hp_,sub_) do{ if(ndo<NDO){ DObj *o=&dob[ndo++]; memset(o,0,sizeof(DObj)); int c_=(cell_); o->kind=(k_); o->alive=1; o->hp=o->maxhp=(hp_); o->sub=(sub_); o->x=((c_%MW)<<16)+0x8000; o->y=((c_/MW)<<16)+0x8000; } }while(0)
-    int base_hp = 6 + dlv()*5 + depth_no*2;
+    int base_hp = 6 + dlv()*5 + depth_no*2; if(endless && cur_moon) base_hp = base_hp*(100+moon_tier()*10)/100;      // every moon tier: +10% monster health
     int bcell = mboss ? 14*MW+15 : dn;                                  // the labyrinth boss waits in the middle arena
     int ilvl = dlv()*3 + depth_no;
     for(int i=1;i<nrooms;i++){
@@ -263,9 +265,9 @@ static void make_floor(void){
     }
     if(endless){
         if(hive_boss_floor()) SPAWN(K_BOSS, dn, 150+depth_no*12+dlv()*45, 0);              // a Tech Hive overlord guards the hive core
-        else if(depth_no%10==0) SPAWN(K_BOSS, bcell, 60+depth_no*6+dlv()*20, 0);               // a guardian every 10 floors
+        else if(depth_no%(cur_moon?5:10)==0) SPAWN(K_BOSS, bcell, (60+depth_no*6+dlv()*20)*(cur_moon ? 100+moon_tier()*25 : 100)/100, 0);   // a moon guardian: +25% health per tier               // a guardian every 10 floors
         if(depth_no%5==0 || rndi(10)<3) SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), ((Gear){IT_WARP,0,0,0,0,0}));
-        int ng = 1 + rndi(2) + depth_no/8; if(ng>4) ng=4;
+        int ng = 1 + rndi(2) + depth_no/8 + (cur_moon?1:0); if(ng>4+(cur_moon?1:0)) ng=4+(cur_moon?1:0);                 // moons are crystal rock: one more gem a floor
         for(int k=0;k<ng;k++){ int t=rndi(10)+depth_no/6; Gear g={IT_GEM,(u8)(t<5?0 : t<8?1 : t<11?2 : 3),0,0,0,0}; SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), g); }
         if(depth_no>=5 && rndi(8)==0){ Gear g=roll_gear(rndi(2)?IT_SHELL:IT_THORN, ilvl+10, 60); g.sub=4; SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), g); }
     }
@@ -298,6 +300,7 @@ static void make_floor(void){
                 SPAWN(K_CAGE, room_floor_cell(&rooms[rndi(nrooms)]), 1, rndi(6)); SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), roll_drop(ilvl,0)); break;
         }
     }
+    if(endless && cur_moon && !mboss){ char mb[40]; scpy(mb,"MOON TIER "); ncat(mb,moon_tier()); scat(mb,". GUARDIAN ON B"); ncat(mb,moon_tier()*5); say(mb); msg_timer=70; }
     // quests that live on this floor
     int qhere = !forge_on && q_type>0 && !q_done && depth_no==q_floor && q_zone==zone && q_world==world_no;
     if(qhere && q_type==Q_CHAMP){ SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0); dob[ndo-1].champ=2; }
@@ -731,7 +734,7 @@ static s32 pet_x, pet_y;
 
 static void dungeon_label(char *b){
     if(base_mode) scpy(b,"OUTPOST"); else scpy(b,world_name()); scat(b," B"); char n2[6];
-    if(endless){ num(n2,depth_no,depth_no>99?3:depth_no>9?2:1); scat(b,n2); }
+    if(endless){ num(n2,depth_no,depth_no>99?3:depth_no>9?2:1); scat(b,n2); if(cur_moon){ scat(b," T"); ncat(b,moon_tier()); } }
     else if(base_mode){ num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,base_floors(),1); scat(b,n2); }
     else { num(n2,depth_no,3); scat(b,n2); scat(b,"/"); num(n2,zone_floors(),3); scat(b,n2); if(tier_now()){ scat(b," T"); ncat(b,tier_now()); } }
 }
