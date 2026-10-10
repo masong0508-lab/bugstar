@@ -42,6 +42,9 @@ The stats card at the bottom shows exactly what each choice does.
 - **SELECT: surprise me** rolls a random bug.
 The bug's sprite is drawn by the game from your choices, so every bug is different.
 
+## Baby mode and more options (new)
+The options screen scrolls and has five new rows. **BABY MODE** (for babies, really): you take 1 damage at most, you never get hungry, fainting costs nothing, Buddy heals your boo-boos, and gold and XP are doubled. **HUNGER** on/off, **LOSE STUFF WHEN YOU FAINT** on/off, **XP SPEED** and **GOLD** x1 / x2 / x5. All remembered on the cartridge.
+
 ## Options (new)
 Difficulty (easy / normal / hard: hard does more damage to you but pays +25% gold), which planet camera a new game starts with, music, sound effects, autosave, screen shake, minimap, damage numbers, button hints, and the guide arrow. All remembered on the cartridge.
 

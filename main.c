@@ -61,7 +61,7 @@ static int page_back=0;
 // options, save slots and menu requests (see save.inc)
 static volatile int opt_music=2;   // 0 off, 1 low, 2 full
 static volatile int opt_sfx=1;
-static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1;   // easy = (opt_diff==0)
+static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1, opt_baby=0, opt_hunger=1, opt_faintloss=1, opt_xpm=0, opt_goldm=0;   // easy = (opt_diff==0)
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
@@ -918,7 +918,7 @@ static void run_game(void){
             if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; tier_lock=-1; msg_timer=0; fish_state=0;
                    char mb[40];
                    if(forge_on) forge_end(r,mb);
-                   else if(r==2){ recalc(); hearts=maxh; food=60; if(!endless) gold=sdiv(gold,2); loot=0; if(!opt_easy){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, opt_easy ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
+                   else if(r==2){ recalc(); hearts=maxh; food=60; int nolose=!opt_faintloss||opt_baby; if(!endless && !nolose) gold=sdiv(gold,2); loot=0; if(!opt_easy && !nolose){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, (opt_easy||nolose) ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
                    else if(endless){ s64 bonus = sdiv(smul(loot,100+depth_no*15),100); gold=sadd(gold,bonus); loot=0; scpy(mb,"ESCAPED B"); ncat(mb,depth_no); scat(mb,": +"); ncat(mb,bonus); scat(mb,"G"); }
                    else if(base_mode && base_card) scpy(mb,"THE OUTPOST IS DEAD");
                    else if(base_mode) scpy(mb,"BACK ON THE SURFACE");

@@ -466,7 +466,7 @@ static void planet_frame(void){
     if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen(VISPG); planet_hud(); msg_timer=0; p_last=vbl_count; return; }
     if(cast_flag>=0){ cam_fp^=1; planet_tables(); show_msg(cam_fp?"FIRST PERSON. SELECT: SWITCH VIEW":"THIRD PERSON. HOLD SELECT + LEFT/RIGHT: TURN"); sfx(2); }
     escape_flag=call_flag=blast_flag=0; cast_flag=-1;
-    if(hearts<=0){ hearts=maxh; food=60; gold=sdiv(gold,2); if(!opt_easy){ bag_n=0; bag_sel=0; } show_msg(opt_easy?"YOU FAINTED. HALF YOUR GOLD IS GONE":"YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }
+    if(hearts<=0){ hearts=maxh; food=60; int nolose=!opt_faintloss||opt_baby; if(!nolose) gold=sdiv(gold,2); if(!nolose && !opt_easy){ bag_n=0; bag_sel=0; } show_msg(nolose?"YOU FAINTED. NOTHING LOST. NAP TIME":opt_easy?"YOU FAINTED. HALF YOUR GOLD IS GONE":"YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }
     if(msg_timer){ msg_timer-=n; if(msg_timer<0) msg_timer=0; }
     if(frames%30==0 && hud_sig()!=phud_sig) planet_hud();
     if(opt_autosave && frames%6000==5999){ save_game(); show_msg("GAME SAVED"); }          // a quiet save every few minutes on the surface
