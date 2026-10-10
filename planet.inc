@@ -15,8 +15,8 @@
 #define GND_B 40
 #define WAT_B 56
 #define BLD_B 64                  // 64..87: city walls, windows, roads, roofs, sand, snow (set up by planet_palette)
-enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_TREE, O_ROCK, O_WEB, O_FLOWER, O_BASE, O_MARKET, O_CANTINA, O_OFFICE, O_RACE, O_HOME, O_LOCAL, O_FOSSIL, O_RUIN, O_BEETLE, O_CRIT, O_BEACON, O_STALL, O_PEBBLE, O_TUFT };
-#define O_LAST_USE O_CRIT
+enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_TREE, O_ROCK, O_WEB, O_FLOWER, O_BASE, O_MARKET, O_CANTINA, O_OFFICE, O_RACE, O_HOME, O_LOCAL, O_FOSSIL, O_RUIN, O_BEETLE, O_CRIT, O_SHRINE, O_BEACON, O_STALL, O_PEBBLE, O_TUFT };
+#define O_LAST_USE O_SHRINE
 static void city_flatten(void); static void city_stamp(void); static int good_price(int g); static void species_palette(void);
 static int has_base(int i){ return i>=0 && i<NSYS && !((base_mask>>(i&31))&1) && ((sys[i].kind>=1 && sys[i].kind<=5) || (sys[i].kind==6 && !is_hive(i) && (sys_id(i)%3)==0)); }                                // kinds up to this one react to A
 typedef struct { s32 x,y; u8 kind, alive, hp, var; } PObj;      // x,y: where on the map, 16.16 cells. hp: bites left in a resource node
@@ -77,6 +77,8 @@ static void planet_palette(void){
     BG_PAL[74]=wd.road; BG_PAL[75]=lift15(wd.road,8); BG_PAL[80]=lift15(wd.road,5); BG_PAL[81]=lift15(wd.road,3);
     BG_PAL[82]=rgb15(220,200,140); BG_PAL[83]=rgb15(236,220,160); BG_PAL[84]=rgb15(250,250,255); BG_PAL[85]=rgb15(210,220,240); BG_PAL[86]=rgb15(236,240,250); BG_PAL[87]=rgb15(200,210,235);
     if(wd.hour==2) for(int i=64;i<88;i++) BG_PAL[i]=dim15(BG_PAL[i],9);
+    if(wd.weird==7) for(int i=0;i<16;i++) BG_PAL[GND_B+i]=rgb15(60+i*12,40+i*10,i*3);                   // GOLD WORLD
+    if(wd.weird==8){ for(int i=0;i<16;i++) BG_PAL[GND_B+i]= (i&3)==3 ? rgb15(80,255,230) : rgb15(10+i,0,20+i*3); for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=0; }   // VOID WORLD: neon in the dark
     obj_palette(); species_palette();
 }
 static void planet_draw_bg(void){                           // the title screen still uses the painted planet picture
@@ -99,7 +101,8 @@ static void gen_terrain(u32 seed){
     static const u8 cell[4]={32,16,8,4}; static const u8 amp[4]={110,70,40,18};
     EW static u8 grid[33*33];
     for(int o=0;o<4;o++){ int cs=cell[o], n=TW/cs;
-        for(int i=0;i<n*n;i++) grid[i]=wr(256);
+        int full = endless && sys[cur_sys].kind==6 && !home_cluster();                 // out in the universe: every word of the address shapes the land
+        for(int i=0;i<n*n;i++) grid[i] = full ? (hmix(aword(i+o*11,cur_sys) ^ seed ^ ((u32)o<<24) ^ (u32)i*0x9E3779B1u)>>12)&255 : wr(256);
         for(int y=0;y<TW;y++) for(int x=0;x<TW;x++){
             int gx=x/cs, gy=y/cs, fx=(x%cs)*256/cs, fy=(y%cs)*256/cs;
             fx=(fx*fx*(3*256-2*fx))>>16; fy=(fy*fy*(3*256-2*fy))>>16;           // smoothstep
@@ -121,6 +124,7 @@ static void gen_terrain(u32 seed){
     if(wd.style==4) for(int c=0;c<6+wd.rough*2;c++){ int cx=wr(TW), cy=wr(TW), r=5+wr(9);          // craters: a bowl with a raised rim
         for(int y=-r;y<=r;y++) for(int x=-r;x<=r;x++){ int d2=x*x+y*y; if(d2>r*r) continue; int i=((cy+y)&TMASK)*TW+((cx+x)&TMASK);
             int t=256-d2*256/(r*r); int v=hmap[i]-(70*t>>8)+(d2>r*r*2/3?25:0); hmap[i]=v<0?0:v>255?255:v; } }
+    if(wd.weird==4) for(int i=0;i<TW*TW;i++){ int v=hmap[i]; hmap[i] = v>150 ? 255 : v>120 ? (v-120)*8+15 : v/8; }   // SPIKE WORLD: needles
     if(wd.cliffs) for(int i=0;i<TW*TW;i++){ int v=hmap[i]; if(v>120 && v<150) v = v<135 ? 120 : 150; hmap[i]=v; }   // a cliff line through the middle heights
     city_flatten();
     // a flat landing field at the start
@@ -141,10 +145,13 @@ static void gen_terrain(u32 seed){
         if(wd.sand && h<water_lv+8) cmap[i]=82+((x+y)&1);               // a sandy beach
         if(wd.snow && h>200) cmap[i]=84+(((h-200)>>5)*2)+((bay4[((y&3)<<2)|(x&3)]>(h&15))?0:1); }   // snow caps
     city_stamp();
+    if(wd.weird==1){ u32 r=wd.tseed; for(int b=0;b<900;b++){ r=hmix(r+b); int x=r&HMASK, y=(r>>8)&HMASK, w=2+((r>>16)&7), h=1+((r>>20)&3), c=40+((r>>24)%48);   // GLITCH: torn blocks of wrong colour
+        for(int j=0;j<h;j++) for(int i=0;i<w;i++) cmap[((y+j)&HMASK)*HW+((x+i)&HMASK)]=c; } }
 }
 static void place(PObj *o, int kind, int minr, int maxr){ o->kind=kind; o->alive=1; o->hp=3; int a=wr(256), r=minr+wr(maxr-minr+1); o->x=(64<<16)+cosx(a)*r*4; o->y=(64<<16)+sinx(a)*r*4; }
 static s32 wrapd(s32 d){ return ((d + (64<<16)) & ((TW<<16)-1)) - (64<<16); }        // shortest way round the world, 16.16
 #include "town.inc"
+static char tdbg[40];
 static void new_planet(void){
     water_lv = endless ? 30+wr(60) : (zone==1 ? 100 : zone==0||zone==3 ? 70 : zone==5 ? 10 : 45);
     gen_terrain(wd.tseed);                                                              // the land comes from its own seed
@@ -168,17 +175,18 @@ static void new_planet(void){
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind!=O_SHIP && (po[i].kind<O_MARKET || (po[i].kind>=O_FOSSIL && po[i].kind<=O_CRIT)) && hm_at(po[i].x,po[i].y)<water_lv){ po[i].x+=1<<16; if(hm_at(po[i].x,po[i].y)<water_lv) po[i].alive = po[i].kind<=O_CAGE ? 1 : 0; }
     ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;
 #ifdef TEST_CITY
-    { static const u8 tk[10]={0,O_MARKET,O_CANTINA,O_OFFICE,O_RACE,O_LOCAL,O_RUIN,O_FOSSIL,O_CRIT,O_BEETLE}; int want=tk[TEST_CITY%10];
+    { static const u8 tk[11]={0,O_MARKET,O_CANTINA,O_OFFICE,O_RACE,O_LOCAL,O_RUIN,O_FOSSIL,O_CRIT,O_BEETLE,O_SHRINE}; int want=tk[TEST_CITY%11];
       if(TEST_CITY==0 && city_r){ ppx=city_cx<<16; ppy=((city_cy+city_r+2)&TMASK)<<16; }
-      else for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==want){ ppx=po[i].x; ppy=po[i].y+(TEST_CITY>=8?(3<<16):(1<<16)); break; }
+      else for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==want){ ppx=po[i].x; ppy=po[i].y+(TEST_CITY>=8?(3<<16):(1<<16)); if(TEST_CITY==10){ for(int j=0;j<NPO;j++) if(j!=i && po[j].alive && po[j].kind>O_SHIP && po[j].kind<=O_LAST_USE) po[j].alive=0; ppy=po[i].y-(1<<16); } break; }
+      { int n=0,f=0; for(int i=0;i<NPO;i++){ if(po[i].alive) n++; if(po[i].alive&&po[i].kind==want) f++; } scpy(tdbg,"TEST K"); ncat(tdbg,n); scat(tdbg," F"); ncat(tdbg,f); scat(tdbg," W"); ncat(tdbg,wd.weird); }
       cam_h=ground_h(ppx,ppy)+CAM_UP; }
 #endif
 #ifdef TEST_MINE
     po[3].kind=O_TREE; po[3].alive=1; po[3].hp=3; po[3].x=(64<<16)+(1<<16); po[3].y=(64<<16)-(1<<16); po[4].kind=O_ROCK; po[4].alive=1; po[4].hp=3; po[4].x=(64<<16)+(2<<16); po[4].y=(64<<16)+(1<<16);
 #endif
 }
-static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_TREE,T_ROCK,T_WEB,T_FLOWER,T_HATCH, T_STALL,T_DOORWAY,T_DOORWAY,T_BEACON,T_DOORWAY,T_LOCAL1,T_FOSSIL,T_RUIN,T_SBEETLE,T_HOPPER,T_BEACON,T_STALL, T_PEBBLE,T_TUFT};
-static const u8 shape_of[]={0,0,1,1,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0, 0,0}, size_of[]={1,1,0,0,0,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1, 0,0}, w_of[]={16,16,16,16,8,16,16,16,16,16, 16,16,16,16,16,16,16,16,16,16,16,16, 8,8}, h_of[]={16,16,8,8,8,16,16,16,16,16, 16,16,16,16,16,16,16,16,16,16,16,16, 8,8};
+static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_TREE,T_ROCK,T_WEB,T_FLOWER,T_HATCH, T_STALL,T_DOORWAY,T_DOORWAY,T_BEACON,T_DOORWAY,T_LOCAL1,T_FOSSIL,T_RUIN,T_SBEETLE,T_HOPPER,T_RUIN,T_BEACON,T_STALL, T_PEBBLE,T_TUFT};
+static const u8 shape_of[]={0,0,1,1,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0}, size_of[]={1,1,0,0,0,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1, 0,0}, w_of[]={16,16,16,16,8,16,16,16,16,16, 16,16,16,16,16,16,16,16,16,16,16,16,16, 8,8}, h_of[]={16,16,8,8,8,16,16,16,16,16, 16,16,16,16,16,16,16,16,16,16,16,16,16, 8,8};
 
 // ---------------------------------------------------------------- the renderer
 static void planet_tables(void){
@@ -191,7 +199,8 @@ static void planet_tables(void){
 }
 IWRAM static void render_planet(volatile u16 *pg){
     s32 cb=cam_back(); s32 cam_x = ppx - ((hsn*cb)>>8), cam_y = ppy - ((hcs*cb)>>8);
-    for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = (z*z)>>(8+7);             // the world drops away: z*z/128 cells
+    int csh = wd.weird==3 ? 12 : 15; s32 csub = wd.weird==3 ? ((cb>>8)*(cb>>8))>>12 : 0;   // TINY WORLD: the horizon falls away eight times faster (measured from the bug)
+    for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((z*z)>>(csh)) - csub;             // the world drops away: z*z/128 cells
         stp_base[i] = ((cam_h + curve) * stp_f[i])>>8; }                             // (8.8 cells) * (8.8 px/cell) >> 8 = 8.8 px
     u32 sparkle=frames;
     for(int c=0;c<120;c++){
@@ -249,7 +258,7 @@ static void planet_frame(void){
     } else { if(HELD(K_LEFT)) facing=0; if(HELD(K_RIGHT)) facing=1; }
     for(int k=0;k<n;k++){
         pw_h += th ? (th-pw_h)/4 + (th>pw_h?1:th<pw_h?-1:0) : -pw_h/3; pw_v += tv ? (tv-pw_v)/4 + (tv>pw_v?1:tv<pw_v?-1:0) : -pw_v/3;
-        s32 sp = 0x1600 + (wd.grav-1)*0x200;                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
+        s32 sp = 0x1600 + (wd.grav-1)*0x200; if(wd.weird==6) sp=sp*5/2;                  // ZERO-G WORLD: you bounce along                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
         if(hm_at(ppx,ppy)<water_lv) sp=sp*2/3;                                          // wading is slow
         s32 mvx=(pw_h*sp)>>4, mvy=(pw_v*sp)>>4;
         { s32 fwd=-mvy, side=mvx; mvx=((hsn*fwd)>>8)+((hcs*side)>>8); mvy=((hcs*fwd)>>8)-((hsn*side)>>8); }   // UP walks away from the camera (into the screen), in both views
@@ -291,14 +300,15 @@ static void planet_frame(void){
                 ln[0]=kn[(po[best].x>>16)%6]; ln[1]=po[best].hp ? "SOMETHING ROLLS OUT UNDER THE DOOR: 10G" : "..."; if(po[best].hp){ po[best].hp=0; gold+=10; sfx(7); }
                 card(VISPG,"A HOUSE",ln,2); planet_hud(); p_last=vbl_count; return; }
             case O_LOCAL: { oam_hide_all(); oam_flush(); local_talk(&po[best]); job_tick(); planet_hud(); p_last=vbl_count; return; }
+            case O_SHRINE: { oam_hide_all(); oam_flush(); po[best].alive=0; relic_found(); planet_hud(); p_last=vbl_count; return; }
             case O_RACE: if(race_on){ race_on=0; for(int i=0;i<NPO;i++) if(po[i].kind==O_BEACON) po[i].alive=0; show_msg("RACE CALLED OFF"); } else race_start(); break;
             case O_RUIN: if(!po[best].hp){ show_msg("THE STONES ARE QUIET NOW"); break; } { oam_hide_all(); oam_flush(); ruin_visit(VISPG,&po[best]); planet_hud(); p_last=vbl_count; return; }
             case O_FOSSIL: { PObj *o=&po[best]; sfx(12); mine_t=8; if(--o->hp>0){ char b[40]; scpy(b,"DIG... "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                 o->alive=0; st_mined++; gain_xp(4+dlv()); if(cargo_n()<cargo_cap+ship_hold_bonus()){ cargo[7]++; show_msg("A FOSSIL! +1 RELIC IN THE HOLD"); } else { gold+=20; show_msg("A FOSSIL! HOLD FULL, SO: +20G"); }
-                if(rndi(3)==0){ Gear g={IT_SHELL,(u8)rndi(4),0,0,0,(u8)dlv()}; add_gear(g); show_msg("OLD BONES... AND AN OLD SHELL!"); } sfx(6); if(pq_type==3){ pq_have++; job_tick(); } break; }
+                if(rndi(3)==0){ Gear g={IT_SHELL,(u8)rndi(4),0,0,0,(u8)dlv()}; add_gear(g); show_msg("OLD BONES... AND AN OLD SHELL!"); } sfx(6); if(pq_type==3){ pq_have++; job_tick(); } if(relic_roll(150)){ planet_hud(); p_last=vbl_count; return; } break; }
             case O_BEETLE: { PObj *o=&po[best]; sfx(0); mine_t=6; s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); o->x=(o->x+dx*2)&((TW<<16)-1); o->y=(o->y+dy*2)&((TW<<16)-1); invuln=20;
                 if(--o->hp>0){ char b[40]; scpy(b,"BITE! THE BEETLE HAS "); ncat(b,o->hp); scat(b," LEFT"); show_msg(b); break; }
-                o->alive=0; gold+=12+dlv()*3; gain_xp(8+dlv()*2); st_kills[2]++; show_msg("BEETLE DOWN! +GOLD"); sfx(9); if(pq_type==2){ pq_have++; job_tick(); } break; }
+                o->alive=0; gold+=12+dlv()*3; gain_xp(8+dlv()*2); st_kills[2]++; show_msg("BEETLE DOWN! +GOLD"); sfx(9); if(pq_type==2){ pq_have++; job_tick(); } if(relic_roll(250)){ planet_hud(); p_last=vbl_count; return; } break; }
             case O_CRIT: { PObj *o=&po[best]; Species *p=&spc[o->var]; sfx(0); mine_t=6; invuln=12; s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); o->x=(o->x+dx)&((TW<<16)-1); o->y=(o->y+dy)&((TW<<16)-1); ctim[o->var]=0;
                 if(--o->hp>0){ char b[40]; scpy(b,p->temper==1?"IT LOOKS HURT. AND CONFUSED":"THE "); if(p->temper!=1){ scat(b,p->name); scat(b," SQUEAKS"); } show_msg(b); break; }
                 o->alive=0; p->pop=crit_count(o->var); eat(12); gain_xp(5+dlv()); char b[40]; scpy(b,"CAUGHT A "); scat(b,p->name); scat(b,". FOOD +12. "); ncat(b,p->pop); scat(b," LEFT"); show_msg(b); sfx(9);
@@ -307,6 +317,7 @@ static void planet_frame(void){
                 PObj *o=&po[best]; int t=o->kind-O_TREE; sfx(o->kind==O_ROCK?12:13); mine_t=8;
                 if(--o->hp>0){ char b[40]; scpy(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                 o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0); if(pq_type==7){ pq_have++; job_tick(); }
+                if(relic_roll(400)){ planet_hud(); p_last=vbl_count; return; }
                 if(cargo_n()>=cargo_cap+ship_hold_bonus()){ show_msg("HOLD FULL! SELL GOODS AT A STATION"); break; }
                 int room=cargo_cap+ship_hold_bonus()-cargo_n(); if(n>room) n=room; cargo[g]+=n; st_mined+=n; ach_check(); gain_xp(2+dlv());
                 char b[40]; scpy(b,"+"); ncat(b,n); scat(b," "); scat(b,goods[g]); scat(b,"  HOLD "); ncat(b,cargo_n()); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); show_msg(b); sfx(7);
@@ -328,18 +339,24 @@ static void planet_frame(void){
     if(msg_timer){ msg_timer-=n; if(msg_timer<0) msg_timer=0; }
     if(frames%30==0 && hud_sig()!=phud_sig) planet_hud();
     // ---- draw the world
+    if(wd.weird==2 && (frames&3)==0){ u16 c0=BG_PAL[GND_B]; for(int i=0;i<15;i++) BG_PAL[GND_B+i]=BG_PAL[GND_B+i+1]; BG_PAL[GND_B+15]=c0; }   // RAINBOW WORLD: the ground's colours roll
+    if(wd.weird==1 && (frames&15)==0){ int k=rndi(8); BG_PAL[SKY_B+k]=rgb15(rndi(256),rndi(256),rndi(256)); }                                   // GLITCH: the sky flickers
     u32 t_r0=TMR(); render_planet(pg); u32 t_r1=TMR();
     if(msg_timer){ int L=textlen(msg); if(L<=29) text(pg,120-L*4,24,msg,C_WHITE,2); else stext(pg,120-L*2,26,msg,C_WHITE); }
 #ifdef TEST_FPS
     { static u32 tf0=0; u32 now=TMR(); char fb[40]; scpy(fb,"N"); ncat(fb,n); scat(fb," RENDER "); ncat(fb,(int)((t_r1-t_r0)/1000)); scat(fb,"K PRE "); ncat(fb,(int)((t_r0-t_f0)/1000)); scat(fb,"K FRAME "); ncat(fb,(int)((now-tf0)/1000)); scat(fb,"K"); tf0=now; rect(pg,0,40,240,8,0); text(pg,4,41,fb,C_GOLD,1); }
 #endif
     { int pk = best<0 ? -1 : po[best].kind;
-      static const char *const pt[20]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR","A: ENTER THE DRONE OUTPOST",
-          "A: THE MARKET","A: THE CANTINA","A: THE BOUNTY OFFICE","A: THE RACE POST","A: KNOCK","A: TALK","A: DIG THE FOSSIL","A: THE RUIN","A: BITE THE BEETLE","A: CATCH IT"};
+      static const char *const pt[21]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR","A: ENTER THE DRONE OUTPOST",
+          "A: THE MARKET","A: THE CANTINA","A: THE BOUNTY OFFICE","A: THE RACE POST","A: KNOCK","A: TALK","A: DIG THE FOSSIL","A: THE RUIN","A: BITE THE BEETLE","A: CATCH IT","A: THE RELIC SHRINE!"};
       if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
       if(race_on){ char rb[24]; scpy(rb,"RACE "); ncat(rb,race_t/60); scat(rb,"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/5"); stext(pg,4,151,rb,C_CYAN); }
       else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
-      weather_draw(pg); }
+      weather_draw(pg);
+#ifdef TEST_CITY
+      stext(pg,4,140,tdbg,C_RED);
+#endif
+      }
     (void)prompt_k;
 #ifdef TEST_FPS
     u32 t_s0=TMR();
@@ -350,11 +367,11 @@ static void planet_frame(void){
     oam_hide_all();
     int slot=0;
     s32 bug_sy;
-    { s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=((dz>>8)*(dz>>8))>>15;
+    { s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=((dz>>8)*(dz>>8))>>(wd.weird==3?12:15); if(wd.weird==3) curve-=((cam_back()>>8)*(cam_back()>>8))>>12;
       bug_sy = PHZ + (((cam_h + curve - gh) * f)>>16); }
     if(!cam_fp){                                                                        // the bug, standing on the ground ahead of the camera
       int sy=bug_sy;
-      int bob = moved ? ((frames>>3)&1) : 0;
+      int bob = moved ? ((frames>>3)&1) : 0; if(wd.weird==6) bob += 6+(sinx((frames*3)&255)>>11);
       int pvis = !(invuln && (frames&4));
       if(mine_t) mine_t--;
       int lean = moved ? 10 : (mine_t ? 24 : 0), sq = (moved && ((frames>>3)&1)) || mine_t ? 8 : 0;
@@ -399,7 +416,7 @@ static void planet_frame(void){
         s32 zc=dz>>8;                                                                  // 8.8 cells
         s32 f=(FOCP<<16)/zc;                                                           // 8.8 px per cell
         int sx = 120 + (s32)(((long long)dx*f)>>24);                                   // (16.16 cells * 8.8) >> 24 = px
-        s32 gh=ground_h(o->x,o->y); s32 curve=(zc*zc)>>15;
+        s32 gh=ground_h(o->x,o->y); s32 curve=(zc*zc)>>(wd.weird==3?12:15); if(wd.weird==3) curve-=((cam_back()>>8)*(cam_back()>>8))>>12;
         int sy = PHZ + (((cam_h + curve - gh) * f)>>16);                                // (8.8 cells * 8.8) >> 16 = px
         if(sx<-40||sx>280||sy<10||sy>190) continue;
         if(o->kind==O_SHIP){                                                           // your ship: the real 3D model, parked
@@ -410,7 +427,7 @@ static void planet_frame(void){
         int c=sx>>1; if(c<0) c=0; if(c>119) c=119;
         int si=0; while(si<NSTEP-1 && stp_z[si]<zc) si++; int bin=(si>>3)-1; if(bin>7) bin=7;
         if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
-        static const u8 ksz[24]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,24,28, 12,14};                  // size of each kind in 16ths of a cell
+        static const u8 ksz[25]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14};                  // size of each kind in 16ths of a cell
         int s=(f>>6)*ksz[o->kind]>>4; if(s<13) s=13; int m=(s-13)/4; if(m>27) m=27;                      // px per cell / 16 px * 64             // sprite scale: a 16px sprite is one cell (matrices 28-31 belong to the jaws, arrow and bug)
         s32 sc=13+m*4;
         int w=w_of[o->kind], h=h_of[o->kind];
@@ -421,7 +438,7 @@ static void planet_frame(void){
         int tl=tile_of[o->kind];
         if(o->kind==O_CRIT){ Species *sp=&spc[o->var]; tl = sp->body==0 ? T_HOPPER : sp->body==1 ? T_GRAZER : T_FLYER; pb=4+o->var;
             if(sp->body==2){ oy += (sinx((frames*6+order[k]*40)&255)>>13) - 10; } else if(sp->body==0 && (cvx[order[k]]||cvy[order[k]])) oy -= ((frames>>2)&1)*3;
-            if(sp->size==0 && m>2) m-=2; if(sp->size==2 && m<27) m+=2; }
+            if(sp->size==0 && m>2) m-=2; if(sp->size==2 && m<27) m+=2; if(wd.weird==5){ m+=8; if(m>27) m=27; } }
         if(o->kind==O_LOCAL) tl = o->var ? T_LOCAL2 : T_LOCAL1;
         shadow_oam[slot].a0 = (oy&255) | (1<<8)|(1<<9) | (shape_of[o->kind]<<14);
         shadow_oam[slot].a1 = (ox&511) | (m<<9) | (size_of[o->kind]<<14);

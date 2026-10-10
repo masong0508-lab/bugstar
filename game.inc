@@ -104,7 +104,7 @@ static void name_of(u32 wn, char *b){
 // ---- planet DNA. Every world is grown from its own code: the shape of the land, the sea, the sky, the hour, the weather,
 // what grows there, whether a city stands on it, what it is known for. The parts multiply out to more than an unvigintillion
 // (10 to the 66th) different planets, and the galaxy keeps making new clusters of them for as long as you fly.
-typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u32 tseed, cseed; } WorldDNA;
+typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u8 weird; u32 tseed, cseed; } WorldDNA;
 static WorldDNA wd;
 static const char *const style_name[8]={"ROLLING HILLS","MESAS","DUNES","ISLANDS","CRATERS","CANYONS","RIDGES","PLAINS"};
 static const char *const hour_name[3]={"DAY","DUSK","NIGHT"};
@@ -147,6 +147,13 @@ static void make_world(void){                                   // three indepen
     wd.bld=rgb15(60+wr(160),60+wr(160),60+wr(160)); wd.sky=rgb15(40+wr(200),60+wr(180),100+wr(156)); wd.road=rgb15(30+wr(60),30+wr(60),30+wr(60));
     for(int i=0;i<4;i++) wd.flora[i]=wr(8);
     wd.tseed = B; wd.cseed = C;
+    // a very weird world: about one planet in 777, and only out in the galaxy. It bends the rules (see WEIRD in planet.inc)
+    { u32 F = gal ? amix(galaxy_seed^0xF6u,cur_sys) : base*0x2545F491u; wd.weird = (F%777u)==0 ? 1+(int)((F>>16)%8u) : 0;
+#ifdef TEST_WEIRD
+      wd.weird=TEST_WEIRD;
+#endif
+      if(wd.weird==1){ static const char gl[8]={'#','%','&','@','?','!','*','$'}; for(int i=0;w_name[i];i++) if(w_name[i]!=' ' && (i%3)==1) w_name[i]=gl[(F>>i)&7]; }   // GLITCH: even its name is broken
+      if(wd.weird==4){ wd.style=6; wd.rough=3; } if(wd.weird==8){ wd.hour=2; wd.weather=0; } if(wd.weird==5){ wd.city=0; } }
 }
 static const char *world_name(void){ return endless ? w_name : tint_name[zone]; }
 
@@ -203,6 +210,7 @@ static int portal_depth=0;
 
 static void scpy(char *d, const char *s){ while(*s) *d++=*s++; *d=0; }
 static void scat(char *d, const char *s){ while(*d) d++; scpy(d,s); }
+static void unum(char *d, u32 v){ char t[12]; int n=0; do { t[n++]='0'+v%10; v/=10; } while(v); char r[12]; for(int i=0;i<n;i++) r[i]=t[n-1-i]; r[n]=0; scat(d,r); }
 static void ncat(char *d, int v){ char t[8]; int n=0; if(v<0){ scat(d,"-"); v=-v; } do { t[n++]='0'+v%10; v/=10; } while(v && n<7); char r[8]; for(int i=0;i<n;i++) r[i]=t[n-1-i]; r[n]=0; scat(d,r); }
 
 static int weapon_base(const Gear *g){ static const u8 b[5]={2,4,6,5,10}; return g->it!=IT_THORN ? 0 : g->rar==R_UNIQUE ? 12+g->lvl/2 : b[g->sub%5]+g->lvl/2; }
@@ -227,6 +235,7 @@ static void gear_affix(const Gear *g){
 static void recalc(void){
     gold_find=100; d_dmg=0; d_def=0; d_crit=0; d_spd=0; d_regen=0; d_reflect=0; d_vamp=0; d_haste=0; d_sting=0; d_fire=0; d_light=0; d_venom=0;
     maxh = 20 + st_vit*3 + level*2 + have_bug[BUG_LADY]*5;
+    { int rn=0; for(u32 r=relic_bits;r;r>>=1) rn+=r&1; gold_find+=rn*5; maxh+=rn*2; }     // every legendary relic: +5% gold, +2 max health, forever
     maxmp = 5 + st_mag*3;
     gear_affix(&eqw); gear_affix(&eqa); gear_affix(&eqc);
     d_dmg += 2 + st_str/2 + weapon_base(&eqw);

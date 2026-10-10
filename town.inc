@@ -73,8 +73,33 @@ static void city_people(int *k){                                                
 }
 // ---------------------------------------------------------------- creatures, fossils, beetles, ruins
 static void spawn_crit(int s, s32 nx, s32 ny, int *k){ int i=*k; if(i>=NPO) return; po[i].kind=O_CRIT; po[i].alive=1; po[i].hp=2+spc[s].size; po[i].var=s; po[i].x=nx&((TW<<16)-1); po[i].y=ny&((TW<<16)-1); cvx[i]=cvy[i]=0; ctim[i]=wr(60); (*k)++; }
+// ---------------------------------------------------------------- legendary relics: sixteen of them in the whole universe
+static const char *const relic_name[16]={"THE COSMIC SPOON","A STAR IN A JAR","THE LAST SOCK","THE ANT KING'S TOENAIL","THE HUMMING EGG","A MAP OF EVERYWHERE","THE GOLDEN CRUMB","BOLT'S FIRST BOLT",
+    "THE INFINITE PEBBLE","A SNEEZE IN A BOTTLE","THE TINY CROWN","THE MOON'S LOST BUTTON","THE SINGING SHELL","A SLICE OF NOTHING","THE WEIRD KEY","THE BUG STAR"};
+static const char *const relic_joke[16]={"IT STIRS THE SOUP OF SPACE.","IT IS WARM. IT IS ALSO A STAR.","ITS PARTNER WAS NEVER FOUND.","STILL A LITTLE SMELLY.","IT HUMS IN B FLAT. ALWAYS.","IT IS MOSTLY BLANK. SPACE IS BIG.",
+    "IT HAS NEVER BEEN EATEN. THE ONLY ONE.","HE WANTS IT BACK. HE WILL NOT SAY SO.","PUT IT DOWN. IT IS STILL THERE.","DO NOT OPEN. SERIOUSLY.","IT FITS NOBODY. IT IS PERFECT.","THE MOON HAS BEEN COLD SINCE.",
+    "IT SINGS YOUR NAME. BADLY.","IT WEIGHS LESS THAN ZERO.","IT OPENS NOTHING. OR EVERYTHING.","THE GAME IS NAMED AFTER IT. PROBABLY."};
+static void relic_found(void){
+    volatile u16 *pg=VISPG; const char *ln[5]; char a[48], b[48], c[48]; int left=-1;
+    for(int tries=0;tries<16;tries++){ int i=rndi(16); if(!((relic_bits>>i)&1)){ left=i; break; } }
+    if(left<0) for(int i=0;i<16;i++) if(!((relic_bits>>i)&1)){ left=i; break; }
+    int g = 1000 + dlv()*200; gold+=g; fame+=100;
+    if(left<0){ g+=1000; gold+=1000; relic_gold+=g; scpy(a,"ANOTHER COPY OF A RELIC YOU OWN."); ln[0]=a; scpy(b,"A COLLECTOR PAYS "); ncat(b,g); scat(b,"G FOR IT."); ln[1]=b; card(pg,"A LEGENDARY RELIC",ln,2); sfx(6); return; }
+    relic_bits|=1u<<left; recalc(); st_uniq++; ach_check();
+    int n=0; for(u32 r=relic_bits;r;r>>=1) n+=r&1;
+    ln[0]=relic_name[left]; ln[1]=relic_joke[left]; scpy(a,"+"); ncat(a,g); scat(a,"G  +100 FAME"); ln[2]=a; ln[3]="FOREVER: +5% GOLD, +2 MAX HEALTH";
+    scpy(c,"RELICS: "); ncat(c,n); scat(c,"/16  (THERE ARE ONLY 16 IN THE UNIVERSE)"); ln[4]=c;
+    sfx(6); card(pg,"!!! A LEGENDARY RELIC !!!",ln,5); save_game();
+}
+static int relic_roll(int one_in){                                                     // a very rare find. Weird worlds are far luckier
+    if(wd.weird) one_in/=12; if(wd.weird==7) one_in/=3; if(one_in<1) one_in=1;
+    if(rndi(one_in)) return 0; relic_found(); return 1;
+}
 static void planet_life(int *k){
     make_species();
+    if(wd.weird==5) for(int s=0;s<2;s++){ spc[s].size=2; spc[s].maxpop=spc[s].pop=24; }                 // GIANT WORLD: huge, and lots of them
+    if(wd.weird && *k<NPO-10){ place(&po[*k],O_SHRINE,10,30); po[*k].hp=1; (*k)++; }                // every weird world hides one relic shrine
+    if(wd.weird==7) for(int i=0;i<12 && *k<NPO-12;i++) place(&po[(*k)++],O_ROCK,6,60);              // GOLD WORLD: ore everywhere
     for(int s=0;s<2;s++){ int a=wr(256), d=12+wr(40); s32 hx=(64<<16)+cosx(a)*d*4, hy=(64<<16)+sinx(a)*d*4;    // a herd around a home spot
         for(int i=0;i<spc[s].pop && *k<NPO-10;i++) spawn_crit(s, hx+(wr(9)-4)*(1<<16), hy+(wr(9)-4)*(1<<16), k); }
     for(int i=0;i<wd.fossils && *k<NPO-8;i++) place(&po[(*k)++],O_FOSSIL,8,60);
@@ -124,6 +149,12 @@ static void planet_card(volatile u16 *pg){                                      
     int q = wd.weather==1 ? 4 : wd.weather==2 ? 5 : wd.weather==3 ? 6 : wd.hour==2 ? 3 : wd.city ? 2 : wd.grav!=1 ? 9 : (wd.tseed%3)==0 ? 0 : (wd.tseed%3)==1 ? 1 : 10;
     if(!endless && zone==0) q=11;
     ln[0]=l1; ln[1]=l2; ln[2]=l3; ln[3]=bolt_quip[q];
+    if(wd.weird){ static const char *const wn[8]={"GLITCH WORLD: THIS PLANET SHOULD NOT EXIST","RAINBOW WORLD: THE GROUND WILL NOT HOLD STILL","TINY WORLD: YOU CAN SEE IT CURVE","SPIKE WORLD: NEEDLES TO THE SKY",
+            "GIANT WORLD: EVERYTHING IS ENORMOUS","ZERO-G WORLD: YOU BOUNCE. A LOT.","GOLD WORLD: THE DIRT IS SHINY","VOID WORLD: NEON IN THE DARK"};
+        static const char *const wq[8]={"BOLT: MY SENSORS SAY... ERROR. ERROR. HELLO?","BOLT: I FEEL SICK. I DO NOT HAVE A STOMACH.","BOLT: I CAN SEE MY OWN BACK FROM HERE.","BOLT: DO NOT SIT DOWN.",
+            "BOLT: I FEEL SMALL. SMALLER. TINY. HELP.","BOLT: WHEEEEEE. SORRY. WHEEEE.","BOLT: WE ARE RICH. DO NOT TELL ANYONE.","BOLT: I AM NOT SCARED. YOU ARE SCARED."};
+        weird_seen++; ln[0]=wn[wd.weird-1]; ln[3]=wq[wd.weird-1]; static char tl[32]; scpy(tl,"??? "); scat(tl,world_name()); scat(tl," ???");
+        static char l4[40]; scpy(l4,"A RELIC SHRINE IS HIDDEN HERE. FIND IT!"); const char *l5[5]={ln[0],ln[1],ln[2],l4,ln[3]}; sfx(6); card(pg,tl,l5,5); return; }
     card(pg,world_name(),ln,4);
 }
 static void local_talk(PObj *o){
@@ -229,7 +260,7 @@ static void ruin_visit(volatile u16 *pg, PObj *o){
     const char *ln[3]; ln[0]="OLD STONES. A VOICE HUMS A RIDDLE:"; rid_i=(int)((wd.tseed>>5)%10); ln[1]=riddles[rid_i].q; ln[2]="(PICK WELL. THE STONES ARE PROUD)";
     card(pg,"THE RUIN",ln,3); int sel=0; list_desc=0; int r=list_pick(pg,"YOUR ANSWER",3,rid_row,&sel,"A: ANSWER  B: THINK");
     if(r<0) return;
-    if(r==riddles[rid_i].ok){ o->hp=0; int g=40+dlv()*10; gold+=g; cargo[7]+= (cargo_n()<cargo_cap+ship_hold_bonus()) ? 1 : 0; fame+=5; st_uniq++; ach_check();
+    if(r==riddles[rid_i].ok){ o->hp=0; if(relic_roll(40)) return; int g=40+dlv()*10; gold+=g; cargo[7]+= (cargo_n()<cargo_cap+ship_hold_bonus()) ? 1 : 0; fame+=5; st_uniq++; ach_check();
         char b[40]; scpy(b,"THE STONES OPEN. +"); ncat(b,g); scat(b,"G AND A RELIC"); say(b); sfx(6); }
     else { hurt(5); say("WRONG. THE STONES BONK YOU. RUDE."); sfx(12); }
 }

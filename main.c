@@ -54,11 +54,16 @@ static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_cam=0, opt_m
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
-// where you are in the universe: 65,536 galaxies x 2^64 clusters each x 32 stars = about 3.8 x 10^25 planets in one save,
-// about two million times No Man's Sky's 18 quintillion. Every address grows its own planet (see make_world).
-static u16 galaxy_no=0; static u32 clus_lo=0, clus_hi=0;      // the cluster number is 64 bits: clus_hi:clus_lo
-static u32 amix(u32 k, int star){ u32 h=0x811C9DC5u ^ k*0x9E3779B1u; u32 v[4]={galaxy_no, clus_lo, clus_hi, (u32)star};
-    for(int i=0;i<4;i++){ h^=v[i]; h*=0x85EBCA6Bu; h^=h>>13; h*=0xC2B2AE35u; h^=h>>16; } return h; }
+// where you are in the universe: 2^32 galaxies x 2^1024 clusters each x 32 stars = 2^1061, about 2.4 x 10^319 planets in one save.
+// A planet's address is 34 words (galaxy, 32 cluster words, star). Its land is built from every one of those words (see gen_terrain),
+// so no two addresses grow the same hills; its other parts come from seeds hashed from the whole address (see make_world).
+#define NCW 32
+static u32 galaxy_no=0, clus[NCW];
+static u32 relic_bits=0; static int weird_seen=0, relic_gold=0;      // the legendary relics you own (one bit each), weird worlds visited
+static int home_cluster(void){ u32 o=galaxy_no; for(int i=0;i<NCW;i++) o|=clus[i]; return !o; }
+static u32 aword(int i, int star){ i%=NCW+2; return i==0 ? galaxy_no : i==NCW+1 ? (u32)star : clus[i-1]; }
+static u32 hmix(u32 h){ h^=h>>16; h*=0x85EBCA6Bu; h^=h>>13; h*=0xC2B2AE35u; h^=h>>16; return h; }
+static u32 amix(u32 k, int star){ u32 h=0x811C9DC5u ^ k*0x9E3779B1u; for(int i=0;i<NCW+2;i++) h=hmix(h ^ aword(i,star) ^ (u32)i*0x27D4EB2Fu); return h; }
 static int in_menu=0; static char menu_msg[40];   // inside a menu, messages go on a line in the menu instead of over it                 // set by the SYSTEM page: 1 = load cur_slot, 2 = quit to the title
 
 // ---------------------------------------------------------------- mode 4 text
@@ -681,7 +686,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     endless=1; world_no=TEST_WORLD; make_world();
 #endif
 #ifdef TEST_DEEP
-    ant_king=1; zones_open=6; cleared_mask=63; galaxy_no=40000; clus_lo=0xDEADBEEFu+TEST_DEEP; clus_hi=0x2ABCD; gen_cluster(); cur_sys=7+TEST_DEEP%20; fade(0); arrive_on_planet();
+    ant_king=1; zones_open=6; cleared_mask=63; galaxy_no=4000000000u; for(int w=0;w<NCW;w++) clus[w]=hmix(w*77+TEST_DEEP); gen_cluster(); cur_sys=7+TEST_DEEP%20; fade(0); arrive_on_planet();
 #ifdef TEST_MAP
     scene=2; page_back=1; space_enter(1); galaxy_map();
 #endif
@@ -712,7 +717,7 @@ static void arrive_on_planet(void){      // after landing (or the autopilot): se
     land_on_current(); st_planets++; ach_check(); portal_depth=0; scene=0; msg_timer=0;
     new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game();
     char b[40]; scpy(b,world_name()); if(!endless && !zone_cleared) scat(b,": FIND THE DOOR"); show_msg(b); oam_hide_all(); oam_flush(); music(0);
-    { REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_flush(); fade(0); planet_card(VISPG); p_last=vbl_count; }
+    { REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0); planet_card(VISPG); p_last=vbl_count; }
 }
 static void pet_away_tick(void){
     if(pet_away_t && --pet_away_t==0){ gold+=pet_sold_g; char b[40]; scpy(b,"BUDDY SOLD "); ncat(b,pet_sold_n); scat(b," THINGS: +"); ncat(b,pet_sold_g); scat(b,"G"); say(b); sfx(7); hud_now(); pet_x=px_; pet_y=py_; }

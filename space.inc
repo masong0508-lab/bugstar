@@ -8,12 +8,12 @@ static const u8 eco_mul[4][8]={{55,65,80,110,130,150,120,120},{120,110,105,70,60
 
 static u32 lseed;
 static int lr(int n){ lseed = lseed*1664525u + 1013904223u; return (int)((lseed>>16)%(u32)n); }
-static u32 sys_id(int i){ return (galaxy_no|clus_lo|clus_hi) ? amix(galaxy_seed,i) : (u32)i + 1; }      // the star's 32-bit name code
+static u32 sys_id(int i){ return !home_cluster() ? amix(galaxy_seed,i) : (u32)i + 1; }      // the star's 32-bit name code
 static int sys_dist(int a, int b){ int dx=sys[a].x-sys[b].x, dy=sys[a].y-sys[b].y; return isqrt(dx*dx+dy*dy); }
 static void gen_cluster(void){
     lseed = amix(galaxy_seed ^ 0x5bd1e995, 99);
     int start=0;
-    if(!(galaxy_no|clus_lo|clus_hi)){                                                  // only the home cluster has the six story stars
+    if(home_cluster()){                                                  // only the home cluster has the six story stars
         static const u8 pos[6][2]={{20,74},{52,52},{86,80},{120,54},{156,82},{196,60}};
         static const u8 eco[6]={0,0,3,1,3,2};
         for(int k=0;k<6;k++){ sys[k].x=pos[k][0]; sys[k].y=pos[k][1]; sys[k].kind=k; sys[k].eco=eco[k]; }
@@ -567,8 +567,10 @@ static int galaxy_map(void){     // returns 1 if you jumped
         if(dirty){ dirty=0;
             for(int i=0;i<240*160/2;i++) pg[i]=0;
             lseed=amix(7,98); for(int i=0;i<120;i++) pix(pg,lr(240),18+lr(110),1+lr(3));
-            char b[48]; scpy(b,"GALAXY "); ncat(b,galaxy_no+1); scat(b,"  CLUSTER "); { static const char hx[]="0123456789ABCDEF"; char c[16]; int n=0;
-                for(int k=28;k>=0;k-=4) c[n++]=hx[(clus_hi>>k)&15]; for(int k=28;k>=0;k-=4) c[n++]=hx[(clus_lo>>k)&15]; c[n]=0; scat(b,c); } text(pg,4,3,b,C_GOLD,1);
+            char b[48]; scpy(b,"GALAXY "); unum(b,galaxy_no+1u); text(pg,4,3,b,C_GOLD,1);
+            { static const char hx[]="0123456789ABCDEF"; char c[40]; int n; scpy(c,"CLUSTER "); n=8; int top=NCW-1; while(top>0 && !clus[top]) top--;   // the cluster number: its top words, in hex
+              if(top>1){ c[n++]='.'; c[n++]='.'; } for(int w=(top>1?1:top);w>=0;w--) for(int k=28;k>=0;k-=4) c[n++]=hx[(clus[w + (top>1?top-1:0)]>>k)&15]; c[n]=0;
+              if(top>1){ scat(c," ("); ncat(c,top+1); scat(c," WORDS)"); } text(pg,4,10,c,C_GREY,1); }
             for(int i=0;i<64;i++){ int a=i*4; int r=fuel; int x=sys[cur_sys].x+(sinx(a+64)*r>>14), y=sys[cur_sys].y+(sinx(a)*r>>14); if(x>=0&&x<240&&y>=16&&y<130) pix(pg,x,y,C_DGREY); }
             for(int i=0;i<NSYS;i++){ int x=sys[i].x, y=sys[i].y, k=sys[i].kind;
                 int c = k<6 ? (k<zones_open ? C_GOLD : C_DGREY) : (ant_king ? (sys[i].eco==0?C_GREEN : sys[i].eco==1?C_GREY : sys[i].eco==2?C_CYAN : C_RED) : C_DGREY);
@@ -591,7 +593,7 @@ static int galaxy_map(void){     // returns 1 if you jumped
             const char *st = sel==cur_sys ? "YOU ARE HERE" : !can_jump(sel) ? (sys[sel].kind<6 ? "LOCKED: BEAT THE BOSS BEFORE IT" : "LOCKED: BEAT THE ANT KING") : d>fuel ? "TOO FAR: REFUEL AT A STATION" : "A: JUMP HERE";
             text(pg,236-textlen(st)*4,151,st, (sel!=cur_sys && can_jump(sel) && d<=fuel)?C_GREEN:C_RED,1);
             if(ant_king){ text(pg,160,10,"START: NEXT CLUSTER",C_DGREY,1); text(pg,160,17,"R: DEEP JUMP",C_DGREY,1); } else text(pg,206,3,"B: BACK",C_DGREY,1);
-            text(pg,4,10,"D-PAD: PICK A STAR",C_DGREY,1);
+            text(pg,4,17,"D-PAD: PICK A STAR",C_DGREY,1);
             if(beast_stage>=3) text(pg,4,122,"L: FIGHT THE TECHNOBEAST - 2.0 LY",C_RED,1);
         }
         vsync(); read_keys();
@@ -612,11 +614,11 @@ static int galaxy_map(void){     // returns 1 if you jumped
             fuel-=20; hyperspace(); lair_enter(); wait_release(); return 1; }
         if(HIT(K_START) && ant_king){
             if(fuel<70){ space_say("NEED FULL FUEL FOR AN INTERGALACTIC JUMP"); wait_release(); return 0; }
-            fuel=0; cluster_no++; if(++clus_lo==0) clus_hi++; gen_cluster(); cur_sys=0; hyperspace(); space_enter(0); space_say("A NEW CLUSTER OF STARS!"); wait_release(); return 1; }
+            fuel=0; cluster_no++; for(int w=0;w<NCW;w++) if(++clus[w]) break; gen_cluster(); cur_sys=0; hyperspace(); space_enter(0); space_say("A NEW CLUSTER OF STARS!"); wait_release(); return 1; }
         if(HIT(K_R) && ant_king){                                                       // the deep jump: anywhere in the universe, at random
             if(fuel<70){ space_say("NEED FULL FUEL FOR A DEEP JUMP"); wait_release(); return 0; }
-            fuel=0; cluster_no++; galaxy_no=(u16)rnd(); clus_lo=rnd(); clus_hi=rnd(); gen_cluster(); cur_sys=0; hyperspace(); space_enter(0);
-            { char b[40]; scpy(b,"DEEP JUMP! GALAXY "); ncat(b,galaxy_no+1); space_say(b); } wait_release(); return 1; }
+            fuel=0; cluster_no++; galaxy_no=rnd(); for(int w=0;w<NCW;w++) clus[w]=rnd(); gen_cluster(); cur_sys=0; hyperspace(); space_enter(0);
+            { char b[40]; scpy(b,"DEEP JUMP! GALAXY "); unum(b,galaxy_no+1u); space_say(b); } wait_release(); return 1; }
         if(HIT(K_A) && sel!=cur_sys && can_jump(sel) && sys_dist(sel,cur_sys)<=fuel){
             s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
             if(pd<PR*2){ space_say("TOO CLOSE TO THE PLANET TO JUMP"); wait_release(); return 0; }
@@ -702,11 +704,14 @@ static void save_ext(void){
     s->ant_king=ant_king; s->cleared_mask=cleared_mask; s->zones_open=zones_open; s->visits=visits; s->w_dlv=w_dlv; memcpy(s->cargo,cargo,8);
     s->sum=sx_sum(s); const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) SRAM[slot_base(cur_slot)+SX_OFF+i]=p[i];
     beast_save(); trophy_save();
-    { u32 a[5]={0x52444441u, galaxy_no, clus_lo, clus_hi, 0}; a[4]=a[0]^a[1]*31^a[2]*131^a[3]*1031^0x5A5A; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
+    { u32 a[NCW+6]; a[0]=0x33444441u; a[1]=galaxy_no; for(int w=0;w<NCW;w++) a[2+w]=clus[w]; a[NCW+2]=relic_bits; a[NCW+3]=(u32)weird_seen; a[NCW+4]=(u32)relic_gold;
+      u32 h=2166136261u; for(int i=0;i<NCW+5;i++){ h^=a[i]; h*=16777619u; } a[NCW+5]=h; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
 }
-static void addr_load(void){ u32 a[5]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a);
-    if(a[0]==0x52444441u && a[4]==(a[0]^a[1]*31^a[2]*131^a[3]*1031^0x5A5A)){ galaxy_no=(u16)a[1]; clus_lo=a[2]; clus_hi=a[3]; }
-    else { galaxy_no=0; clus_lo=(u32)cluster_no; clus_hi=0; } }    // an old save: its cluster count becomes its address
+static void addr_load(void){ u32 a[NCW+6]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h=2166136261u; for(int i=0;i<NCW+5;i++){ h^=a[i]; h*=16777619u; }
+    relic_bits=0; weird_seen=0; relic_gold=0; for(int w=0;w<NCW;w++) clus[w]=0; galaxy_no=0;
+    if(a[0]==0x33444441u && a[NCW+5]==h){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; }
+    else if(a[0]==0x52444441u && a[4]==(a[0]^a[1]*31^a[2]*131^a[3]*1031^0x5A5A)){ galaxy_no=a[1]; clus[0]=a[2]; clus[1]=a[3]; }   // last version's save
+    else clus[0]=(u32)cluster_no; }    // an older save: its cluster count becomes its address
 typedef struct { u32 magic, hp_lo, hp_hi, mx_lo, mx_hi; u16 tech, kills, stage, hives; u32 sum; } SaveB;
 static void beast_defaults(void){ hive_done=0; tech_lv=0; beast_kills=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
 #define SB_OFF 0xA00
@@ -737,7 +742,7 @@ static void trophy_load(void){
 static void load_ext_defaults(void){
     for(int i=0;i<4;i++) tr_n[i]=0; tr_uq=0; scrap=0;
 
-    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; clus_lo=clus_hi=0; memset(cargo,0,8);
+    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; relic_bits=0; weird_seen=0; relic_gold=0; memset(cargo,0,8);
     if(endless){ ant_king=1; zones_open=6; cleared_mask=63; w_dlv=6+world_no/2; cur_sys=6; }
     else { ant_king=0; zones_open=zone+1+(zone_cleared?1:0); if(zones_open>6) zones_open=6; cleared_mask=((1<<zone)-1)|(zone_cleared?1<<zone:0); cur_sys=zone; }
     beast_defaults(); gen_cluster();

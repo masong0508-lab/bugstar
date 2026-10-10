@@ -345,7 +345,7 @@ static void char_screen(volatile u16 *pg){
                 y+=16;
                 for(int i=0;i<6;i++){ scpy(b,seed_look[i]); scat(b,":"); scat(b, seed_known[i]?seed_eff[seed_map[i]]:"?"); text(pg,8+(i%3)*76,y+(i/3)*7,b,seed_known[i]?C_WHITE:C_DGREY,1); }
             } else if(page==4){
-                text(pg,8,y,"FEATS",C_GOLD,1); { int dn=0; for(int i=0;i<NACH;i++) dn+=(ach_done>>i)&1; scpy(b,""); ncat(b,dn); scat(b,"/"); ncat(b,NACH); scat(b," DONE"); rtext(pg,232,y,b,C_GREY); } y+=9;
+                text(pg,8,y,"FEATS",C_GOLD,1); { int rn=0; for(u32 r=relic_bits;r;r>>=1) rn+=r&1; scpy(b,"RELICS "); ncat(b,rn); scat(b,"/16  WEIRD WORLDS "); ncat(b,weird_seen); text(pg,40,y,b,rn?C_UNIQ:C_DGREY,1); } { int dn=0; for(int i=0;i<NACH;i++) dn+=(ach_done>>i)&1; scpy(b,""); ncat(b,dn); scat(b,"/"); ncat(b,NACH); scat(b," DONE"); rtext(pg,232,y,b,C_GREY); } y+=9;
                 for(int i=0;i<NACH;i++){ int done=(ach_done>>i)&1, hv=ach_have(i); if(hv>ach[i].goal) hv=ach[i].goal; int yy=y+i*8;
                     text(pg,8,yy,ach[i].name,done?C_GOLD:C_WHITE,1); text(pg,76,yy,ach[i].what,done?C_GREY:C_DGREY,1);
                     if(done) text(pg,180,yy,"DONE",C_GREEN,1); else { hbar(pg,180,yy+2,26,hv,ach[i].goal,C_CYAN); scpy(b,""); ncat(b,hv); scat(b,"/"); ncat(b,ach[i].goal); text(pg,209,yy,b,C_DGREY,1); } }
