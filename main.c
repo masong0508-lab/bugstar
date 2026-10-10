@@ -38,7 +38,7 @@ static int rndi(int n){ return (int)(rnd()%(u32)n); }
 static void read_keys(void){ keys_old=keys; keys = ~REG_KEYINPUT & 0x3FF; }
 #define HELD(k) (keys&(k))
 #define HIT(k) ((keys&(k)) && !(keys_old&(k)))
-static int auto_run=0, tapU_t=0, run_stuck=0;   // AUTO-RUN in dungeons: double-tap UP, and you keep running until you stop it
+static int auto_run=0, tapU_t=0, run_stuck=0, run_hint=0;   // AUTO-RUN in dungeons: double-tap UP, and you keep running until you stop it
 static void vsync(void){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); }
 static int isqrt(u32 n){ u32 r=0, b=1u<<30; while(b>n) b>>=2; while(b){ if(n>=r+b){ n-=r+b; r=(r>>1)+b; } else r>>=1; b>>=2; } return (int)r; }
 #define S64_MAX 0x7FFFFFFFFFFFFFFFLL
@@ -508,9 +508,9 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(HELD(kr)) pang=(pang+ts)&1023;
     s32 dirx=cosx(pang>>2)<<2, diry=sinx(pang>>2)<<2;
     s32 plx=-(diry*43/65), ply=dirx*43/65;
-    // AUTO-RUN: double-tap UP and you run forward by yourself, a bit faster, with your thumb free: you can still steer (LEFT/RIGHT), strafe, bite (A) and use items (B).
+    // AUTO-RUN (the "RUN! DOWN STOPS" hint shows only once per session): double-tap UP and you run forward by yourself, a bit faster, with your thumb free: you can still steer (LEFT/RIGHT), strafe, bite (A) and use items (B).
     // It stops by itself when you tap DOWN, hit a wall, meet a monster, get hurt, start fishing, open a menu or change floor.
-    if(!dizzy_t && !HELD(K_SEL) && HIT(ku)){ if(tapU_t && !auto_run){ auto_run=1; run_stuck=0; sfx(11); say("RUN!  DOWN STOPS"); } tapU_t=14; }
+    if(!dizzy_t && !HELD(K_SEL) && HIT(ku)){ if(tapU_t && !auto_run){ auto_run=1; run_stuck=0; sfx(11); if(!run_hint){ run_hint=1; say("RUN!  DOWN STOPS"); } } tapU_t=14; }
     if(tapU_t) tapU_t--;
     if(auto_run && (HELD(kd) || HELD(K_SEL) || HIT(K_START) || hurt_flash || dizzy_t || stun_t || fish_state)) auto_run=0;
     if(auto_run){ if(moved_real) run_stuck=0; else if(wtick && ++run_stuck>6) auto_run=0; }          // a wall: stop, do not keep grinding on it

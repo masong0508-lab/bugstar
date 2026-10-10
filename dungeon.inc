@@ -444,16 +444,16 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
     u32 t2=TMR(); prof[3]=t2-t1;
     // pass 3: floor, two rows at a time; water and polished tiles mirror the walls
     int wob=frames*5;
-    for(int y=H+1;y<160;y+=2){
-        int d=y-H; s32 rd=rd_rel[d];
+    for(int y=H+1;y<160;y+=((y-H)>40)?4:2){
+        int d=y-H, st4=d>40; s32 rd=rd_rel[d];
         s32 fx=px_+(s32)(((long long)rd*rdx[0])>>16), fy=py_+(s32)(((long long)rd*rdy[0])>>16);
-        s32 sx=(s32)(((long long)rd*(rdx[119]-rdx[0]))>>16)/119, sy=(s32)(((long long)rd*(rdy[119]-rdy[0]))>>16)/119;
+        s32 sx=(s32)((((long long)rd*(rdx[119]-rdx[0])>>16)*8812)>>20), sy=(s32)((((long long)rd*(rdy[119]-rdy[0])>>16)*8812)>>20);   // (a multiply, not a slow divide by 119)
         int sl=rl_rel[d], fg=rf_rel[d];
         const u8 *bz=bayi+((y>>1)&3)*4;
         volatile u16 *row=pg+y*120;
-        int two = y+1<160, rip = sinI[(y*12+wob)&255]>>13, half = d>22, last=R_CEIL;
+        int two = y+1<160, rip = sinI[(y*12+wob)&255]>>13, half = d>16, last=R_CEIL;
         for(int c=0;c<120;c++, fx+=sx, fy+=sy){
-            int cb=cbot[c]; if(y+1<=cb) continue;
+            int cb=cbot[c]; if(y+(st4?3:1)<=cb) continue;
             u32 tx=fx>>16, ty=fy>>16; int ix;
             if(half && (c&1) && y>cbot[c-1]) ix=last;
             else if(tx<MW && ty<MW){
@@ -475,7 +475,8 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
             last=ix;
             u16 p2=ix|(ix<<8);
             if(y>cb) row[c]=p2;
-            if(two) row[c+120]=p2;
+            if(two && y+1>cb) row[c+120]=p2;
+            if(st4){ if(y+2<160 && y+2>cb) row[c+240]=p2; if(y+3<160 && y+3>cb) row[c+360]=p2; }
         }
     }
     u32 t3=TMR(); prof[1]=t3-t2;
@@ -483,7 +484,7 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
     for(int y=18;y<H;y+=2){
         int d=H-y; s32 rd=cd_rel[d];
         s32 fx=px_+(s32)(((long long)rd*rdx[0])>>16), fy=py_+(s32)(((long long)rd*rdy[0])>>16);
-        s32 sx=(s32)(((long long)rd*(rdx[119]-rdx[0]))>>16)/119, sy=(s32)(((long long)rd*(rdy[119]-rdy[0]))>>16)/119;
+        s32 sx=(s32)((((long long)rd*(rdx[119]-rdx[0])>>16)*8812)>>20), sy=(s32)((((long long)rd*(rdy[119]-rdy[0])>>16)*8812)>>20);   // (a multiply, not a slow divide by 119)
         int sl=cl_rel[d], fg=cf_rel[d];
         const u8 *bz=bayi+((y>>1)&3)*4;
         volatile u16 *row=pg+y*120;
