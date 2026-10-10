@@ -334,6 +334,7 @@ static s32 rd_rel[100], cd_rel[100];                  // floor / ceiling distanc
 static u8 rl_rel[100], rf_rel[100], cl_rel[100], cf_rel[100];
 static s32 rdx[120], rdy[120];
 static u8 ctyp[120], clit[120], ctex[120], ctu[120]; static u16 ccell[120]; static s16 ctop[120], cbot[120];
+static u8 wbase[120];               // each column's wall ramp base: a reflection only mirrors real wall pixels, never stray ones
 static u8 lvt[160];                 // light level 0..127 plus dither -> shade 0..7
 static u8 bayi[16];
 static s32 camtab[120];
@@ -431,7 +432,7 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
         int L=clit[c];
         volatile u16 *col = pg + c;
         int y0 = top<18 ? 18 : top, y1 = bot>159 ? 159 : bot;
-        u16 dark=(rp[0]&0xFF)|((rp[0]&0xFF)<<8);
+        u16 dark=(rp[0]&0xFF)|((rp[0]&0xFF)<<8); wbase[c]=rp[0]&0xF8;
         s32 perp=zbuf[c];
         if((c>0 && zbuf[c-1]-perp > 0x4000) || (c<119 && zbuf[c+1]-perp > 0x4000)){ for(int y=y0;y<=y1;y++) col[y*120]=dark; continue; }
         s32 vstep=(48<<16)/(hh+1), v=(y0-top)*vstep, v2=vstep*2;
@@ -468,10 +469,10 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
                 else { int Lp=sl+((lsub[((fy>>7)&0x3F80)|((fx>>14)&127)]*fg)>>6); if(Lp>127) Lp=127; s=((t&31)*Lp)>>5; }
                 ix=(e&0xFF)+lvt[s+bz[c&3]];
                 if(fc==5 || (fc==2 && t<32)){
-                    int yr = 2*cb - y + (fc==5 ? rip : 0);
-                    if(yr>=18 && yr>=ctop[c] && yr<cb){
+                    int dep=y-cb, yr = 2*cb - y + (fc==5 ? rip : 0);
+                    if(dep<(fc==5?64:28) && yr>=18 && yr>=ctop[c] && yr<cb && yr<160){      // the mirror only reaches a little way out from the wall, and fades
                         int wv=pg[yr*120+c]&0xFF;
-                        if(wv>=64 && wv<216){ int l=(wv&7)-(fc==5?2:3); int rix=(wv&~7)+(l<0?0:l);
+                        if((wv&0xF8)==wbase[c]){ int l=(wv&7)-(fc==5?2:3)-(dep>>(fc==5?4:3)); int rix=(wv&0xF8)+(l<0?0:l);
                             if(fc==5){ if((t&31)<19) ix=rix; } else if(((c^(y>>1))&1)==0) ix=rix; }
                     }
                 }
@@ -743,12 +744,15 @@ static int hud_dirty=0;
 static void dungeon_hud(void){ hud_dirty=2; }
 static void dungeon_hud_both(void){ char b[40]; dungeon_label(b); for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b); hud_dirty=0; }
 static int stair_ok;
+static void dungeon_palette(void){      // the dungeon's whole background palette, from the clean copy
+    for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
+    for(int i=0;i<8;i++) BG_PAL[R_SPIDER+i]= endless ? w_mon[i] : zone_mon_pal[zone*8+i];
+}
 static void dungeon_enter(void){ auto_run=0;
     depth_no++; stair_ok=0; st_floors++; ach_check(); sight=0; msg_timer=0;
     make_floor();
-    for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
+    dungeon_palette();
     obj_palette();
-    for(int i=0;i<8;i++) BG_PAL[R_SPIDER+i]= endless ? w_mon[i] : zone_mon_pal[zone*8+i];
     if(endless && !forge_on && depth_no>best_depth) best_depth=depth_no;
     lantk = have_bug[BUG_FIRE] ? 74 : 58;
     int rk = have_bug[BUG_FIRE] ? 56 : 44; if(fl_ev==FE_DARK){ rk=rk*3/5; lantk=lantk*3/4; } if(mboss){ rk=rk*3/4; lantk=lantk*4/5; }

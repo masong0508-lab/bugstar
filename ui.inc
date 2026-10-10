@@ -317,7 +317,7 @@ static const HelpLine help_pg[5][7]={
   {{"D-PAD","WALK OVER THE HILLS"},{"SEL","TAP: SWITCH 3RD / 1ST PERSON VIEW"},{"A","DOOR, SHIP, CAGE, SLUG, PLANT, ORE"},{"B","USE THE PICKED ITEM"},{"L R","PICK AN ITEM (1ST PERSON: SIDESTEP)"},{"SEL+LR","ARROW: DOOR, SHIP OR NEAREST ORE"},{"SEL+LT RT","3RD PERSON: TURN THE CAMERA"}},
   {{"UP DN","WALK FORWARD AND BACK"},{"LT RT","TURN (TAP A LITTLE, HOLD FOR MORE)"},{"L R","STEP SIDEWAYS. TAP TWICE TO DODGE"},{"A","BITE. HOLD IT. THREE IN A ROW = CRUNCH"},{"A","OPEN CAGES, TAKE STAIRS, FISH IN POOLS"},{"SEL","CAST A SPELL. HOLD + L/R PICKS THE SPELL"},{"START","THE MAP OF THIS FLOOR"}},
   {{"D-PAD","STEER THE SHIP"},{"B","THRUST.  R: BRAKE"},{"A","SHOOT PIRATES AND ROCKS"},{"A","NEAR THE PLANET: LAND.  AT THE BOX: DOCK"},{"SEL","THE GALAXY MAP. PICK A STAR, A: JUMP"},{"","JUMPS BURN FUEL. BUY FUEL AT STATIONS"},{"","STATIONS BUY THE GOODS YOU MINE"}},
-  {{"!","A RED ! MEANS A MONSTER IS ABOUT TO BITE"},{"","STEP BACK OR DODGE, THEN BITE IT"},{"","BEETLES CHARGE. SIDESTEP: THEY HIT THE WALL"},{"","BUDDY FIGHTS BESIDE YOU. FEED HIM FISH"},{"","EAT CRUMBS WHEN THE GREEN BAR IS LOW"},{"","FAINTING LOSES YOUR BAG (NOT ON EASY)"},{"","SAVE ON A PLANET: START > SYSTEM"}},
+  {{"!","A RED ! MEANS A MONSTER IS ABOUT TO BITE"},{"","STEP BACK OR DODGE, THEN BITE IT"},{"","BEETLES CHARGE. SIDESTEP: THEY HIT THE WALL"},{"","BUDDY FIGHTS BESIDE YOU. FEED HIM FISH"},{"","EAT CRUMBS WHEN THE GREEN BAR IS LOW"},{"","FAINTING LOSES YOUR BAG (NOT ON EASY)"},{"","SAVE: START > SYSTEM (DUNGEONS TOO)"}},
   {{"1","FOLLOW THE ARROW TO THE DOOR. GO DOWN"},{"2","BEAT THE BOSS AT THE BOTTOM"},{"3","AT YOUR SHIP: AUTOPILOT TO THE NEXT STAR"},{"","MINE ORE. SELL IT, OR UPGRADE GEAR"},{"","DRONE OUTPOSTS: FIND THE KEYCARD, SMASH THE CORE"},{"","EACH CORE GIVES BOLT A MEMORY BACK"},{"","BEAT A BOSS, THEN GO BACK DOWN ITS DOOR: NEW TIER"}}};
 static const char *const help_ttl[5]={"ON A PLANET","IN A DUNGEON","IN SPACE","STAYING ALIVE","YOUR QUEST"};
 static int badge_col(const char *b){ if(!b[0]) return -1; if(b[0]=='A'&&!b[1]) return C_RED; if(b[0]=='B'&&!b[1]) return C_CYAN; if(b[0]=='!') return C_RED; if(b[0]>='1'&&b[0]<='3') return C_GOLD; if(b[0]=='S') return C_GOLD; if(b[0]=='D') return C_GREEN; return C_GREY; }
@@ -381,9 +381,15 @@ static void sys_say(const char *t, int c){ scpy(sys_msg,t); sys_col=c; }
 static void sys_action(volatile u16 *pg, int cur){
     char b[40];
     if(cur==0 || cur==1){
-        if(scene!=0){ sys_say("YOU CAN ONLY SAVE ON THE SURFACE",C_RED); sfx(0); return; }
+        if(scene==2){ sys_say("NO SAVING IN SPACE",C_RED); sfx(0); return; }
+        if(scene==1 && forge_on){ sys_say("NO SAVING IN A FORGE RUN",C_RED); sfx(0); return; }
+        if(scene==1 && base_mode){ sys_say("NO SAVING IN AN OUTPOST",C_RED); sfx(0); return; }
         if(cur==1){ int t=slot_picker(pg,SP_SAVE,0); if(t<0) return; cur_slot=t; }
-        do_save(); scpy(b,"SAVED TO SLOT "); ncat(b,cur_slot+1); sys_say(b,C_GREEN); sfx(6);
+        if(scene==1){ int pd=portal_depth; portal_depth=depth_no; do_save(); portal_depth=pd; }      // in a dungeon: the save wakes you on the surface with the door open to this floor
+        else do_save();
+        scpy(b,"SAVED TO SLOT "); ncat(b,cur_slot+1); if(scene==1){ scat(b," AT FLOOR "); ncat(b,depth_no); }
+        sys_say(b,C_GREEN); sfx(6);
+        if(scene==1 && endless && loot>0) sys_say("SAVED. LOOT IS NOT KEPT",C_GOLD);
     }
     else if(cur==2){ int t=slot_picker(pg,SP_LOAD,0); if(t>=0){ cur_slot=t; sys_req=1; } }
     else if(cur==3) options_screen(pg);
@@ -473,7 +479,7 @@ static void char_screen(volatile u16 *pg){
                 fmt_time(b,play_secs()); scat(b," PLAYED"); text(pg,60,y,b,C_GREY,1);
                 text(pg,170,y,opt_autosave?"AUTOSAVE ON":"AUTOSAVE OFF",opt_autosave?C_GREEN:C_DGREY,1); y+=14;
                 for(int i=0;i<5;i++){
-                    int ok = !(i<2 && scene!=0);
+                    int ok = !(i<2 && (scene==2 || (scene==1 && (forge_on || base_mode))));
                     if(cur==i) rect(pg,4,y-2,232,10,6);
                     text(pg,10,y,sn[i],!ok?C_DGREY: cur==i?C_WHITE:C_GREY,1);
                     if(i==0){ scpy(b,"-> SLOT "); ncat(b,cur_slot+1); text(pg,150,y,b,ok?C_CYAN:C_DGREY,1); }

@@ -495,10 +495,10 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     int freeze = hitstop>0; if(freeze){ hitstop--; wtick=0; }      // a blink of stillness when a hit lands
     if(wtick){ tick_timers(); hunger_tick(40); regen_tick(45); map_reveal(); }
     bag_input();
-    if(!skip_draw){ int f=frames; int fl=(sin_tab[(f*29)&255]+sin_tab[(f*47+80)&255])>>12;
+    if(!skip_draw){ int f=frames; if((f&127)==0) dungeon_palette(); int fl=(sin_tab[(f*29)&255]+sin_tab[(f*47+80)&255])>>12;
       for(int i=0;i<8;i++){ int k=i+(fl>2?1:fl<-2?-1:0); if(k<0)k=0; if(k>7)k=7; BG_PAL[R_FLAME+i]=bg_pal[R_FLAME+k]; }
       for(int i=2;i<7;i++){ int k=i+((((f>>2)+i)&3)==0); BG_PAL[R_WATER+i]=bg_pal[R_WATER+(k>7?7:k)]; BG_PAL[R_CRYSTAL+i]=bg_pal[R_CRYSTAL+((((f>>3)+i*3)%5)==0 && i<6 ? i+1 : i)]; } }
-    if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen(VISPG); dungeon_hud_both(); }
+    if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen(VISPG); dungeon_palette(); dungeon_hud_both(); }
     int kl=K_LEFT, kr=K_RIGHT, ku=K_UP, kd=K_DOWN, ksl=K_L, ksr=K_R;
     if(dizzy_t){ kl=K_RIGHT; kr=K_LEFT; ku=K_DOWN; kd=K_UP; ksl=K_R; ksr=K_L; }
     if(HELD(K_SEL)){ kl=kr=ku=kd=ksl=ksr=0; }          // SELECT held: d-pad and L/R pick items and spells instead
