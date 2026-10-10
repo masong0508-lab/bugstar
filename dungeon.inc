@@ -30,10 +30,10 @@ EW static Room rooms[10]; static int nrooms;
 static u8 pm_[26*26];
 static int pm_at(int w,int h,int x,int y){ return (x<0||y<0||x>=w||y>=h) ? 0 : pm_[y*26+x]; }
 static u32 pm_h(int x,int y,u32 s){ u32 h=(u32)x*374761393u + (u32)y*668265263u + s; h=(h^(h>>13))*1274126177u; return h^(h>>16); }
-static int ponds_made, pond_floor;   // ponds are rare: most floors have none; a floor that has one usually has just the one, now and then two
+static int ponds_made, pond_floor, pond_cells;   // ponds are rare and small: never on the first floor, never in the room you arrive in, never more than ~40 cells of water on a floor
 static int want_pond(int first_pct){      // may this room get a pond? the first one: first_pct%; a second one, on a floor that has a pond: 25%; never a third
-    if(!pond_floor || ponds_made>=2) return 0;
-    return rndi(100) < (ponds_made==0 ? first_pct : 25); }
+    if(!pond_floor || ponds_made>=2 || pond_cells>=40 || depth_no<2 || nrooms==0) return 0;   // nrooms==0: this is the room with the way up. depth_no<2: the first floor is dry
+    return rndi(100) < (ponds_made==0 ? first_pct : 15); }
 static void make_pond(int x0,int y0,int x1,int y1){
     if(x1-x0>23) x1=x0+23; if(y1-y0>23) y1=y0+23;
     int w=x1-x0+1, h=y1-y0+1; if(w<3||h<3) return;
@@ -41,7 +41,7 @@ static void make_pond(int x0,int y0,int x1,int y1){
     for(int y=0;y<h;y++) for(int x=0;x<w;x++){
         int nx=((2*x+1-w)*256)/w, ny=((2*y+1-h)*256)/h, e=(nx*nx+ny*ny)>>8;
         int n=(int)(((pm_h(x>>1,y>>1,seed)&63)+(pm_h(x,y,seed+7)&63))>>1) - 32;
-        int in = e + n*4 < 120;                      // a pond fills about a third of the room, not nearly all of it
+        int in = e + n*4 < 95;                       // a pond fills about a quarter of its patch, with dry ground all round
         if(big){ int ax=nx-lx, ay=ny-ly; if(((ax*ax+ay*ay)>>8) + n*3 < lr/2+10) in=1; }
         pm_[y*26+x]=in; }
     static u8 t2[26*26];
@@ -51,7 +51,7 @@ static void make_pond(int x0,int y0,int x1,int y1){
     int cnt=0; for(int y=0;y<h;y++) for(int x=0;x<w;x++) cnt+=pm_[y*26+x]; if(cnt<5) return;
     for(int y=-1;y<=h;y++) for(int x=-1;x<=w;x++){
         int mx=x0+x, my=y0+y; if(mx<1||my<1||mx>=MW-1||my>=MW-1) continue; int i=my*MW+mx; if(dmap[i]!=D_FLOOR) continue;
-        if(pm_at(w,h,x,y)){ int edge = !pm_at(w,h,x-1,y)||!pm_at(w,h,x+1,y)||!pm_at(w,h,x,y-1)||!pm_at(w,h,x,y+1); fmat[i]= edge ? FL_SHALLOW : FL_WATER; }
+        if(pm_at(w,h,x,y)){ int edge = !pm_at(w,h,x-1,y)||!pm_at(w,h,x+1,y)||!pm_at(w,h,x,y-1)||!pm_at(w,h,x,y+1); fmat[i]= edge ? FL_SHALLOW : FL_WATER; pond_cells++; }
         else { int near=0; for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++) near|=pm_at(w,h,x+dx,y+dy);
                if(near && fmat[i]!=FL_WATER && fmat[i]!=FL_SHALLOW) fmat[i] = (pm_h(mx,my,seed)&3)==0 ? FL_MOSS : FL_DIRT; } }
 }
@@ -84,7 +84,7 @@ static void corridor(Room *a, Room *b, int wide, int fm){
 }
 static void pillar_at(int x,int y,int m){ if(x<1||y<1||x>=MW-1||y>=MW-1) return; int i=y*MW+x; dmap[i]=D_PILLAR; wmat[i]=m; }
 static int room_floor_cell(Room *r){
-    for(int t=0;t<40;t++){ int x=r->x+1+rndi(r->w-2), y=r->y+1+rndi(r->h-2); if(dmap[y*MW+x]==D_FLOOR && fmat[y*MW+x]!=FL_WATER) return y*MW+x; }
+    for(int t=0;t<40;t++){ int x=r->x+1+rndi(r->w-2), y=r->y+1+rndi(r->h-2); if(dmap[y*MW+x]==D_FLOOR && fmat[y*MW+x]!=FL_WATER && fmat[y*MW+x]!=FL_SHALLOW) return y*MW+x; }   // nothing is placed in the water: stairs, monsters, chests all stand on dry ground
     return (r->y+r->h/2)*MW + r->x+r->w/2;
 }
 
@@ -119,7 +119,7 @@ static int pick_kind(void){                                                     
 }
 static void make_floor(void){
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_BRICK; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
-    nrooms=0; nlights=0; nlamps=0; ntorch=0; ponds_made=0; pond_floor = rndi(100) < (zone==1 ? 45 : 20);   // about 1 floor in 5 has a pond (the Pond zone: nearly every other floor)
+    nrooms=0; nlights=0; nlamps=0; ntorch=0; ponds_made=0; pond_cells=0; pond_floor = rndi(100) < (zone==1 ? 45 : 20);   // about 1 floor in 5 has a pond (the Pond zone: nearly every other floor)
     if(forge_on) rng_s=hmix(((u32)ddna.seed<<8)+(u32)depth_no+1u);                 // a forge design is the same dungeon every time
     else { ddna.on=endless; if(endless){ u32 h=hmix(wd.tseed*0x9E3779B1u ^ wd.cseed ^ 0xD9A5u); int lr=h%10, hz=(h>>20)%7;
             ddna.layout = lr<3?LY_ROOMS : lr<4?LY_HALLS : lr<6?LY_CAVERNS : lr<8?LY_TEMPLE : LY_CATA;
@@ -163,7 +163,7 @@ static void make_floor(void){
             else    { for(int yy=y+2; yy<=y+h-3; yy+=3){ pillar_at(x+2,yy,M_MARBLE); pillar_at(x+w-3,yy,M_MARBLE); } }
         }
         if(st==ST_CRYPT){ for(int xx=x+2; xx<x+w-2; xx+=4) for(int yy=y+2; yy<y+h-2; yy+=4) pillar_at(xx,yy,M_STONE); }
-        if(st==ST_GROTTO){ if(want_pond(100)){ make_pond(x+1,y+1,x+w-2,y+h-2); ponds_made++; } add_light(x+w/2,y+h/2,45); }   // a grotto has a pond more often than not, never more than two on a floor
+        if(st==ST_GROTTO){ if(want_pond(100)){ make_pond(x+2,y+2,x+w-3,y+h-3); ponds_made++; } add_light(x+w/2,y+h/2,45); }   // a grotto has a pond more often than not, never more than two on a floor
         if(st==ST_CRYSTAL){ for(int k=0;k<2;k++){ pillar_at(x+2+rndi(w-4), y+2+rndi(h-4), M_CRYSTAL); } add_light(x+w/2,y+h/2,40); }
         if(st==ST_CAVE) add_light(x+w/2,y+h/2,28);
         if(w*h>=100){ if((st==ST_HALL||st==ST_CRYPT) && want_pond(40)){ make_pond(x+w/3-1,y+h/3-1,x+w-w/3,y+h-h/3); ponds_made++; }   // a still pool in the middle of a big chamber
