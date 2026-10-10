@@ -455,9 +455,9 @@ static void planet_frame(void){
       if(mine_t) mine_t--;
       int lean = moved ? 10 : (mine_t ? 24 : 0), sq = (moved && ((frames>>3)&1)) || mine_t ? 8 : 0;
       int up = tv<0 && !th && form==FORM_BUG;
-      int shr=WL(MW_SHRINK)*5;                                                          // SHRINK RAY: you are smaller
+      int shr=WL(MW_SHRINK)*5+64;   /* 64 = standing at two thirds of the old size */                                                          // SHRINK RAY: you are smaller
       set_affine(31, up ? 256+shr*2 : facing? -(128+shr):128+shr, up ? 0 : facing? lean:-lean, 0, up ? 256+shr*2 : 128+sq+shr);
-      if(shr) sy += up ? 32-8192/(256+shr*2) : 16-2048/(128+shr);
+      if(shr && form!=FORM_HUMAN) sy += up ? 32-8192/(256+shr*2) : 16-2048/(128+shr);
       if(pvis && form==FORM_HUMAN){                                                   // the humanoid: its own height, build, colours, ears and tail (see the creator in ui.inc)
                 slot=hum_oam(slot,120,sy-bob,2,facing,lean,sq,shr,moved?((frames>>3)&1):0,tools_owned?tool_held:-1); }
       else if(pvis && form==FORM_CREATURE){                                           // a creature: one of this world's body plans, in your colour

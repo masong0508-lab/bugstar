@@ -37,8 +37,8 @@ static void hum_palette(void){                                                  
 }
 // draws the humanoid (and its tail, and the tool in its hand) into shadow_oam from slot on; z=2 is the planet's 2x drawing, z=1 is half that (the creator preview)
 static int hum_oam(int slot, int cx, int feet, int z, int facing, int lean, int sq, int shr, int sw, int tool){
-    int k=3-z, pa=hum_wd[hum.build%3]*k+shr, pd=hum_ht[hum.height%5]*k, h=32*256/pd, wpx=16*256/pa;
-    set_affine(31, facing?-pa:pa, facing?lean:-lean, 0, pd+sq+shr);
+    int k=3-z, pa=hum_wd[hum.build%3]*k+shr, pd=hum_ht[hum.height%5]*k+shr, h=32*256/pd, wpx=16*256/pa;
+    set_affine(31, facing?-pa:pa, facing?lean:-lean, 0, pd+sq);
     shadow_oam[slot].a0 = ((feet-h/2-32)&255) | (1<<8)|(1<<9) | (2<<14);
     shadow_oam[slot].a1 = ((cx-16)&511) | (31<<9) | (2<<14); shadow_oam[slot].a2 = (hum.style ? T_FURRY : T_HUMAN) | (6<<12); slot++;
     if(hum.style && slot<125){ int tx = facing ? cx-wpx/2-8*z : cx+wpx/2+8*z, ty = feet - 11*h/32 - 4*z;      // the tail sits behind the hips
