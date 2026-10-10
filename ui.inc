@@ -517,14 +517,14 @@ static int shop_menu(void){   // returns 1 to fly on
     oam_hide_all(); oam_flush();
     int sel=0; in_menu++; menu_msg[0]=0;
     while(1){
-        const char *main_opt[13]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","HANGAR: REDESIGN YOUR SHIP","TALK TO BOLT","LEAVE"};
-#define NSHOP 13
+        const char *main_opt[14]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","HANGAR: REDESIGN YOUR SHIP","TALK TO BOLT","YOUR SHAPE","LEAVE"};
+#define NSHOP 14
         int can_fly = 1, next_ok = !endless && zone_cleared && zone<5 && cluster_no==0; char nxt[40];
         if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); main_opt[0]=nxt; }
         int dirty=1; wait_release();
         while(1){
             if(dirty){ dirty=0; box(pg,12,20,216,136); text(pg,20,24,"YOUR SHIP",C_GOLD,1); char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
-                for(int i=0;i<NSHOP;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:(i==11)?C_CYAN:C_GREY); if(i==sel) text(pg,16,34+i*8,">",C_CYAN,1); text(pg,22,34+i*8,main_opt[i],c,1); }
+                for(int i=0;i<NSHOP;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:(i==11)?C_CYAN:C_GREY); if(i==sel) text(pg,16,34+i*7,">",C_CYAN,1); text(pg,22,34+i*7,main_opt[i],c,1); if(i==12){ char fb[24]; scpy(fb,"("); scat(fb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); scat(fb,")"); text(pg,82,34+i*7,fb,C_CYAN,1); } }
                 if(next_ok) rtext(pg,224,44,"HOLD A: FLY YOURSELF",C_DGREY);
                 { char hb[40]; scpy(hb,ship.name); scat(hb,"  HOLD "); ncat(hb,cargo_n()); scat(hb,"/"); ncat(hb,cargo_cap+ship_hold_bonus()); rtext(pg,224,34,hb,C_CYAN); }
                 if(q_type!=Q_NONE && q_done) text(pg,130,70,"! QUEST DONE",C_GREEN,1);
@@ -535,7 +535,9 @@ static int shop_menu(void){   // returns 1 to fly on
             if(HIT(K_B)){ in_menu--; wait_release(); return 0; }
             if(HIT(K_A)) break;
         }
-        if(sel==12){ in_menu--; wait_release(); return 0; }
+        if(sel==13){ in_menu--; wait_release(); return 0; }
+        if(sel==12){ if(forms_open<=1){ say("A WEIRD WORLD MIGHT RESHAPE YOU ONE DAY"); continue; }      // switch between shapes you have been
+            do form=(form+1)%3; while(!((forms_open>>form)&1)); form_t=0; recalc(); form_palette(); char b[40]; scpy(b,"YOU ARE NOW A "); scat(b,form==FORM_CREATURE?body_name[form_body]:form_name[form]); say(b); sfx(6); continue; }
         if(sel==11){ bolt_talk(pg); box(pg,12,20,216,136); continue; }
         if(sel==10){ make_ship(pg,0); box(pg,12,20,216,136); continue; }
         if(sel==9){ make_bug(pg,0); box(pg,12,20,216,136); continue; }

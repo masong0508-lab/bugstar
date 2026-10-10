@@ -69,6 +69,18 @@ Five pages with colour-coded button badges: planet, dungeon, space, staying aliv
 - **The arrival card**: when you land you get the planet's name, what it is known for, its land and weather, who lives there, and a remark from Bolt.
 - **Boot logo**: the DIPPINN PRODUCTIONS logo from BORE plays at power on (A or START skips it).
 
+## Shapes: creature or humanoid (new)
+- A weird world can **reshape you** into one of its creatures (HOPPER: fast, GRAZER: tough, FLYER: fastest and floats over water) or into a **HUMANOID**. Most shapes last a few minutes; rarely one stays.
+- Once you have been a shape, the **YOUR SHAPE** option on your ship switches between the shapes you have unlocked.
+- A humanoid **holds tools**: PICKAXE (mine in one hit, more ore), SWORD (+6 damage), BLASTER (+4 damage, +10% crit), LANTERN (lights dungeons), JETPACK (+30% speed), SHIELD (+4 defence), SCANNER (relics easier to find), GOLDEN GLOVE (+20% gold). Buy them at city markets or get them from friendly locals. **SELECT + UP/DOWN** switches what you hold.
+
+## Fleet battles (new)
+- **Hire up to 10 wingmen** at any station's shipyard. They fly in formation, follow you between systems, defend you, and call out their kills.
+- **Fleet battles** of up to **50 enemy ships** break out past the Ant King, or pick **JOIN A FLEET BATTLE** at a shipyard. Ships pick targets and shoot each other. Win the battle for a big bonus.
+
+## Dungeon floor events (new)
+- Most floors roll an event: TREASURE VAULT, MONSTER NEST (bonus gold), ELITE HUNT (slay 2 elites for a reward), DARK FLOOR (double loot), SPEED RUN (reach the stairs in 60 seconds), CURSED FLOOR (tougher monsters, better loot), GOLD RUSH, BLESSED SHRINE (a free good mark), AMBUSH and QUIET FLOOR. The goal shows under your spell name.
+
 ## Things to do on planets (new)
 - **Mining.** Every world grows four kinds of resource: **amber trees, crystal rocks, silk webs and nectar flowers** (what grows depends on the world's economy). Stand next to one and press A three times. The goods go into your ship's hold (HOLD 3/10 on the ship menu). Sell them at any station, where prices differ by economy, or...
 - **The workbench** on your ship upgrades gear: thorns need crystals, shells need amber, charms need silk, plus gold. Each upgrade adds +2 levels, which raises damage or defence and strengthens magic effects. No cap except 97.

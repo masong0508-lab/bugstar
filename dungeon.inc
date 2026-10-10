@@ -167,6 +167,32 @@ static void make_floor(void){
         for(int k=0;k<ng;k++){ int t=rndi(10)+depth_no/6; Gear g={IT_GEM,(u8)(t<5?0 : t<8?1 : t<11?2 : 3),0,0,0,0}; SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), g); }
         if(depth_no>=5 && rndi(8)==0){ Gear g=roll_gear(rndi(2)?IT_SHELL:IT_THORN, ilvl+10, 60); g.sub=4; SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), g); }
     }
+    // ---- a floor event (never on the first garden floor, a boss floor or in an outpost)
+    fl_ev=FE_NONE; fl_need=fl_have=0; fl_bonus=100; fl_done=0;
+#ifdef TEST_FE
+    if(1){
+#else
+    if(!last && !base_mode && !(zone==0 && !endless && depth_no==1 && !zone_cleared) && rndi(100)<65){
+#endif
+        fl_ev=1+rndi(NFE-1);
+#ifdef TEST_FE
+        fl_ev=TEST_FE;
+#endif
+        switch(fl_ev){
+            case FE_VAULT: for(int k=0;k<4;k++){ int r=rndi(nrooms); SPAWN(K_CHEST, room_floor_cell(&rooms[r]), 1, 0); SPAWN(K_SPIDER, room_floor_cell(&rooms[r]), base_hp, 0); } break;
+            case FE_NEST: for(int i=1;i<nrooms;i++) for(int k=0;k<2;k++) SPAWN(rndi(3)?K_SPIDER:K_WASP, room_floor_cell(&rooms[i]), base_hp, 0); fl_bonus=150; break;
+            case FE_ELITE: for(int k=0;k<2;k++){ int kind=rndi(2)?K_BEETLE:K_SPIDER; SPAWN(kind, room_floor_cell(&rooms[1+rndi(nrooms>1?nrooms-1:1)]), base_hp*4, 0); DObj *o=&dob[ndo-1]; o->champ=1; o->cname=rndi(8); } fl_need=2; break;
+            case FE_DARK: fl_bonus=200; break;
+            case FE_SPEED: fl_end=vbl_count+60*60; break;
+            case FE_CURSED: for(int i=0;i<ndo;i++) if(is_mon(dob[i].kind) && dob[i].kind!=K_BOSS){ dob[i].hp=dob[i].maxhp=dob[i].maxhp*3/2; } fl_bonus=175;
+                for(int k=0;k<2;k++) SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), roll_drop(ilvl+6,0)); break;
+            case FE_RUSH: for(int k=0;k<8;k++) SPAWN(K_CHEST, room_floor_cell(&rooms[rndi(nrooms)]), 1, 0); break;
+            case FE_BLESSED: break;
+            case FE_AMBUSH: for(int k=0;k<4;k++) SPAWN(rndi(2)?K_BEETLE:K_WASP, room_floor_cell(&rooms[far]), base_hp*3/2, 0); fl_bonus=130; break;
+            case FE_QUIET: for(int i=0;i<ndo;i++) if(is_mon(dob[i].kind) && dob[i].kind!=K_BOSS && dob[i].kind!=K_CORE) dob[i].alive=0;
+                SPAWN(K_CAGE, room_floor_cell(&rooms[rndi(nrooms)]), 1, rndi(6)); SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), roll_drop(ilvl,0)); break;
+        }
+    }
     // quests that live on this floor
     int qhere = q_type>0 && !q_done && depth_no==q_floor && q_zone==zone && q_world==world_no;
     if(qhere && q_type==Q_CHAMP){ SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0); dob[ndo-1].champ=2; }
@@ -596,7 +622,7 @@ static void dungeon_enter(void){
     for(int i=0;i<8;i++) BG_PAL[R_SPIDER+i]= endless ? w_mon[i] : zone_mon_pal[zone*8+i];
     if(endless && depth_no>best_depth) best_depth=depth_no;
     lantk = have_bug[BUG_FIRE] ? 74 : 58;
-    int rk = have_bug[BUG_FIRE] ? 56 : 44;
+    int rk = have_bug[BUG_FIRE] ? 56 : 44; if(fl_ev==FE_DARK){ rk=rk*3/5; lantk=lantk*3/4; }
     for(int d=1;d<100;d++){
         rd_rel[d]=(FOC<<15)/d; int li=rd_rel[d]>>12; if(li>511) li=511; rl_rel[d]=light_tab[li]*rk/64; rf_rel[d]=fog_tab[li]*52/64;
         cd_rel[d]=(FOC<<16)/d; li=cd_rel[d]>>12; if(li>511) li=511; cl_rel[d]=light_tab[li]*36/64; cf_rel[d]=fog_tab[li];
@@ -616,4 +642,19 @@ static void dungeon_enter(void){
         fcode[i] = t==D_UP?7 : t==D_DOWN?8 : f==FL_FLAG?((x+y)&1) : f==FL_TILE?2 : f==FL_DIRT?3 : f==FL_MOSS?4 : f==FL_WATER?5 : 6; }
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
     dungeon_hud_both();
+    if(fl_ev){ char b[40]; scpy(b,fe_name[fl_ev]); scat(b,"!"); say(b); msg_timer=60;
+        if(fl_ev==FE_BLESSED){ int mk=rndi(MK_GOOD); mark_t[mk]=150; recalc(); scpy(b,"BLESSED: "); scat(b,mk_name[mk]); scat(b," FOR A WHILE"); say(b); msg_timer=60; } }
+}
+static void fl_kill(DObj *o){                                                   // a monster died: does that move the floor's goal?
+    if(fl_ev==FE_ELITE && o->champ==1 && !fl_done && ++fl_have>=fl_need){ fl_done=1; int g=200+dlv()*40+depth_no*10; earn(g); gain_xp(30+dlv()*6); char b[40]; scpy(b,"ELITES SLAIN! +"); ncat(b,g); scat(b,"G"); say(b); msg_timer=50; sfx(6); }
+}
+static void fl_leave(void){                                                     // taking the stairs down
+    if(fl_ev==FE_SPEED && !fl_done && (s32)(fl_end-vbl_count)>0){ fl_done=1; int g=120+dlv()*30+depth_no*8; earn(g); gain_xp(20+dlv()*5); char b[40]; scpy(b,"SPEED RUN BEATEN! +"); ncat(b,g); scat(b,"G"); say(b); sfx(6); }
+    fl_bonus=100;
+}
+static void fl_draw(volatile u16 *pg){                                          // the goal line under the compass
+    if(!fl_ev || fl_done) return; char b[40]; scpy(b,fe_name[fl_ev]);
+    if(fl_ev==FE_ELITE){ scat(b," "); ncat(b,fl_have); scat(b,"/"); ncat(b,fl_need); }
+    else if(fl_ev==FE_SPEED){ s32 left=(s32)(fl_end-vbl_count)/60; if(left<0){ left=0; } scat(b," "); ncat(b,left); scat(b,"S"); if(left==0) scpy(b,"SPEED RUN: TOO SLOW"); }
+    text(pg,4,30,b, fl_ev==FE_CURSED||fl_ev==FE_AMBUSH ? C_RED : fl_ev==FE_SPEED ? C_GOLD : C_CYAN, 1);
 }

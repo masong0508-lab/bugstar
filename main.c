@@ -189,9 +189,11 @@ static int mon_dmg(DObj *o){
     int b=3+dlv()*2+depth_no/2;
     switch(o->kind){ case K_BEETLE: b=b*9/5; break; case K_BAT: b=b*7/10+1; break; case K_BOSS: b=b*5/2; break; }
     if(o->champ) b=b*3/2;
+    if(fl_ev==FE_CURSED) b=b*3/2;
     return b;
 }
 static void kill_mon(DObj *o){
+    fl_kill(o);
     int boss=o->kind==K_BOSS, hive = boss && endless && hive_boss_floor();
     if(o->kind>=0 && o->kind<11) st_kills[o->kind]++;
     if(o->kind==K_CORE){                                                              // the outpost dies: Bolt gets a memory back, the beast loses a feeding node
@@ -530,7 +532,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     else if(HIT(K_A)){
         if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
         else if(here==D_UP && stair_ok) return 1;
-        else if(here==D_DOWN){ wacc=WDIV-1; fade(1); dungeon_enter(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; }
+        else if(here==D_DOWN){ fl_leave(); wacc=WDIV-1; fade(1); dungeon_enter(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; }
         else if(fish_state==1){ fish_state=0; say("YOU REEL IN"); }
         else if(water_ahead(dirx,diry)){ fish_state=1; fish_t=25+rndi(50); say("FISHING... WAIT FOR A BITE"); sfx(8); }
         else if(!atk_t) do_bite(dirx,diry);
@@ -578,7 +580,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
 #endif
     if(sight || have_bug[BUG_ANT] || stairs_seen()) compass(pg,dirx,diry);
     if(opt_minimap) minimap(pg);
-    hud3d(pg);
+    hud3d(pg); fl_draw(pg);
     if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
     if(msg_timer){ text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
@@ -687,10 +689,16 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #endif
 #ifdef TEST_DEEP
     ant_king=1; zones_open=6; cleared_mask=63; galaxy_no=4000000000u; for(int w=0;w<NCW;w++) clus[w]=hmix(w*77+TEST_DEEP); gen_cluster(); cur_sys=7+TEST_DEEP%20; fade(0); arrive_on_planet();
+#ifdef TEST_FORM
+    form=TEST_FORM; forms_open=7; tools_owned=0xFF; tool_held=1; form_body=TEST_BODY; form_col=rgb15(200,80,200); recalc(); form_palette();
+#endif
 #ifdef TEST_MAP
     scene=2; page_back=1; space_enter(1); galaxy_map();
 #endif
     return;
+#endif
+#ifdef TEST_FLEET
+    fade(0); arrive_on_planet(); scene=2; page_back=1; wing_n=TEST_FLEET; space_enter(0); if(TEST_FLEET) start_battle(50); return;
 #endif
 #ifdef TEST_ARRIVE
     cur_sys=TEST_ARRIVE; fade(0); arrive_on_planet(); return;

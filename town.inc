@@ -26,9 +26,11 @@ static void make_species(void){
     if(WL(MW_SHY)){ spc[0].temper=0; spc[1].temper=0; } if(WL(MW_ANGRY)){ spc[0].temper=2; spc[1].temper=2; }
     wseed=keep;
 }
+static void form_palette(void){ volatile u16 *P=OBJ_PAL+6*16; for(int i=0;i<16;i++) P[i]=obj_pal[i]; u16 c=form_col?form_col:look.col[LC_SHELL]; P[6]=shade15(c,7); P[7]=c; P[8]=lift15(c,8); P[5]=look.col[LC_EYE]; }
 static void species_palette(void){                                                    // sprite banks 4 and 5: the two species' colours
     for(int s=0;s<2;s++){ volatile u16 *P=OBJ_PAL+(4+s)*16; for(int i=0;i<16;i++) P[i]=obj_pal[i];
         u16 c=spc[s].col; P[6]=shade15(c,7); P[7]=c; P[8]=lift15(c,8); P[5]=rgb15(250,250,250); }
+    form_palette();
 }
 // ---------------------------------------------------------------- building the city into the land
 static u32 hsh(u32 a, u32 b){ u32 h=a*0x9E3779B1u ^ (b+0x7F4A7C15u)*0x85EBCA6Bu; h^=h>>15; h*=0xC2B2AE35u; h^=h>>13; return h; }
@@ -99,7 +101,7 @@ static void relic_found(void){
     sfx(6); card(pg,"!!! A LEGENDARY RELIC !!!",ln,5); save_game();
 }
 static int relic_roll(int one_in){                                                     // a very rare find. Weird worlds are far luckier
-    if(wd.weird) one_in/=12; if(WL(MW_METAL)) one_in/=2; if(WL(MW_LUCK)) one_in/=1+WL(MW_LUCK)/4; if(one_in<1) one_in=1;
+    if(wd.weird) one_in/=12; if(holding(TL_SCANNER)) one_in/=2; if(WL(MW_METAL)) one_in/=2; if(WL(MW_LUCK)) one_in/=1+WL(MW_LUCK)/4; if(one_in<1) one_in=1;
     if(rndi(one_in)) return 0; relic_found(); return 1;
 }
 static void planet_life(int *k){
@@ -171,6 +173,12 @@ static void give_marks(char *out){                                              
         int perm = rndi(100) < 6+lv && (good || rndi(3)==0);
         if(perm){ if((mark_perm>>mk)&1) continue; mark_perm|=1u<<mk; } else mark_t[mk]=60+lv*15;
         if(out[0]) scat(out,". "); scat(out, perm?"FOREVER ":""); scat(out,mk_name[mk]); if(!perm){ scat(out," "); ncat(out,(60+lv*15)/60); scat(out,"M"); } given++; }
+    if(rndi(100) < 30){                                                                 // ...or reshape you
+        int lv=wd.tr[0]/NMW+1; int nf = rndi(100)<60 ? FORM_CREATURE : FORM_HUMAN;
+        form=nf; forms_open|=1<<nf; form_t = rndi(100) < 6+lv/2 ? 0 : 180+lv*12; form_body=spc[0].body; form_col=spc[0].col;
+        if(out[0]) scat(out,". "); scat(out,"YOU ARE NOW A "); scat(out, nf==FORM_HUMAN ? "HUMANOID" : body_name[form_body]); if(!form_t) scat(out," FOREVER");
+        if(nf==FORM_HUMAN && !tools_owned){ tools_owned|=1u<<TL_PICK; tool_held=TL_PICK; }      // you wake up holding a pickaxe
+        form_palette(); given=1; }
     if(given){ recalc(); save_game(); }
 }
 static void planet_card(volatile u16 *pg){                                              // on arrival: name, what it is known for, its DNA, a scan, Bolt's two cents
@@ -213,6 +221,7 @@ static void local_talk(PObj *o){
         if(r==0){ gold+=5+dlv()*3; scpy(g,"HERE, TAKE "); ncat(g,5+dlv()*3); scat(g,"G. FOR THE LEGS."); }
         else if(r==1){ Gear gg={IT_CRUMB,0,0,0,0,0}; add_gear(gg); scpy(g,"HAVE A CRUMB. I HAVE TOO MANY."); }
         else if(r==2){ Gear gg={IT_BERRY,(u8)rndi(8),0,0,0,0}; add_gear(gg); scpy(g,"A BERRY. DO NOT ASK WHERE IT GREW."); }
+        else if(form==FORM_HUMAN && (tools_owned|0xFF)!=tools_owned && rndi(2)){ int tl; do tl=rndi(NTOOL); while((tools_owned>>tl)&1); tools_owned|=1u<<tl; scpy(g,"YOU HAVE HANDS! TAKE THIS: "); scat(g,tool_name[tl]); }
         else { fame+=3; scpy(g,"I WILL TELL EVERYONE YOU ARE NICE. +FAME"); }
         ln[1]=g; card(pg,"A LOCAL",ln,2); sfx(7); }
     else { char w[40]; scpy(w,"KNOWN FOR: "); scat(w,tagline[wd.tagline]); ln[1]=w; card(pg,"A LOCAL",ln,2); }
@@ -248,7 +257,9 @@ static void bounty_office(volatile u16 *pg){
 // ---------------------------------------------------------------- the market and the cantina
 static int mk_sell[8], mk_n; static int mk_buy[3];
 static int local_price(int g){ int p=good_price(g); if(city_r) p=p*(85+(wd.csize>3?3:wd.csize)*5)/100; if(wd.mood==MOOD_LOVE) p=p*115/100; if(wd.mood==MOOD_HATE) p=p*75/100; return p<1?1:p; }   // they pay you more if they love you
+static int mk_tool[NTOOL], mk_nt;
 static void market_row(int i, char *b, int *c){
+    if(i>=mk_n+3){ int tl=mk_tool[i-mk_n-3]; scpy(b,"TOOL: "); scat(b,tool_name[tl]); scat(b,"  "); ncat(b,tool_cost[tl]+dlv()*10); scat(b,"G"); *c = gold>=tool_cost[tl]+dlv()*10 ? C_CYAN : C_DGREY; return; }
     if(i<mk_n){ int g=mk_sell[i]; scpy(b,"SELL ALL "); scat(b,goods[g]); scat(b," ("); ncat(b,cargo[g]); scat(b,")  "); ncat(b,local_price(g)*cargo[g]); scat(b,"G"); *c=C_GREEN; }
     else { int g=mk_buy[i-mk_n]; scpy(b,"BUY 1 "); scat(b,goods[g]); scat(b,"  "); ncat(b,local_price(g)*120/100); scat(b,"G"); *c = gold>=local_price(g)*120/100 ? C_GREY : C_DGREY; }
 }
@@ -257,7 +268,9 @@ static void market(volatile u16 *pg){
     while(1){
         mk_n=0; for(int g=0;g<8;g++) if(cargo[g]) mk_sell[mk_n++]=g;
         int e=sys[cur_sys].eco; mk_buy[0]=e==0?0:e==1?4:e==2?5:1; mk_buy[1]=e==0?1:e==1?3:e==2?6:2; mk_buy[2]=7;
-        if((r=list_pick(pg,"THE MARKET",mk_n+3,market_row,&sel,"A: TRADE  B: LEAVE"))<0) break;
+        mk_nt=0; if(form==FORM_HUMAN) for(int k=0;k<NTOOL;k++) if(!((tools_owned>>k)&1) && ((wd.tseed>>k)&1 || k<2)) mk_tool[mk_nt++]=k;   // humanoids can buy tools
+        if((r=list_pick(pg,"THE MARKET",mk_n+3+mk_nt,market_row,&sel,"A: TRADE  B: LEAVE"))<0) break;
+        if(r>=mk_n+3){ int tl=mk_tool[r-mk_n-3], c=tool_cost[tl]+dlv()*10; if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; tools_owned|=1u<<tl; tool_held=tl; recalc(); char b[40]; scpy(b,"NOW HOLDING: "); scat(b,tool_name[tl]); say(b); sfx(6); } sel=0; continue; }
         if(r<mk_n){ int g=mk_sell[r]; int got=local_price(g)*cargo[g]; gold+=got; cargo[g]=0; char b[40]; scpy(b,"SOLD. +"); ncat(b,got); scat(b,"G"); say(b); sfx(7); if(sel>=mk_n+2) sel=0; }
         else { int g=mk_buy[r-mk_n]; int cost=local_price(g)*120/100; if(gold<cost) say("NOT ENOUGH GOLD"); else if(cargo_n()>=cargo_cap+ship_hold_bonus()) say("YOUR HOLD IS FULL");
             else { gold-=cost; cargo[g]++; say("BOUGHT. SELL IT WHERE IT IS RARE"); sfx(7); } }

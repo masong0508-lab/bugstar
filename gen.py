@@ -531,7 +531,46 @@ FLYER=["..1111....1111..",
        "......16661.....",
        ".......111......",
        "................"]
-sprs=[("HOPPER",HOPPER,16,16,1),("GRAZER",GRAZER,16,16,1),("FLYER",FLYER,16,8,1),("DOORWAY",DOORWAY,16,16,1),("LOCAL1",LOCAL1,16,16,1),("LOCAL2",LOCAL2,16,16,1),("BEACON",BEACON,16,16,1),("FOSSIL",FOSSIL,16,16,1),("SBEETLE",SBEETLE,16,16,1),("STALL",STALL,16,16,1),("RUIN",RUIN,16,16,1),("ARROW",ARROW,16,16,1),("HATCH",HATCH,16,16,1),("BOLT",BOLT,16,16,1),("TREE",TREE,16,16,1),("ROCK",ROCK,16,16,1),("WEB",WEB,16,16,1),("FLOWER",FLOWER,16,16,1),("HILL",HILL,64,32,1),("SHADOW",SHADOW,16,8,1),("CLOUD",CLOUD,32,8,1),("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("BUGP1A",BUGP[0][0],32,16,1),("BUGP1B",BUGP[0][1],32,16,1),("BUGP2A",BUGP[1][0],32,16,1),("BUGP2B",BUGP[1][1],32,16,1),("BUGP3A",BUGP[2][0],32,16,1),("BUGP3B",BUGP[2][1],32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
+# the humanoid form (16x32), drawn with the bug's own colours (bank 3): 1 outline, 2-4 body, 7 skin (head colour), 9 eyes, b legs, c belt
+def human_rows():
+    g=[['.']*16 for _ in range(32)]
+    for y in range(32):
+        for x in range(16):
+            dx,dy=x-7.5,y-5.0
+            if dx*dx+dy*dy<=12.5: g[y][x]='7'
+    g[5][6]='9'; g[5][9]='9'
+    for y in range(9,11):
+        for x in range(7,9): g[y][x]='7'
+    for y in range(10,20):
+        for x in range(4,12): g[y][x]='3' if 5<=x<=10 else ('2' if x==4 else '4')
+        if y<18:
+            for x in (2,3): g[y][x]='3'
+            for x in (12,13): g[y][x]='3'
+    for y in (18,19):
+        for x in (2,3,12,13): g[y][x]='7'
+    for x in range(4,12): g[19][x]='c'
+    for y in range(20,30):
+        for x in (5,6,7): g[y][x]='b'
+        for x in (8,9,10): g[y][x]='b'
+    for x in (4,5,6,7): g[30][x]='1'
+    for x in (8,9,10,11): g[30][x]='1'
+    for y in range(32):
+        for x in range(16):
+            if g[y][x]=='.':
+                for ax,ay in ((1,0),(-1,0),(0,1),(0,-1)):
+                    X,Y=x+ax,y+ay
+                    if 0<=X<16 and 0<=Y<32 and g[Y][X] not in '.1': g[y][x]='1'; break
+    return [''.join(r) for r in g]
+HUMAN=human_rows()
+TOOLS=[["fffff...","f...ff..","....7.f.","...7....","..7.....",".7......","7.......","........"],
+       ["......5f",".....5f.","....5f..","...5f...","9.5f....",".99.....",".79.....","7......."],
+       ["........","1fffff1.","ffff9ff.","ff1.....","f1......","71......","7.......","........"],
+       ["..111...",".1ddd1..","1dd5dd1.","1ddddd1.","1ddddd1.",".17771..","..111...","........"],
+       [".ffff...","f2f2f...","f2f2f...","f2f2f...","ffff....",".99.99..",".d..d...","........"],
+       ["1fffff1.","f22422f.","f24442f.","f22422f.",".f222f..","..fff...","...f....","........"],
+       ["111111..","1bbbb1..","1b5bb1..","1bbbb1..","111111..",".1ff1...",".1ff1...","..11...."],
+       ["..d.d.d.",".ddddddd",".ddddddd","dddddddd","ddddddd.",".dddddd.","..dddd..","........"]]
+sprs=[("HUMAN",HUMAN,16,32,1)]+[("TOOL%d"%i,TOOLS[i],8,8,1) for i in range(8)]+[("HOPPER",HOPPER,16,16,1),("GRAZER",GRAZER,16,16,1),("FLYER",FLYER,16,8,1),("DOORWAY",DOORWAY,16,16,1),("LOCAL1",LOCAL1,16,16,1),("LOCAL2",LOCAL2,16,16,1),("BEACON",BEACON,16,16,1),("FOSSIL",FOSSIL,16,16,1),("SBEETLE",SBEETLE,16,16,1),("STALL",STALL,16,16,1),("RUIN",RUIN,16,16,1),("ARROW",ARROW,16,16,1),("HATCH",HATCH,16,16,1),("BOLT",BOLT,16,16,1),("TREE",TREE,16,16,1),("ROCK",ROCK,16,16,1),("WEB",WEB,16,16,1),("FLOWER",FLOWER,16,16,1),("HILL",HILL,64,32,1),("SHADOW",SHADOW,16,8,1),("CLOUD",CLOUD,32,8,1),("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("BUGP1A",BUGP[0][0],32,16,1),("BUGP1B",BUGP[0][1],32,16,1),("BUGP2A",BUGP[1][0],32,16,1),("BUGP2B",BUGP[1][1],32,16,1),("BUGP3A",BUGP[2][0],32,16,1),("BUGP3B",BUGP[2][1],32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
       ("PLANT",PLANT,8,8,1),("PEBBLE",PEBBLE,8,8,1),("TUFT",TUFT,8,8,1),("BACK",BACK,64,64,2)]
 allt=[]; t=0
 for name,rows,w,h,s in sprs:

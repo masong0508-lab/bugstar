@@ -22,7 +22,13 @@ static int tier_now(void){ return (!endless && zone_cleared) ? tiers[zone]+1 : 0
 static int dlv(void){ int d = endless ? w_dlv : zone + tier_now()*2; return d>30?30:d; }
 static int zone_floors(void){ return endless ? 9999 : zone+3+tier_now(); }
 static int gold_find=100;
-static void earn(int g){ g = g*gold_find/100; if(endless && scene==1) loot+=g; else gold+=g; }
+// ---- FLOOR EVENTS: most dungeon floors roll one, with a twist or a goal
+enum { FE_NONE, FE_VAULT, FE_NEST, FE_ELITE, FE_DARK, FE_SPEED, FE_CURSED, FE_RUSH, FE_BLESSED, FE_AMBUSH, FE_QUIET, NFE };
+static const char *const fe_name[NFE]={"","TREASURE VAULT","MONSTER NEST","ELITE HUNT","DARK FLOOR","SPEED RUN","CURSED FLOOR","GOLD RUSH","BLESSED SHRINE","AMBUSH","QUIET FLOOR"};
+static const char *const fe_what[NFE]={"","CHESTS EVERYWHERE. SO ARE THE GUARDS","EXTRA MONSTERS. EXTRA GOLD","SLAY THE ELITES FOR A BIG REWARD","LESS LIGHT. DOUBLE LOOT","REACH THE STAIRS IN 60 SECONDS",
+    "TOUGHER MONSTERS. BETTER LOOT","GOLD, GOLD, GOLD","A SHRINE BLESSES YOU","THEY ARE WAITING AT THE STAIRS","NOTHING HERE WANTS TO FIGHT. BREATHE"};
+static int fl_ev=0, fl_need=0, fl_have=0, fl_bonus=100, fl_done=0; static u32 fl_end=0;
+static void earn(int g){ g = g*gold_find/100; if(fl_bonus!=100) g=g*fl_bonus/100; if(endless && scene==1) loot+=g; else gold+=g; }
 static u16 w_tint[6], w_mon[8]; static u8 w_styles[3]; static char w_name[24];
 static u32 wseed;
 static int wr(int n){ wseed = wseed*1103515245u + 12345u; return (int)((wseed>>16)%(u32)n); }
@@ -143,6 +149,18 @@ enum { MK_SWIFT, MK_TOUGH, MK_LUCKY, MK_STRONG, MK_SHARP, MK_REGEN, MK_FULL, MK_
 static const char *const mk_name[NMK]={"SWIFT","TOUGH","LUCKY","STRONG","SHARP","REGROWING","WELL FED","THICK SHELL","SLUGGISH","FRAIL","UNLUCKY","WEAK","HUNGRY","DULL"};
 static const char *const mk_what[NMK]={"+15% SPEED","+8 MAX HEALTH","+15% GOLD","+3 DAMAGE","+5% CRIT","HEALS OVER TIME","HUNGER IS SLOWER","+3 DEFENCE","-15% SPEED","-6 MAX HEALTH","-10% GOLD","-2 DAMAGE","HUNGER IS FASTER","-4% CRIT"};
 static u32 mark_perm=0; static int mark_t[NMK];
+// ---- SHAPES: a weird world can turn you into one of its creatures, or into a humanoid that holds tools.
+enum { FORM_BUG, FORM_CREATURE, FORM_HUMAN };
+static int form=0, form_t=0, form_body=0, forms_open=1, tool_held=0; static u16 form_col=0; static u32 tools_owned=0;   // form_t: seconds left (0 = it stays)
+static const char *const form_name[3]={"BUG","CREATURE","HUMANOID"};
+static const char *const body_name[3]={"HOPPER","GRAZER","FLYER"};
+#define NTOOL 8
+enum { TL_PICK, TL_SWORD, TL_BLASTER, TL_LANTERN, TL_JETPACK, TL_SHIELD, TL_SCANNER, TL_GLOVE };
+static const char *const tool_name[NTOOL]={"PICKAXE","SWORD","BLASTER","LANTERN","JETPACK","SHIELD","SCANNER","GOLDEN GLOVE"};
+static const char *const tool_what[NTOOL]={"MINE IN ONE HIT, MORE ORE","+6 DAMAGE","+4 DAMAGE, +10% CRIT","LIGHTS DUNGEONS","+30% SPEED","+4 DEFENCE","RELICS ARE EASIER TO FIND","+20% GOLD"};
+static const u16 tool_cost[NTOOL]={150,260,340,120,300,220,500,600};
+static void form_palette(void);
+static int holding(int t){ return form==FORM_HUMAN && ((tools_owned>>t)&1) && tool_held==t; }
 static int mark_on(int k){ return ((mark_perm>>k)&1) || mark_t[k]>0; }
 static const char *const style_name[8]={"ROLLING HILLS","MESAS","DUNES","ISLANDS","CRATERS","CANYONS","RIDGES","PLAINS"};
 static const char *const hour_name[3]={"DAY","DUSK","NIGHT"};
@@ -309,6 +327,10 @@ static void recalc(void){
     d_def += st_vit/4 + armor_base(&eqa) + (mark_on(MK_THICK)?3:0);
     d_crit += st_dex + (mark_on(MK_SHARP)?5:0) - (mark_on(MK_DULL)?4:0);
     if(mark_on(MK_SWIFT)) d_spd+=15; if(mark_on(MK_SLUGGISH)) d_spd-=15; if(mark_on(MK_REGEN)) d_regen+=1;
+    if(form==FORM_CREATURE){ if(form_body==0) d_spd+=25; else if(form_body==1){ maxh+=15; d_spd-=10; d_def+=2; } else { d_spd+=35; maxh-=5; } d_dmg-=1; }   // a creature: hoppers are quick, grazers tough, flyers fastest
+    if(form==FORM_HUMAN){ d_dmg+=2;                                                                                 // a humanoid: what you hold matters
+        if(holding(TL_SWORD)) d_dmg+=6; if(holding(TL_BLASTER)){ d_dmg+=4; d_crit+=10; } if(holding(TL_LANTERN)) d_light+=1;
+        if(holding(TL_JETPACK)) d_spd+=30; if(holding(TL_SHIELD)) d_def+=4; if(holding(TL_GLOVE)) gold_find+=20; }
     d_haste += st_dex/6;
     d_sting += have_bug[BUG_BEE]*2;
     if(eqa.it==IT_SHELL && eqa.sub==3 && eqa.rar!=R_UNIQUE) d_spd -= 15;        // the sticky shell slows you
@@ -571,7 +593,8 @@ static int bite_power(int *crit){
 }
 static void mark_tick(void){                                   // once a second: passing marks run down
     static int last=0; if((u32)(vbl_count-last)<60) return; last=vbl_count;
-    for(int k=0;k<NMK;k++) if(mark_t[k]>0 && --mark_t[k]==0){ recalc(); char b[40]; scpy(b,mk_name[k]); scat(b," WORE OFF"); say(b); hud_now(); } }
+    for(int k=0;k<NMK;k++) if(mark_t[k]>0 && --mark_t[k]==0){ recalc(); char b[40]; scpy(b,mk_name[k]); scat(b," WORE OFF"); say(b); hud_now(); }
+    if(form && form_t>0 && --form_t==0){ form=FORM_BUG; recalc(); say("YOU ARE A BUG AGAIN"); hud_now(); } }
 static void tick_timers(void){ mark_tick(); if(speed_t) speed_t--; if(strong_t) strong_t--; if(dizzy_t) dizzy_t--; if(stun_t) stun_t--; if(shield_t) shield_t--;
     if(pet_form_t && --pet_form_t==0){ say("BUDDY CHANGES BACK"); pet_form=0; } }
 

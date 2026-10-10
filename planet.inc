@@ -319,6 +319,9 @@ static void planet_frame(void){
     int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>4) n=4;           // the view takes a few 60ths to draw: move by that much
     int moved=0;
     int th = HELD(K_LEFT) ? -16 : HELD(K_RIGHT) ? 16 : 0, tv = HELD(K_UP) ? -16 : HELD(K_DOWN) ? 16 : 0;
+    if(HELD(K_SEL) && form==FORM_HUMAN && (HIT(K_UP)||HIT(K_DOWN))){ sel_used=1;                       // a humanoid: SELECT + UP/DOWN picks the tool in your hand
+        if(!tools_owned) show_msg("NO TOOLS YET. BUY THEM AT A CITY MARKET");
+        else { int d=HIT(K_UP)?NTOOL-1:1; do tool_held=(tool_held+d)%NTOOL; while(!((tools_owned>>tool_held)&1)); recalc(); char b[48]; scpy(b,"HOLDING: "); scat(b,tool_name[tool_held]); scat(b," ("); scat(b,tool_what[tool_held]); scat(b,")"); show_msg(b); sfx(2); } }
     if(HELD(K_SEL)){ th=tv=0; if(HIT(K_L)||HIT(K_R)){ sel_used=1; arrow_ship=(arrow_ship+1)%3; show_msg(arrow_ship==1?"ARROW: TO YOUR SHIP":arrow_ship==2?"ARROW: TO THE NEAREST RESOURCE":"ARROW: TO THE DOOR"); sfx(7); } }
     if(cam_fp){                                                                         // first person: left/right turn, L/R step sideways
         int turn = th; th = HELD(K_SEL) ? 0 : HELD(K_R) ? 16 : HELD(K_L) ? -16 : 0;
@@ -330,7 +333,7 @@ static void planet_frame(void){
           if(ik && (frames+k)%ik){ if(!th) pw_h=ph0; else pw_h=ph0+(pw_h-ph0)/2; if(!tv) pw_v=pv0; else pw_v=pv0+(pw_v-pv0)/2; } }
         s32 sp = 0x1600 + (wd.grav-1)*0x200; if(WL(MW_ZEROG)) sp=sp*(14+WL(MW_ZEROG))/10;   // ZERO-G: you bounce along
         if(WL(MW_STICKY)) sp=sp*10/(12+WL(MW_STICKY)); if(d_spd) sp=sp*(100+d_spd)/100;      // STICKY GROUND; your marks and gear                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
-        if(hm_at(ppx,ppy)<water_lv) sp=sp*2/3;                                          // wading is slow
+        if(hm_at(ppx,ppy)<water_lv && !(form==FORM_CREATURE && form_body==2)) sp=sp*2/3;   // wading is slow (flyers don't wade)
         s32 mvx=(pw_h*sp)>>4, mvy=(pw_v*sp)>>4;
         { s32 fwd=-mvy, side=mvx; mvx=((hsn*fwd)>>8)+((hcs*side)>>8); mvy=((hcs*fwd)>>8)-((hsn*side)>>8); }   // UP walks away from the camera (into the screen), in both views
         s32 nx = ppx + mvx, ny = ppy + mvy;
@@ -387,8 +390,9 @@ static void planet_frame(void){
                 if(pq_type==6 && o->var==0){ pq_have++; job_tick(); } break; }
             case O_TREE: case O_ROCK: case O_WEB: case O_FLOWER: {                     // mining: a few bites, then the goods go in your ship's hold
                 PObj *o=&po[best]; int t=o->kind-O_TREE; sfx(o->kind==O_ROCK?12:13); mine_t=8;
+                if(holding(TL_PICK)) o->hp=1;                                                    // the pickaxe: one hit
                 if(--o->hp>0){ char b[40]; scpy(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
-                o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0); if(pq_type==7){ pq_have++; job_tick(); }
+                o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0)+(holding(TL_PICK)?1:0); if(pq_type==7){ pq_have++; job_tick(); }
                 if(relic_roll(400)){ planet_hud(); p_last=vbl_count; return; }
                 if(cargo_n()>=cargo_cap+ship_hold_bonus()){ show_msg("HOLD FULL! SELL GOODS AT A STATION"); break; }
                 int room=cargo_cap+ship_hold_bonus()-cargo_n(); if(n>room) n=room; cargo[g]+=n; st_mined+=n; ach_check(); gain_xp(2+dlv());
@@ -446,11 +450,21 @@ static void planet_frame(void){
       int pvis = !(invuln && (frames&4));
       if(mine_t) mine_t--;
       int lean = moved ? 10 : (mine_t ? 24 : 0), sq = (moved && ((frames>>3)&1)) || mine_t ? 8 : 0;
-      int up = tv<0 && !th;
+      int up = tv<0 && !th && form==FORM_BUG;
       int shr=WL(MW_SHRINK)*5;                                                          // SHRINK RAY: you are smaller
       set_affine(31, up ? 256+shr*2 : facing? -(128+shr):128+shr, up ? 0 : facing? lean:-lean, 0, up ? 256+shr*2 : 128+sq+shr);
       if(shr) sy += up ? 32-8192/(256+shr*2) : 16-2048/(128+shr);
-      if(pvis){ shadow_oam[slot].a0 = ((up ? sy-96-bob : sy-32-bob)&255) | (1<<8)|(1<<9) | (up?(0<<14):(1<<14));
+      if(pvis && form==FORM_HUMAN){                                                   // the humanoid: 16x32, twice size, with the tool in its hand
+                int sw = moved ? ((frames>>3)&1) : 0;
+                shadow_oam[slot].a0 = ((sy-64-bob)&255) | (1<<8)|(1<<9) | (2<<14);
+                shadow_oam[slot].a1 = ((120-16)&511) | (31<<9) | (2<<14); shadow_oam[slot].a2 = T_HUMAN | BUG_BANK; slot++;
+                if(tools_owned && slot<120){ int hx = facing ? 120+10 : 120-18, hy = sy-30-bob+sw;
+                    shadow_oam[slot].a0 = (hy&255); shadow_oam[slot].a1 = (hx&511) | (facing?0:(1<<12)); shadow_oam[slot].a2 = (T_TOOL0+tool_held); slot++; } }
+      else if(pvis && form==FORM_CREATURE){                                           // a creature: one of this world's body plans, in your colour
+                int fl = form_body==2; int hop = (form_body==0 && moved) ? ((frames>>2)&1)*4 : 0; int fly = fl ? 10+(sinx((frames*5)&255)>>12) : 0;
+                shadow_oam[slot].a0 = ((sy-(fl?16:32)-bob-hop-fly)&255) | (1<<8)|(1<<9) | (fl?(1<<14):0);
+                shadow_oam[slot].a1 = ((120-16)&511) | (31<<9) | (fl?(0<<14):(1<<14)); shadow_oam[slot].a2 = (form_body==0?T_HOPPER:form_body==1?T_GRAZER:T_FLYER) | (6<<12); slot++; }
+      else if(pvis){ shadow_oam[slot].a0 = ((up ? sy-96-bob : sy-32-bob)&255) | (1<<8)|(1<<9) | (up?(0<<14):(1<<14));
                 shadow_oam[slot].a1 = ((up ? 120-64 : 120-32)&511) | (31<<9) | (up?(3<<14):(2<<14));
                 shadow_oam[slot].a2 = (up ? T_BACK : bug_tile(moved && ((frames>>3)&1))) | BUG_BANK; slot++; }
       if(slot<120){ shadow_oam[slot].a0 = ((sy-6)&255) | (1<<14); shadow_oam[slot].a1 = ((120-8)&511); shadow_oam[slot].a2 = T_SHADOW; slot++; }

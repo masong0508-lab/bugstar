@@ -55,8 +55,10 @@ static s16 bf[3], br[3], bu[3];     // forward, right, up (2.14)
 static s16 sun[3]={-9000,6000,-11000};
 EW static s16 star_dir[96*3];
 EW static s32 dust[20*3];
-typedef struct { s32 x,y,z; s16 f[3]; s16 hp; s8 alive, cool, fire_t; } Pirate;
-#define NPIR 4
+typedef struct { s32 x,y,z; s16 f[3]; s16 hp, maxhp; s8 alive, cool, fire_t, team, tgt, slot; } Pirate;   // team 0: your wingmen, 1: enemies. tgt: who it shoots (-1 = you)
+#define NPIR 64                     // up to 10 wingmen and 50 enemies at once
+#define MAXWING 10
+static int wing_n=0, battle_on=0, battle_kills=0, battle_req=0;
 EW static Pirate pir[NPIR];
 typedef struct { s32 x,y,z; s16 vx,vy,vz; s16 life; u8 col; } SPart;
 #define NSPP 48
@@ -173,7 +175,33 @@ static void spawn_pirates(int n){
         s16 d[3]={(s16)(lr(32768)-16384),(s16)(lr(16384)-8192),(s16)(lr(32768)-16384)}; norm3(d);
         int dist=7000+lr(3000);
         p->x=shx+((d[0]*dist)>>14); p->y=shy+((d[1]*dist)>>14); p->z=shz+((d[2]*dist)>>14);
-        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->hp=10+space_danger()*5; p->alive=1; p->cool=60; p->fire_t=0; n--; }
+        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->hp=p->maxhp=10+space_danger()*5; p->alive=1; p->cool=60; p->fire_t=0; p->team=1; p->tgt=-1; n--; }
+}
+static void boom(s32 x, s32 y, s32 z, int n, int col); static void space_say(const char *t);
+static int team_count(int t){ int n=0; for(int i=0;i<NPIR;i++) if(pir[i].alive && pir[i].team==t) n++; return n; }
+static void spawn_wing(void){                                   // your hired wingmen form up around you
+    int k=0; for(int i=0;i<NPIR && k<wing_n;i++) if(!pir[i].alive){ Pirate *p=&pir[i];
+        p->team=0; p->slot=k; p->alive=1; p->hp=p->maxhp=30+laser_lv*8+shield_lv*6; p->cool=30+k*7; p->fire_t=0; p->tgt=-2;
+        p->x=shx-((bf[0]*(700+(k/2)*450))>>14)+((br[0]*((k&1)?1:-1)*(500+(k/2)*300))>>14); p->y=shy-((bf[1]*(700+(k/2)*450))>>14); p->z=shz-((bf[2]*(700+(k/2)*450))>>14)+((br[2]*((k&1)?1:-1)*(500+(k/2)*300))>>14);
+        p->f[0]=bf[0]; p->f[1]=bf[1]; p->f[2]=bf[2]; k++; }
+}
+static void start_battle(int n){                                 // a fleet battle: up to 50 enemy ships, spread out ahead of you
+    int room=NPIR-team_count(0)-team_count(1); if(n>room) n=room; if(n>50) n=50; if(n<1) return;
+    for(int i=0;i<NPIR && n;i++) if(!pir[i].alive){ Pirate *p=&pir[i];
+        s16 d[3]={(s16)(bf[0]+lr(12000)-6000),(s16)(bf[1]+lr(6000)-3000),(s16)(bf[2]+lr(12000)-6000)}; norm3(d);
+        int dist=9000+lr(7000); p->x=shx+((d[0]*dist)>>14); p->y=shy+((d[1]*dist)>>14); p->z=shz+((d[2]*dist)>>14);
+        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->hp=p->maxhp=10+space_danger()*4; p->alive=1; p->cool=60+lr(90); p->fire_t=0; p->team=1; p->tgt=-1; n--; }
+    battle_on=1; battle_kills=0; char b[40]; scpy(b,"FLEET BATTLE! "); ncat(b,team_count(1)); scat(b," ENEMY SHIPS"); space_say(b); sfx(6);
+}
+static void ship_dies(Pirate *p, int by_you){
+    p->alive=0; boom(p->x,p->y,p->z,24,50);
+    if(p->team==0){ if(wing_n>0) wing_n--; space_say("WINGMAN DOWN! HIRE MORE AT A STATION"); sfx(4); return; }
+    int g = by_you ? 30+space_danger()*15 : 10+space_danger()*5; gold+=g; if(by_you) gain_xp(10+space_danger()*3); else gain_xp(3+space_danger());
+    if(battle_on) battle_kills++;
+    if(battle_on && team_count(1)==0){ battle_on=0; int bonus=100+battle_kills*(20+space_danger()*4); gold+=bonus; fame+=10+battle_kills; char b[40]; scpy(b,"BATTLE WON! BONUS +"); ncat(b,bonus); scat(b,"G"); space_say(b); sfx(6); return; }
+    if(by_you){ char b[32]; scpy(b,"ENEMY DOWN! +"); ncat(b,g); scat(b,"G"); space_say(b); }
+    else if(lr(2)==0){ static const char *const wq[6]={"WINGMAN: GOT ONE!","WINGMAN: SPLASH ONE!","WINGMAN: THAT ONE WAS RUDE.","WINGMAN: FOR THE BUG!","WINGMAN: TOO EASY.","WINGMAN: DID YOU SEE THAT?"}; space_say(wq[lr(6)]); }
+    if(lr(3)==0) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].good=255; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; }
 }
 static void space_enter(int from_planet){
     lseed = galaxy_seed ^ 0x1234567 ^ frames;
@@ -191,7 +219,10 @@ static void space_enter(int from_planet){
     else { shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=20; }
     int danger=sys_dlv(cur_sys);
     in_lair=0;
-    if(!from_planet && lr(100) < 25+danger*6) spawn_pirates(1+lr(1+danger/3>3?3:1+danger/3));
+    battle_on=0; basis(); spawn_wing();
+    if(battle_req){ battle_req=0; start_battle(12+lr(10)+danger*2+cluster_no*3); }
+    else if(!from_planet && ant_king && lr(100) < 10+danger) start_battle(10+lr(10+danger*3)+cluster_no*2);   // past the Ant King, whole fleets roam
+    else if(!from_planet && lr(100) < 25+danger*6) spawn_pirates(1+lr(1+danger/3>3?3:1+danger/3));
     shield = 20+shield_lv*20; if(hull<1) hull=100;
     ambush_t=0;
     if(!no_ambush && ((beast_stage==0 && (cleared_mask&1)) || (beast_stage==1 && (cleared_mask&4)) || (beast_stage==2 && ant_king))){ ambush_t=160; space_say("WARNING: SOMETHING IS COMING..."); }
@@ -233,7 +264,7 @@ static void cockpit(volatile u16 *pg){
     for(int i=0;i<32;i++) pix(pg,120+scan_pts[i][0],144+scan_pts[i][1],58);
     pix(pg,120,144,54); pix(pg,121,144,54);
     blip(pg,0,0,0,in_lair?53:48); if(!in_lair) blip(pg,stx_,sty_,stz_,55);
-    for(int i=0;i<NPIR;i++) if(pir[i].alive) blip(pg,pir[i].x,pir[i].y,pir[i].z,53);
+    for(int i=0;i<NPIR;i++) if(pir[i].alive) blip(pg,pir[i].x,pir[i].y,pir[i].z,pir[i].team?53:52);
     for(int i=0;i<4;i++) if(cans[i].alive) blip(pg,cans[i].x,cans[i].y,cans[i].z,50);
     if(!in_lair) for(int i=0;i<NAST;i++) if(ast[i].alive) blip(pg,ast[i].x,ast[i].y,ast[i].z,56);
     // bars on the left: shield, hull, fuel; speed on the right
@@ -312,7 +343,7 @@ static void beast_update(void){
             if(lr(100)<ch){ int dm=(beast_fight==3?10:5)+dg*2+phase*6; if(shield>=dm) shield-=dm; else { hull-=dm-shield; shield=0; } hit_t=8; } } }
     else if(beast_fight==1){ if(beast_t%50==0){ beast_fire=4; sfx(4); if(lr(100)<45){ int dm=2+dg; if(shield>=dm) shield-=dm; else { hull-=dm-shield; shield=0; } hit_t=6; } } }
     else if(beast_t % (100-phase*18) == 0){ beast_charge=40; space_say("THE BEAST CHARGES ITS BEAM! SPEED UP!"); }
-    if(beast_fight>1 && beast_t % (420-phase*80) == 0 && !(beast_fight==2 && phase<2)){ int alive=0; for(int i=0;i<NPIR;i++) alive+=pir[i].alive; if(alive<(beast_fight==2?1:1+phase)) spawn_pirates(1); }
+    if(beast_fight>1 && beast_t % (420-phase*80) == 0 && !(beast_fight==2 && phase<2)){ int alive=team_count(1); if(alive<(beast_fight==2?1:1+phase)) spawn_pirates(1); }
 }
 static void beast_draw(volatile u16 *pg){
     s32 v[32*3]; int sx[32], sy[32]; u8 ok[32];
@@ -417,10 +448,10 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         if(dx>-rr&&dx<rr&&dy>-rr&&dy<rr&&dz>-rr&&dz<rr){ s32 l=isqrt((u32)(dx*dx+dy*dy+dz*dz)); if(l<1) l=1;
             if(l<rr){ shx=a->x+dx*rr/l; shy=a->y+dy*rr/l; shz=a->z+dz*rr/l; svx_=dx*(speed+6)/l; svy_=dy*(speed+6)/l; svz_=dz*(speed+6)/l;
                 a->vx-=dx*3/l; a->vz-=dz*3/l; if(!crash_cd){ ship_hit(2+speed/5,1); boom(a->x+dx*a->r/l,a->y+dy*a->r/l,a->z+dz*a->r/l,8,56); } speed=speed/2; svx_/=2; svy_/=2; svz_/=2; } } }
-    for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue; s32 dx=shx-p->x, dy=shy-p->y, dz=shz-p->z;
+    for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive || !p->team) continue; s32 dx=shx-p->x, dy=shy-p->y, dz=shz-p->z;
         if(dx>-260&&dx<260&&dy>-260&&dy<260&&dz>-260&&dz<260 && !crash_cd){ ship_hit(6,1); p->hp-=8+speed/3; boom(p->x,p->y,p->z,10,53);
             svx_+=dx/8; svy_+=dy/8; svz_+=dz/8; p->x-=dx/2; p->y-=dy/2; p->z-=dz/2; space_say("RAMMED A PIRATE!");
-            if(p->hp<=0){ p->alive=0; boom(p->x,p->y,p->z,24,50); gold+=20+space_danger()*10; } } }
+            if(p->hp<=0) ship_dies(p,1); } }
     s32 sdx=shx-stx_, sdy=shy-sty_, sdz=shz-stz_; s32 sd=isqrt((u32)((sdx>>4)*(sdx>>4)+(sdy>>4)*(sdy>>4)+(sdz>>4)*(sdz>>4)))<<4;
     int can_land = !in_lair && pd < PR+2200, can_dock = !in_lair && sd < 1100;
     if(++sh_regen>=20){ sh_regen=0; if(shield<20+shield_lv*20) shield++; }
@@ -434,12 +465,10 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(HIT(K_A) && can_dock){ speed=0; return 3; }
     if(HELD(K_A) && !laser_cool && !can_land && !can_dock){
         laser_cool=10-laser_lv; laser_t=4; sfx(10);
-        for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue; int sx,sy; s32 z;
-            if(sproj(p->x,p->y,p->z,&sx,&sy,&z) && z<9000 && sx>104 && sx<136 && sy>VCY-14 && sy<VCY+14){
-                p->hp -= laser_lv*5+2+ship_gun() + (in_lair? tech_lv*12 : 0); boom(p->x,p->y,p->z,4,54); sfx(1);
-                if(p->hp<=0){ p->alive=0; boom(p->x,p->y,p->z,24,50); sfx(9); int g=30+space_danger()*15; gold+=g; gain_xp(10+space_danger()*3);
-                    char b[32]; scpy(b,"PIRATE DOWN! +"); ncat(b,g); scat(b,"G"); space_say(b);
-                    if(lr(2)) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].good=255; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; } } } }
+        { int best=-1; s32 bz=9000; for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive || !p->team) continue; int sx,sy; s32 z;
+            if(sproj(p->x,p->y,p->z,&sx,&sy,&z) && z<bz && sx>104 && sx<136 && sy>VCY-14 && sy<VCY+14){ bz=z; best=i; } }
+          if(best>=0){ Pirate *p=&pir[best]; p->hp -= laser_lv*5+2+ship_gun() + (in_lair? tech_lv*12 : 0); boom(p->x,p->y,p->z,4,54); sfx(1);
+              if(p->hp<=0){ sfx(9); ship_dies(p,1); } } }
         if(!in_lair) for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; if(!a->alive) continue; int sx,sy; s32 z;
             if(!sproj(a->x,a->y,a->z,&sx,&sy,&z) || z>9000) continue; int rs=(int)(a->r*FOCS/z)+3;
             if(sx>120-rs && sx<120+rs && sy>VCY-rs && sy<VCY+rs){ a->hp -= laser_lv+1; a->flash=3; boom(shx+((bf[0]*(z-a->r))>>14),shy+((bf[1]*(z-a->r))>>14),shz+((bf[2]*(z-a->r))>>14),3,56); sfx(1);
@@ -453,25 +482,43 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     // pirates
     int danger=space_danger();
     if(!in_lair && !can_land && lr(1500) < 2+danger) spawn_pirates(1);
+    // ---- every ship: pick a target, fly at it, shoot. Wingmen fight enemies and form up on you when it's quiet; enemies hunt you and your wingmen
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
-        s16 d[3]; s32 dx=shx-p->x, dy=shy-p->y, dz=shz-p->z; s32 l=isqrt((u32)((dx>>4)*(dx>>4)+(dy>>4)*(dy>>4)+(dz>>4)*(dz>>4)))<<4; if(l<1) l=1;
-        if(l>40000){ p->alive=0; continue; }
+        if(((frames+i)&31)==0 || (p->tgt>=0 && (!pir[p->tgt].alive || pir[p->tgt].team==p->team))){     // re-pick a target now and then
+            s32 bd = p->team ? (s32)(isqrt((u32)(((shx-p->x)>>4)*((shx-p->x)>>4)+((shy-p->y)>>4)*((shy-p->y)>>4)+((shz-p->z)>>4)*((shz-p->z)>>4)))<<4) : 14000;
+            p->tgt = p->team ? -1 : -2;                                                   // -1: you. -2: nobody (wingmen form up)
+            for(int j=0;j<NPIR;j++){ Pirate *q=&pir[j]; if(!q->alive || q->team==p->team) continue; s32 ex=q->x-(p->team?p->x:shx), ey=q->y-(p->team?p->y:shy), ez=q->z-(p->team?p->z:shz);   // wingmen go for the enemy nearest YOU
+                s32 dd=isqrt((u32)((ex>>4)*(ex>>4)+(ey>>4)*(ey>>4)+(ez>>4)*(ez>>4)))<<4; if(!p->team){ s32 px_=q->x-shx, pz_=q->z-shz; if((px_<0?-px_:px_)+(pz_<0?-pz_:pz_)>16000) continue; }
+                if(dd<bd){ bd=dd; p->tgt=j; } } }
+        s32 tx,ty,tz;
+        if(p->tgt==-1){ tx=shx; ty=shy; tz=shz; }
+        else if(p->tgt>=0){ tx=pir[p->tgt].x; ty=pir[p->tgt].y; tz=pir[p->tgt].z; }
+        else { int k=p->slot; tx=shx-((bf[0]*(700+(k/2)*450))>>14)+((br[0]*((k&1)?1:-1)*(500+(k/2)*300))>>14); ty=shy-((bf[1]*(700+(k/2)*450))>>14)+((bu[1]*(k%3-1)*150)>>14);
+               tz=shz-((bf[2]*(700+(k/2)*450))>>14)+((br[2]*((k&1)?1:-1)*(500+(k/2)*300))>>14);
+               p->x+=(tx-p->x)/12; p->y+=(ty-p->y)/12; p->z+=(tz-p->z)/12; for(int k2=0;k2<3;k2++) p->f[k2]+=(bf[k2]-p->f[k2])>>3; norm3(p->f);
+               if(p->cool) p->cool--; if(p->fire_t) p->fire_t--; continue; }
+        s16 d[3]; s32 dx=tx-p->x, dy=ty-p->y, dz=tz-p->z; s32 l=isqrt((u32)((dx>>4)*(dx>>4)+(dy>>4)*(dy>>4)+(dz>>4)*(dz>>4)))<<4; if(l<1) l=1;
+        if(p->team && p->tgt==-1 && l>40000 && !battle_on){ p->alive=0; continue; }
         d[0]=dx*16384/l; d[1]=dy*16384/l; d[2]=dz*16384/l;
         if(l<1200){ d[0]=-d[0]; d[1]=-d[1]+8000; d[2]=-d[2]; }          // swerve away instead of ramming
         for(int k=0;k<3;k++) p->f[k]+= (d[k]-p->f[k])>>4;
         norm3(p->f);
-        int ps=34+danger*2; p->x+=(p->f[0]*ps)>>14; p->y+=(p->f[1]*ps)>>14; p->z+=(p->f[2]*ps)>>14;
+        int ps = p->team ? 34+danger*2 : 60+laser_lv*4; if(!p->team){ s32 ex=p->x-shx, ez=p->z-shz; if((ex<0?-ex:ex)+(ez<0?-ez:ez)>3000 && ps<speed*3+40) ps=speed*3+40; }
+        p->x+=(p->f[0]*ps)>>14; p->y+=(p->f[1]*ps)>>14; p->z+=(p->f[2]*ps)>>14;   // (wingmen keep up with you when they are far)
         if(p->cool) p->cool--; if(p->fire_t) p->fire_t--;
         s32 aim=(p->f[0]*d[0]+p->f[1]*d[1]+p->f[2]*d[2])>>14;
-        if(!p->cool && l<7000 && aim>15500){ p->cool=40+lr(30); p->fire_t=4; sfx(4);
-            if(lr(100)<55) ship_hit(4+danger*2,0); }
+        if(!p->cool && l<7000 && aim>15500){ p->cool=40+lr(30); p->fire_t=4;
+            s32 ex=p->x-shx, ez=p->z-shz; if((ex<0?-ex:ex)+(ez<0?-ez:ez)<6000) sfx(p->team?4:10);
+            if(p->tgt==-1){ if(lr(100)<55) ship_hit(4+danger*2,0); }
+            else if(lr(100)<45){ Pirate *q=&pir[p->tgt]; q->hp -= p->team ? 4+danger*2 : 6+laser_lv*4+ship_gun(); boom(q->x,q->y,q->z,3,p->team?53:52);
+                if(q->hp<=0) ship_dies(q,0); } }
     }
     // canisters: fly into them to scoop the cargo
     for(int k=0;k<4;k++) if(cans[k].alive){ s32 dx=shx-cans[k].x, dy=shy-cans[k].y, dz=shz-cans[k].z;
         if(dx>-500&&dx<500&&dy>-500&&dy<500&&dz>-500&&dz<500){ cans[k].alive=0; int n=0; for(int i=0;i<8;i++) n+=cargo[i];
             if(n<cargo_cap){ int g=cans[k].good<8 ? cans[k].good : lr(8); cargo[g]++; char b[32]; scpy(b,"SCOOPED "); scat(b,goods[g]); space_say(b); sfx(2); } else space_say("CARGO HOLD FULL"); } }
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; p->life--; p->x+=p->vx; p->y+=p->vy; p->z+=p->vz; }
-    if(hull<=0){ if(in_lair){ in_lair=0; no_ambush=1; space_enter(0); no_ambush=0; } hull=100; for(int i=0;i<8;i++) cargo[i]=0; gold/=2; for(int i=0;i<NPIR;i++) pir[i].alive=0;
+    if(hull<=0){ if(in_lair){ in_lair=0; no_ambush=1; space_enter(0); no_ambush=0; } hull=100; for(int i=0;i<8;i++) cargo[i]=0; gold/=2; for(int i=0;i<NPIR;i++) pir[i].alive=0; battle_on=0;
         shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=10; svx_=svy_=svz_=0; space_say("SHIP WRECKED! CARGO LOST"); sfx(9); }
     // ---- draw
     int sv_yaw=yaw, sv_pit=pitch;
@@ -516,12 +563,15 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         wire(pg,v,6,ae,12,a->flash?49:(a->seed&1)?56:51); }
     // pirates: little wireframe fighters
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
+        int col = p->team ? 53 : 52;
+        { int sx,sy; s32 z; if(!sproj(p->x,p->y,p->z,&sx,&sy,&z)) continue;
+          if(p->fire_t){ int tx_,ty_; if(p->tgt==-1) line2(pg,sx,sy,120+(frames&7)-4,124,col); else if(p->tgt>=0 && sproj(pir[p->tgt].x,pir[p->tgt].y,pir[p->tgt].z,&tx_,&ty_,0)) line2(pg,sx,sy,tx_,ty_,col); }
+          if(z>5500){ dot2(pg,sx,sy,col); dot2(pg,sx-1,sy,col); dot2(pg,sx+1,sy,col); dot2(pg,sx,sy-1,col); continue; } }   // far away: a small mark
         s16 R[3]={p->f[2],0,(s16)-p->f[0]}; norm3(R); s16 U[3]={(s16)((p->f[1]*R[2]-p->f[2]*R[1])>>14),(s16)((p->f[2]*R[0]-p->f[0]*R[2])>>14),(s16)((p->f[0]*R[1]-p->f[1]*R[0])>>14)};
         static const s16 mdl[6][3]={{0,0,110},{-110,0,-50},{110,0,-50},{0,35,-50},{0,-18,-50},{0,0,-70}};
         s32 v[6*3]; for(int k=0;k<6;k++){ for(int a=0;a<3;a++) v[k*3+a]=(a==0?p->x:a==1?p->y:p->z)+((mdl[k][0]*R[a]+mdl[k][1]*U[a]+mdl[k][2]*p->f[a])>>14); }
         static const u8 pe[]={0,1,0,2,0,3,0,4,1,3,2,3,1,4,2,4,3,5,4,5,1,5,2,5};
-        wire(pg,v,6,pe,12,53);
-        if(p->fire_t){ int sx,sy; if(sproj(p->x,p->y,p->z,&sx,&sy,0)) line2(pg,sx,sy,120+(frames&7)-4,124,53); } }
+        wire(pg,v,6,pe,12,col); }
     for(int k=0;k<4;k++) if(cans[k].alive){ int sx,sy; s32 z; if(sproj(cans[k].x,cans[k].y,cans[k].z,&sx,&sy,&z)){ int r=(int)(60*FOCS/z)+1; line2(pg,sx-r,sy,sx,sy-r,50); line2(pg,sx,sy-r,sx+r,sy,50); line2(pg,sx+r,sy,sx,sy+r,50); line2(pg,sx,sy+r,sx-r,sy,50); } }
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; int sx,sy; if(sproj(p->x,p->y,p->z,&sx,&sy,0)){ dot2(pg,sx,sy,p->life>12?49:p->col); dot2(pg,sx+1,sy,p->col); } }
     if(laser_t){ laser_t--; line2(pg,30,127,120,VCY,52); line2(pg,210,127,120,VCY,52); }
@@ -538,7 +588,11 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
     if(space_msg_t){ space_msg_t--; text(pg,120-textlen(smsg)*2,in_lair?28:4,smsg,54,1); }
     if(pr) text(pg,120-textlen(pr)*4,96,pr,55,2);
+#ifdef TEST_FLEET
+    { static int lv=0; char fb[16]; scpy(fb,"VBL "); ncat(fb,vbl_count-lv); lv=vbl_count; text(pg,200,20,fb,54,1); } { int e=0; char fb2[24]; for(int i=0;i<NPIR;i++) if(pir[i].alive&&!pir[i].team&&pir[i].tgt>=0) e++; scpy(fb2,"ENG "); ncat(fb2,e); text(pg,200,28,fb2,54,1); } { for(int i=0;i<NPIR;i++) if(pir[i].alive&&!pir[i].team){ Pirate *p=&pir[i]; s32 rx=p->x-shx, ry=p->y-shy, rz=p->z-shz; s32 zz=(rx*bf[0]+ry*bf[1]+rz*bf[2])>>14; char c3[48]; scpy(c3,"Z "); ncat(c3,zz); scat(c3," T "); ncat(c3,p->tgt); if(p->tgt>=0){ Pirate *q=&pir[p->tgt]; s32 qz=((q->x-shx)*bf[0]+(q->y-shy)*bf[1]+(q->z-shz)*bf[2])>>14; scat(c3," TZ "); ncat(c3,qz); scat(c3," A"); ncat(c3,q->alive); scat(c3," M"); ncat(c3,q->team); } text(pg,110,36,c3,54,1); break; } }
+#endif
     if(in_lair) beast_hud(pg);
+    else if(battle_on || team_count(0)){ char b[40]; scpy(b,"WINGMEN "); ncat(b,team_count(0)); if(battle_on){ scat(b,"   ENEMIES "); ncat(b,team_count(1)); } text(pg,120-textlen(b)*2,space_msg_t?12:4,b,battle_on?53:52,1); }
     else if(!space_msg_t && !(frames&64)) text(pg,64,4,"SELECT: GALAXY MAP",56,1);
     return 0;
 }
@@ -635,7 +689,7 @@ static int good_price(int g){ int e=sys[cur_sys].eco; int p=good_base[g]*eco_mul
 static void station_menu(void){
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));
     int tab=0, sel=0, dirty=1; wait_release(); sfx(5);
-    static const char *const yard[7]={"REFUEL","REPAIR HULL","LASER UPGRADE","SHIELD UPGRADE","BIGGER CARGO BAY","TECH CORE (X4 DMG)","LEAVE"};
+    static const char *const yard[9]={"REFUEL","REPAIR HULL","LASER UPGRADE","SHIELD UPGRADE","BIGGER CARGO BAY","TECH CORE (X4 DMG)","HIRE A WINGMAN","JOIN A FLEET BATTLE","LEAVE"};
     while(1){
         if(dirty){ dirty=0; char b[48];
             for(int i=0;i<240*160/2;i++) pg[i]=57|(57<<8);
@@ -664,10 +718,12 @@ static void station_menu(void){
                     if(i==sel){ char q[52]; scpy(q,"\""); scat(q,say1[i]); scat(q,"\""); q[51]=0; text(pg,14,y+10,q,C_WHITE,1); scpy(q,"\""); scat(q,say2[i]); scat(q,"\""); q[51]=0; text(pg,14,y+19,q,C_WHITE,1); } }
                 text(pg,6,148,"UP/DOWN: TALK TO SOMEONE  L/R: MARKET  START: LEAVE",C_CYAN,1);
             } else {
-                int cost[7]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0, tech_cost(), 0 };
-                for(int i=0;i<7;i++){ if(i==sel) text(pg,6,30+i*12,">",C_CYAN,1); scpy(b,yard[i]); while(textlen(b)<20) scat(b," ");
-                    if(i==5 && beast_stage<1) scat(b,"LOCKED"); else if(i<6){ if(cost[i]) { ncat(b,cost[i]); scat(b,"G"); if(i==5){ scat(b,"+"); ncat(b,tech_scrap()); scat(b," SCRAP"); } } else scat(b, i<2?"FULL":"MAX"); }
-                    text(pg,14,30+i*12,b,i==sel?C_WHITE:C_GREY,1); }
+                int cost[9]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0, tech_cost(), wing_n<MAXWING?300+wing_n*150:0, 0, 0 };
+                for(int i=0;i<9;i++){ if(i==sel) text(pg,6,26+i*10,">",C_CYAN,1); scpy(b,yard[i]); while(textlen(b)<20) scat(b," ");
+                    if(i==5 && beast_stage<1) scat(b,"LOCKED"); else if(i<7){ if(cost[i]) { ncat(b,cost[i]); scat(b,"G"); if(i==5){ scat(b,"+"); ncat(b,tech_scrap()); scat(b," SCRAP"); } } else scat(b, i<2?"FULL":"MAX"); }
+                    else if(i==7) scat(b, battle_req ? "READY" : "FREE");
+                    text(pg,14,26+i*10,b,i==sel?C_WHITE:C_GREY,1); }
+                scpy(b,"WINGMEN "); ncat(b,wing_n); scat(b,"/"); ncat(b,MAXWING); text(pg,14,108,b,C_GREEN,1);
                 scpy(b,"LASER MK"); ncat(b,laser_lv); scat(b,"  SHIELD MK"); ncat(b,shield_lv); scat(b,"  CARGO "); ncat(b,cargo_cap); scat(b,"  TECH "); ncat(b,tech_lv); text(pg,14,116,b,C_WHITE,1);
                 scpy(b,"HULL "); ncat(b,hull); scat(b,"%  FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10); scat(b," LY"); text(pg,14,126,b,C_WHITE,1);
                 scpy(b,"TECH SCRAP "); ncat(b,scrap); text(pg,150,126,b,C_CYAN,1);
@@ -675,14 +731,16 @@ static void station_menu(void){
             }
         }
         vsync(); read_keys();
-        int n = tab==0 ? 8 : tab==2 ? 3 : 7;
+        int n = tab==0 ? 8 : tab==2 ? 3 : 9;
         if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; } if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; }
         if(HIT(K_R)){ tab=(tab+1)%3; sel=0; dirty=1; } if(HIT(K_L)){ tab=(tab+2)%3; sel=0; dirty=1; }
-        if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==6)) break;
+        if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==8)) break;
         if(tab==0){
             int held=0; for(int i=0;i<8;i++) held+=cargo[i];
             if(HIT(K_A)){ int p=good_price(sel); if(gold>=p && held<cargo_cap){ gold-=p; cargo[sel]++; sfx(7); } dirty=1; }
             if(HIT(K_B) && cargo[sel]){ gold+=good_price(sel); cargo[sel]--; sfx(7); dirty=1; }
+        } else if(HIT(K_A) && sel==6){ int c=300+wing_n*150; if(wing_n>=MAXWING) say("YOU HAVE A FULL WING"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; wing_n++; sfx(6); } dirty=1;
+        } else if(HIT(K_A) && sel==7){ battle_req=1; sfx(6); dirty=1;
         } else if(HIT(K_A)){
             int cost[6]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0, tech_cost() };
             if(sel==5 && cost[5] && scrap<tech_scrap()){ say("NEED MORE TECH SCRAP. SCRAP GEAR AT YOUR SHIP"); }
@@ -704,12 +762,16 @@ static void save_ext(void){
     s->ant_king=ant_king; s->cleared_mask=cleared_mask; s->zones_open=zones_open; s->visits=visits; s->w_dlv=w_dlv; memcpy(s->cargo,cargo,8);
     s->sum=sx_sum(s); const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) SRAM[slot_base(cur_slot)+SX_OFF+i]=p[i];
     beast_save(); trophy_save();
-    { u32 a[NCW+7]; a[0]=0x34444441u; a[1]=galaxy_no; for(int w=0;w<NCW;w++) a[2+w]=clus[w]; a[NCW+2]=relic_bits; a[NCW+3]=(u32)weird_seen; a[NCW+4]=(u32)relic_gold; a[NCW+5]=mark_perm;
-      u32 h=2166136261u; for(int i=0;i<NCW+6;i++){ h^=a[i]; h*=16777619u; } a[NCW+6]=h; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
+    { u32 a[NCW+10]; a[0]=0x36444441u; a[1]=galaxy_no; for(int w=0;w<NCW;w++) a[2+w]=clus[w]; a[NCW+2]=relic_bits; a[NCW+3]=(u32)weird_seen; a[NCW+4]=(u32)relic_gold; a[NCW+5]=mark_perm; a[NCW+6]=(u32)wing_n; a[NCW+7]=(u32)form|((u32)forms_open<<4)|((u32)tool_held<<8)|((u32)form_body<<12)|(tools_owned<<16); a[NCW+8]=form_col|((u32)(form_t>0?1:0)<<16);
+      u32 h=2166136261u; for(int i=0;i<NCW+9;i++){ h^=a[i]; h*=16777619u; } a[NCW+9]=h; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
 }
-static void addr_load(void){ u32 a[NCW+7]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h=2166136261u, h5=2166136261u; for(int i=0;i<NCW+6;i++){ h^=a[i]; h*=16777619u; if(i<NCW+5){ h5^=a[i]; h5*=16777619u; } }
+static void addr_load(void){ u32 a[NCW+10]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h9=2166136261u, h7=2166136261u, h=2166136261u, h5=2166136261u; for(int i=0;i<NCW+9;i++){ h9^=a[i]; h9*=16777619u; } for(int i=0;i<NCW+7;i++){ h7^=a[i]; h7*=16777619u; if(i<NCW+6){ h^=a[i]; h*=16777619u; } if(i<NCW+5){ h5^=a[i]; h5*=16777619u; } }
+    wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; form_body=0; form_col=0;
     relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; for(int k=0;k<NMK;k++) mark_t[k]=0; for(int w=0;w<NCW;w++) clus[w]=0; galaxy_no=0;
-    if(a[0]==0x34444441u && a[NCW+6]==h){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; mark_perm=a[NCW+5]; }
+    if(a[0]==0x36444441u && a[NCW+9]==h9){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; mark_perm=a[NCW+5]; wing_n=(int)a[NCW+6]; if(wing_n>MAXWING||wing_n<0) wing_n=0;
+        u32 f=a[NCW+7]; form=f&3; if(form>2) form=0; forms_open=((f>>4)&7)|1; tool_held=(f>>8)&7; form_body=(f>>12)%3; tools_owned=(f>>16)&0xFF; form_col=(u16)a[NCW+8]; if((a[NCW+8]>>16)&1) form=FORM_BUG; }   // a timed shape does not survive a reload
+    else if(a[0]==0x35444441u && a[NCW+7]==h7){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; mark_perm=a[NCW+5]; wing_n=(int)a[NCW+6]; if(wing_n>MAXWING||wing_n<0) wing_n=0; }
+    else if(a[0]==0x34444441u && a[NCW+6]==h){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; mark_perm=a[NCW+5]; }
     else if(a[0]==0x33444441u && a[NCW+5]==h5){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; }
     else if(a[0]==0x52444441u && a[4]==(a[0]^a[1]*31^a[2]*131^a[3]*1031^0x5A5A)){ galaxy_no=a[1]; clus[0]=a[2]; clus[1]=a[3]; }   // last version's save
     else clus[0]=(u32)cluster_no; }    // an older save: its cluster count becomes its address
@@ -743,7 +805,7 @@ static void trophy_load(void){
 static void load_ext_defaults(void){
     for(int i=0;i<4;i++) tr_n[i]=0; tr_uq=0; scrap=0;
 
-    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; for(int k=0;k<NMK;k++) mark_t[k]=0; memset(cargo,0,8);
+    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; for(int k=0;k<NMK;k++) mark_t[k]=0; memset(cargo,0,8);
     if(endless){ ant_king=1; zones_open=6; cleared_mask=63; w_dlv=6+world_no/2; cur_sys=6; }
     else { ant_king=0; zones_open=zone+1+(zone_cleared?1:0); if(zones_open>6) zones_open=6; cleared_mask=((1<<zone)-1)|(zone_cleared?1<<zone:0); cur_sys=zone; }
     beast_defaults(); gen_cluster();
