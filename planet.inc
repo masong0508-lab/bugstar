@@ -323,7 +323,8 @@ static void planet_frame(void){
     if(HELD(K_SEL) && form==FORM_HUMAN && (HIT(K_UP)||HIT(K_DOWN))){ sel_used=1;                       // a humanoid: SELECT + UP/DOWN picks the tool in your hand
         if(!tools_owned) show_msg("NO TOOLS YET. BUY THEM AT A CITY MARKET");
         else { int d=HIT(K_UP)?NTOOL-1:1; do tool_held=(tool_held+d)%NTOOL; while(!((tools_owned>>tool_held)&1)); recalc(); char b[48]; scpy(b,"HOLDING: "); scat(b,tool_name[tool_held]); scat(b," ("); scat(b,tool_what[tool_held]); scat(b,")"); show_msg(b); sfx(2); } }
-    if(HELD(K_SEL)){ th=tv=0; if(HIT(K_L)||HIT(K_R)){ sel_used=1; arrow_ship=(arrow_ship+1)%3; show_msg(arrow_ship==1?"ARROW: TO YOUR SHIP":arrow_ship==2?"ARROW: TO THE NEAREST RESOURCE":"ARROW: TO THE DOOR"); sfx(7); } }
+    if(HELD(K_SEL)){ if(!cam_fp){ int tr = HELD(K_LEFT) ? -16 : HELD(K_RIGHT) ? 16 : 0; if(tr){ sel_used=1; heading=(heading+tr*n*5/8)&1023; heading_rays(); } }    // third person: hold SELECT + LEFT/RIGHT to turn the camera
+        th=tv=0; if(HIT(K_L)||HIT(K_R)){ sel_used=1; arrow_ship=(arrow_ship+1)%3; show_msg(arrow_ship==1?"ARROW: TO YOUR SHIP":arrow_ship==2?"ARROW: TO THE NEAREST RESOURCE":"ARROW: TO THE DOOR"); sfx(7); } }
     if(cam_fp){                                                                         // first person: left/right turn, L/R step sideways
         int turn = th; th = HELD(K_SEL) ? 0 : HELD(K_R) ? 16 : HELD(K_L) ? -16 : 0;
         if(turn){ heading=(heading+turn*n*5/8)&1023; heading_rays(); }
@@ -411,7 +412,7 @@ static void planet_frame(void){
     if(frames%600==0){ for(int i=0;i<NPO;i++) if(po[i].kind==O_PLANT && !po[i].alive){ place(&po[i],O_PLANT,4,64); break; } }
     if(!kart_on) bag_input(); tick_timers(); hunger_tick(240); regen_tick(120);
     if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen(VISPG); planet_hud(); msg_timer=0; p_last=vbl_count; return; }
-    if(cast_flag>=0){ cam_fp^=1; planet_tables(); show_msg(cam_fp?"FIRST PERSON. SELECT: SWITCH VIEW":"THIRD PERSON. SELECT: SWITCH VIEW"); sfx(2); }
+    if(cast_flag>=0){ cam_fp^=1; planet_tables(); show_msg(cam_fp?"FIRST PERSON. SELECT: SWITCH VIEW":"THIRD PERSON. HOLD SELECT + LEFT/RIGHT: TURN"); sfx(2); }
     escape_flag=call_flag=blast_flag=0; cast_flag=-1;
     if(hearts<=0){ hearts=maxh; food=60; gold/=2; if(!opt_easy){ bag_n=0; bag_sel=0; } show_msg(opt_easy?"YOU FAINTED. HALF YOUR GOLD IS GONE":"YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }
     if(msg_timer){ msg_timer-=n; if(msg_timer<0) msg_timer=0; }

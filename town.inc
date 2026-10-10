@@ -229,8 +229,15 @@ static void planet_card(volatile u16 *pg){                                      
     ln[0]=cm; ln[1]=l1; ln[2]=l2; ln[3]=sc; ln[4]=l3; ln[5]= (endless && wd.cls) ? pq[wd.cls] : bolt_quip[q];
     card(pg,world_name(),ln,6);
 }
+// gift limits: a local hands out at most GIFT_MAX gifts, then goes quiet for 30 minutes of play time (not saved: a restart clears it)
+#define GIFT_MAX 3
+#define GIFT_COOL (60*60*30)
+static u8 gift_n[NPO]; static s32 gift_until[NPO]; static u32 gift_world=0;
 static void local_talk(PObj *o){
     volatile u16 *pg=VISPG; const char *ln[2]; char g[40];
+    int gi=(int)(o-po), cooling=0;
+    { u32 wk=hmix(wd.tseed^body_salt())|1; if(wk!=gift_world){ gift_world=wk; for(int i=0;i<NPO;i++){ gift_n[i]=0; gift_until[i]=0; } } }   // a different world: a fresh set of locals
+    if(gift_n[gi]>=GIFT_MAX){ if((s32)(vbl_count-gift_until[gi])>=0) gift_n[gi]=0; else cooling=1; }   // the 30 minutes are up: they are happy to give again
     static const char *const love_ln[12]={"YOU CAME! WE BAKED YOU A PIE!","EVERYONE, LOOK! IT IS THE BUG!","CAN I HAVE YOUR AUTOGRAPH? ON MY SHELL?","WE NAMED A HILL AFTER YOU.",
         "STAY FOREVER. WE HAVE SOUP.","YOU ARE THE BEST THING THAT EVER LANDED.","MY KIDS HAVE YOUR POSTER.","TAKE THIS. TAKE EVERYTHING.","WE LOVE YOUR LITTLE LEGS.","A HERO! A REAL ONE! HI!",
         "THE MAYOR WANTS TO HUG YOU. SHE IS A MOTH.","WE SING SONGS ABOUT YOU. BAD ONES. WITH LOVE."};
@@ -238,16 +245,17 @@ static void local_talk(PObj *o){
         "PRICES DOUBLE WHEN YOU LOOK AT THEM.","DO NOT TOUCH ANYTHING.","I AM CALLING THE MAYOR. SHE BITES.","YOU SMELL LIKE SPACE.","LEAVE. NOW. PLEASE. NO, NOT PLEASE. LEAVE.",
         "WE HAD A NICE DAY UNTIL YOU CAME.","EVERYTHING HERE BITES. ME TOO."};
     int li=(int)((o->x>>16)*7+(o->y>>16)*13+wd.tseed)%NTALK; ln[0] = wd.mood==MOOD_LOVE ? love_ln[li%12] : wd.mood==MOOD_HATE ? hate_ln[li%12] : talk_ln[li];
-    if(wd.mood==MOOD_HATE) o->hp=0; else if(wd.mood==MOOD_LOVE && rndi(3)==0) o->hp=1;
-    if(o->hp){ o->hp=0; int r=wr(4);
+    if(wd.mood==MOOD_HATE || cooling) o->hp=0; else if(wd.mood==MOOD_LOVE && rndi(3)==0) o->hp=1;
+    if(o->hp){ o->hp=0; if(++gift_n[gi]>=GIFT_MAX) gift_until[gi]=vbl_count+GIFT_COOL; int r=wr(4);
         if(r==0){ gold+=5+dlv()*3; scpy(g,"HERE, TAKE "); ncat(g,5+dlv()*3); scat(g,"G. FOR THE LEGS."); }
         else if(r==1){ Gear gg={IT_CRUMB,0,0,0,0,0}; add_gear(gg); scpy(g,"HAVE A CRUMB. I HAVE TOO MANY."); }
         else if(r==2){ Gear gg={IT_BERRY,(u8)rndi(8),0,0,0,0}; add_gear(gg); scpy(g,"A BERRY. DO NOT ASK WHERE IT GREW."); }
         else if(form==FORM_HUMAN && (tools_owned|0xFF)!=tools_owned && rndi(2)){ int tl; do tl=rndi(NTOOL); while((tools_owned>>tl)&1); tools_owned|=1u<<tl; scpy(g,"YOU HAVE HANDS! TAKE THIS: "); scat(g,tool_name[tl]); }
         else { fame+=3; scpy(g,"I WILL TELL EVERYONE YOU ARE NICE. +FAME"); }
         ln[1]=g; card(pg,"A LOCAL",ln,2); sfx(7); }
+    else if(cooling){ int mins=((int)(gift_until[gi]-vbl_count)+3599)/3600; scpy(g,"NO MORE GIFTS. COME BACK IN "); ncat(g,mins); scat(g,"M"); ln[0]="I HAVE GIVEN YOU PLENTY."; ln[1]=g; card(pg,"A LOCAL",ln,2); }
     else { char w[40]; scpy(w,"KNOWN FOR: "); scat(w,tagline[wd.tagline]); ln[1]=w; card(pg,"A LOCAL",ln,2); }
-    if(pq_type==5 && !pq_done){ pq_have++; }
+    if(pq_type==5 && !pq_done && !cooling){ pq_have++; }
 }
 // ---------------------------------------------------------------- the bounty office: a job per planet
 static void job_text(char *b){
