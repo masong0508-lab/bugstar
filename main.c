@@ -787,6 +787,7 @@ static void run_game(void){
                 depth_no=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
                 tier_lock = (!endless && zone_cleared) ? tiers[zone]+1 : 0;
                 scene=1; dungeon_enter();
+                if(tier_lock>0){ char tb[40]; scpy(tb,"TIER "); ncat(tb,tier_lock+1); scat(tb,"! MORE FLOORS, TOUGHER BOSS"); say(tb); }
 #ifdef TEST_FOE
                 for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=k?K_BEETLE:K_SPIDER; b->alive=1; b->hp=b->maxhp=k?40:20; b->x=px_+(cosx(pang>>2)<<(k?4:3)); b->y=py_+(sinx(pang>>2)<<(k?4:3)); }
 #endif

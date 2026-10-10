@@ -105,7 +105,7 @@ Every so often (about one dungeon floor in four, never a boss floor) you land in
 - Buy a bigger hold at a station when it fills up.
 
 ## Longer and grindier (new)
-- **Zone tiers.** After a zone's boss is beaten, going back down its door starts **tier 2**: one more floor, stronger monsters, better loot, and the boss is back at the bottom. Beat it for tier 3, and so on up to tier 10. The planet name shows T2, T3... on the status bar.
+- **Zone tiers.** After a zone's boss is beaten, going back down its door starts **tier 2**: one more floor, stronger monsters, better loot, and the boss is back at the bottom. Beat it for tier 3, and so on up to tier 10. A message tells you which tier you are entering. To go again: beat the boss, take the stairs up, land on the same planet and go down its door. The planet name shows T2, T3... on the status bar.
 - **13 feats** (START > FEATS): slay 50 spiders, catch 10 fish, mine 40 things, dodge 25 bites, land on 6 worlds, go down 30 floors, find 3 uniques, clear 3 tiers, reach level 20, and more. Each pays gold and fame.
 - **Fame has perks** now: each rank (KNOWN BUG, BRAVE BUG, HERO, CHAMPION, BUG LEGEND) adds gold find, health and crit.
 - **Buddy levels up** from the XP you earn: more damage and health. His level shows on the BUG page.
