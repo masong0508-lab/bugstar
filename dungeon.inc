@@ -699,7 +699,7 @@ static void dungeon_label(char *b){
     if(base_mode) scpy(b,"OUTPOST"); else scpy(b,world_name()); scat(b," B"); char n2[6];
     if(endless){ num(n2,depth_no,depth_no>99?3:depth_no>9?2:1); scat(b,n2); }
     else if(base_mode){ num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,base_floors(),1); scat(b,n2); }
-    else { num(n2,depth_no,1); scat(b,n2); scat(b,"/"); num(n2,zone_floors(),1); scat(b,n2); if(tier_now()){ scat(b," T"); ncat(b,tier_now()); } }
+    else { num(n2,depth_no,2); scat(b,n2); scat(b,"/"); num(n2,zone_floors(),2); scat(b,n2); if(tier_now()){ scat(b," T"); ncat(b,tier_now()); } }
 }
 // the status bar is drawn only into the page you can't see, so it never flickers: once for each of the two pages
 static int hud_dirty=0;
