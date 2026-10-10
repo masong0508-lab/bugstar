@@ -464,11 +464,11 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
         int sl=rl_rel[d], fg=rf_rel[d];
         const u8 *bz=bayi+((y>>1)&3)*4;
         volatile u16 *row=pg+y*120;
-        int two = y+1<160, rip = sinI[(y*12+wob)&255]>>13, half = d>16, last=R_CEIL;
+        int two = y+1<160, rip = sinI[(y*12+wob)&255]>>13, half = d>16, last=R_CEIL, pv=cbot[0];
         for(int c=0;c<120;c++, fx+=sx, fy+=sy){
-            int cb=cbot[c]; if(y+(st4?3:1)<=cb) continue;
+            int cb=cbot[c], pcb=pv; pv=cb; if(y+(st4?3:1)<=cb) continue;
             u32 tx=fx>>16, ty=fy>>16; int ix;
-            if(half && (c&1) && y>cbot[c-1]) ix=last;
+            if(half && (c&1) && y>pcb) ix=last;
             else if(tx<MW && ty<MW){
                 int fc=fcode[ty*MW+tx];
                 int t=floor_tex[(fc<<10)|((fy>>6)&0x3E0)|((fx>>11)&31)];
@@ -501,11 +501,11 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
         int sl=cl_rel[d], fg=cf_rel[d];
         const u8 *bz=bayi+((y>>1)&3)*4;
         volatile u16 *row=pg+y*120;
-        int two = y+1<H, last=R_CEIL;
+        int two = y+1<H, last=R_CEIL, pt=ctop[0];
         for(int c=0;c<120;c++, fx+=sx, fy+=sy){
-            int ct=ctop[c]; if(y>=ct) continue;
+            int ct=ctop[c], pct=pt; pt=ct; if(y>=ct) continue;
             u32 tx=fx>>16, ty=fy>>16; int ix;
-            if((c&1) && y<ctop[c-1]) ix=last;
+            if((c&1) && y<pct) ix=last;
             else if(tx<MW && ty<MW){
                 int fc=fcode[ty*MW+tx], cc=((fc>=3&&fc<=5)||fc==9);
                 int t=ceil_tex[(cc<<10)|((fy>>6)&0x3E0)|((fx>>11)&31)];

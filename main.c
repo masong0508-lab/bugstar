@@ -40,6 +40,7 @@ static void read_keys(void){ keys_old=keys; keys = ~REG_KEYINPUT & 0x3FF; }
 #define HIT(k) ((keys&(k)) && !(keys_old&(k)))
 static int auto_run=0, tapU_t=0, run_stuck=0, run_hint=0;   // AUTO-RUN in dungeons: double-tap UP, and you keep running until you stop it
 static void vsync(void){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); }
+static void vsync_flip(void){ if(REG_VCOUNT>=160) return; while(REG_VCOUNT<160); }   // dungeon only (it runs on real time): late but still inside the blank = flip now, no tearing, no lost frame
 static int isqrt(u32 n){ u32 r=0, b=1u<<30; while(b>n) b>>=2; while(b){ if(n>=r+b){ n-=r+b; r=(r>>1)+b; } else r>>=1; b>>=2; } return (int)r; }
 #define S64_MAX 0x7FFFFFFFFFFFFFFFLL
 static s64 sadd(s64 a, s64 b){ if(b>0){ if(a>S64_MAX-b) return S64_MAX; } else if(b<0){ if(a<-S64_MAX-1-b) return -S64_MAX-1; } return a+b; }
@@ -708,6 +709,9 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
 #endif
     if(sight || have_bug[BUG_ANT] || stairs_seen()) compass(pg,dirx,diry);
     if(opt_minimap) minimap(pg);
+#ifdef SHOW_PROF
+    { char pb[48]; pb[0]=0; ncat(pb,prof[0]); scat(pb," "); ncat(pb,prof[3]); scat(pb," "); ncat(pb,prof[1]); scat(pb," "); ncat(pb,prof[2]); scat(pb," "); ncat(pb,prof[5]); text(pg,4,150,pb,C_WHITE,1); }
+#endif
     hud3d(pg); fl_draw(pg);
     if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
@@ -913,7 +917,7 @@ static void run_game(void){
                 if(r) break;
             }
             skip_draw=0; wtick=1;
-            vsync();
+            vsync_flip();
             if(scene==1){ REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; }
             oam_flush();
             if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; tier_lock=-1; msg_timer=0; fish_state=0;
