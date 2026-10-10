@@ -54,14 +54,17 @@ static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_cam=0, opt_m
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
-// where you are in the universe: 2^32 galaxies x 2^1024 clusters each x 32 stars = 2^1061, about 2.4 x 10^319 planets in one save.
-// A planet's address is 34 words (galaxy, 32 cluster words, star). Its land is built from every one of those words (see gen_terrain),
+// where you are in the universe: 2^128 galaxies x 2^1024 clusters each x 32 stars = 2^1157, about 2.0 x 10^348 planets in one save.
+// A planet's address is 37 words (4 galaxy words, 32 cluster words, star). Its land is built from every one of those words (see gen_terrain),
 // so no two addresses grow the same hills; its other parts come from seeds hashed from the whole address (see make_world).
 #define NCW 32
 static u32 galaxy_no=0, clus[NCW];
+static u32 galaxy_hi[3];                  // the galaxy number is 128 bits: galaxy_no is the low word, galaxy_hi the three words above it (all zero = the old 32-bit galaxies)
 static u32 relic_bits=0; static int weird_seen=0, relic_gold=0;      // the legendary relics you own (one bit each), weird worlds visited
-static int home_cluster(void){ u32 o=galaxy_no; for(int i=0;i<NCW;i++) o|=clus[i]; return !o; }
-static u32 aword(int i, int star){ i%=NCW+2; return i==0 ? galaxy_no : i==NCW+1 ? (u32)star : clus[i-1]; }
+static u32 hmix(u32 h);
+static u32 gal_fold(void){ return (galaxy_hi[0]|galaxy_hi[1]|galaxy_hi[2]) ? hmix(galaxy_hi[0]^hmix(galaxy_hi[1]^hmix(galaxy_hi[2]^0x68E31DA4u))) : 0; }   // the upper galaxy words folded into one; 0 for the old galaxies, so their worlds do not change
+static int home_cluster(void){ u32 o=galaxy_no|galaxy_hi[0]|galaxy_hi[1]|galaxy_hi[2]; for(int i=0;i<NCW;i++) o|=clus[i]; return !o; }
+static u32 aword(int i, int star){ i%=NCW+2; return i==0 ? (galaxy_no ^ gal_fold()) : i==NCW+1 ? (u32)star : clus[i-1]; }
 static u32 hmix(u32 h){ h^=h>>16; h*=0x85EBCA6Bu; h^=h>>13; h*=0xC2B2AE35u; h^=h>>16; return h; }
 static u32 amix(u32 k, int star){ u32 h=0x811C9DC5u ^ k*0x9E3779B1u; for(int i=0;i<NCW+2;i++) h=hmix(h ^ aword(i,star) ^ (u32)i*0x27D4EB2Fu); return h; }
 static int in_menu=0; static char menu_msg[40];   // inside a menu, messages go on a line in the menu instead of over it                 // set by the SYSTEM page: 1 = load cur_slot, 2 = quit to the title
