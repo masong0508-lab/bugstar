@@ -87,6 +87,9 @@ Five pages with colour-coded button badges: planet, dungeon, space, staying aliv
 ## Roomier ruins (new)
 Dungeons are now carved-stone ruins rather than red brick: **fewer, much bigger chambers** (the deeper you go, the bigger and fewer), **three-wide passages**, airy colonnades, a **still pool** in the middle of big halls, broken columns, overgrown and cracked floors, and **vines and moss** on the walls that thicken with depth. A little ambient light means it is gloomy, not pitch black. Bigger rooms hold more monsters. The 3D view is unchanged, so it runs the same speed.
 
+## Labyrinths (new)
+Every so often (about one dungeon floor in four, never a boss floor) you land in a **labyrinth**: a real maze of one-wide, torch-lit passages with dead ends, a few loops, five open chambers (one in each corner and a monument in the middle) and chests and wanderers hiding in the corridors. The stairs are in opposite corners. The message says "A LABYRINTH!" when you arrive, and the map (START) shows where you have been.
+
 ## Kart racing (new)
 - At **THE BOUNTY OFFICE** on a planet with a race post, the clerk may hand you the **KART GRAND PRIX** job. The kart race only exists once you have taken that job.
 - Then press A at **THE RACE POST**: you are in a kart. A big loop of **8 gates** appears, and the kart is more than twice as fast as walking. Hold **B to boost** (the bar by the timer drains and refills). Water and steep hills still slow you down.

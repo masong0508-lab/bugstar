@@ -52,9 +52,31 @@ static int room_floor_cell(Room *r){
     return (r->y+r->h/2)*MW + r->x+r->w/2;
 }
 
+static void build_labyrinth(void){                      // a real maze: one-wide torch-lit passages, loops, and five open chambers
+    for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_STONE; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
+    nlights=0; nlamps=0; ntorch=0;
+    static u8 stk[225], vis[225]; for(int i=0;i<225;i++) vis[i]=0;
+    int sp=0; stk[sp++]=0; vis[0]=1; dmap[1*MW+1]=D_FLOOR; rid[1*MW+1]=255;
+    while(sp){ int cur=stk[sp-1], cx=cur%15, cy=cur/15, nb[4], nn=0;                       // depth-first: always one way in, many dead ends
+        if(cx>0 && !vis[cur-1]) nb[nn++]=cur-1; if(cx<14 && !vis[cur+1]) nb[nn++]=cur+1; if(cy>0 && !vis[cur-15]) nb[nn++]=cur-15; if(cy<14 && !vis[cur+15]) nb[nn++]=cur+15;
+        if(!nn){ sp--; continue; }
+        int n=nb[rndi(nn)], nx=n%15, ny=n/15; vis[n]=1; stk[sp++]=n;
+        int mx=1+2*nx, my=1+2*ny, bx=1+2*cx+(nx-cx), by=1+2*cy+(ny-cy);
+        dmap[my*MW+mx]=D_FLOOR; rid[my*MW+mx]=255; dmap[by*MW+bx]=D_FLOOR; rid[by*MW+bx]=255; }
+    for(int k=0;k<40;k++){ int x=2+rndi(27), y=2+rndi(27); if(((x^y)&1)==0) continue; int i=y*MW+x; if(dmap[i]!=D_WALL) continue;   // knock out a few walls: loops
+        if((dmap[i-1]==D_FLOOR && dmap[i+1]==D_FLOOR) || (dmap[i-MW]==D_FLOOR && dmap[i+MW]==D_FLOOR)){ dmap[i]=D_FLOOR; rid[i]=255; } }
+    static const u8 cxy[5][2]={{1,1},{25,25},{25,1},{1,25},{13,13}};                       // room 0 holds the way up, room 1 is the far corner
+    for(int k=0;k<5;k++){ Room *rm=&rooms[k]; rm->x=cxy[k][0]; rm->y=cxy[k][1]; rm->w=5; rm->h=5; rm->style=ST_CRYPT;
+        for(int yy=rm->y;yy<rm->y+5;yy++) for(int xx=rm->x;xx<rm->x+5;xx++){ int i=yy*MW+xx; dmap[i]=D_FLOOR; fmat[i]=FL_TILE; rid[i]=k; }
+        add_light(rm->x+2,rm->y+2,55); }
+    pillar_at(15,15,M_MARBLE);                                                             // a monument in the middle
+    nrooms=5; say("A LABYRINTH! FOLLOW THE TORCHES"); msg_timer=70;
+}
 static void make_floor(void){
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_BRICK; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
     nrooms=0; nlights=0; nlamps=0; ntorch=0;
+    int mz_last = base_mode ? depth_no>=base_floors() : (!endless && depth_no>=zone_floors());
+    int maze = !base_mode && !mz_last && depth_no>=2 && (rndi(100)<22 || (!endless && depth_no==zone_floors()-1 && (zone&1)==0));   // a labyrinth floor, here and there (never on a boss floor)
     for(int i=0;i<MW*MW;i++) seen[i]=0; for(int i=0;i<10;i++) room_seen[i]=0;
     int dd=depth_no<12?depth_no:12, maxr=7-dd/3, vm=7-dd/3; if(maxr<4) maxr=4; if(vm<4) vm=4; if(base_mode) maxr=6;
     for(int t=0;t<400 && nrooms<maxr;t++){
@@ -97,6 +119,7 @@ static void make_floor(void){
     }
     for(int i=1;i<nrooms;i++) corridor(&rooms[i-1],&rooms[i], 2, (i&1)?FL_FLAG:FL_PLANK);
     if(nrooms>3) corridor(&rooms[0],&rooms[nrooms-1], 2, FL_FLAG);     // a loop, so it is not one long line
+    if(maze) build_labyrinth();
     // walls take the look of the room they face; decorate the faces
     for(int y=1;y<MW-1;y++) for(int x=1;x<MW-1;x++){
         int i=y*MW+x; if(dmap[i]!=D_WALL) continue;
@@ -151,6 +174,12 @@ static void make_floor(void){
         if(rnd()&1) SPAWN(K_CHEST, room_floor_cell(&rooms[i]), 1, 0);
     }
     for(int i=0;i<nrooms;i++){ int c=rndi(3); for(int k=0;k<c;k++){ int cr=rndi(3)==0; SPAWN(K_BARREL, room_floor_cell(&rooms[i]), cr?3:1, cr); } }   // barrels and crates to shove and smash
+    if(maze){ int made=0;                                                                  // the maze passages are full of things: wanderers and chests in the dead ends
+        for(int t2=0;t2<400 && made<14+dd/2;t2++){ int x=1+rndi(MW-2), y=1+rndi(MW-2), c2=y*MW+x; if(dmap[c2]!=D_FLOOR || rid[c2]!=255) continue;
+            int dx2=x-(up%MW), dy2=y-(up/MW); if(dx2*dx2+dy2*dy2<36) continue;
+            if(made<4) SPAWN(K_CHEST, c2, 1, 0);
+            else { int r=rndi(10), kind = r<5 ? K_SPIDER : (r<7 && (dlv()>=1||depth_no>=2)) ? K_BEETLE : (r<9 && (dlv()>=2||depth_no>=3)) ? K_WASP : K_SPIDER; SPAWN(kind, c2, kind==K_BEETLE ? base_hp*5/2 : kind==K_WASP ? base_hp*4/5 : base_hp, 0); }
+            made++; } }
     #define SPAWN_GEAR(cell_,g_) do{ Gear gg_=(g_); SPAWN(K_ITEM,(cell_),1,gg_.sub); DObj *o_=&dob[ndo-1]; o_->it=gg_.it; o_->rar=gg_.rar; o_->pre=gg_.pre; o_->suf=gg_.suf; o_->lvl=gg_.lvl; }while(0)
     for(int i=0;i<nrooms;i++){ int c = 1 + rndi(2); for(int k=0;k<c;k++) SPAWN_GEAR(room_floor_cell(&rooms[i]), roll_drop(ilvl,0)); }
     int cages = 1 + (nrooms>3);
