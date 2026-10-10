@@ -6,7 +6,7 @@ EW static s16 cvx[NPO], cvy[NPO]; EW static u8 ctim[NPO];  // creatures: where e
 typedef struct { u8 body, temper, size, pop, maxpop; u16 col; char name[20]; } Species;   // temper 0 timid, 1 curious, 2 hostile
 static Species spc[2];
 static int pq_type=0, pq_need, pq_have, pq_done, pq_gold;   // the job from the bounty office (0 none, 1 slugs, 2 beetles, 3 fossils, 4 race, 5 census, 6 hunt, 7 ore)
-static int race_on=0, race_t=0, race_next=0, race_par=0, race_best=0; static s32 race_x[5], race_y[5];
+static int race_on=0, race_t=0, race_next=0, race_par=0, race_best=0; static s32 race_x[8], race_y[8]; static int race_n=5, kart_on=0, kart_won=0, kart_boost=100;   // kart_on: the kart race job (8) is being raced; kart_won: it was beaten under par
 static int weather_t=0;
 static const char *const adj[16]={"MOSS","ROSY","GLASS","SOOT","HONEY","STRIPED","GRUMPY","SLEEPY","POLKA","AZURE","RUST","PEARL","GIANT","PYGMY","VELVET","SPARK"};
 static const char *const noun[3][4]={{"HOPPER","SKIPPER","FLEA","BOUNCER"},{"GRAZER","SNUFFLER","LUMP","MOOCOW"},{"FLITTER","MOTH","WINGLET","BUZZER"}};
@@ -229,30 +229,30 @@ static void local_talk(PObj *o){
 }
 // ---------------------------------------------------------------- the bounty office: a job per planet
 static void job_text(char *b){
-    static const char *const jt[8]={"","SQUASH ","BEAT ","DIG UP ","WIN THE RACE","TALK TO ","HUNT ","MINE "};
-    scpy(b,jt[pq_type]); if(pq_type!=4){ ncat(b,pq_need); scat(b," "); }
+    static const char *const jt[9]={"","SQUASH ","BEAT ","DIG UP ","WIN THE RACE","TALK TO ","HUNT ","MINE ","KART GRAND PRIX"};
+    scpy(b,jt[pq_type]); if(pq_type!=4 && pq_type!=8){ ncat(b,pq_need); scat(b," "); }
     switch(pq_type){ case 1: scat(b,"SLUGS"); break; case 2: scat(b,"BEETLES"); break; case 3: scat(b,"FOSSILS"); break; case 5: scat(b,"LOCALS"); break; case 6: scat(b,spc[0].name); scat(b,"S"); break; case 7: scat(b,"ORE NODES"); break; }
 }
 static void job_tick(void){                                                           // called when a counter moves: pays out the moment the job is done
     if(!pq_type || pq_done) return;
-    if(pq_type==4 ? race_best>0 : pq_have>=pq_need){ pq_done=1; gold+=pq_gold; fame+=8; gain_xp(10+dlv()*3); st_uniq++; ach_check();
+    if(pq_type==4 ? race_best>0 : pq_type==8 ? kart_won : pq_have>=pq_need){ pq_done=1; gold+=pq_gold; fame+=8; gain_xp(10+dlv()*3); st_uniq++; ach_check();
         char b[40]; scpy(b,"JOB DONE! THE OFFICE WIRED "); ncat(b,pq_gold); scat(b,"G. BEEP."); show_msg(b); sfx(6); }
 }
 static void bounty_office(volatile u16 *pg){
     const char *ln[4]; char j[48], p[40];
-    if(pq_type && !pq_done){ job_text(j); scpy(p,"SO FAR: "); if(pq_type==4) scat(p, race_best?"WON":"NOT YET"); else { ncat(p,pq_have); scat(p,"/"); ncat(p,pq_need); }
+    if(pq_type && !pq_done){ job_text(j); scpy(p,"SO FAR: "); if(pq_type==4||pq_type==8) scat(p, (pq_type==8?kart_won:race_best)?"WON":"NOT YET"); else { ncat(p,pq_have); scat(p,"/"); ncat(p,pq_need); }
         ln[0]="YOUR JOB IS STILL OPEN:"; ln[1]=j; ln[2]=p; card(pg,"BOUNTY OFFICE",ln,3); return; }
     // a new job that this planet can actually offer
-    int tries=0; do { pq_type=1+wr(7); tries++;
+    int tries=0; do { pq_type=1+wr(7); tries++; { int rp=0; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_RACE) rp=1; if(rp && wr(3)==0) pq_type=8; }   // a planet with a race post can offer the kart job
         if(pq_type==2 && !wd.beetles) pq_type=0; if(pq_type==3 && !wd.fossils) pq_type=0; if(pq_type==5 && !city_r) pq_type=0; if(pq_type==6 && spc[0].temper==0 && wr(2)) pq_type=0;
     } while(!pq_type && tries<10);
     if(!pq_type) pq_type=1;
-    static const u8 need[8]={0,3,1,1,1,3,2,3}; pq_need=need[pq_type]+(pq_type==1||pq_type==5||pq_type==7 ? wr(3) : 0); pq_have=0;
-    { static const u8 kk[8]={0,O_SLUG,O_BEETLE,O_FOSSIL,0,O_LOCAL,O_CRIT,O_TREE}; int have=0;                    // never ask for more than the planet has
-      if(pq_type!=4) for(int i=0;i<NPO;i++) if(po[i].alive && (po[i].kind==kk[pq_type] || (pq_type==7 && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER)) && (pq_type!=6 || po[i].var==0)) have++;
-      if(pq_type!=4 && pq_need>have) pq_need = have>0 ? have : 1; } pq_done=0; pq_gold=20+dlv()*8+pq_need*6+(pq_type==4?30:0);
+    static const u8 need[9]={0,3,1,1,1,3,2,3,1}; pq_need=need[pq_type]+(pq_type==1||pq_type==5||pq_type==7 ? wr(3) : 0); pq_have=0;
+    { static const u8 kk[9]={0,O_SLUG,O_BEETLE,O_FOSSIL,0,O_LOCAL,O_CRIT,O_TREE,0}; int have=0;                    // never ask for more than the planet has
+      if(pq_type!=4 && pq_type!=8) for(int i=0;i<NPO;i++) if(po[i].alive && (po[i].kind==kk[pq_type] || (pq_type==7 && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER)) && (pq_type!=6 || po[i].var==0)) have++;
+      if(pq_type!=4 && pq_type!=8 && pq_need>have) pq_need = have>0 ? have : 1; } pq_done=0; pq_gold=20+dlv()*8+pq_need*6+(pq_type==4?30:pq_type==8?70:0);
     job_text(j); scpy(p,"PAYS "); ncat(p,pq_gold); scat(p,"G AND FAME. WE WIRE IT. BEEP.");
-    ln[0]="THE CLERK SLIDES YOU A NOTE:"; ln[1]=j; ln[2]=p; ln[3]="(IT IS PAID WHEN IT IS DONE. NO TRIPS BACK)"; card(pg,"BOUNTY OFFICE",ln,4); sfx(2);
+    ln[0]="THE CLERK SLIDES YOU A NOTE:"; ln[1]=j; ln[2]=p; ln[3]= pq_type==8 ? "GO TO THE RACE POST. B = BOOST. BEAT THE PAR" : "(IT IS PAID WHEN IT IS DONE. NO TRIPS BACK)"; card(pg,"BOUNTY OFFICE",ln,4); sfx(2);
 }
 // ---------------------------------------------------------------- the market and the cantina
 static int mk_sell[8], mk_n; static int mk_buy[3];
@@ -291,25 +291,26 @@ static void cantina(volatile u16 *pg){
     }
 }
 // ---------------------------------------------------------------- races, ruins, fossils, beetles
-static void race_start(void){
-    race_on=1; race_t=0; race_next=0; int a=wr(256);
-    for(int i=0;i<5;i++){ int d=5+i*4; race_x[i]=(ppx+cosx((a+i*40)&255)*d*4)&((TW<<16)-1); race_y[i]=(ppy+sinx((a+i*40)&255)*d*4)&((TW<<16)-1);
+static void race_start(int kart){                                                     // kart=1: the KART GRAND PRIX job: a big loop of 8 gates, fast kart, B boosts
+    kart_on=kart; race_on=1; race_t=0; race_next=0; race_n=kart?8:5; kart_boost=100; int a=wr(256);
+    for(int i=0;i<race_n;i++){ int d=kart ? 16+(i&1)*8+(i>>1) : 5+i*4; int an=kart ? a+i*32 : a+i*40;
+        race_x[i]=(ppx+cosx(an&255)*d*4)&((TW<<16)-1); race_y[i]=(ppy+sinx(an&255)*d*4)&((TW<<16)-1);
         if(hm_at(race_x[i],race_y[i])<water_lv) race_x[i]+=3<<16; }
-    race_par = 60*(14+wd.grav*2);
+    race_par = kart ? 60*(18+wd.grav*2) : 60*(14+wd.grav*2);
     for(int i=0;i<NPO;i++) if(po[i].kind==O_BEACON) po[i].alive=0;
     for(int j=0;j<NPO;j++) if(!po[j].alive){ po[j].kind=O_BEACON; po[j].alive=1; po[j].x=race_x[0]; po[j].y=race_y[0]; break; }
-    show_msg("GO! TOUCH THE FLAGS IN ORDER"); sfx(6);
+    show_msg(kart ? "KART GRAND PRIX! B = BOOST. HIT ALL 8 GATES" : "GO! TOUCH THE FLAGS IN ORDER"); sfx(6);
 }
 static void race_tick(int n){
     if(!race_on) return; race_t+=n;
     s32 dx=wrapd(race_x[race_next]-ppx), dy=wrapd(race_y[race_next]-ppy);
-    if((dx<0?-dx:dx)+(dy<0?-dy:dy) < 0x18000){ sfx(7); race_next++;
-        for(int i=0;i<NPO;i++) if(po[i].kind==O_BEACON){ if(race_next<5){ po[i].x=race_x[race_next]; po[i].y=race_y[race_next]; } else po[i].alive=0; }
-        if(race_next>=5){ race_on=0; int sec=race_t/60; char b[40];
-            if(race_t<=race_par){ int g=25+dlv()*5; gold+=g; fame+=5; race_best=race_t; scpy(b,"UNDER PAR! "); ncat(b,sec); scat(b,"S. +"); ncat(b,g); scat(b,"G"); sfx(6); job_tick(); }
+    if((dx<0?-dx:dx)+(dy<0?-dy:dy) < (kart_on ? 0x30000 : 0x18000)){ sfx(7); race_next++;
+        for(int i=0;i<NPO;i++) if(po[i].kind==O_BEACON){ if(race_next<race_n){ po[i].x=race_x[race_next]; po[i].y=race_y[race_next]; } else po[i].alive=0; }
+        if(race_next>=race_n){ race_on=0; int sec=race_t/60; char b[40];
+            if(race_t<=race_par){ int g=kart_on ? 40+dlv()*8 : 25+dlv()*5; gold+=g; fame+=kart_on?10:5; race_best=race_t; if(kart_on) kart_won=1; scpy(b,"UNDER PAR! "); ncat(b,sec); scat(b,"S. +"); ncat(b,g); scat(b,"G"); sfx(6); job_tick(); }
             else { scpy(b,"DONE IN "); ncat(b,sec); scat(b,"S. PAR WAS "); ncat(b,race_par/60); scat(b,"S. AGAIN?"); }
-            show_msg(b); }
-        else { char b[40]; scpy(b,"FLAG "); ncat(b,race_next); scat(b,"/5  "); ncat(b,race_t/60); scat(b,"S"); show_msg(b); } }
+            kart_on=0; show_msg(b); }
+        else { char b[40]; scpy(b,kart_on?"GATE ":"FLAG "); ncat(b,race_next); scat(b,"/"); ncat(b,race_n); scat(b,"  "); ncat(b,race_t/60); scat(b,"S"); show_msg(b); } }
 }
 typedef struct { const char *q; const char *a[3]; u8 ok; } Riddle;
 static const Riddle riddles[10]={

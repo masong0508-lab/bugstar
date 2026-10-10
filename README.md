@@ -78,6 +78,11 @@ Five pages with colour-coded button badges: planet, dungeon, space, staying aliv
 - **Hire up to 10 wingmen** at any station's shipyard. They fly in formation, follow you between systems, defend you, and call out their kills.
 - **Fleet battles** of up to **50 enemy ships** break out past the Ant King, or pick **JOIN A FLEET BATTLE** at a shipyard. Ships pick targets and shoot each other. Win the battle for a big bonus.
 
+## Kart racing (new)
+- At **THE BOUNTY OFFICE** on a planet with a race post, the clerk may hand you the **KART GRAND PRIX** job. The kart race only exists once you have taken that job.
+- Then press A at **THE RACE POST**: you are in a kart. A big loop of **8 gates** appears, and the kart is more than twice as fast as walking. Hold **B to boost** (the bar by the timer drains and refills). Water and steep hills still slow you down.
+- Hit the gates in order (the yellow arrow points at the next one) and finish **under par** to win: gold, fame, and the job pays out. Without the job the post gives the normal 5-flag race.
+
 ## Dungeon floor events (new)
 - Most floors roll an event: TREASURE VAULT, MONSTER NEST (bonus gold), ELITE HUNT (slay 2 elites for a reward), DARK FLOOR (double loot), SPEED RUN (reach the stairs in 60 seconds), CURSED FLOOR (tougher monsters, better loot), GOLD RUSH, BLESSED SHRINE (a free good mark), AMBUSH and QUIET FLOOR. The goal shows under your spell name.
 

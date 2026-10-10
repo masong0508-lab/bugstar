@@ -200,7 +200,7 @@ static void new_planet(void){
       static const u8 mix[4][4]={{5,2,2,5},{2,7,2,3},{3,4,5,2},{2,3,6,3}};            // farming, mining, tech, hive
       static const u8 moonmix[4]={2,10,1,3};                                              // a moon is a mining rock: crystal and amber everywhere
       for(int t=0;t<4;t++){ int n=(cur_moon ? moonmix[t] : mix[eco][t])+wd.flora[t]-3; if(n<1) n=1; for(int i=0;i<n && k<NPO-50;i++) place(&po[k++],O_TREE+t,6,64); } }
-    city_people(&k); planet_life(&k); pq_type=0; pq_done=0; race_on=0; race_best=0;
+    city_people(&k); planet_life(&k); pq_type=0; pq_done=0; race_on=0; kart_on=0; kart_won=0; race_best=0;
     while(k<NPO){ place(&po[k],(k&1)?O_PEBBLE:O_TUFT,3,64); k++; }
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind!=O_SHIP && (po[i].kind<O_MARKET || (po[i].kind>=O_FOSSIL && po[i].kind<=O_CRIT)) && hm_at(po[i].x,po[i].y)<water_lv){ po[i].x+=1<<16; if(hm_at(po[i].x,po[i].y)<water_lv) po[i].alive = po[i].kind<=O_CAGE ? 1 : 0; }
     ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;
@@ -334,6 +334,7 @@ static void planet_frame(void){
           if(ik && (frames+k)%ik){ if(!th) pw_h=ph0; else pw_h=ph0+(pw_h-ph0)/2; if(!tv) pw_v=pv0; else pw_v=pv0+(pw_v-pv0)/2; } }
         s32 sp = 0x1600 + (wd.grav-1)*0x200; if(WL(MW_ZEROG)) sp=sp*(14+WL(MW_ZEROG))/10;   // ZERO-G: you bounce along
         if(WL(MW_STICKY)) sp=sp*10/(12+WL(MW_STICKY)); if(d_spd) sp=sp*(100+d_spd)/100;      // STICKY GROUND; your marks and gear                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
+        if(kart_on){ sp=sp*9/4; if(HELD(K_B) && kart_boost>0){ sp=sp*7/4; kart_boost--; } else if(!HELD(K_B) && kart_boost<100 && (frames+k)%3==0) kart_boost++; }   // the kart: fast, and B boosts
         if(hm_at(ppx,ppy)<water_lv && !(form==FORM_CREATURE && form_body==2)) sp=sp*2/3;   // wading is slow (flyers don't wade)
         s32 mvx=(pw_h*sp)>>4, mvy=(pw_v*sp)>>4;
         { s32 fwd=-mvy, side=mvx; mvx=((hsn*fwd)>>8)+((hcs*side)>>8); mvy=((hcs*fwd)>>8)-((hsn*side)>>8); }   // UP walks away from the camera (into the screen), in both views
@@ -377,7 +378,7 @@ static void planet_frame(void){
                 card(VISPG,"A HOUSE",ln,2); planet_hud(); p_last=vbl_count; return; }
             case O_LOCAL: { oam_hide_all(); oam_flush(); local_talk(&po[best]); job_tick(); planet_hud(); p_last=vbl_count; return; }
             case O_SHRINE: { oam_hide_all(); oam_flush(); po[best].alive=0; relic_found(); planet_hud(); p_last=vbl_count; return; }
-            case O_RACE: if(race_on){ race_on=0; for(int i=0;i<NPO;i++) if(po[i].kind==O_BEACON) po[i].alive=0; show_msg("RACE CALLED OFF"); } else race_start(); break;
+            case O_RACE: if(race_on){ race_on=0; kart_on=0; for(int i=0;i<NPO;i++) if(po[i].kind==O_BEACON) po[i].alive=0; show_msg("RACE CALLED OFF"); } else if(pq_type==8 && !pq_done) race_start(1); else race_start(0); break;   // the kart race only runs once you took the KART GRAND PRIX job at the bounty office
             case O_RUIN: if(!po[best].hp){ show_msg("THE STONES ARE QUIET NOW"); break; } { oam_hide_all(); oam_flush(); ruin_visit(VISPG,&po[best]); planet_hud(); p_last=vbl_count; return; }
             case O_FOSSIL: { PObj *o=&po[best]; sfx(12); mine_t=8; if(--o->hp>0){ char b[40]; scpy(b,"DIG... "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                 o->alive=0; st_mined++; gain_xp(4+dlv()); if(cargo_n()<cargo_cap+ship_hold_bonus()){ cargo[7]++; show_msg("A FOSSIL! +1 RELIC IN THE HOLD"); } else { gold+=20; show_msg("A FOSSIL! HOLD FULL, SO: +20G"); }
@@ -408,7 +409,7 @@ static void planet_frame(void){
         }
     }
     if(frames%600==0){ for(int i=0;i<NPO;i++) if(po[i].kind==O_PLANT && !po[i].alive){ place(&po[i],O_PLANT,4,64); break; } }
-    bag_input(); tick_timers(); hunger_tick(240); regen_tick(120);
+    if(!kart_on) bag_input(); tick_timers(); hunger_tick(240); regen_tick(120);
     if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen(VISPG); planet_hud(); msg_timer=0; p_last=vbl_count; return; }
     if(cast_flag>=0){ cam_fp^=1; planet_tables(); show_msg(cam_fp?"FIRST PERSON. SELECT: SWITCH VIEW":"THIRD PERSON. SELECT: SWITCH VIEW"); sfx(2); }
     escape_flag=call_flag=blast_flag=0; cast_flag=-1;
@@ -426,8 +427,8 @@ static void planet_frame(void){
       static const char *const pt[21]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR","A: ENTER THE DRONE OUTPOST",
           "A: THE MARKET","A: THE CANTINA","A: THE BOUNTY OFFICE","A: THE RACE POST","A: KNOCK","A: TALK","A: DIG THE FOSSIL","A: THE RUIN","A: BITE THE BEETLE","A: CATCH IT","A: THE RELIC SHRINE!"};
       if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
-      if(race_on){ char rb[24]; scpy(rb,"RACE "); ncat(rb,race_t/60); scat(rb,"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/5"); stext(pg,4,151,rb,C_CYAN); }
-      else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
+      if(race_on){ char rb[40]; scpy(rb,kart_on?"KART ":"RACE "); ncat(rb,race_t/60); scat(rb,kart_on?"S  GATE ":"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/"); ncat(rb,race_n); if(kart_on){ scat(rb,"  PAR "); ncat(rb,race_par/60); scat(rb,"S"); rect(pg,4,146,50,3,C_DGREY); if(kart_boost>0) rect(pg,4,146,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); } stext(pg,4,151,rb,C_CYAN); }
+      else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4 && pq_type!=8){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
       weather_draw(pg); if(wd.weird) sky_decor(pg);
 #ifdef TEST_CITY
       stext(pg,4,140,tdbg,C_RED);
