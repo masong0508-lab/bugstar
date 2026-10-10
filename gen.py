@@ -532,13 +532,20 @@ FLYER=["..1111....1111..",
        ".......111......",
        "................"]
 # the humanoid form (16x32), drawn with the bug's own colours (bank 3): 1 outline, 2-4 body, 7 skin (head colour), 9 eyes, b legs, c belt
-def human_rows():
+def human_rows(furry=False):      # a = hair/ears/tail colour, d = shoes (human) or muzzle (furry)
     g=[['.']*16 for _ in range(32)]
     for y in range(32):
         for x in range(16):
             dx,dy=x-7.5,y-5.0
-            if dx*dx+dy*dy<=12.5: g[y][x]='7'
+            if dx*dx+dy*dy<=12.5: g[y][x]='a' if (y<=3 and not furry) else '7'
+    if furry:
+        for (x,y) in [(4,0),(4,1),(5,1),(4,2),(5,2),(6,2),(11,0),(11,1),(10,1),(11,2),(10,2),(9,2)]: g[y][x]='a'
+        g[2][5]='d'; g[2][10]='d'
     g[5][6]='9'; g[5][9]='9'
+    if furry:
+        for x in (7,8): g[6][x]='d'
+        for x in (6,7,8,9): g[7][x]='d'
+        g[7][7]='1'; g[7][8]='1'
     for y in range(9,11):
         for x in range(7,9): g[y][x]='7'
     for y in range(10,20):
@@ -550,8 +557,9 @@ def human_rows():
         for x in (2,3,12,13): g[y][x]='7'
     for x in range(4,12): g[19][x]='c'
     for y in range(20,30):
-        for x in (5,6,7): g[y][x]='b'
-        for x in (8,9,10): g[y][x]='b'
+        c='7' if furry else ('d' if y>=27 else 'b')
+        for x in (5,6,7): g[y][x]=c if (furry or y>=27) else 'b'
+        for x in (8,9,10): g[y][x]=c if (furry or y>=27) else 'b'
     for x in (4,5,6,7): g[30][x]='1'
     for x in (8,9,10,11): g[30][x]='1'
     for y in range(32):
@@ -562,6 +570,23 @@ def human_rows():
                     if 0<=X<16 and 0<=Y<32 and g[Y][X] not in '.1': g[y][x]='1'; break
     return [''.join(r) for r in g]
 HUMAN=human_rows()
+FURRY=human_rows(True)
+TAIL=["................",
+      "................",
+      "............11..",
+      "...........1aa1.",
+      "..........1aadd1",
+      "..........1aad1.",
+      ".........1aa11..",
+      "........1aa1....",
+      ".....11.1aa1....",
+      "....1aa1aa1.....",
+      "....1aaaa1......",
+      ".....1aa1.......",
+      "......11........",
+      "................",
+      "................",
+      "................"]
 TOOLS=[["fffff...","f...ff..","....7.f.","...7....","..7.....",".7......","7.......","........"],
        ["......5f",".....5f.","....5f..","...5f...","9.5f....",".99.....",".79.....","7......."],
        ["........","1fffff1.","ffff9ff.","ff1.....","f1......","71......","7.......","........"],
@@ -570,7 +595,7 @@ TOOLS=[["fffff...","f...ff..","....7.f.","...7....","..7.....",".7......","7....
        ["1fffff1.","f22422f.","f24442f.","f22422f.",".f222f..","..fff...","...f....","........"],
        ["111111..","1bbbb1..","1b5bb1..","1bbbb1..","111111..",".1ff1...",".1ff1...","..11...."],
        ["..d.d.d.",".ddddddd",".ddddddd","dddddddd","ddddddd.",".dddddd.","..dddd..","........"]]
-sprs=[("HUMAN",HUMAN,16,32,1)]+[("TOOL%d"%i,TOOLS[i],8,8,1) for i in range(8)]+[("HOPPER",HOPPER,16,16,1),("GRAZER",GRAZER,16,16,1),("FLYER",FLYER,16,8,1),("DOORWAY",DOORWAY,16,16,1),("LOCAL1",LOCAL1,16,16,1),("LOCAL2",LOCAL2,16,16,1),("BEACON",BEACON,16,16,1),("FOSSIL",FOSSIL,16,16,1),("SBEETLE",SBEETLE,16,16,1),("STALL",STALL,16,16,1),("RUIN",RUIN,16,16,1),("ARROW",ARROW,16,16,1),("HATCH",HATCH,16,16,1),("BOLT",BOLT,16,16,1),("TREE",TREE,16,16,1),("ROCK",ROCK,16,16,1),("WEB",WEB,16,16,1),("FLOWER",FLOWER,16,16,1),("HILL",HILL,64,32,1),("SHADOW",SHADOW,16,8,1),("CLOUD",CLOUD,32,8,1),("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("BUGP1A",BUGP[0][0],32,16,1),("BUGP1B",BUGP[0][1],32,16,1),("BUGP2A",BUGP[1][0],32,16,1),("BUGP2B",BUGP[1][1],32,16,1),("BUGP3A",BUGP[2][0],32,16,1),("BUGP3B",BUGP[2][1],32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
+sprs=[("HUMAN",HUMAN,16,32,1),("FURRY",FURRY,16,32,1),("TAIL",TAIL,16,16,1)]+[("TOOL%d"%i,TOOLS[i],8,8,1) for i in range(8)]+[("HOPPER",HOPPER,16,16,1),("GRAZER",GRAZER,16,16,1),("FLYER",FLYER,16,8,1),("DOORWAY",DOORWAY,16,16,1),("LOCAL1",LOCAL1,16,16,1),("LOCAL2",LOCAL2,16,16,1),("BEACON",BEACON,16,16,1),("FOSSIL",FOSSIL,16,16,1),("SBEETLE",SBEETLE,16,16,1),("STALL",STALL,16,16,1),("RUIN",RUIN,16,16,1),("ARROW",ARROW,16,16,1),("HATCH",HATCH,16,16,1),("BOLT",BOLT,16,16,1),("TREE",TREE,16,16,1),("ROCK",ROCK,16,16,1),("WEB",WEB,16,16,1),("FLOWER",FLOWER,16,16,1),("HILL",HILL,64,32,1),("SHADOW",SHADOW,16,8,1),("CLOUD",CLOUD,32,8,1),("BUGSIDE",BUG,32,16,1),("BUGSIDE2",BUG2,32,16,1),("BUGP1A",BUGP[0][0],32,16,1),("BUGP1B",BUGP[0][1],32,16,1),("BUGP2A",BUGP[1][0],32,16,1),("BUGP2B",BUGP[1][1],32,16,1),("BUGP3A",BUGP[2][0],32,16,1),("BUGP3B",BUGP[2][1],32,16,1),("JAW",JAW,64,64,2),("SHIP",SHIP,16,16,1),("DOOR",ARCH,16,16,1),("CAGE",CAGE,16,8,1),("SLUG",SLUG,16,8,1),
       ("PLANT",PLANT,8,8,1),("PEBBLE",PEBBLE,8,8,1),("TUFT",TUFT,8,8,1),("BACK",BACK,64,64,2)]
 allt=[]; t=0
 for name,rows,w,h,s in sprs:

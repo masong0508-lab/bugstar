@@ -743,6 +743,7 @@ static void arrive_on_planet(void){      // after landing (or the autopilot): se
     new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game();
     char b[40]; scpy(b,world_name()); if(!endless && !zone_cleared) scat(b,": FIND THE DOOR"); show_msg(b); oam_hide_all(); oam_flush(); music(0);
     { REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0); planet_card(VISPG); p_last=vbl_count; }
+    if(hum_req){ hum_req=0; human_creator(VISPG,1); planet_hud(); save_game(); p_last=vbl_count; }       // a weird world just made you a humanoid: look in the mirror
 }
 static void pet_away_tick(void){
     if(pet_away_t && --pet_away_t==0){ gold+=pet_sold_g; char b[40]; scpy(b,"BUDDY SOLD "); ncat(b,pet_sold_n); scat(b," THINGS: +"); ncat(b,pet_sold_g); scat(b,"G"); say(b); sfx(7); hud_now(); pet_x=px_; pet_y=py_; }

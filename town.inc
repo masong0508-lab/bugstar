@@ -26,7 +26,29 @@ static void make_species(void){
     if(WL(MW_SHY)){ spc[0].temper=0; spc[1].temper=0; } if(WL(MW_ANGRY)){ spc[0].temper=2; spc[1].temper=2; }
     wseed=keep;
 }
-static void form_palette(void){ volatile u16 *P=OBJ_PAL+6*16; for(int i=0;i<16;i++) P[i]=obj_pal[i]; u16 c=form_col?form_col:look.col[LC_SHELL]; P[6]=shade15(c,7); P[7]=c; P[8]=lift15(c,8); P[5]=look.col[LC_EYE]; }
+static void hum_from_look(void){ hum.col[HC_SKIN]=look.col[LC_HEAD]; hum.col[HC_HAIR]=look.col[LC_ANT]; hum.col[HC_ACC]=look.col[LC_HORN]; hum.col[HC_SHIRT]=look.col[LC_SHELL]; hum.col[HC_PANTS]=look.col[LC_LEGS]; hum.col[HC_BELT]=look.col[LC_MARK]; hum.col[HC_EYES]=look.col[LC_EYE]; }
+static void hum_palette(void){                                                        // the humanoid uses sprite bank 6, painted from its own colours
+    volatile u16 *P=OBJ_PAL+6*16; for(int i=0;i<16;i++) P[i]=obj_pal[i];
+    if(!hum.made) hum_from_look();
+    const u16 *c=hum.col;
+    P[2]=shade15(c[HC_SHIRT],8); P[3]=c[HC_SHIRT]; P[4]=lift15(c[HC_SHIRT],7);
+    P[6]=shade15(c[HC_SKIN],9); P[7]=c[HC_SKIN]; P[8]=lift15(c[HC_SKIN],6);
+    P[9]=c[HC_EYES]; P[10]=c[HC_HAIR]; P[11]=c[HC_PANTS]; P[12]=c[HC_BELT]; P[13]=c[HC_ACC]; P[14]=shade15(c[HC_ACC],9);
+}
+// draws the humanoid (and its tail, and the tool in its hand) into shadow_oam from slot on; z=2 is the planet's 2x drawing, z=1 is half that (the creator preview)
+static int hum_oam(int slot, int cx, int feet, int z, int facing, int lean, int sq, int shr, int sw, int tool){
+    int k=3-z, pa=hum_wd[hum.build%3]*k+shr, pd=hum_ht[hum.height%5]*k, h=32*256/pd, wpx=16*256/pa;
+    set_affine(31, facing?-pa:pa, facing?lean:-lean, 0, pd+sq+shr);
+    shadow_oam[slot].a0 = ((feet-h/2-32)&255) | (1<<8)|(1<<9) | (2<<14);
+    shadow_oam[slot].a1 = ((cx-16)&511) | (31<<9) | (2<<14); shadow_oam[slot].a2 = (hum.style ? T_FURRY : T_HUMAN) | (6<<12); slot++;
+    if(hum.style && slot<125){ int tx = facing ? cx-wpx/2-8*z : cx+wpx/2+8*z, ty = feet - 11*h/32 - 4*z;      // the tail sits behind the hips
+        shadow_oam[slot].a0 = ((ty-16)&255) | (1<<8)|(1<<9);
+        shadow_oam[slot].a1 = ((tx-16)&511) | (31<<9) | (1<<14); shadow_oam[slot].a2 = T_TAIL | (6<<12); slot++; }
+    if(tool>=0 && slot<125){ int hx = facing ? cx+10 : cx-18, hy = feet - 30*h/64 + sw;
+        shadow_oam[slot].a0 = (hy&255); shadow_oam[slot].a1 = (hx&511) | (facing?0:(1<<12)); shadow_oam[slot].a2 = (T_TOOL0+tool); slot++; }
+    return slot;
+}
+static void form_palette(void){ volatile u16 *P=OBJ_PAL+6*16; for(int i=0;i<16;i++) P[i]=obj_pal[i]; if(form==FORM_HUMAN){ hum_palette(); return; } u16 c=form_col?form_col:look.col[LC_SHELL]; P[6]=shade15(c,7); P[7]=c; P[8]=lift15(c,8); P[5]=look.col[LC_EYE]; }
 static void species_palette(void){                                                    // sprite banks 4 and 5: the two species' colours
     for(int s=0;s<2;s++){ volatile u16 *P=OBJ_PAL+(4+s)*16; for(int i=0;i<16;i++) P[i]=obj_pal[i];
         u16 c=spc[s].col; P[6]=shade15(c,7); P[7]=c; P[8]=lift15(c,8); P[5]=rgb15(250,250,250); }
@@ -178,7 +200,7 @@ static void give_marks(char *out){                                              
         form=nf; forms_open|=1<<nf; form_t = rndi(100) < 6+lv/2 ? 0 : 180+lv*12; form_body=spc[0].body; form_col=spc[0].col;
         if(out[0]) scat(out,". "); scat(out,"YOU ARE NOW A "); scat(out, nf==FORM_HUMAN ? "HUMANOID" : body_name[form_body]); if(!form_t) scat(out," FOREVER");
         if(nf==FORM_HUMAN && !tools_owned){ tools_owned|=1u<<TL_PICK; tool_held=TL_PICK; }      // you wake up holding a pickaxe
-        form_palette(); given=1; }
+        form_palette(); if(nf==FORM_HUMAN) hum_req=1; given=1; }
     if(given){ recalc(); save_game(); }
 }
 static void planet_card(volatile u16 *pg){                                              // on arrival: name, what it is known for, its DNA, a scan, Bolt's two cents

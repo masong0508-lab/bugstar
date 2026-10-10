@@ -152,6 +152,13 @@ static const char *const mk_what[NMK]={"+15% SPEED","+8 MAX HEALTH","+15% GOLD",
 static u32 mark_perm=0; static int mark_t[NMK];
 // ---- SHAPES: a weird world can turn you into one of its creatures, or into a humanoid that holds tools.
 enum { FORM_BUG, FORM_CREATURE, FORM_HUMAN };
+// ---- the humanoid's look (made in the character creator when a weird world turns you into one; saved in its own block, see ui.inc)
+enum { HC_SKIN, HC_HAIR, HC_ACC, HC_SHIRT, HC_PANTS, HC_BELT, HC_EYES, NHC };     // skin or fur, hair or ears+tail, shoes or muzzle, shirt, pants, belt, eyes
+typedef struct { u8 style, height, build, made; u16 col[NHC]; } Hum;               // style 0 human, 1 furry. height 0 tiny .. 4 towering. build 0 slim .. 2 broad
+static Hum hum={0,3,1,0}; static int hum_req=0;
+static const u16 hum_wd[3]={164,140,128};                                          // sprite width (affine, 128 = the 2x drawing size)
+static const u16 hum_ht[5]={200,176,158,142,128};                                  // sprite height: tiny 41px .. towering 64px
+static void hum_from_look(void);
 static int form=0, form_t=0, form_body=0, forms_open=1, tool_held=0; static u16 form_col=0; static u32 tools_owned=0;   // form_t: seconds left (0 = it stays)
 static const char *const form_name[3]={"BUG","CREATURE","HUMANOID"};
 static const char *const body_name[3]={"HOPPER","GRAZER","FLYER"};
@@ -380,6 +387,7 @@ static void new_game(void){
     for(int i=0;i<8;i++) berry_known[i]=0; for(int i=0;i<6;i++) seed_known[i]=0;
     for(int i=0;i<6;i++) have_bug[i]=0;
     for(int i=0;i<NSPELL;i++) spell_known[i]=0; spell_known[SP_FIRE]=1; spell_known[SP_PORTAL]=1; spell_sel=0;
+    hum.style=0; hum.height=3; hum.build=1; hum.made=0;
     zone=0; zone_cleared=0; level=1; xp=0; food=100; gold=0; bugs_freed=0; bag_n=0; bag_sel=0; fame=0; portal_depth=0;
     endless=0; world_no=0; loot=0; best_depth=0;
     st_str=6; st_dex=5; st_vit=6; st_mag=5; stat_pts=0;

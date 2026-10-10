@@ -457,12 +457,8 @@ static void planet_frame(void){
       int shr=WL(MW_SHRINK)*5;                                                          // SHRINK RAY: you are smaller
       set_affine(31, up ? 256+shr*2 : facing? -(128+shr):128+shr, up ? 0 : facing? lean:-lean, 0, up ? 256+shr*2 : 128+sq+shr);
       if(shr) sy += up ? 32-8192/(256+shr*2) : 16-2048/(128+shr);
-      if(pvis && form==FORM_HUMAN){                                                   // the humanoid: 16x32, twice size, with the tool in its hand
-                int sw = moved ? ((frames>>3)&1) : 0;
-                shadow_oam[slot].a0 = ((sy-64-bob)&255) | (1<<8)|(1<<9) | (2<<14);
-                shadow_oam[slot].a1 = ((120-16)&511) | (31<<9) | (2<<14); shadow_oam[slot].a2 = T_HUMAN | BUG_BANK; slot++;
-                if(tools_owned && slot<120){ int hx = facing ? 120+10 : 120-18, hy = sy-30-bob+sw;
-                    shadow_oam[slot].a0 = (hy&255); shadow_oam[slot].a1 = (hx&511) | (facing?0:(1<<12)); shadow_oam[slot].a2 = (T_TOOL0+tool_held); slot++; } }
+      if(pvis && form==FORM_HUMAN){                                                   // the humanoid: its own height, build, colours, ears and tail (see the creator in ui.inc)
+                slot=hum_oam(slot,120,sy-bob,2,facing,lean,sq,shr,moved?((frames>>3)&1):0,tools_owned?tool_held:-1); }
       else if(pvis && form==FORM_CREATURE){                                           // a creature: one of this world's body plans, in your colour
                 int fl = form_body==2; int hop = (form_body==0 && moved) ? ((frames>>2)&1)*4 : 0; int fly = fl ? 10+(sinx((frames*5)&255)>>12) : 0;
                 shadow_oam[slot].a0 = ((sy-(fl?16:32)-bob-hop-fly)&255) | (1<<8)|(1<<9) | (fl?(1<<14):0);

@@ -820,6 +820,7 @@ static void save_ext(void){
     { u32 g[NGH+2]; g[0]=0x324C4147u; for(int i=0;i<NGH;i++) g[1+i]=galaxy_hi[i]; u32 h=2166136261u; for(int i=0;i<NGH+1;i++){ h^=g[i]; h*=16777619u; } g[NGH+1]=h; sram_write(slot_base(cur_slot)+0x9C0,g,sizeof g); }   // the upper galaxy words: their own block (ends at 0x9EC), so older saves still load
     { u32 g[3]; g[0]=0x59444F42u; g[1]=(u32)(cur_pl*8+cur_moon); g[2]=(2166136261u^g[0])*16777619u; g[2]=(g[2]^g[1])*16777619u; sram_write(slot_base(cur_slot)+0x9EC,g,sizeof g); }   // which planet or moon you are on
     { int xo=xt_base(cur_slot); u32 hd[3]; hd[0]=0x32554C43u; hd[1]=(u32)(NCW-NCW0); hd[2]=fnv(&clus[NCW0],(NCW-NCW0)*4); sram_write(xo,hd,12); sram_write(xo+12,&clus[NCW0],(NCW-NCW0)*4); }   // the upper cluster words, straight from RAM (no big buffer on the stack)
+    hum_save();
 }
 static void addr_load(void){ u32 a[NCW0+10]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h9=2166136261u, h7=2166136261u, h=2166136261u, h5=2166136261u; for(int i=0;i<NCW0+9;i++){ h9^=a[i]; h9*=16777619u; } for(int i=0;i<NCW0+7;i++){ h7^=a[i]; h7*=16777619u; if(i<NCW0+6){ h^=a[i]; h*=16777619u; } if(i<NCW0+5){ h5^=a[i]; h5*=16777619u; } }
     wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; form_body=0; form_col=0;
@@ -881,7 +882,7 @@ static int load_ext(void){
     if(s->magic!=0x50494853 || s->sum!=sx_sum(s)){ load_ext_defaults(); beast_load(); trophy_load(); return 0; }
     cur_sys=s->cur_sys; cluster_no=s->cluster_no; fuel=s->fuel; hull=s->hull; shield_lv=s->shield_lv; laser_lv=s->laser_lv; cargo_cap=s->cargo_cap;
     ant_king=s->ant_king; cleared_mask=s->cleared_mask; zones_open=s->zones_open; visits=s->visits; w_dlv=s->w_dlv; memcpy(cargo,s->cargo,8);
-    beast_load(); trophy_load(); addr_load(); gen_cluster(); return 1;
+    beast_load(); trophy_load(); addr_load(); hum_load(); gen_cluster(); return 1;
 }
 static void story_boss_beaten(void){
     cleared_mask|=1<<zone; if(zones_open<zone+2) zones_open=zone+2; if(zones_open>6) zones_open=6;

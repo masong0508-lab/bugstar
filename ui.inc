@@ -146,6 +146,48 @@ static u16 pick_colour(volatile u16 *pg, const char *what, u16 cur){
     }
 }
 // ---------------------------------------------------------------- make your bug: parts, shapes and colours, with a live preview
+// ---------------------------------------------------------------- the humanoid's look is saved on its own, next to the slot's other blocks (slot + 0xA00)
+typedef struct { u32 magic; u8 style, height, build, made; u16 col[NHC]; u16 pad; u32 sum; } HumSave;
+static void hum_save(void){ HumSave s; memset(&s,0,sizeof s); s.magic=0x4D554846u; s.style=hum.style; s.height=hum.height; s.build=hum.build; s.made=hum.made; for(int i=0;i<NHC;i++) s.col[i]=hum.col[i];
+    s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+0xA00,&s,sizeof s); }
+static void hum_load(void){ HumSave s; sram_read(slot_base(cur_slot)+0xA00,&s,sizeof s);
+    if(s.magic!=0x4D554846u || s.sum!=fnv(&s,sizeof s-4)){ hum.style=0; hum.height=3; hum.build=1; hum.made=0; return; }
+    hum.style=s.style&1; hum.height=s.height%5; hum.build=s.build%3; hum.made=s.made; for(int i=0;i<NHC;i++) hum.col[i]=s.col[i]; }
+// ---------------------------------------------------------------- the humanoid creator: shown when a weird world turns you into one, and at your ship's mirror
+static void hum_palette(void); static int hum_oam(int slot, int cx, int feet, int z, int facing, int lean, int sq, int shr, int sw, int tool);
+static int human_creator(volatile u16 *pg, int first){
+    enum { H_BODY, H_HEIGHT, H_BUILD, H_SKIN, H_HAIR, H_ACC, H_SHIRT, H_PANTS, H_BELT, H_EYES, NH };
+    static const s8 cmap[NH]={-1,-1,-1,HC_SKIN,HC_HAIR,HC_ACC,HC_SHIRT,HC_PANTS,HC_BELT,HC_EYES};
+    static const char *const body_n[2]={"HUMAN","FURRY"}, *const ht_n[5]={"TINY","SHORT","AVERAGE","TALL","TOWERING"}, *const bd_n[3]={"SLIM","NORMAL","BROAD"};
+    Hum before=hum; int sel=0, dirty=1, t=0; wait_release(); oam_hide_all(); oam_flush(); hum_palette();
+    while(1){
+        const char *rn[NH]={"BODY","HEIGHT","BUILD", hum.style?"FUR":"SKIN", hum.style?"EARS + TAIL":"HAIR", hum.style?"MUZZLE":"SHOES","SHIRT","PANTS","BELT","EYES"};
+        if(dirty){ dirty=0; char b[40];
+            panel(pg,12,20,216,136, first ? "YOU ARE A HUMANOID NOW" : "THE MIRROR: HUMANOID");
+            for(int i=0;i<NH;i++){ int y=36+i*9; if(i==sel) rect(pg,16,y-2,124,9,6);
+                text(pg,20,y,rn[i], i==sel?C_WHITE:C_GREY,1);
+                const char *opt = i==H_BODY?body_n[hum.style] : i==H_HEIGHT?ht_n[hum.height] : i==H_BUILD?bd_n[hum.build] : 0;
+                if(opt){ scpy(b,"<"); scat(b,opt); scat(b,">"); text(pg,76,y,b,i==sel?C_GOLD:C_GREY,1); }
+                if(cmap[i]>=0){ BG_PAL[224+i]=hum.col[cmap[i]]; rect(pg,122,y-1,12,7,224+i); frame1(pg,122,y-1,12,7,i==sel?C_WHITE:C_DGREY); } }
+            rect(pg,146,38,74,62,1); frame1(pg,146,38,74,62,C_DGREY);
+            ctext(pg,183,104,body_n[hum.style],C_GOLD);
+            ctext(pg,120,128, cmap[sel]>=0 ? "A: PICK A COLOUR" : "LEFT/RIGHT: CHANGE IT", C_GREY);
+            ctext(pg,120,138, first ? "SELECT: SURPRISE ME        START: ALL DONE" : "SELECT: SURPRISE ME   START: DONE   B: UNDO", C_CYAN);
+            if(first) ctext(pg,120,147,"YOU CAN CHANGE THIS LATER AT YOUR SHIP'S MIRROR",C_DGREY); }
+        t++; oam_hide_all();
+        { int n=hum_oam(0,183,95,1,1,0,0,0,0,-1); shadow_oam[n].a0=((95-2)&255)|(1<<14); shadow_oam[n].a1=((183-8)&511); shadow_oam[n].a2=T_SHADOW; }
+        vsync(); oam_flush(); read_keys();
+        if(HIT(K_UP)){ sel=(sel+NH-1)%NH; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%NH; dirty=1; sfx(7); }
+        int d = HIT(K_RIGHT)?1 : HIT(K_LEFT)?-1 : 0;
+        if(d){ int ch=1; switch(sel){ case H_BODY: hum.style^=1; break; case H_HEIGHT: hum.height=(hum.height+d+5)%5; break; case H_BUILD: hum.build=(hum.build+d+3)%3; break; default: ch=0; }
+               if(ch){ dirty=1; sfx(2); } }
+        if(HIT(K_A) && cmap[sel]>=0){ oam_hide_all(); oam_flush(); hum.col[cmap[sel]]=pick_colour(pg,rn[sel],hum.col[cmap[sel]]); hum_palette(); dirty=1; }
+        if(HIT(K_SEL)){ hum.style=rndi(2); hum.height=rndi(5); hum.build=rndi(3); for(int i=0;i<NHC;i++) hum.col[i]=preset_col[rndi(NPRESET)]; hum_palette(); dirty=1; sfx(6); }
+        if(HIT(K_START)) break;
+        if(HIT(K_B)){ hum=before; hum_palette(); form_palette(); wait_release(); oam_hide_all(); oam_flush(); return 0; }
+    }
+    hum.made=1; hum_save(); form_palette(); sfx(6); wait_release(); oam_hide_all(); oam_flush(); return 1;
+}
 static int make_bug(volatile u16 *pg, int first){
     enum { R_NAME, R_SHELL, R_PAT, R_MARK, R_HEAD, R_EYES, R_ANT, R_LEGS, R_HORN, NROWS };
     static const char *const rows[NROWS]={"NAME","SHELL","PATTERN","MARKINGS","HEAD","EYES","ANTENNAE","LEGS","HORN"};
@@ -552,7 +594,7 @@ static int shop_menu(void){   // returns 1 to fly on
             do form=(form+1)%3; while(!((forms_open>>form)&1)); form_t=0; recalc(); form_palette(); char b[40]; scpy(b,"YOU ARE NOW A "); scat(b,form==FORM_CREATURE?body_name[form_body]:form_name[form]); say(b); sfx(6); continue; }
         if(sel==11){ bolt_talk(pg); box(pg,12,20,216,136); continue; }
         if(sel==10){ make_ship(pg,0); box(pg,12,20,216,136); continue; }
-        if(sel==9){ make_bug(pg,0); box(pg,12,20,216,136); continue; }
+        if(sel==9){ if(form==FORM_HUMAN) human_creator(pg,0); else make_bug(pg,0); box(pg,12,20,216,136); continue; }
         if(sel==8){ workbench(pg); continue; }
         if(sel==7){ trophy_case(pg); continue; }
         if(sel==0){ if(can_fly){ in_menu--; int held=0; for(int t=0;t<20 && HELD(K_A);t++){ vsync(); read_keys(); held=t; } wait_release(); return (next_ok && held<19) ? 2 : 1; } continue; }
