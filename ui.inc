@@ -155,92 +155,162 @@ static void hum_load(void){ HumSave s; sram_read(slot_base(cur_slot)+0xA00,&s,si
     hum.style=s.style&1; hum.height=s.height%5; hum.build=s.build%3; hum.made=s.made; for(int i=0;i<NHC;i++) hum.col[i]=s.col[i]; }
 // ---------------------------------------------------------------- the humanoid creator: shown when a weird world turns you into one, and at your ship's mirror
 static void hum_palette(void); static int hum_oam(int slot, int cx, int feet, int z, int facing, int lean, int sq, int shr, int sw, int tool);
-static int human_creator(volatile u16 *pg, int first){
-    enum { H_BODY, H_HEIGHT, H_BUILD, H_SKIN, H_HAIR, H_ACC, H_SHIRT, H_PANTS, H_BELT, H_EYES, NH };
-    static const s8 cmap[NH]={-1,-1,-1,HC_SKIN,HC_HAIR,HC_ACC,HC_SHIRT,HC_PANTS,HC_BELT,HC_EYES};
-    static const char *const body_n[2]={"HUMAN","FURRY"}, *const ht_n[5]={"TINY","SHORT","AVERAGE","TALL","TOWERING"}, *const bd_n[3]={"SLIM","NORMAL","BROAD"};
-    Hum before=hum; int sel=0, dirty=1, t=0; wait_release(); oam_hide_all(); oam_flush(); hum_palette();
+// ================================================================= THE CHARACTER CREATOR (one screen for bugs and humanoids)
+// UP/DOWN pick a row. LEFT/RIGHT change it (colour rows browse the presets). A mixes your own colour or types the name.
+// L locks a row. R builds a matching palette from the colour you're on. SELECT surprises you (locked rows stay).
+// B steps back through your last 8 changes. START is done. Ready-made LOOKS give you a place to start.
+typedef struct { const char *nm, *nm2; u8 kind, n; u8 *v; const char *const *opt; u16 *c; u8 *dep; } CRow;     // kind 0 name, 1 looks, 2 choice, 3 colour
+typedef struct { const char *nm; u8 style, height, build; u16 col[7]; } CHumP;                                // skin, hair, shoes, shirt, pants, belt, eyes
+typedef struct { const char *nm; u8 shell, ant, horn, eye, legs, pat; u16 col[7]; } CBugP;                    // shell, head, eye, antenna, legs, marks, horn
+#define NCHP 10
+static const CHumP cc_hp[NCHP]={
+ {"EXPLORER",0,3,1,{C15(224,172,130),C15(90,56,30),C15(100,70,40),C15(80,130,70),C15(120,100,70),C15(170,130,50),C15(60,120,60)}},
+ {"KNIGHT",0,3,2,{C15(235,190,150),C15(200,200,215),C15(70,70,80),C15(150,155,175),C15(60,65,90),C15(220,170,40),C15(70,110,200)}},
+ {"ROGUE",0,2,0,{C15(200,150,110),C15(30,28,36),C15(30,28,30),C15(60,50,70),C15(40,36,48),C15(150,40,50),C15(220,180,40)}},
+ {"MAGE",0,2,0,{C15(240,205,175),C15(235,235,245),C15(90,60,120),C15(110,60,180),C15(70,40,120),C15(250,220,60),C15(120,200,250)}},
+ {"PUNK",0,1,1,{C15(230,180,150),C15(240,100,180),C15(20,20,28),C15(30,30,36),C15(60,90,150),C15(250,220,60),C15(100,240,160)}},
+ {"SPACER",0,3,1,{C15(200,160,130),C15(50,40,30),C15(200,200,215),C15(240,240,250),C15(230,230,240),C15(240,130,30),C15(70,150,230)}},
+ {"FOX",1,2,1,{C15(230,120,40),C15(250,240,230),C15(250,240,230),C15(60,100,170),C15(70,70,90),C15(220,170,40),C15(40,40,50)}},
+ {"WOLF",1,3,2,{C15(120,126,140),C15(70,74,86),C15(220,222,230),C15(150,50,50),C15(50,50,60),C15(190,150,60),C15(240,200,60)}},
+ {"BUNNY",1,1,0,{C15(245,240,245),C15(250,170,200),C15(250,200,215),C15(240,130,180),C15(110,150,230),C15(250,230,120),C15(200,60,100)}},
+ {"SPRITE",0,0,0,{C15(250,220,200),C15(120,230,140),C15(250,250,120),C15(250,150,90),C15(90,190,170),C15(250,250,250),C15(120,60,200)}}};
+#define NCBP 9
+static const CBugP cc_bp[NCBP]={
+ {"CLASSIC",1,0,0,0,1,0,{C15(92,108,148),C15(70,84,120),C15(240,240,250),C15(14,16,28),C15(60,70,100),C15(200,200,215),C15(220,170,40)}},
+ {"LADYBUG",0,0,0,1,1,2,{C15(210,40,50),C15(20,20,28),C15(240,240,250),C15(20,20,28),C15(30,30,40),C15(20,20,28),C15(220,170,40)}},
+ {"WASP",2,1,0,0,1,1,{C15(250,210,50),C15(30,28,24),C15(230,60,40),C15(30,28,24),C15(40,36,30),C15(30,28,24),C15(220,170,40)}},
+ {"BEETLE",1,2,1,0,2,0,{C15(30,90,110),C15(20,50,60),C15(240,240,250),C15(14,30,36),C15(20,60,70),C15(60,150,170),C15(190,150,60)}},
+ {"FIREFLY",2,1,0,1,1,3,{C15(40,36,60),C15(250,150,40),C15(255,255,200),C15(250,150,40),C15(60,50,80),C15(250,230,70),C15(220,170,40)}},
+ {"MOTH",1,0,0,1,0,4,{C15(210,200,215),C15(120,100,130),C15(40,30,50),C15(240,220,250),C15(150,130,170),C15(150,130,170),C15(220,170,40)}},
+ {"STAG",2,1,1,0,2,0,{C15(110,60,30),C15(70,40,20),C15(240,240,250),C15(40,24,12),C15(80,44,22),C15(150,100,50),C15(220,180,90)}},
+ {"CORAL",0,0,0,1,0,2,{C15(240,120,100),C15(250,170,150),C15(40,40,60),C15(250,200,190),C15(220,100,90),C15(250,230,220),C15(220,170,40)}},
+ {"GHOST",1,2,0,1,0,0,{C15(200,200,215),C15(245,245,255),C15(90,100,200),C15(245,245,255),C15(170,170,190),C15(245,245,255),C15(220,170,40)}}};
+static void cc_hsv(u16 c, int *h, int *s, int *v){
+    int r=(c&31)<<3, g=((c>>5)&31)<<3, b=((c>>10)&31)<<3, mx=r>g?r:g, mn=r<g?r:g; if(b>mx) mx=b; if(b<mn) mn=b;
+    int d=mx-mn, hh=0; *v=mx; *s=mx?d*255/mx:0;
+    if(d){ if(mx==r) hh=60*(g-b)/d; else if(mx==g) hh=120+60*(b-r)/d; else hh=240+60*(r-g)/d; if(hh<0) hh+=360; } *h=hh; }
+static u16 cc_rgb(int h, int s, int v){
+    h%=360; if(h<0) h+=360; if(s>255) s=255; if(v>255) v=255;
+    int i=h/60, f=(h%60)*255/60, p=v*(255-s)/255, q=v*(255-s*f/255)/255, t=v*(255-s*(255-f)/255)/255, r, g, b;
+    switch(i){ case 0: r=v;g=t;b=p; break; case 1: r=q;g=v;b=p; break; case 2: r=p;g=v;b=t; break; case 3: r=p;g=q;b=v; break; case 4: r=t;g=p;b=v; break; default: r=v;g=p;b=q; }
+    return (u16)((r>>3)|((g>>3)<<5)|((b>>3)<<10)); }
+static const char *const cc_sch_nm[9]={"ANALOGOUS","COMPLEMENT","TRIAD","SPLIT","MONO","PASTEL","NEON","EARTH","NIGHT"};
+static const s16 cc_dh[9][6]={{30,-30,60,-60,15,-15},{180,0,180,0,180,0},{120,240,120,240,0,180},{150,210,150,210,180,0},{0,0,0,0,0,0},{0,40,80,120,200,300},{0,60,120,180,240,300},{25,35,95,15,45,200},{250,270,230,300,210,50}};
+static const u8 cc_ss[9][6]={{200,200,170,170,220,220},{210,160,230,120,190,255},{220,220,170,170,255,140},{200,220,180,160,230,120},{230,200,170,140,110,80},{70,80,60,70,90,60},{255,255,255,255,255,255},{160,140,120,180,100,70},{200,180,220,150,240,200}};
+static const u8 cc_vv[9][6]={{210,160,230,140,190,120},{220,150,120,230,170,90},{220,200,150,130,100,240},{220,150,230,120,190,90},{90,130,170,210,240,255},{250,245,250,240,250,245},{255,255,255,255,255,255},{110,150,130,90,190,160},{60,90,50,110,70,230}};
+static int cc_pidx(u16 c){ for(int i=0;i<NPRESET;i++) if(preset_col[i]==c) return i; return -1; }
+static void cc_scheme(CRow *R, int nr, int a, u16 lock, int sch){        // paint every unlocked colour row to go with the colour in row a
+    int h0,s0,v0; cc_hsv(*R[a].c,&h0,&s0,&v0); int k=0;
+    for(int i=0;i<nr;i++) if(R[i].kind==3 && i!=a && !((lock>>i)&1)){ int sl=k%6; k++;
+        *R[i].c = cc_rgb(sch>=7 ? cc_dh[sch][sl] : h0+cc_dh[sch][sl], cc_ss[sch][sl], cc_vv[sch][sl]); } }
+static void cc_set8(CRow *R, int nr, u16 lock, u8 *p, int val){ for(int i=0;i<nr;i++) if(R[i].v==p){ if(!((lock>>i)&1)) *p=(u8)val; return; } *p=(u8)val; }
+static void cc_set16(CRow *R, int nr, u16 lock, u16 *p, u16 val){ for(int i=0;i<nr;i++) if(R[i].c==p){ if(!((lock>>i)&1)) *p=val; return; } *p=val; }
+static void cc_name(volatile u16 *pg, char *nm){
+    char b[9]; scpy(b,nm); int n=textlen(b), cur=0, t=0; if(n<1){ scpy(b,"PIP"); n=3; }
+    oam_hide_all(); oam_flush(); wait_release();
     while(1){
-        const char *rn[NH]={"BODY","HEIGHT","BUILD", hum.style?"FUR":"SKIN", hum.style?"EARS + TAIL":"HAIR", hum.style?"MUZZLE":"SHOES","SHIRT","PANTS","BELT","EYES"};
+        box(pg,36,52,168,56); rect(pg,37,53,166,12,6); ctext(pg,120,56,"WHAT IS YOUR NAME?",C_GOLD);
+        for(int k=0;k<8;k++){ char ch[2]={ k<n?b[k]:'_',0 }; int c = k==cur ? C_GOLD : k<n ? C_WHITE : C_DGREY; text(pg,80+k*10,72,ch,c,2); if(k==cur && (t&16)) rect(pg,80+k*10,89,8,1,C_GOLD); }
+        ctext(pg,120,94,"UP/DOWN: LETTER   LEFT/RIGHT: MOVE   A: OK",C_GREY);
+        vsync(); read_keys(); t++;
+        if(HIT(K_UP)||HIT(K_DOWN)){ if(cur>=n){ b[cur]='A'; n=cur+1; b[n]=0; } else { char c=b[cur]; c = HIT(K_UP) ? (c=='Z'?' ':c==' '?'A':c+1) : (c=='A'?' ':c==' '?'Z':c-1); b[cur]=c; } sfx(7); }
+        if(HIT(K_RIGHT) && cur<7){ cur++; if(cur>=n){ b[cur]='A'; n=cur+1; b[n]=0; } }
+        if(HIT(K_LEFT) && cur>0) cur--;
+        if(HIT(K_A)||HIT(K_B)||HIT(K_START)){ while(n>0 && b[n-1]==' ') n--; b[n]=0; if(n==0){ scpy(b,"PIP"); } scpy(nm,b); sfx(2); wait_release(); return; }
+    }
+}
+static int cc_run(volatile u16 *pg, int human, int first){
+    static const char *const body_n[2]={"HUMAN","FURRY"}, *const ht_n[5]={"TINY","SHORT","AVERAGE","TALL","TOWERING"}, *const bd_n[3]={"SLIM","NORMAL","BROAD"},
+        *const shell_n[3]={"SHORT","NORMAL","LONG"}, *const pat_n[5]={"PLAIN","STRIPED","SPOTTED","BANDED","CHECKED"}, *const eye_n[2]={"SMALL","BIG"},
+        *const ant_n[3]={"CURLED","STRAIGHT","DROOPY"}, *const legs_n[3]={"FOUR","SIX","EIGHT"}, *const horn_n[2]={"NONE","HORN"};
+    CRow R[16]; int nr=0;
+    #define CR(a,b,c,d,e,f,g,h) R[nr++]=(CRow){a,b,c,d,e,f,g,h}
+    CR("NAME",0,0,0,0,0,0,0); CR("LOOKS",0,1,0,0,0,0,0);
+    if(human){
+        CR("BODY",0,2,2,&hum.style,body_n,0,0); CR("HEIGHT",0,2,5,&hum.height,ht_n,0,0); CR("BUILD",0,2,3,&hum.build,bd_n,0,0);
+        CR("SKIN","FUR",3,0,0,0,&hum.col[HC_SKIN],0); CR("HAIR","EARS+TAIL",3,0,0,0,&hum.col[HC_HAIR],0); CR("SHOES","MUZZLE",3,0,0,0,&hum.col[HC_ACC],0);
+        CR("SHIRT",0,3,0,0,0,&hum.col[HC_SHIRT],0); CR("PANTS",0,3,0,0,0,&hum.col[HC_PANTS],0); CR("BELT",0,3,0,0,0,&hum.col[HC_BELT],0); CR("EYES",0,3,0,0,0,&hum.col[HC_EYES],0);
+    } else {
+        CR("LENGTH",0,2,3,&look.shell,shell_n,0,0); CR("PATTERN",0,2,5,&look.pat,pat_n,0,0); CR("EYE SIZE",0,2,2,&look.eye,eye_n,0,0);
+        CR("ANTENNAE",0,2,3,&look.ant,ant_n,0,0); CR("LEGS",0,2,3,&look.legs,legs_n,0,0); CR("HORN",0,2,2,&look.horn,horn_n,0,0);
+        CR("SHELL",0,3,0,0,0,&look.col[LC_SHELL],0); CR("MARKINGS",0,3,0,0,0,&look.col[LC_MARK],&look.pat); CR("HEAD",0,3,0,0,0,&look.col[LC_HEAD],0);
+        CR("EYES",0,3,0,0,0,&look.col[LC_EYE],0); CR("ANT COL",0,3,0,0,0,&look.col[LC_ANT],0); CR("LEG COL",0,3,0,0,0,&look.col[LC_LEGS],0); CR("HORN COL",0,3,0,0,0,&look.col[LC_HORN],&look.horn);
+    }
+    void *st = human ? (void*)&hum : (void*)&look; int ss = human ? (int)sizeof hum : (int)sizeof look;
+    int np = human ? NCHP : NCBP;
+    char nm[9]; scpy(nm,look.name); if(textlen(nm)<1) scpy(nm,"PIP");
+    u8 before[40]; char bnm[9]; memcpy(before,st,ss); scpy(bnm,nm);
+    u8 hist[8][40]; char hnm[8][9]; int hn=0, hp=0;
+    #define PUSH() do{ memcpy(hist[hp],st,ss); scpy(hnm[hp],nm); hp=(hp+1)&7; if(hn<8) hn++; }while(0)
+    #define APPLY() do{ if(human) hum_palette(); else bug_build(); }while(0)
+    int sel=0, top=0, dirty=1, t=0, pi=-1, sch=-1, rep=0, note_t=0; u16 lock=0; char note[32]; note[0]=0;
+    wait_release(); oam_hide_all(); oam_flush();
+    if(human){ if(!hum.made) hum_from_look(); hum.made=1; hum_palette(); } else bug_build();
+    while(1){
         if(dirty){ dirty=0; char b[40];
-            panel(pg,12,20,216,136, first ? "YOU ARE A HUMANOID NOW" : "THE MIRROR: HUMANOID");
-            for(int i=0;i<NH;i++){ int y=36+i*9; if(i==sel) rect(pg,16,y-2,124,9,6);
-                text(pg,20,y,rn[i], i==sel?C_WHITE:C_GREY,1);
-                const char *opt = i==H_BODY?body_n[hum.style] : i==H_HEIGHT?ht_n[hum.height] : i==H_BUILD?bd_n[hum.build] : 0;
-                if(opt){ scpy(b,"<"); scat(b,opt); scat(b,">"); text(pg,76,y,b,i==sel?C_GOLD:C_GREY,1); }
-                if(cmap[i]>=0){ BG_PAL[224+i]=hum.col[cmap[i]]; rect(pg,122,y-1,12,7,224+i); frame1(pg,122,y-1,12,7,i==sel?C_WHITE:C_DGREY); } }
+            panel(pg,12,20,216,136, human ? (first?"YOU ARE A HUMANOID NOW":"THE MIRROR: HUMANOID") : (first?"MAKE YOUR BUG":"THE MIRROR"));
+            if(sel<top) top=sel; if(sel>=top+8) top=sel-7;
+            for(int j=0;j<8 && top+j<nr;j++){ int i=top+j, y=36+j*9; CRow *r=&R[i]; int on=!r->dep || *r->dep;
+                if(i==sel) rect(pg,16,y-2,116,9,6);
+                text(pg,20,y,(human&&hum.style&&r->nm2)?r->nm2:r->nm, i==sel?C_WHITE:on?C_GREY:C_DGREY,1);
+                int vc = i==sel?C_GOLD:C_GREY;
+                if(r->kind==0) text(pg,64,y,nm,vc,1);
+                else if(r->kind==1){ scpy(b,"<"); scat(b, pi>=0 ? (human?cc_hp[pi].nm:cc_bp[pi].nm) : "READY-MADE"); scat(b,">"); text(pg,64,y,b,vc,1); }
+                else if(r->kind==2){ scpy(b,"<"); scat(b,r->opt[*r->v]); scat(b,">"); text(pg,64,y,b,on?vc:C_DGREY,1); }
+                else if(on){ BG_PAL[224+j]=*r->c; rect(pg,64,y-1,24,8,224+j); frame1(pg,64,y-1,24,8,i==sel?C_WHITE:C_DGREY); int pc=cc_pidx(*r->c); text(pg,92,y,pc>=0?preset_name[pc]:"CUSTOM",i==sel?C_WHITE:C_GREY,1); }
+                else text(pg,64,y,"(OFF)",C_DGREY,1);
+                if(i>=1) rect(pg,124,y,5,5,((lock>>i)&1)?C_GOLD:C_DGREY); }
+            if(top>0) text(pg,134,36,"^",C_CYAN,1); if(top+8<nr) text(pg,134,100,"V",C_CYAN,1);
             rect(pg,146,38,74,62,1); frame1(pg,146,38,74,62,C_DGREY);
-            ctext(pg,183,104,body_n[hum.style],C_GOLD);
-            ctext(pg,120,128, cmap[sel]>=0 ? "A: PICK A COLOUR" : "LEFT/RIGHT: CHANGE IT", C_GREY);
-            ctext(pg,120,138, first ? "SELECT: SURPRISE ME        START: ALL DONE" : "SELECT: SURPRISE ME   START: DONE   B: UNDO", C_CYAN);
-            if(first) ctext(pg,120,147,"YOU CAN CHANGE THIS LATER AT YOUR SHIP'S MIRROR",C_DGREY); }
-        t++; oam_hide_all();
-        { int n=hum_oam(0,183,95,1,1,0,0,0,0,-1); shadow_oam[n].a0=((95-2)&255)|(1<<14); shadow_oam[n].a1=((183-8)&511); shadow_oam[n].a2=T_SHADOW; }
+            if(human) for(int k=0;k<5;k++) rect(pg,149,94-k*13,4,2,k==hum.height?C_GOLD:C_DGREY);
+            ctext(pg,183,104,nm,C_GOLD);
+            CRow *cr=&R[sel]; int on=!cr->dep || *cr->dep;
+            ctext(pg,120,113, cr->kind==0 ? "A: TYPE A NAME" : cr->kind==1 ? "LEFT/RIGHT: TRY A READY-MADE LOOK" : cr->kind==2 ? "LEFT/RIGHT: CHANGE IT" : on ? "LEFT/RIGHT: BROWSE   A: MIX YOUR OWN" : "TURN ITS PART ON FIRST", C_GREY);
+            ctext(pg,120,122,"L: LOCK  R: MATCH COLOURS  SEL: SURPRISE", C_CYAN);
+            if(hn){ scpy(b,"B: UNDO ("); ncat(b,hn); scat(b,")   START: ALL DONE"); } else scpy(b, first ? "B: CANCEL   START: ALL DONE" : "B: BACK   START: ALL DONE");
+            ctext(pg,120,131,b,C_CYAN);
+            if(note_t) ctext(pg,120,140,note,C_GOLD); else if(first) ctext(pg,120,140,"CHANGE THIS ANYTIME AT YOUR SHIP'S MIRROR",C_DGREY); }
+        t++; int facing=(t/150)&1;
+        if(human){ int n=hum_oam(0,183,95-((t>>5)&1),1,facing,0,0,0,0,-1); shadow_oam[n].a0=((95-2)&255)|(1<<14); shadow_oam[n].a1=((183-8)&511); shadow_oam[n].a2=T_SHADOW; }
+        else { int wf=(t>>3)&1; set_affine(31, facing?128:-128, 0, 0, 128);
+            shadow_oam[0].a0=((70-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((183-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
+            shadow_oam[1].a0=((70-2)&255)|(1<<14); shadow_oam[1].a1=((183-8)&511); shadow_oam[1].a2=T_SHADOW; }
         vsync(); oam_flush(); read_keys();
-        if(HIT(K_UP)){ sel=(sel+NH-1)%NH; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%NH; dirty=1; sfx(7); }
-        int d = HIT(K_RIGHT)?1 : HIT(K_LEFT)?-1 : 0;
-        if(d){ int ch=1; switch(sel){ case H_BODY: hum.style^=1; break; case H_HEIGHT: hum.height=(hum.height+d+5)%5; break; case H_BUILD: hum.build=(hum.build+d+3)%3; break; default: ch=0; }
-               if(ch){ dirty=1; sfx(2); } }
-        if(HIT(K_A) && cmap[sel]>=0){ oam_hide_all(); oam_flush(); hum.col[cmap[sel]]=pick_colour(pg,rn[sel],hum.col[cmap[sel]]); hum_palette(); dirty=1; }
-        if(HIT(K_SEL)){ hum.style=rndi(2); hum.height=rndi(5); hum.build=rndi(3); for(int i=0;i<NHC;i++) hum.col[i]=preset_col[rndi(NPRESET)]; hum_palette(); dirty=1; sfx(6); }
-        if(HIT(K_START)) break;
-        if(HIT(K_B)){ hum=before; hum_palette(); form_palette(); wait_release(); oam_hide_all(); oam_flush(); return 0; }
-    }
-    hum.made=1; hum_save(); form_palette(); sfx(6); wait_release(); oam_hide_all(); oam_flush(); return 1;
-}
-static int make_bug(volatile u16 *pg, int first){
-    enum { R_NAME, R_SHELL, R_PAT, R_MARK, R_HEAD, R_EYES, R_ANT, R_LEGS, R_HORN, NROWS };
-    static const char *const rows[NROWS]={"NAME","SHELL","PATTERN","MARKINGS","HEAD","EYES","ANTENNAE","LEGS","HORN"};
-    static const char *const shell_n[3]={"SHORT","NORMAL","LONG"}, *const pat_n[5]={"PLAIN","STRIPED","SPOTTED","BANDED","CHECKED"}, *const eye_n[2]={"SMALL","BIG"}, *const ant_n[3]={"CURLED","STRAIGHT","DROOPY"}, *const legs_n[3]={"FOUR","SIX","EIGHT"}, *const horn_n[2]={"NONE","HORN"};
-    static const s8 col_of[NROWS]={-1,LC_SHELL,-1,LC_MARK,LC_HEAD,LC_EYE,LC_ANT,LC_LEGS,LC_HORN};
-    int sel=0, dirty=1, editing=0, cur=0, t=0; char nm[9]; scpy(nm,look.name); int n=textlen(nm); if(n<1){ scpy(nm,"PIP"); n=3; }
-    BugLook before=look;
-    wait_release(); bug_build();
-    while(1){
-        if(dirty){ dirty=0; char b[40];
-            panel(pg,12,20,216,136, first ? "MAKE YOUR BUG" : "THE MIRROR");
-            for(int i=0;i<NROWS;i++){ int y=37+i*10; if(i==sel) rect(pg,16,y-2,124,10,6);
-                text(pg,20,y,rows[i], i==sel?C_WHITE:C_GREY,1);
-                const char *opt=0;
-                switch(i){ case R_NAME: break; case R_SHELL: opt=shell_n[look.shell]; break; case R_PAT: opt=pat_n[look.pat]; break; case R_EYES: opt=eye_n[look.eye]; break;
-                           case R_ANT: opt=ant_n[look.ant]; break; case R_LEGS: opt=legs_n[look.legs]; break; case R_HORN: opt=horn_n[look.horn]; break; default: break; }
-                if(i==R_NAME){ for(int k=0;k<8;k++){ char ch[2]={ k<n?nm[k]:'_',0 }; int c = (editing && k==cur) ? C_GOLD : k<n ? C_WHITE : C_DGREY; text(pg,64+k*6,y,ch,c,1); if(editing && k==cur && (t&16)) rect(pg,64+k*6,y+6,4,1,C_GOLD); } }
-                else if(opt){ scpy(b,"<"); scat(b,opt); scat(b,">"); text(pg,64,y,b,i==sel?C_GOLD:C_GREY,1); }
-                if(col_of[i]>=0 && !(i==R_HORN && !look.horn) && !(i==R_MARK && !look.pat)){ BG_PAL[224+i]=look.col[col_of[i]]; rect(pg,122,y-1,12,8,224+i); frame1(pg,122,y-1,12,8,i==sel?C_WHITE:C_DGREY); } }
-            rect(pg,146,38,74,62,1); frame1(pg,146,38,74,62,C_DGREY);
-            { char nb[12]; scpy(nb,nm); ctext(pg,183,92,nb,C_GOLD); }
-            const char *tip = editing ? "UP/DOWN: LETTER  LEFT/RIGHT: MOVE  A: DONE" : sel==R_NAME ? "A: TYPE A NAME" : col_of[sel]>=0 ? "LEFT/RIGHT: SHAPE   A: ITS COLOUR" : "LEFT/RIGHT: CHANGE IT";
-            ctext(pg,120,128,tip,C_GREY);
-            ctext(pg,120,138, first ? "SELECT: SURPRISE ME        START: ALL DONE" : "SELECT: SURPRISE ME   START: DONE   B: UNDO ALL", C_CYAN);
-            if(first) ctext(pg,120,147,"YOU CAN CHANGE THIS LATER AT YOUR SHIP'S MIRROR",C_DGREY);
+        if(note_t && --note_t==0) dirty=1;
+        CRow *cr=&R[sel]; int on=!cr->dep || *cr->dep;
+        if(HIT(K_UP)){ sel=(sel+nr-1)%nr; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%nr; dirty=1; sfx(7); }
+        int d=0, fresh=0; if(HELD(K_LEFT)||HELD(K_RIGHT)){ rep++; fresh=(rep==1); if(fresh || (rep>14 && !(rep&3) && (cr->kind==3||cr->kind==1))) d=HELD(K_RIGHT)?1:-1; } else rep=0;
+        if(HIT(K_A) && cr->kind==2) d=1, fresh=1;
+        if(d){
+            if(cr->kind==2){ PUSH(); *cr->v=(u8)((*cr->v+d+cr->n)%cr->n); pi=-1; APPLY(); dirty=1; sfx(2); }
+            else if(cr->kind==3 && on){ if(fresh) PUSH(); int p=cc_pidx(*cr->c); p = p<0 ? (d>0?0:NPRESET-1) : (p+d+NPRESET)%NPRESET; *cr->c=preset_col[p]; pi=-1; APPLY(); dirty=1; sfx(7); }
+            else if(cr->kind==1){ if(fresh) PUSH(); pi = pi<0 ? (d>0?0:np-1) : (pi+d+np)%np;
+                if(human){ const CHumP *p=&cc_hp[pi]; cc_set8(R,nr,lock,&hum.style,p->style); cc_set8(R,nr,lock,&hum.height,p->height); cc_set8(R,nr,lock,&hum.build,p->build); for(int k=0;k<7;k++) cc_set16(R,nr,lock,&hum.col[k],p->col[k]); }
+                else { const CBugP *p=&cc_bp[pi]; cc_set8(R,nr,lock,&look.shell,p->shell); cc_set8(R,nr,lock,&look.ant,p->ant); cc_set8(R,nr,lock,&look.horn,p->horn); cc_set8(R,nr,lock,&look.eye,p->eye); cc_set8(R,nr,lock,&look.legs,p->legs); cc_set8(R,nr,lock,&look.pat,p->pat); for(int k=0;k<7;k++) cc_set16(R,nr,lock,&look.col[k],p->col[k]); }
+                APPLY(); dirty=1; sfx(6); }
         }
-        t++; int wf=(t>>3)&1;
-        set_affine(31, -128, 0, 0, 128);
-        shadow_oam[0].a0=((70-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((183-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
-        shadow_oam[1].a0=((70-2)&255)|(1<<14); shadow_oam[1].a1=((183-8)&511); shadow_oam[1].a2=T_SHADOW;
-        vsync(); oam_flush(); read_keys(); if(editing && (t&15)==0) dirty=1;
-        if(editing){
-            if(HIT(K_UP)||HIT(K_DOWN)){ if(cur>=n){ nm[cur]='A'; n=cur+1; nm[n]=0; } else { char c=nm[cur]; c = HIT(K_UP) ? (c=='Z'?' ':c==' '?'A':c+1) : (c=='A'?' ':c==' '?'Z':c-1); nm[cur]=c; } sfx(7); dirty=1; }
-            if(HIT(K_RIGHT) && cur<7){ cur++; if(cur>=n){ nm[cur]='A'; n=cur+1; nm[n]=0; } dirty=1; }
-            if(HIT(K_LEFT) && cur>0){ cur--; dirty=1; }
-            if(HIT(K_A)||HIT(K_B)||HIT(K_START)){ while(n>0 && nm[n-1]==' ') n--; nm[n]=0; if(n==0){ scpy(nm,"PIP"); n=3; } editing=0; dirty=1; sfx(2); }
-            continue; }
-        if(HIT(K_UP)){ sel=(sel+NROWS-1)%NROWS; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%NROWS; dirty=1; sfx(7); }
-        int d = HIT(K_RIGHT)?1 : HIT(K_LEFT)?-1 : 0;
-        if(d){ int ch=1; switch(sel){ case R_SHELL: look.shell=(look.shell+d+3)%3; break; case R_PAT: look.pat=(look.pat+d+5)%5; break; case R_EYES: look.eye^=1; break;
-                 case R_ANT: look.ant=(look.ant+d+3)%3; break; case R_LEGS: look.legs=(look.legs+d+3)%3; break; case R_HORN: look.horn^=1; break; default: ch=0; }
-               if(ch){ bug_build(); dirty=1; sfx(2); } }
-        if(HIT(K_A)){ if(sel==R_NAME){ editing=1; cur=0; dirty=1; }
-            else if(col_of[sel]>=0){ oam_hide_all(); oam_flush(); look.col[col_of[sel]]=pick_colour(pg,rows[sel],look.col[col_of[sel]]); bug_build(); dirty=1; }
-            else { d=1; if(sel==R_PAT) look.pat=(look.pat+1)%5; bug_build(); dirty=1; sfx(2); } }
-        if(HIT(K_SEL)){ look.shell=rndi(3); look.pat=rndi(5); look.eye=rndi(2); look.ant=rndi(3); look.legs=rndi(3); look.horn=rndi(3)==0;
-            look.col[LC_SHELL]=preset_col[rndi(NPRESET)]; look.col[LC_HEAD]=preset_col[rndi(NPRESET)]; look.col[LC_MARK]=preset_col[rndi(NPRESET)]; look.col[LC_EYE]=preset_col[rndi(NPRESET)]; look.col[LC_HORN]=preset_col[rndi(NPRESET)];
-            bug_build(); dirty=1; sfx(6); }
+        if(HIT(K_A)){
+            if(cr->kind==0){ PUSH(); cc_name(pg,nm); dirty=1; }
+            else if(cr->kind==3 && on){ u16 old=*cr->c; PUSH(); oam_hide_all(); oam_flush(); *cr->c=pick_colour(pg,(human&&hum.style&&cr->nm2)?cr->nm2:cr->nm,old);
+                if(*cr->c==old){ hp=(hp+7)&7; hn--; } else { pi=-1; APPLY(); } dirty=1; } }
+        if(HIT(K_L) && sel>=1){ lock^=(u16)(1<<sel); dirty=1; sfx(7); scpy(note,((lock>>sel)&1)?"LOCKED: SURPRISE AND LOOKS SKIP IT":"UNLOCKED"); note_t=60; }
+        if(HIT(K_R)){ int a=-1; if(cr->kind==3) a=sel; else for(int i=0;i<nr;i++) if(R[i].kind==3){ a=i; break; }
+            if(a>=0){ sch=(sch+1)%9; PUSH(); cc_scheme(R,nr,a,lock,sch); pi=-1; APPLY(); scpy(note,"PALETTE: "); scat(note,cc_sch_nm[sch]); note_t=70; dirty=1; sfx(6); } }
+        if(HIT(K_SEL)){ PUSH(); for(int i=0;i<nr;i++) if(R[i].kind==2 && !((lock>>i)&1)) *R[i].v=(u8)rndi(R[i].n);
+            int a=-1; for(int i=0;i<nr;i++) if(R[i].kind==3 && !((lock>>i)&1)){ a=i; break; }
+            if(a>=0){ *R[a].c=cc_rgb(rndi(360),140+rndi(116),120+rndi(136)); cc_scheme(R,nr,a,lock,rndi(9)); }
+            pi=-1; APPLY(); scpy(note,"SURPRISE!"); note_t=50; dirty=1; sfx(6); }
         if(HIT(K_START)) break;
-        if(HIT(K_B)){ if(first){ look=before; bug_build(); wait_release(); oam_hide_all(); oam_flush(); return 0; } look=before; scpy(nm,before.name); n=textlen(nm); bug_build(); dirty=1; sfx(4); }
+        if(HIT(K_B)){
+            if(hn>0){ hp=(hp+7)&7; hn--; memcpy(st,hist[hp],ss); scpy(nm,hnm[hp]); pi=-1; APPLY(); scpy(note,"UNDONE"); note_t=40; dirty=1; sfx(4); }
+            else { memcpy(st,before,ss); scpy(nm,bnm); if(human){ hum_palette(); form_palette(); } else bug_build(); wait_release(); oam_hide_all(); oam_flush(); return 0; } }
     }
-    scpy(look.name,nm); sfx(6); wait_release(); oam_hide_all(); oam_flush(); return 1;
+    scpy(look.name,nm);
+    if(human){ hum.made=1; hum_save(); form_palette(); }
+    sfx(6); wait_release(); oam_hide_all(); oam_flush(); return 1;
 }
+static int human_creator(volatile u16 *pg, int first){ return cc_run(pg,1,first); }
+static int make_bug(volatile u16 *pg, int first){ return cc_run(pg,0,first); }
 // how to play: lively pages with button badges, over the title planet, with your bug walking along
 typedef struct { const char *btn; const char *txt; } HelpLine;
 static const HelpLine help_pg[5][7]={
