@@ -212,3 +212,5 @@ The Technobeast feeds from **5 Tech Hives**. While a hive lives, the beast heals
 - At your ship: TROPHY CASE. KEEP an item forever (safe even if you faint) for permanent points: common 1, magic 3, rare 10, unique 50. Points give damage, gold and health. You can take uniques back out.
 - Or SCRAP it (B on the gear page, or in the case) for Tech Scrap. Tech Cores now need gold + scrap.
 - The Techno Shard doubles your damage on the Technobeast.
+
+- **Difficulty:** EASY, NORMAL, HARD, BRUTAL, NIGHTMARE. Beat the Ant King on NIGHTMARE to unlock **INSANE-SECT** in OPTIONS: every story dungeon has 54x the floors and its own 54 tiers to fight down through (tier 54 is the last).

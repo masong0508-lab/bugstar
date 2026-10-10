@@ -60,7 +60,7 @@ static int page_back=0;
 // options, save slots and menu requests (see save.inc)
 static volatile int opt_music=2;   // 0 off, 1 low, 2 full
 static volatile int opt_sfx=1;
-static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1;   // easy = (opt_diff==0)
+static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1;   // easy = (opt_diff==0)
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
@@ -232,9 +232,10 @@ static void kill_mon(DObj *o){
     int ilvl=dlv()*3+depth_no;
     if(boss){ music(1); if(!endless||forge_on){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
        
-        if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else if(zone_cleared){ if(tiers[zone]<9) tiers[zone]++; st_tiers++; char tb[40]; scpy(tb,"TIER "); ncat(tb,tiers[zone]); scat(tb," CLEARED! LOOT GETS BETTER"); say(tb); }
+        if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else if(zone_cleared){ if(tiers[TZ]<(opt_diff==5?53:9)) tiers[TZ]++; st_tiers++; char tb[40]; scpy(tb,"TIER "); ncat(tb,tiers[TZ]); scat(tb," CLEARED! LOOT GETS BETTER"); say(tb); }
               else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
     if(boss && mboss){ say("THE LABYRINTH FALLS SILENT"); earn(150+dlv()*30); xpv+=40+dlv()*8; }
+    if(boss && !endless && !forge_on && zone==5 && opt_diff==4 && !opt_insane){ opt_insane=1; settings_save(); say("INSANE-SECT UNLOCKED! SEE OPTIONS"); sfx(6); }
     gain_xp(xpv);
     Gear g; int drop=0;
     int uq_chance = hive ? 1000 : boss ? (mboss?600:300) : o->champ ? 50 : 4;          // in 1000
@@ -785,7 +786,7 @@ static void run_game(void){
             if(enter_dungeon_flag){ int fgs=(enter_dungeon_flag==3); if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; save_game(); fade(1); oam_hide_all(); oam_flush();
                 if(fgs) forge_begin();
                 depth_no=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
-                tier_lock = (!endless && zone_cleared) ? tiers[zone]+1 : 0;
+                tier_lock = (!endless && zone_cleared) ? tiers[TZ]+1 : 0;
                 scene=1; dungeon_enter();
                 if(tier_lock>0){ char tb[40]; scpy(tb,"TIER "); ncat(tb,tier_lock+1); scat(tb,"! MORE FLOORS, TOUGHER BOSS"); say(tb); }
 #ifdef TEST_FOE

@@ -12,16 +12,18 @@ static const char *const bug_power[6]={"+10 GOLD","+5 HEALTH","LIGHTS THE DARK",
 // ---- endless galaxy (after the Ant King)
 static int endless=0, world_no=0, best_depth=0, w_dlv=6; static s64 loot=0; static u32 galaxy_seed=1;
 // ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
-static u8 tiers[6];                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
+static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
+#define TZ (zone+(opt_diff==5?6:0))
+static const u8 dif_dmg[6]={1,2,3,4,6,10}, dif_hun[6]={12,12,8,7,6,5}, dif_gold[6]={0,0,25,50,100,200};   // damage taken (in halves), hunger speed (/12), gold bonus                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
 static int st_kills[11], st_fish, st_barrels, st_mined, st_dodges, st_planets, st_uniq, st_tiers, st_floors;
 static u32 ach_done;                                 // one bit per achievement
 static int pet_xp, pet_lv;
 // ---- the drone outposts and Bolt's memory: one bit per star system with its outpost destroyed, how many data cores you hold
 static u32 base_mask; static int data_cores, outposts_done, base_mode;   // base_mode: 1 while you are inside an outpost
 static int tier_lock=-1;                                                           // the tier this dungeon run started at: beating the boss must not change the floor count under your feet
-static int tier_now(void){ if(scene==1 && tier_lock>=0) return tier_lock; return (!endless && zone_cleared) ? tiers[zone]+1 : 0; }     // 0 on a first run, 1+ when you go back down a cleared zone
+static int tier_now(void){ if(scene==1 && tier_lock>=0) return tier_lock; return (!endless && zone_cleared) ? tiers[TZ]+1 : 0; }     // 0 on a first run, 1+ when you go back down a cleared zone
 static int dlv(void){ int d = endless ? w_dlv : zone + tier_now()*2; return d>30?30:d; }
-static int zone_floors(void){ return endless ? 9999 : (zone+3)*3+tier_now()*3; }
+static int zone_floors(void){ return endless ? 9999 : (zone+3)*(opt_diff==5?54:3)+tier_now()*3; }
 static int gold_find=100;
 // ---- FLOOR EVENTS: most dungeon floors roll one, with a twist or a goal
 enum { FE_NONE, FE_VAULT, FE_NEST, FE_ELITE, FE_DARK, FE_SPEED, FE_CURSED, FE_RUSH, FE_BLESSED, FE_AMBUSH, FE_QUIET, NFE };
@@ -357,7 +359,7 @@ static void recalc(void){
     d_sting += have_bug[BUG_BEE]*2;
     if(eqa.it==IT_SHELL && eqa.sub==3 && eqa.rar!=R_UNIQUE) d_spd -= 15;        // the sticky shell slows you
     { int tp=trophy_points(); d_dmg += tp/15; gold_find += tp/5; maxh += tp/10; d_def += tp/30; }   // your trophy case
-    if(opt_diff==2) gold_find+=25;                                                   // hard mode pays better
+    gold_find+=dif_gold[opt_diff];                                                   // hard mode pays better
     { int r = fame>=1200?5: fame>=700?4: fame>=350?3: fame>=150?2: fame>=50?1:0; gold_find += r*5; maxh += r*3; d_crit += r; }   // fame has its perks
     maxh=sadd(maxh,sadd(20,sadd(smul(st_vit,3),smul(level,2)))); if(maxh<1) maxh=1;
     maxmp=sadd(maxmp,sadd(5,smul(st_mag,3))); if(maxmp<0) maxmp=0;
@@ -394,7 +396,7 @@ static void ach_check(void){
         char b[40]; scpy(b,"FEAT: "); scat(b,ach[i].name); scat(b," +"); ncat(b,ach[i].gold); scat(b,"G"); say(b); sfx(6); hud_now(); }
 }
 static void new_game(void){
-    for(int i=0;i<6;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; base_mask=0; data_cores=0; outposts_done=0; base_mode=0;
+    for(int i=0;i<12;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; base_mask=0; data_cores=0; outposts_done=0; base_mode=0;
     shuffle(berry_map,8); shuffle(seed_map,6);
     for(int i=0;i<8;i++) berry_known[i]=0; for(int i=0;i<6;i++) seed_known[i]=0;
     for(int i=0;i<6;i++) have_bug[i]=0;
@@ -512,12 +514,12 @@ static void free_bug(int t){
 static void hurt(int n){
     if(invuln) return;
     s64 def = sadd(d_def, shield_t ? sadd(5,sdiv(st_mag,2)) : 0);
-    s64 nn = n - sdiv(def,2); if(nn>=1){ if(opt_easy) nn=(nn+1)>>1; else if(opt_diff==2) nn=(nn*3)>>1; } if(nn<1) nn=1;
+    s64 nn = n - sdiv(def,2); if(nn>=1){ if(opt_easy) nn=(nn+1)>>1; else if(opt_diff>=2) nn=(nn*dif_dmg[opt_diff])>>1; } if(nn<1) nn=1;
     if(def>=100 || rndi(100) < (int)def){ say("BLOCKED!"); invuln=15; return; }
     hearts-=nn; invuln=30; shake_t=opt_shake?10:0; sfx(4); hud_now();
 }
 static void hunger_tick(int every){
-    if(opt_easy) every+=every/2; else if(opt_diff==2) every=every*2/3;
+    if(opt_easy) every+=every/2; else if(opt_diff>=2) every=every*dif_hun[opt_diff]/12;
     if(mark_on(MK_FULL)) every+=every/2; if(mark_on(MK_HUNGRY)) every=every*2/3;
     if(++hunger_t < every) return; hunger_t=0;
     if(food>0){ food--; if(food==20) say("YOU ARE HUNGRY"); if(food%5==0) hud_now(); }

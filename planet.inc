@@ -269,7 +269,7 @@ IWRAM static void render_planet(volatile u16 *pg){
 // ---------------------------------------------------------------- the status bar, messages
 static u32 phud_sig=0;
 static void planet_hud(void){
-    phud_sig=hud_sig(); char b[24]; scpy(b,world_name()); if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[zone]+1); }
+    phud_sig=hud_sig(); char b[24]; scpy(b,world_name()); if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[TZ]+1); }
     for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b);
 }
 static void show_msg(const char *s){ int n=0; while(s[n] && n<39){ msg[n]=s[n]; n++; } msg[n]=0; msg_timer = n ? 150 : 0; }
