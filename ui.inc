@@ -18,7 +18,7 @@ static void describe(const Gear *g, char *b){
         case IT_WARP: scpy(b,"PORTAL OUT. COME BACK LATER"); break;
         case IT_GEM: scpy(b,gem_use[g->sub&3]); scat(b," OR SELL IT"); break;
         case IT_BOOK: scpy(b,"TEACHES A SPELL"); break;
-        case IT_FISH: scpy(b, g->sub==0 ? "FOOD +40" : g->sub==4 ? "WORTH A LOT OF GOLD" : "FEED IT TO BUDDY"); break;
+        case IT_FISH: scpy(b, g->sub==0 ? "FOOD +40" : g->sub==4 ? "WORTH A LOT OF GOLD" : g->sub>=5 ? "RARE! EAT FOR A POWER-UP OR SELL" : "FEED IT TO BUDDY"); break;
     }
     if(g->it==IT_THORN||g->it==IT_SHELL||g->it==IT_CHARM){
         const char *const *pt = g->it==IT_SHELL ? apre_txt : wpre_txt;

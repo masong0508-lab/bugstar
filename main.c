@@ -349,9 +349,98 @@ static void knock_tick(void){           // things that were hit slide, slam into
 static int fish_state=0, fish_t=0;
 static int water_ahead(s32 dirx, s32 diry){
     s32 x=px_+((dirx*13)>>4), y=py_+((diry*13)>>4); int tx=x>>16, ty=y>>16;
-    if(tx<0||ty<0||tx>=MW||ty>=MW) return 0; return fmat[ty*MW+tx]==FL_WATER && dmap[ty*MW+tx]==D_FLOOR;
+    if(tx<0||ty<0||tx>=MW||ty>=MW) return 0; return (fmat[ty*MW+tx]==FL_WATER||fmat[ty*MW+tx]==FL_SHALLOW) && dmap[ty*MW+tx]==D_FLOOR;
 }
 static int spark_t=0, spark_c=60, spark_y=80;
+// ---- fishing 2: everything here runs every 60th of a second, so it answers the instant you press
+// angler rank (from fish caught): quicker bites, longer bite window, stronger reel, better odds
+// states: 0 idle, 1 waiting (nibbles first), 2 bite (press A), 3 the fight (hold A to reel, LET GO when it surges)
+static int fish_buf=0, fish_rc=0, fish_f=0, fish_hp=0, fish_hpm=1, fish_ten=0, fish_sg=0, fish_sgw=0, fish_streak=0, fish_pool=0, fish_sig=0;
+static u8 pool_left[10];
+static const char *const rank_nm[6]={"NOVICE","ANGLER","SKILLED","EXPERT","MASTER","LEGEND"};
+static int angler(void){ return st_fish>=120?5 : st_fish>=70?4 : st_fish>=35?3 : st_fish>=15?2 : st_fish>=5?1 : 0; }
+static int pool_at(s32 dirx, s32 diry){
+    s32 x=px_+((dirx*13)>>4), y=py_+((diry*13)>>4); int tx=x>>16, ty=y>>16; int r=rid[ty*MW+tx]; return r>=10 ? 0 : r; }
+static int pool_stock(int p){                         // every pool holds a few fish; deep grotto pools hold more
+    int sg=(depth_no*131+nrooms*17+rooms[0].x*7+rooms[0].y*3+rooms[1].x*11+rooms[1].y*5)&0xFFFF; sg|=0x10000;
+    if(sg!=fish_sig){ fish_sig=sg; for(int i=0;i<10;i++) pool_left[i]=255; fish_streak=0; }
+    if(pool_left[p]==255) pool_left[p]=(u8)(4+rndi(4)+(rooms[p].style==ST_GROTTO?3:0));
+    return pool_left[p]; }
+static int fish_roll(int rb){
+    int r=rndi(1000);
+    if(r<3+rb/40) return 7; if(r<12+rb/10) return 6; if(r<35+rb/5) return 5;
+    r=rndi(100); return r<45?0 : r<62?1 : r<79?2 : r<88?3 : 4; }
+static void fish_catch(void){
+    int f=fish_f, rk=angler();
+    Gear g={IT_FISH,(u8)f,(u8)(f>=5?R_RARE:f>=3?R_MAGIC:R_NORMAL),0,0,0};
+    if(!add_gear(g)){ fish_state=0; fish_rc=30; return; }
+    st_fish++; fish_streak++; if(pool_left[fish_pool]>0 && pool_left[fish_pool]!=255) pool_left[fish_pool]--;
+    ach_check(); sfx(f>=5?6:2); fish_state=0; fish_rc=14;
+    char b[40];
+    if(f>=5){ scpy(b, f==7?"LEGENDARY! ":"RARE CATCH! "); scat(b,fish_name[f]); scat(b,"!"); say(b); msg_timer=80; if(opt_shake) shake_t=6; }
+    else if(angler()>rk){ scpy(b,"ANGLER RANK: "); scat(b,rank_nm[angler()]); scat(b,"!"); say(b); msg_timer=70; sfx(6); }
+    else if(fish_streak>=3 && !(fish_streak%3)){ int gv=6+dlv()*4+depth_no*2+fish_streak*2; earn(gv); scpy(b,"CATCH STREAK X"); ncat(b,fish_streak); scat(b," +"); ncat(b,gv); scat(b,"G"); say(b); sfx(7); }
+    if(rndi(100)<5){ int gv=10+dlv()*6+depth_no*3; earn(gv); scpy(b,"A POUCH ON THE LINE! +"); ncat(b,gv); scat(b,"G"); say(b); sfx(7); }
+    else if(rndi(100)<2) add_item(IT_GEM,rndi(4));
+    if(pool_left[fish_pool]==0) { say("THE POOL IS FISHED OUT"); msg_timer=60; }
+}
+// returns 1 when fishing used this step's A press
+static int fish_step(s32 dirx, s32 diry, int blocked, int foe){
+    int rk=angler();
+    if(fish_rc) fish_rc--;
+    if(fish_state && (foe || hurt_flash)){ fish_state=0; say("A MONSTER! LINE CUT"); fish_rc=20; return 0; }
+    int wet=water_ahead(dirx,diry);
+    if(fish_state==0){
+        if(blocked || !wet || fish_rc) return 0;
+        if(!(HIT(K_A) || (HELD(K_A) && fish_streak+st_fish>=0))) return 0;
+        int p=pool_at(dirx,diry); fish_pool=p;
+        if(pool_stock(p)==0){ if(HIT(K_A)){ say("FISHED OUT. TRY ANOTHER POOL"); sfx(11); } return HIT(K_A); }
+        fish_state=1; fish_buf=0; fish_t=40+rndi(100)-rk*8; if(fish_t<28) fish_t=28; sfx(8); return 1;
+    }
+    if(fish_state==1){
+        if(HIT(K_A)){ if(fish_t>36){ fish_state=0; fish_rc=8; say("YOU REEL IN"); return 1; } fish_buf=14; }
+        if(fish_buf) fish_buf--;
+        if(fish_t==30 || fish_t==18) sfx(11);
+        if(--fish_t<=0){ fish_state=2; fish_t=42+rk*6; sfx(8); if(opt_shake) shake_t=2;
+            int rb=rk*8 + (depth_no<20?depth_no*2:40) + (rooms[fish_pool].style==ST_GROTTO?40:0) + (fish_streak<5?fish_streak*10:50) + (mark_on(MK_LUCKY)?30:0);
+            fish_f=fish_roll(rb);
+            if(fish_buf) goto hook; }
+        return 1;
+    }
+    if(fish_state==2){
+        if(HIT(K_A)){ hook:
+            { static const u16 hp[8]={90,110,120,150,170,200,240,300}; fish_hpm=fish_hp=hp[fish_f]*10; }
+            fish_state=3; fish_ten=250; fish_sg=0; fish_sgw=60+rndi(50)-fish_f*4; sfx(2); return 1; }
+        if(--fish_t<=0){ fish_state=0; fish_streak=0; fish_rc=24; say("IT GOT AWAY"); sfx(11); }
+        return 1;
+    }
+    // state 3: the fight. hold A to reel. when it surges (bar flashes) let go or the line snaps
+    int held=HELD(K_A)!=0;
+    if(fish_sg>0){ fish_sg--; if(!fish_sg) fish_sgw=55+rndi(55)-fish_f*4; }
+    else if(--fish_sgw<=0){ fish_sg=24+fish_f*3; }
+    if(held){ fish_ten += fish_sg?26:9; if(!fish_sg) fish_hp -= 12+rk*2; }
+    else { fish_ten -= 14; if(fish_ten<0) fish_ten=0; fish_hp += fish_sg?3:1; if(fish_hp>fish_hpm) fish_hp=fish_hpm; }
+    if(fish_ten>=1000){ fish_state=0; fish_streak=0; fish_rc=30; say("THE LINE SNAPPED!"); sfx(4); if(opt_shake) shake_t=3; return 1; }
+    if(fish_hp<=0) fish_catch();
+    return 1;
+}
+static void fish_draw(volatile u16 *pg){
+    int by = 118 + (sinI[(frames*20)&255]>>12);
+    if(fish_state==1 && fish_t<30) by = 118 + ((frames&2)?3:-1);
+    else if(fish_state==2) by = 124;
+    else if(fish_state==3) by = 108 + (fish_hp*14/fish_hpm) + ((fish_sg&&(frames&1))?2:0);
+    for(int y=100;y<by;y+=2) pg[y*120+66]=(R_STONE+6)|((R_STONE+6)<<8);
+    for(int y=by;y<by+4;y++){ int c = fish_state==2 ? ((frames&2)?C_RED:216) : 216; pg[y*120+66]=c|(c<<8); pg[y*120+67]=c|(c<<8); }
+    if(fish_state==3){
+        int ten=fish_ten>1000?1000:fish_ten;
+        rect(pg,10,50,8,82,C_DGREY); int hh=ten*80/1000; int col = ten<600?C_CYAN : ten<850?C_GOLD : C_RED;
+        rect(pg,11,51+80-hh,6,hh,col);
+        rect(pg,80,34,80,4,C_DGREY); rect(pg,80,34,(fish_hpm-fish_hp)*80/fish_hpm,4,C_GOLD);
+        if(fish_sg) text(pg,120-8*2,44,"LET GO!",(frames&2)?C_RED:C_WHITE,1);
+        else if(fish_sgw<14 && (frames&2)) text(pg,120-1*2,44,"!",C_RED,1);
+        else text(pg,120-6*2,44,"REEL!",C_CYAN,1);
+    }
+}
 
 // The 3D view takes several 60ths of a second to draw. The game itself always runs 60 steps a second:
 // run_game() runs as many steps as time has passed and draws once (skip_draw=1 on the catch-up steps).
@@ -552,18 +641,15 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
               else say("LOCKED. THE DRONES KEEP A KEYCARD SOMEWHERE"); } }
       else lock_ahead=0; }
     if(here!=D_UP) stair_ok=1;           // you arrive standing on the up stairs: step off once before they work
-    if(wtick && fish_state==1 && --fish_t<=0){ fish_state=2; fish_t=14; sfx(8); say("! A BITE ! PRESS A"); }
-    else if(wtick && fish_state==2 && --fish_t<=0){ fish_state=0; say("IT GOT AWAY"); }
     int foe = foe_ahead(dirx,diry);
-    if(HIT(K_A) && fish_state==2){ fish_state=0; int r=rndi(100), f = r<45?0 : r<62?1 : r<79?2 : r<88?3 : 4; add_item(IT_FISH,f); st_fish++; ach_check(); sfx(8); }
+    int fish_used = fish_step(dirx,diry, foe || lock_ahead || near_cage>=0 || (here==D_UP&&stair_ok) || here==D_DOWN, foe);
+    if(fish_used){ }
     else if(lock_ahead && HIT(K_A)){ }
     else if(HELD(K_A) && foe){ if(!atk_t) do_bite(dirx,diry); }          // something in front always gets bitten, and holding A keeps biting
     else if(HIT(K_A)){
         if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
         else if(here==D_UP && stair_ok) return 1;
         else if(here==D_DOWN){ fl_leave(); wacc=WDIV-1; fade(1); dungeon_enter(); dungeon_checkpoint(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; }
-        else if(fish_state==1){ fish_state=0; say("YOU REEL IN"); }
-        else if(water_ahead(dirx,diry)){ fish_state=1; fish_t=25+rndi(50); say("FISHING... WAIT FOR A BITE"); sfx(8); }
         else if(!atk_t) do_bite(dirx,diry);
     }
     if(hearts<=0) return 2;
@@ -599,8 +685,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(spark_t){ int c=60, y=140; for(int k=0;k<12;k++){ int c2=60+(spark_c-60)*(k+1)/12+(k<11?rndi(5)-2:0), y2=140+(spark_y-140)*(k+1)/12;
             int steps=(y-y2)>0?(y-y2):1; for(int s=0;s<=steps;s+=2){ int cc=c+(c2-c)*s/steps, yy=y-s; if(cc>=0&&cc<120&&yy>=18&&yy<160){ pg[yy*120+cc]=(C_WHITE)|(C_WHITE<<8); if(cc+1<120) pg[yy*120+cc+1]=(R_CRYSTAL+7)|((R_CRYSTAL+7)<<8);} }
             c=c2; y=y2; } }
-    if(fish_state){ int by = 118 + (fish_state==2 ? 4 : (sinI[(frames*20)&255]>>12)); for(int y=100;y<by;y+=2) pg[y*120+66]=(R_STONE+6)|((R_STONE+6)<<8);
-        for(int y=by;y<by+4;y++){ pg[y*120+66]=216|(216<<8); pg[y*120+67]=216|(216<<8); } }
+    if(fish_state) fish_draw(pg);
     if(combo){ char cb[12]; scpy(cb,"COMBO X"); ncat(cb,combo+1); text(pg,120-textlen(cb)*2,100,cb,combo>=2?C_GOLD:C_WHITE,1); }
     if(dodge_msg_t) text(pg,120-5*2,108,"DODGE",C_CYAN,1);
 #ifdef TEST_FOE
@@ -617,7 +702,10 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     else if(lock_ahead) text(pg,120-14*4,24,"A: USE KEYCARD",C_GOLD,2);
     else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);
     else if((here==D_UP && stair_ok)||here==D_DOWN){ const char *m2 = here==D_UP? "A: CLIMB UP" : "A: GO DEEPER"; text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
-    else if(!fish_state && water_ahead(dirx,diry)) text(pg,120-9*4,24,"A: FISH",C_CYAN,2);
+    else if(fish_state==1) text(pg,120-8*4,24,"WAITING...",C_CYAN,2);
+    else if(fish_state==2) text(pg,120-6*4,24,"PRESS A!",(frames&2)?C_RED:C_WHITE,2);
+    else if(fish_state==3) text(pg,120-8*4,24,"HOLD A TO REEL",C_CYAN,2);
+    else if(water_ahead(dirx,diry)){ char fb[24]; int p=pool_at(dirx,diry); int sk=pool_stock(p); scpy(fb,"A: FISH "); if(sk){ scat(fb,"("); ncat(fb,sk); scat(fb,")"); } else scat(fb,"(EMPTY)"); text(pg,120-textlen(fb)*4,24,fb,C_CYAN,2); }
     if(shield_t && (frames&16)){ for(int c=0;c<120;c+=6){ pg[18*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); pg[159*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); } }
     if(hurt_flash){ for(int y=18;y<22;y++) for(int x=0;x<120;x++) pg[y*120+x]=C_RED|(C_RED<<8); }
     if(frames-hud_f>=15){ hud_f=frames; u32 hs=hud_sig(); if(hs!=dhud_sig){ dhud_sig=hs; dungeon_hud(); } }

@@ -281,7 +281,7 @@ static const char *const seed_eff[6]={"STUN","FINDER","ESCAPE","CALLER","BLAST",
 static const char *const shell_name[5]={"ACORN SHELL","BEETLE SHELL","CRYSTAL SHELL","STICKY SHELL","GOLDEN SHELL"};
 static const char *const thorn_name[5]={"ROSE THORN","WASP STING","GLASS NEEDLE","DARK THORN","KING FANG"};
 static const char *const charm_name[4]={"AMBER CHARM","JADE CHARM","BONE CHARM","OPAL CHARM"};
-static const char *const fish_name[5]={"SILVER FISH","FIRE FISH","STONE FISH","KING FISH","GOLD FISH"};
+static const char *const fish_name[8]={"SILVER FISH","FIRE FISH","STONE FISH","KING FISH","GOLD FISH","GLOWFIN","GHOST CARP","DRAGON KOI"};
 static const char *const potion_name[2]={"HEALTH POTION","MANA POTION"};
 enum { SP_FIRE, SP_SPARK, SP_HEAL, SP_SHIELD, SP_PORTAL, NSPELL };
 static const char *const spell_name[NSPELL]={"FIREBALL","SPARK","HEAL","SHIELD","PORTAL"};
@@ -430,7 +430,7 @@ static void gear_name(const Gear *g, char *b){
         case IT_GEM: scpy(b,gem_name[sub&3]); break;
         case IT_CRUMB: scpy(b,"CRUMB"); break;
         case IT_BOOK: scpy(b,"BOOK: "); scat(b,spell_name[sub%NSPELL]); break;
-        case IT_FISH: scpy(b,fish_name[sub%5]); break;
+        case IT_FISH: scpy(b,fish_name[sub&7]); break;
         case IT_POTION: scpy(b,potion_name[sub&1]); break;
         case IT_QUEST: scpy(b,"LOST TREASURE"); break;
         case IT_KEY: scpy(b,"DRONE KEYCARD"); break;
@@ -472,7 +472,7 @@ static int item_value(const Gear *g){
         case IT_GEM: { static const u8 v[4]={40,60,90,150}; return v[g->sub&3] + 5*dlv(); }
         case IT_SHELL: case IT_THORN: case IT_CHARM: { if(g->rar==R_UNIQUE) return 400+g->lvl*20; int v=12+g->lvl*3+(g->sub==4?150:0); return g->rar==R_RARE?v*4 : g->rar==R_MAGIC?v*2 : v; }
         case IT_WARP: return 60; case IT_SEED: return 8; case IT_BERRY: return 5; case IT_BOOK: return 80; case IT_POTION: return 12;
-        case IT_FISH: { static const u8 v[5]={10,40,40,90,120}; return v[g->sub%5]; }
+        case IT_FISH: { static const u16 v[8]={10,40,40,90,120,300,550,1500}; return v[g->sub&7]; }
         default: return 2;
     }
 }
@@ -658,6 +658,11 @@ static void gain_xp(int n){
 static int feed_pet(int f){
     if(f==0){ eat(40); say("YUM. FOOD +40"); return 1; }
     if(f==4){ say("TOO PRETTY TO EAT. SELL IT!"); return 0; }
+    if(f>=5){ char b[40];
+        if(f==5){ mark_t[MK_LUCKY]=300; mark_t[MK_SHARP]=300; scpy(b,"GLOWFIN: LUCKY AND SHARP"); }
+        else if(f==6){ shield_t=600; mark_t[MK_SWIFT]=300; mark_t[MK_TOUGH]=300; scpy(b,"GHOST CARP: SWIFT AND TOUGH"); }
+        else { mark_t[MK_STRONG]=600; mark_t[MK_REGEN]=600; mark_t[MK_FULL]=600; recalc(); hearts=maxh; food=100; scpy(b,"DRAGON KOI: FULL POWER!"); }
+        recalc(); say(b); sfx(6); return 1; }
     if(pet_away_t || pet_down_t){ say("BUDDY ISN'T HERE"); return 0; }
     pet_form=f; pet_form_t = f==3 ? 2400 : 1600; pet_hp=pet_maxhp*(f==2?2:1);
     char b[40]; scpy(b,"BUDDY BECOMES A "); scat(b,pet_form_name[f]); say(b); sfx(6);

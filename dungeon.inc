@@ -4,7 +4,7 @@ enum { D_FLOOR, D_WALL, D_PILLAR, D_UP, D_DOWN, D_LOCK };     // D_LOCK: a locke
 enum { M_BRICK, M_STONE, M_EARTH, M_MOSS, M_CRYSTAL, M_MARBLE };
 #define F_TORCH 0x10
 #define F_BEAM  0x20
-enum { FL_FLAG, FL_TILE, FL_DIRT, FL_MOSS, FL_WATER, FL_PLANK };
+enum { FL_FLAG, FL_TILE, FL_DIRT, FL_MOSS, FL_WATER, FL_PLANK, FL_SHALLOW };
 enum { ST_HALL, ST_CRYPT, ST_CAVE, ST_GROTTO, ST_CRYSTAL, NSTYLE };
 static const u8 style_wall[NSTYLE]={M_STONE,M_STONE,M_EARTH,M_MOSS,M_CRYSTAL};
 static const u8 style_floor[NSTYLE]={FL_FLAG,FL_TILE,FL_DIRT,FL_MOSS,FL_TILE};
@@ -26,6 +26,31 @@ static s32 zbuf[120];
 static int hurt_flash=0, atk_t=0;
 typedef struct { u8 x,y,w,h,style; } Room;
 EW static Room rooms[10]; static int nrooms;
+// a natural pond: a wobbly ellipse (sometimes with a second lobe), smoothed, then deep core, shallow rim and a muddy bank
+static u8 pm_[26*26];
+static int pm_at(int w,int h,int x,int y){ return (x<0||y<0||x>=w||y>=h) ? 0 : pm_[y*26+x]; }
+static u32 pm_h(int x,int y,u32 s){ u32 h=(u32)x*374761393u + (u32)y*668265263u + s; h=(h^(h>>13))*1274126177u; return h^(h>>16); }
+static void make_pond(int x0,int y0,int x1,int y1){
+    if(x1-x0>23) x1=x0+23; if(y1-y0>23) y1=y0+23;
+    int w=x1-x0+1, h=y1-y0+1; if(w<3||h<3) return;
+    u32 seed=rnd(); int lx=(rndi(3)-1)*130, ly=(rndi(3)-1)*130, lr=70+rndi(60), big=rndi(3)!=0;
+    for(int y=0;y<h;y++) for(int x=0;x<w;x++){
+        int nx=((2*x+1-w)*256)/w, ny=((2*y+1-h)*256)/h, e=(nx*nx+ny*ny)>>8;
+        int n=(int)(((pm_h(x>>1,y>>1,seed)&63)+(pm_h(x,y,seed+7)&63))>>1) - 32;
+        int in = e + n*4 < 215;
+        if(big){ int ax=nx-lx, ay=ny-ly; if(((ax*ax+ay*ay)>>8) + n*3 < lr+40) in=1; }
+        pm_[y*26+x]=in; }
+    static u8 t2[26*26];
+    for(int y=0;y<h;y++) for(int x=0;x<w;x++){ int c=0; for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++) if(dx||dy) c+=pm_at(w,h,x+dx,y+dy);
+        t2[y*26+x] = pm_[y*26+x] ? (c>=3) : (c>=6); }
+    for(int y=0;y<h;y++) for(int x=0;x<w;x++) pm_[y*26+x]=t2[y*26+x];
+    int cnt=0; for(int y=0;y<h;y++) for(int x=0;x<w;x++) cnt+=pm_[y*26+x]; if(cnt<5) return;
+    for(int y=-1;y<=h;y++) for(int x=-1;x<=w;x++){
+        int mx=x0+x, my=y0+y; if(mx<1||my<1||mx>=MW-1||my>=MW-1) continue; int i=my*MW+mx; if(dmap[i]!=D_FLOOR) continue;
+        if(pm_at(w,h,x,y)){ int edge = !pm_at(w,h,x-1,y)||!pm_at(w,h,x+1,y)||!pm_at(w,h,x,y-1)||!pm_at(w,h,x,y+1); fmat[i]= edge ? FL_SHALLOW : FL_WATER; }
+        else { int near=0; for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++) near|=pm_at(w,h,x+dx,y+dy);
+               if(near && fmat[i]!=FL_WATER && fmat[i]!=FL_SHALLOW) fmat[i] = (pm_h(mx,my,seed)&3)==0 ? FL_MOSS : FL_DIRT; } }
+}
 typedef struct { u8 x,y,str; } Light;
 EW static Light lights[64]; static int nlights;
 EW static s32 torch_x[32], torch_y[32]; static int ntorch;
@@ -134,13 +159,13 @@ static void make_floor(void){
             else    { for(int yy=y+2; yy<=y+h-3; yy+=3){ pillar_at(x+2,yy,M_MARBLE); pillar_at(x+w-3,yy,M_MARBLE); } }
         }
         if(st==ST_CRYPT){ for(int xx=x+2; xx<x+w-2; xx+=4) for(int yy=y+2; yy<y+h-2; yy+=4) pillar_at(xx,yy,M_STONE); }
-        if(st==ST_GROTTO){ for(int yy=y+2;yy<y+h-2;yy++) for(int xx=x+2;xx<x+w-2;xx++) fmat[yy*MW+xx]=FL_WATER; add_light(x+w/2,y+h/2,45); }
+        if(st==ST_GROTTO){ make_pond(x+1,y+1,x+w-2,y+h-2); add_light(x+w/2,y+h/2,45); }
         if(st==ST_CRYSTAL){ for(int k=0;k<2;k++){ pillar_at(x+2+rndi(w-4), y+2+rndi(h-4), M_CRYSTAL); } add_light(x+w/2,y+h/2,40); }
         if(st==ST_CAVE) add_light(x+w/2,y+h/2,28);
-        if(w*h>=100){ if(st==ST_HALL||st==ST_CRYPT){ for(int yy=y+h/3;yy<y+h-h/3;yy++) for(int xx=x+w/3;xx<x+w-w/3;xx++){ int i=yy*MW+xx; if(dmap[i]==D_FLOOR) fmat[i]=FL_WATER; } }   // a still pool in the middle of a big chamber
+        if(w*h>=100){ if(st==ST_HALL||st==ST_CRYPT){ make_pond(x+w/3-1,y+h/3-1,x+w-w/3,y+h-h/3); }   // a still pool in the middle of a big chamber
             add_light(x+w/4,y+h/4,50); add_light(x+w-1-w/4,y+h-1-h/4,50); }
         if(st==ST_HALL||st==ST_CRYPT){
-            for(int yy=y;yy<y+h;yy++) for(int xx=x;xx<x+w;xx++){ int i=yy*MW+xx; if(dmap[i]==D_FLOOR && fmat[i]!=FL_WATER){ int q=((xx>>1)*29+(yy>>1)*41+depth_no*5)%9; if(q==0) fmat[i]=FL_MOSS; else if(q==1 && depth_no>2) fmat[i]=FL_DIRT; } }   // overgrown, broken floor
+            for(int yy=y;yy<y+h;yy++) for(int xx=x;xx<x+w;xx++){ int i=yy*MW+xx; if(dmap[i]==D_FLOOR && fmat[i]!=FL_WATER && fmat[i]!=FL_SHALLOW && fmat[i]!=FL_DIRT){ int q=((xx>>1)*29+(yy>>1)*41+depth_no*5)%9; if(q==0) fmat[i]=FL_MOSS; else if(q==1 && depth_no>2) fmat[i]=FL_DIRT; } }   // overgrown, broken floor
             for(int k=0;k<(w*h>=100?3:1);k++) pillar_at(x+2+rndi(w-4), y+2+rndi(h-4), M_STONE); }                                                                   // a broken column
         nrooms++;
     }
@@ -305,7 +330,7 @@ static u8 lvt[160];                 // light level 0..127 plus dither -> shade 0
 static u8 bayi[16];
 static s32 camtab[120];
 static u8 fcode[MW*MW], wtex[MW*MW];
-static u16 wramp[20*8], framp[9*8], cramp[2*8];
+static u16 wramp[20*8], framp[10*8], cramp[2*8];
 static s16 sinI[256];
 static u8 lsub[128*128] __attribute__((section(".ewram")));     // smooth light, 4x4 per tile
 
@@ -464,7 +489,7 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
             u32 tx=fx>>16, ty=fy>>16; int ix;
             if((c&1) && y<ctop[c-1]) ix=last;
             else if(tx<MW && ty<MW){
-                int fc=fcode[ty*MW+tx], cc=(fc>=3&&fc<=5);
+                int fc=fcode[ty*MW+tx], cc=((fc>=3&&fc<=5)||fc==9);
                 int t=ceil_tex[(cc<<10)|((fy>>6)&0x3E0)|((fx>>11)&31)];
                 int e=cramp[(cc<<3)|(t>>5)];
                 int Lp=sl+((lsub[((fy>>7)&0x3F80)|((fx>>14)&127)]*fg)>>7); if(Lp>127) Lp=127;
@@ -670,7 +695,7 @@ static void map_page(volatile u16 *pg){
                 if(xx>=0&&yy>=0&&xx<MW&&yy<MW && dmap[yy*MW+xx]!=D_WALL) any=1; } if(!any) continue; c=R_STONE+3; }
         else if(t==D_PILLAR) c=R_STONE+5;
         else if(t==D_DOWN) c=C_GOLD; else if(t==D_UP) c=C_CYAN;
-        else if(fmat[i]==FL_WATER) c=R_WATER+3;
+        else if(fmat[i]==FL_WATER) c=R_WATER+3; else if(fmat[i]==FL_SHALLOW) c=R_WATER+5;
         else c=C_DGREY;
         if(!seen[i]) c = t==D_DOWN ? C_GOLD : R_STONE+1;           // a sight berry shows the whole floor, dimly
         rect(pg,ox+x*4,oy+y*4,4,4,c); }
@@ -723,7 +748,7 @@ static void dungeon_enter(void){
         cd_rel[d]=(FOC<<16)/d; li=cd_rel[d]>>12; if(li>511) li=511; cl_rel[d]=light_tab[li]*36/64; cf_rel[d]=fog_tab[li];
     }
     for(int i=0;i<160;i++) wramp[i]=wall_ramp[i];
-    for(int i=0;i<72;i++) framp[i]=floor_ramp[i];
+    for(int i=0;i<80;i++) framp[i]=floor_ramp[i];
     for(int i=0;i<16;i++) cramp[i]=ceil_ramp[i];
     for(int i=0;i<256;i++) sinI[i]=sin_tab[i];
     for(int i=0;i<NPART;i++) part[i].life=0;
@@ -734,7 +759,7 @@ static void dungeon_enter(void){
     for(int i=0;i<160;i++) lvt[i]= (i>>4)>7 ? 7 : (i>>4);
     for(int i=0;i<16;i++) bayi[i]=15-bayer[i];
     for(int i=0;i<MW*MW;i++){ int t=dmap[i], f=fmat[i], x=i%MW, y=i/MW;
-        fcode[i] = t==D_UP?7 : t==D_DOWN?8 : f==FL_FLAG?((x+y)&1) : f==FL_TILE?2 : f==FL_DIRT?3 : f==FL_MOSS?4 : f==FL_WATER?5 : 6; }
+        fcode[i] = t==D_UP?7 : t==D_DOWN?8 : f==FL_FLAG?((x+y)&1) : f==FL_TILE?2 : f==FL_DIRT?3 : f==FL_MOSS?4 : f==FL_WATER?5 : f==FL_SHALLOW?9 : 6; }
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
     dungeon_hud_both();
     if(fl_ev){ char b[40]; scpy(b,fe_name[fl_ev]); scat(b,"!"); say(b); msg_timer=60;

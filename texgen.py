@@ -342,6 +342,15 @@ def water(R, seed=23):
     t.b[:] = 13 + 5 * c + t.fine(1.0)
     return t
 
+def shallow(R, seed=29):
+    t = Tex(32, 32, [R['WATER'], R['DIRT']], seed)
+    y, x = np.mgrid[0:32, 0:32] * (2 * math.pi / 32)
+    c = np.sin(x * 3 + np.sin(y * 2)) + np.sin(y * 3 + np.sin(x * 3) * 1.2)
+    t.b[:] = 19 + 3 * c + t.fine(1.0)
+    n = t.noise(4, 1); m = n > 0.25
+    t.sel[m] = 1; t.b[m] = (11 + 2 * c + t.fine(1.0))[m]
+    return t
+
 def plank(R, seed=24):
     t = Tex(32, 32, [R['WOOD'], R['STONE']], seed)
     for y in range(32):
@@ -394,7 +403,7 @@ def ceil_earth(R, seed=31):
 WALLS = ['BRICK', 'STONE', 'EARTH', 'MOSS', 'CRYSTAL', 'MARBLE', 'EARTH_BEAM', 'BRICK_TORCH', 'STONE_TORCH',
          'BRICK_NICHE', 'BRICK_DOOR', 'BRICK_RUNE', 'BRICK_PLAQUE', 'STONE_NICHE', 'STONE_DOOR', 'STONE_RUNE',
          'STONE_PLAQUE', 'STONE_PANEL', 'STONE_PILLAR', 'CRYSTAL_PILLAR']
-FLOORS = ['FLAG_A', 'FLAG_B', 'TILE', 'DIRT', 'MOSS', 'WATER', 'PLANK', 'UP', 'DOWN']
+FLOORS = ['FLAG_A', 'FLAG_B', 'TILE', 'DIRT', 'MOSS', 'WATER', 'PLANK', 'UP', 'DOWN', 'SHALLOW']
 CEILS = ['CEIL_STONE', 'CEIL_EARTH']
 
 def make_all(R):
@@ -414,7 +423,7 @@ def make_all(R):
     def floor(name):
         return {'FLAG_A': lambda: flag(R, 'FLOORA', 10), 'FLAG_B': lambda: flag(R, 'FLOORB', 11), 'TILE': lambda: tile(R),
                 'DIRT': lambda: dirt(R), 'MOSS': lambda: mossfloor(R), 'WATER': lambda: water(R), 'PLANK': lambda: plank(R),
-                'UP': lambda: stairs(R, True, 12), 'DOWN': lambda: stairs(R, False, 13)}[name]()
+                'UP': lambda: stairs(R, True, 12), 'DOWN': lambda: stairs(R, False, 13), 'SHALLOW': lambda: shallow(R)}[name]()
     out = {}
     for group, names, fn, colmajor in (('wall', WALLS, wall, True), ('floor', FLOORS, floor, False), ('ceil', CEILS, lambda n: ceil_stone(R) if n == 'CEIL_STONE' else ceil_earth(R), False)):
         texels, ramps = [], []
