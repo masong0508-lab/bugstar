@@ -11,12 +11,14 @@ static int weather_t=0;
 static const char *const adj[16]={"MOSS","ROSY","GLASS","SOOT","HONEY","STRIPED","GRUMPY","SLEEPY","POLKA","AZURE","RUST","PEARL","GIANT","PYGMY","VELVET","SPARK"};
 static const char *const noun[3][4]={{"HOPPER","SKIPPER","FLEA","BOUNCER"},{"GRAZER","SNUFFLER","LUMP","MOOCOW"},{"FLITTER","MOTH","WINGLET","BUZZER"}};
 static void make_species(void){
+    u32 keep=wseed; wseed=wd.cseed;                                                  // the species come from their own seed
     for(int s=0;s<2;s++){ Species *p=&spc[s];
         p->body = s==1 && wr(2) ? 2 : wr(2); p->temper=wr(3); if(wd.fauna==5) p->temper=2; p->size=wr(3);
         p->maxpop = endless ? 4+wr(10) : 5+zone; p->pop=p->maxpop;
         p->col=rgb15(40+wr(216),40+wr(216),40+wr(216));
         scpy(p->name,adj[wr(16)]); scat(p->name," "); scat(p->name,noun[p->body][wr(4)]); }
     if(!endless && zone==0){ spc[0].temper=0; spc[1].temper=1; }                      // the first planet's creatures are gentle
+    wseed=keep;
 }
 static void species_palette(void){                                                    // sprite banks 4 and 5: the two species' colours
     for(int s=0;s<2;s++){ volatile u16 *P=OBJ_PAL+(4+s)*16; for(int i=0;i<16;i++) P[i]=obj_pal[i];
@@ -88,12 +90,12 @@ static void life_tick(int n){                                                   
             s32 mx=cvx[i]*n, my=cvy[i]*n;
             if(p->temper==0 && ad<(7<<16)){ mx=-(dx>>6)*n; my=-(dy>>6)*n; }          // timid: run from you
             else if(p->temper==1 && ad<(9<<16) && ad>(2<<16)){ mx=(dx>>7)*n; my=(dy>>7)*n; }   // curious: come and look
-            else if(p->temper==2 && ad<(10<<16)){ mx=(dx>>6)*n; my=(dy>>6)*n; if(ad<0x16000 && !invuln){ hurt(4+dlv()*2); show_msg("OUCH! IT BIT YOU"); pw_h = dx<0 ? 40 : -40; pw_v = dy<0 ? 24 : -24; } }
+            else if(p->temper==2 && ad<(10<<16)){ mx=(dx>>6)*n; my=(dy>>6)*n; if(ad<0x16000 && !invuln){ hurt(4+dlv()*2); show_msg("OUCH! IT BIT YOU"); pknock(dx,dy,40); } }
             s32 nx=o->x+mx, ny=o->y+my; if(p->body!=2 && (hm_at(nx,ny)<water_lv || in_city_cell(nx>>16,ny>>16))){ ctim[i]=0; continue; }
             o->x=nx&((TW<<16)-1); o->y=ny&((TW<<16)-1); }
         else if(o->kind==O_BEETLE){ s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
             if(ad<(12<<16) && ad>0x8000){ o->x=(o->x+((dx>>6)*n))&((TW<<16)-1); o->y=(o->y+((dy>>6)*n))&((TW<<16)-1); }
-            if(ad<0x14000 && !invuln){ hurt(5+dlv()*2); show_msg("A BEETLE RAMMED YOU"); pw_h = dx<0 ? 48 : -48; pw_v = dy<0 ? 30 : -30; } }
+            if(ad<0x14000 && !invuln){ hurt(5+dlv()*2); show_msg("A BEETLE RAMMED YOU"); pknock(dx,dy,48); } }
         else if(o->kind==O_LOCAL){ if(ctim[i]>n) ctim[i]-=n; else { ctim[i]=60+wr(120); int a=wr(256); cvx[i]=(cosx(a)*120)>>14; cvy[i]=(sinx(a)*120)>>14; if(wr(2)) cvx[i]=cvy[i]=0; }
             s32 nx=o->x+cvx[i]*n, ny=o->y+cvy[i]*n; int c=cmap[((ny>>15)&HMASK)*HW+((nx>>15)&HMASK)]; if(c==74||c==75||c==80||c==81){ o->x=nx; o->y=ny; } else ctim[i]=0; }
     }

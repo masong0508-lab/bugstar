@@ -53,7 +53,12 @@ static volatile int opt_sfx=1;
 static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1;   // easy = (opt_diff==0)
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
-static int sys_req=0, cluster_no=0;
+static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
+// where you are in the universe: 65,536 galaxies x 2^64 clusters each x 32 stars = about 3.8 x 10^25 planets in one save,
+// about two million times No Man's Sky's 18 quintillion. Every address grows its own planet (see make_world).
+static u16 galaxy_no=0; static u32 clus_lo=0, clus_hi=0;      // the cluster number is 64 bits: clus_hi:clus_lo
+static u32 amix(u32 k, int star){ u32 h=0x811C9DC5u ^ k*0x9E3779B1u; u32 v[4]={galaxy_no, clus_lo, clus_hi, (u32)star};
+    for(int i=0;i<4;i++){ h^=v[i]; h*=0x85EBCA6Bu; h^=h>>13; h*=0xC2B2AE35u; h^=h>>16; } return h; }
 static int in_menu=0; static char menu_msg[40];   // inside a menu, messages go on a line in the menu instead of over it                 // set by the SYSTEM page: 1 = load cur_slot, 2 = quit to the title
 
 // ---------------------------------------------------------------- mode 4 text
@@ -674,6 +679,13 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     if(!(cont && load_game(1))){ cont=0; new_game(); story_dna(0); cam_fp=opt_cam; planet_tables(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
 #ifdef TEST_WORLD
     endless=1; world_no=TEST_WORLD; make_world();
+#endif
+#ifdef TEST_DEEP
+    ant_king=1; zones_open=6; cleared_mask=63; galaxy_no=40000; clus_lo=0xDEADBEEFu+TEST_DEEP; clus_hi=0x2ABCD; gen_cluster(); cur_sys=7+TEST_DEEP%20; fade(0); arrive_on_planet();
+#ifdef TEST_MAP
+    scene=2; page_back=1; space_enter(1); galaxy_map();
+#endif
+    return;
 #endif
 #ifdef TEST_ARRIVE
     cur_sys=TEST_ARRIVE; fade(0); arrive_on_planet(); return;

@@ -5,6 +5,7 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 **Play:** open `bugstar.gba` in mGBA (or any GBA emulator, or a flash cart). It saves on the cartridge (3 save slots).
 
 ## Controls
+- On a planet, **UP walks into the screen** (away from the camera) in both third and first person.
 | Button | On a planet | In a dungeon |
 | --- | --- | --- |
 | D-pad | Walk over the hills (in first person: up/down walk, left/right turn) | Up/down walk, left/right turn (a tap turns a little, holding turns faster) |
@@ -48,7 +49,8 @@ Difficulty (easy / normal / hard: hard does more damage to you but pays +25% gol
 Five pages with colour-coded button badges: planet, dungeon, space, staying alive, and your quest. Your bug trots along the bottom.
 
 ## Living planets: cities, creatures, jobs (new)
-- **Every planet is grown from its own DNA**: the shape of the land (rolling hills, mesas, dunes, islands, craters, canyons, ridges or plains), cliffs, beaches, snow caps, the sea level, the time of day (day, dusk, night), the weather (clear, rain, snow, dust), gravity (it changes how fast you walk), the sky and ground colours, what grows there, its two creature species, and what it is **known for** ("ITS SOUP", "A MAYOR WHO IS A MOTH", "RAIN THAT FALLS UP"...). Put together that is about **10^98 different planets**, far past an unvigintillion (10^66). The galaxy keeps making new clusters of them for as long as you fly.
+- **Every planet is grown from its own DNA**: the shape of the land (rolling hills, mesas, dunes, islands, craters, canyons, ridges or plains), cliffs, beaches, snow caps, the sea level, the time of day (day, dusk, night), the weather (clear, rain, snow, dust), gravity (it changes how fast you walk), the sky and ground colours, what grows there, its two creature species, and what it is **known for** ("ITS SOUP", "A MAYOR WHO IS A MOTH", "RAIN THAT FALLS UP"...). The parts combine into about **10^98 different planets**, far past an unvigintillion (10^66).
+- **The universe.** One save can reach **65,536 galaxies × 2^64 clusters × 32 stars ≈ 3.8 × 10^25 planets**, about two million times No Man's Sky's 18 quintillion. Every planet is grown from 96 bits of seed, so they don't repeat. On the galaxy map: **START** jumps to the next cluster, **R** does a **deep jump** to a random spot anywhere in the universe (both need full fuel). The map shows your galaxy and cluster number.
 - **Cities.** About one world in three has a town or a big city, built right into the 3D land: streets, plazas, blocks and towers with lit windows (they glow at night). Walk the streets and press A at the doors:
   - **THE MARKET** buys your hold's goods and sells local goods to trade elsewhere.
   - **THE CANTINA**: soup, gossip (real tips), buy a round for fame, or arm-wrestle the bartender (he is a beetle).

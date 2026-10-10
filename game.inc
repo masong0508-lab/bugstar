@@ -104,7 +104,7 @@ static void name_of(u32 wn, char *b){
 // ---- planet DNA. Every world is grown from its own code: the shape of the land, the sea, the sky, the hour, the weather,
 // what grows there, whether a city stands on it, what it is known for. The parts multiply out to more than an unvigintillion
 // (10 to the 66th) different planets, and the galaxy keeps making new clusters of them for as long as you fly.
-typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u32 tseed; } WorldDNA;
+typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u32 tseed, cseed; } WorldDNA;
 static WorldDNA wd;
 static const char *const style_name[8]={"ROLLING HILLS","MESAS","DUNES","ISLANDS","CRATERS","CANYONS","RIDGES","PLAINS"};
 static const char *const hour_name[3]={"DAY","DUSK","NIGHT"};
@@ -120,14 +120,17 @@ static void story_dna(int z){                                                   
     static const u8 sd[6][8]={{0,1,0,0,1,1,1,0},{3,1,0,1,0,1,0,0},{1,2,1,0,1,1,2,1},{6,2,2,0,2,1,2,0},{4,1,0,3,1,0,0,0},{5,3,1,0,1,1,3,1}};  // style rough hour weather grav city csize ruins
     memset(&wd,0,sizeof wd);
     wd.style=sd[z][0]; wd.rough=sd[z][1]; wd.hour=sd[z][2]; wd.weather=sd[z][3]; wd.grav=sd[z][4]; wd.city=sd[z][5]; wd.csize=sd[z][6]; wd.ruins=sd[z][7];
-    wd.fossils=1+z/2; wd.beetles=z>=2 ? 1+z/2 : 0; wd.tagline=(z*7+3)%NTAG; wd.fauna=z%6; wd.tseed=(u32)z*977+13;
+    wd.fossils=1+z/2; wd.beetles=z>=2 ? 1+z/2 : 0; wd.tagline=(z*7+3)%NTAG; wd.fauna=z%6; wd.tseed=(u32)z*977+13; wd.cseed=(u32)z*31+5;
     static const u16 bl[6]={C15(150,140,120),C15(90,120,160),C15(170,80,80),C15(90,70,140),C15(190,150,70),C15(150,90,60)};
     wd.bld=bl[z]; wd.sky=C15(120,170,230); wd.road=C15(60,56,60); wd.snow=z==3; wd.sand=z==1||z==2; wd.alt=0;
     for(int i=0;i<4;i++) wd.flora[i]=3;
 }
-static void make_world(void){
-    name_of((u32)world_no,w_name);
-    wseed = galaxy_seed ^ ((u32)world_no*0x9E3779B1u) ^ 0x7F4A7C15u; wr(2);
+static u32 sys_id(int i); static u32 amix(u32 k, int star);
+static void make_world(void){                                   // three independent 32-bit seeds from the full address: 96 bits, so every planet is its own
+    int gal = sys[cur_sys].kind==6; u32 base = gal ? sys_id(cur_sys) : (u32)world_no;
+    name_of(base,w_name);
+    u32 A = gal ? amix(galaxy_seed^0xA1u,cur_sys) : base*0x9E3779B1u, B = gal ? amix(galaxy_seed^0xB2u,cur_sys) : base*0x85EBCA6Bu+7, C = gal ? amix(galaxy_seed^0xC3u,cur_sys) : base*0xC2B2AE35u+3;
+    wseed = A ^ 0x7F4A7C15u; wr(2);
     int r=40+wr(216), g=40+wr(216), b=40+wr(216); int k=wr(3); if(k==0) r=230; else if(k==1) g=230; else b=230;
     static const u8 mul[5]={8,30,55,80,100};
     for(int i=0;i<5;i++){ int m=mul[i]; int w = i==4 ? 120 : (i==3?30:0); w_tint[i]=rgb15(r*m/100+w, g*m/100+w, b*m/100+w); }
@@ -143,7 +146,7 @@ static void make_world(void){
     wd.tagline=wr(NTAG); wd.fauna=wr(6); wd.ruins=wr(3)==0; wd.fossils=wr(4); wd.beetles=wr(4); wd.alt=wr(2) ? rgb15(40+wr(216),40+wr(216),40+wr(216)) : 0;
     wd.bld=rgb15(60+wr(160),60+wr(160),60+wr(160)); wd.sky=rgb15(40+wr(200),60+wr(180),100+wr(156)); wd.road=rgb15(30+wr(60),30+wr(60),30+wr(60));
     for(int i=0;i<4;i++) wd.flora[i]=wr(8);
-    wd.tseed = wseed ^ ((u32)world_no*2654435761u+7);
+    wd.tseed = B; wd.cseed = C;
 }
 static const char *world_name(void){ return endless ? w_name : tint_name[zone]; }
 

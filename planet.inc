@@ -46,6 +46,9 @@ static void heading_rays(void){
     for(int c=0;c<120;c++){ rayvx[c]=(s16)(hsn + ((hcs*raydx[c])>>8)); rayvy[c]=(s16)(hcs - ((hsn*raydx[c])>>8)); }
 }
 static int pw_h=0, pw_v=0, pw_step=0, mine_t=0;
+static void pknock(s32 dx, s32 dy, int k){                    // push the bug away along (dx,dy) (map direction, bug minus enemy), in walk-input terms
+    s32 side=((dx>>8)*hcs - (dy>>8)*hsn), fwd=((dx>>8)*hsn + (dy>>8)*hcs);
+    pw_h = side>0 ? k : side<0 ? -k : 0; pw_v = fwd>0 ? -k*3/5 : fwd<0 ? k*3/5 : 0; }
 IWRAM_DATA static s32 stp_f[NSTEP];                        // per march step: pixels per cell at that distance, 8.8
 IWRAM_DATA static s32 stp_base[NSTEP];                     // per step: (camera height + curvature) * stp_f, 8.8 px above the eye line... as a y offset
 IWRAM_DATA static s32 stp_z[NSTEP];                        // per step: distance from the camera, 8.8 cells
@@ -144,7 +147,7 @@ static s32 wrapd(s32 d){ return ((d + (64<<16)) & ((TW<<16)-1)) - (64<<16); }   
 #include "town.inc"
 static void new_planet(void){
     water_lv = endless ? 30+wr(60) : (zone==1 ? 100 : zone==0||zone==3 ? 70 : zone==5 ? 10 : 45);
-    gen_terrain(endless ? (u32)world_no*2654435761u+7 : (u32)zone*977+13);
+    gen_terrain(wd.tseed);                                                              // the land comes from its own seed
     for(int i=0;i<NPO;i++) po[i].alive=0;
     int k=0;
     po[k].kind=O_SHIP; po[k].alive=1; po[k].x=(64<<16)-(3<<16); po[k].y=(64<<16)+(1<<16); k++;
@@ -249,7 +252,7 @@ static void planet_frame(void){
         s32 sp = 0x1600 + (wd.grav-1)*0x200;                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
         if(hm_at(ppx,ppy)<water_lv) sp=sp*2/3;                                          // wading is slow
         s32 mvx=(pw_h*sp)>>4, mvy=(pw_v*sp)>>4;
-        if(cam_fp){ s32 fwd=-mvy, side=mvx; mvx=((hsn*fwd)>>8)+((hcs*side)>>8); mvy=((hcs*fwd)>>8)-((hsn*side)>>8); }   // forward is where you face
+        { s32 fwd=-mvy, side=mvx; mvx=((hsn*fwd)>>8)+((hcs*side)>>8); mvy=((hcs*fwd)>>8)-((hsn*side)>>8); }   // UP walks away from the camera (into the screen), in both views
         s32 nx = ppx + mvx, ny = ppy + mvy;
         // climbing a steep slope is slow
         s32 h0=ground_h(ppx,ppy), h1=ground_h(nx,ny); s32 dh=h1-h0;
@@ -266,7 +269,7 @@ static void planet_frame(void){
     for(int i=0;i<NPO;i++) if(po[i].kind==O_SLUG && po[i].alive){ PObj *o=&po[i]; s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y);
         s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
         if(ad<(14<<16)){ o->x=(o->x+((dx>>7)*n))&((TW<<16)-1); o->y=(o->y+((dy>>7)*n))&((TW<<16)-1); }
-        if(ad<0x14000 && !invuln){ hurt(3+dlv()*2); if(invuln>20) show_msg("OUCH! A SLUG"); pw_h = dx<0 ? 40 : -40; pw_v = dy<0 ? 24 : -24; } }
+        if(ad<0x14000 && !invuln){ hurt(3+dlv()*2); if(invuln>20) show_msg("OUCH! A SLUG"); pknock(dx,dy,40); } }
     // what is next to you
     int best=-1; s32 bd=0x1A000;
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_LAST_USE){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); s32 d=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(d<bd){ bd=d; best=i; } }
@@ -372,7 +375,8 @@ static void planet_frame(void){
     }
     // the guide arrow: it circles the bug (or sits at the top of the view) and points the short way to the door or the ship
     { PObj *t=&po[arrow_ship==1?0:1];
-      if(arrow_ship==2){ s32 bd2=0x7FFFFFFF; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER){ s32 ddx=wrapd(po[i].x-ppx), ddy=wrapd(po[i].y-ppy); s32 d=(ddx<0?-ddx:ddx)+(ddy<0?-ddy:ddy); if(d<bd2){ bd2=d; t=&po[i]; } } }
+      if(race_on){ for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_BEACON){ t=&po[i]; break; } }
+      else if(arrow_ship==2){ s32 bd2=0x7FFFFFFF; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER){ s32 ddx=wrapd(po[i].x-ppx), ddy=wrapd(po[i].y-ppy); s32 d=(ddx<0?-ddx:ddx)+(ddy<0?-ddy:ddy); if(d<bd2){ bd2=d; t=&po[i]; } } }
       s32 dx=wrapd(t->x-ppx), dy=wrapd(t->y-ppy);
       if(opt_arrow && (dx<0?-dx:dx)+(dy<0?-dy:dy) > 0x30000){
           s32 rx=((dx*hcs)>>8)-((dy*hsn)>>8), rz=((dx*hsn)>>8)+((dy*hcs)>>8);       // in camera space: right, and ahead
