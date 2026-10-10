@@ -155,6 +155,7 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 
 #include "dungeon.inc"
 #include "space.inc"
+#include "forge.inc"
 
 static void hud_now(void){ if(scene==2) return; if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
@@ -214,18 +215,19 @@ static void kill_mon(DObj *o){
     int xpv = (4+dlv()*2+depth_no) * (o->kind==K_BEETLE?2 : o->kind==K_WASP?3 : boss?10 : 1) / (o->kind==K_WASP?2:1);
     if(o->champ) xpv*=3;
     earn(boss ? 100+depth_no*10 : 6+dlv()*4+(o->champ?40:0));
-    if(q_type==Q_HUNT){ q_have++; if(q_have>=q_need && !q_done){ q_done=1; say("QUEST DONE! GO BACK TO YOUR SHIP"); } }
+    if(!forge_on && q_type==Q_HUNT){ q_have++; if(q_have>=q_need && !q_done){ q_done=1; say("QUEST DONE! GO BACK TO YOUR SHIP"); } }
     if(o->champ==2 && q_type==Q_CHAMP){ q_done=1; say("QUEST TARGET SLAIN!"); }
-    if(boss && q_type==Q_BOSS && !q_done && q_zone==zone && q_world==world_no){ q_done=1; say("BOSS QUEST DONE! GO TO YOUR SHIP"); }
+    if(!forge_on && boss && q_type==Q_BOSS && !q_done && q_zone==zone && q_world==world_no){ q_done=1; say("BOSS QUEST DONE! GO TO YOUR SHIP"); }
     sfx(9); debris(o->x,o->y,0x6000,boss?16:10,3,o->kvx,o->kvy); burst(o->x,o->y,0x6000,4,1);
     int ilvl=dlv()*3+depth_no;
-    if(boss){ music(1); if(!endless){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
+    if(boss){ music(1); if(!endless||forge_on){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
        
         if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else if(zone_cleared){ if(tiers[zone]<9) tiers[zone]++; st_tiers++; char tb[40]; scpy(tb,"TIER "); ncat(tb,tiers[zone]); scat(tb," CLEARED! LOOT GETS BETTER"); say(tb); }
               else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
+    if(boss && mboss){ say("THE LABYRINTH FALLS SILENT"); earn(150+dlv()*30); xpv+=40+dlv()*8; }
     gain_xp(xpv);
     Gear g; int drop=0;
-    int uq_chance = hive ? 1000 : boss ? 300 : o->champ ? 50 : 4;          // in 1000
+    int uq_chance = hive ? 1000 : boss ? (mboss?600:300) : o->champ ? 50 : 4;          // in 1000
     if(rndi(1000) < uq_chance){ g=roll_unique(ilvl); drop=1; st_uniq++; say("A UNIQUE ITEM DROPPED!"); sfx(6); }
     else if(boss || o->champ){ g=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, ilvl+4, 40); drop=1; }
     else if(rndi(3)==0){ g=roll_drop(ilvl,0); drop=1; }
@@ -477,7 +479,10 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             s32 tdx = at_pet?pdx:dx, tdy = at_pet?pdy:dy, td = at_pet?pd:d;
             if(at_pet){ contact = 0x2800 + body_r(o); reach = contact + 0x2800; }
             if(o->stag) o->stag--;
-            if(!stun_t && !o->stag && !o->wind && td<0x70000){
+            if(mboss && boss){                                  // the labyrinth boss: it sleeps, then it hunts you down the corridors
+                if(hunt_t){ if(--hunt_t==0){ say("IT HAS YOUR SCENT"); sfx(14); } }
+                else if(!stun_t && !o->stag && !o->wind && td>contact+0x800) hunt_move(o, 0x0580+tier_now()*0x30); }
+            else if(!stun_t && !o->stag && !o->wind && td<0x70000){
                 s32 st = boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : 0x0600;
                 int away = wasp && td<0x18000, keep = wasp && td<0x40000 && td>=0x18000;
                 if(!keep && (td>contact+0x800 || away)){
@@ -715,7 +720,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_ARRIVE
     cur_sys=TEST_ARRIVE; fade(0); arrive_on_planet(); return;
 #endif
-    scene=0; launch_flag=0; enter_dungeon_flag=0; fish_state=0; msg_timer=0; invuln=0; shake_t=0; page_back=0; loot=0; depth_no=0;
+    scene=0; launch_flag=0; enter_dungeon_flag=0; forge_on=0; fish_state=0; msg_timer=0; invuln=0; shake_t=0; page_back=0; loot=0; depth_no=0;
     speed_t=strong_t=dizzy_t=stun_t=shield_t=0;
     restock(); arrow_ship = zone_cleared && !endless;
     new_planet(); planet_enter(); show_msg(cont ? "WELCOME BACK" : "THE GARDEN: FIND THE DOOR");
@@ -766,7 +771,8 @@ static void run_game(void){
                 scene=2; page_back=1; REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BLDY=0; hyperspace();
                 arrive_on_planet(); fade(0); continue; }
             if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }
-            if(enter_dungeon_flag){ if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; save_game(); fade(1); oam_hide_all(); oam_flush();
+            if(enter_dungeon_flag){ int fgs=(enter_dungeon_flag==3); if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; save_game(); fade(1); oam_hide_all(); oam_flush();
+                if(fgs) forge_begin();
                 depth_no=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
                 tier_lock = (!endless && zone_cleared) ? tiers[zone]+1 : 0;
                 scene=1; dungeon_enter();
@@ -796,7 +802,8 @@ static void run_game(void){
             oam_flush();
             if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; tier_lock=-1; msg_timer=0; fish_state=0;
                    char mb[40];
-                   if(r==2){ recalc(); hearts=maxh; food=60; if(!endless) gold/=2; loot=0; if(!opt_easy){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, opt_easy ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
+                   if(forge_on) forge_end(r,mb);
+                   else if(r==2){ recalc(); hearts=maxh; food=60; if(!endless) gold/=2; loot=0; if(!opt_easy){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, opt_easy ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
                    else if(endless){ int bonus = loot*(100+depth_no*15)/100; gold+=bonus; loot=0; scpy(mb,"ESCAPED B"); ncat(mb,depth_no); scat(mb,": +"); ncat(mb,bonus); scat(mb,"G"); }
                    else if(base_mode && base_card) scpy(mb,"THE OUTPOST IS DEAD");
                    else if(base_mode) scpy(mb,"BACK ON THE SURFACE");

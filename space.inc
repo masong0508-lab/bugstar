@@ -190,7 +190,7 @@ static void build_space_palette(void){
 static int beast_stage=0, beast_fight=0, ambush_t=0, no_ambush=0, dawn_free=0, chase_cam=1; static u64 b3_hp, b3_max;
 static int in_lair=0, tech_lv=0, beast_kills=0, beast_charge=0, beast_fire=0, beast_t=0, lair_out=0; static u64 beast_hp, beast_max; static char beast_dmg_txt[16]; static int beast_dmg_t=0;
 static int hive_active(void){ return beast_stage>=3 && hive_done<5; }
-static int hive_here(void){ return endless && hive_active() && cur_sys==hive_sys(); }
+static int hive_here(void){ return endless && !forge_on && hive_active() && cur_sys==hive_sys(); }
 static int hive_boss_floor(void){ return hive_here() && depth_no==hive_floors[hive_done]; }
 static void hive_kill(void){ hive_done++; hive_card=hive_done+1; }
 static int space_danger(void){ return in_lair ? (beast_fight==1 ? 1+level/3 : beast_fight==2 ? 4+tech_lv*2+level/3 : 8 + tech_lv*2 + beast_kills*6 + level/3) : sys_dlv(cur_sys) + level/4; }

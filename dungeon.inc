@@ -30,6 +30,13 @@ typedef struct { u8 x,y,str; } Light;
 EW static Light lights[64]; static int nlights;
 EW static s32 torch_x[32], torch_y[32]; static int ntorch;
 static void build_light(void); static void build_walls(void); static int base_floors(void);
+// ---- dungeon DNA: every endless world (and every Dungeon Forge design) has a layout, wall material, creature mix, density and hazard
+typedef struct { u8 on, layout, wall, mix, dens, haz, floors, lvl, boss; u16 seed; } DDna;
+enum { LY_ROOMS, LY_HALLS, LY_CAVERNS, LY_TEMPLE, LY_CATA, LY_MAZE, NLY };
+static DDna ddna; static int forge_on;                       // forge_on: a Dungeon Forge run is in progress
+static const u8 mx_w[4][2]={{8,1},{5,2},{3,6},{2,2}};        // creature mix: spider and beetle weights out of 10, the rest are wasps
+static const u8 lay_wall[NLY]={7,7,7,M_MARBLE,M_STONE,7};    // a layout's own wall when the walls are on AUTO
+static int mboss=0, hunt_t=0, flow_cell=-1; EW static u16 flow[MW*MW];   // mboss: this boss floor is the rare labyrinth. hunt_t: ticks before the boss wakes. flow: path distance to you
 
 static void add_light(int x,int y,int s){ if(nlights<64){ lights[nlights].x=x; lights[nlights].y=y; lights[nlights].str=s; nlights++; } }
 static int floorish(int i){ int t=dmap[i]; return t==D_FLOOR||t==D_UP||t==D_DOWN; }
@@ -68,25 +75,45 @@ static void build_labyrinth(void){                      // a real maze: one-wide
     static const u8 cxy[5][2]={{1,1},{25,25},{25,1},{1,25},{13,13}};                       // room 0 holds the way up, room 1 is the far corner
     for(int k=0;k<5;k++){ Room *rm=&rooms[k]; rm->x=cxy[k][0]; rm->y=cxy[k][1]; rm->w=5; rm->h=5; rm->style=ST_CRYPT;
         for(int yy=rm->y;yy<rm->y+5;yy++) for(int xx=rm->x;xx<rm->x+5;xx++){ int i=yy*MW+xx; dmap[i]=D_FLOOR; fmat[i]=FL_TILE; rid[i]=k; }
-        add_light(rm->x+2,rm->y+2,55); }
+        add_light(rm->x+2,rm->y+2, mboss ? (k==4?64:24) : 55); }
     pillar_at(15,15,M_MARBLE);                                                             // a monument in the middle
-    nrooms=5; say("A LABYRINTH! FOLLOW THE TORCHES"); msg_timer=70;
+    if(mboss){ pillar_at(13,13,M_MARBLE); pillar_at(17,13,M_MARBLE); pillar_at(13,17,M_MARBLE); pillar_at(17,17,M_MARBLE); }   // the boss's arena
+    nrooms=5; if(mboss) say("A DARK LABYRINTH. SOMETHING IS HERE"); else say("A LABYRINTH! FOLLOW THE TORCHES"); msg_timer=70;
+}
+static int pick_kind(void){                                                      // a monster for this dungeon's creature mix
+    int r=rndi(10);
+    if(!ddna.on) return r<5 ? K_SPIDER : (r<7 && (dlv()>=1||depth_no>=2)) ? K_BEETLE : (r<9 && (dlv()>=2||depth_no>=3)) ? K_WASP : K_SPIDER;
+    const u8 *w=mx_w[ddna.mix&3];
+    if(r<w[0]) return K_SPIDER;
+    if(r<w[0]+w[1]) return (dlv()>=1||depth_no>=2) ? K_BEETLE : K_SPIDER;
+    return (dlv()>=2||depth_no>=3) ? K_WASP : K_SPIDER;
 }
 static void make_floor(void){
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_BRICK; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
     nrooms=0; nlights=0; nlamps=0; ntorch=0;
-    int mz_last = base_mode ? depth_no>=base_floors() : (!endless && depth_no>=zone_floors());
-    int maze = !base_mode && !mz_last && depth_no>=2 && (rndi(100)<22 || (!endless && depth_no==zone_floors()-1 && (zone&1)==0));   // a labyrinth floor, here and there (never on a boss floor)
+    if(forge_on) rng_s=hmix(((u32)ddna.seed<<8)+(u32)depth_no+1u);                 // a forge design is the same dungeon every time
+    else { ddna.on=endless; if(endless){ u32 h=hmix(wd.tseed*0x9E3779B1u ^ wd.cseed ^ 0xD9A5u); int lr=h%10, hz=(h>>20)%7;
+            ddna.layout = lr<3?LY_ROOMS : lr<4?LY_HALLS : lr<6?LY_CAVERNS : lr<8?LY_TEMPLE : LY_CATA;
+            ddna.wall=(h>>8)%8; ddna.mix=(h>>12)&3; ddna.dens=(h>>16)%3; ddna.haz = hz<3?0 : hz-2; ddna.boss=0; } }
+    int mz_last = forge_on ? depth_no>=ddna.floors : base_mode ? depth_no>=base_floors() : (!endless && depth_no>=zone_floors());
+    int bossfl = !base_mode && (forge_on ? mz_last : endless ? (depth_no%10==0 && !hive_boss_floor()) : mz_last);
+    mboss=0; hunt_t=0; flow_cell=-1;
+    if(bossfl){ if(forge_on) mboss = ddna.boss==1 || (ddna.boss==0 && rndi(100)<8);
+                else if(endless || zone>0 || tier_now()) mboss = rndi(100) < 10+tier_now()*4; }      // RARE: a boss floor that is a labyrinth, and the boss hunts you through it
+    int maze = mboss || (ddna.on && ddna.layout==LY_MAZE) || (!base_mode && !mz_last && depth_no>=2 && (rndi(100)<22 || (!endless && depth_no==zone_floors()-1 && (zone&1)==0)));   // a labyrinth floor, here and there
     for(int i=0;i<MW*MW;i++) seen[i]=0; for(int i=0;i<10;i++) room_seen[i]=0;
     int dd=depth_no<12?depth_no:12, maxr=7-dd/3, vm=7-dd/3; if(maxr<4) maxr=4; if(vm<4) vm=4; if(base_mode) maxr=6;
+    if(ddna.on){ if(ddna.layout==LY_CATA) maxr=9; else if(ddna.layout==LY_HALLS) maxr=4; else if(ddna.layout==LY_CAVERNS) maxr=5; }
     for(int t=0;t<400 && nrooms<maxr;t++){
         static const u8 zst[6][3]={{ST_HALL,ST_CAVE,ST_GROTTO},{ST_GROTTO,ST_GROTTO,ST_CRYPT},{ST_HALL,ST_CRYPT,ST_HALL},{ST_CRYSTAL,ST_CRYSTAL,ST_CAVE},{ST_CRYSTAL,ST_HALL,ST_CRYPT},{ST_CAVE,ST_CAVE,ST_CRYPT}};
         static const u8 bst[3]={ST_CRYSTAL,ST_CRYSTAL,ST_CRYPT};
         const u8 *zs = base_mode ? bst : endless ? w_styles : zst[zone];
         int st = nrooms==0 ? zs[0] : (rndi(10)<7 ? zs[rndi(3)] : rndi(NSTYLE)), w, h;
+        if(ddna.on){ static const u8 lst[NLY]={255,ST_HALL,ST_CAVE,ST_GROTTO,ST_CRYPT,255}; if(lst[ddna.layout]!=255) st=lst[ddna.layout]; }
         int sh=t/80;                                              // if big rooms will not fit, shrink a little every 80 tries
         if(st==ST_HALL){ w=11+rndi(5)+dd/4; h=9+rndi(3); if(rnd()&1){ int k=w; w=h; h=k; } }
         else { w=9+rndi(5)+dd/3; h=8+rndi(4)+dd/4; }
+        if(ddna.on && ddna.layout==LY_CATA){ w=6+rndi(3); h=6+rndi(3); }
         w-=sh; h-=sh; if(w<6) w=6; if(h<6) h=6; if(w>20) w=20; if(h>20) h=20;
         if(w>MW-4) w=MW-4; if(h>MW-4) h=MW-4;
         int x=2+rndi(MW-4-w), y=2+rndi(MW-4-h), ok=1;
@@ -139,6 +166,7 @@ static void make_floor(void){
         else if(st==ST_CRYSTAL && hsh==3) add_light(f%MW,f/MW,34);
         if((st==ST_HALL||st==ST_CRYPT||st<0) && !(wmat[i]&0x30) && ((x*13+y*7)%vm)==0) wmat[i]=M_MOSS;      // vines and moss, thicker the deeper you go
     }
+    if(ddna.on){ int ow = ddna.wall<6 ? ddna.wall : lay_wall[ddna.layout]; if(ow<6) for(int i=0;i<MW*MW;i++) if(dmap[i]==D_WALL) wmat[i]=(wmat[i]&0x30)|ow; }   // the DNA's wall material
     for(int i=0;i<nrooms && nlamps<12;i++) if(rooms[i].style==ST_HALL||rooms[i].style==ST_CRYPT){
         int c=1+(rooms[i].w*rooms[i].h>50);
         for(int k=0;k<c && nlamps<12;k++){ int cell=room_floor_cell(&rooms[i]); lampcell[nlamps++]=cell; add_light(cell%MW,cell/MW,60); } }
@@ -154,19 +182,21 @@ static void make_floor(void){
       for(int k=0;k<4;k++){ int x=up%MW, y=up/MW, l=0; while(l<20){ x+=ddx[k]; y+=ddy[k]; if(x<0||y<0||x>=MW||y>=MW) break; int t=dmap[y*MW+x]; if(t==D_WALL||t==D_PILLAR) break; l++; } if(l>bl){ bl=l; best=k; } }
       pang = best*256; }
     // monsters, treasure, items, a caged bug or two; the last floor of the zone has a boss instead of stairs down
-    int last = base_mode ? depth_no>=base_floors() : (!endless && depth_no>=zone_floors());
+    int last = mz_last;
     if(last){ dmap[dn]=D_FLOOR; }
-    if(endless && depth_no>1) dmap[up]=D_FLOOR;          // no way back up: warp out or keep going
+    if(endless && depth_no>1 && !(forge_on && last)) dmap[up]=D_FLOOR;          // no way back up: warp out or keep going
     tgt_x=((dn%MW)<<16)+0x8000; tgt_y=((dn/MW)<<16)+0x8000;
     up_x=((up%MW)<<16)+0x8000; up_y=((up/MW)<<16)+0x8000;
     ndo=0;
     #define SPAWN(k_,cell_,hp_,sub_) do{ if(ndo<NDO){ DObj *o=&dob[ndo++]; memset(o,0,sizeof(DObj)); int c_=(cell_); o->kind=(k_); o->alive=1; o->hp=o->maxhp=(hp_); o->sub=(sub_); o->x=((c_%MW)<<16)+0x8000; o->y=((c_/MW)<<16)+0x8000; } }while(0)
     int base_hp = 6 + dlv()*5 + depth_no*2;
+    int bcell = mboss ? 14*MW+15 : dn;                                  // the labyrinth boss waits in the middle arena
     int ilvl = dlv()*3 + depth_no;
     for(int i=1;i<nrooms;i++){
         int c = 1 + (rooms[i].w*rooms[i].h>60) + (rooms[i].w*rooms[i].h>110) + (rooms[i].w*rooms[i].h>160) + ((dlv()+depth_no)/4 > 3 ? 3 : (dlv()+depth_no)/4);
+        if(ddna.on){ c = c*(ddna.dens==0?2:ddna.dens==1?3:5)/3; if(c<1) c=1; }
         for(int k=0;k<c;k++){
-            int r=rndi(10), kind = r<5 ? K_SPIDER : (r<7 && (dlv()>=1||depth_no>=2)) ? K_BEETLE : (r<9 && (dlv()>=2||depth_no>=3)) ? K_WASP : K_SPIDER;
+            int kind = pick_kind();
             int hp = kind==K_BEETLE ? base_hp*5/2 : kind==K_WASP ? base_hp*4/5 : base_hp;
             SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0);
             if(rndi(100)<8){ DObj *o=&dob[ndo-1]; o->champ=1; o->cname=rndi(8); o->hp=o->maxhp=hp*3; }
@@ -175,10 +205,10 @@ static void make_floor(void){
     }
     for(int i=0;i<nrooms;i++){ int c=rndi(3); for(int k=0;k<c;k++){ int cr=rndi(3)==0; SPAWN(K_BARREL, room_floor_cell(&rooms[i]), cr?3:1, cr); } }   // barrels and crates to shove and smash
     if(maze){ int made=0;                                                                  // the maze passages are full of things: wanderers and chests in the dead ends
-        for(int t2=0;t2<400 && made<14+dd/2;t2++){ int x=1+rndi(MW-2), y=1+rndi(MW-2), c2=y*MW+x; if(dmap[c2]!=D_FLOOR || rid[c2]!=255) continue;
+        for(int t2=0;t2<400 && made<(mboss?7:14+dd/2);t2++){ int x=1+rndi(MW-2), y=1+rndi(MW-2), c2=y*MW+x; if(dmap[c2]!=D_FLOOR || rid[c2]!=255) continue;
             int dx2=x-(up%MW), dy2=y-(up/MW); if(dx2*dx2+dy2*dy2<36) continue;
             if(made<4) SPAWN(K_CHEST, c2, 1, 0);
-            else { int r=rndi(10), kind = r<5 ? K_SPIDER : (r<7 && (dlv()>=1||depth_no>=2)) ? K_BEETLE : (r<9 && (dlv()>=2||depth_no>=3)) ? K_WASP : K_SPIDER; SPAWN(kind, c2, kind==K_BEETLE ? base_hp*5/2 : kind==K_WASP ? base_hp*4/5 : base_hp, 0); }
+            else { int kind = pick_kind(); SPAWN(kind, c2, kind==K_BEETLE ? base_hp*5/2 : kind==K_WASP ? base_hp*4/5 : base_hp, 0); }
             made++; } }
     #define SPAWN_GEAR(cell_,g_) do{ Gear gg_=(g_); SPAWN(K_ITEM,(cell_),1,gg_.sub); DObj *o_=&dob[ndo-1]; o_->it=gg_.it; o_->rar=gg_.rar; o_->pre=gg_.pre; o_->suf=gg_.suf; o_->lvl=gg_.lvl; }while(0)
     for(int i=0;i<nrooms;i++){ int c = 1 + rndi(2); for(int k=0;k<c;k++) SPAWN_GEAR(room_floor_cell(&rooms[i]), roll_drop(ilvl,0)); }
@@ -187,7 +217,7 @@ static void make_floor(void){
     int nb = 1 + (dlv()/2>3?3:dlv()/2) + (depth_no>2);
     for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), base_hp/2+1, 0);
     for(int k=0;k<nlamps;k++) SPAWN(K_LAMP, lampcell[k], 1, 0);
-    if(last && !base_mode){ SPAWN(K_BOSS, dn, 40+dlv()*30 + tier_now()*40, 0); }       // the boss is always at the bottom: beat it again for the next tier
+    if(last && !base_mode){ SPAWN(K_BOSS, bcell, 40+dlv()*30 + tier_now()*40, 0); }       // the boss is always at the bottom: beat it again for the next tier
     if(base_mode){                                                                       // an outpost floor: a locked door guards the way on, the keycard is somewhere else
         if(last){ SPAWN(K_CORE, dn, 80+dlv()*25+outposts_done*20, 0); }
         // lock: the corridor cell just outside the far room
@@ -200,20 +230,23 @@ static void make_floor(void){
     }
     if(endless){
         if(hive_boss_floor()) SPAWN(K_BOSS, dn, 150+depth_no*12+dlv()*45, 0);              // a Tech Hive overlord guards the hive core
-        else if(depth_no%10==0) SPAWN(K_BOSS, dn, 60+depth_no*6+dlv()*20, 0);               // a guardian every 10 floors
+        else if(depth_no%10==0) SPAWN(K_BOSS, bcell, 60+depth_no*6+dlv()*20, 0);               // a guardian every 10 floors
         if(depth_no%5==0 || rndi(10)<3) SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), ((Gear){IT_WARP,0,0,0,0,0}));
         int ng = 1 + rndi(2) + depth_no/8; if(ng>4) ng=4;
         for(int k=0;k<ng;k++){ int t=rndi(10)+depth_no/6; Gear g={IT_GEM,(u8)(t<5?0 : t<8?1 : t<11?2 : 3),0,0,0,0}; SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), g); }
         if(depth_no>=5 && rndi(8)==0){ Gear g=roll_gear(rndi(2)?IT_SHELL:IT_THORN, ilvl+10, 60); g.sub=4; SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), g); }
     }
+    if(mboss){ for(int i=0;i<ndo;i++) if(dob[i].kind==K_BOSS) dob[i].hp=dob[i].maxhp=dob[i].maxhp*5/4;
+        hunt_t=150; tgt_x=((bcell%MW)<<16)+0x8000; tgt_y=((bcell/MW)<<16)+0x8000; SPAWN_GEAR(room_floor_cell(&rooms[1]), roll_drop(ilvl+8,30)); }          // it sleeps for a moment. the far chamber holds the prize
     // ---- a floor event (never on the first garden floor, a boss floor or in an outpost)
     fl_ev=FE_NONE; fl_need=fl_have=0; fl_bonus=100; fl_done=0;
 #ifdef TEST_FE
     if(1){
 #else
-    if(!last && !base_mode && !(zone==0 && !endless && depth_no==1 && !zone_cleared) && rndi(100)<65){
+    if(!last && !base_mode && !mboss && !(zone==0 && !endless && depth_no==1 && !zone_cleared) && (rndi(100)<65 || (ddna.on && ddna.haz))){
 #endif
         fl_ev=1+rndi(NFE-1);
+        if(ddna.on && ddna.haz && rndi(100)<70){ static const u8 he[5]={0,FE_DARK,FE_CURSED,FE_NEST,FE_AMBUSH}; fl_ev=he[ddna.haz%5]; }   // the dungeon's hazard
 #ifdef TEST_FE
         fl_ev=TEST_FE;
 #endif
@@ -233,12 +266,30 @@ static void make_floor(void){
         }
     }
     // quests that live on this floor
-    int qhere = q_type>0 && !q_done && depth_no==q_floor && q_zone==zone && q_world==world_no;
+    int qhere = !forge_on && q_type>0 && !q_done && depth_no==q_floor && q_zone==zone && q_world==world_no;
     if(qhere && q_type==Q_CHAMP){ SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0); dob[ndo-1].champ=2; }
     if(qhere && q_type==Q_FETCH) SPAWN_GEAR(room_floor_cell(&rooms[far]), ((Gear){IT_QUEST,0,0,0,0,0}));
-    if(q_type==Q_SHARDS && !q_done && q_have<q_need && q_zone==zone && q_world==world_no && depth_no>q_floor-q_need) SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), ((Gear){IT_QUEST,0,0,0,0,0}));   // one star shard per floor near the quest depth
+    if(!forge_on && q_type==Q_SHARDS && !q_done && q_have<q_need && q_zone==zone && q_world==world_no && depth_no>q_floor-q_need) SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), ((Gear){IT_QUEST,0,0,0,0,0}));   // one star shard per floor near the quest depth
+    if(forge_on) rng_s ^= vbl_count*2654435761u;                                          // the floor is fixed by the seed; the fight is not
 }
 static int solid(s32 x, s32 y){ int cx=x>>16, cy=y>>16; if(cx<0||cy<0||cx>=MW||cy>=MW) return 1; int t=dmap[cy*MW+cx]; return t==D_WALL||t==D_PILLAR||t==D_LOCK; }
+static void hunt_flow(void){                                  // path distance from you to every cell (4-way flood), so the boss can follow the corridors
+    EW static u16 q[MW*MW]; static const s8 ddx[4]={1,-1,0,0}, ddy[4]={0,0,1,-1};
+    for(int i=0;i<MW*MW;i++) flow[i]=0xFFFF;
+    int pc=(py_>>16)*MW+(px_>>16); if(pc<0||pc>=MW*MW) return;
+    int h=0, t=0; q[t++]=pc; flow[pc]=0;
+    while(h<t){ int c=q[h++], x=c%MW, y=c/MW;
+        for(int k=0;k<4;k++){ int nx=x+ddx[k], ny=y+ddy[k]; if(nx<0||ny<0||nx>=MW||ny>=MW) continue; int n=ny*MW+nx, tt=dmap[n];
+            if(flow[n]!=0xFFFF || tt==D_WALL || tt==D_PILLAR || tt==D_LOCK) continue; flow[n]=flow[c]+1; q[t++]=n; } }
+}
+static void hunt_move(DObj *o, s32 sp){                      // one step along the flow field toward you
+    int pc=(py_>>16)*MW+(px_>>16); if(pc!=flow_cell){ flow_cell=pc; hunt_flow(); }
+    int cx=o->x>>16, cy=o->y>>16, c=cy*MW+cx; s32 tx=px_, ty=py_;
+    if(cx>=0&&cy>=0&&cx<MW&&cy<MW && flow[c]!=0xFFFF && flow[c]>0){ int best=flow[c]; static const s8 ddx[4]={1,-1,0,0}, ddy[4]={0,0,1,-1};
+        for(int k=0;k<4;k++){ int nx=cx+ddx[k], ny=cy+ddy[k]; if(nx<0||ny<0||nx>=MW||ny>=MW) continue; int n=ny*MW+nx; if(flow[n]<best){ best=flow[n]; tx=((s32)nx<<16)+0x8000; ty=((s32)ny<<16)+0x8000; } } }
+    s32 dx=tx-o->x, dy=ty-o->y; if(dx>sp) dx=sp; else if(dx<-sp) dx=-sp; if(dy>sp) dy=sp; else if(dy<-sp) dy=-sp;
+    o->x+=dx; o->y+=dy;
+}
 
 static u8 bayer[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
 static int hz=89;          // the horizon row; it bobs while you walk and shakes when you are hit
@@ -661,9 +712,9 @@ static void dungeon_enter(void){
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
     obj_palette();
     for(int i=0;i<8;i++) BG_PAL[R_SPIDER+i]= endless ? w_mon[i] : zone_mon_pal[zone*8+i];
-    if(endless && depth_no>best_depth) best_depth=depth_no;
+    if(endless && !forge_on && depth_no>best_depth) best_depth=depth_no;
     lantk = have_bug[BUG_FIRE] ? 74 : 58;
-    int rk = have_bug[BUG_FIRE] ? 56 : 44; if(fl_ev==FE_DARK){ rk=rk*3/5; lantk=lantk*3/4; }
+    int rk = have_bug[BUG_FIRE] ? 56 : 44; if(fl_ev==FE_DARK){ rk=rk*3/5; lantk=lantk*3/4; } if(mboss){ rk=rk*3/4; lantk=lantk*4/5; }
     for(int d=1;d<100;d++){
         rd_rel[d]=(FOC<<15)/d; int li=rd_rel[d]>>12; if(li>511) li=511; rl_rel[d]=light_tab[li]*rk/64; rf_rel[d]=fog_tab[li]*52/64;
         cd_rel[d]=(FOC<<16)/d; li=cd_rel[d]>>12; if(li>511) li=511; cl_rel[d]=light_tab[li]*36/64; cf_rel[d]=fog_tab[li];

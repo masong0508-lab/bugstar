@@ -521,13 +521,14 @@ static void workbench(volatile u16 *pg){
     wait_release();
 }
 static int make_ship(volatile u16 *pg, int first);
+static int enter_dungeon_flag; static int forge_menu(volatile u16 *pg);
 static int shop_menu(void){   // returns 1 to fly on
     volatile u16 *pg=VISPG;
     oam_hide_all(); oam_flush();
     int sel=0; in_menu++; menu_msg[0]=0;
     while(1){
-        const char *main_opt[14]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","HANGAR: REDESIGN YOUR SHIP","TALK TO BOLT","YOUR SHAPE","LEAVE"};
-#define NSHOP 14
+        const char *main_opt[15]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","HANGAR: REDESIGN YOUR SHIP","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","LEAVE"};
+#define NSHOP 15
         int can_fly = 1, next_ok = !endless && zone_cleared && zone<5 && cluster_no==0; char nxt[40];
         if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); main_opt[0]=nxt; }
         int dirty=1; wait_release();
@@ -544,7 +545,9 @@ static int shop_menu(void){   // returns 1 to fly on
             if(HIT(K_B)){ in_menu--; wait_release(); return 0; }
             if(HIT(K_A)) break;
         }
-        if(sel==13){ in_menu--; wait_release(); return 0; }
+        if(sel==14){ in_menu--; wait_release(); return 0; }
+        if(sel==13){ if(!ant_king){ say("BEAT THE ANT KING TO OPEN THE FORGE"); continue; }
+            if(forge_menu(pg)){ enter_dungeon_flag=3; in_menu--; wait_release(); return 0; } box(pg,12,20,216,136); continue; }
         if(sel==12){ if(forms_open<=1){ say("A WEIRD WORLD MIGHT RESHAPE YOU ONE DAY"); continue; }      // switch between shapes you have been
             do form=(form+1)%3; while(!((forms_open>>form)&1)); form_t=0; recalc(); form_palette(); char b[40]; scpy(b,"YOU ARE NOW A "); scat(b,form==FORM_CREATURE?body_name[form_body]:form_name[form]); say(b); sfx(6); continue; }
         if(sel==11){ bolt_talk(pg); box(pg,12,20,216,136); continue; }
