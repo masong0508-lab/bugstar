@@ -6,7 +6,7 @@ enum { M_BRICK, M_STONE, M_EARTH, M_MOSS, M_CRYSTAL, M_MARBLE };
 #define F_BEAM  0x20
 enum { FL_FLAG, FL_TILE, FL_DIRT, FL_MOSS, FL_WATER, FL_PLANK };
 enum { ST_HALL, ST_CRYPT, ST_CAVE, ST_GROTTO, ST_CRYSTAL, NSTYLE };
-static const u8 style_wall[NSTYLE]={M_BRICK,M_STONE,M_EARTH,M_MOSS,M_CRYSTAL};
+static const u8 style_wall[NSTYLE]={M_STONE,M_STONE,M_EARTH,M_MOSS,M_CRYSTAL};
 static const u8 style_floor[NSTYLE]={FL_FLAG,FL_TILE,FL_DIRT,FL_MOSS,FL_TILE};
 static u8 dmap[MW*MW];
 EW static u8 seen[MW*MW]; static u8 room_seen[10];     // what you have seen on this floor (for the map)
@@ -41,10 +41,10 @@ static void cor_cell(int x,int y,int fm){
 static void corridor(Room *a, Room *b, int wide, int fm){
     int ax=a->x+a->w/2, ay=a->y+a->h/2, bx=b->x+b->w/2, by=b->y+b->h/2;
     int hx = (rnd()&1);
-    if(hx){ for(int x=(ax<bx?ax:bx); x<=(ax<bx?bx:ax); x++){ cor_cell(x,ay,fm); if(wide) cor_cell(x,ay+1,fm); }
-            for(int y=(ay<by?ay:by); y<=(ay<by?by:ay); y++){ cor_cell(bx,y,fm); if(wide) cor_cell(bx+1,y,fm); } }
-    else  { for(int y=(ay<by?ay:by); y<=(ay<by?by:ay); y++){ cor_cell(ax,y,fm); if(wide) cor_cell(ax+1,y,fm); }
-            for(int x=(ax<bx?ax:bx); x<=(ax<bx?bx:ax); x++){ cor_cell(x,by,fm); if(wide) cor_cell(x,by+1,fm); } }
+    if(hx){ for(int x=(ax<bx?ax:bx); x<=(ax<bx?bx:ax); x++){ cor_cell(x,ay,fm); for(int o=1;o<=wide;o++) cor_cell(x,ay+o,fm); }
+            for(int y=(ay<by?ay:by); y<=(ay<by?by:ay); y++){ cor_cell(bx,y,fm); for(int o=1;o<=wide;o++) cor_cell(bx+o,y,fm); } }
+    else  { for(int y=(ay<by?ay:by); y<=(ay<by?by:ay); y++){ cor_cell(ax,y,fm); for(int o=1;o<=wide;o++) cor_cell(ax+o,y,fm); }
+            for(int x=(ax<bx?ax:bx); x<=(ax<bx?bx:ax); x++){ cor_cell(x,by,fm); for(int o=1;o<=wide;o++) cor_cell(x,by+o,fm); } }
 }
 static void pillar_at(int x,int y,int m){ if(x<1||y<1||x>=MW-1||y>=MW-1) return; int i=y*MW+x; dmap[i]=D_PILLAR; wmat[i]=m; }
 static int room_floor_cell(Room *r){
@@ -56,13 +56,16 @@ static void make_floor(void){
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_BRICK; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
     nrooms=0; nlights=0; nlamps=0; ntorch=0;
     for(int i=0;i<MW*MW;i++) seen[i]=0; for(int i=0;i<10;i++) room_seen[i]=0;
-    for(int t=0;t<400 && nrooms<8;t++){
+    int dd=depth_no<12?depth_no:12, maxr=7-dd/3, vm=7-dd/3; if(maxr<4) maxr=4; if(vm<4) vm=4; if(base_mode) maxr=6;
+    for(int t=0;t<400 && nrooms<maxr;t++){
         static const u8 zst[6][3]={{ST_HALL,ST_CAVE,ST_GROTTO},{ST_GROTTO,ST_GROTTO,ST_CRYPT},{ST_HALL,ST_CRYPT,ST_HALL},{ST_CRYSTAL,ST_CRYSTAL,ST_CAVE},{ST_CRYSTAL,ST_HALL,ST_CRYPT},{ST_CAVE,ST_CAVE,ST_CRYPT}};
         static const u8 bst[3]={ST_CRYSTAL,ST_CRYSTAL,ST_CRYPT};
         const u8 *zs = base_mode ? bst : endless ? w_styles : zst[zone];
         int st = nrooms==0 ? zs[0] : (rndi(10)<7 ? zs[rndi(3)] : rndi(NSTYLE)), w, h;
-        if(st==ST_HALL){ w=9+rndi(5); h=7+rndi(2); if(rnd()&1){ int k=w; w=h; h=k; } }
-        else { w=6+rndi(5); h=6+rndi(4); }
+        int sh=t/80;                                              // if big rooms will not fit, shrink a little every 80 tries
+        if(st==ST_HALL){ w=11+rndi(5)+dd/4; h=9+rndi(3); if(rnd()&1){ int k=w; w=h; h=k; } }
+        else { w=9+rndi(5)+dd/3; h=8+rndi(4)+dd/4; }
+        w-=sh; h-=sh; if(w<6) w=6; if(h<6) h=6; if(w>20) w=20; if(h>20) h=20;
         if(w>MW-4) w=MW-4; if(h>MW-4) h=MW-4;
         int x=2+rndi(MW-4-w), y=2+rndi(MW-4-h), ok=1;
         for(int i=0;i<nrooms;i++){ Room*r=&rooms[i]; if(x<r->x+r->w+2 && r->x<x+w+2 && y<r->y+r->h+2 && r->y<y+h+2) ok=0; }
@@ -78,17 +81,22 @@ static void make_floor(void){
             for(int k=0;k<4;k++) if(rnd()&1) dmap[cy[k]*MW+cx[k]]=D_WALL;
         }
         if(st==ST_HALL){                                          // a colonnade down the long side
-            if(w>=h){ for(int xx=x+2; xx<=x+w-3; xx+=2){ pillar_at(xx,y+2,M_MARBLE); pillar_at(xx,y+h-3,M_MARBLE); } }
-            else    { for(int yy=y+2; yy<=y+h-3; yy+=2){ pillar_at(x+2,yy,M_MARBLE); pillar_at(x+w-3,yy,M_MARBLE); } }
+            if(w>=h){ for(int xx=x+2; xx<=x+w-3; xx+=3){ pillar_at(xx,y+2,M_MARBLE); pillar_at(xx,y+h-3,M_MARBLE); } }
+            else    { for(int yy=y+2; yy<=y+h-3; yy+=3){ pillar_at(x+2,yy,M_MARBLE); pillar_at(x+w-3,yy,M_MARBLE); } }
         }
-        if(st==ST_CRYPT){ for(int xx=x+2; xx<x+w-2; xx+=3) for(int yy=y+2; yy<y+h-2; yy+=3) pillar_at(xx,yy,M_STONE); }
+        if(st==ST_CRYPT){ for(int xx=x+2; xx<x+w-2; xx+=4) for(int yy=y+2; yy<y+h-2; yy+=4) pillar_at(xx,yy,M_STONE); }
         if(st==ST_GROTTO){ for(int yy=y+2;yy<y+h-2;yy++) for(int xx=x+2;xx<x+w-2;xx++) fmat[yy*MW+xx]=FL_WATER; add_light(x+w/2,y+h/2,45); }
         if(st==ST_CRYSTAL){ for(int k=0;k<2;k++){ pillar_at(x+2+rndi(w-4), y+2+rndi(h-4), M_CRYSTAL); } add_light(x+w/2,y+h/2,40); }
         if(st==ST_CAVE) add_light(x+w/2,y+h/2,28);
+        if(w*h>=100){ if(st==ST_HALL||st==ST_CRYPT){ for(int yy=y+h/3;yy<y+h-h/3;yy++) for(int xx=x+w/3;xx<x+w-w/3;xx++){ int i=yy*MW+xx; if(dmap[i]==D_FLOOR) fmat[i]=FL_WATER; } }   // a still pool in the middle of a big chamber
+            add_light(x+w/4,y+h/4,50); add_light(x+w-1-w/4,y+h-1-h/4,50); }
+        if(st==ST_HALL||st==ST_CRYPT){
+            for(int yy=y;yy<y+h;yy++) for(int xx=x;xx<x+w;xx++){ int i=yy*MW+xx; if(dmap[i]==D_FLOOR && fmat[i]!=FL_WATER){ int q=((xx>>1)*29+(yy>>1)*41+depth_no*5)%9; if(q==0) fmat[i]=FL_MOSS; else if(q==1 && depth_no>2) fmat[i]=FL_DIRT; } }   // overgrown, broken floor
+            for(int k=0;k<(w*h>=100?3:1);k++) pillar_at(x+2+rndi(w-4), y+2+rndi(h-4), M_STONE); }                                                                   // a broken column
         nrooms++;
     }
-    for(int i=1;i<nrooms;i++) corridor(&rooms[i-1],&rooms[i], rnd()&1, (i&1)?FL_FLAG:FL_PLANK);
-    if(nrooms>3) corridor(&rooms[0],&rooms[nrooms-1], 1, FL_FLAG);     // a loop, so it is not one long line
+    for(int i=1;i<nrooms;i++) corridor(&rooms[i-1],&rooms[i], 2, (i&1)?FL_FLAG:FL_PLANK);
+    if(nrooms>3) corridor(&rooms[0],&rooms[nrooms-1], 2, FL_FLAG);     // a loop, so it is not one long line
     // walls take the look of the room they face; decorate the faces
     for(int y=1;y<MW-1;y++) for(int x=1;x<MW-1;x++){
         int i=y*MW+x; if(dmap[i]!=D_WALL) continue;
@@ -96,7 +104,7 @@ static void make_floor(void){
         for(int k=0;k<4;k++) if(floorish(nb[k])){ f=nb[k]; if(rid[nb[k]]<nrooms) break; }
         if(f<0) continue;
         int r=rid[f], st = r<nrooms ? rooms[r].style : -1;
-        wmat[i] = st>=0 ? style_wall[st] : M_BRICK;
+        wmat[i] = st>=0 ? style_wall[st] : M_STONE;
         int hsh=(x*7+y*13)&7;
         if(st==ST_HALL||st==ST_CRYPT||st<0){
             int h2=(x*31+y*17+depth_no*7+dlv()*3)%13;
@@ -106,6 +114,7 @@ static void make_floor(void){
         else if(st<0 && ((x*5+y*3)%9)==0){ wmat[i]|=F_TORCH; add_light(f%MW,f/MW,60); if(ntorch<32){ torch_x[ntorch]=(x<<16)+0x8000+((f%MW-x)*0x8C00); torch_y[ntorch]=(y<<16)+0x8000+((f/MW-y)*0x8C00); ntorch++; } }
         else if(st==ST_CAVE && ((x+y)%3)==0) wmat[i]|=F_BEAM;
         else if(st==ST_CRYSTAL && hsh==3) add_light(f%MW,f/MW,34);
+        if((st==ST_HALL||st==ST_CRYPT||st<0) && !(wmat[i]&0x30) && ((x*13+y*7)%vm)==0) wmat[i]=M_MOSS;      // vines and moss, thicker the deeper you go
     }
     for(int i=0;i<nrooms && nlamps<12;i++) if(rooms[i].style==ST_HALL||rooms[i].style==ST_CRYPT){
         int c=1+(rooms[i].w*rooms[i].h>50);
@@ -132,7 +141,7 @@ static void make_floor(void){
     int base_hp = 6 + dlv()*5 + depth_no*2;
     int ilvl = dlv()*3 + depth_no;
     for(int i=1;i<nrooms;i++){
-        int c = 1 + (rooms[i].w*rooms[i].h>60) + ((dlv()+depth_no)/4 > 3 ? 3 : (dlv()+depth_no)/4);
+        int c = 1 + (rooms[i].w*rooms[i].h>60) + (rooms[i].w*rooms[i].h>110) + (rooms[i].w*rooms[i].h>160) + ((dlv()+depth_no)/4 > 3 ? 3 : (dlv()+depth_no)/4);
         for(int k=0;k<c;k++){
             int r=rndi(10), kind = r<5 ? K_SPIDER : (r<7 && (dlv()>=1||depth_no>=2)) ? K_BEETLE : (r<9 && (dlv()>=2||depth_no>=3)) ? K_WASP : K_SPIDER;
             int hp = kind==K_BEETLE ? base_hp*5/2 : kind==K_WASP ? base_hp*4/5 : base_hp;
@@ -144,7 +153,7 @@ static void make_floor(void){
     for(int i=0;i<nrooms;i++){ int c=rndi(3); for(int k=0;k<c;k++){ int cr=rndi(3)==0; SPAWN(K_BARREL, room_floor_cell(&rooms[i]), cr?3:1, cr); } }   // barrels and crates to shove and smash
     #define SPAWN_GEAR(cell_,g_) do{ Gear gg_=(g_); SPAWN(K_ITEM,(cell_),1,gg_.sub); DObj *o_=&dob[ndo-1]; o_->it=gg_.it; o_->rar=gg_.rar; o_->pre=gg_.pre; o_->suf=gg_.suf; o_->lvl=gg_.lvl; }while(0)
     for(int i=0;i<nrooms;i++){ int c = 1 + rndi(2); for(int k=0;k<c;k++) SPAWN_GEAR(room_floor_cell(&rooms[i]), roll_drop(ilvl,0)); }
-    int cages = 1 + (nrooms>5);
+    int cages = 1 + (nrooms>3);
     for(int k=0;k<cages;k++){ int r=1+rndi(nrooms>1?nrooms-1:1); SPAWN(K_CAGE, room_floor_cell(&rooms[r<nrooms?r:0]), 1, rndi(8)<2?BUG_PILL:rndi(6)); }
     int nb = 1 + (dlv()/2>3?3:dlv()/2) + (depth_no>2);
     for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), base_hp/2+1, 0);
@@ -220,7 +229,7 @@ static u8 lsub[128*128] __attribute__((section(".ewram")));     // smooth light,
 // ---------------------------------------------------------------- baking the light
 static int opaque(int tx,int ty){ if(tx<0||ty<0||tx>=MW||ty>=MW) return 1; int t=dmap[ty*MW+tx]; return t==D_WALL||t==D_PILLAR||t==D_LOCK; }
 static void build_light(void){
-    for(int i=0;i<128*128;i++) lsub[i]=9;
+    for(int i=0;i<128*128;i++) lsub[i]=16;
     for(int k=0;k<nlights;k++){ Light *L=&lights[k]; int lx=L->x*4+2, ly=L->y*4+2, st=L->str;
         for(int dy=-22;dy<=22;dy++){ int sy=ly+dy; if(sy<0||sy>=128) continue;
             for(int dx=-22;dx<=22;dx++){ int sx=lx+dx; if(sx<0||sx>=128) continue;

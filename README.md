@@ -84,6 +84,9 @@ Five pages with colour-coded button badges: planet, dungeon, space, staying aliv
 - **PORTAL spell** (12 MP, everyone knows it): cast it in a dungeon (SELECT) to pop up on the surface. The planet's door then reads "A: PORTAL BACK TO B#" and drops you on the same floor, so you can sell, heal and come back. Warp crystals still work the same way.
 - **Saves:** the game now saves at every new dungeon floor (a checkpoint: loading wakes you on the surface with a portal open to that floor), when you go down the door, when a quest is taken or claimed, when a bounty job pays, and every few minutes on the surface. Turn AUTOSAVE off in OPTIONS to stop all of these.
 
+## Roomier ruins (new)
+Dungeons are now carved-stone ruins rather than red brick: **fewer, much bigger chambers** (the deeper you go, the bigger and fewer), **three-wide passages**, airy colonnades, a **still pool** in the middle of big halls, broken columns, overgrown and cracked floors, and **vines and moss** on the walls that thicken with depth. A little ambient light means it is gloomy, not pitch black. Bigger rooms hold more monsters. The 3D view is unchanged, so it runs the same speed.
+
 ## Kart racing (new)
 - At **THE BOUNTY OFFICE** on a planet with a race post, the clerk may hand you the **KART GRAND PRIX** job. The kart race only exists once you have taken that job.
 - Then press A at **THE RACE POST**: you are in a kart. A big loop of **8 gates** appears, and the kart is more than twice as fast as walking. Hold **B to boost** (the bar by the timer drains and refills). Water and steep hills still slow you down.
