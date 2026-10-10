@@ -441,7 +441,7 @@ static void planet_frame(void){
 #endif
     // ---- sprites: project everything onto the terrain
     s32 cam_y = ppy - ((hcs*cam_back())>>8), cam_x = ppx - ((hsn*cam_back())>>8);
-    for(int m=0;m<30;m++){ int s=13+m*4; int inv=16384/s; set_affine(m, inv, 0, 0, inv); }      // scales 0.2x .. 2x
+    for(int m=0;m<28;m++){ int s=8+m*4; int inv=16384/s; set_affine(m, inv, 0, 0, inv); }      // scales 0.125x .. 1.8x
     oam_hide_all();
     int slot=0;
     s32 bug_sy;
@@ -514,20 +514,20 @@ static void planet_frame(void){
         int si=0; while(si<NSTEP-1 && stp_z[si]<zc) si++; int bin=(si>>3)-1; if(bin>7) bin=7;
         if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
         static const u8 ksz[25]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14};                  // size of each kind in 16ths of a cell
-        int s=(f>>6)*ksz[o->kind]>>4; if(s<13) s=13; int m=(s-13)/4; if(m>27) m=27;                      // px per cell / 16 px * 64             // sprite scale: a 16px sprite is one cell (matrices 28-31 belong to the jaws, arrow and bug)
-        s32 sc=13+m*4;
-        int w=w_of[o->kind], h=h_of[o->kind];
-        int cy=sy - (sc*h)/128;
-        int ox=sx-w, oy=cy-h;
-        if(ox<-64||ox>240||oy<-64||oy>160) continue;
+        int s=(f>>6)*ksz[o->kind]>>4; if(s<8) continue; int m=(s-8)/4; if(m>27) m=27;       // px per cell / 16 px * 64. too far away to see: skip it (it used to be drawn too big)
         int pb = zc>(28<<8) ? 2 : zc>(18<<8) ? 1 : 0;
-        int tl=tile_of[o->kind];
+        int tl=tile_of[o->kind], dy2=0;
         if(o->kind==O_CRIT){ Species *sp=&spc[o->var]; tl = sp->body==0 ? T_HOPPER : sp->body==1 ? T_GRAZER : T_FLYER; pb=4+o->var;
-            if(sp->body==2){ oy += (sinx((frames*6+order[k]*40)&255)>>13) - 10; } else if(sp->body==0 && (cvx[order[k]]||cvy[order[k]])) oy -= ((frames>>2)&1)*3;
+            if(sp->body==2){ dy2 = (sinx((frames*6+order[k]*40)&255)>>13) - 10; } else if(sp->body==0 && (cvx[order[k]]||cvy[order[k]])) dy2 = -((frames>>2)&1)*3;
             if(sp->size==0 && m>2) m-=2; if(sp->size==2 && m<27) m+=2; if(WL(MW_GIANTS)){ m+=2+WL(MW_GIANTS)/3; if(m>27) m=27; }
             if(WL(MW_GHOSTS) && (((frames>>3)+order[k])%(2+(25-WL(MW_GHOSTS))/5))==0) continue; }                   // GHOSTS: creatures blink out
         if(WL(MW_JUNGLE) && (o->kind==O_PLANT || (o->kind>=O_TREE && o->kind<=O_FLOWER) || o->kind==O_TUFT)){ m+=WL(MW_JUNGLE)/3; if(m>27) m=27; }   // JUNGLE: giant plants
         if(o->kind==O_LOCAL) tl = o->var ? T_LOCAL2 : T_LOCAL1;
+        s32 sc=8+m*4;                                                                  // the scale actually drawn: feet are placed from THIS (they used the pre-resize scale before)
+        int w=w_of[o->kind], h=h_of[o->kind];
+        int cy=sy - (sc*h)/128;
+        int ox=sx-w, oy=cy-h+dy2;
+        if(ox<-64||ox>240||oy<-64||oy>160) continue;
         shadow_oam[slot].a0 = (oy&255) | (1<<8)|(1<<9) | (shape_of[o->kind]<<14);
         shadow_oam[slot].a1 = (ox&511) | (m<<9) | (size_of[o->kind]<<14);
         shadow_oam[slot].a2 = tl | (pb<<12);
