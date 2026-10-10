@@ -738,7 +738,7 @@ static int hud_dirty=0;
 static void dungeon_hud(void){ hud_dirty=2; }
 static void dungeon_hud_both(void){ char b[40]; dungeon_label(b); for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b); hud_dirty=0; }
 static int stair_ok;
-static void dungeon_enter(void){
+static void dungeon_enter(void){ auto_run=0;
     depth_no++; stair_ok=0; st_floors++; ach_check(); sight=0; msg_timer=0;
     make_floor();
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];

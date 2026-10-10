@@ -38,6 +38,7 @@ static int rndi(int n){ return (int)(rnd()%(u32)n); }
 static void read_keys(void){ keys_old=keys; keys = ~REG_KEYINPUT & 0x3FF; }
 #define HELD(k) (keys&(k))
 #define HIT(k) ((keys&(k)) && !(keys_old&(k)))
+static int auto_run=0, tapU_t=0, run_stuck=0;   // AUTO-RUN in dungeons: double-tap UP, and you keep running until you stop it
 static void vsync(void){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); }
 static int isqrt(u32 n){ u32 r=0, b=1u<<30; while(b>n) b>>=2; while(b){ if(n>=r+b){ n-=r+b; r=(r>>1)+b; } else r>>=1; b>>=2; } return (int)r; }
 #define S64_MAX 0x7FFFFFFFFFFFFFFFLL
@@ -507,11 +508,18 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(HELD(kr)) pang=(pang+ts)&1023;
     s32 dirx=cosx(pang>>2)<<2, diry=sinx(pang>>2)<<2;
     s32 plx=-(diry*43/65), ply=dirx*43/65;
-    s32 spf = HELD(ku) ? WALK_FWD : HELD(kd) ? -WALK_BACK : 0;
+    // AUTO-RUN: double-tap UP and you run forward by yourself, a bit faster, with your thumb free: you can still steer (LEFT/RIGHT), strafe, bite (A) and use items (B).
+    // It stops by itself when you tap DOWN, hit a wall, meet a monster, get hurt, start fishing, open a menu or change floor.
+    if(!dizzy_t && !HELD(K_SEL) && HIT(ku)){ if(tapU_t && !auto_run){ auto_run=1; run_stuck=0; sfx(11); say("RUN!  DOWN STOPS"); } tapU_t=14; }
+    if(tapU_t) tapU_t--;
+    if(auto_run && (HELD(kd) || HELD(K_SEL) || HIT(K_START) || hurt_flash || dizzy_t || stun_t || fish_state)) auto_run=0;
+    if(auto_run){ if(moved_real) run_stuck=0; else if(wtick && ++run_stuck>6) auto_run=0; }          // a wall: stop, do not keep grinding on it
+    s32 spf = (HELD(ku) || auto_run) ? WALK_FWD : HELD(kd) ? -WALK_BACK : 0;
     s32 sps = HELD(ksr) ? WALK_SIDE : HELD(ksl) ? -WALK_SIDE : 0;
     if(spf && sps){ spf=spf*3/4; sps=sps*3/4; }          // diagonals are not faster
     spf = spf*(100+d_spd+have_bug[BUG_CRICKET]*25)/100; sps = sps*(100+d_spd+have_bug[BUG_CRICKET]*25)/100;
     if(speed_t){ spf=spf*8/5; sps=sps*8/5; }
+    if(auto_run){ spf=spf*7/5; sps=sps*7/5; }
     int sp = (spf||sps);
     s32 tvx=0, tvy=0;
     if(sp){ fish_state=0; tvx=(s32)((((long long)dirx*spf)-((long long)diry*sps))>>16); tvy=(s32)((((long long)diry*spf)+((long long)dirx*sps))>>16); }
@@ -645,6 +653,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
       else lock_ahead=0; }
     if(here!=D_UP) stair_ok=1;           // you arrive standing on the up stairs: step off once before they work
     int foe = foe_ahead(dirx,diry);
+    if(auto_run && foe) auto_run=0;                                  // something to bite right ahead: stop
     int fish_used = fish_step(dirx,diry, foe || lock_ahead || near_cage>=0 || (here==D_UP&&stair_ok) || here==D_DOWN, foe);
     if(fish_used){ }
     else if(lock_ahead && HIT(K_A)){ }
@@ -658,7 +667,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(hearts<=0) return 2;
     // ---- things that count down or drift: one tick per game step, drawn or not
     if(wtick){
-        if(sp && moved_real){ int o_=bob_ph; bob_ph += speed_t?17:12; if(((o_+64)^(bob_ph+64))&128) sfx(11); }
+        if(sp && moved_real){ int o_=bob_ph; bob_ph += (speed_t||auto_run)?17:12; if(((o_+64)^(bob_ph+64))&128) sfx(11); }
         if(shake_t) shake_t--;
         if(msg_timer) msg_timer--;
         if(hurt_flash) hurt_flash--;
@@ -689,6 +698,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             int steps=(y-y2)>0?(y-y2):1; for(int s=0;s<=steps;s+=2){ int cc=c+(c2-c)*s/steps, yy=y-s; if(cc>=0&&cc<120&&yy>=18&&yy<160){ pg[yy*120+cc]=(C_WHITE)|(C_WHITE<<8); if(cc+1<120) pg[yy*120+cc+1]=(R_CRYSTAL+7)|((R_CRYSTAL+7)<<8);} }
             c=c2; y=y2; } }
     if(fish_state) fish_draw(pg);
+    if(auto_run && (frames&32)) text(pg,4,34,"RUN",C_CYAN,1);        // a small blinking reminder, out of the way
     if(combo){ char cb[12]; scpy(cb,"COMBO X"); ncat(cb,combo+1); text(pg,120-textlen(cb)*2,100,cb,combo>=2?C_GOLD:C_WHITE,1); }
     if(dodge_msg_t) text(pg,120-5*2,108,"DODGE",C_CYAN,1);
 #ifdef TEST_FOE

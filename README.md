@@ -8,7 +8,7 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 - On a planet, **UP walks into the screen** (away from the camera) in both third and first person.
 | Button | On a planet | In a dungeon |
 | --- | --- | --- |
-| D-pad | Walk over the hills (in first person: up/down walk, left/right turn) | Up/down walk, left/right turn (a tap turns a little, holding turns faster) |
+| D-pad | Walk over the hills (in first person: up/down walk, left/right turn) | Up/down walk, left/right turn (a tap turns a little, holding turns faster). **Double-tap UP: auto-run** (steer with LEFT/RIGHT; DOWN, a wall, a monster or a hit stops it) |
 | A | Door, ship, cage, slug (the gold line at the top says what A will do) | Bite (hold A to keep biting). With nothing to bite: open cages, stairs, fish at water |
 | B | Use the picked item | Use the picked item |
 | L / R | Pick an item in your bag | Strafe left / right |
