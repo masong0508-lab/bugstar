@@ -375,7 +375,7 @@ static void fish_catch(void){
     Gear g={IT_FISH,(u8)f,(u8)(f>=5?R_RARE:f>=3?R_MAGIC:R_NORMAL),0,0,0};
     if(!add_gear(g)){ fish_state=0; fish_rc=30; return; }
     st_fish++; fish_streak++; if(pool_left[fish_pool]>0 && pool_left[fish_pool]!=255) pool_left[fish_pool]--;
-    ach_check(); sfx(f>=5?6:2); fish_state=0; fish_rc=14;
+    ach_check(); sfx(f>=5?6:2); fish_state=0; fish_rc=8;
     char b[40];
     if(f>=5){ scpy(b, f==7?"LEGENDARY! ":"RARE CATCH! "); scat(b,fish_name[f]); scat(b,"!"); say(b); msg_timer=80; if(opt_shake) shake_t=6; }
     else if(angler()>rk){ scpy(b,"ANGLER RANK: "); scat(b,rank_nm[angler()]); scat(b,"!"); say(b); msg_timer=70; sfx(6); }
@@ -390,18 +390,19 @@ static int fish_step(s32 dirx, s32 diry, int blocked, int foe){
     if(fish_rc) fish_rc--;
     if(fish_state && (foe || hurt_flash)){ fish_state=0; say("A MONSTER! LINE CUT"); fish_rc=20; return 0; }
     int wet=water_ahead(dirx,diry);
+    if(fish_state && !wet){ fish_state=0; fish_rc=6; say("YOU REEL IN"); return 0; }   // you walked or turned away from the water
     if(fish_state==0){
         if(blocked || !wet || fish_rc) return 0;
-        if(!(HIT(K_A) || (HELD(K_A) && fish_streak+st_fish>=0))) return 0;
+        if(!HIT(K_A)) return 0;                                   // a fresh press casts: holding A no longer re-casts by itself
         int p=pool_at(dirx,diry); fish_pool=p;
         if(pool_stock(p)==0){ if(HIT(K_A)){ say("FISHED OUT. TRY ANOTHER POOL"); sfx(11); } return HIT(K_A); }
-        fish_state=1; fish_buf=0; fish_t=40+rndi(100)-rk*8; if(fish_t<28) fish_t=28; sfx(8); return 1;
+        fish_state=1; fish_buf=0; fish_t=40+rndi(100)-rk*8; if(fish_t<28) fish_t=28; sfx(8); say("CAST! WAIT FOR THE BITE"); return 1;
     }
     if(fish_state==1){
-        if(HIT(K_A)){ if(fish_t>36){ fish_state=0; fish_rc=8; say("YOU REEL IN"); return 1; } fish_buf=14; }
+        if(HIT(K_A)){ fish_buf=14; }                                 // a press while waiting is kept for 14 steps: if the bite lands inside it, you hook at once
         if(fish_buf) fish_buf--;
         if(fish_t==30 || fish_t==18) sfx(11);
-        if(--fish_t<=0){ fish_state=2; fish_t=42+rk*6; sfx(8); if(opt_shake) shake_t=2;
+        if(--fish_t<=0){ fish_state=2; fish_t=72+rk*6; sfx(8); if(opt_shake) shake_t=2;
             int rb=rk*8 + (depth_no<20?depth_no*2:40) + (rooms[fish_pool].style==ST_GROTTO?40:0) + (fish_streak<5?fish_streak*10:50) + (mark_on(MK_LUCKY)?30:0);
             fish_f=fish_roll(rb);
             if(fish_buf) goto hook; }
@@ -411,7 +412,7 @@ static int fish_step(s32 dirx, s32 diry, int blocked, int foe){
         if(HIT(K_A)){ hook:
             { static const u16 hp[8]={90,110,120,150,170,200,240,300}; fish_hpm=fish_hp=hp[fish_f]*10; }
             fish_state=3; fish_ten=250; fish_sg=0; fish_sgw=60+rndi(50)-fish_f*4; sfx(2); return 1; }
-        if(--fish_t<=0){ fish_state=0; fish_streak=0; fish_rc=24; say("IT GOT AWAY"); sfx(11); }
+        if(--fish_t<=0){ fish_state=0; fish_streak=0; fish_rc=10; say("IT GOT AWAY"); sfx(11); }
         return 1;
     }
     // state 3: the fight. hold A to reel. when it surges (bar flashes) let go or the line snaps
@@ -431,6 +432,8 @@ static void fish_draw(volatile u16 *pg){
     else if(fish_state==3) by = 108 + (fish_hp*14/fish_hpm) + ((fish_sg&&(frames&1))?2:0);
     for(int y=100;y<by;y+=2) pg[y*120+66]=(R_STONE+6)|((R_STONE+6)<<8);
     for(int y=by;y<by+4;y++){ int c = fish_state==2 ? ((frames&2)?C_RED:216) : 216; pg[y*120+66]=c|(c<<8); pg[y*120+67]=c|(c<<8); }
+    if(fish_state==1 && fish_t<30 && (frames&4)) text(pg,120-textlen("NIBBLE...")*2,44,"NIBBLE...",C_CYAN,1);
+    if(fish_state==2) text(pg,120-textlen("BITE! PRESS A")*2,44,"BITE! PRESS A",(frames&2)?C_RED:C_WHITE,1);
     if(fish_state==3){
         int ten=fish_ten>1000?1000:fish_ten;
         rect(pg,10,50,8,82,C_DGREY); int hh=ten*80/1000; int col = ten<600?C_CYAN : ten<850?C_GOLD : C_RED;
