@@ -10,6 +10,9 @@ __attribute__((used, aligned(4))) const char sram_tag[]="SRAM_V113";
 #define META_OFF 0xC00
 #define SET_OFF 0x7F00
 static int slot_base(int i){ return i*SLOT_STRIDE; }
+#define XT_BASE 0x3000                  // spare SRAM above the three slots: each slot also owns 0x1400 bytes here for the upper cluster words
+#define XT_STRIDE 0x1400
+static int xt_base(int i){ return XT_BASE+i*XT_STRIDE; }
 static u32 fnv(const void *d, unsigned n){ const u8 *p=d; u32 h=2166136261u; for(unsigned i=0;i<n;i++){ h^=p[i]; h*=16777619u; } return h; }
 static void sram_read(int off, void *d, unsigned n){ u8 *p=d; for(unsigned i=0;i<n;i++) p[i]=SRAM[off+i]; }
 static void sram_write(int off, const void *s, unsigned n){ const u8 *p=s; for(unsigned i=0;i<n;i++) SRAM[off+i]=p[i]; }
@@ -112,8 +115,8 @@ static int load_game(int apply){
     last_slot=cur_slot; settings_save();
     return 1;
 }
-static void slot_erase(int i){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(i)+k]=0; }
-static void slot_copy(int from, int to){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(to)+k]=SRAM[slot_base(from)+k]; }
+static void slot_erase(int i){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(i)+k]=0; for(int k=0;k<XT_STRIDE;k++) SRAM[xt_base(i)+k]=0; }
+static void slot_copy(int from, int to){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(to)+k]=SRAM[slot_base(from)+k]; for(int k=0;k<XT_STRIDE;k++) SRAM[xt_base(to)+k]=SRAM[xt_base(from)+k]; }
 
 // ---------------------------------------------------------------- a peek at each slot, for the cards
 typedef struct { u8 ok; s16 zone, endless, world_no, level; s32 gold, fame, xp; u32 secs; } SlotInfo;

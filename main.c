@@ -54,21 +54,25 @@ static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_cam=0, opt_m
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
-// where you are in the universe: 2^320 galaxies x 2^1024 clusters each x 32 stars = 2^1349, about 1.2 x 10^406 stars in one save.
-// A planet's address is 43 words (10 galaxy words, 32 cluster words, star). Its land is built from every one of those words (see gen_terrain),
+// where you are in the universe: 2^320 galaxies x 2^32768 clusters each x 32 stars = 2^33093, about 10^9961 stars in one save.
+// A planet's address is 1035 words (10 galaxy words, 1024 cluster words, star). The first 32 cluster words are what the old saves knew;
+// the other 992 are folded into one word (clus_f), which is 0 while they are all zero, so every old cluster generates exactly as before. Its land is built from every one of those words (see gen_terrain),
 // so no two addresses grow the same hills; its other parts come from seeds hashed from the whole address (see make_world).
-#define NCW 32
-static u32 galaxy_no=0, clus[NCW];
+#define NCW0 32                                                   // the cluster words the older saves and the hash walk know about
+#define NCW 1024                                                  // the cluster address is 1024 words = 32,768 bits (the upper words live in spare SRAM, see save.inc)
+static u32 galaxy_no=0; static u32 clus[NCW] __attribute__((section(".ewram")));
+static u32 clus_f=0, clus_up=0;                                   // the upper cluster words folded into one, and whether any of them is set (see clus_refold)
 #define NGH 9
 static u32 galaxy_hi[NGH];                  // the galaxy number is 320 bits: galaxy_no is the low word, galaxy_hi the nine words above it (all zero = the old 32-bit galaxies)
 static u32 relic_bits=0; static int weird_seen=0, relic_gold=0;      // the legendary relics you own (one bit each), weird worlds visited
 static u32 hmix(u32 h);
 static u32 gal_fold(void){ u32 f = (galaxy_hi[0]|galaxy_hi[1]|galaxy_hi[2]) ? hmix(galaxy_hi[0]^hmix(galaxy_hi[1]^hmix(galaxy_hi[2]^0x68E31DA4u))) : 0;   // the upper galaxy words folded into one; 0 for the old galaxies, so their worlds do not change
     for(int i=3;i<NGH;i++) if(galaxy_hi[i]) f=hmix(f^galaxy_hi[i]^(u32)i*0x27D4EB2Fu); return f; }
-static int home_cluster(void){ u32 o=galaxy_no; for(int i=0;i<NGH;i++) o|=galaxy_hi[i]; for(int i=0;i<NCW;i++) o|=clus[i]; return !o; }
-static u32 aword(int i, int star){ i%=NCW+2; return i==0 ? (galaxy_no ^ gal_fold()) : i==NCW+1 ? (u32)star : clus[i-1]; }
+static int home_cluster(void){ u32 o=galaxy_no; for(int i=0;i<NGH;i++) o|=galaxy_hi[i]; for(int i=0;i<NCW0;i++) o|=clus[i]; return !(o|clus_up); }
+static u32 aword(int i, int star){ i%=NCW0+2; return i==0 ? (galaxy_no ^ gal_fold() ^ clus_f) : i==NCW0+1 ? (u32)star : clus[i-1]; }
 static u32 hmix(u32 h){ h^=h>>16; h*=0x85EBCA6Bu; h^=h>>13; h*=0xC2B2AE35u; h^=h>>16; return h; }
-static u32 amix(u32 k, int star){ u32 h=0x811C9DC5u ^ k*0x9E3779B1u; for(int i=0;i<NCW+2;i++) h=hmix(h ^ aword(i,star) ^ (u32)i*0x27D4EB2Fu); return h; }
+static u32 amix(u32 k, int star){ u32 h=0x811C9DC5u ^ k*0x9E3779B1u; for(int i=0;i<NCW0+2;i++) h=hmix(h ^ aword(i,star) ^ (u32)i*0x27D4EB2Fu); return h; }
+static void clus_refold(void){ u32 f=0, up=0; for(int i=NCW0;i<NCW;i++) if(clus[i]){ up|=clus[i]; f=hmix(f^clus[i]^(u32)i*0x27D4EB2Fu); } clus_f=f; clus_up=up; }   // call after any change to the cluster words
 static int in_menu=0; static char menu_msg[40];   // inside a menu, messages go on a line in the menu instead of over it                 // set by the SYSTEM page: 1 = load cur_slot, 2 = quit to the title
 
 // ---------------------------------------------------------------- mode 4 text

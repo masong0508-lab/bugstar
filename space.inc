@@ -18,6 +18,7 @@ static void galaxy_str(char *b, int full){                              // the g
 }
 static int sys_dist(int a, int b){ int dx=sys[a].x-sys[b].x, dy=sys[a].y-sys[b].y; return isqrt(dx*dx+dy*dy); }
 static void gen_cluster(void){
+    clus_refold();
     lseed = amix(galaxy_seed ^ 0x5bd1e995, 99);
     int start=0;
     if(home_cluster()){                                                  // only the home cluster has the six story stars
@@ -672,7 +673,7 @@ static int galaxy_map(void){     // returns 1 if you jumped
             for(int i=0;i<240*160/2;i++) pg[i]=0;
             lseed=amix(7,98); for(int i=0;i<120;i++) pix(pg,lr(240),18+lr(110),1+lr(3));
             char b[48]; scpy(b,"GALAXY "); galaxy_str(b,1); text(pg,4,3,b,C_GOLD,1);
-            { static const char hx[]="0123456789ABCDEF"; char c[40]; int n; scpy(c,"CLUSTER "); n=8; int top=NCW-1; while(top>0 && !clus[top]) top--;   // the cluster number: its top words, in hex
+            { static const char hx[]="0123456789ABCDEF"; char c[48]; int n; scpy(c,"CLUSTER "); n=8; int top=NCW-1; while(top>0 && !clus[top]) top--;   // the cluster number: its top words, in hex
               if(top>1){ c[n++]='.'; c[n++]='.'; } for(int w=(top>1?1:top);w>=0;w--) for(int k=28;k>=0;k-=4) c[n++]=hx[(clus[w + (top>1?top-1:0)]>>k)&15]; c[n]=0;
               if(top>1){ scat(c," ("); ncat(c,top+1); scat(c," WORDS)"); } text(pg,4,10,c,C_GREY,1); }
             for(int i=0;i<64;i++){ int a=i*4; int r=fuel; int x=sys[cur_sys].x+(sinx(a+64)*r>>14), y=sys[cur_sys].y+(sinx(a)*r>>14); if(x>=0&&x<240&&y>=16&&y<130) pix(pg,x,y,C_DGREY); }
@@ -814,21 +815,24 @@ static void save_ext(void){
     s->ant_king=ant_king; s->cleared_mask=cleared_mask; s->zones_open=zones_open; s->visits=visits; s->w_dlv=w_dlv; memcpy(s->cargo,cargo,8);
     s->sum=sx_sum(s); const u8 *p=(const u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) SRAM[slot_base(cur_slot)+SX_OFF+i]=p[i];
     beast_save(); trophy_save();
-    { u32 a[NCW+10]; a[0]=0x36444441u; a[1]=galaxy_no; for(int w=0;w<NCW;w++) a[2+w]=clus[w]; a[NCW+2]=relic_bits; a[NCW+3]=(u32)weird_seen; a[NCW+4]=(u32)relic_gold; a[NCW+5]=mark_perm; a[NCW+6]=(u32)wing_n; a[NCW+7]=(u32)form|((u32)forms_open<<4)|((u32)tool_held<<8)|((u32)form_body<<12)|(tools_owned<<16); a[NCW+8]=form_col|((u32)(form_t>0?1:0)<<16);
-      u32 h=2166136261u; for(int i=0;i<NCW+9;i++){ h^=a[i]; h*=16777619u; } a[NCW+9]=h; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
+    { u32 a[NCW0+10]; a[0]=0x36444441u; a[1]=galaxy_no; for(int w=0;w<NCW0;w++) a[2+w]=clus[w]; a[NCW0+2]=relic_bits; a[NCW0+3]=(u32)weird_seen; a[NCW0+4]=(u32)relic_gold; a[NCW0+5]=mark_perm; a[NCW0+6]=(u32)wing_n; a[NCW0+7]=(u32)form|((u32)forms_open<<4)|((u32)tool_held<<8)|((u32)form_body<<12)|(tools_owned<<16); a[NCW0+8]=form_col|((u32)(form_t>0?1:0)<<16);
+      u32 h=2166136261u; for(int i=0;i<NCW0+9;i++){ h^=a[i]; h*=16777619u; } a[NCW0+9]=h; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
     { u32 g[NGH+2]; g[0]=0x324C4147u; for(int i=0;i<NGH;i++) g[1+i]=galaxy_hi[i]; u32 h=2166136261u; for(int i=0;i<NGH+1;i++){ h^=g[i]; h*=16777619u; } g[NGH+1]=h; sram_write(slot_base(cur_slot)+0x9C0,g,sizeof g); }   // the upper galaxy words: their own block (ends at 0x9EC), so older saves still load
     { u32 g[3]; g[0]=0x59444F42u; g[1]=(u32)(cur_pl*8+cur_moon); g[2]=(2166136261u^g[0])*16777619u; g[2]=(g[2]^g[1])*16777619u; sram_write(slot_base(cur_slot)+0x9EC,g,sizeof g); }   // which planet or moon you are on
+    { int xo=xt_base(cur_slot); u32 hd[3]; hd[0]=0x32554C43u; hd[1]=(u32)(NCW-NCW0); hd[2]=fnv(&clus[NCW0],(NCW-NCW0)*4); sram_write(xo,hd,12); sram_write(xo+12,&clus[NCW0],(NCW-NCW0)*4); }   // the upper cluster words, straight from RAM (no big buffer on the stack)
 }
-static void addr_load(void){ u32 a[NCW+10]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h9=2166136261u, h7=2166136261u, h=2166136261u, h5=2166136261u; for(int i=0;i<NCW+9;i++){ h9^=a[i]; h9*=16777619u; } for(int i=0;i<NCW+7;i++){ h7^=a[i]; h7*=16777619u; if(i<NCW+6){ h^=a[i]; h*=16777619u; } if(i<NCW+5){ h5^=a[i]; h5*=16777619u; } }
+static void addr_load(void){ u32 a[NCW0+10]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h9=2166136261u, h7=2166136261u, h=2166136261u, h5=2166136261u; for(int i=0;i<NCW0+9;i++){ h9^=a[i]; h9*=16777619u; } for(int i=0;i<NCW0+7;i++){ h7^=a[i]; h7*=16777619u; if(i<NCW0+6){ h^=a[i]; h*=16777619u; } if(i<NCW0+5){ h5^=a[i]; h5*=16777619u; } }
     wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; form_body=0; form_col=0;
     relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; for(int k=0;k<NMK;k++) mark_t[k]=0; for(int w=0;w<NCW;w++) clus[w]=0; galaxy_no=0; for(int k=0;k<NGH;k++) galaxy_hi[k]=0;
-    if(a[0]==0x36444441u && a[NCW+9]==h9){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; mark_perm=a[NCW+5]; wing_n=(int)a[NCW+6]; if(wing_n>MAXWING||wing_n<0) wing_n=0;
-        u32 f=a[NCW+7]; form=f&3; if(form>2) form=0; forms_open=((f>>4)&7)|1; tool_held=(f>>8)&7; form_body=(f>>12)%3; tools_owned=(f>>16)&0xFF; form_col=(u16)a[NCW+8]; if((a[NCW+8]>>16)&1) form=FORM_BUG; }   // a timed shape does not survive a reload
-    else if(a[0]==0x35444441u && a[NCW+7]==h7){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; mark_perm=a[NCW+5]; wing_n=(int)a[NCW+6]; if(wing_n>MAXWING||wing_n<0) wing_n=0; }
-    else if(a[0]==0x34444441u && a[NCW+6]==h){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; mark_perm=a[NCW+5]; }
-    else if(a[0]==0x33444441u && a[NCW+5]==h5){ galaxy_no=a[1]; for(int w=0;w<NCW;w++) clus[w]=a[2+w]; relic_bits=a[NCW+2]; weird_seen=(int)a[NCW+3]; relic_gold=(int)a[NCW+4]; }
+    if(a[0]==0x36444441u && a[NCW0+9]==h9){ galaxy_no=a[1]; for(int w=0;w<NCW0;w++) clus[w]=a[2+w]; relic_bits=a[NCW0+2]; weird_seen=(int)a[NCW0+3]; relic_gold=(int)a[NCW0+4]; mark_perm=a[NCW0+5]; wing_n=(int)a[NCW0+6]; if(wing_n>MAXWING||wing_n<0) wing_n=0;
+        u32 f=a[NCW0+7]; form=f&3; if(form>2) form=0; forms_open=((f>>4)&7)|1; tool_held=(f>>8)&7; form_body=(f>>12)%3; tools_owned=(f>>16)&0xFF; form_col=(u16)a[NCW0+8]; if((a[NCW0+8]>>16)&1) form=FORM_BUG; }   // a timed shape does not survive a reload
+    else if(a[0]==0x35444441u && a[NCW0+7]==h7){ galaxy_no=a[1]; for(int w=0;w<NCW0;w++) clus[w]=a[2+w]; relic_bits=a[NCW0+2]; weird_seen=(int)a[NCW0+3]; relic_gold=(int)a[NCW0+4]; mark_perm=a[NCW0+5]; wing_n=(int)a[NCW0+6]; if(wing_n>MAXWING||wing_n<0) wing_n=0; }
+    else if(a[0]==0x34444441u && a[NCW0+6]==h){ galaxy_no=a[1]; for(int w=0;w<NCW0;w++) clus[w]=a[2+w]; relic_bits=a[NCW0+2]; weird_seen=(int)a[NCW0+3]; relic_gold=(int)a[NCW0+4]; mark_perm=a[NCW0+5]; }
+    else if(a[0]==0x33444441u && a[NCW0+5]==h5){ galaxy_no=a[1]; for(int w=0;w<NCW0;w++) clus[w]=a[2+w]; relic_bits=a[NCW0+2]; weird_seen=(int)a[NCW0+3]; relic_gold=(int)a[NCW0+4]; }
     else if(a[0]==0x52444441u && a[4]==(a[0]^a[1]*31^a[2]*131^a[3]*1031^0x5A5A)){ galaxy_no=a[1]; clus[0]=a[2]; clus[1]=a[3]; }   // last version's save
     else clus[0]=(u32)cluster_no;    // an older save: its cluster count becomes its address
+    { int xo=xt_base(cur_slot); u32 hd[3]; sram_read(xo,hd,12);                          // the upper cluster words: all zero unless a good block is there
+      if(a[0]==0x36444441u && hd[0]==0x32554C43u && hd[1]==(u32)(NCW-NCW0)){ sram_read(xo+12,&clus[NCW0],(NCW-NCW0)*4); if(fnv(&clus[NCW0],(NCW-NCW0)*4)!=hd[2]) for(int w=NCW0;w<NCW;w++) clus[w]=0; } }
     { u32 g[NGH+2]; sram_read(slot_base(cur_slot)+0x9C0,g,sizeof g); int boff=0x9E0;      // new saves keep 9 upper words at 0x9C0 and the body at 0x9EC; the last version kept 3 words and the body at 0x9E0
       u32 hn=2166136261u; for(int i=0;i<NGH+1;i++){ hn^=g[i]; hn*=16777619u; } u32 ho=2166136261u; for(int i=0;i<4;i++){ ho^=g[i]; ho*=16777619u; }
       if(a[0]==0x36444441u){
@@ -867,7 +871,7 @@ static void trophy_load(void){
 static void load_ext_defaults(void){
     for(int i=0;i<4;i++) tr_n[i]=0; tr_uq=0; scrap=0;
 
-    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; for(int k=0;k<NGH;k++) galaxy_hi[k]=0; cur_pl=cur_moon=0; wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; for(int k=0;k<NMK;k++) mark_t[k]=0; memset(cargo,0,8);
+    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; clus_f=0; clus_up=0; relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; for(int k=0;k<NGH;k++) galaxy_hi[k]=0; cur_pl=cur_moon=0; wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; for(int k=0;k<NMK;k++) mark_t[k]=0; memset(cargo,0,8);
     if(endless){ ant_king=1; zones_open=6; cleared_mask=63; w_dlv=6+world_no/2; cur_sys=6; }
     else { ant_king=0; zones_open=zone+1+(zone_cleared?1:0); if(zones_open>6) zones_open=6; cleared_mask=((1<<zone)-1)|(zone_cleared?1<<zone:0); cur_sys=zone; }
     beast_defaults(); gen_cluster();
