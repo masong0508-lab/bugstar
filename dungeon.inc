@@ -19,7 +19,7 @@ static const char *const kind_name[12]={"SPIDER","","","","QUEEN","BAT","","BEET
 static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE; }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 40
-static s32 tgt_x, tgt_y; static int lantk=58;
+static s32 tgt_x, tgt_y, up_x, up_y; static int lantk=58;
 EW static DObj dob[NDO]; static int ndo;
 static s32 px_, py_; static int pang;
 static s32 zbuf[120];
@@ -126,6 +126,7 @@ static void make_floor(void){
     if(last){ dmap[dn]=D_FLOOR; }
     if(endless && depth_no>1) dmap[up]=D_FLOOR;          // no way back up: warp out or keep going
     tgt_x=((dn%MW)<<16)+0x8000; tgt_y=((dn/MW)<<16)+0x8000;
+    up_x=((up%MW)<<16)+0x8000; up_y=((up/MW)<<16)+0x8000;
     ndo=0;
     #define SPAWN(k_,cell_,hp_,sub_) do{ if(ndo<NDO){ DObj *o=&dob[ndo++]; memset(o,0,sizeof(DObj)); int c_=(cell_); o->kind=(k_); o->alive=1; o->hp=o->maxhp=(hp_); o->sub=(sub_); o->x=((c_%MW)<<16)+0x8000; o->y=((c_/MW)<<16)+0x8000; } }while(0)
     int base_hp = 6 + dlv()*5 + depth_no*2;
@@ -565,6 +566,7 @@ static void minimap(volatile u16 *pg){
     pg[(oy+14)*120+ox+7]=C_WHITE|(C_WHITE<<8); pg[(oy+15)*120+ox+7]=C_WHITE|(C_WHITE<<8);
     { s32 dx=cosx(pang>>2), dy=sinx(pang>>2); int fx=ox+7+((dx*3)>>14), fy=oy+14+((dy*6)>>14); if(fx>=0&&fx<120&&fy>=18&&fy<160) pg[fy*120+fx]=C_WHITE|(C_WHITE<<8); }
 }
+static int boss_floor(void);
 static int stairs_seen(void){ int c=(tgt_y>>16)*MW+(tgt_x>>16); return seen[c] && dmap[c]==D_DOWN; }
 static void map_page(volatile u16 *pg){
     if(scene!=1){ text(pg,8,40,"THE MAP WORKS IN DUNGEONS.",C_WHITE,1); text(pg,8,52,"ON A PLANET, FOLLOW THE YELLOW ARROW.",C_GREY,1); return; }
@@ -595,7 +597,7 @@ static void map_page(volatile u16 *pg){
     rect(pg,lx+1,y+1,3,3,C_RED); text(pg,lx+9,y,base_mode?"CORE":"BOSS",C_WHITE,1); y+=9;
     if(base_mode){ rect(pg,lx,y,5,5,C_RED); text(pg,lx+9,y,"LOCKED DOOR",C_WHITE,1); y+=9; }
     y+=5;
-    if(!endless && depth_no>=zone_floors()) text(pg,lx,y,zone_cleared?"BOSS BEATEN!":"THE BOSS IS HERE",zone_cleared?C_GREEN:C_RED,1);
+    if(!endless && depth_no>=zone_floors()){ if(boss_floor()) text(pg,lx,y,"THE BOSS IS HERE",C_RED,1); else { text(pg,lx,y,"BOSS BEATEN!",C_GREEN,1); text(pg,lx,y+9,"EXIT: STAIRS UP",C_GREY,1); } }
     else text(pg,lx,y,stairs_seen()?"YOU FOUND THE STAIRS":"FIND THE STAIRS",stairs_seen()?C_GREEN:C_GREY,1);
 }
 static int base_floors(void){ return 2 + (outposts_done>5?3:outposts_done/2); }

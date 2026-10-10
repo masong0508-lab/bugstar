@@ -209,7 +209,8 @@ static void kill_mon(DObj *o){
     if(o->champ==2 && q_type==Q_CHAMP){ q_done=1; say("QUEST TARGET SLAIN!"); }
     sfx(9); debris(o->x,o->y,0x6000,boss?16:10,3,o->kvx,o->kvy); burst(o->x,o->y,0x6000,4,1);
     int ilvl=dlv()*3+depth_no;
-    if(boss){ music(1); if(!endless && !zone_cleared) zone_card=1+zone;
+    if(boss){ music(1); if(!endless){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
+       
         if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else if(zone_cleared){ if(tiers[zone]<9) tiers[zone]++; st_tiers++; char tb[40]; scpy(tb,"TIER "); ncat(tb,tiers[zone]); scat(tb," CLEARED! LOOT GETS BETTER"); say(tb); }
               else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
     gain_xp(xpv);
@@ -756,6 +757,7 @@ static void run_game(void){
             if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }
             if(enter_dungeon_flag){ if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; fade(1); oam_hide_all(); oam_flush();
                 depth_no=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
+                tier_lock = (!endless && zone_cleared) ? tiers[zone]+1 : 0;
                 scene=1; dungeon_enter();
 #ifdef TEST_FOE
                 for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=k?K_BEETLE:K_SPIDER; b->alive=1; b->hp=b->maxhp=k?40:20; b->x=px_+(cosx(pang>>2)<<(k?4:3)); b->y=py_+(sinx(pang>>2)<<(k?4:3)); }
@@ -781,7 +783,7 @@ static void run_game(void){
             vsync();
             if(scene==1){ REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; }
             oam_flush();
-            if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; msg_timer=0; fish_state=0;
+            if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; tier_lock=-1; msg_timer=0; fish_state=0;
                    char mb[40];
                    if(r==2){ recalc(); hearts=maxh; food=60; if(!endless) gold/=2; loot=0; if(!opt_easy){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, opt_easy ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
                    else if(endless){ int bonus = loot*(100+depth_no*15)/100; gold+=bonus; loot=0; scpy(mb,"ESCAPED B"); ncat(mb,depth_no); scat(mb,": +"); ncat(mb,bonus); scat(mb,"G"); }

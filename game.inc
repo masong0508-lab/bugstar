@@ -18,7 +18,8 @@ static u32 ach_done;                                 // one bit per achievement
 static int pet_xp, pet_lv;
 // ---- the drone outposts and Bolt's memory: one bit per star system with its outpost destroyed, how many data cores you hold
 static u32 base_mask; static int data_cores, outposts_done, base_mode;   // base_mode: 1 while you are inside an outpost
-static int tier_now(void){ return (!endless && zone_cleared) ? tiers[zone]+1 : 0; }     // 0 on a first run, 1+ when you go back down a cleared zone
+static int tier_lock=-1;                                                           // the tier this dungeon run started at: beating the boss must not change the floor count under your feet
+static int tier_now(void){ if(scene==1 && tier_lock>=0) return tier_lock; return (!endless && zone_cleared) ? tiers[zone]+1 : 0; }     // 0 on a first run, 1+ when you go back down a cleared zone
 static int dlv(void){ int d = endless ? w_dlv : zone + tier_now()*2; return d>30?30:d; }
 static int zone_floors(void){ return endless ? 9999 : zone+3+tier_now(); }
 static int gold_find=100;
