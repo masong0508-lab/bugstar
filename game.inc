@@ -21,7 +21,7 @@ static u32 base_mask; static int data_cores, outposts_done, base_mode;   // base
 static int tier_lock=-1;                                                           // the tier this dungeon run started at: beating the boss must not change the floor count under your feet
 static int tier_now(void){ if(scene==1 && tier_lock>=0) return tier_lock; return (!endless && zone_cleared) ? tiers[zone]+1 : 0; }     // 0 on a first run, 1+ when you go back down a cleared zone
 static int dlv(void){ int d = endless ? w_dlv : zone + tier_now()*2; return d>30?30:d; }
-static int zone_floors(void){ return endless ? 9999 : (zone+3)*3+tier_now(); }
+static int zone_floors(void){ return endless ? 9999 : (zone+3)*3+tier_now()*3; }
 static int gold_find=100;
 // ---- FLOOR EVENTS: most dungeon floors roll one, with a twist or a goal
 enum { FE_NONE, FE_VAULT, FE_NEST, FE_ELITE, FE_DARK, FE_SPEED, FE_CURSED, FE_RUSH, FE_BLESSED, FE_AMBUSH, FE_QUIET, NFE };
