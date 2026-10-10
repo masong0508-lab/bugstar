@@ -123,7 +123,8 @@ static void make_floor(void){
     if(forge_on) rng_s=hmix(((u32)ddna.seed<<8)+(u32)depth_no+1u);                 // a forge design is the same dungeon every time
     else { ddna.on=endless; if(endless){ u32 h=hmix(wd.tseed*0x9E3779B1u ^ wd.cseed ^ 0xD9A5u); int lr=h%10, hz=(h>>20)%7;
             ddna.layout = lr<3?LY_ROOMS : lr<4?LY_HALLS : lr<6?LY_CAVERNS : lr<8?LY_TEMPLE : LY_CATA;
-            ddna.wall=(h>>8)%8; ddna.mix=(h>>12)&3; ddna.dens=(h>>16)%3; ddna.haz = hz<3?0 : hz-2; ddna.boss=0; } }
+            ddna.wall=(h>>8)%8; ddna.mix=(h>>12)&3; ddna.dens=(h>>16)%3; ddna.haz = hz<3?0 : hz-2; ddna.boss=0;
+            if(hellw()){ static const u8 hw[6]={0,2,4,5,0,4}; ddna.wall=hw[wd.cls-PC_INFERNO]; ddna.haz = wd.cls==PC_OBSIDIAN ? 1 : 2; ddna.dens=2; ddna.mix = wd.cls==PC_INFERNO||wd.cls==PC_BONE ? 3 : 2; } } }
     int mz_last = forge_on ? depth_no>=ddna.floors : base_mode ? depth_no>=base_floors() : (!endless && depth_no>=zone_floors());
     int bossfl = !base_mode && (forge_on ? mz_last : endless ? (depth_no%10==0 && !hive_boss_floor()) : mz_last);
     mboss=0; hunt_t=0; flow_cell=-1;

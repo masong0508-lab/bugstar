@@ -10,7 +10,7 @@ enum { BUG_PILL, BUG_LADY, BUG_FIRE, BUG_BEE, BUG_CRICKET, BUG_ANT };
 static const char *const friend_name[6]={"PILL BUG","LADYBUG","FIREFLY","BEE","CRICKET","RUNAWAY ANT"};
 static const char *const bug_power[6]={"+10 GOLD","+5 HEALTH","LIGHTS THE DARK","STINGS ATTACKERS","FASTER LEGS","POINTS TO STAIRS"};
 // ---- endless galaxy (after the Ant King)
-static int endless=0, world_no=0, best_depth=0, w_dlv=6; static s64 loot=0; static u32 galaxy_seed=1;
+static int endless=0, world_no=0, best_depth=0, w_dlv=6; static int hellw(void), hell_tier(void); static s64 loot=0; static u32 galaxy_seed=1;
 // ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
 static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
 #define TZ (zone+(opt_diff==5?6:0))
@@ -22,7 +22,7 @@ static int pet_xp, pet_lv;
 static u32 base_mask; static int data_cores, outposts_done, base_mode;   // base_mode: 1 while you are inside an outpost
 static int tier_lock=-1;                                                           // the tier this dungeon run started at: beating the boss must not change the floor count under your feet
 static int tier_now(void){ if(scene==1 && tier_lock>=0) return tier_lock; return (!endless && zone_cleared) ? tiers[TZ]+1 : 0; }     // 0 on a first run, 1+ when you go back down a cleared zone
-static int dlv(void){ int d = endless ? w_dlv : zone + tier_now()*2; return d>30?30:d; }
+static int dlv(void){ int d = endless ? w_dlv + (hellw() ? 2+hell_tier()/2 : 0) : zone + tier_now()*2; return d>30?30:d; }
 static int zone_floors(void){ return endless ? 9999 : (zone+3)*(opt_diff==5?54:3)+tier_now()*3; }
 static int gold_find=100;
 // ---- FLOOR EVENTS: most dungeon floors roll one, with a twist or a goal
@@ -31,7 +31,7 @@ static const char *const fe_name[NFE]={"","TREASURE VAULT","MONSTER NEST","ELITE
 static const char *const fe_what[NFE]={"","CHESTS EVERYWHERE. SO ARE THE GUARDS","EXTRA MONSTERS. EXTRA GOLD","SLAY THE ELITES FOR A BIG REWARD","LESS LIGHT. DOUBLE LOOT","REACH THE STAIRS IN 60 SECONDS",
     "TOUGHER MONSTERS. BETTER LOOT","GOLD, GOLD, GOLD","A SHRINE BLESSES YOU","THEY ARE WAITING AT THE STAIRS","NOTHING HERE WANTS TO FIGHT. BREATHE"};
 static int fl_ev=0, fl_need=0, fl_have=0, fl_bonus=100, fl_done=0; static u32 fl_end=0;
-static void earn(int g){ s64 v=sdiv((s64)g*gold_find,100); if(fl_bonus!=100) v=sdiv(v*fl_bonus,100); if(endless && scene==1) loot=sadd(loot,v); else gold=sadd(gold,v); }
+static void earn(int g){ s64 v=sdiv((s64)g*gold_find,100); if(hellw()) v=sdiv(v*(100+hell_tier()*15),100); if(fl_bonus!=100) v=sdiv(v*fl_bonus,100); if(endless && scene==1) loot=sadd(loot,v); else gold=sadd(gold,v); }
 static u16 w_tint[6], w_mon[8]; static u8 w_styles[3]; static char w_name[24];
 static u32 wseed;
 static int wr(int n){ wseed = wseed*1103515245u + 12345u; return (int)((wseed>>16)%(u32)n); }
@@ -116,11 +116,14 @@ static void name_of(u32 wn, char *b){
 typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u8 weird, ntr; u16 tr[4]; u8 cls, mood, snowl, hs; u32 tseed, cseed; } WorldDNA;
 static WorldDNA wd;
 // ---- PLANET CLASS: one choice that ties a whole world together - its land, sea, colours, weather, plants, life, city and temper.
-enum { PC_TEMPERATE, PC_MOUNTAIN, PC_MEADOW, PC_OCEAN, PC_DESERT, PC_ICE, PC_JUNGLE, PC_DEATH, PC_ECUMENOPOLIS, PC_PARADISE, NPC };
-static const char *const pc_name[NPC]={"TEMPERATE WORLD","MOUNTAIN WORLD","MEADOW WORLD","OCEAN WORLD","DESERT WORLD","ICE WORLD","JUNGLE WORLD","DEATH PLANET","CITY PLANET","PARADISE"};
+enum { PC_TEMPERATE, PC_MOUNTAIN, PC_MEADOW, PC_OCEAN, PC_DESERT, PC_ICE, PC_JUNGLE, PC_DEATH, PC_ECUMENOPOLIS, PC_PARADISE, PC_INFERNO, PC_BRIMSTONE, PC_OBSIDIAN, PC_BONE, PC_BLOODSEA, PC_COCYTUS, NPC };
+static const char *const pc_name[NPC]={"TEMPERATE WORLD","MOUNTAIN WORLD","MEADOW WORLD","OCEAN WORLD","DESERT WORLD","ICE WORLD","JUNGLE WORLD","DEATH PLANET","CITY PLANET","PARADISE","INFERNO","BRIMSTONE","OBSIDIAN","BONE WORLD","BLOOD SEA","FROZEN HELL"};
 enum { MOOD_LOVE, MOOD_MEH, MOOD_HATE };
 static const char *const mood_name[3]={"THE LOCALS ADORE YOU.","THE LOCALS DO NOT CARE.","THE LOCALS HATE YOU."};
-static int deadly(void){ return wd.cls==PC_DEATH; }
+static int hellw(void){ return wd.cls>=PC_INFERNO && wd.cls<NPC; }                              // one of the six HELL WORLDS (only out in the galaxy)
+static int hell_tier(void){ int t=1+w_dlv/4; return t>10?10:t; }                                 // T1..T10: grows the further out you fly (4 danger per tier, like the zone tiers)
+static int deadly(void){ return wd.cls==PC_DEATH || hellw(); }
+static int deadly_mul(void){ return wd.cls==PC_DEATH ? 2 : hellw() ? 2+hell_tier()/4 : 1; }     // how many times harder everything bites: x2 at T1-3, x3 at T4-7, x4 at T8-10
 // ---- WEIRD TRAITS: 40 kinds of weirdness x 25 strengths = 1000 traits, each with its own name. A weird world (one in 111, out in the
 // galaxy) stacks 1 to 4 of them. wlv[kind] is how strong that kind is on this world (0 = not here, 1..25), wcol[kind] its colour.
 enum { MW_GLITCH, MW_RAINBOW, MW_TINY, MW_SPIKES, MW_GIANTS, MW_ZEROG, MW_METAL, MW_VOID, MW_METEOR, MW_MIRROR, MW_DISCO, MW_WOBBLE, MW_SHRINK, MW_JUNGLE,
@@ -174,7 +177,7 @@ static int holding(int t){ return form==FORM_HUMAN && ((tools_owned>>t)&1) && to
 static int mark_on(int k){ return ((mark_perm>>k)&1) || mark_t[k]>0; }
 static const char *const style_name[8]={"ROLLING HILLS","MESAS","DUNES","ISLANDS","CRATERS","CANYONS","RIDGES","PLAINS"};
 static const char *const hour_name[3]={"DAY","DUSK","NIGHT"};
-static const char *const weather_name[4]={"CLEAR SKIES","RAIN","SNOW","DUST"};
+static const char *const weather_name[6]={"CLEAR SKIES","RAIN","SNOW","DUST","EMBERS","ASHFALL"};
 #define NTAG 48
 static const char *const tagline[NTAG]={"ITS SOUP","A VERY LOUD FROG","THE WORLD'S FLATTEST ROCK","EXCELLENT NAPS","BEING SLIGHTLY DAMP","ONE REALLY GOOD TREE","A FESTIVAL OF BEANS","MUD. ALL THE MUD.",
     "ITS HAT MUSEUM","THE BIG SNAIL RACE","A SMELL NOBODY CAN PLACE","POLITE WEATHER","THE GREAT PEBBLE SHORTAGE","VERY STRONG TEA","A HOLE THAT HUMS","GRUMPY SUNSETS",
@@ -203,10 +206,11 @@ static void make_world(void){                                   // three indepen
     int r=40+wr(216), g=40+wr(216), b=40+wr(216); int k=wr(3); if(k==0) r=230; else if(k==1) g=230; else b=230;
     { int c=wr(100); wd.cls = c<20?PC_TEMPERATE : c<32?PC_MOUNTAIN : c<42?PC_MEADOW : c<54?PC_OCEAN : c<64?PC_DESERT : c<72?PC_ICE : c<82?PC_JUNGLE : c<89?PC_DEATH : c<92?PC_ECUMENOPOLIS : PC_PARADISE; if(gal && cur_moon){ static const u8 mc[3]={PC_MOUNTAIN,PC_DESERT,PC_ICE}; wd.cls=mc[c%3]; } }   // a moon is bare rock, dust or ice
 
+    if(gal && !cur_moon && !is_hive(cur_sys)){ u32 hh=amix(galaxy_seed^0xE1F0u^bsalt,cur_sys); int hp=8+(w_dlv>32?32:w_dlv)/2; if((int)(hh%100u)<hp) wd.cls=PC_INFERNO+(int)((hh>>8)%6u); }   // HELL WORLDS: 8% of worlds near home, up to 24% far out
 #ifdef TEST_CLASS
     wd.cls=TEST_CLASS;
 #endif
-    { static const u8 base[NPC][3]={{0,0,0},{150,125,105},{140,215,95},{70,180,130},{235,195,110},{215,232,255},{40,160,50},{130,30,22},{150,150,165},{235,150,205}};
+    { static const u8 base[NPC][3]={{0,0,0},{150,125,105},{140,215,95},{70,180,130},{235,195,110},{215,232,255},{40,160,50},{130,30,22},{150,150,165},{235,150,205},{200,70,25},{200,190,40},{40,35,60},{225,215,190},{150,15,35},{70,120,190}};
       if(wd.cls!=PC_TEMPERATE){ r=base[wd.cls][0]+wr(30)-15; g=base[wd.cls][1]+wr(30)-15; b=base[wd.cls][2]+wr(30)-15; if(r<10)r=10; if(g<10)g=10; if(b<10)b=10; } }
     static const u8 mul[5]={8,30,55,80,100};
     for(int i=0;i<5;i++){ int m=mul[i]; int w = i==4 ? 120 : (i==3?30:0); w_tint[i]=rgb15(r*m/100+w, g*m/100+w, b*m/100+w); }
@@ -234,8 +238,15 @@ static void make_world(void){                                   // three indepen
         case PC_JUNGLE:   wd.style=0; wd.rough=2; wd.snow=0; wd.weather = wr(2) ? 1 : 0; for(int i=0;i<4;i++) wd.flora[i]=6+wr(2); break;
         case PC_DEATH:    wd.style=4; wd.rough=3; wd.hour=2; wd.weather = wr(2) ? 3 : 0; wd.snow=0; wd.sand=0; wd.mood=MOOD_HATE; wd.city=0; wd.fauna=5; wd.beetles=3; wd.hs=4; break;
         case PC_ECUMENOPOLIS: wd.style=7; wd.rough=0; wd.hs=3; wd.city=1; wd.csize=9; wd.snow=0; break;
+        case PC_INFERNO:   wd.style=5; wd.rough=3; wd.hour=1; wd.weather=4; wd.snow=0; wd.sand=0; wd.hs=5; break;       // canyons of lava, volcanoes, falling embers
+        case PC_BRIMSTONE: wd.style=1; wd.rough=3; wd.hour=1; wd.weather=3; wd.snow=0; wd.sand=0; wd.hs=4; break;       // yellow mesas, acid pools, bad air
+        case PC_OBSIDIAN:  wd.style=6; wd.rough=3; wd.hour=2; wd.weather=0; wd.snow=0; wd.sand=0; wd.hs=6; break;       // black glass needles with neon veins
+        case PC_BONE:      wd.style=2; wd.rough=2; wd.hour=1; wd.weather=5; wd.snow=0; wd.sand=1; wd.hs=4; break;       // dunes of ribs under a huge dead moon
+        case PC_BLOODSEA:  wd.style=3; wd.rough=2; wd.hour=2; wd.weather=0; wd.snow=0; wd.sand=0; wd.hs=5; break;       // red islands in a red sea
+        case PC_COCYTUS:   wd.style=4; wd.rough=3; wd.hour=2; wd.weather=2; wd.snow=1; wd.snowl=70; wd.sand=0; wd.hs=5; break;   // hell froze over
         case PC_PARADISE: wd.style = wr(2) ? 3 : 0; wd.rough=1; wd.hour=wr(3)==0; wd.weather=0; wd.mood=MOOD_LOVE; wd.sand=1; break;
     }
+    if(hellw()){ wd.mood=MOOD_HATE; wd.city=0; wd.csize=0; wd.ruins=0; wd.fauna=5; wd.beetles=3; }                    // nobody lives here by choice
     if(gal && cur_moon){ wd.city=0; wd.csize=0; wd.weather=0; wd.mood=MOOD_MEH; wd.ruins=0; }      // no cities, no weather: moons are for mining
     // a weird world: one planet in 111, only out in the galaxy. It stacks 1 to 4 of the 1000 traits
     { u32 F = gal ? amix(galaxy_seed^0xF6u^bsalt,cur_sys) : base*0x2545F491u; wd.ntr=0;

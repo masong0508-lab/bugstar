@@ -63,6 +63,21 @@ IWRAM_DATA static s8 gtex[256];                            // a little grass/soi
 static const u8 bay4[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
 
 static u16 lerp15(u16 a, u16 b, int t){ int r=((a&31)*(16-t)+(b&31)*t)>>4, g=(((a>>5)&31)*(16-t)+((b>>5)&31)*t)>>4, bl=(((a>>10)&31)*(16-t)+((b>>10)&31)*t)>>4; return r|(g<<5)|(bl<<10); }
+static void hell_palette(void){                                   // the six hell worlds: their own ground ramp, sea, sky and glow (set after the dusk tint so the glow stays bright)
+    static const u8 T[6][21]={ {24,10,10, 150,60,30, 255,150,30, 170,30,0, 255,200,40, 30,0,0, 230,80,20},
+        {40,36,6, 190,170,40, 250,240,80, 40,120,10, 170,250,40, 30,34,0, 180,170,40},
+        {6,4,14, 70,60,110, 255,60,200, 0,0,10, 60,40,120, 2,0,10, 60,10,90},
+        {60,52,44, 240,230,205, 255,255,240, 80,70,70, 200,190,190, 20,16,26, 130,100,120},
+        {30,4,10, 170,60,70, 255,90,90, 70,0,10, 200,20,40, 6,0,6, 150,10,40},
+        {10,16,40, 190,225,255, 140,255,255, 140,190,230, 230,250,255, 4,6,24, 40,70,150} };
+    const u8 *t=T[wd.cls-PC_INFERNO]; u16 g0=rgb15(t[0],t[1],t[2]), g1=rgb15(t[3],t[4],t[5]), gl=rgb15(t[6],t[7],t[8]), s0=rgb15(t[9],t[10],t[11]), s1=rgb15(t[12],t[13],t[14]), k0=rgb15(t[15],t[16],t[17]), k1=rgb15(t[18],t[19],t[20]);
+    for(int i=0;i<14;i++) BG_PAL[GND_B+i]=lerp15(g0,g1,i*16/13);
+    BG_PAL[GND_B+14]=gl; BG_PAL[GND_B+15]=wd.cls==PC_OBSIDIAN ? rgb15(60,255,230) : lift15(gl,8);              // 14,15: veins, embers, crusts
+    for(int i=0;i<8;i++){ BG_PAL[WAT_B+i]=lerp15(s0,s1,i*2); BG_PAL[SKY_B+i]=lerp15(k0,k1,i*2); }
+    BG_PAL[88]=lerp15(k1,gl,8); BG_PAL[89]=gl; BG_PAL[94]=lift15(gl,10);                                      // the great sun or moon
+    if(wd.cls==PC_OBSIDIAN){ BG_PAL[88]=rgb15(255,60,200); BG_PAL[89]=rgb15(8,0,16); BG_PAL[94]=0; }           // a black sun with a neon rim
+    if(wd.cls==PC_BONE){ BG_PAL[88]=rgb15(150,140,130); BG_PAL[89]=rgb15(225,215,195); BG_PAL[94]=rgb15(40,30,40); }
+}
 static void planet_palette(void){
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
     const u16 *tp = endless ? w_tint : &tint_pal[zone*6];
@@ -79,6 +94,7 @@ static void planet_palette(void){
     if(wd.cls==PC_DEATH){ sky0=rgb15(10,0,0); sky1=rgb15(110,20,10); }                              // a death planet's sky
     for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=lerp15(sky0,sky1,i*2);
     if(wd.hour) for(int i=0;i<24;i++) BG_PAL[GND_B+i] = wd.hour==2 ? dim15(BG_PAL[GND_B+i],8) : lerp15(BG_PAL[GND_B+i],rgb15(255,140,60),4);
+    if(hellw()) hell_palette();
     // the city: four wall tints, windows, roads, roofs, plazas, sand and snow
     for(int t=0;t<4;t++){ u16 w = t==0 ? wd.bld : t==1 ? lift15(wd.bld,5) : t==2 ? shade15(wd.bld,10) : lerp15(wd.bld,wd.sky,6);
         BG_PAL[BLD_B+t*2]=w; BG_PAL[BLD_B+t*2+1]=shade15(w,13); BG_PAL[76+t]=lift15(w,4); }
@@ -113,6 +129,17 @@ static int hm_bil(s32 x, s32 y){                            // height between ce
 }
 static int g_hs=3;                                          // how tall the land is: 255 -> g_hs cells (mountain worlds are tall, meadows flat)
 static s32 ground_h(s32 x, s32 y){ return hfine[((y>>15)&HMASK)*HW + ((x>>15)&HMASK)]*g_hs; }
+static int hell_paint(int c, int h, int x, int y){            // the hell worlds' own ground patterns: lava veins, crusts, neon cracks, ribs, frost cracks
+    int d=bay4[((y&3)<<2)|(x&3)];
+    switch(wd.cls){
+        case PC_INFERNO:   if(((h+(d>>2))%17)<2 && h>water_lv+3) c=GND_B+14+((x+y)&1); break;
+        case PC_BRIMSTONE: if(((x*7+y*13+h*3)&15)==0) c=GND_B+14; else if(((h+(d>>2))%23)<1) c=GND_B+2; break;
+        case PC_OBSIDIAN:  if((((x+(h>>3))%24)==0) || (((y+(h>>3))%24)==0)) c=GND_B+14+(((x>>3)^(y>>3))&1); break;
+        case PC_BONE:      if((((y+(h>>2))/3)&1) && c>=GND_B+4) c-=4; break;
+        case PC_BLOODSEA:  if(((h+(d>>2))%21)<1 && h>water_lv+3) c=GND_B+14; break;
+        case PC_COCYTUS:   if(((x*5+y*3+(h>>2))%31)==0) c=GND_B+1; else if(((x*11+y*7+h)&63)==0) c=GND_B+14; break;
+    }
+    return c; }
 static void gen_terrain(u32 seed){
     wseed=seed;
     EW static s16 acc[TW*TW]; for(int i=0;i<TW*TW;i++) acc[i]=0;
@@ -143,7 +170,10 @@ static void gen_terrain(u32 seed){
     if(wd.style==4) for(int c=0;c<6+wd.rough*2;c++){ int cx=wr(TW), cy=wr(TW), r=5+wr(9);          // craters: a bowl with a raised rim
         for(int y=-r;y<=r;y++) for(int x=-r;x<=r;x++){ int d2=x*x+y*y; if(d2>r*r) continue; int i=((cy+y)&TMASK)*TW+((cx+x)&TMASK);
             int t=256-d2*256/(r*r); int v=hmap[i]-(70*t>>8)+(d2>r*r*2/3?25:0); hmap[i]=v<0?0:v>255?255:v; } }
-    if(WL(MW_SPIKES)){ int th=175-WL(MW_SPIKES)*2; for(int i=0;i<TW*TW;i++){ int v=hmap[i]; hmap[i] = v>th ? 255 : v>th-30 ? (v-th+30)*8+15 : v/8; } }   // SPIKES: needles
+    if(wd.cls==PC_INFERNO) for(int v=0;v<3;v++){ int cx=wr(TW), cy=wr(TW), r=10+wr(7);                                // VOLCANOES: a tall cone with a lava lake in its top
+        for(int y=-r;y<=r;y++) for(int x=-r;x<=r;x++){ int d2=x*x+y*y; if(d2>r*r) continue; int i=((cy+y)&TMASK)*TW+((cx+x)&TMASK); int dist=isqrt((u32)d2), cone=255-dist*205/r;
+            if(dist<=r/5) hmap[i]=(u8)(water_lv>10 ? water_lv-8 : 0); else if(cone>hmap[i]) hmap[i]=(u8)cone; } }
+    if(WL(MW_SPIKES) || wd.cls==PC_OBSIDIAN){ int th=175-(WL(MW_SPIKES)?WL(MW_SPIKES):10)*2; for(int i=0;i<TW*TW;i++){ int v=hmap[i]; hmap[i] = v>th ? 255 : v>th-30 ? (v-th+30)*8+15 : v/8; } }   // SPIKES: needles
     if(WL(MW_TERRACES)){ int st=6+WL(MW_TERRACES)*2; for(int i=0;i<TW*TW;i++) hmap[i]=(hmap[i]/st)*st; }                                      // TERRACES: giant stairs
     if(wd.cliffs) for(int i=0;i<TW*TW;i++){ int v=hmap[i]; if(v>120 && v<150) v = v<135 ? 120 : 150; hmap[i]=v; }   // a cliff line through the middle heights
     city_flatten();
@@ -161,12 +191,13 @@ static void gen_terrain(u32 seed){
         int s = 5 + (h-water_lv)*6/(255-water_lv+1) + slope/3 + ((bay4[((y&3)<<2)|(x&3)] + ((x*7+y*13)&7)) >> 3);
         if(h<water_lv+10 && ((x+y)&1)) s-=1;                            // a dark shoreline
         if(wd.twotone && ((hfine[((y+3)&HMASK)*HW+((x+5)&HMASK)]>>4)&1)) s+=2;        // patches of a second shade
-        if(s<0) s=0; if(s>15) s=15; cmap[i]=GND_B+s;
+        if(s<0) s=0; if(s>15) s=15; if(hellw() && s>13) s=13; cmap[i]=GND_B+s;
         if(wd.sand && h<water_lv+8) cmap[i]=82+((x+y)&1);               // a sandy beach
         { int sl = WL(MW_FROST) ? wd.snowl-WL(MW_FROST)*5 : wd.snowl; if(sl<water_lv+4) sl=water_lv+4; if(wd.snow && h>sl){ int q=(h-sl)>>5; if(q>1) q=1; cmap[i]=84+q*2+((bay4[((y&3)<<2)|(x&3)]>(h&15))?0:1); } }   // snow caps (FROST brings them down)
         if(cmap[i]>=GND_B && cmap[i]<GND_B+16){ int c=cmap[i];
             if(WL(MW_STRIPES)){ int w=2+WL(MW_STRIPES)/2; if(((x+y)/w)&1){ c+=3; if(c>GND_B+15) c=GND_B+15; } }                          // STRIPES
             if(WL(MW_CHECKER)){ int w=2+WL(MW_CHECKER)/2; if(((x/w)^(y/w))&1){ c-=4; if(c<GND_B) c=GND_B; } }                             // CHECKERS
+            if(hellw()) c=hell_paint(c,h,x,y);
             cmap[i]=c; } }
     city_stamp();
     if(WL(MW_GLITCH)){ u32 r=wd.tseed; for(int b=0;b<200+WL(MW_GLITCH)*60;b++){ r=hmix(r+b); int x=r&HMASK, y=(r>>8)&HMASK, w=2+((r>>16)&7), h=1+((r>>20)&3), c=40+((r>>24)%48);   // GLITCH: torn blocks of wrong colour
@@ -179,7 +210,9 @@ static char tdbg[40];
 static void new_planet(void){
     water_lv = endless ? 30+wr(60) : (zone==1 ? 100 : zone==0||zone==3 ? 70 : zone==5 ? 10 : 45);
     if(endless){ switch(wd.cls){ case PC_OCEAN: water_lv=86+wr(6); break; case PC_DESERT: water_lv=0; break; case PC_MOUNTAIN: water_lv=20+wr(20); break;
-        case PC_DEATH: water_lv=45+wr(20); break; case PC_ECUMENOPOLIS: water_lv=10; break; case PC_MEADOW: water_lv=40+wr(30); break; case PC_PARADISE: water_lv=75+wr(12); break; } }
+        case PC_DEATH: water_lv=45+wr(20); break;
+        case PC_INFERNO: water_lv=48+wr(14); break; case PC_BRIMSTONE: water_lv=30+wr(14); break; case PC_OBSIDIAN: water_lv=12+wr(8); break;
+        case PC_BONE: water_lv=0; break; case PC_BLOODSEA: water_lv=84+wr(8); break; case PC_COCYTUS: water_lv=34+wr(10); break; case PC_ECUMENOPOLIS: water_lv=10; break; case PC_MEADOW: water_lv=40+wr(30); break; case PC_PARADISE: water_lv=75+wr(12); break; } }
     g_hs = wd.hs ? wd.hs : 3;
     if(WL(MW_FLOOD)){ water_lv += WL(MW_FLOOD)*3; if(water_lv>92) water_lv=92; }                                   // FLOOD (the landing field stays dry)
     if(WL(MW_DROUGHT)) water_lv=0;                                                                                // DROUGHT
@@ -269,7 +302,7 @@ IWRAM static void render_planet(volatile u16 *pg){
 // ---------------------------------------------------------------- the status bar, messages
 static u32 phud_sig=0;
 static void planet_hud(void){
-    phud_sig=hud_sig(); char b[24]; scpy(b,world_name()); if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[TZ]+1); }
+    phud_sig=hud_sig(); char b[28]; scpy(b,world_name()); if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[TZ]+1); } else if(hellw()){ scat(b," H"); ncat(b,hell_tier()); }
     for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b);
 }
 static void show_msg(const char *s){ int n=0; while(s[n] && n<39){ msg[n]=s[n]; n++; } msg[n]=0; msg_timer = n ? 150 : 0; }
@@ -314,6 +347,25 @@ static void weird_frame(int n){
             sfx(12); show_msg("A METEOR LANDED! A CRYSTAL ROCK NEARBY"); } } }
     (void)n;
 }
+static void hell_sky(volatile u16 *pg){                                                 // a great sun or moon hangs over every hell world
+    static const u8 rr[6]={14,9,12,13,15,8}; int k=wd.cls-PC_INFERNO, ho=(heading*120)>>10, r=rr[k], cx=(30+k*17+120-ho)%120, cy=38+(k&1)*6;
+    for(int dy=-r;dy<=r;dy++) for(int dx=-r;dx<=r;dx++){ int d=dx*dx*4+dy*dy; if(d<=r*r) sky_put(pg,cx+dx,cy+dy, d<r*r/3?94:d<r*r*2/3?89:88); }
+    if(wd.cls==PC_BONE){ sky_put(pg,cx-2,cy-1,94); sky_put(pg,cx+2,cy-1,94); sky_put(pg,cx-2,cy,94); sky_put(pg,cx+2,cy,94); sky_put(pg,cx,cy+2,94); sky_put(pg,cx,cy+3,94); }   // the moon is a skull
+}
+static void hell_frame(int n){                                                          // what the six hell worlds do to you; every hit grows with the tier (hell_tier)
+    (void)n; if(!hellw()) return; int T=hell_tier(); u32 f=frames; int sea = hm_at(ppx,ppy)<water_lv && !(form==FORM_CREATURE && form_body==2);
+    if((wd.cls==PC_INFERNO || wd.cls==PC_BLOODSEA) && f%8==0){ u16 c0=BG_PAL[WAT_B+1]; for(int i=1;i<6;i++) BG_PAL[WAT_B+i]=BG_PAL[WAT_B+i+1]; BG_PAL[WAT_B+6]=c0; }   // the lava and the blood slowly churn
+    if(wd.cls==PC_INFERNO && (f&3)==0){ int t=(sinx((f*3)&255)+16384)>>11; for(int i=5;i<8;i++) BG_PAL[SKY_B+i]=lerp15(skybase[i],rgb15(255,120,30),t>16?16:t); }
+    if(wd.cls==PC_COCYTUS && (f&3)==0) for(int i=0;i<4;i++){ int s=sinx((f*2+i*40)&255); int t=((s+16384)*8)>>15; BG_PAL[SKY_B+i]=lerp15(skybase[i],rgb15(80,255,200),t>16?16:t); }
+    switch(wd.cls){
+        case PC_INFERNO:   if(sea && f%20==0){ hurt(2+T); show_msg("LAVA! GET OUT!"); } if(f%(300-T*20)==0 && food>0) food--; break;
+        case PC_BRIMSTONE: if(f%(260-T*16)==0 && hearts>1){ hearts--; hud_now(); if(rndi(4)==0) show_msg("THE FUMES BURN YOUR LUNGS"); } if(sea && f%25==0){ hurt(1+T); show_msg("ACID!"); } break;
+        case PC_OBSIDIAN:  if((pw_h||pw_v) && f%90==0){ hurt(1+T/2); show_msg("GLASS SHARDS CUT YOU"); } break;
+        case PC_BONE:      if(f%(220-T*12)==0 && food>0) food--; break;
+        case PC_BLOODSEA:  if(sea && f%40==0){ hurt(1+T/2); show_msg("THE RED SEA BITES"); } break;
+        case PC_COCYTUS:   if(f%(240-T*14)==0 && food>0) food--; if(sea && f%30==0){ hurt(T); show_msg("THE ICE CRACKS! IT IS COLD"); } break;
+    }
+}
 static void planet_frame(void){
     u32 t_f0=TMR();
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
@@ -356,7 +408,7 @@ static void planet_frame(void){
         s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
         if(ad<(14<<16)){ int sg = WL(MW_SHY) ? -1 : 1, ml = 8+WL(MW_ANGRY);                 // SHY LIFE runs away; ANGRY LIFE hurries
             o->x=(o->x+sg*((dx>>7)*n)*ml/8)&((TW<<16)-1); o->y=(o->y+sg*((dy>>7)*n)*ml/8)&((TW<<16)-1); }
-        if(ad<0x14000 && !invuln){ hurt((3+dlv()*2)*(deadly()?2:1)); if(invuln>20) show_msg("OUCH! A SLUG"); pknock(dx,dy,40); } }
+        if(ad<0x14000 && !invuln){ hurt((3+dlv()*2)*deadly_mul()); if(invuln>20) show_msg("OUCH! A SLUG"); pknock(dx,dy,40); } }
     // what is next to you
     int best=-1; s32 bd=0x1A000;
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_LAST_USE){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); s32 d=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(d<bd){ bd=d; best=i; } }
@@ -395,7 +447,7 @@ static void planet_frame(void){
                 PObj *o=&po[best]; int t=o->kind-O_TREE; sfx(o->kind==O_ROCK?12:13); mine_t=8;
                 if(holding(TL_PICK)) o->hp=1;                                                    // the pickaxe: one hit
                 if(--o->hp>0){ char b[40]; scpy(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
-                o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0)+(holding(TL_PICK)?1:0)+(cur_moon?1:0); if(pq_type==7){ pq_have++; job_tick(); }
+                o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0)+(holding(TL_PICK)?1:0)+(cur_moon?1:0)+(hellw()?hell_tier()/3:0); if(pq_type==7){ pq_have++; job_tick(); }
                 if(relic_roll(400)){ planet_hud(); p_last=vbl_count; return; }
                 if(cargo_n()>=cargo_cap+ship_hold_bonus()){ show_msg("HOLD FULL! SELL GOODS AT A STATION"); break; }
                 int room=cargo_cap+ship_hold_bonus()-cargo_n(); if(n>room) n=room; cargo[g]+=n; st_mined+=n; ach_check(); gain_xp(2+dlv());
@@ -419,7 +471,7 @@ static void planet_frame(void){
     if(frames%30==0 && hud_sig()!=phud_sig) planet_hud();
     if(opt_autosave && frames%6000==5999){ save_game(); show_msg("GAME SAVED"); }          // a quiet save every few minutes on the surface
     // ---- draw the world
-    weird_frame(n);
+    weird_frame(n); hell_frame(n);
     u32 t_r0=TMR(); render_planet(pg); u32 t_r1=TMR();
     if(msg_timer){ int L=textlen(msg); if(L<=29) text(pg,120-L*4,24,msg,C_WHITE,2); else stext(pg,120-L*2,26,msg,C_WHITE); }
 #ifdef TEST_FPS
@@ -431,7 +483,7 @@ static void planet_frame(void){
       if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } else if(pk==O_DOOR && portal_depth>0){ scpy(cb,"A: PORTAL BACK TO B"); ncat(cb,portal_depth); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
       if(race_on){ char rb[40]; scpy(rb,kart_on?"KART ":"RACE "); ncat(rb,race_t/60); scat(rb,kart_on?"S  GATE ":"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/"); ncat(rb,race_n); if(kart_on){ scat(rb,"  PAR "); ncat(rb,race_par/60); scat(rb,"S"); rect(pg,4,146,50,3,C_DGREY); if(kart_boost>0) rect(pg,4,146,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); } stext(pg,4,151,rb,C_CYAN); }
       else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4 && pq_type!=8){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
-      weather_draw(pg); if(wd.weird) sky_decor(pg);
+      weather_draw(pg); if(wd.weird) sky_decor(pg); if(hellw()) hell_sky(pg);
 #ifdef TEST_CITY
       stext(pg,4,140,tdbg,C_RED);
 #endif

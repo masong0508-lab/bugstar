@@ -21,6 +21,8 @@ static void make_species(void){
     if(wd.mood==MOOD_LOVE){ for(int s=0;s<2;s++) if(spc[s].temper==2) spc[s].temper=1; }                    // a loving world: nothing bites
     if(wd.mood==MOOD_HATE){ spc[0].temper=2; }                                                               // a hateful one: at least one kind does
     if(deadly()){ spc[0].temper=2; spc[1].temper=2; }
+    if(hellw()){ static const char *const ha[6]={"EMBER","SULPHUR","SHARD","GRAVE","CLOT","RIME"}; static const u16 hc[6]={C15(255,110,30),C15(230,230,60),C15(120,100,200),C15(235,225,200),C15(210,30,50),C15(140,230,255)};
+        for(int s=0;s<2;s++){ Species *p=&spc[s]; scpy(p->name,ha[wd.cls-PC_INFERNO]); scat(p->name," "); scat(p->name,noun[p->body][(wd.tseed>>(s*3))&3]); p->col = s ? shade15(hc[wd.cls-PC_INFERNO],11) : hc[wd.cls-PC_INFERNO]; if(p->maxpop<8){ p->maxpop=8; p->pop=8; } } }
     if(wd.cls==PC_ECUMENOPOLIS){ spc[0].maxpop=spc[0].pop=0; spc[1].maxpop=spc[1].pop=0; }                    // no wild things in a city planet
     if(wd.cls==PC_OCEAN){ spc[1].body=2; }
     if(WL(MW_SHY)){ spc[0].temper=0; spc[1].temper=0; } if(WL(MW_ANGRY)){ spc[0].temper=2; spc[1].temper=2; }
@@ -149,12 +151,12 @@ static void life_tick(int n){                                                   
             if(p->temper==0 && ad<(7<<16)){ mx=-(dx>>6)*n; my=-(dy>>6)*n; }          // timid: run from you
             else if(p->temper==2 && WL(MW_ANGRY) && ad<(10<<16)){ mx=(dx>>6)*n*(8+WL(MW_ANGRY))/8; my=(dy>>6)*n*(8+WL(MW_ANGRY))/8; if(ad<0x16000 && !invuln){ hurt(4+dlv()*2+WL(MW_ANGRY)/5); show_msg("OUCH! IT IS FURIOUS"); pknock(dx,dy,40); } }
             else if(p->temper==1 && ad<(9<<16) && ad>(2<<16)){ mx=(dx>>7)*n; my=(dy>>7)*n; }   // curious: come and look
-            else if(p->temper==2 && ad<(10<<16)){ mx=(dx>>6)*n; my=(dy>>6)*n; if(ad<0x16000 && !invuln){ hurt((4+dlv()*2)*(deadly()?2:1)); show_msg(deadly()?"IT BIT YOU. HARD. THIS PLANET WANTS YOU DEAD":"OUCH! IT BIT YOU"); pknock(dx,dy,40); } }
+            else if(p->temper==2 && ad<(10<<16)){ mx=(dx>>6)*n; my=(dy>>6)*n; if(ad<0x16000 && !invuln){ hurt((4+dlv()*2)*deadly_mul()); show_msg(deadly()?"IT BIT YOU. HARD. THIS PLANET WANTS YOU DEAD":"OUCH! IT BIT YOU"); pknock(dx,dy,40); } }
             s32 nx=o->x+mx, ny=o->y+my; if(p->body!=2 && (hm_at(nx,ny)<water_lv || in_city_cell(nx>>16,ny>>16))){ ctim[i]=0; continue; }
             o->x=nx&((TW<<16)-1); o->y=ny&((TW<<16)-1); }
         else if(o->kind==O_BEETLE){ s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
             if(ad<(12<<16) && ad>0x8000){ int sg=WL(MW_SHY)?-1:1, ml=8+WL(MW_ANGRY); o->x=(o->x+sg*((dx>>6)*n)*ml/8)&((TW<<16)-1); o->y=(o->y+sg*((dy>>6)*n)*ml/8)&((TW<<16)-1); }
-            if(ad<0x14000 && !invuln){ hurt((5+dlv()*2)*(deadly()?2:1)); show_msg("A BEETLE RAMMED YOU"); pknock(dx,dy,48); } }
+            if(ad<0x14000 && !invuln){ hurt((5+dlv()*2)*deadly_mul()); show_msg("A BEETLE RAMMED YOU"); pknock(dx,dy,48); } }
         else if(o->kind==O_LOCAL){ if(ctim[i]>n) ctim[i]-=n; else { ctim[i]=60+wr(120); int a=wr(256); cvx[i]=(cosx(a)*120)>>14; cvy[i]=(sinx(a)*120)>>14; if(wr(2)) cvx[i]=cvy[i]=0; }
             s32 nx=o->x+cvx[i]*n, ny=o->y+cvy[i]*n; int c=cmap[((ny>>15)&HMASK)*HW+((nx>>15)&HMASK)]; if(c==74||c==75||c==80||c==81){ o->x=nx; o->y=ny; } else ctim[i]=0; }
     }
@@ -203,9 +205,11 @@ static void give_marks(char *out){                                              
         form_palette(); if(nf==FORM_HUMAN) hum_req=1; given=1; }
     if(given){ recalc(); save_game(); }
 }
+static const char *const hell_tag[6][3]={{"SEAS OF LIQUID ROCK","A VOLCANO THAT HOLDS A GRUDGE","SUNSETS THAT NEVER END"},{"THE SMELL. OH, THE SMELL.","POOLS THAT EAT BOOTS","YELLOW. SO MUCH YELLOW."},
+        {"GLASS THAT BITES BACK","A SKY WITH NO STARS","NEON CRACKS IN THE DARK"},{"A VERY LARGE RIBCAGE","A MOON THAT IS A SKULL","DUST THAT USED TO BE SOMEONE"},{"TIDES THAT ARE NOT WATER","A RED MOON, ALL NIGHT","ISLANDS THAT BREATHE"},{"COLD THAT IS NOT KIND","LIGHTS DANCING OVER THE DEAD","A LAKE YOU CAN WALK ON. ONCE."}};
 static void planet_card(volatile u16 *pg){                                              // on arrival: name, what it is known for, its DNA, a scan, Bolt's two cents
     char l1[48], l2[48], l3[48], sc[48]; const char *ln[8];
-    scpy(l1,"KNOWN FOR: "); scat(l1,tagline[wd.tagline]);
+    scpy(l1,"KNOWN FOR: "); scat(l1, hellw() ? hell_tag[wd.cls-PC_INFERNO][wd.tagline%3] : tagline[wd.tagline]);
     scpy(l2,style_name[wd.style]); scat(l2,". "); scat(l2,hour_name[wd.hour]); scat(l2,". "); scat(l2,weather_name[wd.weather]); scat(l2,".");
     if(wd.city) scat(l2, wd.csize>=2 ? " A CITY." : " A TOWN.");
     scpy(l3,"LIFE: "); ncat(l3,spc[0].pop); scat(l3," "); scat(l3,spc[0].name); scat(l3,"S, "); ncat(l3,spc[1].pop); scat(l3," "); scat(l3,spc[1].name); scat(l3,"S");
@@ -218,16 +222,19 @@ static void planet_card(volatile u16 *pg){                                      
         weird_seen++; give_marks(mk);
         scpy(tl,"??? "); scat(tl,world_name()); scat(tl," ???");
         scpy(q2,"BOLT: "); scat(q2,mw_quip[wd.tr[0]%NMW]);
-        static char cm2[56]; scpy(cm2,pc_name[wd.cls]); scat(cm2,". "); scat(cm2,mood_name[wd.mood]);
+        static char cm2[56]; scpy(cm2,pc_name[wd.cls]); if(hellw()){ scat(cm2," T"); ncat(cm2,hell_tier()); } scat(cm2,". "); scat(cm2,mood_name[wd.mood]);
         int n=0; ln[n++]=ta; if(tb[0]) ln[n++]=tb; ln[n++]=cm2; ln[n++]=sc;
         static char mk2[60]; if(mk[0]){ scpy(mk2,"IT CHANGED YOU: "); scat(mk2,mk); mk2[52]=0; ln[n++]=mk2; }
         ln[n++]="A RELIC SHRINE IS HIDDEN HERE. FIND IT!"; ln[n++]=q2;
         sfx(6); card(pg,tl,ln,n); return; }
-    static char cm[56]; scpy(cm,pc_name[wd.cls]); scat(cm,". "); scat(cm,mood_name[wd.mood]);
+    static char cm[56]; scpy(cm,pc_name[wd.cls]); if(hellw()){ scat(cm," T"); ncat(cm,hell_tier()); } scat(cm,". "); scat(cm,mood_name[wd.mood]);
     static const char *const pq[NPC]={0,"BOLT: MOUNTAINS. I DO NOT HAVE KNEES.","BOLT: SO FLAT. SO NICE. I COULD ROLL FOREVER.","BOLT: WATER EVERYWHERE. I RUST. HURRY.","BOLT: SAND IN MY GEARS. AGAIN.",
-        "BOLT: BRR. MY BOLTS ARE CLICKING.","BOLT: THE PLANTS ARE TALLER THAN THE SHIP.","BOLT: THIS IS A DEATH PLANET. I WOULD LIKE TO LEAVE.","BOLT: A WHOLE PLANET OF CITY. WHERE DO THEY PARK?","BOLT: IT IS SO NICE HERE. I AM SUSPICIOUS."};
+        "BOLT: BRR. MY BOLTS ARE CLICKING.","BOLT: THE PLANTS ARE TALLER THAN THE SHIP.","BOLT: THIS IS A DEATH PLANET. I WOULD LIKE TO LEAVE.","BOLT: A WHOLE PLANET OF CITY. WHERE DO THEY PARK?","BOLT: IT IS SO NICE HERE. I AM SUSPICIOUS.",
+        "BOLT: THE SEA IS LAVA. I AM NOT A BOAT.","BOLT: THE AIR TASTES LIKE EGGS. I HAVE NO MOUTH.","BOLT: THE GROUND IS GLASS. I LOOKED DOWN. DO NOT.","BOLT: THE HILLS ARE RIBS. WHOSE RIBS?","BOLT: THE SEA IS RED. LET US NOT ASK WHY.","BOLT: COLD ENOUGH TO HURT. EVEN HELL GAVE UP."};
+
     ln[0]=cm; ln[1]=l1; ln[2]=l2; ln[3]=sc; ln[4]=l3; ln[5]= (endless && wd.cls) ? pq[wd.cls] : bolt_quip[q];
-    card(pg,world_name(),ln,6);
+    int nl=6; static char ht[56]; if(hellw()){ scpy(ht,"HELL TIER "); ncat(ht,hell_tier()); scat(ht,": BITES X"); ncat(ht,deadly_mul()); scat(ht,", GOLD +"); ncat(ht,hell_tier()*15); scat(ht,"%"); ln[nl++]=ht; }
+    card(pg,world_name(),ln,nl);
 }
 // gift limits: a local hands out at most GIFT_MAX gifts, then goes quiet for 30 minutes of play time (not saved: a restart clears it)
 #define GIFT_MAX 3
@@ -363,6 +370,6 @@ static void weather_draw(volatile u16 *pg){                                     
     if(!wd.weather) return; weather_t+=3; u32 s=wd.tseed+(frames>>1)*7;
     int n = wd.weather==3 ? 24 : 40;
     for(int k=0;k<n;k++){ s=s*1664525u+1013904223u; int x=(s>>8)%120, y=20+((s>>20)%138 + (wd.weather==2 ? (frames>>1) : frames*3)*(k+1))%138;
-        int ix = wd.weather==1 ? 13 : wd.weather==2 ? C_WHITE : C_GOLD;
+        int ix = wd.weather==1 ? 13 : wd.weather==2 ? C_WHITE : wd.weather==4 ? ((k&1)?C_GOLD:C_RED) : wd.weather==5 ? ((k&1)?C_GREY:C_DGREY) : C_GOLD;
         if(wd.weather==1 && y<159){ pg[y*120+x]=ix|(ix<<8); pg[(y+1)*120+x]=ix|(ix<<8); } else pg[y*120+x]=(pg[y*120+x]&0xFF00)|ix; }
 }
