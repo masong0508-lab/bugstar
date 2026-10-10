@@ -357,9 +357,9 @@ static void char_screen(volatile u16 *pg){
                 const Gear *eq[3]={&eqw,&eqa,&eqc}; static const char *const lab[3]={"BITE","WEAR","CHARM"};
                 for(int i=0;i<3;i++){ int x=8+i*78; rect(pg,x-2,y-2,74,18,1); frame1(pg,x-2,y-2,74,18,C_DGREY); text(pg,x,y,lab[i],C_GOLD,1);
                     if(eq[i]->it){ gear_name(eq[i],b); b[17]=0; text(pg,x,y+8,b,rar_color(eq[i]),1); } else text(pg,x,y+8,"NOTHING",C_DGREY,1); }
-                y+=20; scpy(b,"YOUR BAG  "); ncat(b,bag_n); scat(b,"/"); ncat(b,BAGMAX); text(pg,8,y,b,C_GOLD,1); y+=8;
+                y+=20; scpy(b,"YOUR BAG  "); ncat(b,bag_n); scat(b,"/"); ncat(b,BAGMAX); if(bag_n>12){ scat(b,"  PAGE "); ncat(b,cur/12+1); } text(pg,8,y,b,C_GOLD,1); y+=8;
                 int y0=y;
-                for(int i=0;i<bag_n;i++){ int col=i/6, yy=y0+(i%6)*8, x=8+col*116;
+                for(int i=(cur/12)*12;i<bag_n && i<(cur/12)*12+12;i++){ int k12=i%12; int col=k12/6, yy=y0+(k12%6)*8, x=8+col*116;
                     if(cur==i){ rect(pg,x-4,yy-1,114,8,6); text(pg,x-3,yy,">",C_CYAN,1); }
                     gear_name(&bag[i],b); b[26]=0; text(pg,x+3,yy,b,rar_color(&bag[i]),1);
                     if(is_gear(&bag[i])){ Delta d=gear_delta(&bag[i]); int v=d.dmg+d.def+d.hp/4; if(v) text(pg,x+100,yy,v>0?"+":"-",v>0?C_GREEN:C_RED,1); } }
@@ -509,7 +509,7 @@ static void trophy_case(volatile u16 *pg){
             scpy(b,"KEPT "); ncat(b,tr_n[0]); scat(b," COMMON  "); ncat(b,tr_n[1]); scat(b," MAGIC  "); ncat(b,tr_n[2]); scat(b," RARE  "); ncat(b,tr_n[3]); scat(b," UNIQUE"); text(pg,20,42,b,C_GREY,1);
             int y=54;
             if(!n) text(pg,22,y,"NO GEAR IN YOUR BAG",C_DGREY,1);
-            for(int i=0;i<n && y<136;i++, y+=8){
+            for(int i=(sel>10?sel-10:0);i<n && y<136;i++, y+=8){
                 if(i<ng){ Gear *g=&bag[gi[i]]; gear_name(g,b); b[30]=0; text(pg,22,y,b,rar_color(g),1);
                     scpy(b,"KEEP +"); ncat(b,keep_points(g->rar)); scat(b,"  SCRAP "); ncat(b,scrap_of(g->rar)); text(pg,236-24-textlen(b)*4,y,b,C_DGREY,1); }
                 else { scpy(b,"IN CASE: "); scat(b,uq_name[uq[i-ng]]); text(pg,22,y,b,C_UNIQ,1); text(pg,180,y,"TAKE OUT",C_DGREY,1); }
@@ -542,7 +542,7 @@ static void workbench(volatile u16 *pg){
             box(pg,12,20,216,136); text(pg,20,24,"WORKBENCH",C_GOLD,1);
             scpy(b,"G"); ncat(b,gold); scat(b,"  AMBER "); ncat(b,cargo[3]); scat(b,"  CRYSTALS "); ncat(b,cargo[4]); scat(b,"  SILK "); ncat(b,cargo[2]); rtext(pg,224,24,b,C_CYAN);
             int y=36;
-            for(int i=0;i<n && y<118;i++,y+=8){ Gear *g=items[i]; if(i==sel) text(pg,16,y,">",C_CYAN,1);
+            for(int i=(sel>9?sel-9:0);i<n && y<118;i++,y+=8){ Gear *g=items[i]; if(i==sel) text(pg,16,y,">",C_CYAN,1);
                 if(!g->it){ text(pg,22,y, i==0?"BITE: NOTHING":i==1?"WEAR: NOTHING":"CHARM: NOTHING",C_DGREY,1); continue; }
                 scpy(b, i<3 ? (i==0?"BITE: ":i==1?"WEAR: ":"CHARM: ") : "BAG: "); char nm[40]; gear_name(g,nm); nm[26]=0; scat(b,nm); scat(b," +"); ncat(b,g->lvl); text(pg,22,y,b,rar_color(g),1); }
             Gear *g=items[sel];

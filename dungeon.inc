@@ -18,7 +18,7 @@ static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT"
 static const char *const kind_name[12]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE"};
 static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE; }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
-#define NDO 40
+#define NDO 64
 static s32 tgt_x, tgt_y, up_x, up_y; static int lantk=58;
 EW static DObj dob[NDO]; static int ndo;
 static s32 px_, py_; static int pang;
@@ -218,6 +218,9 @@ static void make_floor(void){
     for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), base_hp/2+1, 0);
     for(int k=0;k<nlamps;k++) SPAWN(K_LAMP, lampcell[k], 1, 0);
     if(last && !base_mode){ SPAWN(K_BOSS, bcell, 40+dlv()*30 + tier_now()*40, 0); }       // the boss is always at the bottom: beat it again for the next tier
+    if(last && !base_mode && !endless && !forge_on && opt_diff>=3){                      // MULTIBOSS: higher difficulties send more bosses down deep. Insane-sect: 11+ on its deepest tiers
+        int ex = opt_diff==5 ? (tier_now()*10+zone*8)/40 : opt_diff==4 ? (tier_now()+1)/2 : tier_now()/4; if(opt_diff==5 && ex<1) ex=1; if(ex>15) ex=15;
+        for(int k=0;k<ex && ndo<NDO-8;k++){ SPAWN(K_BOSS, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), (40+dlv()*30+tier_now()*40)*6/10+1, 0); if(k%3==2) dob[ndo-1].champ=1; } }
     if(base_mode){                                                                       // an outpost floor: a locked door guards the way on, the keycard is somewhere else
         if(last){ SPAWN(K_CORE, dn, 80+dlv()*25+outposts_done*20, 0); }
         // lock: the corridor cell just outside the far room

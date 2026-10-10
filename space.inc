@@ -771,7 +771,7 @@ static void station_menu(void){
                     if(i==sel){ char q[52]; scpy(q,"\""); scat(q,say1[i]); scat(q,"\""); q[51]=0; text(pg,14,y+10,q,C_WHITE,1); scpy(q,"\""); scat(q,say2[i]); scat(q,"\""); q[51]=0; text(pg,14,y+19,q,C_WHITE,1); } }
                 text(pg,6,148,"UP/DOWN: TALK TO SOMEONE  L/R: MARKET  START: LEAVE",C_CYAN,1);
             } else {
-                int cost[9]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0, tech_cost(), wing_n<MAXWING?300+wing_n*150:0, 0, 0 };
+                int cost[9]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<2000?cargo_cap*10:0, tech_cost(), wing_n<MAXWING?300+wing_n*150:0, 0, 0 };
                 for(int i=0;i<9;i++){ if(i==sel) text(pg,6,26+i*10,">",C_CYAN,1); scpy(b,yard[i]); while(textlen(b)<20) scat(b," ");
                     if(i==5 && beast_stage<1) scat(b,"LOCKED"); else if(i<7){ if(cost[i]) { ncat(b,cost[i]); scat(b,"G"); if(i==5){ scat(b,"+"); ncat(b,tech_scrap()); scat(b," SCRAP"); } } else scat(b, i<2?"FULL":"MAX"); }
                     else if(i==7) scat(b, battle_req ? "READY" : "FREE");
@@ -795,10 +795,10 @@ static void station_menu(void){
         } else if(HIT(K_A) && sel==6){ int c=300+wing_n*150; if(wing_n>=MAXWING) say("YOU HAVE A FULL WING"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; wing_n++; sfx(6); } dirty=1;
         } else if(HIT(K_A) && sel==7){ battle_req=1; sfx(6); dirty=1;
         } else if(HIT(K_A)){
-            int cost[6]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<50?cargo_cap*60:0, tech_cost() };
+            int cost[6]={ (70-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<2000?cargo_cap*10:0, tech_cost() };
             if(sel==5 && cost[5] && scrap<tech_scrap()){ say("NEED MORE TECH SCRAP. SCRAP GEAR AT YOUR SHIP"); }
             else if(cost[sel] && gold>=cost[sel]){ gold-=cost[sel]; if(sel==5) scrap-=tech_scrap(); sfx(6);
-                if(sel==0) fuel=70; else if(sel==1) hull=100; else if(sel==2) laser_lv++; else if(sel==3){ shield_lv++; shield=20+shield_lv*20; } else if(sel==4) cargo_cap+=10; else tech_lv++; }
+                if(sel==0) fuel=70; else if(sel==1) hull=100; else if(sel==2) laser_lv++; else if(sel==3){ shield_lv++; shield=20+shield_lv*20; } else if(sel==4){ cargo_cap+=50; if(cargo_cap>2000) cargo_cap=2000; } else tech_lv++; }
             dirty=1;
         }
     }
@@ -806,7 +806,7 @@ static void station_menu(void){
 }
 
 // ---------------------------------------------------------------- the ship's own save block (after the main save)
-typedef struct { u32 magic; s16 cur_sys, cluster_no, fuel, hull, shield_lv, laser_lv, cargo_cap, ant_king, cleared_mask, zones_open, visits, w_dlv; u8 cargo[8]; u32 sum; } SaveX;
+typedef struct { u32 magic; s16 cur_sys, cluster_no, fuel, hull, shield_lv, laser_lv, cargo_cap, ant_king, cleared_mask, zones_open, visits, w_dlv; u16 cargo[8]; u32 sum; } SaveX;
 EW static SaveX svx;
 static u32 sx_sum(const SaveX *s){ const u8 *p=(const u8*)s; u32 h=2166136261u; for(unsigned i=0;i<sizeof(SaveX)-4;i++){ h^=p[i]; h*=16777619u; } return h; }
 static void save_ext(void){

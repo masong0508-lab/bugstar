@@ -141,7 +141,7 @@ static volatile int hdma_on=0;
 typedef struct { u8 x,y,kind,eco; } Sys;            // kind 0..5 = story zone, 6 = uncharted world
 EW static Sys sys[NSYS];
 static int cur_sys=0, fuel=70, hull=100, shield=40, shield_lv=1, laser_lv=1, cargo_cap=10, ant_king=0, cleared_mask=0, zones_open=1, visits=0;
-static u8 cargo[8];
+static u16 cargo[8];
 static const char *const eco_name[4]={"FARMING","MINING","TECH","HIVE"};
 static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MACHINES","MEDICINE","RELICS"};
 static u32 sys_id(int i); static int is_hive(int i);
@@ -214,7 +214,7 @@ static int mon_dmg(DObj *o){
 }
 static void kill_mon(DObj *o){
     fl_kill(o);
-    int boss=o->kind==K_BOSS, hive = boss && endless && hive_boss_floor();
+    int boss=o->kind==K_BOSS, hive = boss && endless && hive_boss_floor(); int nbo=0; if(boss) for(int i=0;i<ndo;i++) if(&dob[i]!=o && dob[i].alive && dob[i].kind==K_BOSS) nbo++;
     if(o->kind>=0 && o->kind<11) st_kills[o->kind]++;
     if(o->kind==K_CORE){                                                              // the outpost dies: Bolt gets a memory back, the beast loses a feeding node
         o->alive=0; sfx(9); debris(o->x,o->y,0x8000,16,3,0,0); burst(o->x,o->y,0x8000,12,2); if(opt_shake) shake_t=8;
@@ -230,7 +230,8 @@ static void kill_mon(DObj *o){
     if(!forge_on && boss && q_type==Q_BOSS && !q_done && q_zone==zone && q_world==world_no){ q_done=1; say("BOSS QUEST DONE! GO TO YOUR SHIP"); }
     sfx(9); debris(o->x,o->y,0x6000,boss?16:10,3,o->kvx,o->kvy); burst(o->x,o->y,0x6000,4,1);
     int ilvl=dlv()*3+depth_no;
-    if(boss){ music(1); if(!endless||forge_on){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
+    if(boss && nbo){ char t[32]; scpy(t,"BOSS DOWN! "); ncat(t,nbo); scat(t," LEFT"); say(t); xpv+=30+dlv()*10; }
+    else if(boss){ music(1); if(!endless||forge_on){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
        
         if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless) say("GUARDIAN BEATEN!"); else if(zone_cleared){ if(tiers[TZ]<(opt_diff==5?53:9)) tiers[TZ]++; st_tiers++; char tb[40]; scpy(tb,"TIER "); ncat(tb,tiers[TZ]); scat(tb," CLEARED! LOOT GETS BETTER"); say(tb); }
               else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
@@ -584,7 +585,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
       if(amt||jit){ s32 cx=px_+(s32)(((long long)dirx*amt)>>16)-(s32)(((long long)diry*jit)>>16), cy=py_+(s32)(((long long)diry*amt)>>16)+(s32)(((long long)dirx*jit)>>16);
           if(!box_solid(cx,cy,0x1000)){ px_=cx; py_=cy; } } }
     render_view(pg,dirx,diry,plx,ply);
-    static u8 ord[NDO+1]; static s32 dd[NDO+1]; int n=0;
+    EW static u8 ord[NDO+1]; EW static s32 dd[NDO+1]; int n=0;
     for(int i=0;i<ndo;i++) if(dob[i].alive){ s32 dx=dob[i].x-px_, dy=dob[i].y-py_; dd[i]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=i; }
     if(pet_here){ petobj.kind=K_PET; petobj.alive=1; petobj.x=pet_x; petobj.y=pet_y; s32 dx=pet_x-px_, dy=pet_y-py_; dd[NDO]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=NDO; }
     for(int i=1;i<n;i++){ u8 t=ord[i]; int j=i; while(j>0 && dd[ord[j-1]]<dd[t]){ ord[j]=ord[j-1]; j--; } ord[j]=t; }
