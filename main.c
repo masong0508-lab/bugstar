@@ -165,6 +165,7 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 #include "planet.inc"
 
 #include "dungeon.inc"
+#include "terrace.inc"
 #include "space.inc"
 #include "forge.inc"
 
@@ -682,7 +683,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     { s32 amt = (atk_t*2>atk_len ? 0x1000 : 0) - kick_t*0x500, jit = (shake_t && opt_shake) ? ((frames&1)?0x800:-0x800) : 0;   // lunge, recoil, shake
       if(amt||jit){ s32 cx=px_+(s32)(((long long)dirx*amt)>>16)-(s32)(((long long)diry*jit)>>16), cy=py_+(s32)(((long long)diry*amt)>>16)+(s32)(((long long)dirx*jit)>>16);
           if(!box_solid(cx,cy,0x1000)){ px_=cx; py_=cy; } } }
-    render_view(pg,dirx,diry,plx,ply);
+    if(terr_on) render_terrace(pg,dirx,diry,plx,ply); else render_view(pg,dirx,diry,plx,ply);
     EW static u8 ord[NDO+1]; EW static s32 dd[NDO+1]; int n=0;
     for(int i=0;i<ndo;i++) if(dob[i].alive){ s32 dx=dob[i].x-px_, dy=dob[i].y-py_; dd[i]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=i; }
     if(pet_here){ petobj.kind=K_PET; petobj.alive=1; petobj.x=pet_x; petobj.y=pet_y; s32 dx=pet_x-px_, dy=pet_y-py_; dd[NDO]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=NDO; }

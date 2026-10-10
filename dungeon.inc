@@ -23,6 +23,12 @@ static s32 tgt_x, tgt_y, up_x, up_y; static int lantk=58;
 EW static DObj dob[NDO]; static int ndo;
 static s32 px_, py_; static int pang;
 static s32 zbuf[120];
+// TERRACE CAVERNS: per-cell floor heights (eighths of a cell), low rail blocks, a per-pixel depth buffer for sprites
+#define TR_CEIL 24
+static int terr_on=0, terr_snap=0; static s32 t_eye=0x8000;
+EW static u8 trh[MW*MW], trb[MW*MW], zpix[120*160];
+static s32 eyeat(s32 x,s32 y){ if(!terr_on) return 0x8000; int cx=x>>16, cy=y>>16; if(cx<0||cy<0||cx>=MW||cy>=MW) return 0x8000; return t_eye-(s32)trh[cy*MW+cx]*0x2000; }
+static int terr_roll(int bossfl,int mz_last,int mboss); static void terr_build(void);
 static int hurt_flash=0, atk_t=0;
 typedef struct { u8 x,y,w,h,style; } Room;
 EW static Room rooms[10]; static int nrooms;
@@ -133,10 +139,11 @@ static void make_floor(void){
     if(bossfl){ if(forge_on) mboss = ddna.boss==1 || (ddna.boss==0 && rndi(100)<8);
                 else if(endless || zone>0 || tier_now()) mboss = rndi(100) < 10+tier_now()*4; }      // RARE: a boss floor that is a labyrinth, and the boss hunts you through it
     int maze = mboss || (ddna.on && ddna.layout==LY_MAZE) || (!base_mode && !mz_last && depth_no>=2 && (rndi(100)<22 || (!endless && depth_no==zone_floors()-1 && (zone&1)==0)));   // a labyrinth floor, here and there
+    terr_on = terr_roll(bossfl,mz_last,mboss); if(terr_on) maze=0;           // a very rare two-level terraced cavern
     for(int i=0;i<MW*MW;i++) seen[i]=0; for(int i=0;i<10;i++) room_seen[i]=0;
     int dd=depth_no<12?depth_no:12, maxr=7-dd/3, vm=7-dd/3; if(maxr<4) maxr=4; if(vm<4) vm=4; if(base_mode) maxr=6;
     if(ddna.on){ if(ddna.layout==LY_CATA) maxr=9; else if(ddna.layout==LY_HALLS) maxr=4; else if(ddna.layout==LY_CAVERNS) maxr=5; }
-    for(int t=0;t<400 && nrooms<maxr;t++){
+    for(int t=0;t<400 && nrooms<maxr && !terr_on;t++){
         static const u8 zst[6][3]={{ST_HALL,ST_CAVE,ST_GROTTO},{ST_GROTTO,ST_GROTTO,ST_CRYPT},{ST_HALL,ST_CRYPT,ST_HALL},{ST_CRYSTAL,ST_CRYSTAL,ST_CAVE},{ST_CRYSTAL,ST_HALL,ST_CRYPT},{ST_CAVE,ST_CAVE,ST_CRYPT}};
         static const u8 bst[3]={ST_CRYSTAL,ST_CRYSTAL,ST_CRYPT};
         const u8 *zs = base_mode ? bst : endless ? w_styles : zst[zone];
@@ -179,6 +186,7 @@ static void make_floor(void){
     for(int i=1;i<nrooms;i++) corridor(&rooms[i-1],&rooms[i], 2, (i&1)?FL_FLAG:FL_PLANK);
     if(nrooms>3) corridor(&rooms[0],&rooms[nrooms-1], 2, FL_FLAG);     // a loop, so it is not one long line
     if(maze) build_labyrinth();
+    if(terr_on) terr_build();
     // walls take the look of the room they face; decorate the faces
     for(int y=1;y<MW-1;y++) for(int x=1;x<MW-1;x++){
         int i=y*MW+x; if(dmap[i]!=D_WALL) continue;
@@ -560,7 +568,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
     if(o->kind==K_BAT || o->kind==K_WASP) z0 = 0x8000 + (sinI[(frames*6+(int)(o-dob)*13)&255]>>3);
     if(o->kind==K_ITEM && o->rar) z0 = 0x1000 + (sinI[(frames*8)&255]>>4);
     if(o->kind==K_LAMP) z0 = 0x18000 - hw;
-    int bot = hz + (s32)(((long long)(0x8000-z0)*FOC)/tY);
+    s32 eyo=eyeat(o->x,o->y); int bot = hz + (s32)(((long long)(eyo-z0)*FOC)/tY);
     int top = bot - hpx;
     int x0 = scx - wcols/2;
     // how much light falls on it: the smooth light map plus your lantern
@@ -572,12 +580,13 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
     int c0 = x0<0?0:x0, y0 = top<18?18:top;
     s32 ua = (c0-x0)*ustep;
     for(int c=c0; c<x0+wcols && c<120; c++, ua+=ustep){
-        if(tY >= zbuf[c]) continue;
+        if(!terr_on && tY >= zbuf[c]) continue;
         const u8 *acol = art + (ua>>16);
         s32 va = (y0-top)*vstp;
         for(int y=y0; y<bot && y<160; y+=2, va+=2*vstp){
             int ix=acol[(va>>16)*aw];
             if(!ix) continue;
+            if(terr_on && y<160 && (tY>>13) > (s32)zpix[y*120+c]+1) continue;      // hidden behind a ledge, a rail or a pillar
             if(ix==1) ix=tint; else if(dark && ix>=64 && ix<216){ int l=(ix&7)-dark; ix=(ix&~7)+(l<0?0:l>7?7:l); }
             if(o->flash){ if(o->flash>=5) ix = R_UP+7; else if(ix>=64 && ix<216){ int l=(ix&7)+3; ix=(ix&~7)+(l>7?7:l); } }   // one white blink, then a bright glow
             u16 p2=ix|(ix<<8); pg[y*120+c]=p2; if(y+1<bot && y+1<160) pg[y*120+120+c]=p2;
@@ -620,7 +629,7 @@ static void parts_draw(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
         if(tY<0x4000 || tY>0x60000) continue;
         int c = 60 + (s32)(((long long)tX*60)/tY); if(c<0||c>=120) continue;
         if(tY>=zbuf[c]) continue;
-        int y = hz + (s32)(((long long)(0x8000-p->h)*FOC)/tY); y&=~1; if(y<18||y>156) continue;
+        int y = hz + (s32)(((long long)(eyeat(p->x,p->y)-p->h)*FOC)/tY); y&=~1; if(y<18||y>156) continue;
         int ix = p->kind==0 ? R_FLAME+5+(p->life>20) : p->kind==2 ? R_WOOD+4+(i&1)*2 : p->kind==3 ? R_SPIDER+3+(i&3) : R_STONE+5;
         u16 px2=ix|(ix<<8); int big = tY<0x18000;
         pg[y*120+c]=px2; pg[y*120+120+c]=px2;
@@ -648,7 +657,7 @@ static void draw_glow(volatile u16 *pg, s32 wx, s32 wy, s32 h, s32 rad, int c_in
     s32 tX = (s32)((((long long)diry*sx) - ((long long)dirx*sy))/det);
     s32 tY = (s32)((((long long)-ply*sx) + ((long long)plx*sy))/det);
     if(tY<0x3000) return;
-    int c0 = 60 + (s32)(((long long)tX*60)/tY), y0 = hz + (s32)(((long long)(0x8000-h)*FOC)/tY);
+    int c0 = 60 + (s32)(((long long)tX*60)/tY), y0 = hz + (s32)(((long long)(eyeat(wx,wy)-h)*FOC)/tY);
     int r = (s32)(((long long)rad*FOC)/tY); if(r<2) r=2; if(r>30) r=30; int rc=(r+1)/2;
     for(int dc=-rc; dc<=rc; dc++){ int c=c0+dc; if(c<0||c>=120||tY>=zbuf[c]) continue;
         for(int dy=-r; dy<=r; dy++){ int y=y0+dy; if(y<18||y>159) continue; int d2=dc*dc*4+dy*dy; if(d2>r*r) continue;
@@ -666,7 +675,7 @@ static void draw_fnums(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
         s32 tX = (s32)((((long long)diry*sx) - ((long long)dirx*sy))/det);
         s32 tY = (s32)((((long long)-ply*sx) + ((long long)plx*sy))/det);
         if(tY<0x3000) continue;
-        int c = 60 + (s32)(((long long)tX*60)/tY), y = hz + (s32)(((long long)(0x8000-f->h)*FOC)/tY);
+        int c = 60 + (s32)(((long long)tX*60)/tY), y = hz + (s32)(((long long)(eyeat(f->x,f->y)-f->h)*FOC)/tY);
         char b[8]; b[0]=0; ncat(b,f->v); int x=c*2-textlen(b)*2;
         if(x<0||x>228||y<20||y>150) continue;
         text(pg,x+1,y+1,b,0,1); text(pg,x,y,b,f->col,1);
