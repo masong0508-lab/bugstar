@@ -253,7 +253,9 @@ static void local_talk(PObj *o){
         else if(form==FORM_HUMAN && (tools_owned|0xFF)!=tools_owned && rndi(2)){ int tl; do tl=rndi(NTOOL); while((tools_owned>>tl)&1); tools_owned|=1u<<tl; scpy(g,"YOU HAVE HANDS! TAKE THIS: "); scat(g,tool_name[tl]); }
         else { fame+=3; scpy(g,"I WILL TELL EVERYONE YOU ARE NICE. +FAME"); }
         ln[1]=g; card(pg,"A LOCAL",ln,2); sfx(7); }
-    else if(cooling){ int mins=((int)(gift_until[gi]-vbl_count)+3599)/3600; scpy(g,"NO MORE GIFTS. COME BACK IN "); ncat(g,mins); scat(g,"M"); ln[0]="I HAVE GIVEN YOU PLENTY."; ln[1]=g; card(pg,"A LOCAL",ln,2); }
+    else if(cooling){ static const char *const t1[10]={"MY POCKETS ARE EMPTY. LOOK. EMPTY.","I GAVE YOU THE GOOD STUFF ALREADY.","YOU ARE VERY NICE. I AM VERY OUT OF THINGS.","I WOULD GIVE YOU MY SHELL BUT I NEED IT.","WE ARE PRETTY EVEN NOW, YOU AND ME.","I SPENT IT ALL ON SOUP. SORRY.","DID I NOT JUST SEE YOU? I DID.","MY KIDS ATE THE REST. THEY ARE LIKE THAT.","I AM A LOCAL, NOT A BANK.","I HAVE NOTHING LEFT BUT KIND WORDS."};
+        static const char *const t2[10]={"MAYBE TRY ME AGAIN AFTER A NAP.","COME BY LATER. I MIGHT FIND SOMETHING.","THE GARDEN HAS MORE. GO LOOK.","ASK ME ANOTHER DAY. I WILL BE HERE.","GO SEE THE REST OF THE TOWN.","COME BACK WHEN I HAVE BAKED AGAIN.","I WILL HAVE MORE WHEN THE SUN MOVES.","GO ON. EXPLORE. I WILL KEEP YOUR SPOT.","TALK ANYTIME. JUST NO MORE GIFTS.","THE MAYOR MAY HAVE SOMETHING. SHE IS A MOTH."};
+        ln[0]=t1[rndi(10)]; ln[1]=t2[rndi(10)]; card(pg,"A LOCAL",ln,2); }
     else { char w[40]; scpy(w,"KNOWN FOR: "); scat(w,tagline[wd.tagline]); ln[1]=w; card(pg,"A LOCAL",ln,2); }
     if(pq_type==5 && !pq_done && !cooling){ pq_have++; }
 }
