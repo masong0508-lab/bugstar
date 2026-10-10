@@ -69,10 +69,14 @@ static void planet_palette(void){
     for(int i=0;i<6;i++) BG_PAL[16+i]=tp[i];
     for(int i=0;i<16;i++){ int k=i*4; int a=k>>4, t=k&15; if(a>3){ a=3; t=16; } BG_PAL[GND_B+i]=lerp15(tp[a],tp[a+1],t); }    // 16 ground shades, dark to light
     for(int i=0;i<8;i++) BG_PAL[WAT_B+i]=bg_pal[R_WATER+i];
+    if(wd.cls==PC_DEATH) for(int i=0;i<8;i++) BG_PAL[WAT_B+i]=rgb15(120+i*18,20+i*20,0);                       // lava seas
+    if(wd.cls==PC_ICE) for(int i=0;i<8;i++) BG_PAL[WAT_B+i]=rgb15(150+i*12,190+i*8,230+i*3);                  // frozen seas
+    if(wd.cls==PC_OCEAN || wd.cls==PC_PARADISE) for(int i=0;i<8;i++) BG_PAL[WAT_B+i]=rgb15(10+i*14,60+i*22,110+i*18);   // deep, clear water
     u16 sky0=rgb15(4,4,14), sky1 = endless ? wd.sky : tp[5];
     if(wd.hour==1){ sky0=rgb15(40,10,30); sky1=rgb15(240,120,60); }                                // dusk
     if(wd.hour==2){ sky0=rgb15(2,2,8); sky1=rgb15(20,24,60); }                                     // night
     if(wd.weather==3){ sky0=rgb15(60,30,10); sky1=rgb15(200,140,70); }                              // dust
+    if(wd.cls==PC_DEATH){ sky0=rgb15(10,0,0); sky1=rgb15(110,20,10); }                              // a death planet's sky
     for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=lerp15(sky0,sky1,i*2);
     if(wd.hour) for(int i=0;i<24;i++) BG_PAL[GND_B+i] = wd.hour==2 ? dim15(BG_PAL[GND_B+i],8) : lerp15(BG_PAL[GND_B+i],rgb15(255,140,60),4);
     // the city: four wall tints, windows, roads, roofs, plazas, sand and snow
@@ -107,11 +111,13 @@ static int hm_bil(s32 x, s32 y){                            // height between ce
     int top=a*(256-fx)+b*fx, bot=c*(256-fx)+d*fx;
     return (top*(256-fy)+bot*fy)>>8;                          // 0..255<<8
 }
-static s32 ground_h(s32 x, s32 y){ return hfine[((y>>15)&HMASK)*HW + ((x>>15)&HMASK)]*3; }   // height in 8.8 cells: 255 -> 3 cells
+static int g_hs=3;                                          // how tall the land is: 255 -> g_hs cells (mountain worlds are tall, meadows flat)
+static s32 ground_h(s32 x, s32 y){ return hfine[((y>>15)&HMASK)*HW + ((x>>15)&HMASK)]*g_hs; }
 static void gen_terrain(u32 seed){
     wseed=seed;
     EW static s16 acc[TW*TW]; for(int i=0;i<TW*TW;i++) acc[i]=0;
-    static const u8 cell[4]={32,16,8,4}; static const u8 amp[4]={110,70,40,18};
+    static const u8 cell[4]={32,16,8,4}; u8 amp[4]={110,70,40,18};
+    if(wd.cls==PC_MEADOW){ amp[2]=10; amp[3]=2; } if(wd.cls==PC_MOUNTAIN){ amp[1]=95; amp[2]=60; amp[3]=26; } if(wd.cls==PC_ECUMENOPOLIS){ amp[0]=40; amp[1]=20; amp[2]=4; amp[3]=0; }
     EW static u8 grid[33*33];
     for(int o=0;o<4;o++){ int cs=cell[o], n=TW/cs;
         int full = endless && sys[cur_sys].kind==6 && !home_cluster();                 // out in the universe: every word of the address shapes the land
@@ -157,7 +163,7 @@ static void gen_terrain(u32 seed){
         if(wd.twotone && ((hfine[((y+3)&HMASK)*HW+((x+5)&HMASK)]>>4)&1)) s+=2;        // patches of a second shade
         if(s<0) s=0; if(s>15) s=15; cmap[i]=GND_B+s;
         if(wd.sand && h<water_lv+8) cmap[i]=82+((x+y)&1);               // a sandy beach
-        { int sl = WL(MW_FROST) ? 200-WL(MW_FROST)*5 : 200; if(wd.snow && h>sl){ int q=(h-sl)>>5; if(q>1) q=1; cmap[i]=84+q*2+((bay4[((y&3)<<2)|(x&3)]>(h&15))?0:1); } }   // snow caps (FROST brings them down)
+        { int sl = WL(MW_FROST) ? wd.snowl-WL(MW_FROST)*5 : wd.snowl; if(sl<water_lv+4) sl=water_lv+4; if(wd.snow && h>sl){ int q=(h-sl)>>5; if(q>1) q=1; cmap[i]=84+q*2+((bay4[((y&3)<<2)|(x&3)]>(h&15))?0:1); } }   // snow caps (FROST brings them down)
         if(cmap[i]>=GND_B && cmap[i]<GND_B+16){ int c=cmap[i];
             if(WL(MW_STRIPES)){ int w=2+WL(MW_STRIPES)/2; if(((x+y)/w)&1){ c+=3; if(c>GND_B+15) c=GND_B+15; } }                          // STRIPES
             if(WL(MW_CHECKER)){ int w=2+WL(MW_CHECKER)/2; if(((x/w)^(y/w))&1){ c-=4; if(c<GND_B) c=GND_B; } }                             // CHECKERS
@@ -172,6 +178,9 @@ static s32 wrapd(s32 d){ return ((d + (64<<16)) & ((TW<<16)-1)) - (64<<16); }   
 static char tdbg[40];
 static void new_planet(void){
     water_lv = endless ? 30+wr(60) : (zone==1 ? 100 : zone==0||zone==3 ? 70 : zone==5 ? 10 : 45);
+    if(endless){ switch(wd.cls){ case PC_OCEAN: water_lv=86+wr(6); break; case PC_DESERT: water_lv=0; break; case PC_MOUNTAIN: water_lv=20+wr(20); break;
+        case PC_DEATH: water_lv=45+wr(20); break; case PC_ECUMENOPOLIS: water_lv=10; break; case PC_MEADOW: water_lv=40+wr(30); break; case PC_PARADISE: water_lv=75+wr(12); break; } }
+    g_hs = wd.hs ? wd.hs : 3;
     if(WL(MW_FLOOD)){ water_lv += WL(MW_FLOOD)*3; if(water_lv>92) water_lv=92; }                                   // FLOOD (the landing field stays dry)
     if(WL(MW_DROUGHT)) water_lv=0;                                                                                // DROUGHT
     gen_terrain(wd.tseed);                                                              // the land comes from its own seed
@@ -231,7 +240,7 @@ IWRAM static void render_planet(volatile u16 *pg){
             s32 mx = cam_x + vx*z, my = cam_y + vy*z;
             int ti = ((my>>15)&HMASK)*HW + ((mx>>15)&HMASK);                             // texel: half a cell
             int h = hfine[ti]; if(g_wob){ h += wob64[(i*3+c)&63]; if(h<0) h=0; if(h>255) h=255; }
-            s32 hh = h*3;                                                              // 8.8 cells
+            s32 hh = h*g_hs;                                                           // 8.8 cells
             int y = PHZ + ((stp_base[i] - ((hh*stp_f[i])>>8))>>8);
             if(y<ytop){
                 int ix = cmap[ti];
@@ -327,7 +336,7 @@ static void planet_frame(void){
         s32 nx = ppx + mvx, ny = ppy + mvy;
         // climbing a steep slope is slow
         s32 h0=ground_h(ppx,ppy), h1=ground_h(nx,ny); s32 dh=h1-h0;
-        if(dh>0x00C0){ if(ground_h(nx,ppy)-h0<=0x00C0) ny=ppy; else if(ground_h(ppx,ny)-h0<=0x00C0) nx=ppx; else { nx=ppx; ny=ppy; } }   // walls: slide along them
+        s32 wall=0x40*g_hs; if(dh>wall){ if(ground_h(nx,ppy)-h0<=wall) ny=ppy; else if(ground_h(ppx,ny)-h0<=wall) nx=ppx; else { nx=ppx; ny=ppy; } }   // walls: slide along them
         else if(dh>0x0060){ nx=ppx+((nx-ppx)>>1); ny=ppy+((ny-ppy)>>1); }
         ppx = nx & ((TW<<16)-1); ppy = ny & ((TW<<16)-1);
         if(pw_h||pw_v) moved=1;
@@ -341,7 +350,7 @@ static void planet_frame(void){
         s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
         if(ad<(14<<16)){ int sg = WL(MW_SHY) ? -1 : 1, ml = 8+WL(MW_ANGRY);                 // SHY LIFE runs away; ANGRY LIFE hurries
             o->x=(o->x+sg*((dx>>7)*n)*ml/8)&((TW<<16)-1); o->y=(o->y+sg*((dy>>7)*n)*ml/8)&((TW<<16)-1); }
-        if(ad<0x14000 && !invuln){ hurt(3+dlv()*2); if(invuln>20) show_msg("OUCH! A SLUG"); pknock(dx,dy,40); } }
+        if(ad<0x14000 && !invuln){ hurt((3+dlv()*2)*(deadly()?2:1)); if(invuln>20) show_msg("OUCH! A SLUG"); pknock(dx,dy,40); } }
     // what is next to you
     int best=-1; s32 bd=0x1A000;
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_LAST_USE){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); s32 d=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(d<bd){ bd=d; best=i; } }

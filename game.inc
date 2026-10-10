@@ -104,8 +104,14 @@ static void name_of(u32 wn, char *b){
 // ---- planet DNA. Every world is grown from its own code: the shape of the land, the sea, the sky, the hour, the weather,
 // what grows there, whether a city stands on it, what it is known for. The parts multiply out to more than an unvigintillion
 // (10 to the 66th) different planets, and the galaxy keeps making new clusters of them for as long as you fly.
-typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u8 weird, ntr; u16 tr[4]; u32 tseed, cseed; } WorldDNA;
+typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u8 weird, ntr; u16 tr[4]; u8 cls, mood, snowl, hs; u32 tseed, cseed; } WorldDNA;
 static WorldDNA wd;
+// ---- PLANET CLASS: one choice that ties a whole world together - its land, sea, colours, weather, plants, life, city and temper.
+enum { PC_TEMPERATE, PC_MOUNTAIN, PC_MEADOW, PC_OCEAN, PC_DESERT, PC_ICE, PC_JUNGLE, PC_DEATH, PC_ECUMENOPOLIS, PC_PARADISE, NPC };
+static const char *const pc_name[NPC]={"TEMPERATE WORLD","MOUNTAIN WORLD","MEADOW WORLD","OCEAN WORLD","DESERT WORLD","ICE WORLD","JUNGLE WORLD","DEATH PLANET","CITY PLANET","PARADISE"};
+enum { MOOD_LOVE, MOOD_MEH, MOOD_HATE };
+static const char *const mood_name[3]={"THE LOCALS ADORE YOU.","THE LOCALS DO NOT CARE.","THE LOCALS HATE YOU."};
+static int deadly(void){ return wd.cls==PC_DEATH; }
 // ---- WEIRD TRAITS: 40 kinds of weirdness x 25 strengths = 1000 traits, each with its own name. A weird world (one in 111, out in the
 // galaxy) stacks 1 to 4 of them. wlv[kind] is how strong that kind is on this world (0 = not here, 1..25), wcol[kind] its colour.
 enum { MW_GLITCH, MW_RAINBOW, MW_TINY, MW_SPIKES, MW_GIANTS, MW_ZEROG, MW_METAL, MW_VOID, MW_METEOR, MW_MIRROR, MW_DISCO, MW_WOBBLE, MW_SHRINK, MW_JUNGLE,
@@ -152,7 +158,7 @@ static void story_dna(int z){                                                   
     static const u8 sd[6][8]={{0,1,0,0,1,1,1,0},{3,1,0,1,0,1,0,0},{1,2,1,0,1,1,2,1},{6,2,2,0,2,1,2,0},{4,1,0,3,1,0,0,0},{5,3,1,0,1,1,3,1}};  // style rough hour weather grav city csize ruins
     memset(&wd,0,sizeof wd);
     wd.style=sd[z][0]; wd.rough=sd[z][1]; wd.hour=sd[z][2]; wd.weather=sd[z][3]; wd.grav=sd[z][4]; wd.city=sd[z][5]; wd.csize=sd[z][6]; wd.ruins=sd[z][7];
-    wd.fossils=1+z/2; wd.beetles=z>=2 ? 1+z/2 : 0; wd.tagline=(z*7+3)%NTAG; wd.fauna=z%6; for(int m=0;m<NMW;m++) wlv[m]=0; wd.tseed=(u32)z*977+13; wd.cseed=(u32)z*31+5;
+    wd.fossils=1+z/2; wd.beetles=z>=2 ? 1+z/2 : 0; wd.tagline=(z*7+3)%NTAG; wd.fauna=z%6; for(int m=0;m<NMW;m++) wlv[m]=0; { static const u8 sc[6]={PC_PARADISE,PC_OCEAN,PC_TEMPERATE,PC_MEADOW,PC_DESERT,PC_MOUNTAIN}; wd.cls=sc[z]; wd.mood = z<2 ? MOOD_LOVE : z<5 ? MOOD_MEH : MOOD_HATE; wd.snowl=200; wd.hs=z==5?4:3; } wd.tseed=(u32)z*977+13; wd.cseed=(u32)z*31+5;
     static const u16 bl[6]={C15(150,140,120),C15(90,120,160),C15(170,80,80),C15(90,70,140),C15(190,150,70),C15(150,90,60)};
     wd.bld=bl[z]; wd.sky=C15(120,170,230); wd.road=C15(60,56,60); wd.snow=z==3; wd.sand=z==1||z==2; wd.alt=0;
     for(int i=0;i<4;i++) wd.flora[i]=3;
@@ -164,6 +170,12 @@ static void make_world(void){                                   // three indepen
     u32 A = gal ? amix(galaxy_seed^0xA1u,cur_sys) : base*0x9E3779B1u, B = gal ? amix(galaxy_seed^0xB2u,cur_sys) : base*0x85EBCA6Bu+7, C = gal ? amix(galaxy_seed^0xC3u,cur_sys) : base*0xC2B2AE35u+3;
     wseed = A ^ 0x7F4A7C15u; wr(2);
     int r=40+wr(216), g=40+wr(216), b=40+wr(216); int k=wr(3); if(k==0) r=230; else if(k==1) g=230; else b=230;
+    { int c=wr(100); wd.cls = c<20?PC_TEMPERATE : c<32?PC_MOUNTAIN : c<42?PC_MEADOW : c<54?PC_OCEAN : c<64?PC_DESERT : c<72?PC_ICE : c<82?PC_JUNGLE : c<89?PC_DEATH : c<92?PC_ECUMENOPOLIS : PC_PARADISE; }
+#ifdef TEST_CLASS
+    wd.cls=TEST_CLASS;
+#endif
+    { static const u8 base[NPC][3]={{0,0,0},{150,125,105},{140,215,95},{70,180,130},{235,195,110},{215,232,255},{40,160,50},{130,30,22},{150,150,165},{235,150,205}};
+      if(wd.cls!=PC_TEMPERATE){ r=base[wd.cls][0]+wr(30)-15; g=base[wd.cls][1]+wr(30)-15; b=base[wd.cls][2]+wr(30)-15; if(r<10)r=10; if(g<10)g=10; if(b<10)b=10; } }
     static const u8 mul[5]={8,30,55,80,100};
     for(int i=0;i<5;i++){ int m=mul[i]; int w = i==4 ? 120 : (i==3?30:0); w_tint[i]=rgb15(r*m/100+w, g*m/100+w, b*m/100+w); }
     w_tint[5]=rgb15(r*45/100,g*45/100,b*45/100);
@@ -179,6 +191,19 @@ static void make_world(void){                                   // three indepen
     wd.bld=rgb15(60+wr(160),60+wr(160),60+wr(160)); wd.sky=rgb15(40+wr(200),60+wr(180),100+wr(156)); wd.road=rgb15(30+wr(60),30+wr(60),30+wr(60));
     for(int i=0;i<4;i++) wd.flora[i]=wr(8);
     wd.tseed = B; wd.cseed = C;
+    // the class bends the rest of the DNA so the world hangs together
+    wd.snowl=200; wd.hs=3; { int m=wr(10); wd.mood = m<3 ? MOOD_LOVE : m<8 ? MOOD_MEH : MOOD_HATE; }
+    switch(wd.cls){
+        case PC_MOUNTAIN: wd.style = wr(2) ? 6 : 0; wd.rough=3; wd.snow=1; wd.snowl=150; wd.hs=7; wd.city = wr(5)==0; wd.csize=0; break;
+        case PC_MEADOW:   wd.style=7; wd.rough=0; wd.hs=2; wd.snow=0; wd.weather = wr(4)==0 ? 1 : 0; break;
+        case PC_OCEAN:    wd.style=3; wd.sand=1; wd.snow=0; wd.weather = wr(3)==0 ? 1 : 0; wd.city = wr(4)==0; wd.csize=0; break;
+        case PC_DESERT:   wd.style=2; wd.sand=1; wd.snow=0; wd.weather = wr(3)==0 ? 3 : 0; wd.hour = wr(3)==0 ? 1 : 0; break;
+        case PC_ICE:      wd.style = wr(2) ? 0 : 4; wd.snow=1; wd.snowl=60; wd.weather = wr(2) ? 2 : 0; wd.sand=0; break;
+        case PC_JUNGLE:   wd.style=0; wd.rough=2; wd.snow=0; wd.weather = wr(2) ? 1 : 0; for(int i=0;i<4;i++) wd.flora[i]=6+wr(2); break;
+        case PC_DEATH:    wd.style=4; wd.rough=3; wd.hour=2; wd.weather = wr(2) ? 3 : 0; wd.snow=0; wd.sand=0; wd.mood=MOOD_HATE; wd.city=0; wd.fauna=5; wd.beetles=3; wd.hs=4; break;
+        case PC_ECUMENOPOLIS: wd.style=7; wd.rough=0; wd.hs=3; wd.city=1; wd.csize=9; wd.snow=0; break;
+        case PC_PARADISE: wd.style = wr(2) ? 3 : 0; wd.rough=1; wd.hour=wr(3)==0; wd.weather=0; wd.mood=MOOD_LOVE; wd.sand=1; break;
+    }
     // a weird world: one planet in 111, only out in the galaxy. It stacks 1 to 4 of the 1000 traits
     { u32 F = gal ? amix(galaxy_seed^0xF6u,cur_sys) : base*0x2545F491u; wd.ntr=0;
       if((F%111u)==0 && gal){ int n = 1 + ((F>>8)%3u==0) + ((F>>12)%5u==0) + ((F>>20)%9u==0); u32 h=F;

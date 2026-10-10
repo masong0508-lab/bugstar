@@ -18,6 +18,11 @@ static void make_species(void){
         p->col=rgb15(40+wr(216),40+wr(216),40+wr(216));
         scpy(p->name,adj[wr(16)]); scat(p->name," "); scat(p->name,noun[p->body][wr(4)]); }
     if(!endless && zone==0){ spc[0].temper=0; spc[1].temper=1; }                      // the first planet's creatures are gentle
+    if(wd.mood==MOOD_LOVE){ for(int s=0;s<2;s++) if(spc[s].temper==2) spc[s].temper=1; }                    // a loving world: nothing bites
+    if(wd.mood==MOOD_HATE){ spc[0].temper=2; }                                                               // a hateful one: at least one kind does
+    if(deadly()){ spc[0].temper=2; spc[1].temper=2; }
+    if(wd.cls==PC_ECUMENOPOLIS){ spc[0].maxpop=spc[0].pop=0; spc[1].maxpop=spc[1].pop=0; }                    // no wild things in a city planet
+    if(wd.cls==PC_OCEAN){ spc[1].body=2; }
     if(WL(MW_SHY)){ spc[0].temper=0; spc[1].temper=0; } if(WL(MW_ANGRY)){ spc[0].temper=2; spc[1].temper=2; }
     wseed=keep;
 }
@@ -30,8 +35,8 @@ static u32 hsh(u32 a, u32 b){ u32 h=a*0x9E3779B1u ^ (b+0x7F4A7C15u)*0x85EBCA6Bu;
 static int in_city_cell(int x, int y){ if(!city_r) return 0; int dx=((x-city_cx+64)&TMASK)-64, dy=((y-city_cy+64)&TMASK)-64; return dx*dx+dy*dy < city_r*city_r; }
 static void city_flatten(void){                                                       // before smoothing: a level ground for the town
     if(!wd.city){ city_r=0; return; }
-    city_r = 9 + wd.csize*6;
-    int a=wr(256), d=city_r+14+wr(6); city_cx=(64+((cosx(a)*d)>>14))&TMASK; city_cy=(64+((sinx(a)*d)>>14))&TMASK;
+    city_r = wd.cls==PC_ECUMENOPOLIS ? 62 : 9 + wd.csize*6;                          // a city planet: the city is the whole world
+    int a=wr(256), d = wd.cls==PC_ECUMENOPOLIS ? 0 : city_r+14+wr(6); city_cx=(64+((cosx(a)*d)>>14))&TMASK; city_cy=(64+((sinx(a)*d)>>14))&TMASK;
     int sum=0, n=0; for(int y=-city_r;y<=city_r;y+=3) for(int x=-city_r;x<=city_r;x+=3){ sum+=hmap[((city_cy+y)&TMASK)*TW+((city_cx+x)&TMASK)]; n++; }
     int L=sum/n; if(L<water_lv+14) L=water_lv+14; if(L>150) L=150;
     for(int y=-city_r-4;y<=city_r+4;y++) for(int x=-city_r-4;x<=city_r+4;x++){ int d2=x*x+y*y, r2=city_r*city_r, r3=(city_r+4)*(city_r+4);
@@ -46,6 +51,7 @@ static void city_stamp(void){                                                   
         int sx=gx&7, sy=gy&7;                                                         // where in the 8-texel block (4 cells)
         hfine[i]=L;
         if(x*x+y*y < 36){ cmap[i]=80; continue; }                                     // the plaza in the middle
+        { int lx=((tx-128+128)&HMASK)-128, ly=((ty-128+128)&HMASK)-128; if(lx*lx+ly*ly < 14*14){ cmap[i]=80; continue; } }   // the landing field stays clear
         if(sx<2 || sy<2){ cmap[i] = ((sx==0&&(gy&3)==1)||(sy==0&&(gx&3)==1)) ? 75 : 74; continue; }   // streets with a dotted line
         int bx=gx>>3, by=gy>>3; u32 h=hsh(bx+wd.tseed, by); int kind=h&15;
         if(kind<3){ cmap[i]=80; continue; }                                            // an empty lot: a little square
@@ -59,15 +65,15 @@ static void city_stamp(void){                                                   
 static void city_people(int *k){                                                      // doors, locals and stalls on the streets
     if(!city_r) return;
     int R=city_r*2, tx0=city_cx*2, ty0=city_cy*2, placed=0;
-    static const u8 want[6]={O_MARKET,O_CANTINA,O_OFFICE,O_RACE,O_HOME,O_HOME};
-    int nwant = 4 + wd.csize;
-    for(int t=0;t<400 && placed<nwant && *k<NPO-20;t++){                               // a door needs a building behind it and a street in front
+    static const u8 want[14]={O_MARKET,O_CANTINA,O_OFFICE,O_RACE,O_HOME,O_HOME,O_MARKET,O_CANTINA,O_HOME,O_OFFICE,O_HOME,O_HOME,O_CANTINA,O_HOME};
+    int nwant = wd.cls==PC_ECUMENOPOLIS ? 14 : 4 + wd.csize;
+    for(int t=0;t<900 && placed<nwant && *k<NPO-20;t++){                               // a door needs a building behind it and a street in front
         int x=wr(2*R+1)-R, y=wr(2*R+1)-R; if(x*x+y*y>=(R-4)*(R-4)) continue;
         int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK; if(cmap[ty*HW+tx]!=74 && cmap[ty*HW+tx]!=75) continue;
         int ok=0; for(int d=1;d<=4 && !ok;d++){ int c=cmap[((ty-d)&HMASK)*HW+tx]; if(c>=BLD_B && c<BLD_B+8) ok=1; } if(!ok) continue;   // a building just behind
-        PObj *o=&po[(*k)++]; o->kind=want[placed<6?placed:5]; o->alive=1; o->hp=1; o->var=wr(2); o->x=(tx<<15)+(1<<14); o->y=(ty<<15)+(1<<14)+(1<<13); placed++; }
-    int nloc = 3+wd.csize*3;
-    for(int t=0;t<300 && nloc && *k<NPO-20;t++){ int x=wr(2*R+1)-R, y=wr(2*R+1)-R; if(x*x+y*y>=R*R) continue;
+        PObj *o=&po[(*k)++]; o->kind=want[placed<14?placed:13]; o->alive=1; o->hp=1; o->var=wr(2); o->x=(tx<<15)+(1<<14); o->y=(ty<<15)+(1<<14)+(1<<13); placed++; }
+    int nloc = wd.cls==PC_ECUMENOPOLIS ? 26 : 3+wd.csize*3;
+    for(int t=0;t<900 && nloc && *k<NPO-20;t++){ int x=wr(2*R+1)-R, y=wr(2*R+1)-R; if(x*x+y*y>=R*R) continue;
         int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK; int c=cmap[ty*HW+tx]; if(c!=74 && c!=75 && c!=80) continue;
         PObj *o=&po[(*k)++]; o->kind=O_LOCAL; o->alive=1; o->hp=wr(3)==0; o->var=wr(2); o->x=(tx<<15)+(1<<14); o->y=(ty<<15)+(1<<14); nloc--; }
     if(wd.csize>=2){ PObj *o=&po[(*k)++]; o->kind=O_STALL; o->alive=1; o->hp=1; o->x=(tx0<<15)+(3<<16); o->y=(ty0<<15)+(1<<16); }
@@ -119,12 +125,12 @@ static void life_tick(int n){                                                   
             if(p->temper==0 && ad<(7<<16)){ mx=-(dx>>6)*n; my=-(dy>>6)*n; }          // timid: run from you
             else if(p->temper==2 && WL(MW_ANGRY) && ad<(10<<16)){ mx=(dx>>6)*n*(8+WL(MW_ANGRY))/8; my=(dy>>6)*n*(8+WL(MW_ANGRY))/8; if(ad<0x16000 && !invuln){ hurt(4+dlv()*2+WL(MW_ANGRY)/5); show_msg("OUCH! IT IS FURIOUS"); pknock(dx,dy,40); } }
             else if(p->temper==1 && ad<(9<<16) && ad>(2<<16)){ mx=(dx>>7)*n; my=(dy>>7)*n; }   // curious: come and look
-            else if(p->temper==2 && ad<(10<<16)){ mx=(dx>>6)*n; my=(dy>>6)*n; if(ad<0x16000 && !invuln){ hurt(4+dlv()*2); show_msg("OUCH! IT BIT YOU"); pknock(dx,dy,40); } }
+            else if(p->temper==2 && ad<(10<<16)){ mx=(dx>>6)*n; my=(dy>>6)*n; if(ad<0x16000 && !invuln){ hurt((4+dlv()*2)*(deadly()?2:1)); show_msg(deadly()?"IT BIT YOU. HARD. THIS PLANET WANTS YOU DEAD":"OUCH! IT BIT YOU"); pknock(dx,dy,40); } }
             s32 nx=o->x+mx, ny=o->y+my; if(p->body!=2 && (hm_at(nx,ny)<water_lv || in_city_cell(nx>>16,ny>>16))){ ctim[i]=0; continue; }
             o->x=nx&((TW<<16)-1); o->y=ny&((TW<<16)-1); }
         else if(o->kind==O_BEETLE){ s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
             if(ad<(12<<16) && ad>0x8000){ int sg=WL(MW_SHY)?-1:1, ml=8+WL(MW_ANGRY); o->x=(o->x+sg*((dx>>6)*n)*ml/8)&((TW<<16)-1); o->y=(o->y+sg*((dy>>6)*n)*ml/8)&((TW<<16)-1); }
-            if(ad<0x14000 && !invuln){ hurt(5+dlv()*2); show_msg("A BEETLE RAMMED YOU"); pknock(dx,dy,48); } }
+            if(ad<0x14000 && !invuln){ hurt((5+dlv()*2)*(deadly()?2:1)); show_msg("A BEETLE RAMMED YOU"); pknock(dx,dy,48); } }
         else if(o->kind==O_LOCAL){ if(ctim[i]>n) ctim[i]-=n; else { ctim[i]=60+wr(120); int a=wr(256); cvx[i]=(cosx(a)*120)>>14; cvy[i]=(sinx(a)*120)>>14; if(wr(2)) cvx[i]=cvy[i]=0; }
             s32 nx=o->x+cvx[i]*n, ny=o->y+cvy[i]*n; int c=cmap[((ny>>15)&HMASK)*HW+((nx>>15)&HMASK)]; if(c==74||c==75||c==80||c==81){ o->x=nx; o->y=ny; } else ctim[i]=0; }
     }
@@ -182,16 +188,27 @@ static void planet_card(volatile u16 *pg){                                      
         weird_seen++; give_marks(mk);
         scpy(tl,"??? "); scat(tl,world_name()); scat(tl," ???");
         scpy(q2,"BOLT: "); scat(q2,mw_quip[wd.tr[0]%NMW]);
-        int n=0; ln[n++]=ta; if(tb[0]) ln[n++]=tb; ln[n++]=sc; ln[n++]=l3;
+        static char cm2[56]; scpy(cm2,pc_name[wd.cls]); scat(cm2,". "); scat(cm2,mood_name[wd.mood]);
+        int n=0; ln[n++]=ta; if(tb[0]) ln[n++]=tb; ln[n++]=cm2; ln[n++]=sc;
         static char mk2[60]; if(mk[0]){ scpy(mk2,"IT CHANGED YOU: "); scat(mk2,mk); mk2[52]=0; ln[n++]=mk2; }
         ln[n++]="A RELIC SHRINE IS HIDDEN HERE. FIND IT!"; ln[n++]=q2;
         sfx(6); card(pg,tl,ln,n); return; }
-    ln[0]=l1; ln[1]=l2; ln[2]=sc; ln[3]=l3; ln[4]=bolt_quip[q];
-    card(pg,world_name(),ln,5);
+    static char cm[56]; scpy(cm,pc_name[wd.cls]); scat(cm,". "); scat(cm,mood_name[wd.mood]);
+    static const char *const pq[NPC]={0,"BOLT: MOUNTAINS. I DO NOT HAVE KNEES.","BOLT: SO FLAT. SO NICE. I COULD ROLL FOREVER.","BOLT: WATER EVERYWHERE. I RUST. HURRY.","BOLT: SAND IN MY GEARS. AGAIN.",
+        "BOLT: BRR. MY BOLTS ARE CLICKING.","BOLT: THE PLANTS ARE TALLER THAN THE SHIP.","BOLT: THIS IS A DEATH PLANET. I WOULD LIKE TO LEAVE.","BOLT: A WHOLE PLANET OF CITY. WHERE DO THEY PARK?","BOLT: IT IS SO NICE HERE. I AM SUSPICIOUS."};
+    ln[0]=cm; ln[1]=l1; ln[2]=l2; ln[3]=sc; ln[4]=l3; ln[5]= (endless && wd.cls) ? pq[wd.cls] : bolt_quip[q];
+    card(pg,world_name(),ln,6);
 }
 static void local_talk(PObj *o){
     volatile u16 *pg=VISPG; const char *ln[2]; char g[40];
-    int li=(int)((o->x>>16)*7+(o->y>>16)*13+wd.tseed)%NTALK; ln[0]=talk_ln[li];
+    static const char *const love_ln[12]={"YOU CAME! WE BAKED YOU A PIE!","EVERYONE, LOOK! IT IS THE BUG!","CAN I HAVE YOUR AUTOGRAPH? ON MY SHELL?","WE NAMED A HILL AFTER YOU.",
+        "STAY FOREVER. WE HAVE SOUP.","YOU ARE THE BEST THING THAT EVER LANDED.","MY KIDS HAVE YOUR POSTER.","TAKE THIS. TAKE EVERYTHING.","WE LOVE YOUR LITTLE LEGS.","A HERO! A REAL ONE! HI!",
+        "THE MAYOR WANTS TO HUG YOU. SHE IS A MOTH.","WE SING SONGS ABOUT YOU. BAD ONES. WITH LOVE."};
+    static const char *const hate_ln[12]={"GO AWAY.","WE DO NOT LIKE BUGS. OR YOU.","YOUR SHIP IS UGLY.","THE LAST BUG HERE NEVER LEFT. JUST SAYING.","NO.",
+        "PRICES DOUBLE WHEN YOU LOOK AT THEM.","DO NOT TOUCH ANYTHING.","I AM CALLING THE MAYOR. SHE BITES.","YOU SMELL LIKE SPACE.","LEAVE. NOW. PLEASE. NO, NOT PLEASE. LEAVE.",
+        "WE HAD A NICE DAY UNTIL YOU CAME.","EVERYTHING HERE BITES. ME TOO."};
+    int li=(int)((o->x>>16)*7+(o->y>>16)*13+wd.tseed)%NTALK; ln[0] = wd.mood==MOOD_LOVE ? love_ln[li%12] : wd.mood==MOOD_HATE ? hate_ln[li%12] : talk_ln[li];
+    if(wd.mood==MOOD_HATE) o->hp=0; else if(wd.mood==MOOD_LOVE && rndi(3)==0) o->hp=1;
     if(o->hp){ o->hp=0; int r=wr(4);
         if(r==0){ gold+=5+dlv()*3; scpy(g,"HERE, TAKE "); ncat(g,5+dlv()*3); scat(g,"G. FOR THE LEGS."); }
         else if(r==1){ Gear gg={IT_CRUMB,0,0,0,0,0}; add_gear(gg); scpy(g,"HAVE A CRUMB. I HAVE TOO MANY."); }
@@ -230,7 +247,7 @@ static void bounty_office(volatile u16 *pg){
 }
 // ---------------------------------------------------------------- the market and the cantina
 static int mk_sell[8], mk_n; static int mk_buy[3];
-static int local_price(int g){ int p=good_price(g); if(city_r) p=p*(85+wd.csize*5)/100; return p<1?1:p; }
+static int local_price(int g){ int p=good_price(g); if(city_r) p=p*(85+(wd.csize>3?3:wd.csize)*5)/100; if(wd.mood==MOOD_LOVE) p=p*115/100; if(wd.mood==MOOD_HATE) p=p*75/100; return p<1?1:p; }   // they pay you more if they love you
 static void market_row(int i, char *b, int *c){
     if(i<mk_n){ int g=mk_sell[i]; scpy(b,"SELL ALL "); scat(b,goods[g]); scat(b," ("); ncat(b,cargo[g]); scat(b,")  "); ncat(b,local_price(g)*cargo[g]); scat(b,"G"); *c=C_GREEN; }
     else { int g=mk_buy[i-mk_n]; scpy(b,"BUY 1 "); scat(b,goods[g]); scat(b,"  "); ncat(b,local_price(g)*120/100); scat(b,"G"); *c = gold>=local_price(g)*120/100 ? C_GREY : C_DGREY; }
