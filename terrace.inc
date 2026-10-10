@@ -37,8 +37,7 @@ static int terr_roll(int bossfl,int mz_last,int mboss){            // about 1 fl
     if(endless && hive_boss_floor()) return 0;
     return (hmix(rng_s^0x7E44ACE5u^((u32)depth_no*0x9E3779B1u)) % 100) < 3;
 }
-static u32 invt[161];
-static inline void zset(int y,int c,s32 t){ int z=t>>13; zpix[y*120+c]= z>255?255:z; }
+static inline void zset(int y,int c,s32 t){ int z=t>>13; zpix[(y>>1)*120+c]= z>255?255:z; }     // depth per row pair, 1/8 cell steps
 // one floor pixel at row y, depth t along this column's ray
 static int terr_floor_px(int c,int y,s32 t,s32 rx,s32 ry){
     s32 fx=px_+(s32)(((long long)t*rx)>>16), fy=py_+(s32)(((long long)t*ry)>>16);
@@ -57,7 +56,6 @@ static int terr_ceil_px(int c,int y,s32 t,s32 rx,s32 ry){
 }
 static void render_terrace(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     const int H=hz; const s32 CH=(s32)TR_CEIL*TU;
-    if(!invt[1]) for(int d=1;d<=160;d++) invt[d]=0xFFFFFFFFu/(u32)d;
     { int pc=(py_>>16)*MW+(px_>>16); s32 tg=(s32)trh[pc]*TU+0x8000; if(terr_snap){ t_eye=tg; terr_snap=0; } else t_eye+=(tg-t_eye)>>2; }
     const s32 E=t_eye;
     for(int c=0;c<120;c++){
@@ -105,7 +103,7 @@ static void render_terrace(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 pl
             }
             if(full){
                 zbuf[c]=dn; seen[cell]=1; done=1;
-                for(int y=18;y<ylo;y+=2){ int d=H-y; if(d<1) break; s32 tt=(s32)((((u64)(u32)((CH-E)*FOC))*invt[d])>>32);      // the high ceiling
+                for(int y=18;y<ylo;y+=2){ int d=H-y; if(d<1) break; if(d>99) continue; s32 tt=(s32)(((long long)(CH-E)*cd_rel[d])>>16);      // the high ceiling
                     int ix=terr_ceil_px(c,y,tt,rx,ry); u16 p2=ix|(ix<<8); pg[y*120+c]=p2; zset(y,c,tt); if(y+1<ylo){ pg[y*120+120+c]=p2; zset(y+1,c,tt); } }
                 break;
             }
@@ -114,8 +112,8 @@ static void render_terrace(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 pl
                 int y0=yfar<18?18:yfar, y1=ynear<ylo?ynear:ylo;
                 if(yfar<=H) y0=H+1;
                 int last=R_CEIL;
-                for(int y=y0;y<y1;y++){ int d=y-H; if(d<1||d>160) continue; int ix;
-                    s32 tt=(s32)((((u64)(u32)((E-ht)*FOC))*invt[d])>>32);
+                for(int y=y0;y<y1;y++){ int d=y-H; if(d<1||d>99) continue; int ix;
+                    s32 tt=(s32)(((long long)(E-ht)*rd_rel[d])>>15);
                     if((y&1) && y>y0) ix=last; else ix=terr_floor_px(c,y,tt,rx,ry);
                     last=ix; pg[y*120+c]=ix|(ix<<8); zset(y,c,tt); }
                 if(y0<y1 && y0<ylo) ylo=y0;
@@ -125,6 +123,6 @@ static void render_terrace(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 pl
             if(dn<0x1000) dn=0x1000;
             k++; if(k>=64 || mx<0||my<0||mx>=MW||my>=MW) break;
         }
-        if(!done) for(int y=18;y<ylo;y++){ pg[y*120+c]=0; zpix[y*120+c]=255; }   // anything the ray never reached
+        if(!done) for(int y=18;y<ylo;y++){ pg[y*120+c]=0; zpix[(y>>1)*120+c]=255; }   // anything the ray never reached
     }
 }

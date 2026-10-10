@@ -140,7 +140,7 @@ static void polyfill(volatile u16 *pg, const int *px, const int *py, int n, int 
 }
 static int ship_roll=0;                                                        // extra bank applied on screen (the chase camera)
 static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pitch_, int cpaint, int ctrim, int cx0,int cy0,int cx1,int cy1){
-    static s16 px[SV_MAX], py[SV_MAX], rz_[SV_MAX]; static s16 fz[SF_MAX];
+    EW static s16 px[SV_MAX], py[SV_MAX], rz_[SV_MAX]; EW static s16 fz[SF_MAX];
     (void)cpaint; (void)ctrim; if(!sh_rt_ok) sh_rt_init(); ship_ramps(); s32 rc=cosx(ship_roll>>2), rs=sinx(ship_roll>>2); int rolled = !(rs==0 && rc>0);
     s32 cy_=cosx(yaw_>>2), sy_=sinx(yaw_>>2), cp=cosx(pitch_>>2), sp=sinx(pitch_>>2);
     for(int i=0;i<snv;i++){ s32 x=shv[i*3], y=shv[i*3+1], z=shv[i*3+2];

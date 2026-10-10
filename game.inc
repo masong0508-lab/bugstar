@@ -306,7 +306,7 @@ static const char *const suff[8]={"","OF LIFE","OF MAGIC","OF POWER","OF THE FOX
 
 typedef struct { u8 it, sub, rar, pre, suf, lvl; } Gear;
 #define BAGMAX 120
-static Gear bag[BAGMAX]; static int bag_n=0, bag_sel=0;
+EW static Gear bag[BAGMAX]; static int bag_n=0, bag_sel=0;
 static Gear eqw, eqa, eqc;           // what you bite with, what you wear, your charm
 static u8 berry_map[8], seed_map[6], berry_known[8], seed_known[6];
 

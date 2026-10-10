@@ -26,14 +26,14 @@ static s32 zbuf[120];
 // TERRACE CAVERNS: per-cell floor heights (eighths of a cell), low rail blocks, a per-pixel depth buffer for sprites
 #define TR_CEIL 24
 static int terr_on=0, terr_snap=0; static s32 t_eye=0x8000;
-EW static u8 trh[MW*MW], trb[MW*MW], zpix[120*160];
+EW static u8 trh[MW*MW], trb[MW*MW], zpix[120*80];
 static s32 eyeat(s32 x,s32 y){ if(!terr_on) return 0x8000; int cx=x>>16, cy=y>>16; if(cx<0||cy<0||cx>=MW||cy>=MW) return 0x8000; return t_eye-(s32)trh[cy*MW+cx]*0x2000; }
 static int terr_roll(int bossfl,int mz_last,int mboss); static void terr_build(void);
 static int hurt_flash=0, atk_t=0;
 typedef struct { u8 x,y,w,h,style; } Room;
 EW static Room rooms[10]; static int nrooms;
 // a natural pond: a wobbly ellipse (sometimes with a second lobe), smoothed, then deep core, shallow rim and a muddy bank
-static u8 pm_[26*26];
+EW static u8 pm_[26*26];
 static int pm_at(int w,int h,int x,int y){ return (x<0||y<0||x>=w||y>=h) ? 0 : pm_[y*26+x]; }
 static u32 pm_h(int x,int y,u32 s){ u32 h=(u32)x*374761393u + (u32)y*668265263u + s; h=(h^(h>>13))*1274126177u; return h^(h>>16); }
 static int ponds_made, pond_floor, pond_cells;   // ponds are rare and small: never on the first floor, never in the room you arrive in, never more than ~40 cells of water on a floor
@@ -50,7 +50,7 @@ static void make_pond(int x0,int y0,int x1,int y1){
         int in = e + n*4 < 95;                       // a pond fills about a quarter of its patch, with dry ground all round
         if(big){ int ax=nx-lx, ay=ny-ly; if(((ax*ax+ay*ay)>>8) + n*3 < lr/2+10) in=1; }
         pm_[y*26+x]=in; }
-    static u8 t2[26*26];
+    EW static u8 t2[26*26];
     for(int y=0;y<h;y++) for(int x=0;x<w;x++){ int c=0; for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++) if(dx||dy) c+=pm_at(w,h,x+dx,y+dy);
         t2[y*26+x] = pm_[y*26+x] ? (c>=3) : (c>=6); }
     for(int y=0;y<h;y++) for(int x=0;x<w;x++) pm_[y*26+x]=t2[y*26+x];
@@ -98,7 +98,7 @@ static int room_floor_cell(Room *r){
 static void build_labyrinth(void){                      // a real maze: one-wide torch-lit passages, loops, and five open chambers
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_STONE; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
     nlights=0; nlamps=0; ntorch=0;
-    static u8 stk[225], vis[225]; for(int i=0;i<225;i++) vis[i]=0;
+    EW static u8 stk[225], vis[225]; for(int i=0;i<225;i++) vis[i]=0;
     int sp=0; stk[sp++]=0; vis[0]=1; dmap[1*MW+1]=D_FLOOR; rid[1*MW+1]=255;
     while(sp){ int cur=stk[sp-1], cx=cur%15, cy=cur/15, nb[4], nn=0;                       // depth-first: always one way in, many dead ends
         if(cx>0 && !vis[cur-1]) nb[nn++]=cur-1; if(cx<14 && !vis[cur+1]) nb[nn++]=cur+1; if(cy>0 && !vis[cur-15]) nb[nn++]=cur-15; if(cy<14 && !vis[cur+15]) nb[nn++]=cur+15;
@@ -524,14 +524,8 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
 }
 
 // ---------------------------------------------------------------- sprites, lit by the same light, with walking frames
-IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32 plx, s32 ply){
-    s32 sx=o->x-px_, sy=o->y-py_;
-    s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16);
-    if(!det) return;
-    s32 tX = (s32)((((long long)diry*sx) - ((long long)dirx*sy))/det);
-    s32 tY = (s32)((((long long)-ply*sx) + ((long long)plx*sy))/det);
-    if(tY < 0x3000) return;
-    int scx = 60 + (s32)(((long long)tX*60)/tY);
+typedef struct { const u8 *art; int aw, ah, hw, tint; } SprArt;
+__attribute__((noinline)) static SprArt sprite_art(DObj *o){      // runs from ROM: which picture, how big, what tint
     int anim = ((frames>>2) + (int)(o-dob)) & 1;
     const u8 *art; int aw, ah, hw, tint=0;
     switch(o->kind){
@@ -560,6 +554,16 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
                         case IT_QUEST: art=art_warp; aw=WARP_W; ah=WARP_H; hw=0x4000; break;
                         default: art=art_crumb; aw=CRUMB_W; ah=CRUMB_H; hw=0x2400; break; } }
     }
+    SprArt r={art,aw,ah,hw,tint}; return r; }
+IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32 plx, s32 ply){
+    s32 sx=o->x-px_, sy=o->y-py_;
+    s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16);
+    if(!det) return;
+    s32 tX = (s32)((((long long)diry*sx) - ((long long)dirx*sy))/det);
+    s32 tY = (s32)((((long long)-ply*sx) + ((long long)plx*sy))/det);
+    if(tY < 0x3000) return;
+    int scx = 60 + (s32)(((long long)tX*60)/tY);
+    SprArt sa=sprite_art(o); const u8 *art=sa.art; int aw=sa.aw, ah=sa.ah, hw=sa.hw, tint=sa.tint;
     int hpx = (s32)(((long long)FOC*hw)/tY);
     int wcols = hpx*aw/ah/2;
     if(hpx<2||wcols<1) return;
@@ -586,7 +590,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
         for(int y=y0; y<bot && y<160; y+=2, va+=2*vstp){
             int ix=acol[(va>>16)*aw];
             if(!ix) continue;
-            if(terr_on && y<160 && (tY>>13) > (s32)zpix[y*120+c]+1) continue;      // hidden behind a ledge, a rail or a pillar
+            if(terr_on && y<160 && (tY>>13) > (s32)zpix[(y>>1)*120+c]+1) continue;      // hidden behind a ledge, a rail or a pillar
             if(ix==1) ix=tint; else if(dark && ix>=64 && ix<216){ int l=(ix&7)-dark; ix=(ix&~7)+(l<0?0:l>7?7:l); }
             if(o->flash){ if(o->flash>=5) ix = R_UP+7; else if(ix>=64 && ix<216){ int l=(ix&7)+3; ix=(ix&~7)+(l>7?7:l); } }   // one white blink, then a bright glow
             u16 p2=ix|(ix<<8); pg[y*120+c]=p2; if(y+1<bot && y+1<160) pg[y*120+120+c]=p2;
