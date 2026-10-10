@@ -229,26 +229,26 @@ static void local_talk(PObj *o){
 }
 // ---------------------------------------------------------------- the bounty office: a job per planet
 static void job_text(char *b){
-    static const char *const jt[9]={"","SQUASH ","BEAT ","DIG UP ","WIN THE RACE","TALK TO ","HUNT ","MINE ","KART GRAND PRIX"};
+    static const char *const jt[10]={"","SQUASH ","BEAT ","DIG UP ","WIN THE RACE","TALK TO ","HUNT ","MINE ","KART GRAND PRIX","SEARCH "};
     scpy(b,jt[pq_type]); if(pq_type!=4 && pq_type!=8){ ncat(b,pq_need); scat(b," "); }
-    switch(pq_type){ case 1: scat(b,"SLUGS"); break; case 2: scat(b,"BEETLES"); break; case 3: scat(b,"FOSSILS"); break; case 5: scat(b,"LOCALS"); break; case 6: scat(b,spc[0].name); scat(b,"S"); break; case 7: scat(b,"ORE NODES"); break; }
+    switch(pq_type){ case 1: scat(b,"SLUGS"); break; case 2: scat(b,"BEETLES"); break; case 3: scat(b,"FOSSILS"); break; case 5: scat(b,"LOCALS"); break; case 9: scat(b,"PLANTS"); break; case 6: scat(b,spc[0].name); scat(b,"S"); break; case 7: scat(b,"ORE NODES"); break; }
 }
 static void job_tick(void){                                                           // called when a counter moves: pays out the moment the job is done
     if(!pq_type || pq_done) return;
     if(pq_type==4 ? race_best>0 : pq_type==8 ? kart_won : pq_have>=pq_need){ pq_done=1; gold+=pq_gold; fame+=8; gain_xp(10+dlv()*3); st_uniq++; ach_check();
-        char b[40]; scpy(b,"JOB DONE! THE OFFICE WIRED "); ncat(b,pq_gold); scat(b,"G. BEEP."); show_msg(b); sfx(6); }
+        char b[40]; scpy(b,"JOB DONE! THE OFFICE WIRED "); ncat(b,pq_gold); scat(b,"G. BEEP."); show_msg(b); sfx(6); save_game(); }
 }
 static void bounty_office(volatile u16 *pg){
     const char *ln[4]; char j[48], p[40];
     if(pq_type && !pq_done){ job_text(j); scpy(p,"SO FAR: "); if(pq_type==4||pq_type==8) scat(p, (pq_type==8?kart_won:race_best)?"WON":"NOT YET"); else { ncat(p,pq_have); scat(p,"/"); ncat(p,pq_need); }
         ln[0]="YOUR JOB IS STILL OPEN:"; ln[1]=j; ln[2]=p; card(pg,"BOUNTY OFFICE",ln,3); return; }
     // a new job that this planet can actually offer
-    int tries=0; do { pq_type=1+wr(7); tries++; { int rp=0; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_RACE) rp=1; if(rp && wr(3)==0) pq_type=8; }   // a planet with a race post can offer the kart job
+    int tries=0; do { pq_type=1+wr(7); tries++; { int rp=0; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_RACE) rp=1; if(rp && wr(3)==0) pq_type=8; } if(pq_type!=8 && wr(6)==0) pq_type=9;   // a planet with a race post can offer the kart job
         if(pq_type==2 && !wd.beetles) pq_type=0; if(pq_type==3 && !wd.fossils) pq_type=0; if(pq_type==5 && !city_r) pq_type=0; if(pq_type==6 && spc[0].temper==0 && wr(2)) pq_type=0;
     } while(!pq_type && tries<10);
     if(!pq_type) pq_type=1;
-    static const u8 need[9]={0,3,1,1,1,3,2,3,1}; pq_need=need[pq_type]+(pq_type==1||pq_type==5||pq_type==7 ? wr(3) : 0); pq_have=0;
-    { static const u8 kk[9]={0,O_SLUG,O_BEETLE,O_FOSSIL,0,O_LOCAL,O_CRIT,O_TREE,0}; int have=0;                    // never ask for more than the planet has
+    static const u8 need[10]={0,3,1,1,1,3,2,3,1,4}; pq_need=need[pq_type]+(pq_type==1||pq_type==5||pq_type==7||pq_type==9 ? wr(3) : 0); pq_have=0;
+    { static const u8 kk[10]={0,O_SLUG,O_BEETLE,O_FOSSIL,0,O_LOCAL,O_CRIT,O_TREE,0,O_PLANT}; int have=0;                    // never ask for more than the planet has
       if(pq_type!=4 && pq_type!=8) for(int i=0;i<NPO;i++) if(po[i].alive && (po[i].kind==kk[pq_type] || (pq_type==7 && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER)) && (pq_type!=6 || po[i].var==0)) have++;
       if(pq_type!=4 && pq_type!=8 && pq_need>have) pq_need = have>0 ? have : 1; } pq_done=0; pq_gold=20+dlv()*8+pq_need*6+(pq_type==4?30:pq_type==8?70:0);
     job_text(j); scpy(p,"PAYS "); ncat(p,pq_gold); scat(p,"G AND FAME. WE WIRE IT. BEEP.");

@@ -400,7 +400,7 @@ static void planet_frame(void){
                 int room=cargo_cap+ship_hold_bonus()-cargo_n(); if(n>room) n=room; cargo[g]+=n; st_mined+=n; ach_check(); gain_xp(2+dlv());
                 char b[40]; scpy(b,"+"); ncat(b,n); scat(b," "); scat(b,goods[g]); scat(b,"  HOLD "); ncat(b,cargo_n()); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); show_msg(b); sfx(7);
                 break; }
-            case O_PLANT: { po[best].alive=0; int r=rndi(10);
+            case O_PLANT: { po[best].alive=0; int r=rndi(10); if(pq_type==9){ pq_have++; job_tick(); }
                 if(r<5){ eat(15); show_msg("NIBBLED A LEAF. FOOD +15"); sfx(11); }
                 else if(r<8){ Gear g={IT_BERRY,(u8)rndi(8),0,0,0,0}; if(add_gear(g)) show_msg("FOUND A BERRY IN THE LEAVES"); }
                 else if(r<9){ Gear g={IT_SEED,(u8)rndi(6),0,0,0,0}; if(add_gear(g)) show_msg("FOUND A SEED"); }
@@ -416,6 +416,7 @@ static void planet_frame(void){
     if(hearts<=0){ hearts=maxh; food=60; gold/=2; if(!opt_easy){ bag_n=0; bag_sel=0; } show_msg(opt_easy?"YOU FAINTED. HALF YOUR GOLD IS GONE":"YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }
     if(msg_timer){ msg_timer-=n; if(msg_timer<0) msg_timer=0; }
     if(frames%30==0 && hud_sig()!=phud_sig) planet_hud();
+    if(opt_autosave && frames%6000==5999){ save_game(); show_msg("GAME SAVED"); }          // a quiet save every few minutes on the surface
     // ---- draw the world
     weird_frame(n);
     u32 t_r0=TMR(); render_planet(pg); u32 t_r1=TMR();
@@ -426,7 +427,7 @@ static void planet_frame(void){
     { int pk = best<0 ? -1 : po[best].kind;
       static const char *const pt[21]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR","A: ENTER THE DRONE OUTPOST",
           "A: THE MARKET","A: THE CANTINA","A: THE BOUNTY OFFICE","A: THE RACE POST","A: KNOCK","A: TALK","A: DIG THE FOSSIL","A: THE RUIN","A: BITE THE BEETLE","A: CATCH IT","A: THE RELIC SHRINE!"};
-      if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
+      if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } else if(pk==O_DOOR && portal_depth>0){ scpy(cb,"A: PORTAL BACK TO B"); ncat(cb,portal_depth); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
       if(race_on){ char rb[40]; scpy(rb,kart_on?"KART ":"RACE "); ncat(rb,race_t/60); scat(rb,kart_on?"S  GATE ":"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/"); ncat(rb,race_n); if(kart_on){ scat(rb,"  PAR "); ncat(rb,race_par/60); scat(rb,"S"); rect(pg,4,146,50,3,C_DGREY); if(kart_boost>0) rect(pg,4,146,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); } stext(pg,4,151,rb,C_CYAN); }
       else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4 && pq_type!=8){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
       weather_draw(pg); if(wd.weird) sky_decor(pg);

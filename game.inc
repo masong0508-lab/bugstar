@@ -274,9 +274,9 @@ static const char *const thorn_name[5]={"ROSE THORN","WASP STING","GLASS NEEDLE"
 static const char *const charm_name[4]={"AMBER CHARM","JADE CHARM","BONE CHARM","OPAL CHARM"};
 static const char *const fish_name[5]={"SILVER FISH","FIRE FISH","STONE FISH","KING FISH","GOLD FISH"};
 static const char *const potion_name[2]={"HEALTH POTION","MANA POTION"};
-enum { SP_FIRE, SP_SPARK, SP_HEAL, SP_SHIELD, NSPELL };
-static const char *const spell_name[NSPELL]={"FIREBALL","SPARK","HEAL","SHIELD"};
-static const u8 spell_cost[NSPELL]={4,6,8,10};
+enum { SP_FIRE, SP_SPARK, SP_HEAL, SP_SHIELD, SP_PORTAL, NSPELL };
+static const char *const spell_name[NSPELL]={"FIREBALL","SPARK","HEAL","SHIELD","PORTAL"};
+static const u8 spell_cost[NSPELL]={4,6,8,10,12};
 // prefixes and suffixes, like the magic items in Fate
 static const char *const wpre[7]={"","SHARP","CRUEL","FLAMING","VENOM","LUCKY","VAMPIRE"};
 static const char *const apre[7]={"","STURDY","THICK","SPIKY","SWIFT","BLESSED","GLOWING"};
@@ -354,7 +354,7 @@ static int pet_dmg(void){ static const u8 m[4]={2,4,3,6}; return (2 + (level+pet
 static int pet_xp_next(void){ return 40+pet_lv*pet_lv*12; }
 
 // ---------------------------------------------------------------- quests and fame
-enum { Q_NONE, Q_HUNT, Q_CHAMP, Q_FETCH, Q_RESCUE };
+enum { Q_NONE, Q_HUNT, Q_CHAMP, Q_FETCH, Q_RESCUE, Q_BOSS, Q_SHARDS, Q_BRING, Q_GOODS, NQ };
 static int q_type, q_need, q_have, q_floor, q_done, q_gold, q_fame, q_zone, q_world; static char q_name[24];
 static const char *fame_rank(void){
     return fame>=1200?"BUG LEGEND": fame>=700?"CHAMPION": fame>=350?"HERO": fame>=150?"BRAVE BUG": fame>=50?"KNOWN BUG":"NOBODY";
@@ -379,7 +379,7 @@ static void new_game(void){
     shuffle(berry_map,8); shuffle(seed_map,6);
     for(int i=0;i<8;i++) berry_known[i]=0; for(int i=0;i<6;i++) seed_known[i]=0;
     for(int i=0;i<6;i++) have_bug[i]=0;
-    for(int i=0;i<NSPELL;i++) spell_known[i]=0; spell_known[SP_FIRE]=1; spell_sel=0;
+    for(int i=0;i<NSPELL;i++) spell_known[i]=0; spell_known[SP_FIRE]=1; spell_known[SP_PORTAL]=1; spell_sel=0;
     zone=0; zone_cleared=0; level=1; xp=0; food=100; gold=0; bugs_freed=0; bag_n=0; bag_sel=0; fame=0; portal_depth=0;
     endless=0; world_no=0; loot=0; best_depth=0;
     st_str=6; st_dex=5; st_vit=6; st_mag=5; stat_pts=0;
@@ -441,7 +441,7 @@ static Gear roll_drop(int ilvl, int luck){
     else if(r<66){ g.it=IT_POTION; g.sub=rndi(2); }
     else if(r<76){ g.it=IT_SEED; g.sub=rndi(6); }
     else if(r<84){ g.it=IT_CRUMB; }
-    else if(r<88){ g.it=IT_BOOK; g.sub=rndi(NSPELL); }
+    else if(r<88){ g.it=IT_BOOK; g.sub=rndi(SP_PORTAL); }
     else { g.it=IT_GEM; int t=rndi(10)+ilvl/6; g.sub = t<5?0 : t<8?1 : t<11?2 : 3; }
     return g;
 }
@@ -513,7 +513,7 @@ static void regen_tick(int every){          // slow healing and mana
 
 // ---------------------------------------------------------------- the bag
 static int add_gear(Gear g){
-    if(g.it==IT_QUEST){ q_done=1; say("FOUND THE LOST TREASURE!"); sfx(2); return 1; }
+    if(g.it==IT_QUEST){ if(q_type==Q_SHARDS){ q_have++; if(q_have>=q_need){ q_done=1; say("ALL SHARDS FOUND! GO TO YOUR SHIP"); } else { char sb[32]; scpy(sb,"SHARD "); ncat(sb,q_have); scat(sb,"/"); ncat(sb,q_need); say(sb); } } else { q_done=1; say("FOUND THE LOST TREASURE!"); } sfx(2); return 1; }
     if(bag_n>=BAGMAX){ say("YOUR BAG IS FULL"); return 0; }
     bag[bag_n++]=g;
     char b[48], nm[40]; gear_name(&g,nm); scpy(b,"GOT "); scat(b,nm); b[39]=0; say(b); sfx(2); hud_now(); return 1;

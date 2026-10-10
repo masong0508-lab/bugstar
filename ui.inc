@@ -51,6 +51,11 @@ static void vbar(volatile u16 *pg, int x, int y, int w, int val, int max, int co
 static void box(volatile u16 *pg, int x, int y, int w, int h){ rect(pg,x,y,w,h,0); rect(pg,x,y,w,1,6); rect(pg,x,y+h-1,w,1,6); rect(pg,x,y,1,h,6); rect(pg,x+w-1,y,1,h,6); }
 
 static void card(volatile u16 *pg, const char *title, const char *const *ln, int n);
+static const char *const bring_nm[4]={"FISH","BERRIES","SEEDS","POTIONS"}; static const u8 bring_it[4]={IT_FISH,IT_BERRY,IT_SEED,IT_POTION};
+static int q_counted(int t){ return t==Q_HUNT||t==Q_RESCUE||t==Q_SHARDS||t==Q_BRING||t==Q_GOODS; }
+static int quest_held(void){ int n=0; if(q_type==Q_BRING){ for(int k=0;k<bag_n;k++) if(bag[k].it==bring_it[q_floor&3]) n++; } else if(q_type==Q_GOODS) n=cargo[q_floor&7]; return n; }
+static void quest_refresh(void){ if(q_type==Q_BRING||q_type==Q_GOODS){ q_have=quest_held(); q_done = q_have>=q_need; } }   // fetch quests are done the moment you carry the goods
+static void quest_take(void){ if(q_type==Q_BRING){ int left=q_need; for(int k=bag_n-1;k>=0&&left>0;k--) if(bag[k].it==bring_it[q_floor&3]){ drop_at(k); left--; } } else if(q_type==Q_GOODS) cargo[q_floor&7]-=q_need; }
 // ---------------------------------------------------------------- the story, told by Bolt
 // Bolt is the tin droid that rolls after you. He does not know what he is. The data cores in the drone outposts are his memory.
 static const char *const bolt_mem[8][4]={
@@ -326,7 +331,7 @@ static void char_screen(volatile u16 *pg){
                 text(pg,8,147, bag_n && is_gear(&bag[cur]) ? "A: WEAR  B: SCRAP IT  SELECT: BUDDY SELLS GEAR" : "A: USE  B: DROP  SELECT: BUDDY SELLS GEAR",C_CYAN,1);
             } else if(page==2){
                 scpy(b,"MANA "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); scat(b,"   SPELL POWER "); ncat(b,st_mag); text(pg,8,y,b,C_CYAN,1); y+=12;
-                static const char *const sd[NSPELL]={"A BALL OF FIRE FLIES AHEAD","LIGHTNING HITS THE NEAREST FOE","HEALS YOU","HARDER TO HURT FOR A WHILE"};
+                static const char *const sd[NSPELL]={"A BALL OF FIRE FLIES AHEAD","LIGHTNING HITS THE NEAREST FOE","HEALS YOU","HARDER TO HURT FOR A WHILE","PORTAL HOME. THE DOOR RETURNS"};
                 for(int i=0;i<NSPELL;i++){ if(cur==i) text(pg,4,y,">",C_CYAN,1);
                     scpy(b,spell_name[i]); if(i==spell_sel) scat(b," *"); text(pg,10,y,b, spell_known[i] ? (i==spell_sel?C_GOLD:C_WHITE) : C_DGREY,1);
                     b[0]=0; ncat(b,spell_cost[i]); scat(b," MP"); text(pg,76,y,b,C_CYAN,1);
@@ -336,8 +341,8 @@ static void char_screen(volatile u16 *pg){
                 text(pg,8,147,"A: MAKE IT YOUR SPELL",C_CYAN,1);
             } else if(page==3){
                 text(pg,8,y,"QUEST",C_GOLD,1); y+=8;
-                if(q_type==Q_NONE) text(pg,8,y,"NONE. VISIT YOUR SHIP'S QUEST BOARD.",C_DGREY,1);
-                else { text(pg,8,y,q_name,C_WHITE,1); y+=7; scpy(b, q_done ? "DONE! GO BACK TO YOUR SHIP" : "IN PROGRESS"); if(!q_done && (q_type==Q_HUNT||q_type==Q_RESCUE)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,8,y,b,q_done?C_GREEN:C_WHITE,1); }
+                quest_refresh(); if(q_type==Q_NONE) text(pg,8,y,"NONE. VISIT YOUR SHIP'S QUEST BOARD.",C_DGREY,1);
+                else { text(pg,8,y,q_name,C_WHITE,1); y+=7; scpy(b, q_done ? "DONE! GO BACK TO YOUR SHIP" : "IN PROGRESS"); if(!q_done && q_counted(q_type)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,8,y,b,q_done?C_GREEN:C_WHITE,1); }
                 y+=12; scpy(b,"FAME "); ncat(b,fame); scat(b,"  RANK: "); scat(b,fame_rank()); text(pg,8,y,b,C_GOLD,1); y+=12;
                 if(endless){ scpy(b,"ENDLESS GALAXY  WORLD "); ncat(b,world_no); scat(b,"  DEEPEST B"); ncat(b,best_depth); text(pg,8,y,b,C_CYAN,1); y+=10; }
                 text(pg,8,y,"WHAT YOU HAVE LEARNED",C_GOLD,1); y+=8;
@@ -397,7 +402,7 @@ static void char_screen(volatile u16 *pg){
 EW static Gear stock[6];
 static void restock(void){ int il=dlv()*3+level; for(int i=0;i<6;i++) stock[i]=roll_gear(i<2?IT_THORN:i<4?IT_SHELL:IT_CHARM, il, 10); }
 static void make_quest(void){
-    q_type=1+rndi(4); q_have=0; q_done=0; q_zone=zone; q_world=world_no;
+    q_type=1+rndi(NQ-1); if(q_type==Q_BOSS && endless) q_type=Q_HUNT; q_have=0; q_done=0; q_zone=zone; q_world=world_no;
     int maxf = endless ? (best_depth>3?best_depth:3) : zone_floors();
     q_floor = 1+rndi(maxf);
     q_gold = 60 + dlv()*40 + q_floor*10; q_fame = 15 + dlv()*6;
@@ -407,6 +412,10 @@ static void make_quest(void){
         case Q_HUNT: q_need=8+dlv()*2+rndi(6); scpy(b,"SLAY "); ncat(b,q_need); scat(b," MONSTERS"); break;
         case Q_CHAMP: scpy(b,"SLAY "); scat(b,cn[rndi(6)]); scat(b," ON B"); ncat(b,q_floor); q_gold+=60; q_fame+=10; break;
         case Q_FETCH: scpy(b,"FIND THE LOST TREASURE ON B"); ncat(b,q_floor); break;
+        case Q_BOSS: q_floor=zone_floors(); q_gold+=150; q_fame+=25; scpy(b,"SLAY THE BOSS ON B"); ncat(b,q_floor); break;        // the zone boss waits on the last floor
+        case Q_SHARDS: q_need=2+rndi(2); if(q_need>q_floor) q_need=q_floor; q_gold+=q_need*15; scpy(b,"FIND "); ncat(b,q_need); scat(b," SHARDS B"); ncat(b,q_floor-q_need+1); scat(b,"-"); ncat(b,q_floor); break;
+        case Q_BRING: q_floor=rndi(4); q_need=2+rndi(3); q_gold=60+dlv()*40+q_need*20; scpy(b,"BRING "); ncat(b,q_need); scat(b," "); scat(b,bring_nm[q_floor]); break;
+        case Q_GOODS: q_floor=rndi(8); q_need=3+rndi(4); q_gold=60+dlv()*40+q_need*25; scpy(b,"BRING "); ncat(b,q_need); scat(b," "); scat(b,goods[q_floor]); break;
         default: q_need=2+rndi(2); scpy(b,"FREE "); ncat(b,q_need); scat(b," CAGED BUGS"); break;
     }
     b[23]=0; scpy(q_name,b);
@@ -559,19 +568,19 @@ static int shop_menu(void){   // returns 1 to fly on
             char b[48]; int dirty2=1; wait_release();
             if(q_type==Q_NONE) make_quest(), q_type=-q_type;     // an offer, not taken yet
             while(1){
-                if(dirty2){ dirty2=0; box(pg,12,20,216,136); text(pg,20,24,"QUEST BOARD",C_GOLD,1);
+                if(dirty2){ dirty2=0; quest_refresh(); box(pg,12,20,216,136); text(pg,20,24,"QUEST BOARD",C_GOLD,1);
                     int t = q_type<0 ? -q_type : q_type;
                     text(pg,20,40,q_name,C_WHITE,1);
                     scpy(b,"REWARD "); ncat(b,q_gold); scat(b,"G, "); ncat(b,q_fame); scat(b," FAME, A PRIZE"); text(pg,20,50,b,C_GOLD,1);
                     if(q_type<0) text(pg,20,70,"A: TAKE THIS QUEST   B: NOT NOW",C_CYAN,1);
                     else if(q_done) text(pg,20,70,"DONE! A: CLAIM YOUR REWARD",C_GREEN,1);
-                    else { scpy(b,"IN PROGRESS"); if(t==Q_HUNT||t==Q_RESCUE){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,20,70,b,C_WHITE,1); text(pg,20,80,"A: GIVE UP   B: BACK",C_CYAN,1); }
+                    else { scpy(b,"IN PROGRESS"); if(q_counted(t)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,20,70,b,C_WHITE,1); text(pg,20,80,"A: GIVE UP   B: BACK",C_CYAN,1); }
                     scpy(b,"YOUR FAME: "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); text(pg,20,140,b,C_GOLD,1); }
                 vsync(); read_keys(); if(keys!=keys_old) dirty2=1;
                 if(HIT(K_B)){ if(q_type<0) q_type=Q_NONE; break; }
                 if(HIT(K_A)){
-                    if(q_type<0){ q_type=-q_type; say("QUEST TAKEN"); break; }
-                    if(q_done){ gold+=q_gold; fame+=q_fame; Gear pz=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, dlv()*3+level+2, 30); add_gear(pz); q_type=Q_NONE; say("REWARD CLAIMED!"); sfx(6); hud_now(); break; }
+                    if(q_type<0){ q_type=-q_type; say("QUEST TAKEN"); save_game(); break; }
+                    if(q_done){ quest_take(); gold+=q_gold; fame+=q_fame; Gear pz=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, dlv()*3+level+2, 30); add_gear(pz); q_type=Q_NONE; say("REWARD CLAIMED!"); sfx(6); save_game(); hud_now(); break; }
                     q_type=Q_NONE; say("QUEST DROPPED"); break;
                 }
             }

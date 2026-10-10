@@ -198,6 +198,7 @@ static void make_floor(void){
     int qhere = q_type>0 && !q_done && depth_no==q_floor && q_zone==zone && q_world==world_no;
     if(qhere && q_type==Q_CHAMP){ SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0); dob[ndo-1].champ=2; }
     if(qhere && q_type==Q_FETCH) SPAWN_GEAR(room_floor_cell(&rooms[far]), ((Gear){IT_QUEST,0,0,0,0,0}));
+    if(q_type==Q_SHARDS && !q_done && q_have<q_need && q_zone==zone && q_world==world_no && depth_no>q_floor-q_need) SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), ((Gear){IT_QUEST,0,0,0,0,0}));   // one star shard per floor near the quest depth
 }
 static int solid(s32 x, s32 y){ int cx=x>>16, cy=y>>16; if(cx<0||cy<0||cx>=MW||cy>=MW) return 1; int t=dmap[cy*MW+cx]; return t==D_WALL||t==D_PILLAR||t==D_LOCK; }
 
@@ -646,6 +647,10 @@ static void dungeon_enter(void){
     dungeon_hud_both();
     if(fl_ev){ char b[40]; scpy(b,fe_name[fl_ev]); scat(b,"!"); say(b); msg_timer=60;
         if(fl_ev==FE_BLESSED){ int mk=rndi(MK_GOOD); mark_t[mk]=150; recalc(); scpy(b,"BLESSED: "); scat(b,mk_name[mk]); scat(b," FOR A WHILE"); say(b); msg_timer=60; } }
+}
+static void dungeon_checkpoint(void){                 // every new floor is a save point: if you load, you wake on the surface with a portal open to this floor
+    if(!opt_autosave || endless || base_mode) return;
+    int pd=portal_depth; portal_depth=depth_no; do_save(); portal_depth=pd; say("CHECKPOINT SAVED"); msg_timer=40;
 }
 static void fl_kill(DObj *o){                                                   // a monster died: does that move the floor's goal?
     if(fl_ev==FE_ELITE && o->champ==1 && !fl_done && ++fl_have>=fl_need){ fl_done=1; int g=200+dlv()*40+depth_no*10; earn(g); gain_xp(30+dlv()*6); char b[40]; scpy(b,"ELITES SLAIN! +"); ncat(b,g); scat(b,"G"); say(b); msg_timer=50; sfx(6); }

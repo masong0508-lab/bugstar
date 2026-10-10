@@ -24,7 +24,7 @@ typedef struct {
     u32 magic; u16 ver;
     s16 zone, zone_cleared, endless, world_no, best_depth, level, st[4], stat_pts, hp, mp, food, bugs, fame, portal, spell_sel;
     s32 xp, gold; u32 galaxy_seed;
-    u8 have_bug[6], berry_map[8], seed_map[6], berry_known[8], seed_known[6], spell_known[NSPELL];
+    u8 have_bug[6], berry_map[8], seed_map[6], berry_known[8], seed_known[6], spell_known[4];
     Gear eq[3]; u8 bag_n; Gear bag[BAGMAX];
     s16 q_type, q_need, q_have, q_floor, q_done, q_gold, q_fame, q_zone, q_world; char q_name[24];
     s16 pet_form, pet_form_t, pet_maxhp, pet_hp;
@@ -78,7 +78,7 @@ static void do_save(void){        // always saves, into the slot you are playing
     s->st[0]=st_str; s->st[1]=st_dex; s->st[2]=st_vit; s->st[3]=st_mag; s->stat_pts=stat_pts; s->hp=hearts; s->mp=mp; s->food=food; s->bugs=bugs_freed; s->fame=fame; s->portal=portal_depth; s->spell_sel=spell_sel;
     s->xp=xp; s->gold=gold; s->galaxy_seed=galaxy_seed;
     for(int i=0;i<6;i++) s->have_bug[i]=have_bug[i];
-    memcpy(s->berry_map,berry_map,8); memcpy(s->seed_map,seed_map,6); memcpy(s->berry_known,berry_known,8); memcpy(s->seed_known,seed_known,6); memcpy(s->spell_known,spell_known,NSPELL);
+    memcpy(s->berry_map,berry_map,8); memcpy(s->seed_map,seed_map,6); memcpy(s->berry_known,berry_known,8); memcpy(s->seed_known,seed_known,6); memcpy(s->spell_known,spell_known,4);
     s->eq[0]=eqw; s->eq[1]=eqa; s->eq[2]=eqc; s->bag_n=bag_n; memcpy(s->bag,bag,sizeof(bag));
     s->q_type=q_type<0?0:q_type; s->q_need=q_need; s->q_have=q_have; s->q_floor=q_floor; s->q_done=q_done; s->q_gold=q_gold; s->q_fame=q_fame; s->q_zone=q_zone; s->q_world=q_world; memcpy(s->q_name,q_name,24);
     s->pet_form=pet_form; s->pet_form_t=pet_form_t; s->pet_maxhp=pet_maxhp; s->pet_hp=pet_hp;
@@ -104,7 +104,7 @@ static int load_game(int apply){
     st_str=s->st[0]; st_dex=s->st[1]; st_vit=s->st[2]; st_mag=s->st[3]; stat_pts=s->stat_pts; food=s->food; bugs_freed=s->bugs; fame=s->fame; portal_depth=s->portal; spell_sel=s->spell_sel;
     xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed;
     for(int i=0;i<6;i++) have_bug[i]=s->have_bug[i];
-    memcpy(berry_map,s->berry_map,8); memcpy(seed_map,s->seed_map,6); memcpy(berry_known,s->berry_known,8); memcpy(seed_known,s->seed_known,6); memcpy(spell_known,s->spell_known,NSPELL);
+    memcpy(berry_map,s->berry_map,8); memcpy(seed_map,s->seed_map,6); memcpy(berry_known,s->berry_known,8); memcpy(seed_known,s->seed_known,6); memcpy(spell_known,s->spell_known,4); spell_known[SP_PORTAL]=1;
     eqw=s->eq[0]; eqa=s->eq[1]; eqc=s->eq[2]; bag_n=s->bag_n; memcpy(bag,s->bag,sizeof(bag)); bag_sel=0;
     q_type=s->q_type; q_need=s->q_need; q_have=s->q_have; q_floor=s->q_floor; q_done=s->q_done; q_gold=s->q_gold; q_fame=s->q_fame; q_zone=s->q_zone; q_world=s->q_world; memcpy(q_name,s->q_name,24);
     pet_form=s->pet_form; pet_form_t=s->pet_form_t; pet_maxhp=s->pet_maxhp; pet_hp=s->pet_hp; pet_away_t=0; pet_down_t=0;

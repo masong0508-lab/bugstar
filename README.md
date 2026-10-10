@@ -78,6 +78,12 @@ Five pages with colour-coded button badges: planet, dungeon, space, staying aliv
 - **Hire up to 10 wingmen** at any station's shipyard. They fly in formation, follow you between systems, defend you, and call out their kills.
 - **Fleet battles** of up to **50 enemy ships** break out past the Ant King, or pick **JOIN A FLEET BATTLE** at a shipyard. Ships pick targets and shoot each other. Win the battle for a big bonus.
 
+## More quests, a portal spell, and more saving (new)
+- **Quest board** (at your ship) now offers eight kinds: slay monsters, slay a champion, find the lost treasure, free caged bugs, plus **SLAY THE BOSS** (the zone boss on its last floor), **FIND STAR SHARDS** (one glows on each of the last floors before the quest depth), **BRING** fish, berries, seeds or potions, and **BRING** trade goods (food, silk, amber, crystals...). Bring quests finish the moment you carry enough; the board takes the items when you claim.
+- **Bounty office** has a new job: **SEARCH PLANTS** (press A on plants).
+- **PORTAL spell** (12 MP, everyone knows it): cast it in a dungeon (SELECT) to pop up on the surface. The planet's door then reads "A: PORTAL BACK TO B#" and drops you on the same floor, so you can sell, heal and come back. Warp crystals still work the same way.
+- **Saves:** the game now saves at every new dungeon floor (a checkpoint: loading wakes you on the surface with a portal open to that floor), when you go down the door, when a quest is taken or claimed, when a bounty job pays, and every few minutes on the surface. Turn AUTOSAVE off in OPTIONS to stop all of these.
+
 ## Kart racing (new)
 - At **THE BOUNTY OFFICE** on a planet with a race post, the clerk may hand you the **KART GRAND PRIX** job. The kart race only exists once you have taken that job.
 - Then press A at **THE RACE POST**: you are in a kart. A big loop of **8 gates** appears, and the kart is more than twice as fast as walking. Hold **B to boost** (the bar by the timer drains and refills). Water and steep hills still slow you down.

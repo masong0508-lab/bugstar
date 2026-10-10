@@ -216,6 +216,7 @@ static void kill_mon(DObj *o){
     earn(boss ? 100+depth_no*10 : 6+dlv()*4+(o->champ?40:0));
     if(q_type==Q_HUNT){ q_have++; if(q_have>=q_need && !q_done){ q_done=1; say("QUEST DONE! GO BACK TO YOUR SHIP"); } }
     if(o->champ==2 && q_type==Q_CHAMP){ q_done=1; say("QUEST TARGET SLAIN!"); }
+    if(boss && q_type==Q_BOSS && !q_done && q_zone==zone && q_world==world_no){ q_done=1; say("BOSS QUEST DONE! GO TO YOUR SHIP"); }
     sfx(9); debris(o->x,o->y,0x6000,boss?16:10,3,o->kvx,o->kvy); burst(o->x,o->y,0x6000,4,1);
     int ilvl=dlv()*3+depth_no;
     if(boss){ music(1); if(!endless){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
@@ -434,7 +435,8 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
                 else say("NOTHING TO ZAP");
                 sfx(10); }
             else if(s==SP_HEAL){ hearts+=10+st_mag*3; if(hearts>maxh) hearts=maxh; burst(px_+(dirx>>1),py_+(diry>>1),0x4000,10,1); sfx(6); say("HEALED"); }
-            else { shield_t=900; say("SHIELD UP"); sfx(6); }
+            else if(s==SP_SHIELD){ shield_t=900; say("SHIELD UP"); sfx(6); }
+            else { escape_flag=1; portal_depth=depth_no; say("A PORTAL OPENS!"); sfx(5); }          // PORTAL: home to the surface; the door brings you back to this floor
             hud_now(); }
     }
     // ---- Buddy, your pet
@@ -542,7 +544,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     else if(HIT(K_A)){
         if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
         else if(here==D_UP && stair_ok) return 1;
-        else if(here==D_DOWN){ fl_leave(); wacc=WDIV-1; fade(1); dungeon_enter(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; }
+        else if(here==D_DOWN){ fl_leave(); wacc=WDIV-1; fade(1); dungeon_enter(); dungeon_checkpoint(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; }
         else if(fish_state==1){ fish_state=0; say("YOU REEL IN"); }
         else if(water_ahead(dirx,diry)){ fish_state=1; fish_t=25+rndi(50); say("FISHING... WAIT FOR A BITE"); sfx(8); }
         else if(!atk_t) do_bite(dirx,diry);
@@ -764,7 +766,7 @@ static void run_game(void){
                 scene=2; page_back=1; REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BLDY=0; hyperspace();
                 arrive_on_planet(); fade(0); continue; }
             if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }
-            if(enter_dungeon_flag){ if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; fade(1); oam_hide_all(); oam_flush();
+            if(enter_dungeon_flag){ if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; save_game(); fade(1); oam_hide_all(); oam_flush();
                 depth_no=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
                 tier_lock = (!endless && zone_cleared) ? tiers[zone]+1 : 0;
                 scene=1; dungeon_enter();
