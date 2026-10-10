@@ -754,7 +754,7 @@ static void run_game(void){
             planet_frame();
             vsync(); REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; oam_flush();
             if(launch_flag==2){ launch_flag=0; fade(1); oam_hide_all(); oam_flush();
-                int d=sys_dist(cur_sys,zone+1); fuel = d>fuel ? 0 : fuel-d; cur_sys=zone+1; visits++;
+                int d=sys_dist(cur_sys,zone+1); fuel = d>fuel ? 0 : fuel-d; cur_sys=zone+1; cur_pl=cur_moon=0; visits++;
                 scene=2; page_back=1; REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BLDY=0; hyperspace();
                 arrive_on_planet(); fade(0); continue; }
             if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }

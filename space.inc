@@ -45,11 +45,25 @@ static int is_hive(int i){ return hive_active() && i==hive_sys(); }
 static int sys_dlv(int i){ return sys[i].kind<6 ? sys[i].kind : 6 + cluster_no*4 + sys_dist(i,0)/40 + (is_hive(i) ? 4+hive_done*3 : 0); }
 static void sys_name(int i, char *b){ if(sys[i].kind<6) scpy(b,tint_name[sys[i].kind]); else if(is_hive(i)) scpy(b,hive_nm[hive_done]); else name_of(sys_id(i),b); }
 static int can_jump(int i){ if(i==cur_sys) return 0; if(sys[i].kind<6) return sys[i].kind<zones_open; return ant_king; }
+// ---- planets and moons: every uncharted star has 1 or more planets, and each planet can have moons you can land on and mine.
+// A few galaxies are CROWDED: every star there has 6 to 16 planets. (story stars and the hives keep their one world)
+#define DENSE_ODDS 400                                        // 1 galaxy in 400 is crowded
+static int galaxy_dense(void){ u32 w=galaxy_no|galaxy_hi[0]|galaxy_hi[1]|galaxy_hi[2]; if(!w) return 0;
+    return hmix(galaxy_no^hmix(galaxy_hi[0]^hmix(galaxy_hi[1]^hmix(galaxy_hi[2]^0xD3A5E000u^galaxy_seed))))%DENSE_ODDS==0; }
+static int sys_nplan(int i){ if(sys[i].kind<6 || is_hive(i)) return 1;
+    u32 h=amix(galaxy_seed^0x504C414Eu,i); int r=(int)(h%1000u);
+    if(galaxy_dense()) return 6+(int)((h>>12)%11u);                                    // 6..16 planets: more than ten about half the time
+    return r<650?1 : r<860?2 : r<950?3 : r<985?4 : r<997?5 : 6+(int)((h>>12)%3u); }      // most stars: 1 planet; a very few: 6 to 8
+static int sys_nmoon(int i, int p){ if(sys[i].kind<6 || is_hive(i)) return 0;
+    int r=(int)(amix(galaxy_seed^0x4D4F4F4Eu^((u32)p*0x9E3779B1u),i)%100u); return r<40?0 : r<70?1 : r<88?2 : r<96?3 : 4; }
+static int body_count(int i){ int n=0, np=sys_nplan(i); for(int p=0;p<np;p++) n+=1+sys_nmoon(i,p); return n; }
+static void body_at(int i, int k, int *pp, int *pm){ int np=sys_nplan(i); for(int p=0;p<np;p++){ int nm=sys_nmoon(i,p); if(k<=nm){ *pp=p; *pm=k; return; } k-=nm+1; } *pp=0; *pm=0; }
 
 // where you are when you land: the planet of the current system
 static void land_on_current(void){
+    if(sys[cur_sys].kind<6 || cur_pl>=sys_nplan(cur_sys) || cur_moon>sys_nmoon(cur_sys,cur_pl)) cur_pl=cur_moon=0;    // a stale body after a load or a jump: the first planet
     if(sys[cur_sys].kind<6){ endless=0; zone=sys[cur_sys].kind; zone_cleared=(cleared_mask>>zone)&1; story_dna(zone); }
-    else { endless=1; world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); zone_cleared=0; }
+    else { endless=1; world_no=sys_id(cur_sys)^body_salt(); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); zone_cleared=0; }
 }
 
 // ---------------------------------------------------------------- the ship in space
@@ -219,9 +233,9 @@ static void space_enter(int from_planet){
     for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; int ang=lr(256), rad=5600+lr(1500); a->x=(cosx(ang)*rad)>>14; a->z=(sinx(ang)*rad)>>14; a->y=lr(1200)-600;
         a->vx=lr(7)-3; a->vy=lr(3)-1; a->vz=lr(7)-3; a->r=140+lr(220); a->hp=a->r/12; a->alive=1; a->seed=lr(256); a->flash=0; }
     svx_=svy_=svz_=0; yawv=pitv=roll_=0; sshake=0;
-    if(sys[cur_sys].kind==6){ world_no=sys_id(cur_sys); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); }
+    if(sys[cur_sys].kind==6){ world_no=sys_id(cur_sys)^body_salt(); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); }
     build_space_palette();
-    pl_tex = (sys_id(cur_sys)&1)<<13; pl_rot=sys_id(cur_sys)*7;
+    { u32 sid=sys_id(cur_sys)^body_salt(); pl_tex = (sid&1)<<13; pl_rot=sid*7; }
     if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("LAUNCHED. B: THRUST  R: BRAKE  L: BURN"); }
     else { shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=20; }
     int danger=sys_dlv(cur_sys);
@@ -411,6 +425,32 @@ static void ship_hit(int dm, int crash){            // shields first, then the h
     hit_t=6; sshake = crash ? 14 : 8; if(crash){ crash_cd=30; sfx(12); } else sfx(4);
 }
 // ---------------------------------------------------------------- one frame of flying
+// ---- choose which world of the system to land on (only asked when the star has more than one)
+static int body_menu(void){
+    int n=body_count(cur_sys), np=sys_nplan(cur_sys);
+    if(n<=1){ cur_pl=cur_moon=0; return 1; }
+    volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));
+    int cur=0, top=0, dirty=1; { int k=0; for(int p=0;p<np;p++) for(int m=0;m<=sys_nmoon(cur_sys,p);m++){ if(p==cur_pl && m==cur_moon) cur=k; k++; } }
+    wait_release();
+    while(1){
+        if(dirty){ dirty=0;
+            for(int i=0;i<240*160/2;i++) pg[i]=0;
+            char b[40]; sys_name(cur_sys,b); b[18]=0; text(pg,4,3,b,C_GOLD,1);
+            scpy(b,""); ncat(b,np); scat(b,np==1?" PLANET   ":" PLANETS   "); ncat(b,n); scat(b," WORLDS"); text(pg,4,11,b,C_GREY,1);
+            if(cur<top) top=cur; if(cur>=top+9) top=cur-8;
+            for(int r=0;r<9 && top+r<n;r++){ int p,m; body_at(cur_sys,top+r,&p,&m); char l[24]; scpy(l,m?"   MOON ":"PLANET "); ncat(l,p+1); if(m){ scat(l,"."); ncat(l,m); }
+                int y=24+r*10; if(top+r==cur) rect(pg,2,y-1,236,9,C_DGREY);
+                text(pg,8,y,l,top+r==cur?C_WHITE:C_GREY,1); if(m) text(pg,150,y,"ORE RICH",C_GOLD,1); }
+            if(top>0) text(pg,226,22,"^",C_CYAN,1); if(top+9<n) text(pg,226,112,"v",C_CYAN,1);
+            rect(pg,0,132,240,28,57); text(pg,4,138,"UP/DOWN: PICK A WORLD",C_GREY,1); text(pg,4,148,"A: LAND   B: BACK",C_GREEN,1);
+        }
+        vsync(); read_keys();
+        if(HIT(K_UP) && cur>0){ cur--; dirty=1; sfx(7); }
+        if(HIT(K_DOWN) && cur<n-1){ cur++; dirty=1; sfx(7); }
+        if(HIT(K_A)){ body_at(cur_sys,cur,&cur_pl,&cur_moon); wait_release(); return 1; }
+        if(HIT(K_B)){ wait_release(); return 0; }
+    }
+}
 static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     // steer, throttle
     // the ship has weight: turning ramps up and settles, it banks into turns, and it drifts before the engines catch up
@@ -468,7 +508,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(HIT(K_START)){ chase_cam^=1; char b[40]; scpy(b, chase_cam?"CHASE VIEW. ":"COCKPIT VIEW. "); int n=0; for(int i=0;i<8;i++) n+=cargo[i]; scat(b,"CARGO "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); space_say(b); }
     // A: land, dock, or fire
     if(laser_cool) laser_cool--;
-    if(HIT(K_A) && can_land){ return 1; }
+    if(HIT(K_A) && can_land){ if(body_menu()) return 1; return 0; }
     if(HIT(K_A) && can_dock){ speed=0; return 3; }
     if(HELD(K_A) && !laser_cool && !can_land && !can_dock){
         laser_cool=10-laser_lv; laser_t=4; sfx(10);
@@ -592,7 +632,8 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(hit_t){ hit_t--; for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
     cockpit(pg);
     if(sv_yaw!=yaw || sv_pit!=pitch){ yaw=sv_yaw; pitch=sv_pit; }
-    const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
+    static char pb[24]; const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
+    if(can_land){ int bc=body_count(cur_sys); if(bc>1){ scpy(pb,"A: LAND ("); ncat(pb,bc); scat(pb," WORLDS)"); pr=pb; } }
     if(space_msg_t){ space_msg_t--; text(pg,120-textlen(smsg)*2,in_lair?28:4,smsg,54,1); }
     if(pr) text(pg,120-textlen(pr)*4,96,pr,55,2);
 #ifdef TEST_FLEET
@@ -648,6 +689,8 @@ static int galaxy_map(void){     // returns 1 if you jumped
             scpy(b, sys[sel].kind<6 ? "STORY ZONE  " : is_hive(sel) ? "TECH HIVE  " : "UNCHARTED  "); scat(b,eco_name[sys[sel].eco]); scat(b,"  DANGER "); ncat(b,sys_dlv(sel)); text(pg,4,143,b,C_GREY,1);
             scpy(b,"DISTANCE "); ncat(b,d/10); scat(b,"."); ncat(b,d%10); scat(b," LY   FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10);
             text(pg,4,151,b,C_GREY,1);
+            if(sys[sel].kind==6 && !is_hive(sel)){ int bc=body_count(sel); if(bc>1){ scpy(b,"WORLDS "); ncat(b,bc); text(pg,236-textlen(b)*4,143,b,C_CYAN,1); } }
+            if(galaxy_dense()) text(pg,4,24,"CROWDED GALAXY",C_GOLD,1);
             if(is_hive(sel)){ scpy(b,"OVERLORD ON FLOOR "); ncat(b,hive_floors[hive_done]); text(pg,236-textlen(b)*4,135,b,C_RED,1); }
             else if(has_base(sel)) text(pg,236-13*4,135,"DRONE OUTPOST",C_RED,1);
             { scpy(b,"BOLT'S MEMORY "); ncat(b,data_cores); scat(b,"/8"); text(pg,4,122-(beast_stage>=3?10:0),b,C_CYAN,1); }
@@ -675,15 +718,15 @@ static int galaxy_map(void){     // returns 1 if you jumped
             fuel-=20; hyperspace(); lair_enter(); wait_release(); return 1; }
         if(HIT(K_START) && ant_king){
             if(fuel<70){ space_say("NEED FULL FUEL FOR AN INTERGALACTIC JUMP"); wait_release(); return 0; }
-            fuel=0; cluster_no++; for(int w=0;w<NCW;w++) if(++clus[w]) break; gen_cluster(); cur_sys=0; hyperspace(); space_enter(0); space_say("A NEW CLUSTER OF STARS!"); wait_release(); return 1; }
+            fuel=0; cluster_no++; for(int w=0;w<NCW;w++) if(++clus[w]) break; gen_cluster(); cur_sys=0; cur_pl=cur_moon=0; hyperspace(); space_enter(0); space_say("A NEW CLUSTER OF STARS!"); wait_release(); return 1; }
         if(HIT(K_R) && ant_king){                                                       // the deep jump: anywhere in the universe, at random
             if(fuel<70){ space_say("NEED FULL FUEL FOR A DEEP JUMP"); wait_release(); return 0; }
-            fuel=0; cluster_no++; galaxy_no=rnd(); for(int k=0;k<3;k++) galaxy_hi[k]=rnd(); for(int w=0;w<NCW;w++) clus[w]=rnd(); gen_cluster(); cur_sys=0; hyperspace(); space_enter(0);
+            fuel=0; cluster_no++; galaxy_no=rnd(); for(int k=0;k<3;k++) galaxy_hi[k]=rnd(); for(int w=0;w<NCW;w++) clus[w]=rnd(); gen_cluster(); cur_sys=0; cur_pl=cur_moon=0; hyperspace(); space_enter(0);
             { char b[40]; scpy(b,"DEEP JUMP! GALAXY "); galaxy_str(b,0); space_say(b); } wait_release(); return 1; }
         if(HIT(K_A) && sel!=cur_sys && can_jump(sel) && sys_dist(sel,cur_sys)<=fuel){
             s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
             if(pd<PR*2){ space_say("TOO CLOSE TO THE PLANET TO JUMP"); wait_release(); return 0; }
-            fuel-=sys_dist(sel,cur_sys); cur_sys=sel; visits++;
+            fuel-=sys_dist(sel,cur_sys); cur_sys=sel; cur_pl=cur_moon=0; visits++;
             hyperspace(); space_enter(0); char b[40]; scpy(b,"ARRIVED: "); char nm[24]; sys_name(cur_sys,nm); scat(b,nm); space_say(b);
             wait_release(); return 1; }
     }
@@ -771,7 +814,8 @@ static void save_ext(void){
     beast_save(); trophy_save();
     { u32 a[NCW+10]; a[0]=0x36444441u; a[1]=galaxy_no; for(int w=0;w<NCW;w++) a[2+w]=clus[w]; a[NCW+2]=relic_bits; a[NCW+3]=(u32)weird_seen; a[NCW+4]=(u32)relic_gold; a[NCW+5]=mark_perm; a[NCW+6]=(u32)wing_n; a[NCW+7]=(u32)form|((u32)forms_open<<4)|((u32)tool_held<<8)|((u32)form_body<<12)|(tools_owned<<16); a[NCW+8]=form_col|((u32)(form_t>0?1:0)<<16);
       u32 h=2166136261u; for(int i=0;i<NCW+9;i++){ h^=a[i]; h*=16777619u; } a[NCW+9]=h; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
-    { u32 g[5]; g[0]=0x58474C47u; g[1]=galaxy_hi[0]; g[2]=galaxy_hi[1]; g[3]=galaxy_hi[2]; u32 h=2166136261u; for(int i=0;i<4;i++){ h^=g[i]; h*=16777619u; } g[4]=h; sram_write(slot_base(cur_slot)+0x9C0,g,sizeof g); }   // the upper galaxy words: their own little block, so older saves still load
+    { u32 g[5]; g[0]=0x58474C47u; g[1]=galaxy_hi[0]; g[2]=galaxy_hi[1]; g[3]=galaxy_hi[2]; u32 h=2166136261u; for(int i=0;i<4;i++){ h^=g[i]; h*=16777619u; } g[4]=h; sram_write(slot_base(cur_slot)+0x9C0,g,sizeof g); }
+    { u32 g[3]; g[0]=0x59444F42u; g[1]=(u32)(cur_pl*8+cur_moon); g[2]=(2166136261u^g[0])*16777619u; g[2]=(g[2]^g[1])*16777619u; sram_write(slot_base(cur_slot)+0x9E0,g,sizeof g); }   // which planet or moon you are on   // the upper galaxy words: their own little block, so older saves still load
 }
 static void addr_load(void){ u32 a[NCW+10]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h9=2166136261u, h7=2166136261u, h=2166136261u, h5=2166136261u; for(int i=0;i<NCW+9;i++){ h9^=a[i]; h9*=16777619u; } for(int i=0;i<NCW+7;i++){ h7^=a[i]; h7*=16777619u; if(i<NCW+6){ h^=a[i]; h*=16777619u; } if(i<NCW+5){ h5^=a[i]; h5*=16777619u; } }
     wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; form_body=0; form_col=0;
@@ -784,7 +828,9 @@ static void addr_load(void){ u32 a[NCW+10]; sram_read(slot_base(cur_slot)+0x900,
     else if(a[0]==0x52444441u && a[4]==(a[0]^a[1]*31^a[2]*131^a[3]*1031^0x5A5A)){ galaxy_no=a[1]; clus[0]=a[2]; clus[1]=a[3]; }   // last version's save
     else clus[0]=(u32)cluster_no;    // an older save: its cluster count becomes its address
     { u32 g[5]; sram_read(slot_base(cur_slot)+0x9C0,g,sizeof g); u32 gh=2166136261u; for(int i=0;i<4;i++){ gh^=g[i]; gh*=16777619u; }
-      if(g[0]==0x58474C47u && g[4]==gh && a[0]==0x36444441u){ galaxy_hi[0]=g[1]; galaxy_hi[1]=g[2]; galaxy_hi[2]=g[3]; } } }
+      if(g[0]==0x58474C47u && g[4]==gh && a[0]==0x36444441u){ galaxy_hi[0]=g[1]; galaxy_hi[1]=g[2]; galaxy_hi[2]=g[3]; } }
+    { u32 g[3]; sram_read(slot_base(cur_slot)+0x9E0,g,sizeof g); u32 gh=(2166136261u^0x59444F42u)*16777619u; gh=(gh^g[1])*16777619u; cur_pl=cur_moon=0;
+      if(g[0]==0x59444F42u && g[2]==gh && g[1]<128u){ cur_pl=(int)(g[1]>>3); cur_moon=(int)(g[1]&7); } } }
 typedef struct { u32 magic, hp_lo, hp_hi, mx_lo, mx_hi; u16 tech, kills, stage, hives; u32 sum; } SaveB;
 static void beast_defaults(void){ hive_done=0; tech_lv=0; beast_kills=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
 #define SB_OFF 0xA00
@@ -815,7 +861,7 @@ static void trophy_load(void){
 static void load_ext_defaults(void){
     for(int i=0;i<4;i++) tr_n[i]=0; tr_uq=0; scrap=0;
 
-    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; galaxy_hi[0]=galaxy_hi[1]=galaxy_hi[2]=0; wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; for(int k=0;k<NMK;k++) mark_t[k]=0; memset(cargo,0,8);
+    fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; galaxy_hi[0]=galaxy_hi[1]=galaxy_hi[2]=0; cur_pl=cur_moon=0; wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; for(int k=0;k<NMK;k++) mark_t[k]=0; memset(cargo,0,8);
     if(endless){ ant_king=1; zones_open=6; cleared_mask=63; w_dlv=6+world_no/2; cur_sys=6; }
     else { ant_king=0; zones_open=zone+1+(zone_cleared?1:0); if(zones_open>6) zones_open=6; cleared_mask=((1<<zone)-1)|(zone_cleared?1<<zone:0); cur_sys=zone; }
     beast_defaults(); gen_cluster();

@@ -121,7 +121,7 @@ static void gen_terrain(u32 seed){
     EW static u8 grid[33*33];
     for(int o=0;o<4;o++){ int cs=cell[o], n=TW/cs;
         int full = endless && sys[cur_sys].kind==6 && !home_cluster();                 // out in the universe: every word of the address shapes the land
-        for(int i=0;i<n*n;i++) grid[i] = full ? (hmix(aword(i+o*11,cur_sys) ^ seed ^ ((u32)o<<24) ^ (u32)i*0x9E3779B1u)>>12)&255 : wr(256);
+        for(int i=0;i<n*n;i++) grid[i] = full ? (hmix(aword(i+o*11,cur_sys|((cur_pl*8+cur_moon)<<8)) ^ seed ^ ((u32)o<<24) ^ (u32)i*0x9E3779B1u)>>12)&255 : wr(256);
         for(int y=0;y<TW;y++) for(int x=0;x<TW;x++){
             int gx=x/cs, gy=y/cs, fx=(x%cs)*256/cs, fy=(y%cs)*256/cs;
             fx=(fx*fx*(3*256-2*fx))>>16; fy=(fy*fy*(3*256-2*fy))>>16;           // smoothstep
@@ -192,13 +192,14 @@ static void new_planet(void){
 #ifdef TEST_BASE
     po[k].kind=O_BASE; po[k].alive=1; po[k].x=(66<<16); po[k].y=(64<<16); k++;
 #else
-    if(has_base(cur_sys)) place(&po[k++],O_BASE,24,40);
+    if(has_base(cur_sys) && !cur_pl && !cur_moon) place(&po[k++],O_BASE,24,40);
 #endif
     for(int i=0;i<3;i++) place(&po[k++],O_SLUG,10,30);
     for(int i=0;i<20;i++) place(&po[k++],O_PLANT,4,64);
     { int eco = endless ? sys[cur_sys].eco : zone%4;                                  // what grows here depends on the world's economy and its DNA
       static const u8 mix[4][4]={{5,2,2,5},{2,7,2,3},{3,4,5,2},{2,3,6,3}};            // farming, mining, tech, hive
-      for(int t=0;t<4;t++){ int n=mix[eco][t]+wd.flora[t]-3; if(n<1) n=1; for(int i=0;i<n;i++) place(&po[k++],O_TREE+t,6,64); } }
+      static const u8 moonmix[4]={2,10,1,3};                                              // a moon is a mining rock: crystal and amber everywhere
+      for(int t=0;t<4;t++){ int n=(cur_moon ? moonmix[t] : mix[eco][t])+wd.flora[t]-3; if(n<1) n=1; for(int i=0;i<n && k<NPO-50;i++) place(&po[k++],O_TREE+t,6,64); } }
     city_people(&k); planet_life(&k); pq_type=0; pq_done=0; race_on=0; race_best=0;
     while(k<NPO){ place(&po[k],(k&1)?O_PEBBLE:O_TUFT,3,64); k++; }
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind!=O_SHIP && (po[i].kind<O_MARKET || (po[i].kind>=O_FOSSIL && po[i].kind<=O_CRIT)) && hm_at(po[i].x,po[i].y)<water_lv){ po[i].x+=1<<16; if(hm_at(po[i].x,po[i].y)<water_lv) po[i].alive = po[i].kind<=O_CAGE ? 1 : 0; }
@@ -392,7 +393,7 @@ static void planet_frame(void){
                 PObj *o=&po[best]; int t=o->kind-O_TREE; sfx(o->kind==O_ROCK?12:13); mine_t=8;
                 if(holding(TL_PICK)) o->hp=1;                                                    // the pickaxe: one hit
                 if(--o->hp>0){ char b[40]; scpy(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
-                o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0)+(holding(TL_PICK)?1:0); if(pq_type==7){ pq_have++; job_tick(); }
+                o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0)+(holding(TL_PICK)?1:0)+(cur_moon?1:0); if(pq_type==7){ pq_have++; job_tick(); }
                 if(relic_roll(400)){ planet_hud(); p_last=vbl_count; return; }
                 if(cargo_n()>=cargo_cap+ship_hold_bonus()){ show_msg("HOLD FULL! SELL GOODS AT A STATION"); break; }
                 int room=cargo_cap+ship_hold_bonus()-cargo_n(); if(n>room) n=room; cargo[g]+=n; st_mined+=n; ach_check(); gain_xp(2+dlv());

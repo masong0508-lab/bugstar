@@ -183,13 +183,17 @@ static void story_dna(int z){                                                   
     for(int i=0;i<4;i++) wd.flora[i]=3;
 }
 static u32 sys_id(int i); static u32 amix(u32 k, int star);
+static int cur_pl=0, cur_moon=0;                              // which body of this star you are on: planet cur_pl (0 = the first), cur_moon 0 = the planet itself, 1.. = its moons
+static u32 hmix(u32 h);
+static u32 body_salt(void){ int b=cur_pl*8+cur_moon; return b ? hmix((u32)b*0x9E3779B1u+0x5EEDu) : 0; }   // 0 for the first planet, so every old world stays exactly as it was
 static void make_world(void){                                   // three independent 32-bit seeds from the full address: 96 bits, so every planet is its own
     int gal = sys[cur_sys].kind==6; u32 base = gal ? sys_id(cur_sys) : (u32)world_no;
-    name_of(base,w_name);
-    u32 A = gal ? amix(galaxy_seed^0xA1u,cur_sys) : base*0x9E3779B1u, B = gal ? amix(galaxy_seed^0xB2u,cur_sys) : base*0x85EBCA6Bu+7, C = gal ? amix(galaxy_seed^0xC3u,cur_sys) : base*0xC2B2AE35u+3;
+    u32 bsalt = gal ? body_salt() : 0; name_of(base^bsalt,w_name); if(gal && cur_moon) scat(w_name," MOON");
+    u32 A = gal ? amix(galaxy_seed^0xA1u^bsalt,cur_sys) : base*0x9E3779B1u, B = gal ? amix(galaxy_seed^0xB2u^bsalt,cur_sys) : base*0x85EBCA6Bu+7, C = gal ? amix(galaxy_seed^0xC3u^bsalt,cur_sys) : base*0xC2B2AE35u+3;
     wseed = A ^ 0x7F4A7C15u; wr(2);
     int r=40+wr(216), g=40+wr(216), b=40+wr(216); int k=wr(3); if(k==0) r=230; else if(k==1) g=230; else b=230;
-    { int c=wr(100); wd.cls = c<20?PC_TEMPERATE : c<32?PC_MOUNTAIN : c<42?PC_MEADOW : c<54?PC_OCEAN : c<64?PC_DESERT : c<72?PC_ICE : c<82?PC_JUNGLE : c<89?PC_DEATH : c<92?PC_ECUMENOPOLIS : PC_PARADISE; }
+    { int c=wr(100); wd.cls = c<20?PC_TEMPERATE : c<32?PC_MOUNTAIN : c<42?PC_MEADOW : c<54?PC_OCEAN : c<64?PC_DESERT : c<72?PC_ICE : c<82?PC_JUNGLE : c<89?PC_DEATH : c<92?PC_ECUMENOPOLIS : PC_PARADISE; if(gal && cur_moon){ static const u8 mc[3]={PC_MOUNTAIN,PC_DESERT,PC_ICE}; wd.cls=mc[c%3]; } }   // a moon is bare rock, dust or ice
+
 #ifdef TEST_CLASS
     wd.cls=TEST_CLASS;
 #endif
@@ -223,8 +227,9 @@ static void make_world(void){                                   // three indepen
         case PC_ECUMENOPOLIS: wd.style=7; wd.rough=0; wd.hs=3; wd.city=1; wd.csize=9; wd.snow=0; break;
         case PC_PARADISE: wd.style = wr(2) ? 3 : 0; wd.rough=1; wd.hour=wr(3)==0; wd.weather=0; wd.mood=MOOD_LOVE; wd.sand=1; break;
     }
+    if(gal && cur_moon){ wd.city=0; wd.csize=0; wd.weather=0; wd.mood=MOOD_MEH; wd.ruins=0; }      // no cities, no weather: moons are for mining
     // a weird world: one planet in 111, only out in the galaxy. It stacks 1 to 4 of the 1000 traits
-    { u32 F = gal ? amix(galaxy_seed^0xF6u,cur_sys) : base*0x2545F491u; wd.ntr=0;
+    { u32 F = gal ? amix(galaxy_seed^0xF6u^bsalt,cur_sys) : base*0x2545F491u; wd.ntr=0;
       if((F%111u)==0 && gal){ int n = 1 + ((F>>8)%3u==0) + ((F>>12)%5u==0) + ((F>>20)%9u==0); u32 h=F;
           for(int t=0;t<40 && wd.ntr<n;t++){ h=hmix(h+0x9E3779B9u); int id=(int)(h%NTRAIT), m=id%NMW, ok=1;
               for(int j=0;j<wd.ntr;j++){ int mj=wd.tr[j]%NMW; if(mj==m || (mj==MW_SHY&&m==MW_ANGRY) || (mj==MW_ANGRY&&m==MW_SHY) || (mj==MW_FLOOD&&m==MW_DROUGHT) || (mj==MW_DROUGHT&&m==MW_FLOOD) || (mj==MW_MAGNET&&m==MW_SHYORE) || (mj==MW_SHYORE&&m==MW_MAGNET)) ok=0; }
