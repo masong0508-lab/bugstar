@@ -530,6 +530,14 @@ static int body_menu(void){
     }
 }
 static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
+#ifdef TEST_SAUTO
+    { int best=-1; s32 bd=0x7FFFFFFF, rx=0, ry=0, rz=1;                                // (for filming: chase the nearest enemy, or the beast, and shoot)
+      if(in_lair){ best=999; rx=(-shx*br[0]-shy*br[1]-shz*br[2])>>14; ry=(-shx*bu[0]-shy*bu[1]-shz*bu[2])>>14; rz=(-shx*bf[0]-shy*bf[1]-shz*bf[2])>>14; }
+      else for(int i=0;i<NPIR;i++){ Pirate *q=&pir[i]; if(!q->alive||q->team!=1) continue; s32 ex=(q->x-shx)>>4, ey=(q->y-shy)>>4, ez=(q->z-shz)>>4; s32 d=ex*ex+ey*ey+ez*ez; if(d<bd){ bd=d; best=i;
+          rx=((q->x-shx)*br[0]+(q->y-shy)*br[1]+(q->z-shz)*br[2])>>14; ry=((q->x-shx)*bu[0]+(q->y-shy)*bu[1]+(q->z-shz)*bu[2])>>14; rz=((q->x-shx)*bf[0]+(q->y-shy)*bf[1]+(q->z-shz)*bf[2])>>14; } }
+      if(best>=0){ s32 az=rz>200?rz:200; if(rz<200) keys|=K_RIGHT; else { if(rx*8>az) keys|=K_RIGHT; else if(rx*8<-az) keys|=K_LEFT; if(ry*8>az) keys|=K_DOWN; else if(ry*8<-az) keys|=K_UP; }          // (DOWN lifts the nose)
+          if(rz>200 && rx*5<az && rx*5>-az && ry*5<az && ry*5>-az) keys|=K_A; if(rz>(in_lair?6000:2500)) keys|=K_B; } }
+#endif
     // steer, throttle
     // the ship has weight: turning ramps up and settles, it banks into turns, and it drifts before the engines catch up
     // ---- flight: real momentum. engines push along the nose, mass resists, fins settle the turn, wings bite in air
@@ -701,17 +709,18 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; int sx,sy; if(sproj(p->x,p->y,p->z,&sx,&sy,0)){ dot2(pg,sx,sy,p->life>12?49:p->col); dot2(pg,sx+1,sy,p->col); } }
     if(laser_t){ laser_t--; line2(pg,30,127,120,VCY,52); line2(pg,210,127,120,VCY,52); }
     // crosshair
-    for(int k=4;k<9;k++){ dot2(pg,120+k,VCY,52); dot2(pg,120-k,VCY,52); dot2(pg,120,VCY+k,52); dot2(pg,120,VCY-k,52); }
+    if(!FILM) for(int k=4;k<9;k++){ dot2(pg,120+k,VCY,52); dot2(pg,120-k,VCY,52); dot2(pg,120,VCY+k,52); dot2(pg,120,VCY-k,52); }
     // the chase camera: your own ship, seen from behind, banking into turns and nosing up and down
     if(chase_cam){ ship_roll=(-roll_*2)&1023; int bob=(sinx((frames*3)&255)>>12);
         ship_draw(pg, 120 + (yawv>>2), 100 + bob + (pitv>>2), 52 + speed/6, (-(yawv*2))&1023, (40 - pitv)&1023, 0,0, 0,0,240,128);
         if(HELD(K_B)){ int fl = 3 + (frames&3); for(int k=-1;k<=1;k++) line2(pg,120+k*4+(yawv>>2),106+bob,120+k*6+(yawv>>2),106+bob+fl+(HELD(K_L)&&fuel>0?6:0),SHP_GLOW+6); }   // engine flame
         ship_roll=0; }
-    if(hit_t){ hit_t--; for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
+    if(hit_t){ hit_t--; if(!FILM) for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
     cockpit(pg);
     if(sv_yaw!=yaw || sv_pit!=pitch){ yaw=sv_yaw; pitch=sv_pit; }
     static char pb[24]; const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
     if(can_land){ int bc=body_count(cur_sys); if(bc>1){ scpy(pb,"A: LAND ("); ncat(pb,bc); scat(pb," WORLDS)"); pr=pb; } }
+    if(FILM){ if(space_msg_t) space_msg_t--; return 0; }                    // (filming: nothing over the view)
     if(space_msg_t){ space_msg_t--; text(pg,120-textlen(smsg)*2,in_lair?28:4,smsg,54,1); }
     if(pr) text(pg,120-textlen(pr)*4,96,pr,55,2);
 #ifdef TEST_FLEET
@@ -786,8 +795,8 @@ static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, 
             for(int arm=0;arm<2;arm++) for(int t=1;t<15;t++){ int an=(rot*2+arm*128+t*12+g*40)&255, rr=t*sz/14; dot2(pg,gx+(sinx((an+64)&255)*rr>>14),gy+(sinx(an)*rr>>15),t<4?49:(t&1)?50:54); } dot2(pg,gx,gy,49); dot2(pg,gx+1,gy,49); } }
         if(p>196){ int R=(p-196)*30/60; for(int y=-R;y<=R;y++){ int w=isqrt((u32)(R*R-y*y)); int yy=VCY+y; if(yy<0||yy>127) continue; int x0=120-w, x1=120+w; if(x0<0) x0=0; if(x1>239) x1=239; for(int x=x0;x<=x1;x++) pix(pg,x,yy,(x-120)*(x-120)+y*y < R*R/3 ? 49 : 50); } }   // the star you are heading for swells up
         if(p>250) for(int i=0;i<120*128;i++) pg[i]=54|(54<<8);
-        { char b[48]; scpy(b,"JUMP: "); scat(b,tot); b[44]=0; text(pg,4,3,b,C_GOLD,1); if(T>150) text(pg,236-9*4,3,"B: FASTER",C_DGREY,1); }
-        if(kind==5){ u32 d = vy_uto>vy_ufrom ? vy_uto-vy_ufrom : vy_ufrom-vy_uto, pass=d; int k = p>250 ? n : 1+(n-1)*q/256; for(int z=k;z<n;z++) pass/=10;   // the universes behind you, in step with the light years:
+        if(!FILM){ char b[48]; scpy(b,"JUMP: "); scat(b,tot); b[44]=0; text(pg,4,3,b,C_GOLD,1); if(T>150) text(pg,236-9*4,3,"B: FASTER",C_DGREY,1); }
+        if(kind==5 && !FILM){ u32 d = vy_uto>vy_ufrom ? vy_uto-vy_ufrom : vy_ufrom-vy_uto, pass=d; int k = p>250 ? n : 1+(n-1)*q/256; for(int z=k;z<n;z++) pass/=10;   // the universes behind you, in step with the light years:
             char b[48]; scpy(b,"UNIVERSES PASSED: "); kcomma(b,pass); scat(b," OF "); kcomma(b,d); text(pg,4,11,b,C_CYAN,1); }                // it rolls up as you arrive
         if((kind==2||kind==5) && big){ int k = p>250 ? n : 1+(n-1)*q/256; if(k>last_k){ for(int kk=last_k+1;kk<=k;kk++){ if(kk>=4 && (kk-1)%3==0){ scpy(cap,"1 "); scat(cap,illion((kk-1)/3)); scat(cap," LIGHT YEARS"); cap2[0]=0; cap_t=70; }
                     if(kk==8){ scpy(cap,"AS FAR AS A GALAXY IS WIDE"); cap2[0]=0; cap_t=70; } }
@@ -795,7 +804,7 @@ static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, 
                     if(k>=12){ for(int z=0;z<k-12 && gl<46;z++) g[gl++]='0'; g[gl]=0; } else { gl-=12-k; if(gl<1){ g[0]='1'; gl=1; } g[gl]=0; }
                     char gn[40]; digits_named(gn,g,gl); scpy(cap2,"PAST "); scat(cap2,gn); scat(cap2, gl==1 && g[0]=='1' ? " GALAXY" : " GALAXIES"); }
                 last_k=k; } }
-        if(p>190) cap_t=0, cap2[0]=0;                                                      // (the star ahead takes over)
+        if(p>190 || FILM) cap_t=0, cap2[0]=0;                                              // (the star ahead takes over)
         if(cap_t>0){ cap_t-=dv; int L=textlen(cap); if(L<=26) text(pg,120-L*4,40,cap,C_WHITE,2); else ctext(pg,120,44,cap,C_WHITE); if(cap2[0]) ctext(pg,120,58,cap2,C_CYAN); }
         else if(cap2[0] && (kind==2||kind==5)) ctext(pg,120,58,cap2,C_CYAN);
         for(int i=128*120;i<160*120;i++) pg[i]=57|(57<<8); for(int i=128*120;i<129*120;i++) pg[i]=58|(58<<8);   // the dashboard: from, to, how far, how long

@@ -788,6 +788,7 @@ static void kart_cockpit(volatile u16 *pg){                        // the cockpi
 static void kart_hud(volatile u16 *pg){
     s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=curv(dz>>8)-tiny_sub(); int sy=PHZ+(((cam_h+curve-gh)*f)>>16);
     if(kloop_on){} else if(cam_fp) kart_cockpit(pg); else kart_fx(pg,sy);
+    if(FILM) return;                                                       // (filming: the kart's dust and sparks, but no HUD)
     char b[40];
     if(kr_mode==2){ scpy(b,"GATES "); ncat(b,kt.n); scat(b,"/"); ncat(b,KG_MAX); stext(pg,4,20,b,C_GOLD);
         stext(pg,4,28,"A: DROP A GATE",C_WHITE); stext(pg,4,35,"SEL: UNDO",C_GREY); stext(pg,4,42,"START: DONE",C_GREY);

@@ -27,6 +27,11 @@ typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; 
 #define K_R 256
 #define K_L 512
 #define IWRAM __attribute__((section(".iwram"), long_call, target("arm"), noinline))
+#ifdef TEST_FILM
+#define FILM 1                                        // a build for filming the trailer: no HUD anywhere, only the world
+#else
+#define FILM 0
+#endif
 
 void *memset(void *d, int c, unsigned n){ u8 *p=d; while(n--) *p++=c; return d; }
 void *memcpy(void *d, const void *s, unsigned n){ u8 *p=d; const u8 *q=s; while(n--) *p++=*q++; return d; }
@@ -175,6 +180,9 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 #include "kart2.inc"
 #include "kart3.inc"
 #include "sizes.inc"
+#ifdef TEST_LAUNCH
+#include "film.inc"
+#endif
 
 static void hud_now(void){ if(scene==2) return; if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
@@ -514,6 +522,21 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     int ts = TURN_MIN + (((TURN_MAX-TURN_MIN)*turn_held)>>4);
     if(HELD(kl)) pang=(pang-ts)&1023;
     if(HELD(kr)) pang=(pang+ts)&1023;
+#ifdef TEST_AIM
+    { int best=-1; s32 bd=0x7FFFFFFF; for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; s32 dx=(o->x-px_)>>8, dy=(o->y-py_)>>8, d=dx*dx+dy*dy; if(d>=bd) continue;
+          int seen=1; for(int k=1;k<16 && seen;k++) if(solid(px_+(o->x-px_)/16*k, py_+(o->y-py_)/16*k)) seen=0;      // (only monsters you can see)
+          if(seen){ bd=d; best=i; } }   // (for filming: face the nearest monster...
+      if(best>=0 && bd<(TEST_AIM)*(TEST_AIM)){ s32 dx=(dob[best].x-px_)>>8, dy=(dob[best].y-py_)>>8; int ba=0; s32 bv=-0x7FFFFFFF; for(int a=0;a<256;a++){ s32 v=cosx(a)*dx+sinx(a)*dy; if(v>bv){ bv=v; ba=a; } }
+        int diff=((ba*4-pang+512)&1023)-512; if(diff>20) diff=20; if(diff<-20) diff=-20; pang=(pang+diff)&1023; }
+#ifdef TEST_AUTOWALK
+      else { int bests=-99999, besta=pang;                                               // ...and when none is near, walk on down the most open way)
+          for(int da=-320; da<=320; da+=32){ int a=(pang+da)&1023; s32 ex=cosx(a>>2)<<2, ey=sinx(a>>2)<<2; int d=1;
+              for(; d<48; d++){ s32 x=px_+(s32)(((long long)ex*d*0x2000)>>16), y=py_+(s32)(((long long)ey*d*0x2000)>>16); if(box_solid(x,y,PRAD)) break; }
+              int sc=d*8-(da<0?-da:da)/8; if(sc>bests){ bests=sc; besta=a; } }
+          int diff=((besta-pang+512)&1023)-512; if(diff>10) diff=10; if(diff<-10) diff=-10; pang=(pang+diff)&1023; keys|=K_UP; }
+#endif
+    }
+#endif
     s32 dirx=cosx(pang>>2)<<2, diry=sinx(pang>>2)<<2;
     s32 plx=-(diry*43/65), ply=dirx*43/65;
     // AUTO-RUN (the "RUN! DOWN STOPS" hint shows only once per session): double-tap UP and you run forward by yourself, a bit faster, with your thumb free: you can still steer (LEFT/RIGHT), strafe, bite (A) and use items (B).
@@ -700,25 +723,25 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         if(p->kind==0) draw_glow(pg,p->x,p->y,p->h,0x2400 + (sinI[(frames*40)&255]>>6),R_FLAME+7,R_FLAME+4,dirx,diry,plx,ply);
         else draw_glow(pg,p->x,p->y,p->h,0x0C00,R_CHEST+7,R_CHEST+5,dirx,diry,plx,ply); }
     parts_draw(pg,dirx,diry,plx,ply);
-    draw_fnums(pg,dirx,diry,plx,ply);
+    if(!FILM) draw_fnums(pg,dirx,diry,plx,ply);
     px_=cam_px; py_=cam_py;
     if(spark_t){ int c=60, y=140; for(int k=0;k<12;k++){ int c2=60+(spark_c-60)*(k+1)/12+(k<11?rndi(5)-2:0), y2=140+(spark_y-140)*(k+1)/12;
             int steps=(y-y2)>0?(y-y2):1; for(int s=0;s<=steps;s+=2){ int cc=c+(c2-c)*s/steps, yy=y-s; if(cc>=0&&cc<120&&yy>=18&&yy<160){ pg[yy*120+cc]=(C_WHITE)|(C_WHITE<<8); if(cc+1<120) pg[yy*120+cc+1]=(R_CRYSTAL+7)|((R_CRYSTAL+7)<<8);} }
             c=c2; y=y2; } }
     if(fish_state) fish_draw(pg);
-    if(auto_run && (frames&32)) text(pg,4,34,"RUN",C_CYAN,1);        // a small blinking reminder, out of the way
+    if(FILM){} else { if(auto_run && (frames&32)) text(pg,4,34,"RUN",C_CYAN,1);        // a small blinking reminder, out of the way
     if(combo){ char cb[12]; scpy(cb,"COMBO X"); ncat(cb,combo+1); text(pg,120-textlen(cb)*2,100,cb,combo>=2?C_GOLD:C_WHITE,1); }
-    if(dodge_msg_t) text(pg,120-5*2,108,"DODGE",C_CYAN,1);
+    if(dodge_msg_t) text(pg,120-5*2,108,"DODGE",C_CYAN,1); }
 #ifdef TEST_FOE
     { char db[40]; scpy(db,"ATK "); ncat(db,atk_t); scat(db," FOE "); ncat(db,foe); scat(db," CB "); ncat(db,combo); scat(db," CT "); ncat(db,combo_t); scat(db," HS "); ncat(db,hitstop); text(pg,4,60,db,C_WHITE,1);
       int dl=0; for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16); s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(fwd>0x40000||fwd<-0x40000||side>0x40000||side<-0x40000) continue; db[0]=0; scpy(db,"K"); ncat(db,o->kind); scat(db," F"); ncat(db,fwd>>8); scat(db," S"); ncat(db,side>>8); scat(db," W"); ncat(db,o->wind); scat(db," ST"); ncat(db,o->stag); text(pg,4,68+dl*7,db,C_WHITE,1); if(++dl>2) break; } }
 #endif
-    if(sight || have_bug[BUG_ANT] || stairs_seen()) compass(pg,dirx,diry);
-    if(opt_minimap) minimap(pg);
+    if(FILM){} else { if(sight || have_bug[BUG_ANT] || stairs_seen()) compass(pg,dirx,diry);
+    if(opt_minimap) minimap(pg); }
 #ifdef SHOW_PROF
     { char pb[48]; pb[0]=0; ncat(pb,prof[0]); scat(pb," "); ncat(pb,prof[3]); scat(pb," "); ncat(pb,prof[1]); scat(pb," "); ncat(pb,prof[2]); scat(pb," "); ncat(pb,prof[5]); text(pg,4,150,pb,C_WHITE,1); }
 #endif
-    hud3d(pg); fl_draw(pg);
+    if(FILM){} else { hud3d(pg); fl_draw(pg);
     if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
     if(msg_timer){ text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
@@ -731,7 +754,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     else if(fish_state==3) text(pg,120-8*4,24,"HOLD A TO REEL",C_CYAN,2);
     else if(water_ahead(dirx,diry)){ char fb[24]; int p=pool_at(dirx,diry); int sk=pool_stock(p); scpy(fb,"A: FISH "); if(sk){ scat(fb,"("); ncat(fb,sk); scat(fb,")"); } else scat(fb,"(EMPTY)"); text(pg,120-textlen(fb)*4,24,fb,C_CYAN,2); }
     if(shield_t && (frames&16)){ for(int c=0;c<120;c+=6){ pg[18*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); pg[159*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); } }
-    if(hurt_flash){ for(int y=18;y<22;y++) for(int x=0;x<120;x++) pg[y*120+x]=C_RED|(C_RED<<8); }
+    if(hurt_flash){ for(int y=18;y<22;y++) for(int x=0;x<120;x++) pg[y*120+x]=C_RED|(C_RED<<8); } }
     if(frames-hud_f>=15){ hud_f=frames; u32 hs=hud_sig(); if(hs!=dhud_sig){ dhud_sig=hs; dungeon_hud(); } }
     if(hud_dirty){ char lb[40]; dungeon_label(lb); draw_hud(pg,lb); hud_dirty--; }
     oam_hide_all();
@@ -788,7 +811,7 @@ static int title_screen(void){
             if(sel>=n) sel=0; dirty=1; }
         if(dirty){ dirty=0; char b[40];
             title_restore(pg,56,146);
-            for(int i=0;i<n;i++){ int y=60+i*10; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
+            for(int i=0;i<n && !FILM;i++){ int y=60+i*10; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
                 if(i==sel){ rect(pg,66,y-2,108,10,6); text(pg,x,y,nm,C_GOLD,1); text(pg,70,y,">",C_GOLD,1); text(pg,166,y,"<",C_GOLD,1); }
                 else stext(pg,x,y,nm,((it[i]==TI_KART||it[i]==TI_SIZE) && !kwu)?C_DGREY:C_WHITE); }
             int y=60+n*10+3; b[0]=0;
@@ -799,7 +822,7 @@ static int title_screen(void){
             else if(it[sel]==TI_KART) scpy(b, kwu ? "THE KART RACING GAME, ALL ON ITS OWN" : "BEAT THE GAME TO UNLOCK THIS");
             else if(it[sel]==TI_SIZE) scpy(b, kwu ? "THE HUGE NUMBERS IN THIS GAME" : "BEAT THE GAME TO UNLOCK THIS");
             else scpy(b,"SOUND, AUTOSAVE AND MORE");
-            b[34]=0; stext(pg,120-textlen(b)*2,y,b,C_CYAN);
+            b[34]=0; if(!FILM) stext(pg,120-textlen(b)*2,y,b,C_CYAN);
         }
         oam_hide_all(); set_affine(31,128,0,0,128);
         bug_obj(0,200,150-16-((blink>>3)&1),31,128); shadow_oam[0].a2=bug_tile((blink>>4)&1)|BUG_BANK;
@@ -896,6 +919,12 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_ARRIVE
     cur_sys=TEST_ARRIVE; fade(0); arrive_on_planet(); return;
 #endif
+#ifdef TEST_SPACE
+    fade(0); scene=2; page_back=1; space_enter(1); music(3); return;                  // (filming: straight up into space)
+#endif
+#ifdef TEST_BEAST
+    ant_king=1; zones_open=6; cleared_mask=63; fade(0); scene=2; page_back=1; beast_defaults(); beast_stage=2; tech_lv=3; lair_enter(); return;   // (filming: the 1 trillion HP Technobeast)
+#endif
     scene=0; launch_flag=0; enter_dungeon_flag=0; forge_on=0; fish_state=0; msg_timer=0; invuln=0; shake_t=0; page_back=0; loot=0; depth_no=0;
     speed_t=strong_t=dizzy_t=stun_t=shield_t=0;
     restock(); arrow_ship = zone_cleared && !endless;
@@ -913,6 +942,12 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #endif
 #ifdef TEST_BOSS
     zone=TEST_BOSS; portal_depth=zone_floors(); st_str=300; recalc(); hearts=maxh;
+#ifdef TEST_BSTR
+    st_str=TEST_BSTR; st_vit=300; recalc(); hearts=maxh;                          // (for filming: a longer fight you don't lose)
+#endif
+#endif
+#ifdef TEST_ZONE
+    zone=TEST_ZONE; portal_depth=2+TEST_ZONE; st_str=300; st_vit=300; recalc(); hearts=maxh;     // (filming: a floor in another zone)
 #endif
 #ifdef TEST_KART
     k_cls=1; k_type=0; k_trk=TEST_KART%kt_count(); k_rec=-1; kt_official(k_trk,&kt);
@@ -1062,6 +1097,15 @@ int main(void){
 #endif
 #ifdef TEST_UNLOCK
     kw_unlock();
+#endif
+#ifdef TEST_FILM
+    opt_hints=0; opt_arrow=0; opt_minimap=0; opt_nums=0;
+#endif
+#ifdef TEST_SHIPS
+    film_ships();
+#endif
+#ifdef TEST_LAUNCH
+    film_launch();
 #endif
     while(1){
         in_game=0; sys_req=0; scene=0;

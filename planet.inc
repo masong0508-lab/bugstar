@@ -443,6 +443,9 @@ static void planet_frame(void){
         int turn = th; th = HELD(K_SEL) ? 0 : HELD(K_R) ? 16 : HELD(K_L) ? -16 : 0;
         if(turn){ heading=(heading+turn*n*5/8)&1023; heading_rays(); }
     } else { if(HELD(K_LEFT)) facing=0; if(HELD(K_RIGHT)) facing=1; }
+#ifdef TEST_ORBIT
+    if(!cam_fp && !kr_mode){ heading=(heading+(TEST_ORBIT)*n)&1023; heading_rays(); }   // (for filming: the camera sweeps slowly round as you walk)
+#endif
     for(int k=0;k<n;k++){
         if(kr_mode){ kart_step(); continue; }                                           // in a kart (kart.inc)
         { int ph0=pw_h, pv0=pw_v, ik = WL(MW_ICE) ? 2+WL(MW_ICE)/3 : 0;                 // ICE: you keep sliding
@@ -539,7 +542,7 @@ static void planet_frame(void){
     weird_frame(n); hell_frame(n);
     u32 t_r0=TMR(); render_planet(pg); u32 t_r1=TMR();
     if(kr_mode==1) kloop_draw(pg);                                                      // loop-de-loops stand on the road (kart.inc)
-    if(msg_timer){ int L=textlen(msg); if(kr_mode){ if(L<=24) text(pg,120-L*4,72,msg,C_WHITE,2); else stext(pg,120-L*2,74,msg,C_WHITE); }   // in a kart: lower down, clear of the minimap
+    if(msg_timer && !FILM){ int L=textlen(msg); if(kr_mode){ if(L<=24) text(pg,120-L*4,72,msg,C_WHITE,2); else stext(pg,120-L*2,74,msg,C_WHITE); }   // in a kart: lower down, clear of the minimap
                    else if(L<=29) text(pg,120-L*4,24,msg,C_WHITE,2); else stext(pg,120-L*2,26,msg,C_WHITE); }
 #ifdef TEST_FPS
     { static u32 tf0=0; u32 now=TMR(); char fb[40]; scpy(fb,"N"); ncat(fb,n); scat(fb," RENDER "); ncat(fb,(int)((t_r1-t_r0)/1000)); scat(fb,"K PRE "); ncat(fb,(int)((t_r0-t_f0)/1000)); scat(fb,"K FRAME "); ncat(fb,(int)((now-tf0)/1000)); scat(fb,"K"); tf0=now; rect(pg,0,40,240,8,0); text(pg,4,41,fb,C_GOLD,1); }
@@ -549,7 +552,7 @@ static void planet_frame(void){
           "A: THE MARKET","A: THE CANTINA","A: THE BOUNTY OFFICE","A: THE RACE POST","A: KNOCK","A: TALK","A: DIG THE FOSSIL","A: THE RUIN","A: BITE THE BEETLE","A: CATCH IT","A: THE RELIC SHRINE!"};
       if(kr_mode) kart_hud(pg);
       else if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } else if(pk==O_DOOR && portal_depth>0){ scpy(cb,"A: PORTAL BACK TO B"); ncat(cb,portal_depth); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
-      if(kr_mode){}
+      if(kr_mode || FILM){}
       else if(race_on){ char rb[40]; scpy(rb,kart_on?"KART ":"RACE "); ncat(rb,race_t/60); scat(rb,kart_on?"S  GATE ":"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/"); ncat(rb,race_n); if(kart_on){ scat(rb,"  PAR "); ncat(rb,race_par/60); scat(rb,"S"); rect(pg,4,146,50,3,C_DGREY); if(kart_boost>0) rect(pg,4,146,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); } stext(pg,4,151,rb,C_CYAN); }
       else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4 && pq_type!=8){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
 #ifdef TEST_GEN
