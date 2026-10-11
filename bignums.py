@@ -4,11 +4,14 @@
 import sys
 if hasattr(sys, 'set_int_max_str_digits'): sys.set_int_max_str_digits(0)
 STARS = 2**32 * (2**155)**2 * 32            # every star in every universe: 4,294,967,296 universes x 2^155 x 2^155 clusters x 32 stars = 2^347
+import math
 GIANTS = [
+    ("giant_order", math.factorial(256)),   # every order to visit a full list of 256 favourites
     ("giant_trips", 31**1000),              # trips of 1,000 jumps, each to one of the other 31 stars in your cluster
     ("giant_favs", (STARS + 1)**256),       # 256 favourite slots, each empty or any star in any universe
     ("giant_maps", 256**(128 * 128)),       # planet maps: 128 x 128 spots, each one of 256 heights
     ("giant_saves", 2**(32768 * 8)),        # every way the 32 KB save chip can be set: 262,144 bits
+    ("giant_screens", 32768**(240 * 160)),  # every picture the screen can show: 240 x 160 dots of 32,768 colours
 ]
 def make(arr, out):
     for name, v in GIANTS:

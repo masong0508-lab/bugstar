@@ -184,7 +184,7 @@ static void kbuild_menu(void){                                            // the
             scpy(b,""); ncat(b,kt.n); scat(b," GATES, "); ncat(b,kt_len); scat(b," CELLS ROUND ON A "); scat(b,kpsize_name[wd.psz]); scat(b," PLANET"); ctext(pg,120,35,b,C_GREY);
             for(int i=0;i<NB;i++){ int y=44+i*7; if(i==sel) rect(pg,16,y-1,208,8,6); text(pg,22,y,bl[i],i==sel?C_WHITE:i>=B_TEST?C_CYAN:C_GREY,1);
                 b[0]=0; switch(i){ case B_NAME: scpy(b,kt.name); break; case B_LAPS: scpy(b,"< "); ncat(b,kt.laps); scat(b," >"); break; case B_RIV: scpy(b,"< "); ncat(b,kt.riv); scat(b," >"); break;
-                    case B_CLS: scpy(b,"< "); scat(b,kcls_name[kt.cls%4]); scat(b," >"); break; case B_SURF: scpy(b,"< "); scat(b,ksurf_name[kt.surf%6]); scat(b," >"); break;
+                    case B_CLS: scpy(b,"< "); scat(b,kcls_name[kt.cls%5]); scat(b," >"); break; case B_SURF: scpy(b,"< "); scat(b,ksurf_name[kt.surf%6]); scat(b," >"); break;
                     case B_ITEMS: scpy(b,(kt.flags&KF_ITEMS)?"< ON >":"< OFF >"); break; case B_PADS: scpy(b,(kt.flags&KF_PADS)?"< ON >":"< OFF >"); break; case B_RAMPS: scpy(b,(kt.flags&KF_JUMPS)?"< ON >":"< OFF >"); break; case B_LOOPS: scpy(b,(kt.flags&KF_LOOPS)?"< ON >":"< OFF >"); if((kt.flags&KF_LOOPS) && !nkl) scat(b,"  (NO STRAIGHT BIT FOR ONE)"); else if(nkl){ scat(b,"  "); ncat(b,nkl); scat(b,nkl>1?" LOOPS":" LOOP"); } break; }
                 text(pg,110,y,b,i==sel?C_GOLD:C_GREY,1); }
             ctext(pg,120,139,sel==B_BIN&&arm?"A AGAIN TO THROW IT AWAY":"LEFT/RIGHT: CHANGE   A: PICK   SELECT: RANDOM NAME",arm?C_RED:C_CYAN);

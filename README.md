@@ -126,16 +126,24 @@ Every so often (about one dungeon floor in four, never a boss floor) you land in
 - 18 drivers to unlock with trophies. Coins buy parts in Kart World's own garage.
 
 ## How big is it? (opens after the story)
-Beat the Ant King and **HOW BIG IS IT?** opens on the title screen, and on the WORLD page of the pause screen (press SELECT). One beaten game opens it for every save. It has **21 real numbers from the game**, smallest first, all worked out exactly:
-- how far you have flown, the planets and tracks in Kart World, the universes and the Technobeast's health,
+Beat the Ant King and **HOW BIG IS IT?** opens on the title screen, and on the WORLD page of the pause screen (press SELECT). One beaten game opens it for every save. It has **37 real numbers from the game**, smallest first, all worked out exactly (every digit is checked against a big-number program):
+- how far you have flown,
+- colours you can mix, dots on the screen, relic collections, star and planet names,
+- the planets and tracks in Kart World, every way to set up a race, and every trophy shelf,
+- the universes, weird world mixes, planet DNA codes,
+- bug names and track names you can type,
+- the Technobeast's health (and the most it can ever have), the most gold you can have,
 - the ships, karts, humanoids and bugs you can make, and every look you could have (all four together, 152 digits),
-- how wide a universe is, and all of them side by side, and the clusters, stars and worlds in one universe and in all of them,
-- **giant numbers, every digit:** trips of 1,000 jumps (1,492 digits), favourites lists (26,742 digits), planet maps (39,457 digits) and every save file the save chip could hold (**78,914 digits**).
+- every way to tour a cluster (32 x 31 x ... x 1), the farthest you can be from home, how wide a universe is, and all of them side by side,
+- the clusters, stars and worlds in one universe and in all of them,
+- **giant numbers, every digit:** every way to visit 256 favourites (507 digits), trips of 1,000 jumps (1,492 digits), favourites lists (26,742 digits), planet maps (39,457 digits), every save file the save chip could hold (78,914 digits) and every picture the screen can show (**173,394 digits**).
+
+**SELECT** shows the list of all of them, with how many digits each one has: pick one and press A.
 
 Each number has three views (A changes the view, LEFT/RIGHT changes the number):
 - **IN SHORT:** "ABOUT 4.3 BILLION", how many digits it has, and how long it would take to read out.
 - **EVERY DIGIT:** the whole number in big type, with commas.
-- **BY NAME:** each group of three digits with its name, like **4 BILLION, 294 MILLION, 967 THOUSAND, 296**. The names go far past a centillion, built by the Conway-Wechsler rules. The biggest one is **SESVIGINTILLITRESTRECENTILLION**.
+- **BY NAME:** each group of three digits with its name, like **4 BILLION, 294 MILLION, 967 THOUSAND, 296**. The names go far past a centillion, built by the Conway-Wechsler rules. The biggest one is **SEPTENQUINQUAGINTILLISENONAGINTASEPTINGENTILLION**.
 
 UP/DOWN scrolls (hold it and it goes faster and faster), L/R jumps a whole screen, SELECT lets the number roll by on its own, B goes back.
 
