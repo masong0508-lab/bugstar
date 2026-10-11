@@ -146,11 +146,16 @@ static u16 pick_colour(volatile u16 *pg, const char *what, u16 cur){
     }
 }
 // ---------------------------------------------------------------- make your bug: parts, shapes and colours, with a live preview
-// ---------------------------------------------------------------- the humanoid's look is saved on its own, next to the slot's other blocks (slot + 0xA00)
+// ---------------------------------------------------------------- the humanoid's look is saved on its own, next to the slot's other blocks (slot + 0xB40)
+// (it used to sit at +0xA00, on top of the Technobeast's block: saving the look wiped the beast's progress. Old saves are still read from there.)
+#define HUM_OFF 0xB40
 typedef struct { u32 magic; u8 style, height, build, made; u16 col[NHC]; u16 pad; u32 sum; } HumSave;
+_Static_assert(__builtin_offsetof(HumSave,sum)==sizeof(HumSave)-4, "HumSave: the sum must be the last 4 bytes");
+_Static_assert(HUM_OFF+sizeof(HumSave) <= META_OFF, "the humanoid block must end before the play-time block");
 static void hum_save(void){ HumSave s; memset(&s,0,sizeof s); s.magic=0x4D554846u; s.style=hum.style; s.height=hum.height; s.build=hum.build; s.made=hum.made; for(int i=0;i<NHC;i++) s.col[i]=hum.col[i];
-    s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+0xA00,&s,sizeof s); }
-static void hum_load(void){ HumSave s; sram_read(slot_base(cur_slot)+0xA00,&s,sizeof s);
+    s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+HUM_OFF,&s,sizeof s); }
+static void hum_load(void){ HumSave s; sram_read(slot_base(cur_slot)+HUM_OFF,&s,sizeof s);
+    if(s.magic!=0x4D554846u || s.sum!=fnv(&s,sizeof s-4)) sram_read(slot_base(cur_slot)+0xA00,&s,sizeof s);        // an older save kept it at +0xA00
     if(s.magic!=0x4D554846u || s.sum!=fnv(&s,sizeof s-4)){ hum.style=0; hum.height=3; hum.build=1; hum.made=0; return; }
     hum.style=s.style&1; hum.height=s.height%5; hum.build=s.build%3; hum.made=s.made; for(int i=0;i<NHC;i++) hum.col[i]=s.col[i]; }
 // ---------------------------------------------------------------- the humanoid creator: shown when a weird world turns you into one, and at your ship's mirror
@@ -397,66 +402,96 @@ static void sys_action(volatile u16 *pg, int cur){
 }
 
 static void map_page(volatile u16 *pg);
+// ---------------------------------------------------------------- the pause screen: eight pages with picture tabs, your bug in a frame, where you are, what you have done
+static void world_page(volatile u16 *pg, int y); static void relic_shelf(volatile u16 *pg, int y); static int fav_add_here(void); static int me_oam(int slot, int cx, int feet, int frame);
+static const u8 tab_icon[8][8]={
+    {0x24,0x18,0x3C,0xBD,0x7E,0xBD,0x3C,0x42},   // BUG: a little beetle
+    {0x7E,0xFF,0xFF,0xFF,0x7E,0x7E,0x3C,0x18},   // GEAR: a shield
+    {0x18,0x18,0xFF,0x7E,0x3C,0x7E,0x66,0x42},   // MAGIC: a star
+    {0xFE,0x82,0xBA,0x82,0xBA,0x82,0xFE,0x7C},   // QUEST: a note
+    {0x3C,0x5A,0x99,0xFF,0x99,0x5A,0x3C,0x00},   // WORLD: a globe
+    {0xFF,0xFF,0x7E,0x3C,0x18,0x18,0x3C,0x7E},   // FEATS: a cup
+    {0xFE,0x92,0x92,0xFE,0x92,0x92,0xFE,0x00},   // MAP: a grid
+    {0xFC,0x8A,0x8A,0xFE,0x82,0xBA,0xBA,0xFE}};  // SYSTEM: a save disk
+static void icon8(volatile u16 *pg, int x, int y, const u8 *ic, int col){ for(int r=0;r<8;r++) for(int c=0;c<8;c++) if(ic[r]&(0x80>>c)) pix(pg,x+c,y+r,col); }
+#define HI 255                                                 // the selection bar's colour: it gently pulses while the pause screen is open
+static int pause_last[2]={0,6};                                // the page you were on last time, on the surface and down in a dungeon
 static void char_screen(volatile u16 *pg){
-    int page=scene==1?6:0, cur=0, dirty=1; sys_msg[0]=0; in_menu++; menu_msg[0]=0;
-    static const char *const tabs[7]={"BUG","GEAR","MAGIC","QUEST","FEATS","SYSTEM","MAP"};
+    static const u8 ord[8]={0,1,2,3,7,4,6,5};                  // page numbers in tab order (7 = WORLD, the new one)
+    static const char *const tabn[8]={"BUG","GEAR","MAGIC","QUEST","WORLD","FEATS","MAP","SYSTEM"};
+    static const u8 tabc[8]={C_GREEN,C_CYAN,C_UNIQ,C_GOLD,C_CYAN,C_GOLD,C_GREEN,C_WHITE};
+    int ti=0; { int want=pause_last[scene==1]; for(int i=0;i<8;i++) if(ord[i]==want) ti=i; }
+    int page=ord[ti], cur=0, dirty=1, sub=0, tick=0; sys_msg[0]=0; in_menu++; menu_msg[0]=0;
     static const char *const stn[4]={"STRENGTH","DEXTERITY","VITALITY","MAGIC"};
     static const char *const std[4]={"BITE DAMAGE","CRITS, FASTER BITES","HEALTH, DEFENCE","MANA, SPELL POWER"};
+    bug_build(); form_palette();
     wait_release();
     while(1){
         if(dirty){ dirty=0; char b[64];
-            rect(pg,0,18,240,142,0); rect(pg,0,18,240,12,C_DGREY); rect(pg,0,30,240,1,6);
-            for(int t=0;t<7;t++){ int x=6+t*34; if(t==page) rect(pg,x-3,18,textlen(tabs[t])*4+5,12,0); text(pg,x,21,tabs[t], t==page?C_GOLD:C_GREY, 1); }
-            int y=35;
+            // ---- the tab bar: a picture and a name for every page
+            rect(pg,0,18,240,142,0); rect(pg,0,18,240,16,1); rect(pg,0,34,240,1,6);
+            for(int t=0;t<8;t++){ int x=t*30, on=t==ti;
+                if(on){ rect(pg,x+1,18,28,17,0); rect(pg,x+1,18,28,1,tabc[t]); }
+                icon8(pg,x+11,20,tab_icon[t], on?tabc[t]:C_DGREY);
+                ctext(pg,x+15,29,tabn[t], on?C_GOLD:C_GREY); }
+            rect(pg,0,149,240,1,6);
+            int y=38;
             if(page==0){
-                scpy(b,bug_name); scat(b,"  LEVEL "); ncat(b,level); text(pg,8,y,b,C_GOLD,1);
-                scpy(b,fame_rank()); scat(b,"  FAME "); ncat(b,fame); rtext(pg,232,y,b,C_GOLD); y+=9;
-                vbar(pg,34,y,86,hearts,maxh,C_RED,"HP"); vbar(pg,152,y,80,mp,maxmp,C_CYAN,"MP"); y+=9;
-                vbar(pg,34,y,86,food,100,food>25?C_GREEN:C_RED,"FOOD"); vbar(pg,152,y,80,xp,xp_next(),C_GOLD,"XP"); y+=12;
+                // ---- BUG: you, your bars, your stats, your friends
+                scpy(b,bug_name); scat(b,"  LEVEL "); ncat(b,level); text(pg,8,y,b,C_GOLD,1); y+=9;
+                vbar(pg,30,y,90,hearts,maxh,C_RED,"HP"); y+=9;
+                vbar(pg,30,y,90,mp,maxmp,C_CYAN,"MP"); y+=9;
+                vbar(pg,30,y,90,food,100,food>25?C_GREEN:C_RED,"FOOD"); y+=9;
+                vbar(pg,30,y,90,xp,xp_next(),C_GOLD,"XP"); y+=11;
                 s64 *sv[4]={&st_str,&st_dex,&st_vit,&st_mag};
                 rect(pg,4,y-2,118,36,1);
-                for(int i=0;i<4;i++){ if(cur==i) rect(pg,4,y-1,118,8,6); if(cur==i) text(pg,6,y,">",C_CYAN,1); text(pg,12,y,stn[i],cur==i?C_WHITE:C_GREY,1); b[0]=0; ncat(b,*sv[i]); text(pg,58,y,b,C_WHITE,1);
+                for(int i=0;i<4;i++){ if(cur==i){ rect(pg,4,y-1,118,8,HI); text(pg,6,y,">",C_CYAN,1); } text(pg,12,y,stn[i],cur==i?C_WHITE:C_GREY,1); b[0]=0; ncat(b,*sv[i]); text(pg,58,y,b,C_WHITE,1);
                     for(int k=0;k<10;k++) rect(pg,72+k*4,y+1,3,4, k<*sv[i]? (i==0?C_RED:i==1?C_GOLD:i==2?C_GREEN:C_CYAN) : C_DGREY); y+=8; }
-                y+=2; if(stat_pts){ scpy(b,"A: ADD A POINT ("); ncat(b,stat_pts); scat(b," LEFT)"); text(pg,8,y,b,C_GREEN,1); } else text(pg,8,y,"LEVEL UP TO GET MORE POINTS",C_DGREY,1);
-                int yy=y-38; text(pg,130,yy,std[cur],C_GREY,1); yy+=10;
+                y+=2; if(stat_pts){ scpy(b,"A: ADD A POINT ("); ncat(b,stat_pts); scat(b," LEFT)"); text(pg,8,y,b,C_GREEN,1); } else text(pg,8,y,"LEVEL UP FOR MORE POINTS",C_DGREY,1);
+                // the portrait frame (your sprite is drawn into it every frame, below)
+                rect(pg,128,38,108,44,1); frame1(pg,128,38,108,44,6); for(int x=129;x<235;x+=2) pix(pg,x,72,C_DGREY);
+                { const char *fn = form==FORM_CREATURE ? body_name[form_body] : form_name[form]; ctext(pg,182,40,fn,C_DGREY); }
+                scpy(b,fame_rank()); scat(b,"  FAME "); ncat(b,fame); rtext(pg,236,85,b,C_GOLD);
+                int yy=95;
                 scpy(b,"DAMAGE  "); ncat(b,d_dmg+d_fire+d_venom); text(pg,130,yy,b,C_WHITE,1); scpy(b,"DEFENCE "); ncat(b,d_def); text(pg,186,yy,b,C_WHITE,1); yy+=8;
                 scpy(b,"CRIT "); ncat(b,d_crit); scat(b,"%"); text(pg,130,yy,b,C_WHITE,1); scpy(b,"GOLD "); ncat(b,gold_find); scat(b,"%"); text(pg,186,yy,b,C_WHITE,1); yy+=8;
-                if(d_spd){ scpy(b,"SPEED "); ncat(b,d_spd>0?d_spd:-d_spd); scat(b,"%"); text(pg,130,yy,b,d_spd>0?C_GREEN:C_RED,1); }
-                if(d_haste){ scpy(b,"BITES +"); ncat(b,d_haste); text(pg,186,yy,b,C_GREEN,1); } yy+=8;
-                y+=12; rect(pg,4,y-2,232,1,6); y+=3;
+                if(d_spd){ scpy(b,"SPEED "); scat(b,d_spd>0?"+":"-"); ncat(b,d_spd>0?d_spd:-d_spd); scat(b,"%"); text(pg,130,yy,b,d_spd>0?C_GREEN:C_RED,1); }
+                if(d_haste){ scpy(b,"BITES +"); ncat(b,d_haste); text(pg,186,yy,b,C_GREEN,1); } yy+=9;
+                text(pg,130,yy,std[cur],C_GREY,1);
+                y+=11; rect(pg,4,y-2,232,1,6); y+=2;
                 scpy(b,"BUDDY LV"); ncat(b,pet_lv+1); scat(b,": "); scat(b,pet_form_name[pet_form]); text(pg,8,y,b,C_CYAN,1);
-                if(pet_away_t) rtext(pg,232,y,"AWAY SELLING",C_GREY); else if(pet_down_t) rtext(pg,232,y,"RESTING",C_GREY); else { int pm=pet_maxhp*(pet_form==2?2:1); hbar(pg,152,y+2,80,pet_hp,pm,C_GREEN); } y+=10;
-                text(pg,8,y,"BUG FRIENDS",C_GOLD,1); y+=8; int any=0, x=8;
+                if(pet_away_t) rtext(pg,236,y,"AWAY SELLING",C_GREY); else if(pet_down_t) rtext(pg,236,y,"RESTING",C_GREY); else { int pm=pet_maxhp*(pet_form==2?2:1); hbar(pg,152,y+2,84,pet_hp,pm,C_GREEN); } y+=9;
+                int any=0, x=8;
                 for(int t=0;t<6;t++) if(have_bug[t]){ any=1; scpy(b,friend_name[t]); scat(b," X"); ncat(b,have_bug[t]); text(pg,x,y,b,C_WHITE,1); x+=76; if(x>200){ x=8; y+=7; } }
-                if(!any) text(pg,8,y,"NONE YET. OPEN CAGES TO FREE BUGS",C_DGREY,1);
+                if(!any) text(pg,8,y,"NO BUG FRIENDS YET. OPEN CAGES TO FREE THEM",C_DGREY,1);
             } else if(page==1){
                 const Gear *eq[3]={&eqw,&eqa,&eqc}; static const char *const lab[3]={"BITE","WEAR","CHARM"};
                 for(int i=0;i<3;i++){ int x=8+i*78; rect(pg,x-2,y-2,74,18,1); frame1(pg,x-2,y-2,74,18,C_DGREY); text(pg,x,y,lab[i],C_GOLD,1);
                     if(eq[i]->it){ gear_name(eq[i],b); b[17]=0; text(pg,x,y+8,b,rar_color(eq[i]),1); } else text(pg,x,y+8,"NOTHING",C_DGREY,1); }
-                y+=20; scpy(b,"YOUR BAG  "); ncat(b,bag_n); scat(b,"/"); ncat(b,BAGMAX); if(bag_n>12){ scat(b,"  PAGE "); ncat(b,cur/12+1); } text(pg,8,y,b,C_GOLD,1); y+=8;
+                y+=20; scpy(b,"YOUR BAG  "); ncat(b,bag_n); scat(b,"/"); ncat(b,BAGMAX); if(bag_n>12){ scat(b,"  PAGE "); ncat(b,cur/12+1); scat(b,"/"); ncat(b,(bag_n+11)/12); } text(pg,8,y,b,C_GOLD,1); y+=8;
                 int y0=y;
                 for(int i=(cur/12)*12;i<bag_n && i<(cur/12)*12+12;i++){ int k12=i%12; int col=k12/6, yy=y0+(k12%6)*8, x=8+col*116;
-                    if(cur==i){ rect(pg,x-4,yy-1,114,8,6); text(pg,x-3,yy,">",C_CYAN,1); }
+                    if(cur==i){ rect(pg,x-4,yy-1,114,8,HI); text(pg,x-3,yy,">",C_CYAN,1); }
                     gear_name(&bag[i],b); b[26]=0; text(pg,x+3,yy,b,rar_color(&bag[i]),1);
                     if(is_gear(&bag[i])){ Delta d=gear_delta(&bag[i]); int v=d.dmg+d.def+d.hp/4; if(v) text(pg,x+100,yy,v>0?"+":"-",v>0?C_GREEN:C_RED,1); } }
                 if(!bag_n) text(pg,10,y0,"EMPTY. PICK THINGS UP IN DUNGEONS",C_DGREY,1);
-                y=y0+50; rect(pg,4,y-2,232,1,6);
+                y=y0+49; rect(pg,4,y-2,232,1,6);
                 if(bag_n){ describe(&bag[cur],b); b[56]=0; text(pg,8,y+1,b,C_WHITE,1);
                     int sc=delta_text(&bag[cur],b); b[56]=0; text(pg,8,y+9,b, sc>0?C_GREEN:sc<0?C_RED:C_GREY,1);
                     scpy(b,"WORTH "); ncat(b,item_value(&bag[cur])); scat(b,"G");
                     if(is_gear(&bag[cur])){ scat(b,"  SCRAP "); ncat(b,scrap_of(bag[cur].rar)); scat(b,"  KEEP +"); ncat(b,keep_points(bag[cur].rar)); }
-                    rtext(pg,232,y+17,b,C_GOLD); }
-                text(pg,8,147, bag_n && is_gear(&bag[cur]) ? "A: WEAR  B: SCRAP IT  SELECT: BUDDY SELLS GEAR" : "A: USE  B: DROP  SELECT: BUDDY SELLS GEAR",C_CYAN,1);
+                    rtext(pg,236,y+17,b,C_GOLD); }
+                text(pg,6,152, bag_n && is_gear(&bag[cur]) ? "A: WEAR  B: SCRAP  SEL: BUDDY SELLS" : "A: USE  B: DROP  SEL: BUDDY SELLS",C_CYAN,1);
             } else if(page==2){
                 scpy(b,"MANA "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); scat(b,"   SPELL POWER "); ncat(b,st_mag); text(pg,8,y,b,C_CYAN,1); y+=12;
                 static const char *const sd[NSPELL]={"A BALL OF FIRE FLIES AHEAD","LIGHTNING HITS THE NEAREST FOE","HEALS YOU","HARDER TO HURT FOR A WHILE","PORTAL HOME. THE DOOR RETURNS"};
-                for(int i=0;i<NSPELL;i++){ if(cur==i) text(pg,4,y,">",C_CYAN,1);
+                for(int i=0;i<NSPELL;i++){ if(cur==i){ rect(pg,4,y-1,232,8,HI); text(pg,4,y,">",C_CYAN,1); }
                     scpy(b,spell_name[i]); if(i==spell_sel) scat(b," *"); text(pg,10,y,b, spell_known[i] ? (i==spell_sel?C_GOLD:C_WHITE) : C_DGREY,1);
                     b[0]=0; ncat(b,spell_cost[i]); scat(b," MP"); text(pg,76,y,b,C_CYAN,1);
-                    text(pg,104,y, spell_known[i]?sd[i]:"FIND ITS BOOK",C_DGREY,1); y+=9; }
+                    text(pg,104,y, spell_known[i]?sd[i]:"FIND ITS BOOK",spell_known[i]?C_GREY:C_DGREY,1); y+=9; }
                 y+=6; text(pg,8,y,"IN A DUNGEON: TAP SELECT TO CAST.",C_WHITE,1); y+=8;
                 text(pg,8,y,"HOLD SELECT + L OR R TO CHANGE SPELL.",C_WHITE,1); y+=8;
-                text(pg,8,147,"A: MAKE IT YOUR SPELL",C_CYAN,1);
+                text(pg,6,152,"A: MAKE IT YOUR SPELL",C_CYAN,1);
             } else if(page==3){
                 text(pg,8,y,"QUEST",C_GOLD,1); y+=8;
                 quest_refresh(); if(q_type==Q_NONE) text(pg,8,y,"NONE. VISIT YOUR SHIP'S QUEST BOARD.",C_DGREY,1);
@@ -468,34 +503,45 @@ static void char_screen(volatile u16 *pg){
                 y+=16;
                 for(int i=0;i<6;i++){ scpy(b,seed_look[i]); scat(b,":"); scat(b, seed_known[i]?seed_eff[seed_map[i]]:"?"); text(pg,8+(i%3)*76,y+(i/3)*7,b,seed_known[i]?C_WHITE:C_DGREY,1); }
             } else if(page==4){
-                text(pg,8,y,"FEATS",C_GOLD,1); { int rn=0; for(u32 r=relic_bits;r;r>>=1) rn+=r&1; scpy(b,"RELICS "); ncat(b,rn); scat(b,"/16  WEIRD "); ncat(b,weird_seen); { int pm=0; for(u32 r=mark_perm;r;r>>=1) pm+=r&1; scat(b,"  MARKS "); ncat(b,pm); } text(pg,40,y,b,rn?C_UNIQ:C_DGREY,1); } { int dn=0; for(int i=0;i<NACH;i++) dn+=(ach_done>>i)&1; scpy(b,""); ncat(b,dn); scat(b,"/"); ncat(b,NACH); scat(b," DONE"); rtext(pg,232,y,b,C_GREY); } y+=9;
-                for(int i=0;i<NACH;i++){ int done=(ach_done>>i)&1, hv=ach_have(i); if(hv>ach[i].goal) hv=ach[i].goal; int yy=y+i*8;
-                    text(pg,8,yy,ach[i].name,done?C_GOLD:C_WHITE,1); text(pg,76,yy,ach[i].what,done?C_GREY:C_DGREY,1);
-                    if(done) text(pg,180,yy,"DONE",C_GREEN,1); else { hbar(pg,180,yy+2,26,hv,ach[i].goal,C_CYAN); scpy(b,""); ncat(b,hv); scat(b,"/"); ncat(b,ach[i].goal); text(pg,209,yy,b,C_DGREY,1); } }
+                if(sub){ relic_shelf(pg,y); text(pg,6,152,"A: SHOW YOUR FEATS",C_CYAN,1); }
+                else {
+                    text(pg,8,y,"FEATS",C_GOLD,1); { int dn=0; for(int i=0;i<NACH;i++) dn+=(ach_done>>i)&1; scpy(b,""); ncat(b,dn); scat(b,"/"); ncat(b,NACH); scat(b," DONE"); rtext(pg,236,y,b,C_GREY); } y+=9;
+                    for(int i=0;i<NACH;i++){ int done=(ach_done>>i)&1, hv=ach_have(i); if(hv>ach[i].goal) hv=ach[i].goal; int yy=y+i*7;
+                        text(pg,8,yy,ach[i].name,done?C_GOLD:C_WHITE,1); text(pg,76,yy,ach[i].what,done?C_GREY:C_DGREY,1);
+                        if(done) text(pg,184,yy,"DONE",C_GREEN,1); else { hbar(pg,184,yy+1,24,hv,ach[i].goal,C_CYAN); scpy(b,""); ncat(b,hv); scat(b,"/"); ncat(b,ach[i].goal); text(pg,211,yy,b,C_DGREY,1); } }
+                    text(pg,6,152,"A: SHOW YOUR RELICS",C_CYAN,1); }
             } else if(page==6){ map_page(pg);
+            } else if(page==7){ world_page(pg,y); text(pg,6,152,"A: SAVE THIS PLACE AS A FAVOURITE",C_CYAN,1);
             } else {
                 static const char *const sn[5]={"SAVE GAME","SAVE TO ANOTHER SLOT","LOAD GAME","OPTIONS","QUIT TO TITLE"};
                 scpy(b,"SLOT "); ncat(b,cur_slot+1); text(pg,8,y,b,C_CYAN,1);
                 fmt_time(b,play_secs()); scat(b," PLAYED"); text(pg,60,y,b,C_GREY,1);
-                text(pg,170,y,opt_autosave?"AUTOSAVE ON":"AUTOSAVE OFF",opt_autosave?C_GREEN:C_DGREY,1); y+=14;
+                text(pg,170,y,opt_autosave?"AUTOSAVE ON":"AUTOSAVE OFF",opt_autosave?C_GREEN:C_DGREY,1); y+=12;
                 for(int i=0;i<5;i++){
                     int ok = !(i<2 && (scene==2 || (scene==1 && (forge_on || base_mode))));
-                    if(cur==i) rect(pg,4,y-2,232,10,6);
+                    if(cur==i) rect(pg,4,y-2,232,10,HI);
                     text(pg,10,y,sn[i],!ok?C_DGREY: cur==i?C_WHITE:C_GREY,1);
                     if(i==0){ scpy(b,"-> SLOT "); ncat(b,cur_slot+1); text(pg,150,y,b,ok?C_CYAN:C_DGREY,1); }
-                    y+=12;
+                    y+=11;
                 }
-                if(scene!=0) text(pg,8,y+4,"SAVING IS ONLY POSSIBLE ON THE SURFACE",C_DGREY,1);
-                if(sys_msg[0]) text(pg,8,134,sys_msg,sys_col,1);
-                text(pg,8,147,"A: CHOOSE",C_CYAN,1);
+                if(scene==2 || (scene==1 && (forge_on || base_mode))) text(pg,8,y,"YOU CAN'T SAVE HERE. TRY ON A PLANET",C_DGREY,1);
+                // ---- your records
+                y=116; rect(pg,4,y-3,232,1,6); text(pg,8,y,"YOUR RECORDS",C_GOLD,1); y+=9;
+                { s64 kills=0; for(int i=0;i<11;i++) kills+=st_kills[i];
+                  scpy(b,"PLANETS "); ncat(b,st_planets); scat(b,"   FLOORS "); ncat(b,st_floors); scat(b,"   MONSTERS "); ncat(b,kills); text(pg,8,y,b,C_WHITE,1); y+=8;
+                  scpy(b,"FISH "); ncat(b,st_fish); scat(b,"   ORE "); ncat(b,st_mined); scat(b,"   DODGES "); ncat(b,st_dodges); scat(b,"   WEIRD WORLDS "); ncat(b,weird_seen); text(pg,8,y,b,C_WHITE,1); }
+                if(sys_msg[0]){ char sm[40]; scpy(sm,sys_msg); sm[34]=0; text(pg,6,152,sm,sys_col,1); } else text(pg,6,152,"A: CHOOSE",C_CYAN,1);
             }
-            text(pg,148,154,"L/R: PAGE  START: BACK",C_DGREY,1);
-            if(menu_msg[0]){ char mm[40]; scpy(mm,menu_msg); mm[34]=0; text(pg,8,154,mm,C_GREEN,1); }
+            if(menu_msg[0]){ char mm[40]; scpy(mm,menu_msg); mm[34]=0; rect(pg,0,150,240,10,0); text(pg,6,152,mm,C_GREEN,1); }
+            rtext(pg,236,152,"L R: PAGE  START: BACK",C_DGREY);
         }
+        // ---- every frame: the selection bar breathes, and your bug stands in its frame on the BUG page
+        tick++; { int s=sinx((tick*5)&255); int t=((s+16384)*16)>>15; if(t>16) t=16; BG_PAL[HI]=rgb15(24+t*2,34+t*3,64+t*5); }
+        oam_hide_all(); if(page==0) me_oam(0,182,76,(tick>>4)&1); oam_flush();
         vsync(); read_keys();
         if(HIT(K_START)) break;
-        if(HIT(K_L)){ page=(page+6)%7; cur=0; dirty=1; sys_msg[0]=0; }
-        if(HIT(K_R)){ page=(page+1)%7; cur=0; dirty=1; sys_msg[0]=0; }
+        if(HIT(K_L)){ ti=(ti+7)%8; page=ord[ti]; cur=0; sub=0; dirty=1; sys_msg[0]=0; sfx(7); }
+        if(HIT(K_R)){ ti=(ti+1)%8; page=ord[ti]; cur=0; sub=0; dirty=1; sys_msg[0]=0; sfx(7); }
         int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : page==5?5 : 0;
         if(nmax){ if(HIT(K_UP)){ cur=(cur+nmax-1)%nmax; dirty=1; } if(HIT(K_DOWN)){ cur=(cur+1)%nmax; dirty=1; }
             if(page==1){ if(HIT(K_RIGHT) && cur+6<nmax){ cur+=6; dirty=1; } if(HIT(K_LEFT) && cur>=6){ cur-=6; dirty=1; } } }
@@ -504,6 +550,8 @@ static void char_screen(volatile u16 *pg){
             if(page==0 && stat_pts){ s64 *sv[4]={&st_str,&st_dex,&st_vit,&st_mag}; (*sv[cur])=sadd(*sv[cur],1); stat_pts--; s64 oldmax=maxh; recalc(); hearts=sadd(hearts,sadd(maxh,-oldmax)); sfx(2); }
             if(page==1 && bag_n){ use_index(cur); if(cur>=bag_n && cur) cur--; }
             if(page==2 && spell_known[cur]) spell_sel=cur;
+            if(page==4){ sub^=1; sfx(2); }
+            if(page==7){ int r=fav_add_here(); scpy(menu_msg, r>=0 ? "SAVED TO YOUR FAVOURITES" : r==-2 ? "IT IS ALREADY A FAVOURITE" : "FAVOURITES ARE FULL (256)"); if(r>=0) sfx(6); }
             if(page==5){ sys_action(pg,cur); if(sys_req) break; }
         }
         if(HIT(K_B) && page==1 && bag_n){
@@ -513,6 +561,8 @@ static void char_screen(volatile u16 *pg){
         if(HIT(K_SEL) && page==1){ send_pet_to_sell(); dirty=1; }
         if(HIT(K_UP)||HIT(K_DOWN)||HIT(K_L)||HIT(K_R)) menu_msg[0]=0;
     }
+    pause_last[scene==1]=page; BG_PAL[HI]=bg_pal[HI];
+    oam_hide_all(); oam_flush();
     in_menu--; wait_release();
 }
 

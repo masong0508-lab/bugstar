@@ -10,7 +10,7 @@ __attribute__((used, aligned(4))) const char sram_tag[]="SRAM_V114";
 #define META_OFF 0xC00
 #define SET_OFF 0x7F00
 static int slot_base(int i){ return i*SLOT_STRIDE; }
-#define XT_BASE 0x3000                  // spare SRAM above the three slots: each slot also owns 0x1400 bytes here for the upper cluster words
+#define XT_BASE 0x3000                  // spare SRAM above the three slots: the 256 favourites live here now (see space.inc)
 #define XT_STRIDE 0x1400
 static int xt_base(int i){ return XT_BASE+i*XT_STRIDE; }
 static u32 fnv(const void *d, unsigned n){ const u8 *p=d; u32 h=2166136261u; for(unsigned i=0;i<n;i++){ h^=p[i]; h*=16777619u; } return h; }
@@ -32,6 +32,8 @@ typedef struct {
 } Save;
 _Static_assert(sizeof(Save) < SG_OFF, "Save must fit before the grind block");
 typedef struct { u32 magic; u8 tiers[12]; u16 kills[11]; u16 fish, barrels, mined, dodges, planets, uniq, tier_n, floors; u32 ach; u16 pet_xp, pet_lv; BugLook look; u8 pad; ShipLook ship; u32 base_mask; u16 data_cores, outposts; u32 sum; } SaveG;
+_Static_assert(sizeof(SaveG) <= SX_OFF-SG_OFF, "the grind block must end before the ship block");
+_Static_assert(__builtin_offsetof(SaveG,sum)==sizeof(SaveG)-4, "SaveG: the sum must be the last 4 bytes");
 static u32 sg_sum(const SaveG *g){ return fnv(g,sizeof(SaveG)-4); }
 static void grind_save(void){ SaveG g; memset(&g,0,sizeof g); g.magic=0x444E5247; for(int i=0;i<12;i++) g.tiers[i]=tiers[i]; for(int i=0;i<11;i++) g.kills[i]=st_kills[i];
     g.fish=st_fish; g.barrels=st_barrels; g.mined=st_mined; g.dodges=st_dodges; g.planets=st_planets; g.uniq=st_uniq; g.tier_n=st_tiers; g.floors=st_floors; g.ach=ach_done; g.pet_xp=pet_xp; g.pet_lv=pet_lv; g.look=look; g.ship=ship; g.base_mask=base_mask; g.data_cores=data_cores; g.outposts=outposts_done;
@@ -41,7 +43,8 @@ static void grind_load(void){ SaveG g; sram_read(slot_base(cur_slot)+SG_OFF,&g,s
     for(int i=0;i<12;i++) tiers[i]=g.tiers[i]; for(int i=0;i<11;i++) st_kills[i]=g.kills[i];
     st_fish=g.fish; st_barrels=g.barrels; st_mined=g.mined; st_dodges=g.dodges; st_planets=g.planets; st_uniq=g.uniq; st_tiers=g.tier_n; st_floors=g.floors; ach_done=g.ach; pet_xp=g.pet_xp; pet_lv=g.pet_lv; look=g.look; look.name[8]=0; ship=g.ship; ship.name[8]=0; base_mask=g.base_mask; data_cores=g.data_cores; outposts_done=g.outposts; ship.hull%=NHULL; ship.wings%=NWING; ship.wsize%=3; ship.engines&=3; ship.fins%=3; ship.cannon&=3; ship.cockpit&=1; ship_build_model(); look.shell%=3; look.ant%=3; look.eye&=1; look.legs%=3; look.pat%=5; look.horn&=1; }
 EW static Save sv;
-static u32 save_sum(const Save *s){ return fnv(s, sizeof(Save)-4); }
+static u32 save_sum(const Save *s){ return fnv(s, __builtin_offsetof(Save,sum)); }   // up to the sum itself (the struct ends in 4 bytes of padding, so sizeof-4 would hash the sum too)
+static int save_sum_old(Save *s){ u32 k=s->sum; s->sum=0; u32 h=fnv(s, sizeof(Save)-4); s->sum=k; return h==k; }   // how older builds summed it (sum zeroed): those saves still load
 
 // ---------------------------------------------------------------- play time (kept beside each slot)
 typedef struct { u32 magic, secs, saves, sum; } Meta;
@@ -57,6 +60,7 @@ static int meta_read(int slot, Meta *m){
 
 // ---------------------------------------------------------------- options (saved at the far end of SRAM)
 typedef struct { u32 magic; u8 music, sfx, autosave, shake, last, pad[3]; u32 sum; } Settings;
+_Static_assert(__builtin_offsetof(Settings,sum)==sizeof(Settings)-4, "Settings: the sum must be the last 4 bytes");
 static void settings_save(void){
     Settings s; memset(&s,0,sizeof(s)); s.magic=0x53544553;
     s.music=opt_music; s.sfx=opt_sfx; s.autosave=opt_autosave; s.shake=opt_shake; s.last=last_slot; s.pad[0]=opt_diff; s.pad[1]=(opt_minimap)|(opt_nums<<1)|(opt_hints<<2)|(opt_arrow<<3)|(opt_insane<<4); s.pad[2]=opt_cam|(opt_baby<<1)|((!opt_hunger)<<2)|((!opt_faintloss)<<3)|(opt_xpm<<4)|(opt_goldm<<6);
@@ -96,7 +100,7 @@ static void save_game(void){ if(opt_autosave) do_save(); }     // the quiet save
 
 static int slot_read(int slot){   // loads a slot into sv, and says if it is a good save
     sram_read(slot_base(slot), &sv, sizeof(Save));
-    return sv.magic==0x53475542 && sv.ver==2 && sv.sum==save_sum(&sv);
+    return sv.magic==0x53475542 && sv.ver==2 && (sv.sum==save_sum(&sv) || save_sum_old(&sv));
 }
 static int load_game(int apply){
     if(!slot_read(cur_slot)) return 0;
@@ -117,8 +121,8 @@ static int load_game(int apply){
     last_slot=cur_slot; settings_save();
     return 1;
 }
-static void slot_erase(int i){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(i)+k]=0; for(int k=0;k<XT_STRIDE;k++) SRAM[xt_base(i)+k]=0; }
-static void slot_copy(int from, int to){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(to)+k]=SRAM[slot_base(from)+k]; for(int k=0;k<XT_STRIDE;k++) SRAM[xt_base(to)+k]=SRAM[xt_base(from)+k]; }
+static void slot_erase(int i){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(i)+k]=0; }          // (the favourites past the slots are shared: erasing a slot keeps them)
+static void slot_copy(int from, int to){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slot_base(to)+k]=SRAM[slot_base(from)+k]; }
 
 // ---------------------------------------------------------------- a peek at each slot, for the cards
 typedef struct { u8 ok; s16 zone, endless, world_no; s64 level, gold, xp; s32 fame; u32 secs; } SlotInfo;

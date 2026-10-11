@@ -814,6 +814,21 @@ static int title_screen(void){
 
 // ================================================================= starting, running and leaving a game
 static void arrive_on_planet(void);
+static void landing_screen(int welcome){                   // while a world is being built: a quiet card with its name, instead of a black screen
+    volatile u16 *pg=(volatile u16*)0x06000000;
+    REG_BLDCNT=0x3F|(3<<6); REG_BLDY=16;
+    for(int i=0;i<120*160;i++) pg[i]=0;
+    for(int i=1;i<6;i++) BG_PAL[i]=bg_pal[i]; for(int i=30;i<39;i++) BG_PAL[i]=bg_pal[i]; BG_PAL[0]=0;
+    { u32 r=0x1234567u+(u32)cur_sys*77; for(int k=0;k<70;k++){ r=r*1664525u+1013904223u; int x=(r>>8)%240, y=8+((r>>20)%150); pix(pg,x,y,(k%7)==0?5:(k&1)?3:2); } }
+    const char *nm=world_name(); int L=textlen(nm);
+    const char *top = welcome ? "WELCOME BACK TO" : "LANDING ON";
+    text(pg,120-textlen(top)*2,62,top,C_GREY,1);
+    if(L<=28) text(pg,120-L*4,72,nm,C_GOLD,2); else text(pg,120-L*2,74,nm,C_GOLD,1);
+    { const char *c = pc_name[wd.cls]; text(pg,120-textlen(c)*2,90,c,C_CYAN,1); }
+    text(pg,120-11*2,140,"PLEASE WAIT",C_DGREY,1);
+    REG_DISPCNT = 4 | (1<<10);
+    for(int i=16;i>=0;i-=4){ REG_BLDY=i; vsync(); } REG_BLDCNT=0;
+}
 static void start_game(int cont){       // fades out, sets the world up from cur_slot (or fresh) and fades in on the planet
     rng_s ^= vbl_count*2654435761u;
     fade(1);
@@ -822,8 +837,29 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_WORLD
     endless=1; world_no=TEST_WORLD; make_world();
 #endif
+#ifdef TEST_SAVE
+    {   // set something in every save block, save, wipe it all, load, and check each value came back
+        beast_stage=3; tech_lv=4; beast_kills=2; hive_done=2; wing_n=7; relic_bits=0x5; mark_perm=0x3; weird_seen=9;
+        form=FORM_HUMAN; form_t=0; forms_open=7; tools_owned=0x15; tool_held=2; hum.style=1; hum.height=4; hum.build=2; hum.made=1; hum.col[0]=0x1234;
+        clus[0]=777; clus[5]=999; fuel_tank=3; warp_lv=2; gold=4321; tiers[2]=3; data_cores=5; scrap=33; cargo[3]=4; fuel=55; tr_n[1]=6;
+        do_save();
+        beast_stage=0; tech_lv=0; beast_kills=0; hive_done=0; wing_n=0; relic_bits=0; mark_perm=0; weird_seen=0; form=0; forms_open=1; tools_owned=0; tool_held=0;
+        hum.style=0; hum.height=0; hum.build=0; hum.made=0; hum.col[0]=0; clus[0]=0; clus[5]=0; fuel_tank=0; warp_lv=0; gold=0; tiers[2]=0; data_cores=0; scrap=0; cargo[3]=0; fuel=0; tr_n[1]=0;
+        int ok=load_game(1);
+        struct { const char *n; int got, want; } c[]={{"LOAD",ok,1},{"BEAST STAGE",beast_stage,3},{"TECH LEVEL",tech_lv,4},{"BEAST KILLS",beast_kills,2},{"HIVES",hive_done,2},{"WINGMEN",wing_n,7},
+            {"RELICS",(int)relic_bits,5},{"MARKS",(int)mark_perm,3},{"WEIRD SEEN",weird_seen,9},{"FORM",form,FORM_HUMAN},{"TOOLS",(int)tools_owned,0x15},{"HUM STYLE",hum.style,1},{"HUM HEIGHT",hum.height,4},
+            {"HUM COLOUR",hum.col[0],0x1234},{"EAST WORD",(int)clus[0],777},{"NORTH WORD",(int)clus[5],999},{"FUEL TANK",fuel_tank,3},{"WARP DRIVE",warp_lv,2},
+            {"GOLD",(int)gold,4321},{"TIER",tiers[2],3},{"DATA CORES",data_cores,5},{"SCRAP",scrap,33},{"CARGO",cargo[3],4},{"FUEL",fuel,55},{"TROPHIES",tr_n[1],6}};
+        volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); REG_BLDCNT=0; REG_BLDY=0; for(int i=0;i<120*160;i++) pg[i]=0; for(int i=30;i<39;i++) BG_PAL[i]=bg_pal[i];
+        int n=sizeof c/sizeof c[0], bad=0;
+        for(int i=0;i<n;i++){ int good=c[i].got==c[i].want; bad+=!good; char b[40]; scpy(b,c[i].n); scat(b,good?" OK":" BAD "); if(!good) ncat(b,c[i].got); text(pg,4+(i/19)*120,4+(i%19)*8,b,good?C_GREEN:C_RED,1); }
+        text(pg,124,150,bad?"SOME FAILED":"ALL PASSED",bad?C_RED:C_GREEN,1);
+        while(1) vsync();
+    }
+#endif
+
 #ifdef TEST_DEEP
-    ant_king=1; zones_open=6; cleared_mask=63; galaxy_no=4000000000u; for(int w=0;w<NCW;w++) clus[w]=hmix(w*77+TEST_DEEP); gen_cluster(); cur_sys=7+TEST_DEEP%20; fade(0); arrive_on_planet();
+    ant_king=1; zones_open=6; cleared_mask=63; galaxy_no=4000000000u; for(int w=0;w<NCW;w++) clus[w]=hmix(w*77+TEST_DEEP); u_settle(); gen_cluster(); cur_sys=7+TEST_DEEP%20; fade(0); arrive_on_planet();
 #ifdef TEST_FORM
     form=TEST_FORM; forms_open=7; tools_owned=0xFF; tool_held=1; form_body=TEST_BODY; form_col=rgb15(200,80,200); recalc(); form_palette();
 #endif
@@ -841,8 +877,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     scene=0; launch_flag=0; enter_dungeon_flag=0; forge_on=0; fish_state=0; msg_timer=0; invuln=0; shake_t=0; page_back=0; loot=0; depth_no=0;
     speed_t=strong_t=dizzy_t=stun_t=shield_t=0;
     restock(); arrow_ship = zone_cleared && !endless;
-    new_planet(); planet_enter(); show_msg(cont ? "WELCOME BACK" : "THE GARDEN: FIND THE DOOR");
-    oam_hide_all(); oam_flush(); fade(0);
+    landing_screen(cont);
+    new_planet(); planet_enter(); show_msg(cont ? "WELCOME BACK" : "");
+    fade(1); REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0);      // the planet is on screen behind the first cards
     music(0);
     if(!cont){ static const char *const t[6]={"YOU ARE A LITTLE PILL BUG.","THE ANT KING HAS CAGED YOUR BUG FRIENDS.","","FOLLOW THE YELLOW ARROW TO THE DOOR.","GO DOWN. BEAT THE BOSS AT THE BOTTOM.","THEN FLY YOUR SHIP TO THE NEXT STAR."};
         card(VISPG,"BUGSTAR",t,6); bolt_story(VISPG,0); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
@@ -858,7 +895,8 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 }
 static void arrive_on_planet(void){      // after landing (or the autopilot): set the surface up
     land_on_current(); st_planets++; ach_check(); portal_depth=0; scene=0; msg_timer=0;
-    new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game();
+    landing_screen(0);
+    new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game(); fade(1);
     char b[40]; scpy(b,world_name()); if(!endless && !zone_cleared) scat(b,": FIND THE DOOR"); show_msg(b); oam_hide_all(); oam_flush(); music(0);
     { REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0); planet_card(VISPG); p_last=vbl_count; }
     if(hum_req){ hum_req=0; human_creator(VISPG,1); planet_hud(); save_game(); p_last=vbl_count; }       // a weird world just made you a humanoid: look in the mirror

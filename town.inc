@@ -51,6 +51,15 @@ static int hum_oam(int slot, int cx, int feet, int z, int facing, int lean, int 
     return slot;
 }
 static void form_palette(void){ volatile u16 *P=OBJ_PAL+6*16; for(int i=0;i<16;i++) P[i]=obj_pal[i]; if(form==FORM_HUMAN){ hum_palette(); return; } u16 c=form_col?form_col:look.col[LC_SHELL]; P[6]=shade15(c,7); P[7]=c; P[8]=lift15(c,8); P[5]=look.col[LC_EYE]; }
+static int me_oam(int slot, int cx, int feet, int frame){                               // you, as a sprite, for the pause screen's portrait
+    if(form==FORM_HUMAN) return hum_oam(slot,cx,feet,1,1,0,0,0,frame,(tools_owned && form==FORM_HUMAN) ? tool_held : -1);
+    if(form==FORM_CREATURE){ int fl=form_body==2; set_affine(30,-128,0,0,128);
+        shadow_oam[slot].a0 = ((feet-(fl?16:32)-(fl?6+frame*2:frame))&255) | (1<<8)|(1<<9) | (fl?(1<<14):0);
+        shadow_oam[slot].a1 = ((cx-16)&511) | (30<<9) | (fl?(0<<14):(1<<14)); shadow_oam[slot].a2 = (form_body==0?T_HOPPER:form_body==1?T_GRAZER:T_FLYER) | (6<<12); return slot+1; }
+    set_affine(30,-128,0,0,128);                                                        // the bug, twice size, walking on the spot
+    shadow_oam[slot].a0 = ((feet-32)&255) | (1<<8)|(1<<9) | (1<<14);
+    shadow_oam[slot].a1 = ((cx-32)&511) | (30<<9) | (2<<14); shadow_oam[slot].a2 = bug_tile(frame) | BUG_BANK; return slot+1;
+}
 static void species_palette(void){                                                    // sprite banks 4 and 5: the two species' colours
     for(int s=0;s<2;s++){ volatile u16 *P=OBJ_PAL+(4+s)*16; for(int i=0;i<16;i++) P[i]=obj_pal[i];
         u16 c=spc[s].col; P[6]=shade15(c,7); P[7]=c; P[8]=lift15(c,8); P[5]=rgb15(250,250,250); }

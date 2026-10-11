@@ -11,6 +11,7 @@ static const char *const fg_rn[13]={"SEED","LAYOUT","WALLS","CREATURES","DENSITY
 
 typedef struct { u16 seed; u8 layout, wall, mix, dens, haz, floors, lvl, boss, best, done, used, pad[3]; } FDes;     // 16 bytes
 typedef struct { u32 magic; FDes d[8]; u32 sum; } FStore;
+_Static_assert(__builtin_offsetof(FStore,sum)==sizeof(FStore)-4, "FStore: the sum must be the last 4 bytes");
 #define FG_OFF 0x6C00
 EW static FStore fst;
 static DDna fg; static int fg_ready=0, fg_slot=0, fg_cur=-1;                 // fg_cur: the saved design the current run came from

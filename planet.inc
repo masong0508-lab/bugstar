@@ -129,7 +129,7 @@ static int hm_bil(s32 x, s32 y){                            // height between ce
 }
 static int g_hs=3;                                          // how tall the land is: 255 -> g_hs cells (mountain worlds are tall, meadows flat)
 static s32 ground_h(s32 x, s32 y){ return hfine[((y>>15)&HMASK)*HW + ((x>>15)&HMASK)]*g_hs; }
-static int hell_paint(int c, int h, int x, int y){            // the hell worlds' own ground patterns: lava veins, crusts, neon cracks, ribs, frost cracks
+static inline __attribute__((always_inline)) int hell_paint(int c, int h, int x, int y){            // the hell worlds' own ground patterns: lava veins, crusts, neon cracks, ribs, frost cracks
     int d=bay4[((y&3)<<2)|(x&3)];
     switch(wd.cls){
         case PC_INFERNO:   if(((h+(d>>2))%17)<2 && h>water_lv+3) c=GND_B+14+((x+y)&1); break;
@@ -140,23 +140,69 @@ static int hell_paint(int c, int h, int x, int y){            // the hell worlds
         case PC_COCYTUS:   if(((x*5+y*3+(h>>2))%31)==0) c=GND_B+1; else if(((x*11+y*7+h)&63)==0) c=GND_B+14; break;
     }
     return c; }
+// ---- the three big loops of making a world run from fast internal memory (they touch 65,536 points each)
+IWRAM static void land_octave(s16 *acc, const u8 *grid, const u16 *sm, int sh, int n, int am){
+    int nm=n-1; u16 T[TW], B[TW], S[TW]; int band=-1;                                    // T/B: the grid rows above and below, already blended across x
+    for(int x=0;x<TW;x++) S[x]=sm[x];
+    for(int y=0;y<TW;y++){ int gy=y>>sh, fy=S[y];
+        if(gy!=band){ band=gy; const u8 *g0=grid+gy*n, *g1=grid+((gy+1)&nm)*n;
+            for(int x=0;x<TW;x++){ int gx=x>>sh, gx1=(gx+1)&nm, fx=S[x]; T[x]=(u16)(g0[gx]*(256-fx)+g0[gx1]*fx); B[x]=(u16)(g1[gx]*(256-fx)+g1[gx1]*fx); } }
+        s16 *ac=acc+y*TW; int wy=256-fy;
+        for(int x=0;x<TW;x++){ int v=(T[x]*wy+B[x]*fy)>>16; ac[x]+=((v-128)*am)>>7; } }
+}
+IWRAM static void land_smooth(void){                         // the map smoothed up to two texels per cell (texel centres at 1/4 and 3/4 of a cell)
+    for(int y0=0;y0<TW;y0++){ const u8 *r0=hmap+y0*TW, *r1=hmap+((y0+1)&TMASK)*TW; u16 *o0=(u16*)(hfine+(y0*2)*HW), *o1=(u16*)(hfine+(y0*2+1)*HW);
+        int a=r0[0], c=r1[0];
+        for(int x0=0;x0<TW;x0++){ int x1=(x0+1)&TMASK, b=r0[x1], d=r1[x1];          // one cell -> its four texels, written two at a time
+            int t0=a*3+b, t1=a+b*3, b0=c*3+d, b1=c+d*3;                                 // across x: 3/4 and 1/4 weights
+            o0[x0]=(u16)(((t0*3+b0)>>4) | (((t1*3+b1)>>4)<<8));
+            o1[x0]=(u16)(((t0+b0*3)>>4) | (((t1+b1*3)>>4)<<8));
+            a=b; c=d; } }
+}
+IWRAM static void land_paint(const s8 *htab, int rst, int rch, int sl, int hw_){  // the colour of every texel: shade, sun, beaches, snow, stripes, hell patterns
+    u8 b4[16]; for(int i=0;i<16;i++) b4[i]=bay4[i];
+    s8 ht[256]; for(int i=0;i<256;i++) ht[i]=htab[i];                               // the tables live on the fast stack
+    int wl=water_lv, two=wd.twotone, sand=wd.sand, snow=wd.snow;
+    for(int y=0;y<HW;y++){ const u8 *row=hfine+y*HW, *rowu=hfine+((y-1)&HMASK)*HW; u8 *cm=cmap+y*HW; int prev=row[HW-1];
+        for(int x=0;x<HW;x++){ int h=row[x], hl=prev; prev=h;
+            if(h<wl){ cm[x]=(u8)ht[h]; continue; }
+            int slope = (h-hl) + (h-rowu[x]);                                         // facing the sun (north-west) is brighter
+            int s = ht[h] + ((slope*85)>>8) + ((b4[((y&3)<<2)|(x&3)] + ((x*7+y*13)&7)) >> 3);
+            if(h<wl+10 && ((x+y)&1)) s-=1;                                         // a dark shoreline
+            if(two && ((hfine[((y+3)&HMASK)*HW+((x+5)&HMASK)]>>4)&1)) s+=2;         // patches of a second shade
+            if(s<0) s=0; if(s>15) s=15; if(hw_ && s>13) s=13; int c=GND_B+s;
+            if(sand && h<wl+8) c=82+((x+y)&1);                                     // a sandy beach
+            if(snow && h>sl){ int q=(h-sl)>>5; if(q>1) q=1; c=84+q*2+((b4[((y&3)<<2)|(x&3)]>(h&15))?0:1); }   // snow caps
+            if(c>=GND_B && c<GND_B+16){
+                if(rst && ((((x+y)*rst)>>16)&1)){ c+=3; if(c>GND_B+15) c=GND_B+15; }           // STRIPES
+                if(rch && ((((x*rch)>>16)^((y*rch)>>16))&1)){ c-=4; if(c<GND_B) c=GND_B; }     // CHECKERS
+                if(hw_) c=hell_paint(c,h,x,y); }
+            cm[x]=(u8)c; } }
+}
+#ifdef TEST_GEN
+static u32 gen_cyc, oct_cyc, col_cyc, city_cyc, nrm_cyc, smo_cyc;
+#endif
 static void gen_terrain(u32 seed){
     wseed=seed;
     EW static s16 acc[TW*TW]; for(int i=0;i<TW*TW;i++) acc[i]=0;
     static const u8 cell[4]={32,16,8,4}; u8 amp[4]={110,70,40,18};
     if(wd.cls==PC_MEADOW){ amp[2]=10; amp[3]=2; } if(wd.cls==PC_MOUNTAIN){ amp[1]=95; amp[2]=60; amp[3]=26; } if(wd.cls==PC_ECUMENOPOLIS){ amp[0]=40; amp[1]=20; amp[2]=4; amp[3]=0; }
     EW static u8 grid[33*33];
+#ifdef TEST_GEN
+    u32 tq=TMR();
+#endif
     for(int o=0;o<4;o++){ int cs=cell[o], n=TW/cs;
         int full = endless && sys[cur_sys].kind==6 && !home_cluster();                 // out in the universe: every word of the address shapes the land
         for(int i=0;i<n*n;i++) grid[i] = full ? (hmix(aword(i+o*11,cur_sys|((cur_pl*8+cur_moon)<<8)) ^ seed ^ ((u32)o<<24) ^ (u32)i*0x9E3779B1u)>>12)&255 : wr(256);
-        for(int y=0;y<TW;y++) for(int x=0;x<TW;x++){
-            int gx=x/cs, gy=y/cs, fx=(x%cs)*256/cs, fy=(y%cs)*256/cs;
-            fx=(fx*fx*(3*256-2*fx))>>16; fy=(fy*fy*(3*256-2*fy))>>16;           // smoothstep
-            int a=grid[gy*n+gx], b=grid[gy*n+((gx+1)%n)], c=grid[((gy+1)%n)*n+gx], d=grid[((gy+1)%n)*n+((gx+1)%n)];
-            int top=a*(256-fx)+b*fx, bot=c*(256-fx)+d*fx; int v=(top*(256-fy)+bot*fy)>>16;
-            acc[y*TW+x]+= (v-128)*amp[o]/128; } }
+        int sh=5-o, nm=n-1, am=amp[o];                                                  // cs is a power of two: shifts, not divisions (the GBA has no divide)
+        EW static u16 sm[TW]; for(int x=0;x<TW;x++){ int f=((x&(cs-1))<<8)>>sh; sm[x]=(u16)((f*f*(3*256-2*f))>>16); }   // smoothstep, once per octave
+        land_octave(acc,grid,sm,sh,n,am); (void)nm; }
+#ifdef TEST_GEN
+    oct_cyc=TMR()-tq; tq=TMR();
+#endif
     int lo=32767, hi=-32768; for(int i=0;i<TW*TW;i++){ if(acc[i]<lo) lo=acc[i]; if(acc[i]>hi) hi=acc[i]; }
-    for(int i=0;i<TW*TW;i++){ int v=(acc[i]-lo)*255/(hi-lo+1);                                      // the shape of the land, from the DNA
+    s32 rk=(255<<16)/(hi-lo+1);
+    for(int i=0;i<TW*TW;i++){ int v=((acc[i]-lo)*rk)>>16;                                         // the shape of the land, from the DNA
         switch(wd.style){
             case 0: v=(v*v)>>8; break;                                                               // rolling hills: wide valleys, round tops
             case 1: { int q=v>>5, f=v&31; v=q*32+(f<10?f*3:30); } break;                             // mesas: flat steps with short ramps
@@ -179,27 +225,25 @@ static void gen_terrain(u32 seed){
     city_flatten();
     // a flat landing field at the start
     for(int y=-5;y<=5;y++) for(int x=-6;x<=6;x++){ int i=((64+y)&TMASK)*TW+((64+x)&TMASK); int d=x*x+y*y; int t = d<12 ? 0 : d<36 ? (d-12)*256/24 : 256; hmap[i]=(hmap[i]*t + 100*(256-t))>>8; }
+#ifdef TEST_GEN
+    nrm_cyc=TMR()-tq; tq=TMR();
+#endif
     // smooth the map up to two texels per cell
-    for(int y=0;y<HW;y++){ int y0=(y>>1)&TMASK, y1=(y0+1)&TMASK, fy=(y&1)?3:1;           // texel centres sit at 1/4 and 3/4 of a cell
-        const u8 *r0=hmap+y0*TW, *r1=hmap+y1*TW; u8 *out=hfine+y*HW;
-        for(int x=0;x<HW;x++){ int x0=(x>>1)&TMASK, x1=(x0+1)&TMASK, fx=(x&1)?3:1;
-            int top=r0[x0]*(4-fx)+r0[x1]*fx, bot=r1[x0]*(4-fx)+r1[x1]*fx; out[x]=(top*(4-fy)+bot*fy)>>4; } }
-    for(int y=0;y<HW;y++) for(int x=0;x<HW;x++){ int i=y*HW+x, h=hfine[i];
-        if(h<water_lv){ int w=(h*6)/(water_lv+1); cmap[i]=WAT_B+1+(w>5?5:w); continue; }
-        int hl=hfine[y*HW+((x-1)&HMASK)], hu=hfine[((y-1)&HMASK)*HW+x];
-        int slope = (h-hl) + (h-hu);                                  // facing the sun (north-west) is brighter
-        int s = 5 + (h-water_lv)*6/(255-water_lv+1) + slope/3 + ((bay4[((y&3)<<2)|(x&3)] + ((x*7+y*13)&7)) >> 3);
-        if(h<water_lv+10 && ((x+y)&1)) s-=1;                            // a dark shoreline
-        if(wd.twotone && ((hfine[((y+3)&HMASK)*HW+((x+5)&HMASK)]>>4)&1)) s+=2;        // patches of a second shade
-        if(s<0) s=0; if(s>15) s=15; if(hellw() && s>13) s=13; cmap[i]=GND_B+s;
-        if(wd.sand && h<water_lv+8) cmap[i]=82+((x+y)&1);               // a sandy beach
-        { int sl = WL(MW_FROST) ? wd.snowl-WL(MW_FROST)*5 : wd.snowl; if(sl<water_lv+4) sl=water_lv+4; if(wd.snow && h>sl){ int q=(h-sl)>>5; if(q>1) q=1; cmap[i]=84+q*2+((bay4[((y&3)<<2)|(x&3)]>(h&15))?0:1); } }   // snow caps (FROST brings them down)
-        if(cmap[i]>=GND_B && cmap[i]<GND_B+16){ int c=cmap[i];
-            if(WL(MW_STRIPES)){ int w=2+WL(MW_STRIPES)/2; if(((x+y)/w)&1){ c+=3; if(c>GND_B+15) c=GND_B+15; } }                          // STRIPES
-            if(WL(MW_CHECKER)){ int w=2+WL(MW_CHECKER)/2; if(((x/w)^(y/w))&1){ c-=4; if(c<GND_B) c=GND_B; } }                             // CHECKERS
-            if(hellw()) c=hell_paint(c,h,x,y);
-            cmap[i]=c; } }
+    land_smooth();
+#ifdef TEST_GEN
+    smo_cyc=TMR()-tq; tq=TMR();
+#endif
+    EW static s8 htab[256];                                                           // per height: the water shade below the sea, the ground shade above it
+    for(int h=0;h<256;h++){ if(h<water_lv){ int w=(h*6)/(water_lv+1); htab[h]=(s8)(WAT_B+1+(w>5?5:w)); } else htab[h]=(s8)(5+(h-water_lv)*6/(255-water_lv+1)); }
+    int rst = WL(MW_STRIPES) ? 65536/(2+WL(MW_STRIPES)/2) : 0, rch = WL(MW_CHECKER) ? 65536/(2+WL(MW_CHECKER)/2) : 0;
+    { int sl = WL(MW_FROST) ? wd.snowl-WL(MW_FROST)*5 : wd.snowl; if(sl<water_lv+4) sl=water_lv+4; land_paint(htab,rst,rch,sl,hellw()); }
+#ifdef TEST_GEN
+    col_cyc=TMR()-tq; tq=TMR();
+#endif
     city_stamp();
+#ifdef TEST_GEN
+    city_cyc=TMR()-tq;
+#endif
     if(WL(MW_GLITCH)){ u32 r=wd.tseed; for(int b=0;b<200+WL(MW_GLITCH)*60;b++){ r=hmix(r+b); int x=r&HMASK, y=(r>>8)&HMASK, w=2+((r>>16)&7), h=1+((r>>20)&3), c=40+((r>>24)%48);   // GLITCH: torn blocks of wrong colour
         for(int j=0;j<h;j++) for(int i=0;i<w;i++) cmap[((y+j)&HMASK)*HW+((x+i)&HMASK)]=c; } }
 }
@@ -216,7 +260,13 @@ static void new_planet(void){
     g_hs = wd.hs ? wd.hs : 3;
     if(WL(MW_FLOOD)){ water_lv += WL(MW_FLOOD)*3; if(water_lv>92) water_lv=92; }                                   // FLOOD (the landing field stays dry)
     if(WL(MW_DROUGHT)) water_lv=0;                                                                                // DROUGHT
+#ifdef TEST_GEN
+    u32 tg0=TMR();
+#endif
     gen_terrain(wd.tseed);                                                              // the land comes from its own seed
+#ifdef TEST_GEN
+    gen_cyc=TMR()-tg0;
+#endif
     for(int i=0;i<NPO;i++) po[i].alive=0;
     int k=0;
     po[k].kind=O_SHIP; po[k].alive=1; po[k].x=(64<<16)-(3<<16); po[k].y=(64<<16)+(1<<16); k++;
@@ -483,6 +533,9 @@ static void planet_frame(void){
       if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } else if(pk==O_DOOR && portal_depth>0){ scpy(cb,"A: PORTAL BACK TO B"); ncat(cb,portal_depth); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
       if(race_on){ char rb[40]; scpy(rb,kart_on?"KART ":"RACE "); ncat(rb,race_t/60); scat(rb,kart_on?"S  GATE ":"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/"); ncat(rb,race_n); if(kart_on){ scat(rb,"  PAR "); ncat(rb,race_par/60); scat(rb,"S"); rect(pg,4,146,50,3,C_DGREY); if(kart_boost>0) rect(pg,4,146,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); } stext(pg,4,151,rb,C_CYAN); }
       else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4 && pq_type!=8){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
+#ifdef TEST_GEN
+      { char gb[48]; scpy(gb,"GEN "); ncat(gb,(int)(gen_cyc/16780)); scat(gb,"MS OCT "); ncat(gb,(int)(oct_cyc/16780)); scat(gb," COL "); ncat(gb,(int)(col_cyc/16780)); scat(gb," CITY "); ncat(gb,(int)(city_cyc/16780)); stext(pg,4,130,"",C_RED); { char g2[40]; scpy(g2,"NRM "); ncat(g2,(int)(nrm_cyc/16780)); scat(g2," SMO "); ncat(g2,(int)(smo_cyc/16780)); stext(pg,4,40,g2,C_RED); } stext(pg,4,140,gb,C_RED); }
+#endif
       weather_draw(pg); if(wd.weird) sky_decor(pg); if(hellw()) hell_sky(pg);
 #ifdef TEST_CITY
       stext(pg,4,140,tdbg,C_RED);
