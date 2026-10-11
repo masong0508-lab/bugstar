@@ -868,6 +868,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_FORM
     form=TEST_FORM; forms_open=7; tools_owned=0xFF; tool_held=1; form_body=TEST_BODY; form_col=rgb15(200,80,200); recalc(); form_palette();
 #endif
+#ifdef TEST_WARP
+    warp_lv=TEST_WARP; fuel_tank=8; fuel=fuel_max();
+#endif
 #ifdef TEST_MAP
     scene=2; page_back=1; space_enter(1); galaxy_map();
 #endif
@@ -966,8 +969,9 @@ static void run_game(void){
             planet_frame();
             vsync(); REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; oam_flush();
             if(launch_flag==2){ launch_flag=0; fade(1); oam_hide_all(); oam_flush();
-                int d=sys_dist(cur_sys,zone+1); fuel = d>fuel ? 0 : fuel-d; cur_sys=zone+1; cur_pl=cur_moon=0; visits++;
-                scene=2; page_back=1; REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BLDY=0; hyperspace();
+                int d=sys_dist(cur_sys,zone+1); char fn[24], tn[24]; sys_name(cur_sys,fn); sys_name(zone+1,tn); u32 t10[6]={(u32)d,0,0,0,0,0};
+                fuel = d>fuel ? 0 : fuel-d; cur_sys=zone+1; cur_pl=cur_moon=0; visits++;
+                scene=2; page_back=1; build_space_palette(); REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BLDY=0; voyage(fn,tn,t10,(u32)d*24/10+1,0);
                 arrive_on_planet(); fade(0); continue; }
             if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }
             if(enter_dungeon_flag){ int fgs=(enter_dungeon_flag==3); if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; save_game(); fade(1); oam_hide_all(); oam_flush();
