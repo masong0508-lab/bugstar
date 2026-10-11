@@ -172,6 +172,7 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 #include "kart.inc"
 #include "kart2.inc"
 #include "kart3.inc"
+#include "sizes.inc"
 
 static void hud_now(void){ if(scene==2) return; if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
@@ -768,37 +769,38 @@ static void twinkle(volatile u16 *pg, int t){        // a few stars blink in the
 // returns 1 to continue or load the game in cur_slot, 0 to start a new one there
 static int title_screen(void){
     volatile u16 *pg=VRAM;
-    enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT, TI_KART };
-    static const char *const tn[6]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS","KART WORLD"};
+    enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT, TI_KART, TI_SIZE };
+    static const char *const tn[7]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS","KART WORLD","HOW BIG IS IT?"};
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
     bug_build();
     hdma_on=0; title_paint(pg);
     REG_BLDCNT = 0x3F | (3<<6); REG_BLDY = 16;
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
     music(2);
-    int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1, kwu=0; int it[6];
+    int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1, kwu=0; int it[7];
     wait_release();
     int fading_in=1;
     while(1){
         if(full){ full=0; title_paint(pg); slots_refresh(); cs=first_good_slot();
-            kwu=kw_unlocked(); n=0; if(cs>=0) it[n++]=TI_CONT; it[n++]=TI_NEW; if(cs>=0) it[n++]=TI_LOAD; it[n++]=TI_KART; it[n++]=TI_HELP; it[n++]=TI_OPT;
+            kwu=kw_unlocked(); n=0; if(cs>=0) it[n++]=TI_CONT; it[n++]=TI_NEW; if(cs>=0) it[n++]=TI_LOAD; it[n++]=TI_KART; it[n++]=TI_SIZE; it[n++]=TI_HELP; it[n++]=TI_OPT;
             if(sel>=n) sel=0; dirty=1; }
         if(dirty){ dirty=0; char b[40];
-            title_restore(pg,56,140);
-            for(int i=0;i<n;i++){ int y=62+i*11; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
+            title_restore(pg,56,146);
+            for(int i=0;i<n;i++){ int y=60+i*10; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
                 if(i==sel){ rect(pg,66,y-2,108,10,6); text(pg,x,y,nm,C_GOLD,1); text(pg,70,y,">",C_GOLD,1); text(pg,166,y,"<",C_GOLD,1); }
                 else stext(pg,x,y,nm,(it[i]==TI_KART && !kwu)?C_DGREY:C_WHITE); }
-            int y=62+n*11+3; b[0]=0;
+            int y=60+n*10+3; b[0]=0;
             if(it[sel]==TI_CONT){ const SlotInfo *o=&sinf[cs]; char w[28]; slot_where(o,w); scpy(b,"SLOT "); ncat(b,cs+1); scat(b,"  LV "); ncat(b,o->level); scat(b,"  "); scat(b,w); }
             else if(it[sel]==TI_NEW) scpy(b,"START A NEW ADVENTURE");
             else if(it[sel]==TI_LOAD) scpy(b,"PICK ONE OF YOUR 3 SAVE SLOTS");
             else if(it[sel]==TI_HELP) scpy(b,"THE BUTTONS, AND TIPS");
             else if(it[sel]==TI_KART) scpy(b, kwu ? "THE KART RACING GAME, ALL ON ITS OWN" : "BEAT THE GAME TO UNLOCK THIS");
+            else if(it[sel]==TI_SIZE) scpy(b,"THE HUGE NUMBERS IN THIS GAME");
             else scpy(b,"SOUND, AUTOSAVE AND MORE");
             b[34]=0; stext(pg,120-textlen(b)*2,y,b,C_CYAN);
         }
         oam_hide_all(); set_affine(31,128,0,0,128);
-        bug_obj(0,120,150-16-((blink>>3)&1),31,128); shadow_oam[0].a2=bug_tile((blink>>4)&1)|BUG_BANK;
+        bug_obj(0,200,150-16-((blink>>3)&1),31,128); shadow_oam[0].a2=bug_tile((blink>>4)&1)|BUG_BANK;
         vsync(); oam_flush(); read_keys(); blink++; rng_s += blink;
         if(fading_in){ fading_in=0; fade(0); }
         twinkle(pg,blink);
@@ -811,6 +813,7 @@ static int title_screen(void){
             if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; return 1; } full=1; }
             if(a==TI_OPT){ oam_hide_all(); oam_flush(); options_screen(pg); full=1; }
             if(a==TI_HELP){ oam_hide_all(); oam_flush(); help_screen(pg); full=1; }
+            if(a==TI_SIZE){ oam_hide_all(); oam_flush(); if(cs>=0) cur_slot=cs; size_screen(pg,1); full=1; }
             if(a==TI_KART){ if(kwu){ oam_hide_all(); oam_flush(); return 2; } const char *ln[3]={"A WHOLE KART RACING GAME IS HIDDEN HERE.","BEAT THE ANT KING TO OPEN IT.","(ONE BEATEN GAME OPENS IT FOR EVERYONE)"}; oam_hide_all(); oam_flush(); card(pg,"KART WORLD",ln,3); full=1; }
             wait_release();
         }

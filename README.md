@@ -125,6 +125,14 @@ Every so often (about one dungeon floor in four, never a boss floor) you land in
 - Options: planet number, world type, size, weird worlds, track number, class, laps, rivals, items, **stunts** (lots of jumps and loops, or none), rival skill, catch-up, mirror, reverse, time of day and weather.
 - 18 drivers to unlock with trophies. Coins buy parts in Kart World's own garage.
 
+## How big is it? (new)
+Pick **HOW BIG IS IT?** on the title screen (or press SELECT on the WORLD page of the pause screen). Each page shows one of the game's huge numbers in full, then says it group by group, like **4 BILLION, 294 MILLION, 967 THOUSAND, 296**:
+- planets and tracks in Kart World, and how many universes there are,
+- star clusters, stars and worlds in one universe, and how many light years wide it is,
+- how many bugs, humanoids and karts you can make,
+- the Technobeast's health, and how far you have flown.
+The numbers are worked out by the game itself, so they are exact (one of them is 95 digits long).
+
 ## Dungeon floor events (new)
 - Most floors roll an event: TREASURE VAULT, MONSTER NEST (bonus gold), ELITE HUNT (slay 2 elites for a reward), DARK FLOOR (double loot), SPEED RUN (reach the stairs in 60 seconds), CURSED FLOOR (tougher monsters, better loot), GOLD RUSH, BLESSED SHRINE (a free good mark), AMBUSH and QUIET FLOOR. The goal shows under your spell name.
 
@@ -204,7 +212,7 @@ Needs an ARM GBA toolchain (`arm-none-eabi-gcc`, e.g. devkitARM), `gbafix`, and 
 ```
 make            # or: make TC=/path/to/arm-none-eabi-
 ```
-Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `planet.inc` (the 3D planet), `town.inc` (cities, creatures, jobs, races, ruins), `ship.inc` + `hangar.inc` (your ship), `space.inc`, `kart.inc` + `kart2.inc` + `kart3.inc` (kart racing, the track maker, Kart World), `logo.c` (the DIPPINN PRODUCTIONS boot logo, shared with BORE), `gen.py` + `texgen.py` + `kartgen.py` (make `assets.h`: palettes, textures, sprites, the 3D-rendered karts, tables), `crt0.s` + `gba.ld`.
+Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `planet.inc` (the 3D planet), `town.inc` (cities, creatures, jobs, races, ruins), `ship.inc` + `hangar.inc` (your ship), `space.inc`, `kart.inc` + `kart2.inc` + `kart3.inc` (kart racing, the track maker, Kart World), `sizes.inc` (HOW BIG IS IT?), `logo.c` (the DIPPINN PRODUCTIONS boot logo, shared with BORE), `gen.py` + `texgen.py` + `kartgen.py` (make `assets.h`: palettes, textures, sprites, the 3D-rendered karts, tables), `crt0.s` + `gba.ld`.
 
 ## Space (new)
 At your ship, pick **LAUNCH INTO SPACE**.

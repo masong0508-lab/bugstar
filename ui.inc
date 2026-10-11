@@ -438,7 +438,7 @@ static void sys_action(volatile u16 *pg, int cur){
     else if(confirm(pg,"QUIT TO THE TITLE?","UNSAVED PROGRESS IS LOST")) sys_req=2;
 }
 
-static void map_page(volatile u16 *pg);
+static void map_page(volatile u16 *pg); static void size_screen(volatile u16 *pg, int from_title);
 // ---------------------------------------------------------------- the pause screen: eight pages with picture tabs, your bug in a frame, where you are, what you have done
 static void world_page(volatile u16 *pg, int y); static void relic_shelf(volatile u16 *pg, int y); static int fav_add_here(void); static int me_oam(int slot, int cx, int feet, int frame);
 static const u8 tab_icon[8][8]={
@@ -548,7 +548,7 @@ static void char_screen(volatile u16 *pg){
                         if(done) text(pg,184,yy,"DONE",C_GREEN,1); else { hbar(pg,184,yy+1,24,hv,ach[i].goal,C_CYAN); scpy(b,""); ncat(b,hv); scat(b,"/"); ncat(b,ach[i].goal); text(pg,211,yy,b,C_DGREY,1); } }
                     text(pg,6,152,"A: SHOW YOUR RELICS",C_CYAN,1); }
             } else if(page==6){ map_page(pg);
-            } else if(page==7){ world_page(pg,y); text(pg,6,152,"A: SAVE THIS PLACE AS A FAVOURITE",C_CYAN,1);
+            } else if(page==7){ world_page(pg,y); text(pg,6,152,"A: FAVOURITE  SEL: HOW BIG IS IT?",C_CYAN,1);
             } else {
                 static const char *const sn[5]={"SAVE GAME","SAVE TO ANOTHER SLOT","LOAD GAME","OPTIONS","QUIT TO TITLE"};
                 scpy(b,"SLOT "); ncat(b,cur_slot+1); text(pg,8,y,b,C_CYAN,1);
@@ -596,6 +596,7 @@ static void char_screen(volatile u16 *pg){
             else drop_at(cur);
             if(cur>=bag_n && cur) cur--; dirty=1; }
         if(HIT(K_SEL) && page==1){ send_pet_to_sell(); dirty=1; }
+        if(HIT(K_SEL) && page==7){ oam_hide_all(); oam_flush(); size_screen(pg,0); hud_now(); dirty=1; }
         if(HIT(K_UP)||HIT(K_DOWN)||HIT(K_L)||HIT(K_R)) menu_msg[0]=0;
     }
     pause_last[scene==1]=page; BG_PAL[HI]=bg_pal[HI];
