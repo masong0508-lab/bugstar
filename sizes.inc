@@ -189,7 +189,7 @@ static void sz_head(volatile u16 *pg, int pi, int view){         // view 3 is th
     char b[16]; scpy(b,""); if(view==3){ ncat(b,NSIZE); scat(b," NUMBERS"); } else { ncat(b,pi+1); scat(b," / "); ncat(b,NSIZE); } text(pg,236-textlen(b)*4,3,b,C_GREY,1);
     const char *t = view==3 ? "ALL THE NUMBERS" : sz_txt[pi][0]; text(pg,120-textlen(t)*4,14,t,C_GOLD,2);
     static const char *const vn[3]={"IN SHORT","EVERY DIGIT","BY NAME"}; static const u8 vx[3]={52,100,160};
-    if(view==3) ctext(pg,120,27,"SMALLEST FIRST. PICK ONE TO SEE IT",C_GREY);
+    if(view==3) ctext(pg,120,27,"YOURS FIRST, THEN SMALLEST TO BIGGEST",C_GREY);
     else for(int k=0;k<3;k++){ if(k==view){ rect(pg,vx[k]-3,26,textlen(vn[k])*4+5,8,6); text(pg,vx[k],27,vn[k],C_WHITE,1); } else text(pg,vx[k],27,vn[k],C_DGREY,1); }
     rect(pg,0,35,240,1,6);
     rect(pg,0,148,240,1,6); rect(pg,0,149,240,11,1);
@@ -234,6 +234,9 @@ static void sz_draw(volatile u16 *pg, int full, int pi, int view, int pos, int r
 
 static void size_screen(volatile u16 *pg, int from_title){       // LEFT/RIGHT: another number. A: another view. UP/DOWN, L/R, SELECT: scroll. B: back
     if(from_title) tv_load();                                    // (in a game the travel log in memory is the newest)
+#ifdef TEST_TRAVELDEMO
+    { u32 a[LYW]={32}, b[LYW]={250}, c[LYW]; uni_ly(c,1,3236620590u); tv_log(a,77); tv_log(b,600); tv_log(c,35520); }   // a short hop, the next cluster, a jump to another universe
+#endif
     volatile u16 *pa=pg, *pb = pg==(volatile u16*)0x06000000 ? (volatile u16*)0x0600A000 : (volatile u16*)0x06000000;
     int bita = pg==(volatile u16*)0x06000000 ? 0 : 0x10, front=0;  // front 1: the other page is the one on screen
     int pi=0, view=0, set=-1, pos=0, ridx=0, gcur=0, hold=0, lrh=0, roll=0, dirty=1, R=0, maxpos=0, lastv=-1, ok[2]={0,0}, vlast=vbl_count; char was[2][40];   // ok[i]: page i has this number's title and help line
