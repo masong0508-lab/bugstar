@@ -10,6 +10,7 @@ enum { BUG_PILL, BUG_LADY, BUG_FIRE, BUG_BEE, BUG_CRICKET, BUG_ANT };
 static const char *const friend_name[6]={"PILL BUG","LADYBUG","FIREFLY","BEE","CRICKET","RUNAWAY ANT"};
 static const char *const bug_power[6]={"+10 GOLD","+5 HEALTH","LIGHTS THE DARK","STINGS ATTACKERS","FASTER LEGS","POINTS TO STAIRS"};
 // ---- endless galaxy (after the Ant King)
+static int kw_mode=0, mw_force=0;                                 // Kart World (kart3.inc), and it asking for weird or hell worlds
 static int endless=0, world_no=0, best_depth=0, w_dlv=6; static int hellw(void), hell_tier(void); static s64 loot=0; static u32 galaxy_seed=1;
 // ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
 static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
@@ -115,7 +116,7 @@ static void name_of(u32 wn, char *b){
 // ---- planet DNA. Every world is grown from its own code: the shape of the land, the sea, the sky, the hour, the weather,
 // what grows there, whether a city stands on it, what it is known for. The parts multiply out to more than an unvigintillion
 // (10 to the 66th) different planets, and the galaxy keeps making new clusters of them for as long as you fly.
-typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u8 weird, ntr; u16 tr[4]; u8 cls, mood, snowl, hs; u32 tseed, cseed; } WorldDNA;
+typedef struct { u8 style, rough, hour, weather, grav, city, csize, snow, sand, tagline, fauna, ruins, fossils, beetles, cliffs, twotone; u16 bld, sky, road, alt; u8 flora[4]; u8 weird, ntr; u16 tr[4]; u8 cls, mood, snowl, hs; u32 tseed, cseed; u8 psz; } WorldDNA;     // psz: how big the planet is, 0 tiny .. 5 giant
 static WorldDNA wd;
 // ---- PLANET CLASS: one choice that ties a whole world together - its land, sea, colours, weather, plants, life, city and temper.
 enum { PC_TEMPERATE, PC_MOUNTAIN, PC_MEADOW, PC_OCEAN, PC_DESERT, PC_ICE, PC_JUNGLE, PC_DEATH, PC_ECUMENOPOLIS, PC_PARADISE, PC_INFERNO, PC_BRIMSTONE, PC_OBSIDIAN, PC_BONE, PC_BLOODSEA, PC_COCYTUS, NPC };
@@ -195,6 +196,7 @@ static void story_dna(int z){                                                   
     static const u16 bl[6]={C15(150,140,120),C15(90,120,160),C15(170,80,80),C15(90,70,140),C15(190,150,70),C15(150,90,60)};
     wd.bld=bl[z]; wd.sky=C15(120,170,230); wd.road=C15(60,56,60); wd.snow=z==3; wd.sand=z==1||z==2; wd.alt=0;
     for(int i=0;i<4;i++) wd.flora[i]=3;
+    wd.psz=2;
 }
 static u32 sys_id(int i); static u32 amix(u32 k, int star);
 static int cur_pl=0, cur_moon=0;                              // which body of this star you are on: planet cur_pl (0 = the first), cur_moon 0 = the planet itself, 1.. = its moons
@@ -208,7 +210,7 @@ static void make_world(void){                                   // three indepen
     int r=40+wr(216), g=40+wr(216), b=40+wr(216); int k=wr(3); if(k==0) r=230; else if(k==1) g=230; else b=230;
     { int c=wr(100); wd.cls = c<20?PC_TEMPERATE : c<32?PC_MOUNTAIN : c<42?PC_MEADOW : c<54?PC_OCEAN : c<64?PC_DESERT : c<72?PC_ICE : c<82?PC_JUNGLE : c<89?PC_DEATH : c<92?PC_ECUMENOPOLIS : PC_PARADISE; if(gal && cur_moon){ static const u8 mc[3]={PC_MOUNTAIN,PC_DESERT,PC_ICE}; wd.cls=mc[c%3]; } }   // a moon is bare rock, dust or ice
 
-    if(gal && !cur_moon && !is_hive(cur_sys)){ u32 hh=amix(galaxy_seed^0xE1F0u^bsalt,cur_sys); int hp=8+(w_dlv>32?32:w_dlv)/2; if((int)(hh%100u)<hp) wd.cls=PC_INFERNO+(int)((hh>>8)%6u); }   // HELL WORLDS: 8% of worlds near home, up to 24% far out
+    if((gal && !cur_moon && !is_hive(cur_sys)) || (mw_force&2)){ u32 hh = gal ? amix(galaxy_seed^0xE1F0u^bsalt,cur_sys) : hmix(base*0x51ED27u+0xE1F0u); int hp=8+(w_dlv>32?32:w_dlv)/2; if((mw_force&2) || (int)(hh%100u)<hp) wd.cls=PC_INFERNO+(int)((hh>>8)%6u); }   // (Kart World can ask for a hell world)   // HELL WORLDS: 8% of worlds near home, up to 24% far out
 #ifdef TEST_CLASS
     wd.cls=TEST_CLASS;
 #endif
@@ -229,6 +231,7 @@ static void make_world(void){                                   // three indepen
     wd.bld=rgb15(60+wr(160),60+wr(160),60+wr(160)); wd.sky=rgb15(40+wr(200),60+wr(180),100+wr(156)); wd.road=rgb15(30+wr(60),30+wr(60),30+wr(60));
     for(int i=0;i<4;i++) wd.flora[i]=wr(8);
     wd.tseed = B; wd.cseed = C;
+    { u32 q=hmix(B^0x5A17E5u)%100u; wd.psz = q<8?0 : q<28?1 : q<66?2 : q<86?3 : q<96?4 : 5; if(gal && cur_moon) wd.psz = q<50?0:1; }   // planet size: moons are small
     // the class bends the rest of the DNA so the world hangs together
     wd.snowl=200; wd.hs=3; { int m=wr(10); wd.mood = m<3 ? MOOD_LOVE : m<8 ? MOOD_MEH : MOOD_HATE; }
     switch(wd.cls){
@@ -252,7 +255,7 @@ static void make_world(void){                                   // three indepen
     if(gal && cur_moon){ wd.city=0; wd.csize=0; wd.weather=0; wd.mood=MOOD_MEH; wd.ruins=0; }      // no cities, no weather: moons are for mining
     // a weird world: one planet in 111, only out in the galaxy. It stacks 1 to 4 of the 1000 traits
     { u32 F = gal ? amix(galaxy_seed^0xF6u^bsalt,cur_sys) : base*0x2545F491u; wd.ntr=0;
-      if((F%111u)==0 && gal){ int n = 1 + ((F>>8)%3u==0) + ((F>>12)%5u==0) + ((F>>20)%9u==0); u32 h=F;
+      if(((F%111u)==0 && gal) || (mw_force&1)){ int n = 1 + ((F>>8)%3u==0) + ((F>>12)%5u==0) + ((F>>20)%9u==0); u32 h=F;
           for(int t=0;t<40 && wd.ntr<n;t++){ h=hmix(h+0x9E3779B9u); int id=(int)(h%NTRAIT), m=id%NMW, ok=1;
               for(int j=0;j<wd.ntr;j++){ int mj=wd.tr[j]%NMW; if(mj==m || (mj==MW_SHY&&m==MW_ANGRY) || (mj==MW_ANGRY&&m==MW_SHY) || (mj==MW_FLOOD&&m==MW_DROUGHT) || (mj==MW_DROUGHT&&m==MW_FLOOD) || (mj==MW_MAGNET&&m==MW_SHYORE) || (mj==MW_SHYORE&&m==MW_MAGNET)) ok=0; }
               if(ok) wd.tr[wd.ntr++]=(u16)id; } }
@@ -524,8 +527,10 @@ static void free_bug(int t){
 }
 
 // ---------------------------------------------------------------- getting hurt, hunger
+static int kr_mode, kart_req;                                     // kart racing (kart.inc)
+static void kw_unlock(void); static int kw_unlocked(void); static void kart_world(void);
 static void hurt(int n){
-    if(invuln) return;
+    if(invuln || (kr_mode && scene==0)) return;                                      // in a kart nothing can bite you
     s64 def = sadd(d_def, shield_t ? sadd(5,sdiv(st_mag,2)) : 0);
     s64 nn = n - sdiv(def,2); if(nn>=1){ if(opt_easy) nn=(nn+1)>>1; else if(opt_diff>=2) nn=(nn*dif_dmg[opt_diff])>>1; } if(nn<1) nn=1; if(opt_baby) nn=1;                                                       // BABY MODE: never more than 1 damage
     if(def>=100 || rndi(100) < (int)def){ say("BLOCKED!"); invuln=15; return; }

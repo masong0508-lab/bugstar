@@ -37,11 +37,16 @@ static const u8 mel_end[64]={72,H,H,H,74,H,76,H, 79,H,H,H,76,H,H,H, 77,H,H,H,76,
                              69,H,H,H,72,H,74,H, 76,H,H,H,79,H,H,H, 77,H,76,H,74,H,71,H, 72,H,H,H,H,H,H,_};
 static const u8 bas_end[64]={48,H,H,H,H,H,H,H, 52,H,H,H,H,H,H,H, 53,H,H,H,H,H,H,H, 48,H,H,H,55,H,H,H,
                              45,H,H,H,H,H,H,H, 52,H,H,H,H,H,H,H, 50,H,H,H,43,H,H,H, 48,H,H,H,H,H,H,H};
+// the races: quick and bouncy
+static const u8 mel_race[64]={72,H,76,H,79,H,76,H, 74,H,77,H,81,H,77,H, 76,H,79,H,84,H,83,81, 79,H,H,H,_,_,79,81,
+                              84,H,83,H,81,H,79,H, 77,H,76,H,74,H,72,H, 74,H,76,H,77,H,79,H, 76,H,74,H,72,H,H,_};
+static const u8 bas_race[64]={48,_,48,_,55,_,48,_, 50,_,50,_,57,_,50,_, 52,_,52,_,59,_,52,_, 55,_,55,_,43,_,55,_,
+                              53,_,53,_,60,_,53,_, 52,_,52,_,59,_,52,_, 50,_,50,_,57,_,50,_, 55,_,55,_,43,_,47,_};
 #undef _
 #undef H
 typedef struct { const u8 *mel, *bas; u8 tempo, vol; } Track;
-// 0 planet, 1 dungeon, 2 title, 3 space, 4 boss, 5 ending
-static const Track tracks[6]={{mel_planet,bas_planet,9,0xA},{mel_dun,bas_dun,12,0x8},{mel_title,bas_title,8,0xB},{mel_space,bas_space,11,0x9},{mel_boss,bas_boss,6,0xA},{mel_end,bas_end,12,0xA}};
+// 0 planet, 1 dungeon, 2 title, 3 space, 4 boss, 5 ending, 6 kart race, 7 the final lap (faster)
+static const Track tracks[8]={{mel_planet,bas_planet,9,0xA},{mel_dun,bas_dun,12,0x8},{mel_title,bas_title,8,0xB},{mel_space,bas_space,11,0x9},{mel_boss,bas_boss,6,0xA},{mel_end,bas_end,12,0xA},{mel_race,bas_race,7,0xA},{mel_race,bas_race,5,0xB}};
 static volatile int mus_track=-1, mus_step=0, mus_t=0;
 static volatile int vbl_count=0;
 

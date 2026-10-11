@@ -8,6 +8,10 @@ static Species spc[2];
 static int pq_type=0, pq_need, pq_have, pq_done, pq_gold;   // the job from the bounty office (0 none, 1 slugs, 2 beetles, 3 fossils, 4 race, 5 census, 6 hunt, 7 ore)
 static int race_on=0, race_t=0, race_next=0, race_par=0, race_best=0; static s32 race_x[8], race_y[8]; static int race_n=5, kart_on=0, kart_won=0, kart_boost=100;   // kart_on: the kart race job (8) is being raced; kart_won: it was beaten under par
 static int weather_t=0;
+static int kr_mode=0, kart_req=0;                         // driving a kart (kart.inc): 1 a race, 2 building a track. kart_req: the ship's menu asked for the kart club
+static void kloop_draw(volatile u16 *pg);
+static void kart_step(void); static void kart_tick(int n); static int kart_draw_me(int slot, int sy); static int kart_draw_obj(int slot, PObj *o, int sx, int sy, int m, s32 f);
+static void kart_hud(volatile u16 *pg); static void kart_menu(int at_post); static int kart_buttons(void); static void kart_reset(void); static int kart_glow(void); static void kart_save(void); static void kart_load(void); static void kart_defaults(void);
 static const char *const adj[16]={"MOSS","ROSY","GLASS","SOOT","HONEY","STRIPED","GRUMPY","SLEEPY","POLKA","AZURE","RUST","PEARL","GIANT","PYGMY","VELVET","SPARK"};
 static const char *const noun[3][4]={{"HOPPER","SKIPPER","FLEA","BOUNCER"},{"GRAZER","SNUFFLER","LUMP","MOOCOW"},{"FLITTER","MOTH","WINGLET","BUZZER"}};
 static void make_species(void){

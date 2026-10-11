@@ -100,10 +100,25 @@ Dungeons are now carved-stone ruins rather than red brick: **fewer, much bigger 
 ## Labyrinths (new)
 Every so often (about one dungeon floor in four, never a boss floor) you land in a **labyrinth**: a real maze of one-wide, torch-lit passages with dead ends, a few loops, five open chambers (one in each corner and a monument in the middle) and chests and wanderers hiding in the corridors. The stairs are in opposite corners. The message says "A LABYRINTH!" when you arrive, and the map (START) shows where you have been.
 
-## Kart racing (new)
-- At **THE BOUNTY OFFICE** on a planet with a race post, the clerk may hand you the **KART GRAND PRIX** job. The kart race only exists once you have taken that job.
-- Then press A at **THE RACE POST**: you are in a kart. A big loop of **8 gates** appears, and the kart is more than twice as fast as walking. Hold **B to boost** (the bar by the timer drains and refills). Water and steep hills still slow you down.
-- Hit the gates in order (the yellow arrow points at the next one) and finish **under par** to win: gold, fame, and the job pays out. Without the job the post gives the normal 5-flag race.
+## Kart racing (big update)
+- Press A at a **RACE POST** in a town, or pick **KART CLUB** on your ship.
+- Every planet has its own **4 to 9 tracks**, sized to the planet. Tiny worlds get little tracks. Giant worlds get huge ones.
+- You race **7 rivals** of every kind: beetles, slugs, locals, the planet's own creatures, fossils, trees, rocks, flowers, droids, market stalls... even your evil twin.
+- **Controls:** UP go, B boost, R drift (hold it through a turn for a mini-turbo), A use an item, L horn, SELECT look behind, START pause.
+- **Stunts:** ramps, **jumps over lakes and the open sea**, boost pads and **loop-de-loops**. Hit a loop fast and the camera cuts to the side, so you watch your kart go all the way round. Too slow and the loop spits you back out.
+- **Items** from the ? boxes: pepper, beetle shell, slime, bubble, magnet, sneeze, 3 peppers and the grumpy cloud.
+- **Grand Prix:** 4 races with points for every place. Win cups to open faster classes.
+- **Time trial:** beat the gold, silver and bronze times on every track.
+- **Build your own tracks** on any planet: drive round and press A to drop gates. The road joins them up. Turn ramps, boost pads and loops on or off, name it, test it and save up to **50 tracks**.
+- **Kart garage:** 16 bodies (bathtub, teacup, sneaker, rubber duck, sofa, piano, bed, shopping cart...), colours, wheels, spoilers, exhausts, stickers, toppers, trails, underglow, horns and more.
+- **Kart camera:** distance, height, field of view, swing, look into turns, speed zoom, bump shake, or a cockpit view. Pause a race and pick CAMERA to change it live.
+
+## Kart World (opens after the ending)
+- Beat the game and **KART WORLD** opens on the title screen. It is a whole racing game of its own.
+- Every planet number (over 4 billion of them) has **1,000,000 tracks**. That is about **4.3 quadrillion tracks**.
+- Grand Tour (10 tours), quick race, random race, time attack, elimination, endless run, track maker and your tracks.
+- Options: planet number, world type, size, weird worlds, track number, class, laps, rivals, items, **stunts** (lots of jumps and loops, or none), rival skill, catch-up, mirror, reverse, time of day and weather.
+- 18 drivers to unlock with trophies. Coins buy parts in Kart World's own garage.
 
 ## Dungeon floor events (new)
 - Most floors roll an event: TREASURE VAULT, MONSTER NEST (bonus gold), ELITE HUNT (slay 2 elites for a reward), DARK FLOOR (double loot), SPEED RUN (reach the stairs in 60 seconds), CURSED FLOOR (tougher monsters, better loot), GOLD RUSH, BLESSED SHRINE (a free good mark), AMBUSH and QUIET FLOOR. The goal shows under your spell name.
@@ -163,6 +178,7 @@ The 3D view is heavy to draw, so it shows about 15 pictures a second. Your own m
 - **SYSTEM tab** (START, then L/R): SAVE GAME to your slot, SAVE TO ANOTHER SLOT, LOAD GAME, OPTIONS, QUIT TO TITLE. You can only save on the surface (not inside a dungeon). Loading and quitting work anywhere.
 - **Autosave** still happens at your ship, after dungeons and at stations. Turn it off in OPTIONS if you want to save by hand.
 - **Options:** music (off/low/full), sound effects, autosave, screen shake. They are remembered on the cartridge.
+- **Fixed:** saved games load again. An old bug made the game think every save was broken.
 
 ## What is in it
 - **Six zones**, each dungeon deeper than the last (3 to 8 floors), a boss at the bottom. Then the **endless galaxy**: new worlds forever, bottomless dungeons, loot you only keep if you get out.
@@ -183,7 +199,7 @@ Needs an ARM GBA toolchain (`arm-none-eabi-gcc`, e.g. devkitARM), `gbafix`, and 
 ```
 make            # or: make TC=/path/to/arm-none-eabi-
 ```
-Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `planet.inc` (the 3D planet), `town.inc` (cities, creatures, jobs, races, ruins), `ship.inc` + `hangar.inc` (your ship), `space.inc`, `logo.c` (the DIPPINN PRODUCTIONS boot logo, shared with BORE), `gen.py` + `texgen.py` (make `assets.h`: palettes, textures, sprites, tables), `crt0.s` + `gba.ld`.
+Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `planet.inc` (the 3D planet), `town.inc` (cities, creatures, jobs, races, ruins), `ship.inc` + `hangar.inc` (your ship), `space.inc`, `kart.inc` + `kart2.inc` + `kart3.inc` (kart racing, the track maker, Kart World), `logo.c` (the DIPPINN PRODUCTIONS boot logo, shared with BORE), `gen.py` + `texgen.py` + `kartgen.py` (make `assets.h`: palettes, textures, sprites, the 3D-rendered karts, tables), `crt0.s` + `gba.ld`.
 
 ## Space (new)
 At your ship, pick **LAUNCH INTO SPACE**.

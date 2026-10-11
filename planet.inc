@@ -15,7 +15,7 @@
 #define GND_B 40
 #define WAT_B 56
 #define BLD_B 64                  // 64..87: city walls, windows, roads, roofs, sand, snow (set up by planet_palette)
-enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_TREE, O_ROCK, O_WEB, O_FLOWER, O_BASE, O_MARKET, O_CANTINA, O_OFFICE, O_RACE, O_HOME, O_LOCAL, O_FOSSIL, O_RUIN, O_BEETLE, O_CRIT, O_SHRINE, O_BEACON, O_STALL, O_PEBBLE, O_TUFT };
+enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_TREE, O_ROCK, O_WEB, O_FLOWER, O_BASE, O_MARKET, O_CANTINA, O_OFFICE, O_RACE, O_HOME, O_LOCAL, O_FOSSIL, O_RUIN, O_BEETLE, O_CRIT, O_SHRINE, O_BEACON, O_STALL, O_PEBBLE, O_TUFT, O_KART, O_IBOX, O_KSHELL, O_KSLIME };   // the last four: kart racing
 #define O_LAST_USE O_SHRINE
 static void city_flatten(void); static void city_stamp(void); static int good_price(int g); static void species_palette(void);
 static int has_base(int i){ return i>=0 && i<NSYS && !((base_mask>>(i&31))&1) && ((sys[i].kind>=1 && sys[i].kind<=5) || (sys[i].kind==6 && !is_hive(i) && (sys_id(i)%3)==0)); }                                // kinds up to this one react to A
@@ -29,7 +29,8 @@ EW static u8 hfine[HW*HW];                                 // the same, smoothed
 EW static u8 cmap[HW*HW];                                  // the colour of each texel, lit by a sun from the north-west
 static s32 ppx, ppy;                                       // where the bug stands, 16.16 cells
 static s32 cam_h;                                          // height of the camera above sea level, 8.8 cells
-#define PHZ 66                                              // the eye line (horizon) row
+static int g_phz=66;                                        // the eye line (horizon) row: a high kart camera lifts it, which tips the view down
+#define PHZ g_phz
 static int water_lv=70;
 static int facing=1, msg_timer=0, prompt_k=-2;
 #define cur_tint zone
@@ -37,8 +38,13 @@ static char msg[40];
 static int enter_dungeon_flag=0;
 IWRAM_DATA static s16 raydx[120];                          // per column: sideways cells per cell of depth, 8.8 (before turning)
 static int cam_fp=0, heading=0;                            // first person? and which way you face (0..1023, 0 = north = up the map)
-static s32 cam_back(void){ return cam_fp ? (1<<16)/2 : CAM_BACK; }
-static s32 cam_up(void){ return cam_fp ? (5<<8)/4 : CAM_UP; }
+static u8 kcam[8]={0,1,1,1,1,0,1,1};                       // the kart camera (kart.inc): view, distance, height, field of view, swing, look into turns, speed zoom, bump shake
+static int kfovk=180;                                      // the kart camera's field of view: sideways cells per cell of depth at the screen's edge (8.8)
+static s32 kcam_back(void); static s32 kcam_up(void); static s32 kcam_base(void);
+static int kloop_on=0; static s32 kloop_cb=0;                      // riding a loop-de-loop (kart.inc): the camera swings out to watch from the side
+static s32 cam_back(void){ if(kloop_on) return kloop_cb; if(kr_mode && !cam_fp) return kcam_back(); return cam_fp ? (1<<16)/2 : CAM_BACK; }
+static s32 cam_up(void){ if(kr_mode && !cam_fp) return kcam_up(); return cam_fp ? (5<<8)/4 : CAM_UP; }
+static int fov_k(void){ return kr_mode ? kfovk : 180; }
 IWRAM_DATA static s16 rayvx[120], rayvy[120];              // per column: the ray direction on the map, 8.8 per cell of depth
 static int hcs=256, hsn=0;                                 // cos and sin of the heading, 8.8
 static void heading_rays(void){
@@ -49,8 +55,9 @@ static int pw_h=0, pw_v=0, pw_step=0, mine_t=0;
 IWRAM_DATA static s8 wob64[64];                            // WOBBLE: how far each spot of the hills is breathing this frame
 static int g_nst=NSTEP, g_wob=0, g_fog=0;                  // FOG: how far the view reaches; WOBBLE on or off
 static u16 gbase[16], skybase[8];                          // the ground and sky colours before the animated traits touch them
-static int tiny_sh(void){ return WL(MW_TINY) ? 14 - WL(MW_TINY)/7 : 15; }            // TINY PLANET: the horizon falls away faster
-static s32 tiny_sub(void){ return WL(MW_TINY) ? ((cam_back()>>8)*(cam_back()>>8))>>tiny_sh() : 0; }
+static int curv_k(void){ static const u8 ks[6]={12,7,4,3,2,1}; int k=ks[wd.psz%6]; if(WL(MW_TINY)){ int t=8<<(WL(MW_TINY)/7); if(t>k) k=t; } return k; }   // how fast the horizon falls away: the planet's size, and TINY PLANET
+static s32 curv(s32 z){ return (((z*z)>>14)*curv_k())>>3; }                          // how far the ground has dropped out of sight at distance z (8.8 cells); 4 is the old z*z/32768
+static s32 tiny_sub(void){ return curv_k()>4 ? curv(cam_back()>>8) : 0; }
 static void pknock(s32 dx, s32 dy, int k){                    // push the bug away along (dx,dy) (map direction, bug minus enemy), in walk-input terms
     s32 side=((dx>>8)*hcs - (dy>>8)*hsn), fwd=((dx>>8)*hsn + (dy>>8)*hcs);
     pw_h = side>0 ? k : side<0 ? -k : 0; pw_v = fwd>0 ? -k*3/5 : fwd<0 ? k*3/5 : 0; }
@@ -182,6 +189,15 @@ IWRAM static void land_paint(const s8 *htab, int rst, int rch, int sl, int hw_){
 #ifdef TEST_GEN
 static u32 gen_cyc, oct_cyc, col_cyc, city_cyc, nrm_cyc, smo_cyc;
 #endif
+static void land_colour(void){                                    // the colours of the land, the town on top, the glitches: after smoothing, and again when a race track is taken away
+    EW static s8 htab[256];                                                           // per height: the water shade below the sea, the ground shade above it
+    for(int h=0;h<256;h++){ if(h<water_lv){ int w=(h*6)/(water_lv+1); htab[h]=(s8)(WAT_B+1+(w>5?5:w)); } else htab[h]=(s8)(5+(h-water_lv)*6/(255-water_lv+1)); }
+    int rst = WL(MW_STRIPES) ? 65536/(2+WL(MW_STRIPES)/2) : 0, rch = WL(MW_CHECKER) ? 65536/(2+WL(MW_CHECKER)/2) : 0;
+    { int sl = WL(MW_FROST) ? wd.snowl-WL(MW_FROST)*5 : wd.snowl; if(sl<water_lv+4) sl=water_lv+4; land_paint(htab,rst,rch,sl,hellw()); }
+    city_stamp();
+    if(WL(MW_GLITCH)){ u32 r=wd.tseed; for(int b=0;b<200+WL(MW_GLITCH)*60;b++){ r=hmix(r+b); int x=r&HMASK, y=(r>>8)&HMASK, w=2+((r>>16)&7), h=1+((r>>20)&3), c=40+((r>>24)%48);   // GLITCH: torn blocks of wrong colour
+        for(int j=0;j<h;j++) for(int i=0;i<w;i++) cmap[((y+j)&HMASK)*HW+((x+i)&HMASK)]=c; } }
+}
 static void gen_terrain(u32 seed){
     wseed=seed;
     EW static s16 acc[TW*TW]; for(int i=0;i<TW*TW;i++) acc[i]=0;
@@ -233,19 +249,10 @@ static void gen_terrain(u32 seed){
 #ifdef TEST_GEN
     smo_cyc=TMR()-tq; tq=TMR();
 #endif
-    EW static s8 htab[256];                                                           // per height: the water shade below the sea, the ground shade above it
-    for(int h=0;h<256;h++){ if(h<water_lv){ int w=(h*6)/(water_lv+1); htab[h]=(s8)(WAT_B+1+(w>5?5:w)); } else htab[h]=(s8)(5+(h-water_lv)*6/(255-water_lv+1)); }
-    int rst = WL(MW_STRIPES) ? 65536/(2+WL(MW_STRIPES)/2) : 0, rch = WL(MW_CHECKER) ? 65536/(2+WL(MW_CHECKER)/2) : 0;
-    { int sl = WL(MW_FROST) ? wd.snowl-WL(MW_FROST)*5 : wd.snowl; if(sl<water_lv+4) sl=water_lv+4; land_paint(htab,rst,rch,sl,hellw()); }
+    land_colour();
 #ifdef TEST_GEN
-    col_cyc=TMR()-tq; tq=TMR();
+    col_cyc=TMR()-tq;
 #endif
-    city_stamp();
-#ifdef TEST_GEN
-    city_cyc=TMR()-tq;
-#endif
-    if(WL(MW_GLITCH)){ u32 r=wd.tseed; for(int b=0;b<200+WL(MW_GLITCH)*60;b++){ r=hmix(r+b); int x=r&HMASK, y=(r>>8)&HMASK, w=2+((r>>16)&7), h=1+((r>>20)&3), c=40+((r>>24)%48);   // GLITCH: torn blocks of wrong colour
-        for(int j=0;j<h;j++) for(int i=0;i<w;i++) cmap[((y+j)&HMASK)*HW+((x+i)&HMASK)]=c; } }
 }
 static void place(PObj *o, int kind, int minr, int maxr){ o->kind=kind; o->alive=1; o->hp=3; int a=wr(256), r=minr+wr(maxr-minr+1); o->x=(64<<16)+cosx(a)*r*4; o->y=(64<<16)+sinx(a)*r*4; }
 static s32 wrapd(s32 d){ return ((d + (64<<16)) & ((TW<<16)-1)) - (64<<16); }        // shortest way round the world, 16.16
@@ -283,7 +290,7 @@ static void new_planet(void){
       static const u8 mix[4][4]={{5,2,2,5},{2,7,2,3},{3,4,5,2},{2,3,6,3}};            // farming, mining, tech, hive
       static const u8 moonmix[4]={2,10,1,3};                                              // a moon is a mining rock: crystal and amber everywhere
       for(int t=0;t<4;t++){ int n=(cur_moon ? moonmix[t] : mix[eco][t])+wd.flora[t]-3; if(n<1) n=1; for(int i=0;i<n && k<NPO-50;i++) place(&po[k++],O_TREE+t,6,64); } }
-    city_people(&k); planet_life(&k); pq_type=0; pq_done=0; race_on=0; kart_on=0; kart_won=0; race_best=0;
+    city_people(&k); planet_life(&k); pq_type=0; pq_done=0; race_on=0; kart_on=0; kart_won=0; race_best=0; kart_reset();
     while(k<NPO){ place(&po[k],(k&1)?O_PEBBLE:O_TUFT,3,64); k++; }
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind!=O_SHIP && (po[i].kind<O_MARKET || (po[i].kind>=O_FOSSIL && po[i].kind<=O_CRIT)) && hm_at(po[i].x,po[i].y)<water_lv){ po[i].x+=1<<16; if(hm_at(po[i].x,po[i].y)<water_lv) po[i].alive = po[i].kind<=O_CAGE ? 1 : 0; }
     ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;
@@ -298,22 +305,23 @@ static void new_planet(void){
     po[3].kind=O_TREE; po[3].alive=1; po[3].hp=3; po[3].x=(64<<16)+(1<<16); po[3].y=(64<<16)-(1<<16); po[4].kind=O_ROCK; po[4].alive=1; po[4].hp=3; po[4].x=(64<<16)+(2<<16); po[4].y=(64<<16)+(1<<16);
 #endif
 }
-static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_TREE,T_ROCK,T_WEB,T_FLOWER,T_HATCH, T_STALL,T_DOORWAY,T_DOORWAY,T_BEACON,T_DOORWAY,T_LOCAL1,T_FOSSIL,T_RUIN,T_SBEETLE,T_HOPPER,T_RUIN,T_BEACON,T_STALL, T_PEBBLE,T_TUFT};
-static const u8 shape_of[]={0,0,1,1,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0}, size_of[]={1,1,0,0,0,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1, 0,0}, w_of[]={16,16,16,16,8,16,16,16,16,16, 16,16,16,16,16,16,16,16,16,16,16,16,16, 8,8}, h_of[]={16,16,8,8,8,16,16,16,16,16, 16,16,16,16,16,16,16,16,16,16,16,16,16, 8,8};
+static const u16 tile_of[]={T_DOOR,T_SHIP,T_CAGE,T_SLUG,T_PLANT,T_TREE,T_ROCK,T_WEB,T_FLOWER,T_HATCH, T_STALL,T_DOORWAY,T_DOORWAY,T_BEACON,T_DOORWAY,T_LOCAL1,T_FOSSIL,T_RUIN,T_SBEETLE,T_HOPPER,T_RUIN,T_BEACON,T_STALL, T_PEBBLE,T_TUFT, T_KDYN,T_IBOX,T_KSHELL,T_KSLIME};
+static const u8 shape_of[]={0,0,1,1,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0, 1,0,0,1}, size_of[]={1,1,0,0,0,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1, 0,0, 2,1,1,0}, w_of[]={16,16,16,16,8,16,16,16,16,16, 16,16,16,16,16,16,16,16,16,16,16,16,16, 8,8, 32,16,16,16}, h_of[]={16,16,8,8,8,16,16,16,16,16, 16,16,16,16,16,16,16,16,16,16,16,16,16, 8,8, 16,16,16,8};
 
 // ---------------------------------------------------------------- the renderer
 static void planet_tables(void){
     s32 z = cam_fp ? (3<<8)/4 : (9<<8)/2;                   // start 0.75 cells out in first person, 4.5 behind the bug otherwise
+    if(kr_mode && !cam_fp){ s32 m=(kcam_base()>>8)-(3<<7); if(m<(1<<8)) m=1<<8; if(m<z) z=m; }   // a close kart camera starts the march nearer
     for(int i=0;i<NSTEP;i++){ stp_z[i]=z; stp_f[i]=(FOCP<<16)/z; stp_base[i]=0; z += (cam_fp?24:40) + (i*i>>2); }   // steps grow with distance (8.8)
-    for(int c=0;c<120;c++) raydx[c]=(s16)(((2*c-119)*180)/120);    // field of view: about 70 degrees, 8.8 cells sideways per cell of depth
+    { int fk=fov_k(); for(int c=0;c<120;c++) raydx[c]=(s16)(((2*c-119)*fk)/120); }    // field of view: about 70 degrees (the kart camera can change it), 8.8 cells sideways per cell of depth
     for(int y=0;y<160;y++){ int t = y<18 ? 0 : (y-18)*8/(PHZ+30-18); if(t>7) t=7; skyrow[y]=SKY_B+t; }
     { u32 r=0x2545F491; for(int i=0;i<256;i++){ r^=r<<13; r^=r>>17; r^=r<<5; int v=(r>>4)&7; gtex[i] = v==0?-1 : v==7?1 : 0; } }
     heading_rays();
 }
 IWRAM static void render_planet(volatile u16 *pg){
     s32 cb=cam_back(); s32 cam_x = ppx - ((hsn*cb)>>8), cam_y = ppy - ((hcs*cb)>>8);
-    int csh = tiny_sh(); s32 csub = tiny_sub();                                     // TINY PLANET: the horizon falls away faster (measured from the bug)
-    for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((z*z)>>(csh)) - csub;             // the world drops away: z*z/128 cells
+    int ck = curv_k(); s32 csub = tiny_sub();                                       // small planets: the horizon falls away faster (measured from the bug)
+    for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((((z*z)>>14)*ck)>>3) - csub;     // the world drops away
         stp_base[i] = ((cam_h + curve) * stp_f[i])>>8; }                             // (8.8 cells) * (8.8 px/cell) >> 8 = 8.8 px
     u32 sparkle=frames;
     for(int c=0;c<120;c++){
@@ -351,7 +359,9 @@ IWRAM static void render_planet(volatile u16 *pg){
 
 // ---------------------------------------------------------------- the status bar, messages
 static u32 phud_sig=0;
+static void kw_topbar(void);
 static void planet_hud(void){
+    if(kw_mode){ kw_topbar(); return; }
     phud_sig=hud_sig(); char b[28]; scpy(b,world_name()); if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[TZ]+1); } else if(hellw()){ scat(b," H"); ncat(b,hell_tier()); }
     for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b);
 }
@@ -392,7 +402,7 @@ static void weird_frame(int n){
     if(WL(MW_BADAIR)){ int every=260-WL(MW_BADAIR)*8; if(frames%every==0 && hearts>1){ hearts--; if(rndi(4)==0) show_msg("COUGH. THE AIR HERE IS BAD"); hud_now(); } }   // BAD AIR
     if(WL(MW_HEAT)){ int every=240-WL(MW_HEAT)*7; if(frames%every==0 && food>0){ food--; } }                              // HEAT: you get hungry
     if(WL(MW_METEOR)){ int every=720-WL(MW_METEOR)*25; if(frames%every==every-1){                                        // METEORS: one lands near you
-        int j=-1; for(int i=0;i<NPO;i++) if(!po[i].alive || po[i].kind>=O_PEBBLE){ j=i; break; }
+        int j=-1; for(int i=0;i<NPO;i++) if((!po[i].alive && po[i].kind<O_KART) || po[i].kind==O_PEBBLE || po[i].kind==O_TUFT){ j=i; break; }
         if(j>=0){ int a=rndi(256), d=3+rndi(4); po[j].kind=O_ROCK; po[j].alive=1; po[j].hp=3; po[j].x=(ppx+cosx(a)*d*4)&((TW<<16)-1); po[j].y=(ppy+sinx(a)*d*4)&((TW<<16)-1);
             sfx(12); show_msg("A METEOR LANDED! A CRYSTAL ROCK NEARBY"); } } }
     (void)n;
@@ -422,16 +432,19 @@ static void planet_frame(void){
     int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>4) n=4;           // the view takes a few 60ths to draw: move by that much
     int moved=0;
     int th = HELD(K_LEFT) ? -16 : HELD(K_RIGHT) ? 16 : 0, tv = HELD(K_UP) ? -16 : HELD(K_DOWN) ? 16 : 0;
-    if(HELD(K_SEL) && form==FORM_HUMAN && (HIT(K_UP)||HIT(K_DOWN))){ sel_used=1;                       // a humanoid: SELECT + UP/DOWN picks the tool in your hand
+    if(kr_mode){ th=tv=0; }
+    else if(HELD(K_SEL) && form==FORM_HUMAN && (HIT(K_UP)||HIT(K_DOWN))){ sel_used=1;                       // a humanoid: SELECT + UP/DOWN picks the tool in your hand
         if(!tools_owned) show_msg("NO TOOLS YET. BUY THEM AT A CITY MARKET");
         else { int d=HIT(K_UP)?NTOOL-1:1; do tool_held=(tool_held+d)%NTOOL; while(!((tools_owned>>tool_held)&1)); recalc(); char b[48]; scpy(b,"HOLDING: "); scat(b,tool_name[tool_held]); scat(b," ("); scat(b,tool_what[tool_held]); scat(b,")"); show_msg(b); sfx(2); } }
-    if(HELD(K_SEL)){ if(!cam_fp){ int tr = HELD(K_LEFT) ? -16 : HELD(K_RIGHT) ? 16 : 0; if(tr){ sel_used=1; heading=(heading+tr*n*5/8)&1023; heading_rays(); } }    // third person: hold SELECT + LEFT/RIGHT to turn the camera
+    if(HELD(K_SEL) && !kr_mode){ if(!cam_fp){ int tr = HELD(K_LEFT) ? -16 : HELD(K_RIGHT) ? 16 : 0; if(tr){ sel_used=1; heading=(heading+tr*n*5/8)&1023; heading_rays(); } }    // third person: hold SELECT + LEFT/RIGHT to turn the camera
         th=tv=0; if(HIT(K_L)||HIT(K_R)){ sel_used=1; arrow_ship=(arrow_ship+1)%3; show_msg(arrow_ship==1?"ARROW: TO YOUR SHIP":arrow_ship==2?"ARROW: TO THE NEAREST RESOURCE":"ARROW: TO THE DOOR"); sfx(7); } }
-    if(cam_fp){                                                                         // first person: left/right turn, L/R step sideways
+    if(kr_mode){}
+    else if(cam_fp){                                                                    // first person: left/right turn, L/R step sideways
         int turn = th; th = HELD(K_SEL) ? 0 : HELD(K_R) ? 16 : HELD(K_L) ? -16 : 0;
         if(turn){ heading=(heading+turn*n*5/8)&1023; heading_rays(); }
     } else { if(HELD(K_LEFT)) facing=0; if(HELD(K_RIGHT)) facing=1; }
     for(int k=0;k<n;k++){
+        if(kr_mode){ kart_step(); continue; }                                           // in a kart (kart.inc)
         { int ph0=pw_h, pv0=pw_v, ik = WL(MW_ICE) ? 2+WL(MW_ICE)/3 : 0;                 // ICE: you keep sliding
           pw_h += th ? (th-pw_h)/4 + (th>pw_h?1:th<pw_h?-1:0) : -pw_h/3; pw_v += tv ? (tv-pw_v)/4 + (tv>pw_v?1:tv<pw_v?-1:0) : -pw_v/3;
           if(ik && (frames+k)%ik){ if(!th) pw_h=ph0; else pw_h=ph0+(pw_h-ph0)/2; if(!tv) pw_v=pv0; else pw_v=pv0+(pw_v-pv0)/2; } }
@@ -451,8 +464,9 @@ static void planet_frame(void){
         s32 want = ground_h(ppx,ppy)+cam_up(); if(!cam_fp){ s32 cg=ground_h(ppx-((hsn*CAM_BACK)>>8), ppy-((hcs*CAM_BACK)>>8)); if(cg+(1<<8)>want) want=cg+(1<<8); }   // ...and climbs over buildings behind you
         cam_h += (want-cam_h)>>3;                                                       // the camera eases up and down the hills
     }
+    if(kr_mode) moved=0;
     if(moved && (pw_step+=n)>=14){ pw_step=0; sfx(hm_at(ppx,ppy)<water_lv?8:11); }
-    life_tick(n); race_tick(n);
+    life_tick(n); race_tick(n); kart_tick(n);
     // slugs crawl toward you
     for(int i=0;i<NPO;i++) if(po[i].kind==O_SLUG && po[i].alive){ PObj *o=&po[i]; s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y);
         s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
@@ -462,14 +476,15 @@ static void planet_frame(void){
     // what is next to you
     int best=-1; s32 bd=0x1A000;
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_LAST_USE){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); s32 d=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(d<bd){ bd=d; best=i; } }
-    if(HIT(K_A)){
+    if(kr_mode){ if(kart_buttons()) return; }
+    else if(HIT(K_A)){
         if(best<0) show_msg("NOTHING HERE");
         else switch(po[best].kind){
             case O_DOOR: enter_dungeon_flag=1; sfx(5); break;
             case O_BASE: enter_dungeon_flag=2; sfx(5); show_msg("A DRONE OUTPOST. BOLT: FIND THE KEYCARD"); break;
             case O_SHIP:
                 { hdma_on=0; int r=shop_menu();
-                  planet_hud(); if(!r){ save_game(); show_msg(opt_autosave?"GAME SAVED":""); p_last=vbl_count; return; }
+                  planet_hud(); if(!r){ save_game(); show_msg(opt_autosave?"GAME SAVED":""); p_last=vbl_count; if(kart_req){ kart_req=0; kart_menu(0); } return; }
                   save_game(); launch_flag=r; return; }
             case O_CAGE: po[best].alive=0; free_bug(rndi(8)<2?BUG_PILL:rndi(6)); break;
             case O_SLUG: po[best].alive=0; gold+=5; show_msg("SQUASH! +5 GOLD"); gain_xp(3+dlv()); sfx(9); if(pq_type==1){ pq_have++; job_tick(); } break;
@@ -481,7 +496,7 @@ static void planet_frame(void){
                 card(VISPG,"A HOUSE",ln,2); planet_hud(); p_last=vbl_count; return; }
             case O_LOCAL: { oam_hide_all(); oam_flush(); local_talk(&po[best]); job_tick(); planet_hud(); p_last=vbl_count; return; }
             case O_SHRINE: { oam_hide_all(); oam_flush(); po[best].alive=0; relic_found(); planet_hud(); p_last=vbl_count; return; }
-            case O_RACE: if(race_on){ race_on=0; kart_on=0; for(int i=0;i<NPO;i++) if(po[i].kind==O_BEACON) po[i].alive=0; show_msg("RACE CALLED OFF"); } else if(pq_type==8 && !pq_done) race_start(1); else race_start(0); break;   // the kart race only runs once you took the KART GRAND PRIX job at the bounty office
+            case O_RACE: if(race_on){ race_on=0; kart_on=0; for(int i=0;i<NPO;i++) if(po[i].kind==O_BEACON) po[i].alive=0; show_msg("RACE CALLED OFF"); } else { kart_menu(1); return; } break;   // the race post: the kart club (kart2.inc)
             case O_RUIN: if(!po[best].hp){ show_msg("THE STONES ARE QUIET NOW"); break; } { oam_hide_all(); oam_flush(); ruin_visit(VISPG,&po[best]); planet_hud(); p_last=vbl_count; return; }
             case O_FOSSIL: { PObj *o=&po[best]; sfx(12); mine_t=8; if(--o->hp>0){ char b[40]; scpy(b,"DIG... "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                 o->alive=0; st_mined++; gain_xp(4+dlv()); if(cargo_n()<cargo_cap+ship_hold_bonus()){ cargo[7]++; show_msg("A FOSSIL! +1 RELIC IN THE HOLD"); } else { gold+=20; show_msg("A FOSSIL! HOLD FULL, SO: +20G"); }
@@ -513,7 +528,7 @@ static void planet_frame(void){
     }
     if(frames%600==0){ for(int i=0;i<NPO;i++) if(po[i].kind==O_PLANT && !po[i].alive){ place(&po[i],O_PLANT,4,64); break; } }
     if(!kart_on) bag_input(); tick_timers(); hunger_tick(240); regen_tick(120);
-    if(HIT(K_START)){ oam_hide_all(); oam_flush(); char_screen(VISPG); planet_hud(); msg_timer=0; p_last=vbl_count; return; }
+    if(HIT(K_START) && !kr_mode){ oam_hide_all(); oam_flush(); char_screen(VISPG); planet_hud(); msg_timer=0; p_last=vbl_count; return; }
     if(cast_flag>=0){ cam_fp^=1; planet_tables(); show_msg(cam_fp?"FIRST PERSON. SELECT: SWITCH VIEW":"THIRD PERSON. HOLD SELECT + LEFT/RIGHT: TURN"); sfx(2); }
     escape_flag=call_flag=blast_flag=0; cast_flag=-1;
     if(hearts<=0){ hearts=maxh; food=60; int nolose=!opt_faintloss||opt_baby; if(!nolose) gold=sdiv(gold,2); if(!nolose && !opt_easy){ bag_n=0; bag_sel=0; } show_msg(nolose?"YOU FAINTED. NOTHING LOST. NAP TIME":opt_easy?"YOU FAINTED. HALF YOUR GOLD IS GONE":"YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }
@@ -523,15 +538,19 @@ static void planet_frame(void){
     // ---- draw the world
     weird_frame(n); hell_frame(n);
     u32 t_r0=TMR(); render_planet(pg); u32 t_r1=TMR();
-    if(msg_timer){ int L=textlen(msg); if(L<=29) text(pg,120-L*4,24,msg,C_WHITE,2); else stext(pg,120-L*2,26,msg,C_WHITE); }
+    if(kr_mode==1) kloop_draw(pg);                                                      // loop-de-loops stand on the road (kart.inc)
+    if(msg_timer){ int L=textlen(msg); if(kr_mode){ if(L<=24) text(pg,120-L*4,72,msg,C_WHITE,2); else stext(pg,120-L*2,74,msg,C_WHITE); }   // in a kart: lower down, clear of the minimap
+                   else if(L<=29) text(pg,120-L*4,24,msg,C_WHITE,2); else stext(pg,120-L*2,26,msg,C_WHITE); }
 #ifdef TEST_FPS
     { static u32 tf0=0; u32 now=TMR(); char fb[40]; scpy(fb,"N"); ncat(fb,n); scat(fb," RENDER "); ncat(fb,(int)((t_r1-t_r0)/1000)); scat(fb,"K PRE "); ncat(fb,(int)((t_r0-t_f0)/1000)); scat(fb,"K FRAME "); ncat(fb,(int)((now-tf0)/1000)); scat(fb,"K"); tf0=now; rect(pg,0,40,240,8,0); text(pg,4,41,fb,C_GOLD,1); }
 #endif
     { int pk = best<0 ? -1 : po[best].kind;
       static const char *const pt[21]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR","A: ENTER THE DRONE OUTPOST",
           "A: THE MARKET","A: THE CANTINA","A: THE BOUNTY OFFICE","A: THE RACE POST","A: KNOCK","A: TALK","A: DIG THE FOSSIL","A: THE RUIN","A: BITE THE BEETLE","A: CATCH IT","A: THE RELIC SHRINE!"};
-      if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } else if(pk==O_DOOR && portal_depth>0){ scpy(cb,"A: PORTAL BACK TO B"); ncat(cb,portal_depth); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
-      if(race_on){ char rb[40]; scpy(rb,kart_on?"KART ":"RACE "); ncat(rb,race_t/60); scat(rb,kart_on?"S  GATE ":"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/"); ncat(rb,race_n); if(kart_on){ scat(rb,"  PAR "); ncat(rb,race_par/60); scat(rb,"S"); rect(pg,4,146,50,3,C_DGREY); if(kart_boost>0) rect(pg,4,146,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); } stext(pg,4,151,rb,C_CYAN); }
+      if(kr_mode) kart_hud(pg);
+      else if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } else if(pk==O_DOOR && portal_depth>0){ scpy(cb,"A: PORTAL BACK TO B"); ncat(cb,portal_depth); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
+      if(kr_mode){}
+      else if(race_on){ char rb[40]; scpy(rb,kart_on?"KART ":"RACE "); ncat(rb,race_t/60); scat(rb,kart_on?"S  GATE ":"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/"); ncat(rb,race_n); if(kart_on){ scat(rb,"  PAR "); ncat(rb,race_par/60); scat(rb,"S"); rect(pg,4,146,50,3,C_DGREY); if(kart_boost>0) rect(pg,4,146,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); } stext(pg,4,151,rb,C_CYAN); }
       else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4 && pq_type!=8){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
 #ifdef TEST_GEN
       { char gb[48]; scpy(gb,"GEN "); ncat(gb,(int)(gen_cyc/16780)); scat(gb,"MS OCT "); ncat(gb,(int)(oct_cyc/16780)); scat(gb," COL "); ncat(gb,(int)(col_cyc/16780)); scat(gb," CITY "); ncat(gb,(int)(city_cyc/16780)); stext(pg,4,130,"",C_RED); { char g2[40]; scpy(g2,"NRM "); ncat(g2,(int)(nrm_cyc/16780)); scat(g2," SMO "); ncat(g2,(int)(smo_cyc/16780)); stext(pg,4,40,g2,C_RED); } stext(pg,4,140,gb,C_RED); }
@@ -551,9 +570,11 @@ static void planet_frame(void){
     oam_hide_all();
     int slot=0;
     s32 bug_sy;
-    { s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=(((dz>>8)*(dz>>8))>>tiny_sh()) - tiny_sub();
+    { s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=curv(dz>>8) - tiny_sub();
       bug_sy = PHZ + (((cam_h + curve - gh) * f)>>16); }
-    if(!cam_fp){                                                                        // the bug, standing on the ground ahead of the camera
+    if(kr_mode && (!cam_fp || kloop_on)){ slot=kart_draw_me(slot,bug_sy); if(!kart_glow() && !kloop_on && slot<120){ shadow_oam[slot].a0=((bug_sy-6)&255)|(1<<14); shadow_oam[slot].a1=((120-8)&511); shadow_oam[slot].a2=T_SHADOW; slot++; } }   // in a kart
+    else if(kr_mode){}
+    else if(!cam_fp){                                                                   // the bug, standing on the ground ahead of the camera
       int sy=bug_sy;
       int bob = moved ? ((frames>>3)&1) : 0; if(WL(MW_ZEROG)) bob += 3+WL(MW_ZEROG)/3+(sinx((frames*3)&255)>>11);
       int pvis = !(invuln && (frames&4));
@@ -583,7 +604,7 @@ static void planet_frame(void){
         shadow_oam[slot].a0 = ((136-64+dy)&255) | (1<<8)|(1<<9); shadow_oam[slot].a1 = ((188-64)&511) | (29<<9) | (3<<14); shadow_oam[slot].a2 = T_JAW; slot++; }
     }
     // the guide arrow: it circles the bug (or sits at the top of the view) and points the short way to the door or the ship
-    { PObj *t=&po[arrow_ship==1?0:1];
+    if(!kr_mode){ PObj *t=&po[arrow_ship==1?0:1];
       if(race_on){ for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_BEACON){ t=&po[i]; break; } }
       else if(arrow_ship==2){ s32 bd2=0x7FFFFFFF; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER){ s32 ddx=wrapd(po[i].x-ppx), ddy=wrapd(po[i].y-ppy); s32 d=(ddx<0?-ddx:ddx)+(ddy<0?-ddy:ddy); if(d<bd2){ bd2=d; t=&po[i]; } } }
       s32 dx=wrapd(t->x-ppx), dy=wrapd(t->y-ppy);
@@ -607,8 +628,8 @@ static void planet_frame(void){
         PObj *o=&po[order[k]]; s32 dz=odz[order[k]], dx=odx[order[k]];
         s32 zc=dz>>8;                                                                  // 8.8 cells
         s32 f=(FOCP<<16)/zc;                                                           // 8.8 px per cell
-        int sx = 120 + (s32)(((long long)dx*f)>>24);                                   // (16.16 cells * 8.8) >> 24 = px
-        s32 gh=ground_h(o->x,o->y); s32 curve=((zc*zc)>>tiny_sh()) - tiny_sub();
+        int sx = 120 + (s32)((((long long)dx*f)>>24)*256/fov_k());                     // (16.16 cells * 8.8) >> 24 = px, spread to match the land's field of view
+        s32 gh=ground_h(o->x,o->y); s32 curve=curv(zc) - tiny_sub();
         int sy = PHZ + (((cam_h + curve - gh) * f)>>16);                                // (8.8 cells * 8.8) >> 16 = px
         if(sx<-40||sx>280||sy<10||sy>190) continue;
         if(o->kind==O_SHIP){                                                           // your ship: the real 3D model, parked
@@ -619,8 +640,10 @@ static void planet_frame(void){
         int c=sx>>1; if(c<0) c=0; if(c>119) c=119;
         int si=0; while(si<NSTEP-1 && stp_z[si]<zc) si++; int bin=(si>>3)-1; if(bin>7) bin=7;
         if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
-        static const u8 ksz[25]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14};                  // size of each kind in 16ths of a cell
+        static const u8 ksz[29]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14, 13,18,12,14};      // size of each kind in 16ths of a cell
         int s=(f>>6)*ksz[o->kind]>>4; if(s<8) continue; int m=(s-8)/4; if(m>27) m=27;       // px per cell / 16 px * 64. too far away to see: skip it (it used to be drawn too big)
+        if(o->kind==O_KART){ slot=kart_draw_obj(slot,o,sx,sy,m,f); continue; }               // a rival kart (kart.inc)
+        if(kr_mode) m&=~1;                                                              // in a race the odd scales belong to the rivals
         int pb = zc>(28<<8) ? 2 : zc>(18<<8) ? 1 : 0;
         int tl=tile_of[o->kind], dy2=0;
         if(o->kind==O_CRIT){ Species *sp=&spc[o->var]; tl = sp->body==0 ? T_HOPPER : sp->body==1 ? T_GRAZER : T_FLYER; pb=4+o->var;

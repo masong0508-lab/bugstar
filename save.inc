@@ -77,7 +77,7 @@ static void music_apply(void){ if(opt_music==0){ SND(0x08)=0; SND(0x12)=0; } }
 static void save_ext(void); static int load_ext(void);
 static int forge_on;
 static void do_save(void){        // always saves, into the slot you are playing
-    if(forge_on) return;                                         // a Dungeon Forge run borrows the world: never save it half-changed
+    if(forge_on || kw_mode) return;                              // a Dungeon Forge run borrows the world: never save it half-changed. Kart World has no slot
     Save *s=&sv; memset(s,0,sizeof(Save));
     s->magic=0x53475542; s->ver=2;
     s->zone=zone; s->zone_cleared=zone_cleared; s->endless=endless; s->world_no=world_no; s->best_depth=best_depth; s->level=level;

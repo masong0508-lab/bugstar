@@ -352,6 +352,7 @@ static void help_screen(volatile u16 *pg){
 }
 // the end of the story: the Ant King is beaten
 static void credits(void){
+    kw_unlock();                                                                        // the game is beaten: Kart World opens
     volatile u16 *pg=VRAM; music(5);
     rect(pg,0,0,240,160,0);
     for(int k=0;k<70;k++){ int x=rndi(240), y=rndi(160); pix(pg,x,y,k&3?C_DGREY:C_WHITE); }
@@ -695,14 +696,14 @@ static int shop_menu(void){   // returns 1 to fly on
     oam_hide_all(); oam_flush();
     int sel=0; in_menu++; menu_msg[0]=0;
     while(1){
-        const char *main_opt[15]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","HANGAR: REDESIGN YOUR SHIP","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","LEAVE"};
-#define NSHOP 15
+        const char *main_opt[16]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","HANGAR: REDESIGN YOUR SHIP","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB: RACE AND BUILD TRACKS","LEAVE"};
+#define NSHOP 16
         int can_fly = 1, next_ok = !endless && zone_cleared && zone<5 && cluster_no==0; char nxt[40];
         if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); main_opt[0]=nxt; }
         int dirty=1; wait_release();
         while(1){
             if(dirty){ dirty=0; box(pg,12,20,216,136); text(pg,20,24,"YOUR SHIP",C_GOLD,1); char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
-                for(int i=0;i<NSHOP;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:(i==11)?C_CYAN:C_GREY); if(i==sel) text(pg,16,34+i*7,">",C_CYAN,1); text(pg,22,34+i*7,main_opt[i],c,1); if(i==12){ char fb[24]; scpy(fb,"("); scat(fb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); scat(fb,")"); text(pg,82,34+i*7,fb,C_CYAN,1); } }
+                for(int i=0;i<NSHOP;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:(i==11)?C_CYAN:C_GREY); if(i==sel) text(pg,16,33+i*6,">",C_CYAN,1); text(pg,22,33+i*6,main_opt[i],c,1); if(i==12){ char fb[24]; scpy(fb,"("); scat(fb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); scat(fb,")"); text(pg,82,33+i*6,fb,C_CYAN,1); } }
                 if(next_ok) rtext(pg,224,44,"HOLD A: FLY YOURSELF",C_DGREY);
                 { char hb[40]; scpy(hb,ship.name); scat(hb,"  HOLD "); ncat(hb,cargo_n()); scat(hb,"/"); ncat(hb,cargo_cap+ship_hold_bonus()); rtext(pg,224,34,hb,C_CYAN); }
                 if(q_type!=Q_NONE && q_done) text(pg,130,70,"! QUEST DONE",C_GREEN,1);
@@ -713,7 +714,8 @@ static int shop_menu(void){   // returns 1 to fly on
             if(HIT(K_B)){ in_menu--; wait_release(); return 0; }
             if(HIT(K_A)) break;
         }
-        if(sel==14){ in_menu--; wait_release(); return 0; }
+        if(sel==15){ in_menu--; wait_release(); return 0; }
+        if(sel==14){ kart_req=1; in_menu--; wait_release(); return 0; }
         if(sel==13){ if(!ant_king){ say("BEAT THE ANT KING TO OPEN THE FORGE"); continue; }
             if(forge_menu(pg)){ enter_dungeon_flag=3; in_menu--; wait_release(); return 0; } box(pg,12,20,216,136); continue; }
         if(sel==12){ if(forms_open<=1){ say("A WEIRD WORLD MIGHT RESHAPE YOU ONE DAY"); continue; }      // switch between shapes you have been

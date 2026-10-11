@@ -169,6 +169,9 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 #include "terrace.inc"
 #include "space.inc"
 #include "forge.inc"
+#include "kart.inc"
+#include "kart2.inc"
+#include "kart3.inc"
 
 static void hud_now(void){ if(scene==2) return; if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
@@ -765,31 +768,32 @@ static void twinkle(volatile u16 *pg, int t){        // a few stars blink in the
 // returns 1 to continue or load the game in cur_slot, 0 to start a new one there
 static int title_screen(void){
     volatile u16 *pg=VRAM;
-    enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT };
-    static const char *const tn[5]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS"};
+    enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT, TI_KART };
+    static const char *const tn[6]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS","KART WORLD"};
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
     bug_build();
     hdma_on=0; title_paint(pg);
     REG_BLDCNT = 0x3F | (3<<6); REG_BLDY = 16;
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
     music(2);
-    int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1; int it[5];
+    int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1, kwu=0; int it[6];
     wait_release();
     int fading_in=1;
     while(1){
         if(full){ full=0; title_paint(pg); slots_refresh(); cs=first_good_slot();
-            n=0; if(cs>=0) it[n++]=TI_CONT; it[n++]=TI_NEW; if(cs>=0) it[n++]=TI_LOAD; it[n++]=TI_HELP; it[n++]=TI_OPT;
+            kwu=kw_unlocked(); n=0; if(cs>=0) it[n++]=TI_CONT; it[n++]=TI_NEW; if(cs>=0) it[n++]=TI_LOAD; it[n++]=TI_KART; it[n++]=TI_HELP; it[n++]=TI_OPT;
             if(sel>=n) sel=0; dirty=1; }
         if(dirty){ dirty=0; char b[40];
-            title_restore(pg,56,128);
+            title_restore(pg,56,140);
             for(int i=0;i<n;i++){ int y=62+i*11; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
                 if(i==sel){ rect(pg,66,y-2,108,10,6); text(pg,x,y,nm,C_GOLD,1); text(pg,70,y,">",C_GOLD,1); text(pg,166,y,"<",C_GOLD,1); }
-                else stext(pg,x,y,nm,C_WHITE); }
+                else stext(pg,x,y,nm,(it[i]==TI_KART && !kwu)?C_DGREY:C_WHITE); }
             int y=62+n*11+3; b[0]=0;
             if(it[sel]==TI_CONT){ const SlotInfo *o=&sinf[cs]; char w[28]; slot_where(o,w); scpy(b,"SLOT "); ncat(b,cs+1); scat(b,"  LV "); ncat(b,o->level); scat(b,"  "); scat(b,w); }
             else if(it[sel]==TI_NEW) scpy(b,"START A NEW ADVENTURE");
             else if(it[sel]==TI_LOAD) scpy(b,"PICK ONE OF YOUR 3 SAVE SLOTS");
             else if(it[sel]==TI_HELP) scpy(b,"THE BUTTONS, AND TIPS");
+            else if(it[sel]==TI_KART) scpy(b, kwu ? "THE KART RACING GAME, ALL ON ITS OWN" : "BEAT THE GAME TO UNLOCK THIS");
             else scpy(b,"SOUND, AUTOSAVE AND MORE");
             b[34]=0; stext(pg,120-textlen(b)*2,y,b,C_CYAN);
         }
@@ -807,6 +811,7 @@ static int title_screen(void){
             if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; return 1; } full=1; }
             if(a==TI_OPT){ oam_hide_all(); oam_flush(); options_screen(pg); full=1; }
             if(a==TI_HELP){ oam_hide_all(); oam_flush(); help_screen(pg); full=1; }
+            if(a==TI_KART){ if(kwu){ oam_hide_all(); oam_flush(); return 2; } const char *ln[3]={"A WHOLE KART RACING GAME IS HIDDEN HERE.","BEAT THE ANT KING TO OPEN IT.","(ONE BEATEN GAME OPENS IT FOR EVERYONE)"}; oam_hide_all(); oam_flush(); card(pg,"KART WORLD",ln,3); full=1; }
             wait_release();
         }
     }
@@ -892,8 +897,45 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_BOSS
     zone=TEST_BOSS; portal_depth=zone_floors(); st_str=300; recalc(); hearts=maxh;
 #endif
+#ifdef TEST_KART
+    k_cls=1; k_type=0; k_trk=TEST_KART%kt_count(); k_rec=-1; kt_official(k_trk,&kt);
+#ifdef TEST_KLAPS
+    kt.laps=TEST_KLAPS;
+#endif
+    kart_go(NRC,-1,0,1);
+#endif
+#ifdef TEST_KJUMP
+    if(nkj){ int p=(kjl[TEST_KJUMP%nkj]-26+knp)%knp; ppx=kp_cx(p); ppy=kp_cy(p); heading=kp_dir(p); heading_rays(); cam_h=ground_h(ppx,ppy)+CAM_UP; rc[0].pi=(s16)p; for(int r=1;r<nrc;r++){ rc[r].x=kp_cx((p+knp-30)%knp); rc[r].y=kp_cy((p+knp-30)%knp); } }
+#endif
+#ifdef TEST_TOPMAP
+    { volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); for(int y=0;y<160;y++) for(int x=0;x<120;x++){ int tx=(x*2*256/240+((ppx>>15)&255)-60)&255, ty=(y*256/240*2/2+((ppy>>15)&255)-80)&255; int c=cmap[ty*HW+tx]; pg[y*120+x]=c|(c<<8); }
+      while(1) vsync(); }
+#endif
+#ifdef TEST_JSTAT
+    { volatile u16 *pg=VISPG; rect(pg,0,0,240,160,1); int n=kt_count(), y=4; char b[64];
+      for(int t=0;t<n && y<150;t++){ kt_official(t,&kt); kt_unpaint(); kt_build(); static u8 wet[KP_MAX]; for(int i=0;i<knp;i++) wet[i]=(hm_bil(kp_cx(i),kp_cy(i))>>8)<water_lv; kt_paint(); int gaps=0, bridge=0; for(int i=0;i<knp;i++){ if(kpf[i]&KPF_GAP) gaps++; }
+        for(int i=0;i<knp;i++){ if(!(kpf[i]&KPF_GAP) && wet[i]) bridge++; }
+        scpy(b,"T"); ncat(b,t); scat(b," N "); ncat(b,knp); scat(b," J "); ncat(b,nkj); scat(b," GAP "); ncat(b,gaps); scat(b," BR "); ncat(b,bridge); scat(b," F "); ncat(b,kt.flags); scat(b," L "); ncat(b,kt_len); scat(b," LP "); ncat(b,nkl); if(nkl){ scat(b," @"); ncat(b,klp[0]); } stext(pg,4,y,b,C_WHITE); y+=8; }
+      kt_unpaint(); while(1) vsync(); }
+#endif
+#ifdef TEST_TOPJ
+    { volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); int j=TEST_TOPJ%(nkj?nkj:1), cx=kpx[kjl[j]], cy=kpy[kjl[j]];
+      for(int y=0;y<160;y++) for(int x=0;x<240;x++){ int tx=(cx-30+x/4)&255, ty=(cy-20+y/4)&255; pix(pg,x,y,cmap[ty*HW+tx]); }
+      for(int i=0;i<knp;i++){ int dx=kwrap8(kpx[i]-cx)+30, dy=kwrap8(kpy[i]-cy)+20; if(dx<0||dx>=60||dy<0||dy>=40) continue; int c = (kpf[i]&KPF_GAP)?C_RED:(kpf[i]&KPF_RAMP)?C_GOLD:C_WHITE; pix(pg,dx*4+1,dy*4+1,c); pix(pg,dx*4+2,dy*4+1,c); pix(pg,dx*4+1,dy*4+2,c); pix(pg,dx*4+2,dy*4+2,c); }
+      { char b[64]; int a=kjl[j]+1, e=kjr[j]-1; scpy(b,"J "); ncat(b,kjl[j]); scat(b,"-"); ncat(b,kjr[j]); scat(b," B1 "); ncat(b,kbend(a-9,a)); scat(b," B2 "); ncat(b,kbend(a,e+10)); scat(b," B3 "); ncat(b,kbend(a-9,e+10)); scat(b," N "); ncat(b,nkj); stext(pg,2,2,b,C_WHITE);
+        scpy(b,"D "); for(int i=a-9;i<=e+10;i+=3){ ncat(b,kp_dir(i)); scat(b," "); } stext(pg,2,10,b,C_WHITE);
+        scpy(b,"F "); for(int i=a-9;i<=e+10;i++){ ncat(b,kpf[i]); } stext(pg,2,18,b,C_WHITE); }
+      while(1) vsync(); }
+#endif
+#ifdef TEST_KMENU
+    kart_menu(1);
+#endif
+#ifdef TEST_GARAGE
+    gold=99999; kgarage(VISPG); planet_hud();
+#endif
 }
 static void arrive_on_planet(void){      // after landing (or the autopilot): set the surface up
+    g_phz=66;
     land_on_current(); st_planets++; ach_check(); portal_depth=0; scene=0; msg_timer=0;
     landing_screen(0);
     new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game(); fade(1);
@@ -994,11 +1036,15 @@ int main(void){
     sound_init();
     rng_s ^= 0x9E3779B9;
     settings_load(); music_apply();
+#ifdef TEST_KW
+    kw_defaults(1); kw.coins=50000; kw_store(); new_game(); bug_look_default(); kart_world();
+#endif
     while(1){
         in_game=0; sys_req=0; scene=0;
         cur_slot=last_slot;
         new_game(); bug_look_default(); ship_default(); ship_build_model();
         int cont=title_screen();
+        if(cont==2){ fade(1); kart_world(); oam_hide_all(); oam_flush(); music(-1); REG_BLDCNT=0; REG_BLDY=0; REG_DISPCNT=0x80; continue; }   // Kart World, then back to the title
         start_game(cont);
         in_game=1;
         run_game();
