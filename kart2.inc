@@ -6,7 +6,7 @@ static void kbuild_menu(void); static void kgarage(volatile u16 *pg);
 #define NKBEST 32
 typedef struct { u32 magic; KLook look; u16 own[NKPART]; u16 races, wins, pods, built, tt, cups[4]; u8 cls_open, pad[3]; u8 cam[8]; u32 sum; } KartSave;
 _Static_assert(__builtin_offsetof(KartSave,sum)==sizeof(KartSave)-4, "KartSave: the sum must be the last 4 bytes");
-_Static_assert(KSAVE_OFF+sizeof(KartSave) <= KREC_OFF && KREC_OFF+NKBEST*8 <= SLOT_STRIDE && META_OFF+16 <= KSAVE_OFF, "the kart blocks must fit in the slot");
+_Static_assert(KSAVE_OFF+sizeof(KartSave) <= KREC_OFF && KREC_OFF+NKBEST*8 <= TV2_OFF && META_OFF+16 <= KSAVE_OFF, "the kart blocks must fit in the slot");
 static void kw_keep(void);
 static void kart_save(void){
     if(kw_mode){ kw_keep(); return; }
@@ -226,7 +226,7 @@ static void kbuild_save(volatile u16 *pg){
 // ---------------------------------------------------------------- your tracks, wherever they are
 EW static u8 kmy_idx[NKREC]; static int kmy_n;
 static void kmy_row(int i, char *b, int *c){ KRec r; krec_get(kmy_idx[i],&r); scpy(b,r.name); while(textlen(b)<17) scat(b," ");
-    if(krec_here(&r)){ scat(b,"HERE"); *c=C_GREEN; } else if(r.at.star==0xFF){ scat(b,"IN KART WORLD"); *c=C_DGREY; } else if(r.at.seed!=galaxy_seed){ scat(b,"ANOTHER UNIVERSE"); *c=C_DGREY; } else { char d[40]; here_ly(d,r.at.cx,r.at.cy); if(d[0]=='0'&&d[1]==' ') scpy(d,"THIS CLUSTER"); d[22]=0; scat(b,d); } }
+    if(krec_here(&r)){ scat(b,"HERE"); *c=C_GREEN; } else if(r.at.star==0xFF){ scat(b,"IN KART WORLD"); *c=C_DGREY; } else if(r.at.seed!=galaxy_seed){ char u[28]; uni_name(u,r.at.seed); scat(b,u); *c = ant_king ? C_CYAN : C_DGREY; } else { char d[40]; here_ly(d,r.at.cx,r.at.cy); if(d[0]=='0'&&d[1]==' ') scpy(d,"THIS CLUSTER"); d[22]=0; scat(b,d); } }
 static void kmy_desc(int i, char *b, int *c){ int k = i<0 ? -1-i : i; KRec r; krec_get(kmy_idx[k],&r);
     if(i<0){ char nm[32]; if(r.at.star==0xFF){ scpy(nm,"KART WORLD PLANET #"); ncat(nm,r.at.seed); } else fav_name(&r.at,nm); scpy(b,"ON "); scat(b,nm); return; }
     scpy(b,""); ncat(b,r.n); scat(b," GATES  "); ncat(b,r.laps); scat(b," LAPS  "); ncat(b,r.riv); scat(b," RIVALS  "); scat(b,ksurf_name[r.surf%6]);

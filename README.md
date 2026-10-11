@@ -65,7 +65,7 @@ Every moon has its own kind of dungeon: **lunar caverns** (rock and dust moons) 
 
 ## Living planets: cities, creatures, jobs (new)
 - **Every planet is grown from its own DNA**: the shape of the land (rolling hills, mesas, dunes, islands, craters, canyons, ridges or plains), cliffs, beaches, snow caps, the sea level, the time of day (day, dusk, night), the weather (clear, rain, snow, dust), gravity (it changes how fast you walk), the sky and ground colours, what grows there, its two creature species, and what it is **known for** ("ITS SOUP", "A MAYOR WHO IS A MOTH", "RAIN THAT FALLS UP"...). The parts combine into about **10^98 different planets**, far past an unvigintillion (10^66).
-- **The universe.** One save can reach **2^33093 ≈ 10^9961 star systems**: 2^320 (2.1 × 10^96) galaxies × 2^32768 clusters each × 32 stars, each star with one or more planets and moons. Each planet's address is 1,035 numbers, and its hills are built from every one of them, so no two planets share the same land. On the galaxy map: **START** jumps to the next cluster, **R** does a **deep jump** to a random spot anywhere in the universe (both need full fuel). The map shows your galaxy number and the top of your cluster number.
+- **The universe.** A universe is 2^155 × 2^155 star clusters (it wraps round at the edges), with 32 stars in each cluster and about 5.6 planets and moons for every star. It is about 1.1 quindecillion light years wide. On the galaxy map: **START** jumps to the next cluster or warps far away (**R**), and after the story it also jumps to **another universe**: there are 4,294,967,296 of them (see *Universe jumps*).
 - **Weird worlds.** One planet in 111 is weird. There are **1000 weird traits**: 40 kinds of weirdness (glitch, rainbow, tiny planet, spikes, giants, zero-g, metal ground, void, meteors, mirror sky, disco, wobble, shrink ray, jungle, shy life, angry life, sticky ground, ice, singing rocks, suns, rings, stripes, checkers, fog, ghosts, slug swarm, heat, frost, flood, drought, negative, old photo, moons, aurora, luck, healing air, bad air, magnet, shy ore, terraces) at 25 strengths each, from FAINT to FORBIDDEN. A weird world stacks 1 to 4 traits ("INSANE SUNS + INSANE RINGS"). They change the land, the sky, the colours, the creatures and how you move. Every weird world hides a **relic shrine**.
 - **Marks.** A weird world can change *you*: SWIFT, TOUGH, LUCKY, STRONG, SHARP, REGROWING, WELL FED, THICK SHELL (good), or SLUGGISH, FRAIL, UNLUCKY, WEAK, HUNGRY, DULL (bad). Most are good. Most last a few minutes; a few stay **forever**. Stronger traits are more likely to leave a forever mark.
 - **Planet classes.** Every world has a class that ties it together: TEMPERATE, MOUNTAIN (tall ridges, snow), MEADOW (smooth plains), OCEAN (islands in a deep sea), DESERT (dunes, no water), ICE (snow and frozen seas), JUNGLE (dense plants), DEATH PLANET (craters, lava seas, a dark red sky, everything bites twice as hard), CITY PLANET (rare: one city covers the whole world) and PARADISE.
@@ -125,13 +125,27 @@ Every so often (about one dungeon floor in four, never a boss floor) you land in
 - Options: planet number, world type, size, weird worlds, track number, class, laps, rivals, items, **stunts** (lots of jumps and loops, or none), rival skill, catch-up, mirror, reverse, time of day and weather.
 - 18 drivers to unlock with trophies. Coins buy parts in Kart World's own garage.
 
-## How big is it? (new)
-Pick **HOW BIG IS IT?** on the title screen (or press SELECT on the WORLD page of the pause screen). Each page shows one of the game's huge numbers in full, then says it group by group, like **4 BILLION, 294 MILLION, 967 THOUSAND, 296**:
-- planets and tracks in Kart World, and how many universes there are,
-- star clusters, stars and worlds in one universe, and how many light years wide it is,
-- how many bugs, humanoids and karts you can make,
-- the Technobeast's health, and how far you have flown.
-The numbers are worked out by the game itself, so they are exact (one of them is 95 digits long).
+## How big is it? (opens after the story)
+Beat the Ant King and **HOW BIG IS IT?** opens on the title screen, and on the WORLD page of the pause screen (press SELECT). One beaten game opens it for every save. It has **21 real numbers from the game**, smallest first, all worked out exactly:
+- how far you have flown, the planets and tracks in Kart World, the universes and the Technobeast's health,
+- the ships, karts, humanoids and bugs you can make, and every look you could have (all four together, 152 digits),
+- how wide a universe is, and all of them side by side, and the clusters, stars and worlds in one universe and in all of them,
+- **giant numbers, every digit:** trips of 1,000 jumps (1,492 digits), favourites lists (26,742 digits), planet maps (39,457 digits) and every save file the save chip could hold (**78,914 digits**).
+
+Each number has three views (A changes the view, LEFT/RIGHT changes the number):
+- **IN SHORT:** "ABOUT 4.3 BILLION", how many digits it has, and how long it would take to read out.
+- **EVERY DIGIT:** the whole number in big type, with commas.
+- **BY NAME:** each group of three digits with its name, like **4 BILLION, 294 MILLION, 967 THOUSAND, 296**. The names go far past a centillion, built by the Conway-Wechsler rules. The biggest one is **SESVIGINTILLITRESTRECENTILLION**.
+
+UP/DOWN scrolls (hold it and it goes faster and faster), L/R jumps a whole screen, SELECT lets the number roll by on its own, B goes back.
+
+## Universe jumps (after the story)
+There are **4,294,967,296 universes**, side by side, each one 1.1 quindecillion light years wide. Beating the Ant King gives your game a universe of its own (the story happens in UNIVERSE #1).
+- On the galaxy map press **START**, then **A: JUMP TO ANOTHER UNIVERSE**.
+- Pick its number: LEFT/RIGHT (hold to go faster), A to type it in, or SELECT for a random one. Then press START.
+- A universe jump always costs **5.0 LY of fuel**, however far it goes. The trip counts up the light years and, at the end, the universes you passed.
+- A favourite in another universe takes you straight there.
+- The galaxy map and the WORLD page show which universe you are in.
 
 ## Dungeon floor events (new)
 - Most floors roll an event: TREASURE VAULT, MONSTER NEST (bonus gold), ELITE HUNT (slay 2 elites for a reward), DARK FLOOR (double loot), SPEED RUN (reach the stairs in 60 seconds), CURSED FLOOR (tougher monsters, better loot), GOLD RUSH, BLESSED SHRINE (a free good mark), AMBUSH and QUIET FLOOR. The goal shows under your spell name.
@@ -212,7 +226,7 @@ Needs an ARM GBA toolchain (`arm-none-eabi-gcc`, e.g. devkitARM), `gbafix`, and 
 ```
 make            # or: make TC=/path/to/arm-none-eabi-
 ```
-Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `planet.inc` (the 3D planet), `town.inc` (cities, creatures, jobs, races, ruins), `ship.inc` + `hangar.inc` (your ship), `space.inc`, `kart.inc` + `kart2.inc` + `kart3.inc` (kart racing, the track maker, Kart World), `sizes.inc` (HOW BIG IS IT?), `logo.c` (the DIPPINN PRODUCTIONS boot logo, shared with BORE), `gen.py` + `texgen.py` + `kartgen.py` (make `assets.h`: palettes, textures, sprites, the 3D-rendered karts, tables), `crt0.s` + `gba.ld`.
+Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `planet.inc` (the 3D planet), `town.inc` (cities, creatures, jobs, races, ruins), `ship.inc` + `hangar.inc` (your ship), `space.inc`, `kart.inc` + `kart2.inc` + `kart3.inc` (kart racing, the track maker, Kart World), `sizes.inc` (HOW BIG IS IT?), `logo.c` (the DIPPINN PRODUCTIONS boot logo, shared with BORE), `gen.py` + `texgen.py` + `kartgen.py` + `bignums.py` (make `assets.h`: palettes, textures, sprites, the 3D-rendered karts, tables, and the giant numbers for HOW BIG IS IT?, every digit), `crt0.s` + `gba.ld`.
 
 ## Space (new)
 At your ship, pick **LAUNCH INTO SPACE**.
@@ -220,8 +234,8 @@ At your ship, pick **LAUNCH INTO SPACE**.
 - Fly close to the planet and press A to land. Fly to the white box (station) and press A to dock.
 - Station: buy and sell 8 kinds of goods (prices change by world type), refuel, repair, and upgrade laser, shield and cargo.
 - SELECT: galaxy map. Pick a star and press A to jump (uses fuel). The map shows how far each star is in light years and how many days the trip takes.
-- **Jumps take time.** Stars stream past, and the light years and the ship's clock count up as you go. A warp across the universe climbs through millions, billions, trillions... of light years and counts the galaxies you pass.
-- Beat each zone's boss to open the next star. Beat the Ant King to open the whole galaxy. Then START on the map jumps to a new cluster, forever.
+- **Jumps take time.** Stars stream past, and the light years and the ship's clock count up as you go. A warp across the universe climbs through millions, billions, trillions... of light years and counts the galaxies you pass. A universe jump goes further still, and counts the universes.
+- Beat each zone's boss to open the next star. Beat the Ant King to open the whole universe. Then START on the map jumps to the next cluster, warps far away, or jumps to another universe.
 
 ## The Technobeast (the second villain)
 A machine bug that eats ships to grow. You meet it 3 times:

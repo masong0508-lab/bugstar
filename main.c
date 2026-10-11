@@ -66,10 +66,10 @@ static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, op
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
-// where you are in the universe: 2^320 galaxies x 2^32768 clusters each x 32 stars = 2^33093, about 10^9961 stars in one save.
-// A planet's address is 1035 words (10 galaxy words, 1024 cluster words, star). The first 32 cluster words are what the old saves knew;
-// the other 992 are folded into one word (clus_f), which is 0 while they are all zero, so every old cluster generates exactly as before. Its land is built from every one of those words (see gen_terrain),
-// so no two addresses grow the same hills; its other parts come from seeds hashed from the whole address (see make_world).
+// where you are: a universe of 2^155 x 2^155 clusters of 32 stars (see space.inc), and after the story any of 2^32 universes (galaxy_seed).
+// The address arrays below are bigger than that: they are what older saves used (a 320-bit galaxy number and 1024 cluster words).
+// u_settle folds any old address into today's universe, so every word above clus[0..9] is zero in play. The upper words live in spare SRAM (see save.inc),
+// and a world's land and parts are hashed from the whole address (see gen_terrain and make_world).
 #define NCW0 32                                                   // the cluster words the older saves and the hash walk know about
 #define NCW 1024                                                  // the cluster address is 1024 words = 32,768 bits (the upper words live in spare SRAM, see save.inc)
 static u32 galaxy_no=0; static u32 clus[NCW] __attribute__((section(".ewram")));
@@ -100,10 +100,12 @@ static void rect(volatile u16 *pg, int x, int y, int w, int h, int c){
         if(i<w) pix(pg,x+i,y+j,c); }
 }
 static int text(volatile u16 *pg, int x, int y, const char *s, int c, int sc){
-    if(sc==2 && !(x&1)){                                   // fast path: big text on an even column writes whole pixel pairs
+    if(sc==2 && !(x&1)){                                   // fast path: big text on an even column writes whole pixel pairs (row by row: no dividing)
         u16 cc=c|(c<<8);
         for(;*s;s++){ u16 g = font[(u8)*s & 127];
-            for(int k=0;k<15;k++) if(g & (1<<(14-k))){ volatile u16 *p = pg + ((y+(k/3)*2)*120 + ((x+(k%3)*2)>>1)); p[0]=cc; p[120]=cc; }
+            if(g){ volatile u16 *row = pg + y*120 + (x>>1);
+                for(int r=0;r<5;r++, row+=240){ int bits=(g>>(12-r*3))&7; if(!bits) continue;
+                    if(bits&4){ row[0]=cc; row[120]=cc; } if(bits&2){ row[1]=cc; row[121]=cc; } if(bits&1){ row[2]=cc; row[122]=cc; } } }
             x += 8; }
         return x; }
     if(sc==1){
@@ -788,14 +790,14 @@ static int title_screen(void){
             title_restore(pg,56,146);
             for(int i=0;i<n;i++){ int y=60+i*10; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
                 if(i==sel){ rect(pg,66,y-2,108,10,6); text(pg,x,y,nm,C_GOLD,1); text(pg,70,y,">",C_GOLD,1); text(pg,166,y,"<",C_GOLD,1); }
-                else stext(pg,x,y,nm,(it[i]==TI_KART && !kwu)?C_DGREY:C_WHITE); }
+                else stext(pg,x,y,nm,((it[i]==TI_KART||it[i]==TI_SIZE) && !kwu)?C_DGREY:C_WHITE); }
             int y=60+n*10+3; b[0]=0;
             if(it[sel]==TI_CONT){ const SlotInfo *o=&sinf[cs]; char w[28]; slot_where(o,w); scpy(b,"SLOT "); ncat(b,cs+1); scat(b,"  LV "); ncat(b,o->level); scat(b,"  "); scat(b,w); }
             else if(it[sel]==TI_NEW) scpy(b,"START A NEW ADVENTURE");
             else if(it[sel]==TI_LOAD) scpy(b,"PICK ONE OF YOUR 3 SAVE SLOTS");
             else if(it[sel]==TI_HELP) scpy(b,"THE BUTTONS, AND TIPS");
             else if(it[sel]==TI_KART) scpy(b, kwu ? "THE KART RACING GAME, ALL ON ITS OWN" : "BEAT THE GAME TO UNLOCK THIS");
-            else if(it[sel]==TI_SIZE) scpy(b,"THE HUGE NUMBERS IN THIS GAME");
+            else if(it[sel]==TI_SIZE) scpy(b, kwu ? "THE HUGE NUMBERS IN THIS GAME" : "BEAT THE GAME TO UNLOCK THIS");
             else scpy(b,"SOUND, AUTOSAVE AND MORE");
             b[34]=0; stext(pg,120-textlen(b)*2,y,b,C_CYAN);
         }
@@ -813,7 +815,8 @@ static int title_screen(void){
             if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; return 1; } full=1; }
             if(a==TI_OPT){ oam_hide_all(); oam_flush(); options_screen(pg); full=1; }
             if(a==TI_HELP){ oam_hide_all(); oam_flush(); help_screen(pg); full=1; }
-            if(a==TI_SIZE){ oam_hide_all(); oam_flush(); if(cs>=0) cur_slot=cs; size_screen(pg,1); full=1; }
+            if(a==TI_SIZE){ oam_hide_all(); oam_flush(); if(kwu){ if(cs>=0) cur_slot=cs; size_screen(pg,1); }
+                else { const char *ln[3]={"THE GAME'S HUGE NUMBERS, EVERY DIGIT.","BEAT THE ANT KING TO OPEN IT.","(ONE BEATEN GAME OPENS IT FOR EVERYONE)"}; card(pg,"HOW BIG IS IT?",ln,3); } full=1; }
             if(a==TI_KART){ if(kwu){ oam_hide_all(); oam_flush(); return 2; } const char *ln[3]={"A WHOLE KART RACING GAME IS HIDDEN HERE.","BEAT THE ANT KING TO OPEN IT.","(ONE BEATEN GAME OPENS IT FOR EVERYONE)"}; oam_hide_all(); oam_flush(); card(pg,"KART WORLD",ln,3); full=1; }
             wait_release();
         }
@@ -847,17 +850,19 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #endif
 #ifdef TEST_SAVE
     {   // set something in every save block, save, wipe it all, load, and check each value came back
+        int old_ok; { SaveTv t; memset(&t,0,sizeof t); t.magic=0x4C565254u; t.ly[5]=4242; t.trips=3; t.sum=fnv(&t,sizeof t-4); sram_write(slot_base(cur_slot)+TV_OFF,&t,sizeof t);   // a travel log from the last version
+            SaveTv2 z; memset(&z,0,sizeof z); sram_write(slot_base(cur_slot)+TV2_OFF,&z,sizeof z); tv_load(); old_ok = tv_ly[5]==4242 && tv_trips==3; }
         beast_stage=3; tech_lv=4; beast_kills=2; hive_done=2; wing_n=7; relic_bits=0x5; mark_perm=0x3; weird_seen=9;
         form=FORM_HUMAN; form_t=0; forms_open=7; tools_owned=0x15; tool_held=2; hum.style=1; hum.height=4; hum.build=2; hum.made=1; hum.col[0]=0x1234;
-        clus[0]=777; clus[5]=999; fuel_tank=3; warp_lv=2; gold=4321; tiers[2]=3; data_cores=5; scrap=33; cargo[3]=4; fuel=55; tr_n[1]=6; bugx.hat=5; bugx.wings=3; humx.top=7; humx.c_hat=0x1357; look.pat=9; tv_trips=12;
+        clus[0]=777; clus[5]=999; fuel_tank=3; warp_lv=2; gold=4321; tiers[2]=3; data_cores=5; scrap=33; cargo[3]=4; fuel=55; tr_n[1]=6; bugx.hat=5; bugx.wings=3; humx.top=7; humx.c_hat=0x1357; look.pat=9; tv_trips=12; tv_ly[7]=0x7654321; tv_ly[0]=5; tv_best[6]=77;
         do_save();
         beast_stage=0; tech_lv=0; beast_kills=0; hive_done=0; wing_n=0; relic_bits=0; mark_perm=0; weird_seen=0; form=0; forms_open=1; tools_owned=0; tool_held=0;
-        hum.style=0; hum.height=0; hum.build=0; hum.made=0; hum.col[0]=0; clus[0]=0; clus[5]=0; fuel_tank=0; warp_lv=0; gold=0; tiers[2]=0; data_cores=0; scrap=0; cargo[3]=0; fuel=0; tr_n[1]=0; bugx.hat=0; bugx.wings=0; humx.top=0; humx.c_hat=0; look.pat=0; tv_trips=0;
+        hum.style=0; hum.height=0; hum.build=0; hum.made=0; hum.col[0]=0; clus[0]=0; clus[5]=0; fuel_tank=0; warp_lv=0; gold=0; tiers[2]=0; data_cores=0; scrap=0; cargo[3]=0; fuel=0; tr_n[1]=0; bugx.hat=0; bugx.wings=0; humx.top=0; humx.c_hat=0; look.pat=0; tv_trips=0; tv_ly[7]=0; tv_ly[0]=0; tv_best[6]=0;
         int ok=load_game(1);
         struct { const char *n; int got, want; } c[]={{"LOAD",ok,1},{"BEAST STAGE",beast_stage,3},{"TECH LEVEL",tech_lv,4},{"BEAST KILLS",beast_kills,2},{"HIVES",hive_done,2},{"WINGMEN",wing_n,7},
             {"RELICS",(int)relic_bits,5},{"MARKS",(int)mark_perm,3},{"WEIRD SEEN",weird_seen,9},{"FORM",form,FORM_HUMAN},{"TOOLS",(int)tools_owned,0x15},{"HUM STYLE",hum.style,1},{"HUM HEIGHT",hum.height,4},
             {"HUM COLOUR",hum.col[0],0x1234},{"EAST WORD",(int)clus[0],777},{"NORTH WORD",(int)clus[5],999},{"FUEL TANK",fuel_tank,3},{"WARP DRIVE",warp_lv,2},
-            {"GOLD",(int)gold,4321},{"TIER",tiers[2],3},{"DATA CORES",data_cores,5},{"SCRAP",scrap,33},{"CARGO",cargo[3],4},{"FUEL",fuel,55},{"TROPHIES",tr_n[1],6},{"BUG HAT",bugx.hat,5},{"BUG WINGS",bugx.wings,3},{"HUM TOP",humx.top,7},{"HUM HAT COL",humx.c_hat,0x1357},{"PATTERN",look.pat,9},{"TRIPS",(int)tv_trips,12}};
+            {"GOLD",(int)gold,4321},{"TIER",tiers[2],3},{"DATA CORES",data_cores,5},{"SCRAP",scrap,33},{"CARGO",cargo[3],4},{"FUEL",fuel,55},{"TROPHIES",tr_n[1],6},{"BUG HAT",bugx.hat,5},{"BUG WINGS",bugx.wings,3},{"HUM TOP",humx.top,7},{"HUM HAT COL",humx.c_hat,0x1357},{"PATTERN",look.pat,9},{"TRIPS",(int)tv_trips,12},{"LY TOP WORD",(int)tv_ly[7],0x7654321},{"LY LOW WORD",(int)tv_ly[0],5},{"LONGEST TRIP",(int)tv_best[6],77},{"OLD TRAVEL LOG",old_ok,1}};
         volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); REG_BLDCNT=0; REG_BLDY=0; for(int i=0;i<120*160;i++) pg[i]=0; for(int i=30;i<39;i++) BG_PAL[i]=bg_pal[i];
         int n=sizeof c/sizeof c[0], bad=0;
         for(int i=0;i<n;i++){ int good=c[i].got==c[i].want; bad+=!good; char b[40]; scpy(b,c[i].n); scat(b,good?" OK":" BAD "); if(!good) ncat(b,c[i].got); text(pg,4+(i/19)*120,4+(i%19)*8,b,good?C_GREEN:C_RED,1); }
@@ -876,6 +881,12 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #endif
 #ifdef TEST_MAP
     scene=2; page_back=1; space_enter(1); galaxy_map();
+#endif
+#ifdef TEST_FAVUNI
+    fav_add_here(); galaxy_seed=5; gen_cluster();                                  // a favourite here, then off to universe 5
+#endif
+#ifdef TEST_UNI
+    scene=2; page_back=1; space_enter(1); shx=PR*3; shy=0; shz=0; galaxy_map();      // out in space, away from the planet: try a universe jump
 #endif
     return;
 #endif
@@ -975,7 +986,7 @@ static void run_game(void){
             planet_frame();
             vsync(); REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; oam_flush();
             if(launch_flag==2){ launch_flag=0; fade(1); oam_hide_all(); oam_flush();
-                int d=sys_dist(cur_sys,zone+1); char fn[24], tn[24]; sys_name(cur_sys,fn); sys_name(zone+1,tn); u32 t10[6]={(u32)d,0,0,0,0,0};
+                int d=sys_dist(cur_sys,zone+1); char fn[24], tn[24]; sys_name(cur_sys,fn); sys_name(zone+1,tn); u32 t10[LYW]={(u32)d};
                 fuel = d>fuel ? 0 : fuel-d; cur_sys=zone+1; cur_pl=cur_moon=0; visits++;
                 scene=2; page_back=1; build_space_palette(); REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BLDY=0; voyage(fn,tn,t10,(u32)d*24/10+1,0);
                 arrive_on_planet(); fade(0); continue; }
@@ -1048,6 +1059,9 @@ int main(void){
     settings_load(); music_apply();
 #ifdef TEST_KW
     kw_defaults(1); kw.coins=50000; kw_store(); new_game(); bug_look_default(); humx_default(); kart_world();
+#endif
+#ifdef TEST_UNLOCK
+    kw_unlock();
 #endif
     while(1){
         in_game=0; sys_req=0; scene=0;
