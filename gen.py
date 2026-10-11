@@ -607,7 +607,9 @@ arr("obj_tiles","unsigned short",words)
 out.append("#define T_KDYN %d"%(512+t))           # the karts built at run time live in the sprite tiles after these
 kartgen.make(arr,out)
 import bignums
-bignums.make(arr,out)                           # the giant numbers for HOW BIG IS IT?, every digit
+bignums.make(arr,out)
+import facts
+facts.make(arr,out)                             # more pages: Earth, space and the universe (see facts.py)                           # the giant numbers for HOW BIG IS IT?, every digit
 # ---------------- software sprites for the dungeon (8bpp palette indices, 0 = clear)
 SPIDER=["......1......1......",
         ".....1........1.....",

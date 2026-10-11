@@ -37,8 +37,9 @@ static void nb_from(const u32 *v, int about){                    // put a big nu
 // ---- the pages, smallest first (after your own travels)
 enum { SZ_TRAVEL, SZ_COLOURS, SZ_DOTS, SZ_RELICS, SZ_NAMES, SZ_KWPLAN, SZ_UNIS, SZ_WEIRD, SZ_BUGNAMES, SZ_BEAST, SZ_KWTRK, SZ_BEASTMAX, SZ_GOLD, SZ_SHIPS,
        SZ_TRKNAMES, SZ_RACES, SZ_KARTS, SZ_DNA, SZ_TROPHIES, SZ_TOUR, SZ_FAR, SZ_WIDE, SZ_HUMS, SZ_BUGS, SZ_WIDEALL, SZ_CLUS, SZ_STARS, SZ_WORLDS,
-       SZ_STARSALL, SZ_WORLDSALL, SZ_LOOKS, SZ_ORDER, SZ_TRIPS, SZ_FAVS, SZ_MAPS, SZ_SAVES, SZ_SCREENS, NSIZE };
-static const char *const sz_txt[NSIZE][3]={
+       SZ_STARSALL, SZ_WORLDSALL, SZ_LOOKS, SZ_ORDER, SZ_TRIPS, SZ_FAVS, SZ_MAPS, SZ_SAVES, SZ_SCREENS, NSOLD_E };
+#define NSIZE (NSOLD+NFACT)                                       // the game's own numbers and the facts from facts.py, in sz_ord's order
+static const char *const sz_otxt[NSOLD][3]={
     {"LIGHT YEARS YOU HAVE FLOWN","IN THIS SAVE, SO FAR",0},
     {"COLOURS YOU CAN MIX","32 REDS, 32 GREENS AND 32 BLUES","MIX THEM IN THE MIRROR, THE HANGAR OR THE GARAGE"},
     {"DOTS ON THE SCREEN","240 ACROSS AND 160 DOWN.","EVERY PICTURE IN THE GAME IS MADE OF THESE"},
@@ -78,7 +79,11 @@ static const char *const sz_txt[NSIZE][3]={
     {"PICTURES THE SCREEN CAN SHOW","240 X 160 DOTS, EACH ONE OF 32,768 COLOURS:","EVERY GAME BOY ADVANCE PICTURE THERE COULD BE"}};
 static void bn_set64(u32 *b, u64 x){ bn_set(b,(u32)x); b[1]=(u32)(x>>32); }
 static u64 nck(int n, int k){ if(k<0 || k>n) return 0; u64 r=1; for(int i=1;i<=k;i++) r=r*(u64)(n-k+i)/(u64)i; return r; }   // n choose k
+__asm__(".pushsection .rodata\n.balign 4\n.global fact_bin\nfact_bin:\n.incbin \"facts.bin\"\n.popsection");   // every fact's digits, packed
+extern const u8 fact_bin[];
+static const char *szt(int pi, int k){ int id=sz_ord[pi]; return id<NSOLD ? sz_otxt[id][k] : fact_txt[id-NSOLD][k]; }   // page pi's text
 static void size_set(int i){                                     // put page i's number on show
+    i=sz_ord[i]; if(i>=NSOLD){ int f=i-NSOLD; nb_rom(fact_bin+fact_off[f],(int)fact_nd[f],(int)fact_nz[f]); nb_about=fact_ab[f]; return; }
     static const u8 bug_n[13]={3,5,4,12,8,6,8,3,4,6,6,5,12}, hum_n[11]={2,5,3,10,8,6,10,6,5,12,6}, ship_n[15]={NHULL,3,3,3,NWING,3,3,3,4,3,3,4,4,2,4};   // the options in each maker
     static const u8 race_n[14]={NPC+1,7,2,5,10,8,3,3,4,2,2,2,4,6};   // Kart World's quick race: world type, size, weird, class, laps, rivals, items, stunts, skill, catch-up, mirror, reverse, time, weather
     EW static u32 v[BNW]; int about=0;
@@ -187,7 +192,7 @@ static void sz_name_row(volatile u16 *pg, int j, int y, int c){  // group j said
 static void sz_head(volatile u16 *pg, int pi, int view){         // view 3 is the list of them all
     rect(pg,0,0,240,12,1); text(pg,4,3,"HOW BIG IS IT?",C_GOLD,1);
     char b[16]; scpy(b,""); if(view==3){ ncat(b,NSIZE); scat(b," NUMBERS"); } else { ncat(b,pi+1); scat(b," / "); ncat(b,NSIZE); } text(pg,236-textlen(b)*4,3,b,C_GREY,1);
-    const char *t = view==3 ? "ALL THE NUMBERS" : sz_txt[pi][0]; text(pg,120-textlen(t)*4,14,t,C_GOLD,2);
+    const char *t = view==3 ? "ALL THE NUMBERS" : szt(pi,0); text(pg,120-textlen(t)*4,14,t,C_GOLD,2);
     static const char *const vn[3]={"IN SHORT","EVERY DIGIT","BY NAME"}; static const u8 vx[3]={52,100,160};
     if(view==3) ctext(pg,120,27,"YOURS FIRST, THEN SMALLEST TO BIGGEST",C_GREY);
     else for(int k=0;k<3;k++){ if(k==view){ rect(pg,vx[k]-3,26,textlen(vn[k])*4+5,8,6); text(pg,vx[k],27,vn[k],C_WHITE,1); } else text(pg,vx[k],27,vn[k],C_DGREY,1); }
@@ -198,7 +203,7 @@ static void sz_head(volatile u16 *pg, int pi, int view){         // view 3 is th
     ctext(pg,120,152,help[view],C_CYAN); }
 static void sz_short_view(volatile u16 *pg, int pi){
     for(int k=0;k<24;k++) pix(pg,(k*53+11)%240,40+(k*29+7)%104,C_DGREY);
-    int y=40; ctext(pg,120,y,sz_txt[pi][1],C_GREY); y+=7; if(sz_txt[pi][2]){ ctext(pg,120,y,sz_txt[pi][2],C_GREY); y+=7; }
+    int y=40; ctext(pg,120,y,szt(pi,1),C_GREY); y+=7; if(szt(pi,2)){ ctext(pg,120,y,szt(pi,2),C_GREY); y+=7; }
     y+=6; { char s[96], ln[3][32]; nb_short(s); int nl=sz_wrap(s,ln); for(int k=0;k<nl;k++){ text(pg,120-textlen(ln[k])*4,y,ln[k],C_WHITE,2); y+=13; } }
     y+=2; { char b[64]; scpy(b,""); kcomma(b,(u32)nb_n); scat(b, nb_n==1 ? " DIGIT" : " DIGITS");
         if(nb_n>=1000){ u32 m=(u32)nb_n/60; scat(b,". READING ONE A SECOND: "); if(m<120){ ncat(b,(int)m); scat(b," MINUTES"); } else { ncat(b,(int)(m/60)); scat(b," HOURS"); } }
@@ -215,7 +220,7 @@ static void sz_list_view(volatile u16 *pg){
     for(int k=0;k<12;k++){ int i=sz_ltop+k, on=i==sz_lsel; if(i>=NSIZE) break; int y=SZ_TOP+2+k*9;
         if(on) rect(pg,4,y-2,229,9,6);
         char b[24]; scpy(b,""); ncat(b,i+1); text(pg,22-textlen(b)*4,y,b,on?C_GOLD:C_DGREY,1);
-        text(pg,28,y,sz_txt[i][0],on?C_WHITE:C_GREY,1);
+        text(pg,28,y,szt(i,0),on?C_WHITE:C_GREY,1);
         scpy(b,""); kcomma(b,(u32)sz_nd[i]); scat(b, sz_nd[i]==1 ? " DIGIT" : " DIGITS"); text(pg,232-textlen(b)*4,y,b,on?C_CYAN:C_DGREY,1); }
     { int th=110*12/NSIZE, ty=SZ_TOP+(110-th)*sz_ltop/(NSIZE-12); rect(pg,236,SZ_TOP,3,110,6); rect(pg,236,ty,3,th,C_GREY); } }
 static void sz_draw(volatile u16 *pg, int full, int pi, int view, int pos, int ridx, int gcur, int R, int maxpos, char *was){   // full: the whole page, else just what scrolls
