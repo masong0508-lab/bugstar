@@ -35,13 +35,18 @@ typedef struct { u32 magic; u8 tiers[12]; u16 kills[11]; u16 fish, barrels, mine
 _Static_assert(sizeof(SaveG) <= SX_OFF-SG_OFF, "the grind block must end before the ship block");
 _Static_assert(__builtin_offsetof(SaveG,sum)==sizeof(SaveG)-4, "SaveG: the sum must be the last 4 bytes");
 static u32 sg_sum(const SaveG *g){ return fnv(g,sizeof(SaveG)-4); }
+#define LX_OFF 0xA80                                                                   // the newer parts of your bug and your humanoid (after the travel log, before the trophies)
+typedef struct { u32 magic; BugX b; HumX h; u32 sum; } LookSave;
+_Static_assert(LX_OFF+sizeof(LookSave) <= 0xB00, "the look block must end before the trophies");
+static void lookx_save(void){ LookSave l; memset(&l,0,sizeof l); l.magic=0x584B4F4Cu; l.b=bugx; l.h=humx; l.sum=fnv(&l,sizeof l-4); sram_write(slot_base(cur_slot)+LX_OFF,&l,sizeof l); }
+static void lookx_load(void){ LookSave l; sram_read(slot_base(cur_slot)+LX_OFF,&l,sizeof l); if(l.magic!=0x584B4F4Cu || l.sum!=fnv(&l,sizeof l-4)){ bugx_default(); humx_default(); return; } bugx=l.b; humx=l.h; }
 static void grind_save(void){ SaveG g; memset(&g,0,sizeof g); g.magic=0x444E5247; for(int i=0;i<12;i++) g.tiers[i]=tiers[i]; for(int i=0;i<11;i++) g.kills[i]=st_kills[i];
     g.fish=st_fish; g.barrels=st_barrels; g.mined=st_mined; g.dodges=st_dodges; g.planets=st_planets; g.uniq=st_uniq; g.tier_n=st_tiers; g.floors=st_floors; g.ach=ach_done; g.pet_xp=pet_xp; g.pet_lv=pet_lv; g.look=look; g.ship=ship; g.base_mask=base_mask; g.data_cores=data_cores; g.outposts=outposts_done;
-    g.sum=sg_sum(&g); sram_write(slot_base(cur_slot)+SG_OFF,&g,sizeof g); }
+    g.sum=sg_sum(&g); sram_write(slot_base(cur_slot)+SG_OFF,&g,sizeof g); lookx_save(); }
 static void grind_load(void){ SaveG g; sram_read(slot_base(cur_slot)+SG_OFF,&g,sizeof g);
-    if(g.magic!=0x444E5247 || g.sum!=sg_sum(&g)){ for(int i=0;i<12;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; bug_look_default(); ship_default(); ship_build_model(); base_mask=0; data_cores=0; outposts_done=0; return; }
+    if(g.magic!=0x444E5247 || g.sum!=sg_sum(&g)){ for(int i=0;i<12;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; bug_look_default(); humx_default(); ship_default(); ship_build_model(); base_mask=0; data_cores=0; outposts_done=0; return; }
     for(int i=0;i<12;i++) tiers[i]=g.tiers[i]; for(int i=0;i<11;i++) st_kills[i]=g.kills[i];
-    st_fish=g.fish; st_barrels=g.barrels; st_mined=g.mined; st_dodges=g.dodges; st_planets=g.planets; st_uniq=g.uniq; st_tiers=g.tier_n; st_floors=g.floors; ach_done=g.ach; pet_xp=g.pet_xp; pet_lv=g.pet_lv; look=g.look; look.name[8]=0; ship=g.ship; ship.name[8]=0; base_mask=g.base_mask; data_cores=g.data_cores; outposts_done=g.outposts; ship.hull%=NHULL; ship.wings%=NWING; ship.wsize%=3; ship.engines&=3; ship.fins%=3; ship.cannon&=3; ship.cockpit&=1; ship_build_model(); look.shell%=3; look.ant%=3; look.eye&=1; look.legs%=3; look.pat%=5; look.horn&=1; }
+    st_fish=g.fish; st_barrels=g.barrels; st_mined=g.mined; st_dodges=g.dodges; st_planets=g.planets; st_uniq=g.uniq; st_tiers=g.tier_n; st_floors=g.floors; ach_done=g.ach; pet_xp=g.pet_xp; pet_lv=g.pet_lv; look=g.look; look.name[8]=0; ship=g.ship; ship.name[8]=0; base_mask=g.base_mask; data_cores=g.data_cores; outposts_done=g.outposts; ship.hull%=NHULL; ship.wings%=NWING; ship.wsize%=3; ship.engines&=3; ship.fins%=3; ship.cannon&=3; ship.cockpit&=1; ship_build_model(); look.shell%=3; look.ant%=8; look.eye%=8; look.legs%=3; look.pat%=12; look.horn%=6; if(!look.col[LC_WING]) look.col[LC_WING]=rgb15(190,225,255); lookx_load(); }
 EW static Save sv;
 static u32 save_sum(const Save *s){ return fnv(s, __builtin_offsetof(Save,sum)); }   // up to the sum itself (the struct ends in 4 bytes of padding, so sizeof-4 would hash the sum too)
 static int save_sum_old(Save *s){ u32 k=s->sum; s->sum=0; u32 h=fnv(s, sizeof(Save)-4); s->sum=k; return h==k; }   // how older builds summed it (sum zeroed): those saves still load

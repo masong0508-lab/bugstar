@@ -153,7 +153,7 @@ typedef struct { u32 magic; u8 style, height, build, made; u16 col[NHC]; u16 pad
 _Static_assert(__builtin_offsetof(HumSave,sum)==sizeof(HumSave)-4, "HumSave: the sum must be the last 4 bytes");
 _Static_assert(HUM_OFF+sizeof(HumSave) <= META_OFF, "the humanoid block must end before the play-time block");
 static void hum_save(void){ HumSave s; memset(&s,0,sizeof s); s.magic=0x4D554846u; s.style=hum.style; s.height=hum.height; s.build=hum.build; s.made=hum.made; for(int i=0;i<NHC;i++) s.col[i]=hum.col[i];
-    s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+HUM_OFF,&s,sizeof s); }
+    s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+HUM_OFF,&s,sizeof s); lookx_save(); }
 static void hum_load(void){ HumSave s; sram_read(slot_base(cur_slot)+HUM_OFF,&s,sizeof s);
     if(s.magic!=0x4D554846u || s.sum!=fnv(&s,sizeof s-4)) sram_read(slot_base(cur_slot)+0xA00,&s,sizeof s);        // an older save kept it at +0xA00
     if(s.magic!=0x4D554846u || s.sum!=fnv(&s,sizeof s-4)){ hum.style=0; hum.height=3; hum.build=1; hum.made=0; return; }
@@ -164,32 +164,47 @@ static void hum_palette(void); static int hum_oam(int slot, int cx, int feet, in
 // UP/DOWN pick a row. LEFT/RIGHT change it (colour rows browse the presets). A mixes your own colour or types the name.
 // L locks a row. R builds a matching palette from the colour you're on. SELECT surprises you (locked rows stay).
 // B steps back through your last 8 changes. START is done. Ready-made LOOKS give you a place to start.
-typedef struct { const char *nm, *nm2; u8 kind, n; u8 *v; const char *const *opt; u16 *c; u8 *dep; } CRow;     // kind 0 name, 1 looks, 2 choice, 3 colour
-typedef struct { const char *nm; u8 style, height, build; u16 col[7]; } CHumP;                                // skin, hair, shoes, shirt, pants, belt, eyes
-typedef struct { const char *nm; u8 shell, ant, horn, eye, legs, pat; u16 col[7]; } CBugP;                    // shell, head, eye, antenna, legs, marks, horn
-#define NCHP 10
+typedef struct { const char *nm, *nm2; u8 kind, n; u8 *v; const char *const *opt; u16 *c; u8 *dep; const char *const *opt2; } CRow;     // kind 0 name, 1 looks, 2 choice, 3 colour. opt2: a furry's names
+typedef struct { const char *nm; u8 style, height, build, hair, face, beard, top, bot, shoes, hat, back; u16 col[9]; } CHumP;   // skin, hair, shoes, shirt, pants, belt, eyes, hat, back
+typedef struct { const char *nm; u8 shell, shape, fin, pat, eye, mouth, ant, legs, legst, horn, wings, tail, hat; u16 col[10]; } CBugP;   // shell, head, eye, antenna, legs, marks, horn, wings, hat, outline
+#define NCHP 16
 static const CHumP cc_hp[NCHP]={
- {"EXPLORER",0,3,1,{C15(224,172,130),C15(90,56,30),C15(100,70,40),C15(80,130,70),C15(120,100,70),C15(170,130,50),C15(60,120,60)}},
- {"KNIGHT",0,3,2,{C15(235,190,150),C15(200,200,215),C15(70,70,80),C15(150,155,175),C15(60,65,90),C15(220,170,40),C15(70,110,200)}},
- {"ROGUE",0,2,0,{C15(200,150,110),C15(30,28,36),C15(30,28,30),C15(60,50,70),C15(40,36,48),C15(150,40,50),C15(220,180,40)}},
- {"MAGE",0,2,0,{C15(240,205,175),C15(235,235,245),C15(90,60,120),C15(110,60,180),C15(70,40,120),C15(250,220,60),C15(120,200,250)}},
- {"PUNK",0,1,1,{C15(230,180,150),C15(240,100,180),C15(20,20,28),C15(30,30,36),C15(60,90,150),C15(250,220,60),C15(100,240,160)}},
- {"SPACER",0,3,1,{C15(200,160,130),C15(50,40,30),C15(200,200,215),C15(240,240,250),C15(230,230,240),C15(240,130,30),C15(70,150,230)}},
- {"FOX",1,2,1,{C15(230,120,40),C15(250,240,230),C15(250,240,230),C15(60,100,170),C15(70,70,90),C15(220,170,40),C15(40,40,50)}},
- {"WOLF",1,3,2,{C15(120,126,140),C15(70,74,86),C15(220,222,230),C15(150,50,50),C15(50,50,60),C15(190,150,60),C15(240,200,60)}},
- {"BUNNY",1,1,0,{C15(245,240,245),C15(250,170,200),C15(250,200,215),C15(240,130,180),C15(110,150,230),C15(250,230,120),C15(200,60,100)}},
- {"SPRITE",0,0,0,{C15(250,220,200),C15(120,230,140),C15(250,250,120),C15(250,150,90),C15(90,190,170),C15(250,250,250),C15(120,60,200)}}};
-#define NCBP 9
+ {"EXPLORER",0,3,1, 0,0,0,4,0,1,6,3, {C15(224,172,130),C15(90,56,30),C15(100,70,40),C15(80,130,70),C15(120,100,70),C15(170,130,50),C15(60,120,60),C15(140,90,40),C15(90,120,60)}},
+ {"KNIGHT",0,3,2, 0,4,3,8,0,1,7,1, {C15(235,190,150),C15(200,200,215),C15(70,70,80),C15(150,155,175),C15(60,65,90),C15(220,170,40),C15(70,110,200),C15(170,175,195),C15(190,40,50)}},
+ {"ROGUE",0,2,0, 3,7,1,5,0,1,0,4, {C15(200,150,110),C15(30,28,36),C15(30,28,30),C15(60,50,70),C15(40,36,48),C15(150,40,50),C15(220,180,40),C15(60,50,70),C15(150,40,50)}},
+ {"MAGE",0,2,0, 3,0,3,6,0,4,3,1, {C15(240,205,175),C15(235,235,245),C15(90,60,120),C15(110,60,180),C15(70,40,120),C15(250,220,60),C15(120,200,250),C15(90,50,170),C15(60,30,110)}},
+ {"PUNK",0,1,1, 5,6,0,2,4,2,0,0, {C15(230,180,150),C15(240,100,180),C15(20,20,28),C15(30,30,36),C15(60,90,150),C15(250,220,60),C15(100,240,160),C15(30,30,36),C15(30,30,36)}},
+ {"SPACER",0,3,1, 0,0,0,0,0,1,7,5, {C15(200,160,130),C15(50,40,30),C15(200,200,215),C15(240,240,250),C15(230,230,240),C15(240,130,30),C15(70,150,230),C15(240,240,250),C15(150,155,175)}},
+ {"FOX",1,2,1, 8,2,0,4,5,3,0,4, {C15(230,120,40),C15(250,240,230),C15(250,240,230),C15(60,100,170),C15(70,70,90),C15(220,170,40),C15(40,40,50),C15(60,100,170),C15(220,60,60)}},
+ {"WOLF",1,3,2, 0,4,5,9,0,1,0,0, {C15(120,126,140),C15(70,74,86),C15(220,222,230),C15(150,50,50),C15(50,50,60),C15(190,150,60),C15(240,200,60),C15(80,80,90),C15(80,80,90)}},
+ {"BUNNY",1,1,0, 3,1,1,7,5,3,9,0, {C15(245,240,245),C15(250,170,200),C15(250,200,215),C15(240,130,180),C15(110,150,230),C15(250,230,120),C15(200,60,100),C15(250,120,170),C15(250,230,120)}},
+ {"SPRITE",0,0,0, 7,2,1,7,5,4,10,2, {C15(250,220,200),C15(120,230,140),C15(250,250,120),C15(250,150,90),C15(90,190,170),C15(250,250,250),C15(120,60,200),C15(250,240,120),C15(200,240,255)}},
+ {"ROYAL",0,3,1, 6,0,0,6,0,0,4,1, {C15(150,100,70),C15(30,24,20),C15(120,40,40),C15(120,40,150),C15(80,30,100),C15(250,210,60),C15(60,40,20),C15(250,210,60),C15(180,30,40)}},
+ {"PIRATE",0,3,1, 3,7,3,9,3,1,2,0, {C15(220,170,130),C15(60,30,20),C15(40,30,20),C15(240,240,240),C15(60,60,90),C15(170,40,40),C15(40,30,20),C15(30,30,30),C15(170,40,40)}},
+ {"ATHLETE",0,3,1, 4,0,1,2,1,2,8,0, {C15(190,130,90),C15(240,200,80),C15(240,80,60),C15(40,120,230),C15(30,30,40),C15(240,240,240),C15(60,120,60),C15(240,80,60),C15(40,120,230)}},
+ {"CAT",1,1,0, 4,1,0,1,1,3,0,0, {C15(60,60,70),C15(60,60,70),C15(250,190,200),C15(240,200,60),C15(60,90,160),C15(240,240,240),C15(120,230,90),C15(240,200,60),C15(60,90,160)}},
+ {"BEAR",1,4,2, 7,0,0,3,5,3,0,0, {C15(130,90,50),C15(110,70,40),C15(70,50,30),C15(200,60,60),C15(110,70,40),C15(240,200,80),C15(30,20,10),C15(200,60,60),C15(200,60,60)}},
+ {"ANGEL",0,2,0, 9,2,1,6,0,4,10,2, {C15(250,225,200),C15(250,230,140),C15(230,200,150),C15(250,250,255),C15(240,240,250),C15(250,220,100),C15(100,160,240),C15(250,230,120),C15(250,250,255)}}};
+#define NCBP 18
 static const CBugP cc_bp[NCBP]={
- {"CLASSIC",1,0,0,0,1,0,{C15(92,108,148),C15(70,84,120),C15(240,240,250),C15(14,16,28),C15(60,70,100),C15(200,200,215),C15(220,170,40)}},
- {"LADYBUG",0,0,0,1,1,2,{C15(210,40,50),C15(20,20,28),C15(240,240,250),C15(20,20,28),C15(30,30,40),C15(20,20,28),C15(220,170,40)}},
- {"WASP",2,1,0,0,1,1,{C15(250,210,50),C15(30,28,24),C15(230,60,40),C15(30,28,24),C15(40,36,30),C15(30,28,24),C15(220,170,40)}},
- {"BEETLE",1,2,1,0,2,0,{C15(30,90,110),C15(20,50,60),C15(240,240,250),C15(14,30,36),C15(20,60,70),C15(60,150,170),C15(190,150,60)}},
- {"FIREFLY",2,1,0,1,1,3,{C15(40,36,60),C15(250,150,40),C15(255,255,200),C15(250,150,40),C15(60,50,80),C15(250,230,70),C15(220,170,40)}},
- {"MOTH",1,0,0,1,0,4,{C15(210,200,215),C15(120,100,130),C15(40,30,50),C15(240,220,250),C15(150,130,170),C15(150,130,170),C15(220,170,40)}},
- {"STAG",2,1,1,0,2,0,{C15(110,60,30),C15(70,40,20),C15(240,240,250),C15(40,24,12),C15(80,44,22),C15(150,100,50),C15(220,180,90)}},
- {"CORAL",0,0,0,1,0,2,{C15(240,120,100),C15(250,170,150),C15(40,40,60),C15(250,200,190),C15(220,100,90),C15(250,230,220),C15(220,170,40)}},
- {"GHOST",1,2,0,1,0,0,{C15(200,200,215),C15(245,245,255),C15(90,100,200),C15(245,245,255),C15(170,170,190),C15(245,245,255),C15(220,170,40)}}};
+ {"CLASSIC",1,0,0,0,0,0,0,1,0,0,0,0,0, {C15(92,108,148),C15(70,84,120),C15(240,240,250),C15(14,16,28),C15(60,70,100),C15(200,200,215),C15(220,170,40),C15(190,225,255),C15(210,60,70),C15(14,16,28)}},
+ {"LADYBUG",0,1,0,2,1,1,0,1,0,0,2,0,0, {C15(210,40,50),C15(20,20,28),C15(240,240,250),C15(20,20,28),C15(30,30,40),C15(20,20,28),C15(220,170,40),C15(230,235,255),C15(210,60,70),C15(14,14,20)}},
+ {"WASP",2,0,0,1,0,2,1,1,0,0,1,1,0, {C15(250,210,50),C15(30,28,24),C15(230,60,40),C15(30,28,24),C15(40,36,30),C15(30,28,24),C15(220,170,40),C15(220,240,255),C15(30,28,24),C15(20,18,14)}},
+ {"STAG",2,0,2,0,0,3,2,2,1,0,0,0,0, {C15(110,60,30),C15(70,40,20),C15(240,240,250),C15(40,24,12),C15(80,44,22),C15(150,100,50),C15(220,180,90),C15(200,180,150),C15(150,100,50),C15(30,16,8)}},
+ {"FIREFLY",2,0,1,3,5,0,1,1,0,0,1,0,0, {C15(40,36,60),C15(250,150,40),C15(255,255,200),C15(250,150,40),C15(60,50,80),C15(250,230,70),C15(220,170,40),C15(255,250,190),C15(250,150,40),C15(14,12,24)}},
+ {"MOTH",1,0,1,8,1,0,3,0,2,0,3,0,0, {C15(210,200,215),C15(120,100,130),C15(40,30,50),C15(240,220,250),C15(150,130,170),C15(150,130,170),C15(220,170,40),C15(200,190,170),C15(150,130,170),C15(50,40,60)}},
+ {"BUTTERFLY",0,0,3,0,1,1,4,1,0,0,3,0,0, {C15(40,40,60),C15(30,30,40),C15(240,240,250),C15(30,30,40),C15(30,30,40),C15(250,250,250),C15(220,170,40),C15(250,140,40),C15(210,60,70),C15(14,14,20)}},
+ {"RHINO",2,1,2,0,0,0,1,1,1,3,0,0,0, {C15(90,60,40),C15(60,40,26),C15(240,240,250),C15(40,26,16),C15(60,40,26),C15(150,110,80),C15(170,120,70),C15(200,180,150),C15(150,110,80),C15(24,14,8)}},
+ {"UNICORN",1,0,3,11,5,1,0,1,0,4,5,3,0, {C15(245,245,255),C15(250,220,235),C15(120,90,220),C15(250,180,220),C15(240,200,230),C15(250,160,210),C15(250,220,120),C15(200,230,255),C15(250,160,210),C15(120,90,160)}},
+ {"KNIGHT",1,1,2,0,4,2,1,1,3,0,0,0,10, {C15(170,175,195),C15(120,125,145),C15(250,250,250),C15(40,40,50),C15(80,80,95),C15(190,40,50),C15(220,170,40),C15(190,225,255),C15(200,200,215),C15(20,20,30)}},
+ {"PIRATE",1,0,0,1,7,1,2,1,3,0,0,4,2, {C15(240,240,240),C15(210,170,130),C15(250,250,250),C15(40,30,20),C15(40,30,20),C15(190,40,40),C15(220,170,40),C15(190,225,255),C15(30,30,30),C15(20,14,10)}},
+ {"ROYAL",1,0,3,9,1,1,4,1,0,0,0,0,4, {C15(120,40,150),C15(250,210,170),C15(60,40,20),C15(250,210,60),C15(80,30,100),C15(250,210,60),C15(250,210,60),C15(190,225,255),C15(250,210,60),C15(40,14,50)}},
+ {"PARTY",0,0,0,6,2,1,5,1,0,0,1,0,5, {C15(80,200,240),C15(250,200,90),C15(250,250,250),C15(240,80,160),C15(80,90,200),C15(250,240,80),C15(220,170,40),C15(250,160,220),C15(240,80,160),C15(20,20,40)}},
+ {"CHEF",1,0,1,0,0,1,0,1,0,0,0,0,9, {C15(240,140,60),C15(250,210,170),C15(40,30,20),C15(40,30,20),C15(60,40,30),C15(250,250,250),C15(220,170,40),C15(190,225,255),C15(250,250,250),C15(40,26,16)}},
+ {"DEMON",2,3,2,8,4,4,6,2,2,2,4,1,0, {C15(40,20,30),C15(200,40,40),C15(250,220,60),C15(200,40,40),C15(40,20,30),C15(200,40,40),C15(240,230,210),C15(120,30,40),C15(200,40,40),C15(10,4,8)}},
+ {"GHOST",1,1,1,0,6,0,7,0,0,0,5,0,7, {C15(220,225,240),C15(245,245,255),C15(90,100,200),C15(245,245,255),C15(200,200,220),C15(245,245,255),C15(220,170,40),C15(220,235,255),C15(250,230,120),C15(120,130,170)}},
+ {"ROBOT",1,2,2,4,7,2,4,2,1,0,0,0,10, {C15(150,160,170),C15(110,120,130),C15(80,240,250),C15(80,240,250),C15(90,95,105),C15(80,240,250),C15(220,170,40),C15(190,225,255),C15(170,175,185),C15(30,34,40)}},
+ {"VIKING",2,4,0,3,4,0,1,2,3,0,0,0,11, {C15(150,90,50),C15(240,200,120),C15(70,120,200),C15(120,80,40),C15(100,70,40),C15(220,200,120),C15(240,230,210),C15(190,225,255),C15(170,175,195),C15(40,24,10)}}};
 static void cc_hsv(u16 c, int *h, int *s, int *v){
     int r=(c&31)<<3, g=((c>>5)&31)<<3, b=((c>>10)&31)<<3, mx=r>g?r:g, mn=r<g?r:g; if(b>mx) mx=b; if(b<mn) mn=b;
     int d=mx-mn, hh=0; *v=mx; *s=mx?d*255/mx:0;
@@ -224,33 +239,49 @@ static void cc_name(volatile u16 *pg, char *nm){
         if(HIT(K_A)||HIT(K_B)||HIT(K_START)){ while(n>0 && b[n-1]==' ') n--; b[n]=0; if(n==0){ scpy(b,"PIP"); } scpy(nm,b); sfx(2); wait_release(); return; }
     }
 }
+typedef struct { BugLook l; BugX b; Hum h; HumX x; } CCSnap;                      // everything the creator can change (for undo)
+static void cc_take(CCSnap *s){ s->l=look; s->b=bugx; s->h=hum; s->x=humx; }
+static void cc_put(const CCSnap *s){ look=s->l; bugx=s->b; hum=s->h; humx=s->x; }
 static int cc_run(volatile u16 *pg, int human, int first){
     static const char *const body_n[2]={"HUMAN","FURRY"}, *const ht_n[5]={"TINY","SHORT","AVERAGE","TALL","TOWERING"}, *const bd_n[3]={"SLIM","NORMAL","BROAD"},
-        *const shell_n[3]={"SHORT","NORMAL","LONG"}, *const pat_n[5]={"PLAIN","STRIPED","SPOTTED","BANDED","CHECKED"}, *const eye_n[2]={"SMALL","BIG"},
-        *const ant_n[3]={"CURLED","STRAIGHT","DROOPY"}, *const legs_n[3]={"FOUR","SIX","EIGHT"}, *const horn_n[2]={"NONE","HORN"};
-    CRow R[16]; int nr=0;
-    #define CR(a,b,c,d,e,f,g,h) R[nr++]=(CRow){a,b,c,d,e,f,g,h}
+        *const hair_n[10]={"SHORT","BALD","SPIKY","LONG","PONYTAIL","MOHAWK","AFRO","BUN","BOB","CURLY"}, *const ears_n[10]={"POINTY","ROUND","FLOPPY","BUNNY","CAT","HORNS","FLUFFY","BEAR","LONG","NONE"},
+        *const face_n[8]={"DOTS","BIG","HAPPY","SLEEPY","ANGRY","GLASSES","SHADES","EYEPATCH"}, *const beard_n[6]={"NONE","SMILE","MOUSTACHE","BEARD","GOATEE","FANGS"},
+        *const top_n[10]={"SHIRT","T-SHIRT","TANK TOP","VEST","JACKET","HOODIE","ROBE","DRESS","ARMOUR","STRIPES"}, *const bot_n[6]={"TROUSERS","SHORTS","SKIRT","BAGGY","STRIPED","NONE"},
+        *const shoe_n[5]={"SHOES","BOOTS","TRAINERS","BARE FEET","SANDALS"}, *const hhat_n[12]={"NONE","CAP","TOP HAT","WIZARD","CROWN","BEANIE","COWBOY","HELMET","HEADBAND","BOW","HALO","PARTY HAT"},
+        *const back_n[6]={"NONE","CAPE","WINGS","BACKPACK","SCARF","JETPACK"},
+        *const shell_n[3]={"SHORT","NORMAL","LONG"}, *const shape_n[5]={"ROUND","DOME","FLAT","SPIKY","HUMPED"}, *const fin_n[4]={"SHINY","MATTE","METAL","PEARL"},
+        *const pat_n[12]={"PLAIN","STRIPED","SPOTTED","BANDED","CHECKED","ZIGZAG","DOTTED","DIAMONDS","TIGER","HALVES","SPECKLED","RINGS"},
+        *const eye_n[8]={"SMALL","BIG","GOOGLY","SLEEPY","ANGRY","STARRY","ONE BIG EYE","SHADES"}, *const mouth_n[6]={"NONE","SMILE","JAWS","PINCERS","FANGS","TONGUE"},
+        *const ant_n[8]={"CURLED","STRAIGHT","DROOPY","FEATHERY","CLUBBED","ZIGZAG","LONG WHIPS","NONE"}, *const legs_n[3]={"FOUR","SIX","EIGHT"}, *const legst_n[4]={"THIN","CHUNKY","HAIRY","BOOTS"},
+        *const horn_n[6]={"NONE","HORN","TWIN HORNS","RHINO","UNICORN","ANTLERS"}, *const wing_n[6]={"NONE","LITTLE","BEETLE","BUTTERFLY","BAT","FAIRY"}, *const tail_n[5]={"NONE","STINGER","SPIKES","CURLY","LONG"},
+        *const hat_n[12]={"NONE","CAP","TOP HAT","BOW","CROWN","PARTY HAT","FLOWER","HALO","BEANIE","CHEF","HELMET","VIKING"};
+    CRow R[40]; int nr=0;
+    #define CR(a,b,c,d,e,f,g,h) R[nr++]=(CRow){a,b,c,d,e,f,g,h,0}
     CR("NAME",0,0,0,0,0,0,0); CR("LOOKS",0,1,0,0,0,0,0);
     if(human){
         CR("BODY",0,2,2,&hum.style,body_n,0,0); CR("HEIGHT",0,2,5,&hum.height,ht_n,0,0); CR("BUILD",0,2,3,&hum.build,bd_n,0,0);
+        CR("HAIR","EARS",2,10,&humx.hair,hair_n,0,0); R[nr-1].opt2=ears_n; CR("FACE",0,2,8,&humx.face,face_n,0,0); CR("MOUTH",0,2,6,&humx.beard,beard_n,0,0);
+        CR("TOP",0,2,10,&humx.top,top_n,0,0); CR("BOTTOM",0,2,6,&humx.bot,bot_n,0,0); CR("SHOES","FEET",2,5,&humx.shoes,shoe_n,0,0); CR("HAT",0,2,12,&humx.hat,hhat_n,0,0); CR("BACK",0,2,6,&humx.back,back_n,0,0);
         CR("SKIN","FUR",3,0,0,0,&hum.col[HC_SKIN],0); CR("HAIR","EARS+TAIL",3,0,0,0,&hum.col[HC_HAIR],0); CR("SHOES","MUZZLE",3,0,0,0,&hum.col[HC_ACC],0);
         CR("SHIRT",0,3,0,0,0,&hum.col[HC_SHIRT],0); CR("PANTS",0,3,0,0,0,&hum.col[HC_PANTS],0); CR("BELT",0,3,0,0,0,&hum.col[HC_BELT],0); CR("EYES",0,3,0,0,0,&hum.col[HC_EYES],0);
+        CR("HAT COL",0,3,0,0,0,&humx.c_hat,&humx.hat); CR("BACK COL",0,3,0,0,0,&humx.c_back,&humx.back);
     } else {
-        CR("LENGTH",0,2,3,&look.shell,shell_n,0,0); CR("PATTERN",0,2,5,&look.pat,pat_n,0,0); CR("EYE SIZE",0,2,2,&look.eye,eye_n,0,0);
-        CR("ANTENNAE",0,2,3,&look.ant,ant_n,0,0); CR("LEGS",0,2,3,&look.legs,legs_n,0,0); CR("HORN",0,2,2,&look.horn,horn_n,0,0);
+        CR("LENGTH",0,2,3,&look.shell,shell_n,0,0); CR("SHAPE",0,2,5,&bugx.shape,shape_n,0,0); CR("FINISH",0,2,4,&bugx.finish,fin_n,0,0); CR("PATTERN",0,2,12,&look.pat,pat_n,0,0);
+        CR("EYES",0,2,8,&look.eye,eye_n,0,0); CR("MOUTH",0,2,6,&bugx.mouth,mouth_n,0,0); CR("ANTENNAE",0,2,8,&look.ant,ant_n,0,0); CR("LEGS",0,2,3,&look.legs,legs_n,0,0); CR("LEG STYLE",0,2,4,&bugx.legst,legst_n,0,0);
+        CR("HORN",0,2,6,&look.horn,horn_n,0,0); CR("WINGS",0,2,6,&bugx.wings,wing_n,0,0); CR("TAIL",0,2,5,&bugx.tail,tail_n,0,0); CR("HAT",0,2,12,&bugx.hat,hat_n,0,0);
         CR("SHELL",0,3,0,0,0,&look.col[LC_SHELL],0); CR("MARKINGS",0,3,0,0,0,&look.col[LC_MARK],&look.pat); CR("HEAD",0,3,0,0,0,&look.col[LC_HEAD],0);
-        CR("EYES",0,3,0,0,0,&look.col[LC_EYE],0); CR("ANT COL",0,3,0,0,0,&look.col[LC_ANT],0); CR("LEG COL",0,3,0,0,0,&look.col[LC_LEGS],0); CR("HORN COL",0,3,0,0,0,&look.col[LC_HORN],&look.horn);
+        CR("EYE COL",0,3,0,0,0,&look.col[LC_EYE],0); CR("ANT COL",0,3,0,0,0,&look.col[LC_ANT],0); CR("LEG COL",0,3,0,0,0,&look.col[LC_LEGS],0); CR("HORN COL",0,3,0,0,0,&look.col[LC_HORN],0);
+        CR("WING COL",0,3,0,0,0,&look.col[LC_WING],&bugx.wings); CR("HAT COL",0,3,0,0,0,&bugx.c_hat,0); CR("OUTLINE",0,3,0,0,0,&bugx.c_line,0);
     }
-    void *st = human ? (void*)&hum : (void*)&look; int ss = human ? (int)sizeof hum : (int)sizeof look;
     int np = human ? NCHP : NCBP;
     char nm[9]; scpy(nm,look.name); if(textlen(nm)<1) scpy(nm,"PIP");
-    u8 before[40]; char bnm[9]; memcpy(before,st,ss); scpy(bnm,nm);
-    u8 hist[8][40]; char hnm[8][9]; int hn=0, hp=0;
-    #define PUSH() do{ memcpy(hist[hp],st,ss); scpy(hnm[hp],nm); hp=(hp+1)&7; if(hn<8) hn++; }while(0)
-    #define APPLY() do{ if(human) hum_palette(); else bug_build(); }while(0)
+    EW static CCSnap before, hist[8]; char bnm[9]; cc_take(&before); scpy(bnm,nm);
+    char hnm[8][9]; int hn=0, hp=0;
+    #define PUSH() do{ cc_take(&hist[hp]); scpy(hnm[hp],nm); hp=(hp+1)&7; if(hn<8) hn++; }while(0)
+    #define APPLY() do{ if(human){ hum_palette(); hum_build(); } else bug_build(); }while(0)
     int sel=0, top=0, dirty=1, t=0, pi=-1, sch=-1, rep=0, note_t=0; u16 lock=0; char note[32]; note[0]=0;
     wait_release(); oam_hide_all(); oam_flush();
-    if(human){ if(!hum.made) hum_from_look(); hum.made=1; hum_palette(); } else bug_build();
+    if(human){ if(!hum.made) hum_from_look(); hum.made=1; hum_palette(); hum_build(); } else bug_build();
     while(1){
         if(dirty){ dirty=0; char b[40];
             panel(pg,12,20,216,136, human ? (first?"YOU ARE A HUMANOID NOW":"THE MIRROR: HUMANOID") : (first?"MAKE YOUR BUG":"THE MIRROR"));
@@ -261,7 +292,7 @@ static int cc_run(volatile u16 *pg, int human, int first){
                 int vc = i==sel?C_GOLD:C_GREY;
                 if(r->kind==0) text(pg,64,y,nm,vc,1);
                 else if(r->kind==1){ scpy(b,"<"); scat(b, pi>=0 ? (human?cc_hp[pi].nm:cc_bp[pi].nm) : "READY-MADE"); scat(b,">"); text(pg,64,y,b,vc,1); }
-                else if(r->kind==2){ scpy(b,"<"); scat(b,r->opt[*r->v]); scat(b,">"); text(pg,64,y,b,on?vc:C_DGREY,1); }
+                else if(r->kind==2){ scpy(b,"<"); scat(b,(human&&hum.style&&r->opt2)?r->opt2[*r->v%r->n]:r->opt[*r->v%r->n]); scat(b,">"); text(pg,64,y,b,on?vc:C_DGREY,1); }
                 else if(on){ BG_PAL[224+j]=*r->c; rect(pg,64,y-1,24,8,224+j); frame1(pg,64,y-1,24,8,i==sel?C_WHITE:C_DGREY); int pc=cc_pidx(*r->c); text(pg,92,y,pc>=0?preset_name[pc]:"CUSTOM",i==sel?C_WHITE:C_GREY,1); }
                 else text(pg,64,y,"(OFF)",C_DGREY,1);
                 if(i>=1) rect(pg,124,y,5,5,((lock>>i)&1)?C_GOLD:C_DGREY); }
@@ -277,9 +308,9 @@ static int cc_run(volatile u16 *pg, int human, int first){
             if(note_t) ctext(pg,120,140,note,C_GOLD); else if(first) ctext(pg,120,140,"CHANGE THIS ANYTIME AT YOUR SHIP'S MIRROR",C_DGREY); }
         t++; int facing=(t/150)&1;
         if(human){ int n=hum_oam(0,183,95-((t>>5)&1),1,facing,0,0,0,0,-1); shadow_oam[n].a0=((95-2)&255)|(1<<14); shadow_oam[n].a1=((183-8)&511); shadow_oam[n].a2=T_SHADOW; }
-        else { int wf=(t>>3)&1; set_affine(31, facing?128:-128, 0, 0, 128);
-            shadow_oam[0].a0=((70-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((183-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
-            shadow_oam[1].a0=((70-2)&255)|(1<<14); shadow_oam[1].a1=((183-8)&511); shadow_oam[1].a2=T_SHADOW; }
+        else { int wf=(t>>3)&1; set_affine(31, facing?170:-170, 0, 0, 170);
+            bug_obj(0,183,76-wf,31,170); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
+            shadow_oam[1].a0=((88-2)&255)|(1<<14); shadow_oam[1].a1=((183-8)&511); shadow_oam[1].a2=T_SHADOW; }
         vsync(); oam_flush(); read_keys();
         if(note_t && --note_t==0) dirty=1;
         CRow *cr=&R[sel]; int on=!cr->dep || *cr->dep;
@@ -290,8 +321,13 @@ static int cc_run(volatile u16 *pg, int human, int first){
             if(cr->kind==2){ PUSH(); *cr->v=(u8)((*cr->v+d+cr->n)%cr->n); pi=-1; APPLY(); dirty=1; sfx(2); }
             else if(cr->kind==3 && on){ if(fresh) PUSH(); int p=cc_pidx(*cr->c); p = p<0 ? (d>0?0:NPRESET-1) : (p+d+NPRESET)%NPRESET; *cr->c=preset_col[p]; pi=-1; APPLY(); dirty=1; sfx(7); }
             else if(cr->kind==1){ if(fresh) PUSH(); pi = pi<0 ? (d>0?0:np-1) : (pi+d+np)%np;
-                if(human){ const CHumP *p=&cc_hp[pi]; cc_set8(R,nr,lock,&hum.style,p->style); cc_set8(R,nr,lock,&hum.height,p->height); cc_set8(R,nr,lock,&hum.build,p->build); for(int k=0;k<7;k++) cc_set16(R,nr,lock,&hum.col[k],p->col[k]); }
-                else { const CBugP *p=&cc_bp[pi]; cc_set8(R,nr,lock,&look.shell,p->shell); cc_set8(R,nr,lock,&look.ant,p->ant); cc_set8(R,nr,lock,&look.horn,p->horn); cc_set8(R,nr,lock,&look.eye,p->eye); cc_set8(R,nr,lock,&look.legs,p->legs); cc_set8(R,nr,lock,&look.pat,p->pat); for(int k=0;k<7;k++) cc_set16(R,nr,lock,&look.col[k],p->col[k]); }
+                if(human){ const CHumP *p=&cc_hp[pi]; cc_set8(R,nr,lock,&hum.style,p->style); cc_set8(R,nr,lock,&hum.height,p->height); cc_set8(R,nr,lock,&hum.build,p->build);
+                    cc_set8(R,nr,lock,&humx.hair,p->hair); cc_set8(R,nr,lock,&humx.face,p->face); cc_set8(R,nr,lock,&humx.beard,p->beard); cc_set8(R,nr,lock,&humx.top,p->top); cc_set8(R,nr,lock,&humx.bot,p->bot); cc_set8(R,nr,lock,&humx.shoes,p->shoes); cc_set8(R,nr,lock,&humx.hat,p->hat); cc_set8(R,nr,lock,&humx.back,p->back);
+                    for(int k=0;k<7;k++) cc_set16(R,nr,lock,&hum.col[k],p->col[k]); cc_set16(R,nr,lock,&humx.c_hat,p->col[7]); cc_set16(R,nr,lock,&humx.c_back,p->col[8]); }
+                else { const CBugP *p=&cc_bp[pi]; cc_set8(R,nr,lock,&look.shell,p->shell); cc_set8(R,nr,lock,&bugx.shape,p->shape); cc_set8(R,nr,lock,&bugx.finish,p->fin); cc_set8(R,nr,lock,&look.pat,p->pat);
+                    cc_set8(R,nr,lock,&look.eye,p->eye); cc_set8(R,nr,lock,&bugx.mouth,p->mouth); cc_set8(R,nr,lock,&look.ant,p->ant); cc_set8(R,nr,lock,&look.legs,p->legs); cc_set8(R,nr,lock,&bugx.legst,p->legst);
+                    cc_set8(R,nr,lock,&look.horn,p->horn); cc_set8(R,nr,lock,&bugx.wings,p->wings); cc_set8(R,nr,lock,&bugx.tail,p->tail); cc_set8(R,nr,lock,&bugx.hat,p->hat);
+                    for(int k=0;k<8;k++) cc_set16(R,nr,lock,&look.col[k],p->col[k]); cc_set16(R,nr,lock,&bugx.c_hat,p->col[8]); cc_set16(R,nr,lock,&bugx.c_line,p->col[9]); }
                 APPLY(); dirty=1; sfx(6); }
         }
         if(HIT(K_A)){
@@ -307,8 +343,8 @@ static int cc_run(volatile u16 *pg, int human, int first){
             pi=-1; APPLY(); scpy(note,"SURPRISE!"); note_t=50; dirty=1; sfx(6); }
         if(HIT(K_START)) break;
         if(HIT(K_B)){
-            if(hn>0){ hp=(hp+7)&7; hn--; memcpy(st,hist[hp],ss); scpy(nm,hnm[hp]); pi=-1; APPLY(); scpy(note,"UNDONE"); note_t=40; dirty=1; sfx(4); }
-            else { memcpy(st,before,ss); scpy(nm,bnm); if(human){ hum_palette(); form_palette(); } else bug_build(); wait_release(); oam_hide_all(); oam_flush(); return 0; } }
+            if(hn>0){ hp=(hp+7)&7; hn--; cc_put(&hist[hp]); scpy(nm,hnm[hp]); pi=-1; APPLY(); scpy(note,"UNDONE"); note_t=40; dirty=1; sfx(4); }
+            else { cc_put(&before); scpy(nm,bnm); if(human){ hum_palette(); hum_build(); form_palette(); } else bug_build(); wait_release(); oam_hide_all(); oam_flush(); return 0; } }
     }
     scpy(look.name,nm);
     if(human){ hum.made=1; hum_save(); form_palette(); }
@@ -342,7 +378,7 @@ static void help_screen(volatile u16 *pg){
             text(pg,14,140,"< >: PAGE",C_CYAN,1); rtext(pg,226,140,"B: BACK",C_CYAN); }
         t++; int wf=(t>>3)&1; int bx=((t>>1)%300)-40;                    // the bug trots along the bottom
         set_affine(31, -128, 0, 0, 128);
-        shadow_oam[0].a0=((150-32-wf)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((bx-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
+        bug_obj(0,bx,150-16-wf,31,128); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
         vsync(); oam_flush(); read_keys(); twinkle(pg,t);
         if(HIT(K_RIGHT)||HIT(K_R)||HIT(K_A)){ if(p<4){ p++; dirty=1; sfx(7); } else if(HIT(K_A)) break; }
         if(HIT(K_LEFT)||HIT(K_L)){ if(p>0){ p--; dirty=1; sfx(7); } }

@@ -29,7 +29,7 @@ static const u8 kwd_need[NKWD]={0,0,0,0,0,0,0,0,0,0,0,0,3,5,7,9,12,16};         
 static int kwd_tile(int d, int *shp, int *siz, int *w, int *h, int *pb){
     static const u16 tl[NKWD]={0,T_SBEETLE,T_SLUG,T_LOCAL1,T_LOCAL2,T_HOPPER,T_GRAZER,T_FLYER,T_FOSSIL,T_TREE,T_ROCK,T_FLOWER,T_BOLT,T_STALL,T_WEB,T_RUIN,T_SHIP,T_BUGSIDE};
     *shp=0; *siz=1; *w=16; *h=16; *pb = (d>=5&&d<=7) ? 6 : d==17 ? 15 : 0;
-    if(d==2||d==7){ *shp=1; *siz=0; *h=8; } if(d==17){ *shp=1; *siz=2; *w=32; *h=16; } return tl[d]; }
+    if(d==2||d==7){ *shp=1; *siz=0; *h=8; } if(d==17){ *shp=0; *siz=2; *w=32; *h=32; } return tl[d]; }
 static void kwd_palette(void){                                   // the creature drivers wear your trim colour; the evil twin is your bug, in red
     volatile u16 *P=OBJ_PAL+6*16; for(int i=0;i<16;i++) P[i]=obj_pal[i]; u16 c=kl.col[1]; P[6]=shade15(c,7); P[7]=c; P[8]=lift15(c,8); P[5]=C15(250,250,250);
     volatile u16 *Q=OBJ_PAL+15*16; for(int i=0;i<16;i++) Q[i]=OBJ_PAL[48+i]; Q[2]=C15(60,10,20); Q[3]=C15(150,20,40); Q[4]=C15(230,60,60); Q[5]=C15(255,120,120); Q[9]=C15(255,230,60); }
@@ -216,7 +216,7 @@ static int kw_menu(void){
               shadow_oam[slot].a0=((ty-8)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((tx-16)&511)|(29<<9); shadow_oam[slot].a2=(T_TOP1+(kl.part[KP_TOP]-1)*2); slot++; }
           int feet=gy-kb_seat[b2]*256/inv-bob, dx2 = view ? (12-16)*256/inv : 0;
           int s2=kw_draw_driver(slot,cx+dx2,feet+2,180,0); if(s2>=0) slot=s2;
-          else if(view){ set_affine(31,-200,0,0,200); int dh=16*256/200; shadow_oam[slot].a0=((feet-dh/2-16+3)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((cx+dx2-32)&511)|(31<<9)|(2<<14); shadow_oam[slot].a2=bug_tile(0)|BUG_BANK; slot++; }
+          else if(view){ set_affine(31,-200,0,0,200); int dh=16*256/200; bug_obj(slot,cx+dx2,feet-dh/2+3,31,200); shadow_oam[slot].a2=bug_tile(0)|BUG_BANK; slot++; }
           else { set_affine(31,330,0,0,330); int cy2=feet-31*256/330; shadow_oam[slot].a0=((cy2-64)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((cx-64)&511)|(31<<9)|(3<<14); shadow_oam[slot].a2=T_BACK|BUG_BANK; slot++; }
           for(;slot<128;slot++) shadow_oam[slot].a0=0x0200; }
         vsync(); oam_flush(); read_keys(); t++; rng_s+=t;

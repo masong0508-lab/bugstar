@@ -565,7 +565,7 @@ static int kloop_draw_me(int slot){                                 // you, goin
     shadow_oam[slot].a0=((y-16)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((x-32)&511)|(29<<9)|(2<<14); shadow_oam[slot].a2=(T_KDYN+8)|(7<<12); slot++;   // the side view
     int b=kl.part[KP_BODY], off=(kb_seat[b]-1)*256/inv;
     if(form==FORM_BUG && !(kw_mode && kw_driver_on())){ int bi=inv*3/2; s32 qa=-pa*bi/inv, qb=-pb*bi/inv, qc=pc*bi/inv, qd=pd*bi/inv; set_affine(31,(s16)qa,(s16)qb,(s16)qc,(s16)qd);   // your bug in the seat, from the side
-        int dx=(int)(ux*off/256), dy=(int)(uy*off/256); shadow_oam[slot].a0=((y+dy-16)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((x+dx-32)&511)|(31<<9)|(2<<14); shadow_oam[slot].a2=bug_tile(0)|BUG_BANK; slot++; }
+        int dx=(int)(ux*off/256)+(int)(ux*8/bi), dy=(int)(uy*off/256)+(int)(uy*8/bi); shadow_oam[slot].a0=((y+dy-32)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((x+dx-32)&511)|(31<<9)|(2<<14); shadow_oam[slot].a2=bug_tile(0)|BUG_BANK; slot++; }
     else if(form==FORM_CREATURE && form_body!=2){ int bi=inv*200/150; s32 qa=-pa*bi/inv, qb=-pb*bi/inv, qc=pc*bi/inv, qd=pd*bi/inv; set_affine(31,(s16)qa,(s16)qb,(s16)qc,(s16)qd);
         int dx=(int)(ux*off/256), dy=(int)(uy*off/256); shadow_oam[slot].a0=((y+dy-16)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((x+dx-16)&511)|(31<<9)|(1<<14); shadow_oam[slot].a2=(form_body==0?T_HOPPER:T_GRAZER)|(6<<12); slot++; }
     return slot; }
@@ -739,7 +739,7 @@ static int kart_draw_obj(int slot, PObj *o, int sx, int sy, int m, s32 f){
     int bg=k->being, feet=sy-kb_seat[b]*s/64, dx2 = view ? ((12-16)*s/64)*fs : 0, tl, shp=0, siz=1, w=16, h=16, pb=0;
     switch(bg){ case KB_BEETLE: tl=T_SBEETLE; break; case KB_SLUG: tl=T_SLUG; shp=1; siz=0; h=8; break; case KB_LOCAL1: tl=T_LOCAL1; break; case KB_LOCAL2: tl=T_LOCAL2; break;
         case KB_CRIT0: case KB_CRIT1: { Species *p=&spc[bg-KB_CRIT0]; pb=4+bg-KB_CRIT0; if(p->body==2){ tl=T_FLYER; shp=1; siz=0; h=8; } else tl = p->body==0 ? T_HOPPER : T_GRAZER; } break;
-        case KB_TWIN: tl=T_BUGSIDE; shp=1; siz=2; w=32; h=16; pb=15; break; case KB_FOSSIL: tl=T_FOSSIL; break; case KB_TREE: tl=T_TREE; break; case KB_ROCK: tl=T_ROCK; break;
+        case KB_TWIN: tl=T_BUGSIDE; shp=0; siz=2; w=32; h=32; pb=15; break; case KB_FOSSIL: tl=T_FOSSIL; break; case KB_TREE: tl=T_TREE; break; case KB_ROCK: tl=T_ROCK; break;
         case KB_FLOWER: tl=T_FLOWER; break; case KB_DROID: tl=T_BOLT; break; case KB_STALL: tl=T_STALL; break; case KB_WEB: tl=T_WEB; break; case KB_RUIN: tl=T_RUIN; break; default: tl=T_SHIP; }
     int dh=h*s/64; shadow_oam[slot].a0=((feet-dh/2-h)&255)|(1<<8)|(1<<9)|(shp<<14); shadow_oam[slot].a1=((sx+dx2-w)&511)|(mid<<9)|(siz<<14); shadow_oam[slot].a2=tl|(pb<<12); slot++;
     if(k->cloud && slot<124){ shadow_oam[slot].a0=((sy-kh-dh-14)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((sx-32)&511)|(mid<<9)|(1<<14); shadow_oam[slot].a2=T_CLOUD; slot++; }

@@ -39,73 +39,176 @@ static u16 w_tint[6], w_mon[8]; static u8 w_styles[3]; static char w_name[24];
 static u32 wseed;
 static int wr(int n){ wseed = wseed*1103515245u + 12345u; return (int)((wseed>>16)%(u32)n); }
 static u16 rgb15(int r,int g,int b){ if(r>255)r=255; if(g>255)g=255; if(b>255)b=255; return (r>>3)|((g>>3)<<5)|((b>>3)<<10); }
-// ---- your bug's look: built in-game from parts, like a creature creator. Its sprite is drawn at run time
-// and uses sprite palette bank 3 all for itself: 1 outline, 2-4 shell, 5 shine, 6-7 head, 9 eye, 10 antenna, 11 legs, 12 markings, 13 horn
-typedef struct { char name[9]; u8 shell, ant, horn, eye, legs, pat; u16 col[8]; } BugLook;      // col: shell, head, eye, antenna, legs, markings, horn, (spare)
+// ---- your bug's look: built in-game from parts, like a creature creator. Its sprite is drawn at run time (32x32: the body fills
+// the bottom half, wings, hats and antlers reach up into the top) and uses sprite palette bank 3 all for itself:
+// 1 outline, 2-4 shell, 5 shine, 6-8 head, 9 eye, 10 antenna, 11 legs, 12 markings, 13 horn, 14 hat, 15 wings
+typedef struct { char name[9]; u8 shell, ant, horn, eye, legs, pat; u16 col[8]; } BugLook;      // col: shell, head, eye, antenna, legs, markings, horn, wings
 static BugLook look;
+typedef struct { u8 shape, finish, mouth, legst, wings, tail, hat, x0; u16 c_hat, c_line; } BugX;   // the newer parts (saved in the look block, slot+0xA80)
+static BugX bugx;
 #define bug_name look.name
-enum { LC_SHELL, LC_HEAD, LC_EYE, LC_ANT, LC_LEGS, LC_MARK, LC_HORN };
+enum { LC_SHELL, LC_HEAD, LC_EYE, LC_ANT, LC_LEGS, LC_MARK, LC_HORN, LC_WING };
 #define NPRESET 16
 #define C15(r,g,b) ((u16)(((r)>>3)|(((g)>>3)<<5)|(((b)>>3)<<10)))
 static const u16 preset_col[NPRESET]={ C15(92,108,148), C15(190,50,60), C15(50,140,60), C15(70,150,230), C15(230,100,80), C15(60,90,40), C15(120,60,180), C15(120,80,40), C15(220,170,40), C15(200,200,215), C15(245,245,255), C15(20,20,28), C15(250,220,60), C15(110,40,110), C15(240,130,180), C15(170,80,30) };
 static const char *const preset_name[NPRESET]={"STEEL","RUBY","LEAF","SKY","CORAL","MOSS","VIOLET","OAK","GOLD","PEARL","WHITE","BLACK","SUN","PLUM","ROSE","RUST"};
+static void bugx_default(void){ memset(&bugx,0,sizeof bugx); bugx.c_hat=C15(210,60,70); bugx.c_line=C15(14,16,28); }
 static void bug_look_default(void){ scpy(look.name,"PIP"); look.shell=1; look.ant=0; look.horn=0; look.eye=0; look.legs=1; look.pat=0;
     look.col[LC_SHELL]=preset_col[0]; look.col[LC_HEAD]=rgb15(70,84,120); look.col[LC_EYE]=rgb15(240,240,250); look.col[LC_ANT]=rgb15(14,16,28);
-    look.col[LC_LEGS]=rgb15(14,16,28); look.col[LC_MARK]=rgb15(30,36,60); look.col[LC_HORN]=rgb15(200,170,80); }
+    look.col[LC_LEGS]=rgb15(14,16,28); look.col[LC_MARK]=rgb15(30,36,60); look.col[LC_HORN]=rgb15(200,170,80); look.col[LC_WING]=rgb15(190,225,255); bugx_default(); }
 static u16 shade15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10)&31)*k/16; if(r>31)r=31; if(g>31)g=31; if(b>31)b=31; return r|(g<<5)|(b<<10); }
 static u16 lift15(u16 c, int k){ int r=(c&31), g=((c>>5)&31), b=((c>>10)&31); r+=(31-r)*k/16; g+=(31-g)*k/16; b+=(31-b)*k/16; return r|(g<<5)|(b<<10); }
+static u16 mix15(u16 a, u16 b, int t){ int r=((a&31)*(16-t)+(b&31)*t)>>4, g=(((a>>5)&31)*(16-t)+((b>>5)&31)*t)>>4, bl=(((a>>10)&31)*(16-t)+((b>>10)&31)*t)>>4; return r|(g<<5)|(bl<<10); }
 static void obj_palette(void){
     for(int i=0;i<16;i++) OBJ_PAL[i]=obj_pal[i];
-    u16 sh=look.col[LC_SHELL];
+    u16 sh=look.col[LC_SHELL], wg=look.col[LC_WING];
     OBJ_PAL[2]=shade15(sh,8); OBJ_PAL[3]=sh; OBJ_PAL[4]=lift15(sh,7);              // the jaws in first person take the shell colour
     for(int i=0;i<16;i++){ u16 c=OBJ_PAL[i]; OBJ_PAL[16+i]=shade15(c,11); OBJ_PAL[32+i]=shade15(c,7); }
     volatile u16 *P=OBJ_PAL+48; for(int i=0;i<16;i++) P[i]=0;
-    P[1]=rgb15(14,16,28); P[2]=shade15(sh,8); P[3]=sh; P[4]=lift15(sh,7); P[5]=lift15(sh,13);
+    P[1]=bugx.c_line;
+    switch(bugx.finish%4){                                                          // the shell's finish: how it catches the light
+        case 1: P[2]=shade15(sh,9); P[3]=sh; P[4]=lift15(sh,4); P[5]=lift15(sh,7); break;                         // matte
+        case 2: P[2]=shade15(sh,5); P[3]=shade15(sh,12); P[4]=lift15(sh,6); P[5]=lift15(sh,11); break;            // metal
+        case 3: P[2]=mix15(shade15(sh,9),wg,4); P[3]=sh; P[4]=mix15(lift15(sh,7),wg,7); P[5]=lift15(wg,12); break; // pearl
+        default: P[2]=shade15(sh,8); P[3]=sh; P[4]=lift15(sh,7); P[5]=lift15(sh,13); }                           // shiny
     P[6]=shade15(look.col[LC_HEAD],9); P[7]=look.col[LC_HEAD]; P[8]=lift15(look.col[LC_HEAD],6);
-    P[9]=look.col[LC_EYE]; P[10]=look.col[LC_ANT]; P[11]=look.col[LC_LEGS]; P[12]=look.col[LC_MARK]; P[13]=look.col[LC_HORN]; P[14]=shade15(look.col[LC_HORN],9);
+    P[9]=look.col[LC_EYE]; P[10]=look.col[LC_ANT]; P[11]=look.col[LC_LEGS]; P[12]=look.col[LC_MARK]; P[13]=look.col[LC_HORN]; P[14]=bugx.c_hat; P[15]=wg;
 }
-// draw one walking frame of the bug (28x14 art in a 32x16 box, facing left) from the parts
-EW static u8 bug_px[16*32];
+// ---- drawing it. Art coordinates: x 0..27 runs from the tail to the head, y 0 is the top of a plain shell, the feet touch y 13.
+// The picture faces left. Extra parts (wings, horns, hats...) get an outline of their own afterwards.
+EW static u8 bug_px[32*64];                                                         // a picture buffer: your bug (32x32), the humanoid (32x64), a kart (32x16)
+#define BP(x,y,v) do{ int xx_=29-(x), yy_=(y)+18; if(xx_>=0&&xx_<32&&yy_>=0&&yy_<32) bug_px[yy_*32+xx_]=(u8)(v); }while(0)
+#define XP(x,y,v) BP(x,y,(v)|0x80)
+static int bget(int x, int y){ int xx=29-x, yy=y+18; return (xx>=0&&xx<32&&yy>=0&&yy<32) ? bug_px[yy*32+xx]&0x7F : 0; }
+static void bell(int ex, int ey, int rx4, int ry4, int c){                          // a filled ellipse (radii in quarter pixels), as an extra part
+    for(int y=ey-(ry4>>2)-1;y<=ey+(ry4>>2)+1;y++) for(int x=ex-(rx4>>2)-1;x<=ex+(rx4>>2)+1;x++){ int dx=(x-ex)*4, dy=(y-ey)*4; if(dx*dx*ry4*ry4+dy*dy*rx4*rx4 <= rx4*rx4*ry4*ry4) XP(x,y,c); } }
+static void bpts(const s8 *p, int n, int ox, int oy, int c, int extra){ for(int i=0;i<n;i++){ if(extra) XP(ox+p[i*2],oy+p[i*2+1],c); else BP(ox+p[i*2],oy+p[i*2+1],c); } }
+static int btop(int x){ for(int y=-14;y<11;y++){ int v=bget(x,y); if(v) return y; } return 11; }       // the top of the shell at column x
 static void bug_draw(int frame){
-    for(int i=0;i<16*32;i++) bug_px[i]=0;
-    #define BP(x,y,v) do{ int xx_=(x), yy_=(y); if(xx_>=0&&xx_<28&&yy_>=0&&yy_<14) bug_px[(yy_+2)*32 + (2+27-xx_)]=(v); }while(0)
-    int a = 9+look.shell, cx=11+look.shell, hx=21+look.shell*2;        // shell half-width, shell centre, where the head sits
-    s32 cx8=cx*256, cy8=(int)(10.6*256), a8=a*256, b8=(int)(8.6*256);
-    for(int y=0;y<=10;y++) for(int x=0;x<28;x++){
-        s32 nx=((x*256+128)-cx8)*256/a8, ny=((y*256+128)-cy8)*256/b8;             // 8.8
-        s32 r2=(nx*nx+ny*ny)>>8;                                                   // 8.8, 256 = the rim
+    for(int i=0;i<32*32;i++) bug_px[i]=0;
+    int s=look.shell%3, a=9+s, cx=11+s, hx=21+s*2, shp=bugx.shape%5, fin=bugx.finish%4;
+    int wy = shp==1 ? 0 : shp==2 ? 4 : shp==4 ? 1 : 2;                                // where the top of the shell is, for the wings
+    switch(bugx.wings%6){                                                              // wings first: the shell covers their roots
+        case 1: bell(cx-2,wy-3,15,12,15); bell(cx-5,wy-2,10,9,15); break;                                                   // little wings
+        case 2: bell(cx-8,wy-4,24,12,15); bell(cx-3,wy-2,20,10,3); for(int x=cx-6;x<=cx;x++) XP(x,wy-4,4); break;                   // beetle: the hard case lifts, the soft wing shows
+        case 3: bell(cx+1,wy-7,22,20,15); bell(cx-5,wy-3,16,12,15); XP(cx+1,wy-8,12); XP(cx,wy-7,12); XP(cx+2,wy-6,12); XP(cx-5,wy-3,12); XP(cx-1,wy-4,1); XP(cx-2,wy-3,1); break;   // butterfly: a big wing and a little one
+        case 4: { static const s8 w[]={1,0, 0,-6, -3,-10, -7,-9, -12,-7, -10,-4, -8,-5, -6,-2, -4,-4, -2,-1, 0,0}; int n=11;                       // bat: bony fingers, a scalloped edge
+                for(int y=wy-11;y<=wy+1;y++) for(int x=cx-13;x<=cx+2;x++){ int in=0; for(int i=0,j=n-1;i<n;j=i++){ int yi=wy+w[i*2+1], yj=wy+w[j*2+1], xi=cx+w[i*2], xj=cx+w[j*2];
+                    if((yi>y)!=(yj>y)){ int d=yj-yi, lhs=(x*2+1)*d, rhs=(xj-xi)*(2*y+1-2*yi)+2*xi*d; if(d>0 ? lhs<rhs : lhs>rhs) in^=1; } } if(in) XP(x,y,15); }   // (a point-in-polygon test at pixel centres)
+                for(int k=1;k<=3;k++){ XP(cx-3-k*2,wy-9+k,1); XP(cx-2-k*2,wy-8+k,1); } } break;
+        case 5: bell(cx-2,wy-8,10,28,15); bell(cx-6,wy-5,8,20,15); for(int y=wy-13;y<=wy-3;y+=3) BP(cx-2,y,5); break;           // fairy
+    }
+    s32 cx8=cx*256, cy8=(int)(10.6*256), a8=a*256;                                     // the shell
+    for(int y=-8;y<=10;y++) for(int x=0;x<28;x++){
+        s32 b8 = shp==1 ? (int)(10.6*256) : shp==2 ? (int)(6.6*256) : (int)(8.6*256); if(shp==4 && x<cx) b8 += (cx-x)*3*256/a;   // dome, flat, hump
+        s32 nx=((x*256+128)-cx8)*256/a8, ny=((y*256+128)-cy8)*256/b8, r2=(nx*nx+ny*ny)>>8;
         if(r2>256) continue;
         if(r2>205 || y==10){ BP(x,y,1); continue; }
-        s32 lit=(-nx*115 - ny*243)>>8;                                             // light from the top and the front
-        int c = lit>192?5 : lit>107?4 : lit>13?3 : 2;
-        if(((x+1)%4==0) && y>2 && c>2) c--;                                        // the plates
-        int mark=0;
-        if(look.pat==1 && (x/3)%2==0 && y>2 && y<10) mark=1;                        // stripes
-        if(look.pat==2 && ((x*5+y*3)%7)==0 && y>1 && y<9 && x>2 && x<cx+a-3) mark=1; // spots
-        if(look.pat==3 && y>=6 && y<10) mark=1;                                     // a band
-        if(look.pat==4 && ((x+y)&3)==0 && y>1 && y<9) mark=1;                       // checks
-        BP(x,y, mark?12:c);
+        s32 lit=(-nx*115 - ny*243)>>8; int c = lit>192?5 : lit>107?4 : lit>13?3 : 2;
+        if(fin==1 && c==5) c=4;                                                                   // matte: no hot spot
+        if(fin==2) c = ny<-175 ? 5 : ny<-95 ? 4 : ny<5 ? 2 : ny<105 ? 3 : 4;                      // metal: bands of reflection
+        if(((x+1)%4==0) && y>2 && c>2 && fin!=2) c--;                                             // the plates
+        int mk=0, Y=y+16;
+        if(r2<190) switch(look.pat%12){
+            case 1: mk=(x/3)%2==0 && y>2; break;                                       // stripes
+            case 2: mk=((x*5+Y*3)%7)==0 && x>2; break;                                 // spots
+            case 3: mk=ny>40 && ny<170; break;                                         // a band
+            case 4: mk=((x+Y)&3)==0; break;                                            // checks
+            case 5: { int z=x%6; z = z<3 ? z : 5-z; mk=((Y+z)%4)==0; } break;          // zigzag
+            case 6: mk=(x%3==1 && Y%3==1); break;                                      // dots
+            case 7: { int dx=(x%6)-3, dy=(Y%6)-3; if(dx<0)dx=-dx; if(dy<0)dy=-dy; mk=dx+dy<=1; } break;   // diamonds
+            case 8: mk=((x*2+(Y*Y)/5)%7)<2; break;                                     // tiger
+            case 9: mk=x<cx; break;                                                    // half and half
+            case 10: mk=((x*37+Y*91+((x*Y)&7))%6)==0; break;                           // speckles
+            case 11: mk=(r2>>5)&1; break;                                              // rings
+        }
+        BP(x,y, mk?12:c);
     }
-    if(look.horn){ int bx=cx-2; BP(bx,2,13); BP(bx,1,13); BP(bx+1,0,14); BP(bx-1,2,13); BP(bx+1,1,13); }
-    for(int y=0;y<14;y++) for(int x=0;x<28;x++){                                   // the head: a small ellipse in front
+    if(shp==3) for(int x=cx-a+3;x<=cx+a-3;x+=3){ int t=btop(x); XP(x,t-1,4); XP(x,t-2,5); }       // spikes along the back
+    switch(look.horn%6){                                                               // horns
+        case 1: { int bx=cx-2, t=btop(bx); XP(bx,t-1,13); XP(bx,t-2,13); XP(bx+1,t-3,13); XP(bx-1,t,13); } break;
+        case 2: for(int k=0;k<2;k++){ int bx=cx-1-k*5, t=btop(bx); XP(bx,t-1,13); XP(bx,t-2,13); XP(bx+1,t-3,13); } break;
+        case 3: { static const s8 h[]={2,6, 3,6, 3,5, 4,5, 4,4, 5,4, 5,3, 5,2, 4,1, 3,5, 4,6}; bpts(h,11,hx,0,13,1); } break;                         // rhino
+        case 4: { static const s8 h[]={1,5, 2,4, 2,3, 3,2, 3,1, 4,0, 4,-1, 5,-2}; for(int i=0;i<8;i++) XP(hx+h[i*2],h[i*2+1],(i&1)?13:9); } break;       // unicorn
+        case 5: { static const s8 h[]={-1,5, -1,4, -2,3, -2,2, -3,1, -3,0, -4,-1, -1,2, 0,1, -2,0, -1,-1, -3,-1, -3,-2, 1,5, 1,4, 2,3, 2,2, 3,1, 3,0, 2,2, 4,2, 3,0, 4,-1}; bpts(h,23,hx,0,13,1); } break;   // antlers
+    }
+    switch(bugx.tail%5){                                                               // tails at the back
+        case 1: { static const s8 t[]={1,8, 0,8, -1,7, -2,6, 1,7}; bpts(t,5,0,0,2,1); XP(-2,5,1); } break;   // stinger
+        case 2: { static const s8 t[]={1,4, 0,3, 1,6, 0,6, -1,6, 1,8, 0,9}; bpts(t,7,0,0,4,1); } break;    // spikes
+        case 3: { static const s8 t[]={1,9, 0,9, -1,8, -1,7, 0,6, 1,6, 1,7}; bpts(t,7,0,0,3,1); } break;   // curly
+        case 4: { static const s8 t[]={1,9, 0,10, -1,11, -2,12, -2,13}; bpts(t,5,0,0,3,1); } break;        // long
+    }
+    for(int y=0;y<14;y++) for(int x=0;x<28;x++){                                     // the head: a small ellipse in front
         s32 dx=(x*256+128)-(hx*256+128), dy=(y*256+128)-(int)(8.5*256);
-        s32 r2=((dx*dx)/(int)(3.2*3.2*256) + (dy*dy)/(int)(2.6*2.6*256));         // 8.8-ish
-        if(r2>256) continue; int cur=bug_px[(y+2)*32+(2+27-x)]; if(cur>1) continue;
+        s32 r2=((dx*dx)/(int)(3.2*3.2*256) + (dy*dy)/(int)(2.6*2.6*256));
+        if(r2>256) continue; int cur=bget(x,y); if(cur>1) continue;
         BP(x,y, r2>158 ? 1 : (y<8?7:6)); }
-    if(look.eye==0) BP(hx+1,8,9); else { BP(hx,7,9); BP(hx+1,7,9); BP(hx,8,9); BP(hx+1,8,9); BP(hx+2,8,1); }
-    { static const s8 antA[3][9][2]={{{2,5},{3,4},{4,3},{5,2},{6,2},{1,5},{1,4},{2,3},{2,2}},{{2,5},{2,4},{2,3},{2,2},{2,1},{3,5},{3,4},{3,3},{3,2}},{{2,5},{3,5},{4,5},{5,6},{6,7},{1,5},{2,4},{3,4},{4,4}}};
-      for(int k=0;k<9;k++) BP(hx+antA[look.ant][k][0], antA[look.ant][k][1], 10); }
-    { static const u8 legx[3][8]={{3,8,13,18,0,0,0,0},{3,6,9,12,15,18,0,0},{2,4,7,9,12,14,16,18}}; static const u8 legn[3]={4,6,8};
-      for(int k=0;k<legn[look.legs];k++){ int lx=legx[look.legs][k]+look.shell; int fwd=((k+frame)&1)==0; int d=fwd?1:-1; BP(lx,11,11); BP(lx+d,12,11); BP(lx+d,13,11); } }
-    #undef BP
+    switch(look.eye%8){                                                                // eyes
+        case 0: BP(hx+1,8,9); break;
+        case 1: BP(hx,7,9); BP(hx+1,7,9); BP(hx,8,9); BP(hx+1,8,9); BP(hx+2,8,1); break;
+        case 2: for(int y=6;y<=8;y++) for(int x=hx;x<=hx+2;x++) XP(x,y,9); BP(hx+2,7,1); BP(hx+1,7,1); break;          // googly
+        case 3: BP(hx,8,1); BP(hx+1,8,1); BP(hx+2,8,1); BP(hx+1,9,9); break;                                            // sleepy
+        case 4: BP(hx,8,9); BP(hx+1,8,9); BP(hx-1,6,1); BP(hx,6,1); BP(hx+1,7,1); BP(hx+2,7,1); break;                 // angry
+        case 5: BP(hx+1,8,9); BP(hx+1,7,9); BP(hx,8,9); BP(hx+2,8,9); BP(hx+1,9,9); BP(hx+1,8,5); break;               // starry
+        case 6: for(int y=6;y<=8;y++) for(int x=hx-1;x<=hx+1;x++) XP(x,y,9); BP(hx,7,1); break;                          // one big eye
+        case 7: for(int x=hx-1;x<=hx+3;x++){ BP(x,7,1); BP(x,8,1); } BP(hx+2,7,9); break;                               // shades
+    }
+    switch(bugx.mouth%6){                                                              // mouths
+        case 1: BP(hx+2,10,1); BP(hx+3,9,1); break;                                                                     // a smile
+        case 2: XP(hx+4,9,13); XP(hx+4,10,13); break;                                                                   // jaws
+        case 3: { static const s8 m[]={4,8, 5,8, 6,9, 4,10, 5,11, 6,10}; bpts(m,6,hx,0,13,1); } break;                  // pincers
+        case 4: BP(hx+2,10,9); BP(hx+2,11,9); BP(hx+3,10,9); XP(hx+3,11,9); break;                                     // fangs
+        case 5: XP(hx+4,10,12); XP(hx+5,10,12); XP(hx+5,11,12); break;                                                  // tongue out
+    }
+    { int at=look.ant%8;                                                               // antennae (two: the far one a pixel behind)
+      if(at<3){ static const s8 antA[3][9][2]={{{2,5},{3,4},{4,3},{5,2},{6,2},{1,5},{1,4},{2,3},{2,2}},{{2,5},{2,4},{2,3},{2,2},{2,1},{3,5},{3,4},{3,3},{3,2}},{{2,5},{3,5},{4,5},{5,6},{6,7},{1,5},{2,4},{3,4},{4,4}}};
+          for(int k=0;k<9;k++) BP(hx+antA[at][k][0], antA[at][k][1], 10); }
+      else if(at<7){ static const s8 a3[]={2,5, 3,4, 3,3, 4,2, 4,1, 5,0, 2,3, 4,4, 3,1, 5,2, 4,-1, 6,1};      // feathery
+          static const s8 a4[]={2,5, 3,4, 3,3, 4,2, 4,1};                                                         // clubbed
+          static const s8 a5[]={2,5, 3,4, 2,3, 3,2, 4,1, 3,0, 4,-1, 5,-2};                                       // zigzag
+          static const s8 a6[]={2,5, 2,4, 2,3, 1,2, 0,1, -1,0, -2,-1, -4,-2, -6,-2, -8,-1, -10,0, -12,1, -3,-2, -5,-2, -7,-2};   // long whips
+          const s8 *pt = at==3 ? a3 : at==4 ? a4 : at==5 ? a5 : a6; int n = at==3 ? 12 : at==4 ? 5 : at==5 ? 8 : 15;
+          bpts(pt,n,hx-1,0,10,0); bpts(pt,n,hx,0,10,0);
+          if(at==4){ XP(hx+4,0,10); XP(hx+5,0,10); XP(hx+4,-1,10); XP(hx+5,-1,10); } } }
+    { static const u8 legx[3][8]={{3,8,13,18,0,0,0,0},{3,6,9,12,15,18,0,0},{2,4,7,9,12,14,16,18}}; static const u8 legn[3]={4,6,8}; int ls=bugx.legst%4;   // legs
+      for(int k=0;k<legn[look.legs%3];k++){ int lx=legx[look.legs%3][k]+s; int fwd=((k+frame)&1)==0; int d=fwd?1:-1;
+          BP(lx,11,11); BP(lx+d,12,11); BP(lx+d,13,11);
+          if(ls==1){ BP(lx+1,11,11); BP(lx+d+1,12,11); BP(lx+d+1,13,11); }                                   // chunky
+          if(ls==2){ BP(lx-1,12,1); BP(lx+d+1,12,1); }                                                       // hairy
+          if(ls==3){ BP(lx+d,13,14); BP(lx+d+(d>0?1:-1),13,14); } } }                                         // boots
+    switch(bugx.hat%12){                                                               // hats sit on the head (its top is near y 6)
+        case 1: for(int x=hx-2;x<=hx+1;x++) XP(x,4,14); for(int x=hx-3;x<=hx+5;x++) XP(x,5,14); break;                                   // cap
+        case 2: for(int x=hx-3;x<=hx+3;x++) XP(x,5,14); for(int y=-1;y<=4;y++) for(int x=hx-2;x<=hx+2;x++) XP(x,y,y==3?12:14); break;   // top hat
+        case 3: { static const s8 b[]={-2,3, -3,3, -3,4, -3,5, -2,5, 0,3, 1,3, 1,4, 1,5, 0,5, -1,4}; bpts(b,11,hx,0,14,1); } break;       // bow
+        case 4: for(int x=hx-3;x<=hx+3;x++){ XP(x,4,14); XP(x,5,14); } XP(hx-3,3,14); XP(hx-3,2,14); XP(hx,3,14); XP(hx,2,14); XP(hx+3,3,14); XP(hx+3,2,14); BP(hx,4,9); break;   // crown
+        case 5: { static const s8 r[6][2]={{-3,3},{-2,2},{-2,1},{-1,1},{-1,0},{0,0}}; for(int i=0;i<6;i++){ int y=5-i; for(int x=hx+r[i][0];x<=hx+r[i][1];x++) XP(x,y,(y==4||y==2)?12:14); } XP(hx,-1,9); } break;   // party hat
+        case 6: BP(hx-1,4,9); XP(hx-2,4,14); XP(hx,4,14); XP(hx-1,3,14); XP(hx-1,5,14); break;                                           // flower
+        case 7: for(int x=hx-2;x<=hx+2;x++){ BP(x,1,14); BP(x,3,14); } BP(hx-3,2,14); BP(hx+3,2,14); break;                             // halo
+        case 8: for(int x=hx-3;x<=hx+3;x++){ XP(x,5,12); XP(x,4,14); } for(int x=hx-2;x<=hx+2;x++) XP(x,3,14); XP(hx,2,9); XP(hx,1,9); break;   // beanie
+        case 9: for(int x=hx-2;x<=hx+2;x++){ XP(x,4,14); XP(x,5,14); } bell(hx,1,14,11,14); break;                                     // chef
+        case 10: for(int x=hx-3;x<=hx+3;x++){ XP(x,5,14); XP(x,6,12); } for(int x=hx-2;x<=hx+2;x++) XP(x,4,14); break;                 // helmet
+        case 11: for(int x=hx-2;x<=hx+2;x++){ XP(x,4,14); XP(x,5,14); } { static const s8 v[]={-3,4, -4,3, -4,2, -3,1, 3,4, 4,3, 4,2, 3,1}; bpts(v,8,hx,0,13,1); } break;   // viking
+    }
+    for(int i=0;i<32*32;i++) if(!bug_px[i]){ int y=i>>5, x=i&31, o=0;                  // outlines round the extra parts
+        if(x>0){ int v=bug_px[i-1]; if((v&0x80) && (v&0x7F)!=1) o=1; } if(x<31){ int v=bug_px[i+1]; if((v&0x80) && (v&0x7F)!=1) o=1; }
+        if(y>0){ int v=bug_px[i-32]; if((v&0x80) && (v&0x7F)!=1) o=1; } if(y<31){ int v=bug_px[i+32]; if((v&0x80) && (v&0x7F)!=1) o=1; }
+        if(o) bug_px[i]=1; }
+    for(int i=0;i<32*32;i++) bug_px[i]&=0x7F;
 }
-static void bug_tiles_to_vram(int frame, int tile){                                  // pack the 32x16 picture into 8 4bpp tiles
-    bug_draw(frame); volatile u16 *v = OBJ_VRAM + (tile-512)*16;
-    for(int ty=0;ty<2;ty++) for(int tx=0;tx<4;tx++) for(int y=0;y<8;y++) for(int x=0;x<8;x+=4){
-        const u8 *p=&bug_px[(ty*8+y)*32 + tx*8+x]; *v++ = (p[0]|(p[1]<<4)) | ((p[2]|(p[3]<<4))<<8); }
+#undef BP
+#undef XP
+static void px_tiles(int w, int h, int tile){                                       // pack bug_px (w x h) into 4bpp sprite tiles, in order
+    volatile u16 *v = OBJ_VRAM + (tile-512)*16;
+    for(int ty=0;ty<h/8;ty++) for(int tx=0;tx<w/8;tx++) for(int y=0;y<8;y++) for(int x=0;x<8;x+=4){
+        const u8 *p=&bug_px[(ty*8+y)*w + tx*8+x]; *v++ = (p[0]|(p[1]<<4)) | ((p[2]|(p[3]<<4))<<8); }
 }
-static void bug_build(void){ obj_palette(); bug_tiles_to_vram(0,T_BUGSIDE); bug_tiles_to_vram(1,T_BUGSIDE2); }
+static void bug_tiles_to_vram(int frame, int tile){ bug_draw(frame); px_tiles(32,32,tile); }
+static void hum_build(void);
+static void bug_build(void){ obj_palette(); bug_tiles_to_vram(0,T_BUGSIDE); bug_tiles_to_vram(1,T_BUGSIDE2); hum_build(); }
 static int bug_tile(int frame){ return frame&1 ? T_BUGSIDE2 : T_BUGSIDE; }
+static void bug_obj(int slot, int cx, int body_cy, int mtx, int pd){                // your bug's 32x32 picture: (cx, body_cy) is the middle of its body, pd the matrix's height scale (256 = 1x)
+    int cy=body_cy-8*256/(pd?pd:256);
+    shadow_oam[slot].a0=((cy-32)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((cx-32)&511)|(mtx<<9)|(2<<14); }
 #define BUG_BANK (3<<12)
 static void name_of(u32 wn, char *b){
     static const char *const syl[32]={"ZA","KOR","MI","LUX","PO","BRA","NU","TIK","VO","RAN","SPI","GLO","QUA","FEN","DOR","ULM","OB","TEL","YAR","SNU","GRIB","OLO","PEM","VAX","HU","LIM","CRO","DIZ","WOB","ESK","TAN","JIB"};
@@ -164,6 +267,9 @@ enum { FORM_BUG, FORM_CREATURE, FORM_HUMAN };
 enum { HC_SKIN, HC_HAIR, HC_ACC, HC_SHIRT, HC_PANTS, HC_BELT, HC_EYES, NHC };     // skin or fur, hair or ears+tail, shoes or muzzle, shirt, pants, belt, eyes
 typedef struct { u8 style, height, build, made; u16 col[NHC]; } Hum;               // style 0 human, 1 furry. height 0 tiny .. 4 towering. build 0 slim .. 2 broad
 static Hum hum={0,3,1,0}; static int hum_req=0;
+typedef struct { u8 hair, face, beard, top, bot, shoes, hat, back; u16 c_hat, c_back; } HumX;   // the humanoid's newer parts (saved in the look block)
+static HumX humx;
+static void humx_default(void){ memset(&humx,0,sizeof humx); humx.c_hat=C15(200,60,60); humx.c_back=C15(60,80,200); }
 static const u16 hum_wd[3]={164,140,128};                                          // sprite width (affine, 128 = the 2x drawing size)
 static const u16 hum_ht[5]={200,176,158,142,128};                                  // sprite height: tiny 41px .. towering 64px
 static void hum_from_look(void);

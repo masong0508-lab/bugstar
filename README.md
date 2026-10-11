@@ -32,15 +32,20 @@ Every outpost core you smash gives Bolt a memory back. The last one is his real 
 - **Paint** and **trim** colours use the same pickers as your bug. SELECT: surprise me.
 The stats card at the bottom shows exactly what each choice does.
 
-## Your bug (new)
+## Your bug (big update)
 **Make your bug** when you start a new game, or any time at your ship's **MIRROR**. It is built from parts, like a creature creator, and you watch it change as you go:
-- **Name** (up to 8 letters).
-- **Shell:** short, normal or long, with its own colour. Your jaws in first person take the shell colour.
-- **Pattern:** plain, striped, spotted, banded or checked, and a **markings** colour for it.
-- **Head** colour. **Eyes:** small or big, any colour. **Antennae:** curled, straight or droopy. **Legs:** four, six or eight. A **horn** if you like.
-- Every colour has a **simple picker** (16 presets) and a **mix-your-own** mode with red, green and blue sliders (START switches between them).
-- **SELECT: surprise me** rolls a random bug.
+- **Name** (up to 8 letters), and **18 ready-made looks** to start from (ladybug, wasp, stag, firefly, butterfly, unicorn, knight, pirate, royal, chef, demon, ghost, robot, viking and more).
+- **Shell:** short, normal or long. **Shape:** round, dome, flat, spiky or humped. **Finish:** shiny, matte, metal or pearl.
+- **12 patterns:** plain, striped, spotted, banded, checked, zigzag, dotted, diamonds, tiger, halves, speckled and rings.
+- **8 eyes** (googly, sleepy, angry, starry, one big eye, shades...), **6 mouths** (smile, jaws, pincers, fangs, tongue), **8 antennae** (feathery, clubbed, zigzag, long whips...).
+- **Legs:** four, six or eight, thin, chunky, hairy or in boots. **Horns:** horn, twin horns, rhino, unicorn or antlers.
+- **Wings:** little, beetle, butterfly, bat or fairy. **Tails:** stinger, spikes, curly or long.
+- **12 hats:** cap, top hat, bow, crown, party hat, flower, halo, beanie, chef, helmet and viking.
+- **10 colours**, including wings, hat and the outline. Every colour has a **simple picker** (16 presets) and a **mix-your-own** mode.
+- **L** locks a row, **R** builds matching colours, **SELECT** surprises you, **B** undoes.
 The bug's sprite is drawn by the game from your choices, so every bug is different.
+
+**Humanoids** have their own creator too: body (human or furry), height, build, **10 hair styles** (or 10 kinds of ears), 8 faces (glasses, shades, eyepatch...), beards and moustaches, **10 tops** (t-shirt, hoodie, robe, dress, armour...), 6 bottoms, 5 kinds of shoes, **12 hats** (wizard, cowboy, crown, halo...), and something on your back (cape, wings, backpack, scarf or jetpack). 16 ready-made looks.
 
 ## Baby mode and more options (new)
 The options screen scrolls and has five new rows. **BABY MODE** (for babies, really): you take 1 damage at most, you never get hungry, fainting costs nothing, Buddy heals your boo-boos, and gold and XP are doubled. **HUNGER** on/off, **LOSE STUFF WHEN YOU FAINT** on/off, **XP SPEED** and **GOLD** x1 / x2 / x5. All remembered on the cartridge.
@@ -206,7 +211,8 @@ At your ship, pick **LAUNCH INTO SPACE**.
 - D-pad: steer. B: thrust. R: brake. A: shoot pirates.
 - Fly close to the planet and press A to land. Fly to the white box (station) and press A to dock.
 - Station: buy and sell 8 kinds of goods (prices change by world type), refuel, repair, and upgrade laser, shield and cargo.
-- SELECT: galaxy map. Pick a star and press A to jump (uses fuel).
+- SELECT: galaxy map. Pick a star and press A to jump (uses fuel). The map shows how far each star is in light years and how many days the trip takes.
+- **Jumps take time.** Stars stream past, and the light years and the ship's clock count up as you go. A warp across the universe climbs through millions, billions, trillions... of light years and counts the galaxies you pass.
 - Beat each zone's boss to open the next star. Beat the Ant King to open the whole galaxy. Then START on the map jumps to a new cluster, forever.
 
 ## The Technobeast (the second villain)

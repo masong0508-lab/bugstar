@@ -798,7 +798,7 @@ static int title_screen(void){
             b[34]=0; stext(pg,120-textlen(b)*2,y,b,C_CYAN);
         }
         oam_hide_all(); set_affine(31,128,0,0,128);
-        shadow_oam[0].a0=((150-32-((blink>>3)&1))&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[0].a1=((120-32)&511)|(31<<9)|(2<<14); shadow_oam[0].a2=bug_tile((blink>>4)&1)|BUG_BANK;
+        bug_obj(0,120,150-16-((blink>>3)&1),31,128); shadow_oam[0].a2=bug_tile((blink>>4)&1)|BUG_BANK;
         vsync(); oam_flush(); read_keys(); blink++; rng_s += blink;
         if(fading_in){ fading_in=0; fade(0); }
         twinkle(pg,blink);
@@ -846,15 +846,15 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     {   // set something in every save block, save, wipe it all, load, and check each value came back
         beast_stage=3; tech_lv=4; beast_kills=2; hive_done=2; wing_n=7; relic_bits=0x5; mark_perm=0x3; weird_seen=9;
         form=FORM_HUMAN; form_t=0; forms_open=7; tools_owned=0x15; tool_held=2; hum.style=1; hum.height=4; hum.build=2; hum.made=1; hum.col[0]=0x1234;
-        clus[0]=777; clus[5]=999; fuel_tank=3; warp_lv=2; gold=4321; tiers[2]=3; data_cores=5; scrap=33; cargo[3]=4; fuel=55; tr_n[1]=6;
+        clus[0]=777; clus[5]=999; fuel_tank=3; warp_lv=2; gold=4321; tiers[2]=3; data_cores=5; scrap=33; cargo[3]=4; fuel=55; tr_n[1]=6; bugx.hat=5; bugx.wings=3; humx.top=7; humx.c_hat=0x1357; look.pat=9; tv_trips=12;
         do_save();
         beast_stage=0; tech_lv=0; beast_kills=0; hive_done=0; wing_n=0; relic_bits=0; mark_perm=0; weird_seen=0; form=0; forms_open=1; tools_owned=0; tool_held=0;
-        hum.style=0; hum.height=0; hum.build=0; hum.made=0; hum.col[0]=0; clus[0]=0; clus[5]=0; fuel_tank=0; warp_lv=0; gold=0; tiers[2]=0; data_cores=0; scrap=0; cargo[3]=0; fuel=0; tr_n[1]=0;
+        hum.style=0; hum.height=0; hum.build=0; hum.made=0; hum.col[0]=0; clus[0]=0; clus[5]=0; fuel_tank=0; warp_lv=0; gold=0; tiers[2]=0; data_cores=0; scrap=0; cargo[3]=0; fuel=0; tr_n[1]=0; bugx.hat=0; bugx.wings=0; humx.top=0; humx.c_hat=0; look.pat=0; tv_trips=0;
         int ok=load_game(1);
         struct { const char *n; int got, want; } c[]={{"LOAD",ok,1},{"BEAST STAGE",beast_stage,3},{"TECH LEVEL",tech_lv,4},{"BEAST KILLS",beast_kills,2},{"HIVES",hive_done,2},{"WINGMEN",wing_n,7},
             {"RELICS",(int)relic_bits,5},{"MARKS",(int)mark_perm,3},{"WEIRD SEEN",weird_seen,9},{"FORM",form,FORM_HUMAN},{"TOOLS",(int)tools_owned,0x15},{"HUM STYLE",hum.style,1},{"HUM HEIGHT",hum.height,4},
             {"HUM COLOUR",hum.col[0],0x1234},{"EAST WORD",(int)clus[0],777},{"NORTH WORD",(int)clus[5],999},{"FUEL TANK",fuel_tank,3},{"WARP DRIVE",warp_lv,2},
-            {"GOLD",(int)gold,4321},{"TIER",tiers[2],3},{"DATA CORES",data_cores,5},{"SCRAP",scrap,33},{"CARGO",cargo[3],4},{"FUEL",fuel,55},{"TROPHIES",tr_n[1],6}};
+            {"GOLD",(int)gold,4321},{"TIER",tiers[2],3},{"DATA CORES",data_cores,5},{"SCRAP",scrap,33},{"CARGO",cargo[3],4},{"FUEL",fuel,55},{"TROPHIES",tr_n[1],6},{"BUG HAT",bugx.hat,5},{"BUG WINGS",bugx.wings,3},{"HUM TOP",humx.top,7},{"HUM HAT COL",humx.c_hat,0x1357},{"PATTERN",look.pat,9},{"TRIPS",(int)tv_trips,12}};
         volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); REG_BLDCNT=0; REG_BLDY=0; for(int i=0;i<120*160;i++) pg[i]=0; for(int i=30;i<39;i++) BG_PAL[i]=bg_pal[i];
         int n=sizeof c/sizeof c[0], bad=0;
         for(int i=0;i<n;i++){ int good=c[i].got==c[i].want; bad+=!good; char b[40]; scpy(b,c[i].n); scat(b,good?" OK":" BAD "); if(!good) ncat(b,c[i].got); text(pg,4+(i/19)*120,4+(i%19)*8,b,good?C_GREEN:C_RED,1); }
@@ -929,6 +929,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
         scpy(b,"D "); for(int i=a-9;i<=e+10;i+=3){ ncat(b,kp_dir(i)); scat(b," "); } stext(pg,2,10,b,C_WHITE);
         scpy(b,"F "); for(int i=a-9;i<=e+10;i++){ ncat(b,kpf[i]); } stext(pg,2,18,b,C_WHITE); }
       while(1) vsync(); }
+#endif
+#ifdef TEST_CC
+    if(TEST_CC) human_creator(VISPG,0); else make_bug(VISPG,0); if(TEST_CC){ form=FORM_HUMAN; recalc(); form_palette(); } planet_hud();
 #endif
 #ifdef TEST_KMENU
     kart_menu(1);
@@ -1041,12 +1044,12 @@ int main(void){
     rng_s ^= 0x9E3779B9;
     settings_load(); music_apply();
 #ifdef TEST_KW
-    kw_defaults(1); kw.coins=50000; kw_store(); new_game(); bug_look_default(); kart_world();
+    kw_defaults(1); kw.coins=50000; kw_store(); new_game(); bug_look_default(); humx_default(); kart_world();
 #endif
     while(1){
         in_game=0; sys_req=0; scene=0;
         cur_slot=last_slot;
-        new_game(); bug_look_default(); ship_default(); ship_build_model();
+        new_game(); bug_look_default(); humx_default(); ship_default(); ship_build_model();
         int cont=title_screen();
         if(cont==2){ fade(1); kart_world(); oam_hide_all(); oam_flush(); music(-1); REG_BLDCNT=0; REG_BLDY=0; REG_DISPCNT=0x80; continue; }   // Kart World, then back to the title
         start_game(cont);

@@ -590,8 +590,8 @@ static void planet_frame(void){
                 int fl = form_body==2; int hop = (form_body==0 && moved) ? ((frames>>2)&1)*4 : 0; int fly = fl ? 10+(sinx((frames*5)&255)>>12) : 0;
                 shadow_oam[slot].a0 = ((sy-(fl?16:32)-bob-hop-fly)&255) | (1<<8)|(1<<9) | (fl?(1<<14):0);
                 shadow_oam[slot].a1 = ((120-16)&511) | (31<<9) | (fl?(0<<14):(1<<14)); shadow_oam[slot].a2 = (form_body==0?T_HOPPER:form_body==1?T_GRAZER:T_FLYER) | (6<<12); slot++; }
-      else if(pvis){ shadow_oam[slot].a0 = ((up ? sy-96-bob : sy-32-bob)&255) | (1<<8)|(1<<9) | (up?(0<<14):(1<<14));
-                shadow_oam[slot].a1 = ((up ? 120-64 : 120-32)&511) | (31<<9) | (up?(3<<14):(2<<14));
+      else if(pvis){ if(up){ shadow_oam[slot].a0 = ((sy-96-bob)&255) | (1<<8)|(1<<9); shadow_oam[slot].a1 = ((120-64)&511) | (31<<9) | (3<<14); }
+                else bug_obj(slot,120,sy-16-bob,31,128+sq+shr);
                 shadow_oam[slot].a2 = (up ? T_BACK : bug_tile(moved && ((frames>>3)&1))) | BUG_BANK; slot++; }
       if(slot<120){ shadow_oam[slot].a0 = ((sy-6)&255) | (1<<14); shadow_oam[slot].a1 = ((120-8)&511); shadow_oam[slot].a2 = T_SHADOW; slot++; }
     } else {                                                                            // first person: your own jaws, swaying as you walk
