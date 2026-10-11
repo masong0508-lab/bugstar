@@ -155,6 +155,16 @@ There are **4,294,967,296 universes**, side by side, each one 1.1 quindecillion 
 - A favourite in another universe takes you straight there.
 - The galaxy map and the WORLD page show which universe you are in.
 
+## Debug menu (the Konami code)
+On the title screen press UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT B A. That opens every mode at once (Kart World, HOW BIG IS IT?,
+the INSANE-SECT difficulty and all of Kart World's classes, parts and coins) and shows the debug menu. From it you can start a
+game with everything unlocked (every star, form, tool, relic, spell and bug friend, the best drives, a full wing), unlock
+everything in a save you already have, and jump straight to any part of the game: a zone's planet, any dungeon floor, a boss,
+space, a fleet battle of any size, the Technobeast at any stage, a far world of any type with any weird trait at any strength,
+the galaxy map (for cluster and universe jumps), a kart race, Kart World, the makers, the garage, HOW BIG IS IT? and the credits.
+Cheats: god mode, max stats, your level and gold, the difficulty, hide the HUD, an FPS counter, your form, the time of day and
+the weather on every planet. There is a sound test too. Pick the save slot first: the debug game saves there.
+
 ## Dungeon floor events (new)
 - Most floors roll an event: TREASURE VAULT, MONSTER NEST (bonus gold), ELITE HUNT (slay 2 elites for a reward), DARK FLOOR (double loot), SPEED RUN (reach the stairs in 60 seconds), CURSED FLOOR (tougher monsters, better loot), GOLD RUSH, BLESSED SHRINE (a free good mark), AMBUSH and QUIET FLOOR. The goal shows under your spell name.
 

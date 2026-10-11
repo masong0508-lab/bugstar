@@ -27,11 +27,14 @@ typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; 
 #define K_R 256
 #define K_L 512
 #define IWRAM __attribute__((section(".iwram"), long_call, target("arm"), noinline))
+static int film_mode=0;                               // the debug menu's HIDE THE HUD: no HUD anywhere, only the world
 #ifdef TEST_FILM
-#define FILM 1                                        // a build for filming the trailer: no HUD anywhere, only the world
+#define FILM 1                                        // (a build for filming the trailer: always)
 #else
-#define FILM 0
+#define FILM film_mode
 #endif
+// ---- the debug menu (the Konami code on the title screen): what it asks of the game
+static int dbg_cls=-1, dbg_weird=-1, dbg_hour=-1, dbg_weather=-1, dbg_god=0, dbg_fps=0;
 
 void *memset(void *d, int c, unsigned n){ u8 *p=d; while(n--) *p++=c; return d; }
 void *memcpy(void *d, const void *s, unsigned n){ u8 *p=d; const u8 *q=s; while(n--) *p++=*q++; return d; }
@@ -180,6 +183,7 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 #include "kart2.inc"
 #include "kart3.inc"
 #include "sizes.inc"
+#include "debug.inc"
 #ifdef TEST_LAUNCH
 #include "film.inc"
 #endif
@@ -802,7 +806,7 @@ static int title_screen(void){
     REG_BLDCNT = 0x3F | (3<<6); REG_BLDY = 16;
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
     music(2);
-    int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1, kwu=0; int it[7];
+    int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1, kwu=0; int it[7]; int kon=0;
     wait_release();
     int fading_in=1;
     while(1){
@@ -829,6 +833,10 @@ static int title_screen(void){
         vsync(); oam_flush(); read_keys(); blink++; rng_s += blink;
         if(fading_in){ fading_in=0; fade(0); }
         twinkle(pg,blink);
+        { static const u16 code[10]={K_UP,K_UP,K_DOWN,K_DOWN,K_LEFT,K_RIGHT,K_LEFT,K_RIGHT,K_B,K_A}; u16 k=0;        // the Konami code opens the debug menu
+          for(int i=0;i<10;i++) if(HIT(code[i])) k=code[i];
+          if(k){ if(k==code[kon]) kon++; else kon = (k==K_UP) ? 1 : 0;
+              if(kon==10){ kon=0; sfx(6); oam_hide_all(); oam_flush(); int r=dbg_menu(pg); full=1; if(r) return r; wait_release(); continue; } } }
         if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; sfx(7); }
         if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; sfx(7); }
         if(HIT(K_A)||HIT(K_START)){
@@ -894,6 +902,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     }
 #endif
 
+    if(dbg_start()) return;                                                              // (the debug menu's GO)
 #ifdef TEST_DEEP
     ant_king=1; zones_open=6; cleared_mask=63; galaxy_no=4000000000u; for(int w=0;w<NCW;w++) clus[w]=hmix(w*77+TEST_DEEP); u_settle(); gen_cluster(); cur_sys=7+TEST_DEEP%20; fade(0); arrive_on_planet();
 #ifdef TEST_FORM
@@ -932,11 +941,12 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     new_planet(); planet_enter(); show_msg(cont ? "WELCOME BACK" : "");
     fade(1); REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0);      // the planet is on screen behind the first cards
     music(0);
-    if(!cont){ static const char *const t[6]={"YOU ARE A LITTLE PILL BUG.","THE ANT KING HAS CAGED YOUR BUG FRIENDS.","","FOLLOW THE YELLOW ARROW TO THE DOOR.","GO DOWN. BEAT THE BOSS AT THE BOTTOM.","THEN FLY YOUR SHIP TO THE NEXT STAR."};
+    if(!cont && !dbg.go){ static const char *const t[6]={"YOU ARE A LITTLE PILL BUG.","THE ANT KING HAS CAGED YOUR BUG FRIENDS.","","FOLLOW THE YELLOW ARROW TO THE DOOR.","GO DOWN. BEAT THE BOSS AT THE BOTTOM.","THEN FLY YOUR SHIP TO THE NEXT STAR."};
         card(VISPG,"BUGSTAR",t,6); bolt_story(VISPG,0); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
 #ifdef TEST_DUNGEON
     enter_dungeon_flag=1;
 #endif
+    dbg_start2();
 #ifdef TEST_CREDITS
     fade(1); credits(); planet_enter(); fade(0);
 #endif
@@ -1005,6 +1015,8 @@ static void pet_away_tick(void){
 static void run_game(void){
     while(1){
         read_keys(); if(scene!=1){ frames++; if(invuln) invuln--; }
+        if(dbg_god){ hearts=maxh; food=100; mp=maxmp; hull=100; shield=20+shield_lv*20; pet_hp=pet_maxhp; }
+        if(dbg_fps){ static int lv=0; int d=vbl_count-lv; lv=vbl_count; char b[12]; scpy(b,"FPS "); ncat(b, d>0 ? (60+d/2)/d : 60); text(VISPG,208,150,b,C_WHITE,1); }
         if(sys_req){ int rq=sys_req; sys_req=0; if(rq==2) return; start_game(1); continue; }
         rng_s += keys;
         if(scene!=1) pet_away_tick();
@@ -1112,6 +1124,7 @@ int main(void){
         cur_slot=last_slot;
         new_game(); bug_look_default(); humx_default(); ship_default(); ship_build_model();
         int cont=title_screen();
+        if(cont==3) cont = (dbg.go==DG_CONT);                                            // the debug menu: a new game, or the slot it picked
         if(cont==2){ fade(1); kart_world(); oam_hide_all(); oam_flush(); music(-1); REG_BLDCNT=0; REG_BLDY=0; REG_DISPCNT=0x80; continue; }   // Kart World, then back to the title
         start_game(cont);
         in_game=1;

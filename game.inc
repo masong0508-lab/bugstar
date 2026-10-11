@@ -303,6 +303,7 @@ static void story_dna(int z){                                                   
     wd.bld=bl[z]; wd.sky=C15(120,170,230); wd.road=C15(60,56,60); wd.snow=z==3; wd.sand=z==1||z==2; wd.alt=0;
     for(int i=0;i<4;i++) wd.flora[i]=3;
     wd.psz=2;
+    if(dbg_hour>=0) wd.hour=dbg_hour; if(dbg_weather>=0) wd.weather=dbg_weather;
 }
 static u32 sys_id(int i); static u32 amix(u32 k, int star);
 static int cur_pl=0, cur_moon=0;                              // which body of this star you are on: planet cur_pl (0 = the first), cur_moon 0 = the planet itself, 1.. = its moons
@@ -320,6 +321,7 @@ static void make_world(void){                                   // three indepen
 #ifdef TEST_CLASS
     wd.cls=TEST_CLASS;
 #endif
+    if(dbg_cls>=0) wd.cls=dbg_cls;
     { static const u8 base[NPC][3]={{0,0,0},{150,125,105},{140,215,95},{70,180,130},{235,195,110},{215,232,255},{40,160,50},{130,30,22},{150,150,165},{235,150,205},{200,70,25},{200,190,40},{40,35,60},{225,215,190},{150,15,35},{70,120,190}};
       if(wd.cls!=PC_TEMPERATE){ r=base[wd.cls][0]+wr(30)-15; g=base[wd.cls][1]+wr(30)-15; b=base[wd.cls][2]+wr(30)-15; if(r<10)r=10; if(g<10)g=10; if(b<10)b=10; } }
     static const u8 mul[5]={8,30,55,80,100};
@@ -371,10 +373,12 @@ static void make_world(void){                                   // three indepen
 #ifdef TEST_WEIRD2
       wd.ntr=2; wd.tr[1]=TEST_WEIRD2;
 #endif
+      if(dbg_weird>=0){ wd.ntr=1; wd.tr[0]=(u16)dbg_weird; }
       wd.weird=wd.ntr; traits_apply();
       if(WL(MW_GLITCH)){ static const char gl[8]={'#','%','&','@','?','!','*','$'}; for(int i=0;w_name[i];i++) if(w_name[i]!=' ' && (i%3)==1) w_name[i]=gl[(F>>i)&7]; }   // GLITCH: even its name is broken
       if(WL(MW_SPIKES)){ wd.style=6; wd.rough=3; } if(WL(MW_VOID)){ wd.hour=2; wd.weather=0; } if(WL(MW_GIANTS)) wd.city=0;
       if(WL(MW_FROST)){ wd.snow=1; if(WL(MW_FROST)>12) wd.weather=2; } if(WL(MW_HEAT)>15) wd.weather=3; }
+    if(dbg_hour>=0) wd.hour=dbg_hour; if(dbg_weather>=0) wd.weather=dbg_weather;
 }
 static const char *world_name(void){ return endless ? w_name : tint_name[zone]; }
 
@@ -601,7 +605,7 @@ static int item_value(const Gear *g){
 
 // ---------------------------------------------------------------- the status bar
 static void draw_hud(volatile u16 *pg, const char *l1){
-    rect(pg,0,0,240,17,0); rect(pg,0,17,240,1,6);
+    rect(pg,0,0,240,17,0); rect(pg,0,17,240,1,6); if(FILM) return;                   // (filming, or the debug menu's HIDE THE HUD: a plain black bar)
     char b[32]; b[0]=0;
     scpy(b,"HP "); ncat(b,hearts<0?0:hearts); scat(b,"/"); ncat(b,maxh); if(textlen(b)>12){ scpy(b,"HP "); ncat(b,maxh); } text(pg,3,3,b,C_RED,1);
     b[0]=0; scpy(b,"MP "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); if(textlen(b)>12){ scpy(b,"MP "); ncat(b,maxmp); } text(pg,3,10,b,C_CYAN,1);
