@@ -35,6 +35,8 @@ static int film_mode=0;                               // the debug menu's HIDE T
 #endif
 // ---- the debug menu (the Konami code on the title screen): what it asks of the game
 static int dbg_cls=-1, dbg_weird=-1, dbg_hour=-1, dbg_weather=-1, dbg_god=0, dbg_fps=0;
+// ---- the kart races' hardware ground (m7.inc): on, and the first screen row the ground can use (the rows above come from page 0)
+static int m7_on=0, m7_strip=160, m7_snap=0; static s32 m7_cb_snap=0; static void m7_pix(int x, int y, int c); static void m7_span(int y, int x0, int x1, int c); IWRAM static void m7_irq(void); static void m7_after_vsync(void);
 
 void *memset(void *d, int c, unsigned n){ u8 *p=d; while(n--) *p++=c; return d; }
 void *memcpy(void *d, const void *s, unsigned n){ u8 *p=d; const u8 *q=s; while(n--) *p++=*q++; return d; }
@@ -97,6 +99,7 @@ static int in_menu=0; static char menu_msg[40];   // inside a menu, messages go 
 
 // ---------------------------------------------------------------- mode 4 text
 static void pix(volatile u16 *pg, int x, int y, int c){
+    if(m7_on){ m7_pix(x,y,c); return; }
     volatile u16 *p = pg + ((y*240+x)>>1);
     if(x&1) *p = (*p&0x00FF)|(c<<8); else *p = (*p&0xFF00)|c;
 }
@@ -116,10 +119,15 @@ static int text(volatile u16 *pg, int x, int y, const char *s, int c, int sc){
                     if(bits&4){ row[0]=cc; row[120]=cc; } if(bits&2){ row[1]=cc; row[121]=cc; } if(bits&1){ row[2]=cc; row[122]=cc; } } }
             x += 8; }
         return x; }
-    if(sc==1){
+    if(sc==1){                                             // small text: each glyph row touches two pixel pairs at most
         for(;*s;s++){ u16 g = font[(u8)*s & 127];
-            for(int r=0;r<5;r++){ int bits=(g>>(12-r*3))&7; if(!bits) continue; volatile u16 *row = pg + (y+r)*120;
-                for(int k=0;k<3;k++) if(bits&(4>>k)){ int xx=x+k; volatile u16 *p=row+(xx>>1); if(xx&1) *p=(*p&0x00FF)|(c<<8); else *p=(*p&0xFF00)|c; } }
+            if(g){ volatile u16 *row = pg + y*120 + (x>>1);
+                if(x&1){ for(int r=0;r<5;r++, row+=120){ int bits=(g>>(12-r*3))&7; if(!bits) continue;
+                    if(bits&4) row[0]=(row[0]&0x00FF)|(c<<8);
+                    if(bits&2){ if(bits&1) row[1]=c|(c<<8); else row[1]=(row[1]&0xFF00)|c; } else if(bits&1) row[1]=(row[1]&0x00FF)|(c<<8); } }
+                else { for(int r=0;r<5;r++, row+=120){ int bits=(g>>(12-r*3))&7; if(!bits) continue;
+                    if(bits&4){ if(bits&2) row[0]=c|(c<<8); else row[0]=(row[0]&0xFF00)|c; } else if(bits&2) row[0]=(row[0]&0x00FF)|(c<<8);
+                    if(bits&1) row[1]=(row[1]&0xFF00)|c; } } }
             x += 4; }
         return x; }
     for(;*s;s++){
@@ -158,7 +166,7 @@ static const char *const eco_name[4]={"FARMING","MINING","TECH","HIVE"};
 static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MACHINES","MEDICINE","RELICS"};
 static u32 sys_id(int i); static int is_hive(int i);
 static int cargo_n(void){ int n=0; for(int i=0;i<8;i++) n+=cargo[i]; return n; }
-#define VISPG ((volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0xA000:0)))   // the page on screen right now
+#define VISPG ((volatile u16*)(0x06000000 + (((REG_DISPCNT&0x10) && !m7_on)?0xA000:0)))   // the page on screen right now (in a kart race, always the first)
 #include "sound.inc"
 #include "game.inc"
 #include "ship.inc"
@@ -1031,7 +1039,7 @@ static void run_game(void){
         }
         if(scene==0){
             planet_frame();
-            vsync(); REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; oam_flush();
+            vsync(); if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; oam_flush(); }
             if(launch_flag==2){ launch_flag=0; fade(1); oam_hide_all(); oam_flush();
                 int d=sys_dist(cur_sys,zone+1); char fn[24], tn[24]; sys_name(cur_sys,fn); sys_name(zone+1,tn); u32 t10[LYW]={(u32)d};
                 fuel = d>fuel ? 0 : fuel-d; cur_sys=zone+1; cur_pl=cur_moon=0; visits++;

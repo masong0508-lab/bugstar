@@ -111,6 +111,8 @@ static void ship_build_model(void){
 static void ship_ramps(void){ for(int k=0;k<8;k++){ BG_PAL[SHP_PAINT+k] = k<4 ? shade15(ship.paint,6+k*3) : lift15(ship.paint,(k-4)*4); BG_PAL[SHP_TRIM+k] = k<4 ? shade15(ship.trim,6+k*3) : lift15(ship.trim,(k-4)*4); BG_PAL[SHP_GLOW+k] = k<3 ? shade15(ship.glow,10+k*2) : lift15(ship.glow,(k-3)*3); } }
 static void linep(volatile u16 *pg, int x0, int y0, int x1, int y1, int c, int cx0, int cy0, int cx1, int cy1){
     int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(n>300) return;
+    if(m7_on){ s32 fx=(x0<<16)+0x8000, fy=(y0<<16)+0x8000, sx=n?(dx<<16)/n:0, sy=n?(dy<<16)/n:0;         // (a kart race: each pixel finds its own way to the screen)
+        for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; if(x>=cx0&&x<cx1&&y>=cy0&&y<cy1) m7_pix(x,y,c); fx+=sx; fy+=sy; } return; }
     if(!n){ if(x0>=cx0&&x0<cx1&&y0>=cy0&&y0<cy1) pix(pg,x0,y0,c); return; }
     s32 sx, sy; if(n<256){ sx=dx*(s32)sh_rt[n]; sy=dy*(s32)sh_rt[n]; } else { sx=(dx<<16)/n; sy=(dy<<16)/n; }
     s32 fx=(x0<<16)+0x8000, fy=(y0<<16)+0x8000; u16 lo=(u16)c, hi=(u16)(c<<8);
@@ -120,6 +122,7 @@ static void linep(volatile u16 *pg, int x0, int y0, int x1, int y1, int c, int c
     for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; if(x>=cx0&&x<cx1&&y>=cy0&&y<cy1){ volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|hi; else *p=(*p&0xFF00)|lo; } fx+=sx; fy+=sy; }
 }
 static void hspan(volatile u16 *pg, int y, int x0, int x1, int c){                 // a row of pixels, x0..x1 inclusive, written two at a time
+    if(m7_on){ m7_span(y,x0,x1,c); return; }
     volatile u16 *row=pg+y*120;
     if(x0&1){ volatile u16 *p=row+(x0>>1); *p=(*p&0x00FF)|(c<<8); x0++; }
     if(x1>=x0 && !(x1&1)){ volatile u16 *p=row+(x1>>1); *p=(*p&0xFF00)|c; x1--; }

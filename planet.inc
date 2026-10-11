@@ -26,7 +26,7 @@ static const char *const node_name[4]={"AMBER TREE","CRYSTAL ROCK","SILK WEB","N
 EW static PObj po[NPO];
 EW static u8 hmap[TW*TW];                                  // 0..255: height of the ground, one per cell
 EW static u8 hfine[HW*HW];                                 // the same, smoothed, two texels per cell: what the renderer walks
-EW static u8 cmap[HW*HW];                                  // the colour of each texel, lit by a sun from the north-west
+EW static u8 cmap[HW*HW] __attribute__((aligned(4)));                                  // the colour of each texel, lit by a sun from the north-west
 static s32 ppx, ppy;                                       // where the bug stands, 16.16 cells
 static s32 cam_h;                                          // height of the camera above sea level, 8.8 cells
 static int g_phz=66;                                        // the eye line (horizon) row: a high kart camera lifts it, which tips the view down
@@ -42,7 +42,7 @@ static u8 kcam[8]={0,1,1,1,1,0,1,1};                       // the kart camera (k
 static int kfovk=180;                                      // the kart camera's field of view: sideways cells per cell of depth at the screen's edge (8.8)
 static s32 kcam_back(void); static s32 kcam_up(void); static s32 kcam_base(void);
 static int kloop_on=0; static s32 kloop_cb=0;                      // riding a loop-de-loop (kart.inc): the camera swings out to watch from the side
-static s32 cam_back(void){ if(kloop_on) return kloop_cb; if(kr_mode && !cam_fp) return kcam_back(); return cam_fp ? (1<<16)/2 : CAM_BACK; }
+static s32 cam_back(void){ if(m7_snap) return m7_cb_snap; if(kloop_on) return kloop_cb; if(kr_mode && !cam_fp) return kcam_back(); return cam_fp ? (1<<16)/2 : CAM_BACK; }
 static s32 cam_up(void){ if(kr_mode && !cam_fp) return kcam_up(); return cam_fp ? (5<<8)/4 : CAM_UP; }
 static int fov_k(void){ return kr_mode ? kfovk : 180; }
 IWRAM_DATA static s16 rayvx[120], rayvy[120];              // per column: the ray direction on the map, 8.8 per cell of depth
@@ -198,9 +198,10 @@ static void land_colour(void){                                    // the colours
     if(WL(MW_GLITCH)){ u32 r=wd.tseed; for(int b=0;b<200+WL(MW_GLITCH)*60;b++){ r=hmix(r+b); int x=r&HMASK, y=(r>>8)&HMASK, w=2+((r>>16)&7), h=1+((r>>20)&3), c=40+((r>>24)%48);   // GLITCH: torn blocks of wrong colour
         for(int j=0;j<h;j++) for(int i=0;i<w;i++) cmap[((y+j)&HMASK)*HW+((x+i)&HMASK)]=c; } }
 }
+EW static s16 gen_acc[TW*TW];                            // 32 KB of scratch for building a world (and, between worlds, for the kart races' tables: m7.inc)
 static void gen_terrain(u32 seed){
     wseed=seed;
-    EW static s16 acc[TW*TW]; for(int i=0;i<TW*TW;i++) acc[i]=0;
+    s16 *acc=gen_acc; for(int i=0;i<TW*TW;i++) acc[i]=0;
     static const u8 cell[4]={32,16,8,4}; u8 amp[4]={110,70,40,18};
     if(wd.cls==PC_MEADOW){ amp[2]=10; amp[3]=2; } if(wd.cls==PC_MOUNTAIN){ amp[1]=95; amp[2]=60; amp[3]=26; } if(wd.cls==PC_ECUMENOPOLIS){ amp[0]=40; amp[1]=20; amp[2]=4; amp[3]=0; }
     EW static u8 grid[33*33];
@@ -363,7 +364,7 @@ static void kw_topbar(void);
 static void planet_hud(void){
     if(kw_mode){ kw_topbar(); return; }
     phud_sig=hud_sig(); char b[28]; scpy(b,world_name()); if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[TZ]+1); } else if(hellw()){ scat(b," H"); ncat(b,hell_tier()); }
-    for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b);
+    for(int p=0;p<(m7_on?1:2);p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b);     // (in a race the second page is the ground's map)
 }
 static void show_msg(const char *s){ int n=0; while(s[n] && n<39){ msg[n]=s[n]; n++; } msg[n]=0; msg_timer = n ? 150 : 0; }
 
@@ -426,8 +427,10 @@ static void hell_frame(int n){                                                  
         case PC_COCYTUS:   if(f%(240-T*14)==0 && food>0) food--; if(sea && f%30==0){ hurt(T); show_msg("THE ICE CRACKS! IT IS COLD"); } break;
     }
 }
+#include "m7.inc"
 static void planet_frame(void){
     u32 t_f0=TMR();
+    { int want = kr_mode && !in_menu; if(want && !m7_on) m7_begin(); else if(!want && m7_on) m7_end(); }      // a kart race: the hardware ground (m7.inc)
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
     int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>4) n=4;           // the view takes a few 60ths to draw: move by that much
     int moved=0;
@@ -540,9 +543,14 @@ static void planet_frame(void){
     if(opt_autosave && frames%6000==5999){ save_game(); show_msg("GAME SAVED"); }          // a quiet save every few minutes on the surface
     // ---- draw the world
     weird_frame(n); hell_frame(n);
-    u32 t_r0=TMR(); render_planet(pg); u32 t_r1=TMR();
-    if(kr_mode==1) kloop_draw(pg);                                                      // loop-de-loops stand on the road (kart.inc)
-    if(msg_timer && !FILM){ int L=textlen(msg); if(kr_mode){ if(L<=24) text(pg,120-L*4,72,msg,C_WHITE,2); else stext(pg,120-L*2,74,msg,C_WHITE); }   // in a kart: lower down, clear of the minimap
+    if(m7_on) m7_sky_now();                                                             // (a race: the sky, loops and HUD of the frame on show, once the beam is past them)
+    u32 t_r0=TMR(); if(m7_on) m7_frame(); else render_planet(pg); u32 t_r1=TMR();
+#ifdef TEST_FPS
+    if(m7_on){ m7_t[0]=t_r0-t_f0; m7_t[1]=t_r1-t_r0; }
+#endif
+    if(m7_on) goto sprites;                                                            // (a race: the loops, messages and HUD are drawn after the blank, by m7_strip)
+    if(kr_mode==1) kloop_draw(pg,18,160);                                                // loop-de-loops stand on the road (kart.inc)
+    if(msg_timer && !FILM){ int L=textlen(msg); if(kr_mode) stext(pg,120-L*2,50,msg,C_WHITE);                                                            // in a kart: under the HUD
                    else if(L<=29) text(pg,120-L*4,24,msg,C_WHITE,2); else stext(pg,120-L*2,26,msg,C_WHITE); }
 #ifdef TEST_FPS
     { static u32 tf0=0; u32 now=TMR(); char fb[40]; scpy(fb,"N"); ncat(fb,n); scat(fb," RENDER "); ncat(fb,(int)((t_r1-t_r0)/1000)); scat(fb,"K PRE "); ncat(fb,(int)((t_r0-t_f0)/1000)); scat(fb,"K FRAME "); ncat(fb,(int)((now-tf0)/1000)); scat(fb,"K"); tf0=now; rect(pg,0,40,240,8,0); text(pg,4,41,fb,C_GOLD,1); }
@@ -564,6 +572,7 @@ static void planet_frame(void){
 #endif
       }
     (void)prompt_k;
+sprites:;
 #ifdef TEST_FPS
     u32 t_s0=TMR();
 #endif
@@ -622,7 +631,7 @@ static void planet_frame(void){
     // everything else, far to near so near things draw on top
     EW static u8 order[NPO]; EW static s32 odz[NPO]; int cnt=0;
     s32 near_z = cam_fp ? (1<<16) : (5<<16);
-    EW static s32 odx[NPO];
+    EW static s32 odx[NPO]; s32 fovq=65536/fov_k();
     for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive) continue; s32 wx=wrapd(o->x-cam_x), wy=wrapd(o->y-cam_y);
         s32 dz=((wx*hsn)>>8)+((wy*hcs)>>8), dx=((wx*hcs)>>8)-((wy*hsn)>>8);
         if(dz<near_z || dz>(40<<16)) continue; odz[i]=dz; odx[i]=dx; order[cnt++]=i; }
@@ -631,7 +640,7 @@ static void planet_frame(void){
         PObj *o=&po[order[k]]; s32 dz=odz[order[k]], dx=odx[order[k]];
         s32 zc=dz>>8;                                                                  // 8.8 cells
         s32 f=(FOCP<<16)/zc;                                                           // 8.8 px per cell
-        int sx = 120 + (s32)((((long long)dx*f)>>24)*256/fov_k());                     // (16.16 cells * 8.8) >> 24 = px, spread to match the land's field of view
+        int sx = 120 + (s32)(((((long long)dx*f)>>24)*fovq)>>8);                       // (16.16 cells * 8.8) >> 24 = px, spread to match the land's field of view
         s32 gh=ground_h(o->x,o->y); s32 curve=curv(zc) - tiny_sub();
         int sy = PHZ + (((cam_h + curve - gh) * f)>>16);                                // (8.8 cells * 8.8) >> 16 = px
         if(sx<-40||sx>280||sy<10||sy>190) continue;
@@ -641,7 +650,7 @@ static void planet_frame(void){
             ship_draw(pg, sx, sy-(f>>9), sc, (1024-heading)&1023, cam_fp?30:70, 236, 237, 0,18,240,160);
             continue; }
         int c=sx>>1; if(c<0) c=0; if(c>119) c=119;
-        int si=0; while(si<NSTEP-1 && stp_z[si]<zc) si++; int bin=(si>>3)-1; if(bin>7) bin=7;
+        int si; { int lo=0, hi=NSTEP-1; while(lo<hi){ int mid=(lo+hi)>>1; if(stp_z[mid]<zc) lo=mid+1; else hi=mid; } si=lo; } int bin=(si>>3)-1; if(bin>7) bin=7;
         if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
         static const u8 ksz[29]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14, 13,18,12,14};      // size of each kind in 16ths of a cell
         int s=(f>>6)*ksz[o->kind]>>4; if(s<8) continue; int m=(s-8)/4; if(m>27) m=27;       // px per cell / 16 px * 64. too far away to see: skip it (it used to be drawn too big)
@@ -668,6 +677,10 @@ static void planet_frame(void){
 #ifdef TEST_FPS
     { char fb[24]; scpy(fb,"SPR "); ncat(fb,(int)((TMR()-t_s0)/1000)); scat(fb,"K TXT "); ncat(fb,(int)((t_s0-t_r1)/1000)); scat(fb,"K"); rect(pg,0,48,240,8,0); text(pg,4,49,fb,C_GOLD,1); }
 #endif
+#ifdef TEST_FPS
+    if(m7_on) m7_t[2]=TMR()-t_s0;
+#endif
+    if(m7_on) m7_present();
 }
 static void planet_enter(void){
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BG2CNT=3; hdma_on=0; REG_BLDCNT=0;

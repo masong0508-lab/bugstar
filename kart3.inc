@@ -242,7 +242,7 @@ static int kw_my_tracks(volatile u16 *pg){                         // race any s
 // ---------------------------------------------------------------- the whole mode
 static void kw_run(void){                                          // the planet, with a race on it, until the race says we are done
     while(!kw_quit){ read_keys(); frames++; if(invuln) invuln--; rng_s+=keys; planet_frame();
-        vsync(); REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?(1<<4):0); page_back^=1; oam_flush(); }
+        vsync(); if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?(1<<4):0); page_back^=1; oam_flush(); } }
     fade(1); oam_hide_all(); oam_flush(); music(2); }
 static void kart_world(void){
     kw_load(); if(!kw.unlocked) return;
@@ -280,7 +280,7 @@ static void kw_tour_done(int me){                                  // the tour i
     int m = me==1 ? 3 : me==2 ? 2 : me==3 ? 1 : 0; if(m>kw.troph[kw_tour][k_cls]) kw.troph[kw_tour][k_cls]=(u8)m;
     if(me==1 && k_cls<4 && kw.cls_open<k_cls+2) kw.cls_open=(u16)(k_cls+2); kcls_open=(u8)kw.cls_open; kw_after_race(me); }
 static void kw_topbar(void){
-    for(int p=0;p<2;p++){ volatile u16 *pg=(volatile u16*)(0x06000000+p*0xA000); rect(pg,0,0,240,18,0); rect(pg,0,17,240,1,6); char b[48];
+    for(int p=0;p<(m7_on?1:2);p++){ volatile u16 *pg=(volatile u16*)(0x06000000+p*0xA000); rect(pg,0,0,240,18,0); rect(pg,0,17,240,1,6); char b[48];
         scpy(b,"KART WORLD  #"); kcomma(b,(u32)world_no); text(pg,4,2,b,C_GOLD,1);
         scpy(b,w_name); scat(b,"  "); scat(b,pc_name[wd.cls]); b[40]=0; text(pg,4,10,b,C_GREY,1);
         scpy(b,"COINS "); ncat(b,gold); text(pg,236-textlen(b)*4,2,b,C_GOLD,1); scpy(b,kpsize_name[wd.psz]); scat(b," PLANET"); text(pg,236-textlen(b)*4,10,b,C_CYAN,1); } }
