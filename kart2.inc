@@ -33,8 +33,17 @@ typedef struct { Fav at; u8 n, laps, riv, cls, flags, surf, medal, shape; u16 be
 _Static_assert(sizeof(KRec)==128, "a saved track is 128 bytes");
 _Static_assert(0x7000+30*128 <= SET_OFF && 0x6010+20*128 <= FG_OFF && FAV_HDR+4 <= 0x6010, "your tracks must fit in the spare cartridge memory");
 static int krec_off(int i){ return i<30 ? 0x7000+i*128 : 0x6010+(i-30)*128; }
-static int krec_get(int i, KRec *r){ sram_read(krec_off(i),r,128); return r->at.used==0xA5 && r->sum==fnv(r,124); }
-static void krec_put(int i, KRec *r){ r->at.used=0xA5; r->at.chk=fav_chk(&r->at); r->sum=fnv(r,124); sram_write(krec_off(i),r,128); }
+static int krec_get(int i, KRec *r){ sram_read(krec_off(i),r,128); if(!((r->at.used&0xE0)==0xA0 && r->sum==fnv(r,124))) return 0; r->at.used^=0xA5; return 1; }   // (on the cartridge 'used' is 0xA5 ^ the universe's table number, so old tracks, in universe 0-2^32, still read)
+static void krec_put(int i, KRec *r){ KRec t=*r; if(t.at.used>UT_N) t.at.used=0; t.at.used^=0xA5; t.at.chk=fav_chk(&t.at); t.sum=fnv(&t,124); sram_write(krec_off(i),&t,128); }
+static int uni_alloc(const u32 *u){                                    // the table number for universe u (adds it if new); -1 if the 31 slots are all in use by favourites and tracks
+    UTab t; ut_read(&t); int k=ut_find(&t,u); if(k>=0) return k;
+    int free_=-1; for(int i=0;i<UT_N;i++) if(!(t.h[i][0]|t.h[i][1]|t.h[i][2])){ free_=i; break; }
+    if(free_<0){ u8 used[UT_N+1]; for(int i=0;i<=UT_N;i++) used[i]=0; Fav f; KRec r;
+        for(int i=0;i<NFAV;i++) if(fav_get(i,&f)) used[f.used]=1;
+        for(int i=0;i<NKREC;i++) if(krec_get(i,&r)) used[r.at.used]=1;
+        used[0]=1; for(int i=0;i<UT_N;i++) if(!used[i+1]){ free_=i; break; } }
+    if(free_<0) return -1;
+    t.h[free_][0]=u[1]; t.h[free_][1]=u[2]; t.h[free_][2]=u[3]; ut_write(&t); return free_+1; }
 static void krec_clear(int i){ for(int k=0;k<128;k++) SRAM[krec_off(i)+k]=0; }
 static void kw_fav(Fav *f);
 static int krec_here(const KRec *r){ Fav h; if(kw_mode) kw_fav(&h); else fav_here(&h); return fav_eq(&r->at,&h); }
@@ -219,14 +228,14 @@ static int ksv_sel; static void ksv_row(int i, char *b, int *c){ KRec r; if(krec
 static void kbuild_save(volatile u16 *pg){
     KRec r; int pick=-1; for(int i=0;i<NKREC;i++) if(!krec_get(i,&r)){ pick=i; break; }
     if(pick<0){ ksv_sel=0; list_desc=0; int k=list_pick(pg,"ALL 50 SPOTS ARE FULL. REPLACE WHICH?",NKREC>13?13:NKREC,ksv_row,&ksv_sel,"A: REPLACE   B: BACK"); if(k<0) return; pick=k; }
-    memset(&r,0,sizeof r); if(kw_mode) kw_fav(&r.at); else fav_here(&r.at); r.n=kt.n; r.laps=kt.laps; r.riv=kt.riv; r.cls=kt.cls; r.flags=kt.flags; r.surf=kt.surf; r.shape=255;
+    memset(&r,0,sizeof r); if(kw_mode) kw_fav(&r.at); else { if(uni_alloc(uni_w)<0){ say("TOO MANY UNIVERSES SAVED. DELETE A FAVOURITE"); return; } fav_here(&r.at); } r.n=kt.n; r.laps=kt.laps; r.riv=kt.riv; r.cls=kt.cls; r.flags=kt.flags; r.surf=kt.surf; r.shape=255;
     for(int i=0;i<KG_MAX;i++){ r.gx[i]=kt.gx[i]; r.gy[i]=kt.gy[i]; } memcpy(r.name,kt.name,16); r.name[15]=0; krec_put(pick,&r); k_rec=pick;
     char b[40]; scpy(b,"SAVED AS TRACK "); ncat(b,pick+1); scat(b,". RACE IT ANYTIME"); say(b); sfx(6); kart_save(); }
 
 // ---------------------------------------------------------------- your tracks, wherever they are
 EW static u8 kmy_idx[NKREC]; static int kmy_n;
 static void kmy_row(int i, char *b, int *c){ KRec r; krec_get(kmy_idx[i],&r); scpy(b,r.name); while(textlen(b)<17) scat(b," ");
-    if(krec_here(&r)){ scat(b,"HERE"); *c=C_GREEN; } else if(r.at.star==0xFF){ scat(b,"IN KART WORLD"); *c=C_DGREY; } else if(r.at.seed!=galaxy_seed){ char u[28]; uni_name(u,r.at.seed); scat(b,u); *c = ant_king ? C_CYAN : C_DGREY; } else { char d[40]; here_ly(d,r.at.cx,r.at.cy); if(d[0]=='0'&&d[1]==' ') scpy(d,"THIS CLUSTER"); d[22]=0; scat(b,d); } }
+    if(krec_here(&r)){ scat(b,"HERE"); *c=C_GREEN; } else if(r.at.star==0xFF){ scat(b,"IN KART WORLD"); *c=C_DGREY; } else if(!fav_in_uni(&r.at)){ char u[28]; u32 fu[4]; fav_uni(&r.at,fu); uni_name(u,fu); scat(b,u); *c = ant_king ? C_CYAN : C_DGREY; } else { char d[40]; here_ly(d,r.at.cx,r.at.cy); if(d[0]=='0'&&d[1]==' ') scpy(d,"THIS CLUSTER"); d[22]=0; scat(b,d); } }
 static void kmy_desc(int i, char *b, int *c){ int k = i<0 ? -1-i : i; KRec r; krec_get(kmy_idx[k],&r);
     if(i<0){ char nm[32]; if(r.at.star==0xFF){ scpy(nm,"KART WORLD PLANET #"); ncat(nm,r.at.seed); } else fav_name(&r.at,nm); scpy(b,"ON "); scat(b,nm); return; }
     scpy(b,""); ncat(b,r.n); scat(b," GATES  "); ncat(b,r.laps); scat(b," LAPS  "); ncat(b,r.riv); scat(b," RIVALS  "); scat(b,ksurf_name[r.surf%6]);

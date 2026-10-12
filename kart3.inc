@@ -235,7 +235,7 @@ static int kw_my_tracks(volatile u16 *pg){                         // race any s
     int sel=0; list_desc=0; int k=list_pick(pg,"YOUR TRACKS: RACE ANY OF THEM",kmy_n>11?11:kmy_n,kw_rmy_row,&sel,"A: RACE IT   B: BACK"); if(k<0) return 0;
     int ri=kmy_idx[k]; krec_get(ri,&r);
     if(r.at.star==0xFF){ kw_world(r.at.seed,r.at.body); }
-    else { for(int w=0;w<UAX;w++){ clus[w]=r.at.cx[w]; clus[UAX+w]=r.at.cy[w]; } galaxy_seed=r.at.seed; clus_refold(); gen_cluster(); cur_sys=r.at.star; cur_pl=r.at.body>>3; cur_moon=r.at.body&7;
+    else { for(int w=0;w<UAX;w++){ clus[w]=r.at.cx[w]; clus[UAX+w]=r.at.cy[w]; } { u32 fu[4]; fav_uni(&r.at,fu); uni_set(fu); } clus_refold(); gen_cluster(); cur_sys=r.at.star; cur_pl=r.at.body>>3; cur_moon=r.at.body&7;
         land_on_current(); fade(1); landing_screen(0); new_planet(); planet_enter(); scene=0; msg_timer=0; }
     kw_race_setup(); krec_to_kt(&r); k_rec=ri; k_trk=-1; k_cls = r.cls<kw.cls_open ? r.cls : 0; k_type=4; kart_go(r.riv+1,-1,0,1); fade(0); return 1; }
 
@@ -247,7 +247,7 @@ static void kw_run(void){                                          // the planet
 static void kart_world(void){
     kw_load(); if(!kw.unlocked) return;
     kw_mode=1; cur_slot=last_slot; grind_load(); hum_load(); form=0; obj_palette(); bug_build();
-    galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; for(int k=0;k<NGH;k++) galaxy_hi[k]=0; clus_refold(); galaxy_seed=1; cluster_no=0; zone=0; zone_cleared=1; cur_sys=0; gen_cluster();
+    galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; for(int k=0;k<NGH;k++) galaxy_hi[k]=0; clus_refold(); uni_set32(1); cluster_no=0; zone=0; zone_cleared=1; cur_sys=0; gen_cluster();
     gold=kw.coins; kl=kw.look; for(int p=0;p<NKPART;p++) kown[p]=kw.own[p]; for(int i=0;i<8;i++) kcam[i]=kw.cam[i]; kcam[1]%=5; kcam[2]%=5; kcls_open=(u8)kw.cls_open; pq_type=0; opt_hunger=0; music(2);
     { volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i]; } bug_build();
     while(1){

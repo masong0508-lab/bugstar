@@ -76,7 +76,7 @@ static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, op
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
-// where you are: a universe of 2^155 x 2^155 clusters of 32 stars (see space.inc), and after the story any of 2^32 universes (galaxy_seed).
+// where you are: a universe of 2^155 x 2^155 clusters of 32 stars (see space.inc), and after the story any of 2^128 universes (uni_w; galaxy_seed is the value the generators mix).
 // The address arrays below are bigger than that: they are what older saves used (a 320-bit galaxy number and 1024 cluster words).
 // u_settle folds any old address into today's universe, so every word above clus[0..9] is zero in play. The upper words live in spare SRAM (see save.inc),
 // and a world's land and parts are hashed from the whole address (see gen_terrain and make_world).
@@ -923,7 +923,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     scene=2; page_back=1; space_enter(1); galaxy_map();
 #endif
 #ifdef TEST_FAVUNI
-    fav_add_here(); galaxy_seed=5; gen_cluster();                                  // a favourite here, then off to universe 5
+    fav_add_here(); uni_set32(5); gen_cluster();                                  // a favourite here, then off to universe 5
 #endif
 #ifdef TEST_UNI
     scene=2; page_back=1; space_enter(1); shx=PR*3; shy=0; shz=0; galaxy_map();      // out in space, away from the planet: try a universe jump

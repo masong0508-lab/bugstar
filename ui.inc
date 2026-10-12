@@ -588,7 +588,7 @@ static void char_screen(volatile u16 *pg){
             if(page==1 && bag_n){ use_index(cur); if(cur>=bag_n && cur) cur--; }
             if(page==2 && spell_known[cur]) spell_sel=cur;
             if(page==4){ sub^=1; sfx(2); }
-            if(page==7){ int r=fav_add_here(); scpy(menu_msg, r>=0 ? "SAVED TO YOUR FAVOURITES" : r==-2 ? "IT IS ALREADY A FAVOURITE" : "FAVOURITES ARE FULL (256)"); if(r>=0) sfx(6); }
+            if(page==7){ int r=fav_add_here(); scpy(menu_msg, r>=0 ? "SAVED TO YOUR FAVOURITES" : r==-2 ? "IT IS ALREADY A FAVOURITE" : r==-3 ? "31 UNIVERSES IN USE" : "FAVOURITES ARE FULL (256)"); if(r>=0) sfx(6); }
             if(page==5){ sys_action(pg,cur); if(sys_req) break; }
         }
         if(HIT(K_B) && page==1 && bag_n){

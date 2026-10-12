@@ -148,7 +148,7 @@ Each number has three views (A changes the view, LEFT/RIGHT changes the number):
 UP/DOWN scrolls (hold it and it goes faster and faster), L/R jumps a whole screen, SELECT lets the number roll by on its own, B goes back.
 
 ## Universe jumps (after the story)
-There are **4,294,967,296 universes**, side by side, each one 1.1 quindecillion light years wide. Beating the Ant King gives your game a universe of its own (the story happens in UNIVERSE #1).
+There are **2^128 universes (about 340 undecillion)**, side by side, each one 1.1 quindecillion light years wide. Beating the Ant King gives your game a universe of its own (the story happens in UNIVERSE #1).
 - On the galaxy map press **START**, then **A: JUMP TO ANOTHER UNIVERSE**.
 - Pick its number: LEFT/RIGHT (hold to go faster), A to type it in, or SELECT for a random one. Then press START.
 - A universe jump always costs **5.0 LY of fuel**, however far it goes. The trip counts up the light years and, at the end, the universes you passed.

@@ -64,16 +64,16 @@ static const char *const sz_otxt[NSOLD][3]={
     {"HOW WIDE A UNIVERSE IS","IN LIGHT YEARS, FROM ONE SIDE TO THE OTHER",0},
     {"HUMANOIDS YOU CAN MAKE","BODIES, HAIR, CLOTHES, HATS AND 9 COLOURS",0},
     {"BUGS YOU CAN MAKE","EVERY PART AND 10 COLOURS","(NOT EVEN COUNTING NAMES)"},
-    {"HOW WIDE THEY ALL ARE","ALL 4,294,967,296 UNIVERSES SIDE BY SIDE,","IN LIGHT YEARS"},
+    {"HOW WIDE THEY ALL ARE","ALL 340 UNDECILLION UNIVERSES SIDE BY SIDE,","IN LIGHT YEARS"},
     {"STAR CLUSTERS IN A UNIVERSE","IT WRAPS ROUND: FLY FAR ENOUGH AND YOU COME HOME",0},
     {"STARS IN A UNIVERSE","32 STARS IN EVERY CLUSTER",0},
     {"WORLDS IN A UNIVERSE","PLANETS AND MOONS TO LAND ON:","ABOUT 5.6 FOR EVERY STAR"},
-    {"STARS IN EVERY UNIVERSE","ALL 4,294,967,296 UNIVERSES TOGETHER",0},
+    {"STARS IN EVERY UNIVERSE","ALL 340 UNDECILLION UNIVERSES TOGETHER",0},
     {"WORLDS IN EVERY UNIVERSE","EVERY PLANET AND MOON YOU COULD LAND ON",0},
     {"EVERY LOOK YOU COULD HAVE","YOUR BUG, HUMANOID, SHIP AND KART, ALL TOGETHER",0},
     {"WAYS TO VISIT 256 FAVOURITES","A FULL FAVOURITES LIST, VISITED IN EVERY ORDER","(256 X 255 X 254 X ... X 2 X 1)"},
     {"TRIPS OF 1,000 JUMPS","EACH JUMP GOES TO ONE OF THE OTHER 31 STARS","IN YOUR CLUSTER"},
-    {"FAVOURITES LISTS","256 SLOTS. EACH ONE EMPTY, OR ANY STAR","IN ANY OF THE 4,294,967,296 UNIVERSES"},
+    {"FAVOURITES LISTS","256 SLOTS. EACH ONE EMPTY, OR ANY STAR","IN ANY OF THE 340 UNDECILLION UNIVERSES"},
     {"PLANET MAPS","128 X 128 SPOTS, EACH ONE OF 256 HEIGHTS:","THIS MANY DIFFERENT MAPS COULD BE MADE"},
     {"SAVE FILES","THE SAVE CHIP HOLDS 262,144 BITS, EACH ON OR OFF.","EVERY SAVE THERE COULD EVER BE IS ONE OF THESE"},
     {"PICTURES THE SCREEN CAN SHOW","240 X 160 DOTS, EACH ONE OF 32,768 COLOURS:","EVERY GAME BOY ADVANCE PICTURE THERE COULD BE"}};
@@ -93,7 +93,8 @@ static void size_set(int i){                                     // put page i's
     case SZ_DOTS: bn_set(v,240*160); break;
     case SZ_RELICS: bn_pow2(v,16); break;                                         // each of the 16 relics: found or not
     case SZ_NAMES: bn_set(v,(32*32+32*32*32)*8); break;                           // name_of: 2 or 3 of its 32 sounds, then one of 8 endings (no two make the same name)
-    case SZ_KWPLAN: case SZ_UNIS: bn_pow2(v,32); break;
+    case SZ_KWPLAN: bn_pow2(v,32); break;
+    case SZ_UNIS: bn_pow2(v,128); break;                                           // a universe number is 128 bits
     case SZ_WEIRD: { u64 t=0, p=1; for(int k=1;k<=4;k++){ p*=25; u64 s=0;          // k kinds (never two of one kind, nor SHY+ANGRY, FLOOD+DROUGHT, MAGNET+SHY ORE), 25 strengths each
             for(int j=0;j<=3 && j<=k;j++) s += nck(3,j)*((u64)1<<j)*nck(NMW-6,k-j); t+=p*s; } bn_set64(v,t); } break;
     case SZ_BUGNAMES: { u64 t=1; for(int k=0;k<8;k++) t*=27; bn_set64(v,t-1); } break;   // 27 signs in each of up to 8 places, not ending in a space
@@ -108,12 +109,12 @@ static void size_set(int i){                                     // put page i's
     case SZ_TOUR: bn_set(v,1); for(int k=2;k<=NSYS;k++) bn_mul(v,(u32)k); break;  // 32 x 31 x ... x 1
     case SZ_FAR: { u32 a[UAX]={0}, ly[LYW]; a[154>>5]=1u<<(154&31); ly_between(ly,a,a); bn_set(v,0); for(int k=0;k<LYW;k++) v[k]=ly[k]; } break;   // half way round both ways, by the game's own sum
     case SZ_WIDE: bn_pow2(v,155); bn_mul(v,ULY); break;                           // 2^155 clusters of 25 light years
-    case SZ_WIDEALL: bn_pow2(v,32+155); bn_mul(v,ULY); break;
+    case SZ_WIDEALL: bn_pow2(v,128+155); bn_mul(v,ULY); break;
     case SZ_CLUS: bn_pow2(v,2*155); break;
     case SZ_STARS: bn_pow2(v,2*155+5); break;
     case SZ_WORLDS: bn_pow2(v,2*155+5); bn_mul(v,5627); big_div(v,BNW,1000); about=1; break;   // 5.627 worlds a star on average (see sys_nplan, sys_nmoon)
-    case SZ_STARSALL: bn_pow2(v,32+2*155+5); break;
-    case SZ_WORLDSALL: bn_pow2(v,32+2*155+5); bn_mul(v,5627); big_div(v,BNW,1000); about=1; break;
+    case SZ_STARSALL: bn_pow2(v,128+2*155+5); break;
+    case SZ_WORLDSALL: bn_pow2(v,128+2*155+5); bn_mul(v,5627); big_div(v,BNW,1000); about=1; break;
     case SZ_ORDER: nb_rom(giant_order,GIANT_ORDER_ND,GIANT_ORDER_NZ); return;         // the giants, from bignums.py
     case SZ_TRIPS: nb_rom(giant_trips,GIANT_TRIPS_ND,GIANT_TRIPS_NZ); return;
     case SZ_FAVS: nb_rom(giant_favs,GIANT_FAVS_ND,GIANT_FAVS_NZ); return;
@@ -240,7 +241,7 @@ static void sz_draw(volatile u16 *pg, int full, int pi, int view, int pos, int r
 static void size_screen(volatile u16 *pg, int from_title){       // LEFT/RIGHT: another number. A: another view. UP/DOWN, L/R, SELECT: scroll. B: back
     if(from_title) tv_load();                                    // (in a game the travel log in memory is the newest)
 #ifdef TEST_TRAVELDEMO
-    { u32 a[LYW]={32}, b[LYW]={250}, c[LYW]; uni_ly(c,1,3236620590u); tv_log(a,77); tv_log(b,600); tv_log(c,35520); }   // a short hop, the next cluster, a jump to another universe
+    { u32 a[LYW]={32}, b[LYW]={250}, c[LYW]; { u32 f0[4]={1,0,0,0}, t0[4]={3236620590u,0,0,0}; uni_ly(c,f0,t0); } tv_log(a,77); tv_log(b,600); tv_log(c,35520); }   // a short hop, the next cluster, a jump to another universe
 #endif
     volatile u16 *pa=pg, *pb = pg==(volatile u16*)0x06000000 ? (volatile u16*)0x0600A000 : (volatile u16*)0x06000000;
     int bita = pg==(volatile u16*)0x06000000 ? 0 : 0x10, front=0;  // front 1: the other page is the one on screen

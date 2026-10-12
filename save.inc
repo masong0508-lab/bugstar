@@ -16,6 +16,20 @@ static int xt_base(int i){ return XT_BASE+i*XT_STRIDE; }
 static u32 fnv(const void *d, unsigned n){ const u8 *p=d; u32 h=2166136261u; for(unsigned i=0;i<n;i++){ h^=p[i]; h*=16777619u; } return h; }
 static void sram_read(int off, void *d, unsigned n){ u8 *p=d; for(unsigned i=0;i<n;i++) p[i]=SRAM[off+i]; }
 static void sram_write(int off, const void *s, unsigned n){ const u8 *p=s; for(unsigned i=0;i<n;i++) SRAM[off+i]=p[i]; }
+// ---------------------------------------------------------------- the universe number: 128 bits (4 words, low word first)
+// uni_w[0] is the old 32-bit number, so every universe you could reach before is still the same universe with the same name. galaxy_seed is the 32-bit
+// value the generators mix: uni_w[0] ^ a fold of the upper 96 bits (0 when they are all zero). Always change a universe with uni_set(), never galaxy_seed.
+static u32 uni_w[4]={1,0,0,0};
+static u32 uni_fold(const u32 *u){ return (u[1]|u[2]|u[3]) ? hmix(u[1]^hmix(u[2]^hmix(u[3]^0x5A17C0DEu))) : 0; }
+static void uni_set(const u32 *u){ for(int i=0;i<4;i++) uni_w[i]=u[i]; galaxy_seed=u[0]^uni_fold(u); }
+static void uni_set32(u32 s){ u32 u[4]={s,0,0,0}; uni_set(u); }
+static int uni_eq(const u32 *a, const u32 *b){ return a[0]==b[0]&&a[1]==b[1]&&a[2]==b[2]&&a[3]==b[3]; }
+typedef struct { u32 magic, w[4], eff, sum; } UniSave;                       // the slot's universe number: all 128 bits, and the seed they made
+#define UH_OFF 0xFC0
+_Static_assert(UH_OFF+sizeof(UniSave) <= SLOT_STRIDE, "the universe number must end inside the slot");
+static void uni_save(void){ UniSave s; s.magic=0x494E5555u; for(int i=0;i<4;i++) s.w[i]=uni_w[i]; s.eff=galaxy_seed; s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+UH_OFF,&s,sizeof s); }
+static void uni_load(void){ UniSave s; sram_read(slot_base(cur_slot)+UH_OFF,&s,sizeof s);   // (galaxy_seed is already loaded: old saves have no block, so they stay in universe galaxy_seed)
+    if(s.magic==0x494E5555u && s.sum==fnv(&s,sizeof s-4) && s.eff==galaxy_seed && (s.w[0]^uni_fold(s.w))==galaxy_seed) uni_set(s.w); else uni_set32(galaxy_seed); }
 
 static void wait_release(void){ do { vsync(); read_keys(); } while(keys); }
 
@@ -95,7 +109,7 @@ static void do_save(void){        // always saves, into the slot you are playing
     s->pet_form=pet_form; s->pet_form_t=pet_form_t; s->pet_maxhp=pet_maxhp; s->pet_hp=pet_hp;
     s->sum=save_sum(s);
     sram_write(slot_base(cur_slot), s, sizeof(Save));
-    save_ext(); grind_save();
+    save_ext(); uni_save(); grind_save();
     Meta m, old; meta_read(cur_slot,&old);
     m.magic=0x4154454D; m.secs=play_secs(); m.saves=old.saves+1; m.sum=meta_sum(&m);
     sram_write(slot_base(cur_slot)+META_OFF, &m, sizeof(Meta));
@@ -113,7 +127,7 @@ static int load_game(int apply){
     Save *s=&sv;
     zone=s->zone; zone_cleared=s->zone_cleared; endless=s->endless; world_no=s->world_no; best_depth=s->best_depth; level=s->level;
     st_str=s->st[0]; st_dex=s->st[1]; st_vit=s->st[2]; st_mag=s->st[3]; stat_pts=s->stat_pts; food=s->food; bugs_freed=s->bugs; fame=s->fame; portal_depth=s->portal; spell_sel=s->spell_sel;
-    xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed;
+    xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed; uni_load();
     for(int i=0;i<6;i++) have_bug[i]=s->have_bug[i];
     memcpy(berry_map,s->berry_map,8); memcpy(seed_map,s->seed_map,6); memcpy(berry_known,s->berry_known,8); memcpy(seed_known,s->seed_known,6); memcpy(spell_known,s->spell_known,4); spell_known[SP_PORTAL]=1;
     eqw=s->eq[0]; eqa=s->eq[1]; eqc=s->eq[2]; bag_n=s->bag_n; memcpy(bag,s->bag,sizeof(bag)); bag_sel=0;
