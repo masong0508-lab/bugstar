@@ -12,8 +12,10 @@ static const char *const bug_power[6]={"+10 GOLD","+5 HEALTH","LIGHTS THE DARK",
 // ---- endless galaxy (after the Ant King)
 static int kw_mode=0, mw_force=0;                                 // Kart World (kart3.inc), and it asking for weird or hell worlds
 static int endless=0, world_no=0, best_depth=0, w_dlv=6; static int hellw(void), hell_tier(void); static s64 loot=0; static u32 galaxy_seed=1;
-static u32 uni_w[4]={1,0,0,0};   // the universe number, 128 bits (see save.inc)
-static u32 gsk(u32 k){ return (uni_w[1]|uni_w[2]|uni_w[3]) ? hmix(uni_w[0]^hmix(uni_w[1]^hmix(uni_w[2]^hmix(uni_w[3]^k*0x9E3779B1u^0x7F4A7C15u)))) : uni_w[0]; }   // what each generator mixes: all 128 bits, a different mix for each use (k), so two universes never make the same world. The old 32-bit universes (upper words 0) give back their own number, so they do not change
+#define UW 8                                                       // the universe number is 8 words = 256 bits
+static u32 uni_w[UW]={1};   // the universe number, 256 bits, low word first (see save.inc)
+static u32 gsk(u32 k){ int top=UW-1; while(top>3 && !uni_w[top]) top--; if(!(uni_w[1]|uni_w[2]|uni_w[3]|uni_w[4]|uni_w[5]|uni_w[6]|uni_w[7])) return uni_w[0];
+    u32 h=k*0x9E3779B1u^0x7F4A7C15u; for(int i=top;i>=0;i--) h=hmix(uni_w[i]^h); return h; }   // what each generator mixes: all 256 bits, a different mix for each use (k), so two universes never make the same world. Universes below 2^128 mix exactly as before, and the old 32-bit ones give back their own number
 // ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
 static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
 #define TZ (zone+(opt_diff==5?6:0))

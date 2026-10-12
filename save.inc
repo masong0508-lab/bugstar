@@ -19,16 +19,21 @@ static void sram_write(int off, const void *s, unsigned n){ const u8 *p=s; for(u
 // ---------------------------------------------------------------- the universe number: 128 bits (4 words, low word first)
 // uni_w[0] is the old 32-bit number, so every universe you could reach before is still the same universe with the same name. galaxy_seed is the 32-bit
 // value the generators mix: uni_w[0] ^ a fold of the upper 96 bits (0 when they are all zero). Always change a universe with uni_set(), never galaxy_seed.
-static u32 uni_fold(const u32 *u){ return (u[1]|u[2]|u[3]) ? hmix(u[1]^hmix(u[2]^hmix(u[3]^0x5A17C0DEu))) : 0; }
-static void uni_set(const u32 *u){ for(int i=0;i<4;i++) uni_w[i]=u[i]; galaxy_seed=u[0]^uni_fold(u); }
-static void uni_set32(u32 s){ u32 u[4]={s,0,0,0}; uni_set(u); }
-static int uni_eq(const u32 *a, const u32 *b){ return a[0]==b[0]&&a[1]==b[1]&&a[2]==b[2]&&a[3]==b[3]; }
-typedef struct { u32 magic, w[4], eff, sum; } UniSave;                       // the slot's universe number: all 128 bits, and the seed they made
+static u32 uni_fold(const u32 *u){ u32 hi=0; for(int i=1;i<UW;i++) hi|=u[i]; if(!hi) return 0; int top=UW-1; while(top>3 && !u[top]) top--;
+    u32 h=0x5A17C0DEu; for(int i=top;i>=1;i--) h=hmix(u[i]^h); return h; }
+static void uni_set(const u32 *u){ for(int i=0;i<UW;i++) uni_w[i]=u[i]; galaxy_seed=u[0]^uni_fold(u); }
+static void uni_set32(u32 s){ u32 u[UW]={0}; u[0]=s; uni_set(u); }
+static int uni_eq(const u32 *a, const u32 *b){ for(int i=0;i<UW;i++) if(a[i]!=b[i]) return 0; return 1; }
+typedef struct { u32 magic, w[UW], eff, sum; } UniSave;                      // the slot's universe number: all 256 bits, and the seed they made
+typedef struct { u32 magic, w[4], eff, sum; } UniSave4;                      // (the last version kept 128 bits)
 #define UH_OFF 0xFC0
 _Static_assert(UH_OFF+sizeof(UniSave) <= SLOT_STRIDE, "the universe number must end inside the slot");
-static void uni_save(void){ UniSave s; s.magic=0x494E5555u; for(int i=0;i<4;i++) s.w[i]=uni_w[i]; s.eff=galaxy_seed; s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+UH_OFF,&s,sizeof s); }
+static void uni_save(void){ UniSave s; s.magic=0x32494E55u; for(int i=0;i<UW;i++) s.w[i]=uni_w[i]; s.eff=galaxy_seed; s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+UH_OFF,&s,sizeof s); }
 static void uni_load(void){ UniSave s; sram_read(slot_base(cur_slot)+UH_OFF,&s,sizeof s);   // (galaxy_seed is already loaded: old saves have no block, so they stay in universe galaxy_seed)
-    if(s.magic==0x494E5555u && s.sum==fnv(&s,sizeof s-4) && s.eff==galaxy_seed && (s.w[0]^uni_fold(s.w))==galaxy_seed) uni_set(s.w); else uni_set32(galaxy_seed); }
+    if(s.magic==0x32494E55u && s.sum==fnv(&s,sizeof s-4) && s.eff==galaxy_seed && (s.w[0]^uni_fold(s.w))==galaxy_seed){ uni_set(s.w); return; }
+    UniSave4 o; sram_read(slot_base(cur_slot)+UH_OFF,&o,sizeof o);                  // a save from the 128-bit version
+    if(o.magic==0x494E5555u && o.sum==fnv(&o,sizeof o-4) && o.eff==galaxy_seed){ u32 u[UW]={0}; for(int i=0;i<4;i++) u[i]=o.w[i]; if((u[0]^uni_fold(u))==galaxy_seed){ uni_set(u); return; } }
+    uni_set32(galaxy_seed); }
 
 static void wait_release(void){ do { vsync(); read_keys(); } while(keys); }
 

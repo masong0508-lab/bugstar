@@ -1,7 +1,7 @@
 // ================================================================= SPACE: flight, pirates, stations, the galaxy map
 // Every star system has a sun, planets and moons you can land on, and a wireframe trading station.
 // Before the Ant King falls you can only fly between the six story zones; after that the whole universe opens (2^155 x 2^155 clusters of
-// 32 stars), and so does the multiverse: 2^128 universes side by side (see universe_go).
+// 32 stars), and so does the multiverse: 2^256 universes side by side (see universe_go).
 
 static const u8 good_base[8]={8,18,34,55,80,110,65,190};
 static const u8 eco_mul[4][8]={{55,65,80,110,130,150,120,120},{120,110,105,70,60,120,110,95},{130,120,110,105,110,60,75,110},{105,50,70,90,115,120,100,80}};
@@ -30,8 +30,8 @@ static int ax_bits(const u32 *a){ for(int w=UAX-1;w>=0;w--) if(a[w]){ int b=31; 
 static void ax_shr(u32 *a, int s){ if(s<=0) return; int ws=s>>5, bs=s&31; for(int w=0;w<UAX;w++){ int k=w+ws; u32 lo = k<UAX ? a[k] : 0, hi = k+1<UAX ? a[k+1] : 0; a[w] = bs ? (lo>>bs)|(hi<<(32-bs)) : lo; } }
 static int ax_delta(u32 *mag, const u32 *a, const u32 *b){                    // the short way round from a to b: how far, and +1 or -1
     ax_sub(mag,b,a); if((mag[UAX-1]>>26)&1){ u32 z[UAX]={0,0,0,0,0}; ax_sub(mag,z,mag); return -1; } return 1; }
-// big numbers for light years (10 words: a jump between universes is up to 2^128 universes of 2^155 clusters, in tenths of a light year)
-#define LYW 10                                                  // 10 words: a jump across 2^128 universes is 2^291 tenths of a light year
+// big numbers for light years (14 words: a jump between universes is up to 2^256 universes of 2^155 clusters, in tenths of a light year)
+#define LYW 14                                                  // 14 words: a jump across 2^256 universes is 2^419 tenths of a light year
 #define TVW 8                                                   // (the travel log on the cartridge keeps 8 words, and saturates past that)
 static void big_mul(u32 *b, int n, u32 k){ u64 c=0; for(int i=0;i<n;i++){ c+=(u64)b[i]*k; b[i]=(u32)c; c>>=32; } }
 static void big_add(u32 *r, const u32 *a, int n){ u64 c=0; for(int i=0;i<n;i++){ c+=(u64)r[i]+a[i]; r[i]=(u32)c; c>>=32; } }
@@ -45,9 +45,9 @@ static void ly_between(u32 *ly, const u32 *dx, const u32 *dy){               // 
     for(int i=0;i<LYW;i++) ly[i] = i<UAX ? A[i] : 0; big_add(ly,t,LYW); big_mul(ly,LYW,ULY);
 }
 static int big_dec(char *s, u32 *b){                                          // the decimal digits of an 8-word number (it is used up; s needs 96 chars); returns how many
-    char tmp[96]; int n=0;
+    char tmp[144]; int n=0;
     if(big_zero(b,LYW)){ s[0]='0'; s[1]=0; return 1; }
-    while(!big_zero(b,LYW) && n<90){ u32 r=big_div(b,LYW,1000000000u); for(int k=0;k<9;k++){ tmp[n++]=(char)('0'+r%10); r/=10; } }
+    while(!big_zero(b,LYW) && n<138){ u32 r=big_div(b,LYW,1000000000u); for(int k=0;k<9;k++){ tmp[n++]=(char)('0'+r%10); r/=10; } }
     while(n>1 && tmp[n-1]=='0') n--;
     for(int i=0;i<n;i++) s[i]=tmp[n-1-i]; s[n]=0; return n;
 }
@@ -75,7 +75,7 @@ static const char *illion(int g){                               // the name of a
     for(int k=ng-1;k>=0;k--){ char p[40]; cw_prefix(gs[k],p); int L=textlen(p); if(L && (p[L-1]=='I'||p[L-1]=='A')) p[L-1]=0; scat(b,p); scat(b, k ? "ILLI" : "ILLION"); }
     return b; }
 static int ly_text(char *out, u32 *ly){                                       // "1.1 QUINDECILLION LY"; returns how many digits the distance has
-    char d[96]; int n=big_dec(d,ly); out[0]=0;
+    char d[144]; int n=big_dec(d,ly); out[0]=0;
     if(n<=6) scpy(out,d);                                                     // up to 999999: just the number
     else { int g=(n-1)/3; int lead=n-3*g; char t[8]; int k=0; for(;k<lead && k<3;k++) t[k]=d[k]; if(lead<3){ t[k++]='.'; t[k++]=d[lead]; } t[k]=0;
         scpy(out,t); scat(out," "); scat(out,illion(g)); }
@@ -751,7 +751,7 @@ static void hyperspace(void){
 // Nothing is a teleport: the drive spools up, the stars stream past, the distance and the ship's clock count up, and the star
 // you are heading for swells up ahead before you drop out beside it. Warps across the universe pass whole galaxies on the way.
 static u32 tv_ly[LYW], tv_best[LYW], tv_trips=0, tv_hours=0;       // your travel log: tenths of a light year in all, the longest trip, how many trips, hours between the stars
-static u32 vy_ufrom[4], vy_uto[4];                                    // a jump between universes: from which, to which (for the voyage's count of universes passed)
+static u32 vy_ufrom[UW], vy_uto[UW];                                    // a jump between universes: from which, to which (for the voyage's count of universes passed)
 static u32 kw_num_edit(volatile u16 *pg, const char *title, u32 v, int nd, u32 lo, u32 hi); static void kcomma(char *b, u32 v); static void digits_named(char *out, const char *d, int k);   // (in kart3.inc)
 static int big_cmp(const u32 *a, const u32 *b){ for(int i=LYW-1;i>=0;i--) if(a[i]!=b[i]) return a[i]<b[i]?-1:1; return 0; }
 static int big_small(const u32 *b, u32 lim){ for(int i=1;i<LYW;i++) if(b[i]) return 0; return b[0]<lim; }
@@ -770,7 +770,7 @@ static void digits_named(char *out, const char *d, int k){          // the first
     int g=(k-1)/3; int lead=k-3*g, j=0; for(int i=0;i<lead && i<3;i++) out[j++]=d[i]; if(lead<3){ out[j++]='.'; out[j++]=d[lead]; } out[j]=0; scat(out," "); scat(out,illion(g)); }
 static void tv_log(const u32 *t10, u32 hours){ big_add(tv_ly,t10,LYW); tv_trips++; tv_hours = tv_hours+hours<tv_hours ? 0xFFFFFFFFu : tv_hours+hours; if(big_cmp(t10,tv_best)>0) for(int i=0;i<LYW;i++) tv_best[i]=t10[i]; }
 static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, int kind){   // kind: 0 a star in this cluster, 1 the next cluster, 2 a warp, 3 into the beast's lair, 4 out of it, 5 to another universe
-    char tot[40], ds[96]; ly_fmt(tot,t10); int n; { u32 t[LYW]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); n=big_dec(ds,t); }
+    char tot[40], ds[144]; ly_fmt(tot,t10); int n; { u32 t[LYW]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); n=big_dec(ds,t); }
     int big = n>6, T = kind==0 ? 110+(int)((t10[1]||t10[0]>2400?2400:t10[0])/20) : (kind==3||kind==4) ? 120 : 170+n*7; if(T>400) T=400;   // how long it takes, in 60ths: longer trips take longer
     tv_log(t10,hours);
     EW static s16 sa[40], sr[40], sv[40]; lseed=amix(gsk(114),(u32)frames); for(int i=0;i<40;i++){ sa[i]=(s16)lr(256); sr[i]=(s16)(lr(120)<<4); sv[i]=(s16)(10+lr(26)); }
@@ -798,7 +798,7 @@ static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, 
         if(p>196){ int R=(p-196)*30/60; for(int y=-R;y<=R;y++){ int w=isqrt((u32)(R*R-y*y)); int yy=VCY+y; if(yy<0||yy>127) continue; int x0=120-w, x1=120+w; if(x0<0) x0=0; if(x1>239) x1=239; for(int x=x0;x<=x1;x++) pix(pg,x,yy,(x-120)*(x-120)+y*y < R*R/3 ? 49 : 50); } }   // the star you are heading for swells up
         if(p>250) for(int i=0;i<120*128;i++) pg[i]=54|(54<<8);
         if(!FILM){ char b[48]; scpy(b,"JUMP: "); scat(b,tot); b[44]=0; text(pg,4,3,b,C_GOLD,1); if(T>150) text(pg,236-9*4,3,"B: FASTER",C_DGREY,1); }
-        if(kind==5 && !FILM){ u32 dv4[4]; uni_sub(dv4,vy_uto,vy_ufrom); char ud[96]; int m=uni_dec(ud,dv4); int k = p>250 ? m : 1+(m-1)*q/256;   // the universes behind you, in step with the light years:
+        if(kind==5 && !FILM){ u32 dv4[UW]; uni_sub(dv4,vy_uto,vy_ufrom); char ud[144]; int m=uni_dec(ud,dv4); int k = p>250 ? m : 1+(m-1)*q/256;   // the universes behind you, in step with the light years:
             char b[80], g1[24], g2[24]; digits_named(g1,ud,k); digits_named(g2,ud,m); scpy(b,"UNIVERSES PASSED: "); scat(b,g1); scat(b," OF "); scat(b,g2); b[56]=0; text(pg,4,11,b,C_CYAN,1); }                // it rolls up as you arrive
         if((kind==2||kind==5) && big){ int k = p>250 ? n : 1+(n-1)*q/256; if(k>last_k){ for(int kk=last_k+1;kk<=k;kk++){ if(kk>=4 && (kk-1)%3==0){ scpy(cap,"1 "); scat(cap,illion((kk-1)/3)); scat(cap," LIGHT YEARS"); cap2[0]=0; cap_t=70; }
                     if(kk==8){ scpy(cap,"AS FAR AS A GALAXY IS WIDE"); cap2[0]=0; cap_t=70; } }
@@ -834,16 +834,19 @@ static void arrive_after(const char *pre, const u32 *t10, u32 hours){   // "ARRI
 typedef struct { u32 cx[UAX], cy[UAX]; u32 seed; u8 star, body, used, chk; } Fav;
 _Static_assert(sizeof(Fav)==FAV_SZ, "a favourite is 48 bytes");
 _Static_assert(FAV_HDR+4 <= 0x6C00, "the favourites must end before the Dungeon Forge's block");
-// A favourite keeps the low word of its universe in 'seed'. The upper 96 bits live once, in a shared table of up to 31 other universes (UTab), and the
+// A favourite keeps the low word of its universe in 'seed'. The upper 224 bits live once, in a shared table of up to 31 other universes (UTab), and the
 // favourite holds the table number in 'used' (0 = the upper words are zero, which is every old favourite). On the cartridge 'used' is 0xA5 ^ number.
-#define UT_OFF 0x6D00
+#define UT_OFF 0x6C90
 #define UT_N 31
-typedef struct { u32 magic; u32 h[UT_N][3]; u32 sum; } UTab;   // the upper 96 bits of the universes your favourites and tracks are in (shared by all slots)
+typedef struct { u32 magic; u32 h[UT_N][UW-1]; u32 sum; } UTab;   // the upper 224 bits of the universes your favourites and tracks are in (shared by all slots)
 _Static_assert(UT_OFF+sizeof(UTab) <= 0x7000 && UT_OFF >= 0x6C00+136, "the universe table sits between the Dungeon Forge block and your tracks");
 static int uni_alloc(const u32 *u);                                                 // (in kart2.inc: it also knows the saved tracks)
-static void ut_read(UTab *t){ sram_read(UT_OFF,t,sizeof *t); if(t->magic!=0x42545455u || t->sum!=fnv(t,sizeof *t-4)){ memset(t,0,sizeof *t); t->magic=0x42545455u; } }
 static void ut_write(UTab *t){ t->sum=fnv(t,sizeof *t-4); sram_write(UT_OFF,t,sizeof *t); }
-static int ut_find(const UTab *t, const u32 *u){ if(!(u[1]|u[2]|u[3])) return 0; for(int i=0;i<UT_N;i++) if(t->h[i][0]==u[1]&&t->h[i][1]==u[2]&&t->h[i][2]==u[3]) return i+1; return -1; }
+static void ut_read(UTab *t){ sram_read(UT_OFF,t,sizeof *t); if(t->magic==0x38545455u && t->sum==fnv(t,sizeof *t-4)) return;
+    struct { u32 magic; u32 h[UT_N][3]; u32 sum; } o; sram_read(0x6D00,&o,sizeof o); memset(t,0,sizeof *t); t->magic=0x38545455u;   // the 128-bit version kept the table here: bring it over
+    if(o.magic==0x42545455u && o.sum==fnv(&o,sizeof o-4)){ for(int i=0;i<UT_N;i++) for(int k=0;k<3;k++) t->h[i][k]=o.h[i][k]; ut_write(t); } }
+static int ut_find(const UTab *t, const u32 *u){ u32 hi=0; for(int j=1;j<UW;j++) hi|=u[j]; if(!hi) return 0;
+    for(int i=0;i<UT_N;i++){ int same=1; for(int j=0;j<UW-1;j++) if(t->h[i][j]!=u[1+j]){ same=0; break; } if(same) return i+1; } return -1; }
 static int uni_find(const u32 *u){ UTab t; ut_read(&t); return ut_find(&t,u); }
 static u8 fav_chk(const Fav *f){ const u8 *p=(const u8*)f; u8 c=0x5A; for(int i=0;i<FAV_SZ-1;i++) c=(u8)(((c<<1)|(c>>7))^p[i]); return c; }
 static void fav_init(void){ u32 m; sram_read(FAV_HDR,&m,4); if(m==0x31564146u) return; for(int i=0;i<NFAV*FAV_SZ;i++) SRAM[FAV_BASE+i]=0; m=0x31564146u; sram_write(FAV_HDR,&m,4); }
@@ -852,16 +855,16 @@ static void fav_set(int i, const Fav *f){ Fav g=*f; if(g.used>UT_N) g.used=0; g.
 static void fav_clear(int i){ for(int k=0;k<FAV_SZ;k++) SRAM[FAV_BASE+i*FAV_SZ+k]=0; }
 static void fav_here(Fav *f){ u8 *p=(u8*)f; for(int i=0;i<FAV_SZ;i++) p[i]=0; ax_get(0,f->cx); ax_get(1,f->cy); f->seed=uni_w[0]; { int ix=uni_find(uni_w); f->used=(u8)(ix<0?0x80:ix); } f->star=(u8)cur_sys; f->body=(u8)(cur_pl*8+cur_moon); }
 static int fav_eq(const Fav *a, const Fav *b){ const u8 *p=(const u8*)a, *q=(const u8*)b; for(int i=0;i<FAV_SZ-2;i++) if(p[i]!=q[i]) return 0; return a->used==b->used; }
-static void fav_uni(const Fav *f, u32 *u){ u[0]=f->seed; u[1]=u[2]=u[3]=0; if(f->used>0 && f->used<=UT_N){ UTab t; ut_read(&t); for(int k=0;k<3;k++) u[1+k]=t.h[f->used-1][k]; } }   // the favourite's universe
-static int fav_in_uni(const Fav *f){ u32 u[4]; fav_uni(f,u); return uni_eq(u,uni_w); }
+static void fav_uni(const Fav *f, u32 *u){ for(int i=1;i<UW;i++) u[i]=0; u[0]=f->seed; if(f->used>0 && f->used<=UT_N){ UTab t; ut_read(&t); for(int k=0;k<UW-1;k++) u[1+k]=t.h[f->used-1][k]; } }   // the favourite's universe
+static int fav_in_uni(const Fav *f){ u32 u[UW]; fav_uni(f,u); return uni_eq(u,uni_w); }
 static int fav_add_here(void){ fav_init(); Fav h, f; if(uni_alloc(uni_w)<0) return -3; fav_here(&h); int empty=-1;
     for(int i=0;i<NFAV;i++){ if(fav_get(i,&f)){ if(fav_eq(&f,&h)) return -2; } else if(empty<0) empty=i; }
     if(empty<0) return -1; fav_set(empty,&h); return empty; }
 static void fav_name(const Fav *f, char *b){                                  // the star's name, and which planet or moon
-    u32 keep[2*UAX]; for(int w=0;w<2*UAX;w++) keep[w]=clus[w]; u32 ks=galaxy_seed, ws=wseed, kuw[4]; for(int w=0;w<4;w++) kuw[w]=uni_w[w];
-    for(int w=0;w<UAX;w++){ clus[w]=f->cx[w]; clus[UAX+w]=f->cy[w]; } { u32 fu[4]; fav_uni(f,fu); for(int w=0;w<4;w++) uni_w[w]=fu[w]; galaxy_seed=fu[0]^uni_fold(fu); } clus_refold();
+    u32 keep[2*UAX]; for(int w=0;w<2*UAX;w++) keep[w]=clus[w]; u32 ks=galaxy_seed, ws=wseed, kuw[UW]; for(int w=0;w<UW;w++) kuw[w]=uni_w[w];
+    for(int w=0;w<UAX;w++){ clus[w]=f->cx[w]; clus[UAX+w]=f->cy[w]; } { u32 fu[UW]; fav_uni(f,fu); for(int w=0;w<UW;w++) uni_w[w]=fu[w]; galaxy_seed=fu[0]^uni_fold(fu); } clus_refold();
     if(home_cluster() && f->star<6) scpy(b,tint_name[f->star]); else name_of(sys_id(f->star),b);
-    for(int w=0;w<2*UAX;w++) clus[w]=keep[w]; galaxy_seed=ks; for(int w=0;w<4;w++) uni_w[w]=kuw[w]; wseed=ws; clus_refold();
+    for(int w=0;w<2*UAX;w++) clus[w]=keep[w]; galaxy_seed=ks; for(int w=0;w<UW;w++) uni_w[w]=kuw[w]; wseed=ws; clus_refold();
     if(f->body){ scat(b," P"); ncat(b,(f->body>>3)+1); if(f->body&7){ scat(b," MOON "); ncat(b,f->body&7); } }
 }
 static int too_close_to_jump(void){ s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4; return !in_lair && pd<PR*2; }
@@ -890,20 +893,20 @@ static int blind_warp(void){                                                  //
     if(ax_zero(dx)&&ax_zero(dy)) dx[0]=1;
     if(!warp_by(dx,(rnd()&1)?1:-1,dy,(rnd()&1)?1:-1,0,0)) return 0;
     { char b[48], d2[40]; home_ly(d2); scpy(b,"WARPED. HOME: "); scat(b,d2); space_say(b); } return 1; }
-// ---------------------------------------------------------------- THE MULTIVERSE: once the story is beaten, any of 2^128 universes
-// A universe's number is 128 bits (uni_w, see save.inc). They sit side by side, each 2^155 clusters (1.1 quindecillion light years) across, so the trip
+// ---------------------------------------------------------------- THE MULTIVERSE: once the story is beaten, any of 2^256 universes
+// A universe's number is 256 bits (uni_w, see save.inc). They sit side by side, each 2^155 clusters (1.1 quindecillion light years) across, so the trip
 // from universe A to universe B is |A-B| universes long. The drive folds space, so every jump costs the same fuel; the trip still takes its time.
 #define UNI_COST 50                                                     // fuel for a jump between universes: 5.0 light years' worth
-static int uni_dec(char *d, const u32 *u){ u32 t[LYW]; for(int i=0;i<LYW;i++) t[i]=i<4?u[i]:0; return big_dec(d,t); }   // all the digits of a universe number (d needs 96)
+static int uni_dec(char *d, const u32 *u){ u32 t[LYW]; for(int i=0;i<LYW;i++) t[i]=i<UW?u[i]:0; return big_dec(d,t); }   // all the digits of a universe number (d needs 96)
 static void uni_name(char *b, const u32 *u){                            // "UNIVERSE #1,234,567", or for the huge ones "UNIVERSE #1234..5678"
-    scpy(b,"UNIVERSE #"); if(!(u[1]|u[2]|u[3])){ kcomma(b,u[0]); return; }
-    char d[96]; int n=uni_dec(d,u); if(n<=10){ char c[16]; int j=0; for(int i=0;i<n;i++){ c[j++]=d[i]; if(i<n-1 && (n-1-i)%3==0) c[j++]=','; } c[j]=0; scat(b,c); return; }
+    scpy(b,"UNIVERSE #"); { u32 hi=0; for(int i=1;i<UW;i++) hi|=u[i]; if(!hi){ kcomma(b,u[0]); return; } }
+    char d[144]; int n=uni_dec(d,u); if(n<=10){ char c[16]; int j=0; for(int i=0;i<n;i++){ c[j++]=d[i]; if(i<n-1 && (n-1-i)%3==0) c[j++]=','; } c[j]=0; scat(b,c); return; }
     char c[12]; for(int i=0;i<4;i++) c[i]=d[i]; c[4]='.'; c[5]='.'; for(int i=0;i<4;i++) c[6+i]=d[n-4+i]; c[10]=0; scat(b,c); }
-static int uni_sub(u32 *r, const u32 *a, const u32 *b){                 // r = |a-b| (4 words); 1 if b was bigger
-    int lt=0; for(int i=3;i>=0;i--) if(a[i]!=b[i]){ lt = a[i]<b[i]; break; }
-    const u32 *x = lt?b:a, *y = lt?a:b; u64 c=0; for(int i=0;i<4;i++){ u64 v=(u64)x[i]-y[i]-c; r[i]=(u32)v; c=(v>>63)&1; } return lt; }
-static void uni_addp(u32 *u, const u32 *k, int neg){                    // u += k or u -= k, round and round at 2^128
-    u64 c=0; for(int i=0;i<4;i++){ if(!neg){ u64 v=(u64)u[i]+k[i]+c; u[i]=(u32)v; c=v>>32; } else { u64 v=(u64)u[i]-k[i]-c; u[i]=(u32)v; c=(v>>63)&1; } } }
+static int uni_sub(u32 *r, const u32 *a, const u32 *b){                 // r = |a-b| (UW words); 1 if b was bigger
+    int lt=0; for(int i=UW-1;i>=0;i--) if(a[i]!=b[i]){ lt = a[i]<b[i]; break; }
+    const u32 *x = lt?b:a, *y = lt?a:b; u64 c=0; for(int i=0;i<UW;i++){ u64 v=(u64)x[i]-y[i]-c; r[i]=(u32)v; c=(v>>63)&1; } return lt; }
+static void uni_addp(u32 *u, const u32 *k, int neg){                    // u += k or u -= k, round and round at 2^256
+    u64 c=0; for(int i=0;i<UW;i++){ if(!neg){ u64 v=(u64)u[i]+k[i]+c; u[i]=(u32)v; c=v>>32; } else { u64 v=(u64)u[i]-k[i]-c; u[i]=(u32)v; c=(v>>63)&1; } } }
 static void uni_ly(u32 *t10, const u32 *from, const u32 *to){           // tenths of a light year from one universe to another: |A-B| x 2^155 clusters x 25 LY x 10
     for(int i=0;i<LYW;i++) t10[i]=0; uni_sub(t10,from,to); big_mul(t10,LYW,ULY*10); big_shl(t10,LYW,155); }
 static int universe_go(const u32 *to, const Fav *f){                    // jump to universe 'to': to the same place there, or onto the favourite f. 1 if you went
@@ -911,32 +914,32 @@ static int universe_go(const u32 *to, const Fav *f){                    // jump 
     if(uni_eq(to,uni_w) && !f){ space_say("YOU ARE ALREADY IN THAT UNIVERSE"); return 0; }
     if(too_close_to_jump()){ space_say("TOO CLOSE TO THE PLANET TO JUMP"); return 0; }
     if(fuel<UNI_COST){ space_say("A UNIVERSE JUMP NEEDS 5.0 LY OF FUEL"); return 0; }
-    u32 dest[4]; for(int i=0;i<4;i++) dest[i]=to[i];                     // (to may point at the universe you are in)
+    u32 dest[UW]; for(int i=0;i<UW;i++) dest[i]=to[i];                     // (to may point at the universe you are in)
     char fn[28], tn[28]; uni_name(fn,uni_w); uni_name(tn,dest); u32 t10[LYW]; uni_ly(t10,uni_w,dest);
-    for(int i=0;i<4;i++){ vy_ufrom[i]=uni_w[i]; vy_uto[i]=dest[i]; } fuel-=UNI_COST; uni_set(dest);
+    for(int i=0;i<UW;i++){ vy_ufrom[i]=uni_w[i]; vy_uto[i]=dest[i]; } fuel-=UNI_COST; uni_set(dest);
     if(f){ for(int w=0;w<UAX;w++){ clus[w]=f->cx[w]; clus[UAX+w]=f->cy[w]; } }
     u_settle(); gen_cluster(); if(f){ cur_sys=f->star; cur_pl=f->body>>3; cur_moon=f->body&7; } else { cur_pl=cur_moon=0; } visits++;
-    { u32 t[LYW]; char d[96]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); int dg=big_dec(d,t); voyage(fn,tn,t10,(u32)(30+dg*25)*24,5); }
+    { u32 t[LYW]; char d[144]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); int dg=big_dec(d,t); voyage(fn,tn,t10,(u32)(30+dg*25)*24,5); }
     space_enter(0); { char b[48], nm[24]; uni_name(b,dest); scat(b,": "); sys_name(cur_sys,nm); nm[13]=0; scat(b,nm); b[39]=0; space_say(b); } return 1; }
-static void uni_edit(volatile u16 *pg, u32 *u){                         // type a universe number digit by digit: 39 digits, 3 rows of 13
-    char d[40]; { char t[96]; int n=uni_dec(t,u); for(int i=0;i<39;i++) d[i]='0'; for(int i=0;i<n;i++) d[39-n+i]=t[i]; } d[39]=0;
-    int cur=38, t=0; wait_release();
-    while(1){ box(pg,8,34,224,92); ctext(pg,120,38,"UNIVERSE NUMBER (0 TO 2^128-1)",C_GOLD);
-        for(int i=0;i<39;i++){ int r=i/13, x=i%13; int px=29+x*14, py=54+r*18; char c[2]={d[i],0}; rect(pg,px-1,py-1,13,17,0); text(pg,px,py,c,i==cur?C_GOLD:C_WHITE,2); if(i==cur && (t&16)) rect(pg,px,py+15,10,1,C_GOLD); }
+static void uni_edit(volatile u16 *pg, u32 *u){                         // type a universe number digit by digit: 78 digits, 3 rows of 26
+    char d[80]; { char t[144]; int n=uni_dec(t,u); for(int i=0;i<78;i++) d[i]='0'; for(int i=0;i<n && i<78;i++) d[78-n+i]=t[i]; } d[78]=0;
+    int cur=77, t=0; wait_release();
+    while(1){ box(pg,4,34,232,92); ctext(pg,120,38,"UNIVERSE NUMBER (0 TO 2^256-1)",C_GOLD);
+        for(int i=0;i<78;i++){ int r=i/26, x=i%26; int px=16+x*8, py=56+r*14; char c[2]={d[i],0}; rect(pg,px-1,py-1,8,10,0); text(pg,px,py,c,i==cur?C_GOLD:C_WHITE,1); if(i==cur && (t&16)) rect(pg,px,py+8,5,1,C_GOLD); }
         ctext(pg,120,108,"UP/DOWN: DIGIT  LEFT/RIGHT: MOVE",C_GREY); ctext(pg,120,116,"A: OK  B: CANCEL",C_GREY); vsync(); read_keys(); t++;
         if(HIT(K_UP)) d[cur]=(char)(d[cur]=='9'?'0':d[cur]+1); if(HIT(K_DOWN)) d[cur]=(char)(d[cur]=='0'?'9':d[cur]-1);
-        if(HIT(K_LEFT) && cur>0) cur--; if(HIT(K_RIGHT) && cur<38) cur++;
+        if(HIT(K_LEFT) && cur>0) cur--; if(HIT(K_RIGHT) && cur<77) cur++;
         if(HIT(K_B)){ wait_release(); return; }
         if(HIT(K_A)||HIT(K_START)){ u32 v[LYW]; for(int i=0;i<LYW;i++) v[i]=0;
-            for(int i=0;i<39;i++){ big_mul(v,LYW,10); u32 dg[LYW]; for(int k=0;k<LYW;k++) dg[k]=0; dg[0]=(u32)(d[i]-'0'); big_add(v,dg,LYW); }
-            int over=0; for(int i=4;i<LYW;i++) if(v[i]) over=1; for(int i=0;i<4;i++) u[i]= over ? 0xFFFFFFFFu : v[i]; wait_release(); return; } } }
+            for(int i=0;i<78;i++){ big_mul(v,LYW,10); u32 dg[LYW]; for(int k=0;k<LYW;k++) dg[k]=0; dg[0]=(u32)(d[i]-'0'); big_add(v,dg,LYW); }
+            int over=0; for(int i=UW;i<LYW;i++) if(v[i]) over=1; for(int i=0;i<UW;i++) u[i]= over ? 0xFFFFFFFFu : v[i]; wait_release(); return; } } }
 static int universe_menu(volatile u16 *pg){                             // pick a universe by its number; 1 if you jumped
-    u32 to[4]; for(int i=0;i<4;i++) to[i]=uni_w[i]; { u32 one[4]={1,0,0,0}; uni_addp(to,one,0); } int dirty=2, rep=0; wait_release();
+    u32 to[UW]; for(int i=0;i<UW;i++) to[i]=uni_w[i]; { u32 one[UW]={1}; uni_addp(to,one,0); } int dirty=2, rep=0; wait_release();
     while(1){
-        if(dirty){ char b[64], c[48], dd[96];
+        if(dirty){ char b[64], c[48], dd[144];
             if(dirty==2){ rect(pg,0,0,240,160,0); frame1(pg,4,4,232,152,58); text(pg,68,12,"UNIVERSE JUMP",C_GOLD,2);   // the whole panel, once
                 uni_name(c,uni_w); scpy(b,"YOU ARE IN "); scat(b,c); ctext(pg,120,28,b,C_WHITE);
-                ctext(pg,120,38,"THERE ARE 340 UNDECILLION UNIVERSES (2^128).",C_GREY); ctext(pg,120,46,"EACH ONE IS 1.1 QUINDECILLION LY ACROSS.",C_GREY);
+                ctext(pg,120,38,"THERE ARE 116 QUATTUORVIGINTILLION UNIVERSES.",C_GREY); ctext(pg,120,46,"EACH ONE IS 1.1 QUINDECILLION LY ACROSS.",C_GREY);
                 ctext(pg,120,60,"JUMP TO:",C_GOLD);
                 scpy(b,"IT TAKES 5.0 LY OF FUEL. YOU HAVE "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10); ctext(pg,120,106,b,fuel>=UNI_COST?C_GREEN:C_RED);
                 ctext(pg,120,120,"LEFT/RIGHT: CHANGE IT (HOLD: FASTER)",C_WHITE); ctext(pg,120,128,"A: TYPE A NUMBER   SELECT: A RANDOM ONE",C_WHITE);
@@ -944,24 +947,24 @@ static int universe_menu(volatile u16 *pg){                             // pick 
             rect(pg,8,68,224,34,0);                                                                       // then only the lines that change
             { int n=uni_dec(dd,to);
               if(n<=10){ uni_name(c,to); scpy(b,"< "); scat(b,c); scat(b," >"); text(pg,120-textlen(b)*4,70,b,C_GOLD,2); }
-              else { char l1[24], l2[24]; int k=0; for(int i=0;i<n && i<22;i++) l1[k++]=dd[i]; l1[k]=0; k=0; for(int i=22;i<n;i++) l2[k++]=dd[i]; l2[k]=0;   // long ones: the digits, 22 to a line
+              else { char l1[44], l2[44]; int k=0; for(int i=0;i<n && i<39;i++) l1[k++]=dd[i]; l1[k]=0; k=0; for(int i=39;i<n;i++) l2[k++]=dd[i]; l2[k]=0;   // long ones: the digits, 22 to a line
                   scpy(b,"#"); scat(b,l1); text(pg,120-textlen(b)*4,69,b,C_GOLD,1); if(l2[0]) text(pg,120-textlen(l2)*4,77,l2,C_GOLD,1); } }
-            { u32 d[4]; uni_sub(d,to,uni_w);
-              if(!(d[0]|d[1]|d[2]|d[3])) ctext(pg,120,90,"THAT IS WHERE YOU ARE NOW",C_CYAN);
-              else { char ds[96]; int n=uni_dec(ds,d); if(n<=10){ scpy(b,"THAT IS "); kcomma(b,d[0]); scat(b, d[0]==1 ? " UNIVERSE AWAY" : " UNIVERSES AWAY"); }
+            { u32 d[UW], dz=0; uni_sub(d,to,uni_w); for(int i=0;i<UW;i++) dz|=d[i];
+              if(!dz) ctext(pg,120,90,"THAT IS WHERE YOU ARE NOW",C_CYAN);
+              else { char ds[144]; int n=uni_dec(ds,d); if(n<=10){ scpy(b,"THAT IS "); kcomma(b,d[0]); scat(b, d[0]==1 ? " UNIVERSE AWAY" : " UNIVERSES AWAY"); }
                   else { char g[24]; digits_named(g,ds,n); scpy(b,"THAT IS "); scat(b,g); scat(b," UNIVERSES AWAY"); }
                   ctext(pg,120,86,b,C_CYAN);
                   u32 t10[LYW]; uni_ly(t10,uni_w,to); scpy(b,"OR "); ly_fmt(c,t10); scat(b,c); ctext(pg,120,94,b,C_CYAN); } }
             dirty=0; }
         vsync(); read_keys();
         if(HIT(K_B)){ wait_release(); return 0; }
-        if(HELD(K_LEFT)||HELD(K_RIGHT)){ rep++; if(rep==1 || (rep>15 && !(rep&3))){ u32 st[4]={1,0,0,0}; for(int k=(rep-15)/30;k>0;k--){ u64 c=0; u32 x[4]; for(int i=0;i<4;i++){ c+=(u64)st[i]*10; x[i]=(u32)c; c>>=32; } if(c) break; for(int i=0;i<4;i++) st[i]=x[i]; }   // held: 1, 10, 100... at a time
+        if(HELD(K_LEFT)||HELD(K_RIGHT)){ rep++; if(rep==1 || (rep>15 && !(rep&3))){ u32 st[UW]={1}; for(int k=(rep-15)/30;k>0;k--){ u64 c=0; u32 x[UW]; for(int i=0;i<UW;i++){ c+=(u64)st[i]*10; x[i]=(u32)c; c>>=32; } if(c) break; for(int i=0;i<UW;i++) st[i]=x[i]; }   // held: 1, 10, 100... at a time
                 uni_addp(to,st,HELD(K_LEFT)?1:0); dirty=1; sfx(7); } } else rep=0;
         if(HIT(K_A)){ uni_edit(pg,to); dirty=2; }
-        if(HIT(K_SEL)){ for(int i=0;i<4;i++) to[i]=rnd(); to[3]>>=(rnd()&31); to[2]>>=(rnd()&15); dirty=1; sfx(6); }      // (a random number: its size is random too, so near ones come up as well)
+        if(HIT(K_SEL)){ { int kw=1+(int)(rnd()%UW); for(int i=0;i<UW;i++) to[i]= i<kw ? rnd() : 0; to[kw-1]>>=(rnd()&31); } dirty=1; sfx(6); }      // (a random number: its size is random too, so near ones come up as well)
         if(HIT(K_START)){ int r=universe_go(to,0); wait_release(); return r; } } }
 static int fav_go(const Fav *f){                                              // fly to a favourite: 1 if you jumped
-    if(!fav_in_uni(f)){ u32 fu[4]; fav_uni(f,fu); return universe_go(fu,f); }                  // in another universe: a universe jump lands you right on it
+    if(!fav_in_uni(f)){ u32 fu[UW]; fav_uni(f,fu); return universe_go(fu,f); }                  // in another universe: a universe jump lands you right on it
     u32 a[UAX], b[UAX], dx[UAX], dy[UAX]; ax_get(0,a); ax_get(1,b); int sx=ax_delta(dx,a,f->cx), sy=ax_delta(dy,b,f->cy);
     if(ax_zero(dx)&&ax_zero(dy)){                                             // in this very cluster: an ordinary jump to the star
         if(f->star==cur_sys){ cur_pl=f->body>>3; cur_moon=f->body&7; space_say("YOU ARE THERE. LAND WHEN YOU LIKE"); return 0; }
@@ -990,14 +993,14 @@ static int fav_screen(volatile u16 *pg){                                      //
                 if(r==0){ sys_name(cur_sys,nm); scpy(b,"+ SAVE THIS PLACE ("); scat(b,nm); scat(b,")"); b[56]=0; text(pg,6,y,b,C_GREEN,1); continue; }
                 Fav f; fav_get(idx[r-1],&f); fav_name(&f,nm); nm[22]=0; int other=!fav_in_uni(&f);
                 text(pg,6,y,nm,(other && !ant_king)?C_DGREY:C_WHITE,1);
-                if(other){ u32 fu[4]; fav_uni(&f,fu); uni_name(b,fu); } else { u32 a[UAX],bb[UAX],dx[UAX],dy[UAX]; ax_get(0,a); ax_get(1,bb); ax_delta(dx,a,f.cx); ax_delta(dy,bb,f.cy);
+                if(other){ u32 fu[UW]; fav_uni(&f,fu); uni_name(b,fu); } else { u32 a[UAX],bb[UAX],dx[UAX],dy[UAX]; ax_get(0,a); ax_get(1,bb); ax_delta(dx,a,f.cx); ax_delta(dy,bb,f.cy);
                     if(ax_zero(dx)&&ax_zero(dy)) scpy(b,"THIS CLUSTER"); else { u32 ly[LYW]; ly_between(ly,dx,dy); ly_text(b,ly); } }
                 b[30]=0; text(pg,236-textlen(b)*4,y,b,other?(ant_king?C_CYAN:C_DGREY):C_GREY,1); }
             if(rows>9){ text(pg,232,30,"^",top>0?C_WHITE:C_DGREY,1); text(pg,232,112,"v",top+9<rows?C_WHITE:C_DGREY,1); }
             rect(pg,0,122,240,1,58);
             if(sel==0){ text(pg,4,126,"SAVES THE STAR YOU ARE AT, SO YOU CAN COME BACK",C_GREY,1); text(pg,4,140,"A: SAVE IT   B: BACK",C_CYAN,1); }
             else { Fav f; fav_get(idx[sel-1],&f);
-                if(!fav_in_uni(&f)){ if(ant_king){ u32 fu[4]; fav_uni(&f,fu); uni_name(b,fu); scat(b,": A UNIVERSE JUMP, 5.0 LY OF FUEL"); text(pg,4,126,b,fuel>=UNI_COST?C_GREEN:C_RED,1); }
+                if(!fav_in_uni(&f)){ if(ant_king){ u32 fu[UW]; fav_uni(&f,fu); uni_name(b,fu); scat(b,": A UNIVERSE JUMP, 5.0 LY OF FUEL"); text(pg,4,126,b,fuel>=UNI_COST?C_GREEN:C_RED,1); }
                     else text(pg,4,126,"IN ANOTHER UNIVERSE. BEAT THE ANT KING TO GO THERE",C_DGREY,1); }
                 else { u32 a[UAX],bb[UAX],dx[UAX],dy[UAX]; ax_get(0,a); ax_get(1,bb); ax_delta(dx,a,f.cx); ax_delta(dy,bb,f.cy);
                     if(ax_zero(dx)&&ax_zero(dy)){ int d=sys_dist(cur_sys,f.star); scpy(b,"A SHORT JUMP: "); ncat(b,d/10); scat(b,"."); ncat(b,d%10); scat(b," LY OF FUEL"); text(pg,4,126,b,d<=fuel?C_GREEN:C_RED,1); }
