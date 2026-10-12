@@ -135,7 +135,7 @@ static void nb_short(char *o){                                   // "ABOUT 4.3 B
     if(n<=6){ if(nb_about) scpy(o,"ABOUT "); for(int k=0;k<n;k++){ char c[2]={(char)('0'+nb_dig(k)),0}; scat(o,c); if(k<n-1 && (n-1-k)%3==0) scat(o,","); } return; }
     int g=(n-1)/3, lead=n-3*g, s = lead==3 ? 3 : lead+1;          // 2 or 3 figures: 4.3, 12.3, 123
     u32 x=0; for(int k=0;k<s;k++) x=x*10+(u32)nb_dig(k);
-    int rest=0; for(int k=s;k<n && !rest;k++) if(nb_dig(k)) rest=1;  // anything left over? (it stops at the first digit that is not 0)
+    int rest=0; if(nb_nz>1) for(int k=s;k<n && !rest;k++) if(nb_dig(k)) rest=1;  // anything left over? (it stops at the first digit that is not 0)
     if(nb_dig(s)>=5) x++;
     u32 p10=1; for(int k=0;k<s;k++) p10*=10;
     if(x>=p10){ n++; g=(n-1)/3; lead=n-3*g; s = lead==3 ? 3 : lead+1; x=1; for(int k=1;k<s;k++) x*=10; }   // 999.7 rounds up to the next name: 1.0
@@ -203,7 +203,7 @@ static void sz_head(volatile u16 *pg, int pi, int view){         // view 3 is th
     ctext(pg,120,152,help[view],C_CYAN); }
 static void sz_short_view(volatile u16 *pg, int pi){
     for(int k=0;k<24;k++) pix(pg,(k*53+11)%240,40+(k*29+7)%104,C_DGREY);
-    int y=40; ctext(pg,120,y,szt(pi,1),C_GREY); y+=7; if(szt(pi,2)){ ctext(pg,120,y,szt(pi,2),C_GREY); y+=7; }
+    int y=40; if(szt(pi,1)){ ctext(pg,120,y,szt(pi,1),C_GREY); y+=7; } if(szt(pi,2)){ ctext(pg,120,y,szt(pi,2),C_GREY); y+=7; }
     y+=6; { char s[96], ln[3][32]; nb_short(s); int nl=sz_wrap(s,ln); for(int k=0;k<nl;k++){ text(pg,120-textlen(ln[k])*4,y,ln[k],C_WHITE,2); y+=13; } }
     y+=2; { char b[64]; scpy(b,""); kcomma(b,(u32)nb_n); scat(b, nb_n==1 ? " DIGIT" : " DIGITS");
         if(nb_n>=1000){ u32 m=(u32)nb_n/60; scat(b,". READING ONE A SECOND: "); if(m<120){ ncat(b,(int)m); scat(b," MINUTES"); } else { ncat(b,(int)(m/60)); scat(b," HOURS"); } }
