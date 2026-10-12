@@ -19,7 +19,6 @@ static void sram_write(int off, const void *s, unsigned n){ const u8 *p=s; for(u
 // ---------------------------------------------------------------- the universe number: 128 bits (4 words, low word first)
 // uni_w[0] is the old 32-bit number, so every universe you could reach before is still the same universe with the same name. galaxy_seed is the 32-bit
 // value the generators mix: uni_w[0] ^ a fold of the upper 96 bits (0 when they are all zero). Always change a universe with uni_set(), never galaxy_seed.
-static u32 uni_w[4]={1,0,0,0};
 static u32 uni_fold(const u32 *u){ return (u[1]|u[2]|u[3]) ? hmix(u[1]^hmix(u[2]^hmix(u[3]^0x5A17C0DEu))) : 0; }
 static void uni_set(const u32 *u){ for(int i=0;i<4;i++) uni_w[i]=u[i]; galaxy_seed=u[0]^uni_fold(u); }
 static void uni_set32(u32 s){ u32 u[4]={s,0,0,0}; uni_set(u); }

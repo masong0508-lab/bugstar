@@ -8,7 +8,7 @@ static const u8 eco_mul[4][8]={{55,65,80,110,130,150,120,120},{120,110,105,70,60
 
 static u32 lseed;
 static int lr(int n){ lseed = lseed*1664525u + 1013904223u; return (int)((lseed>>16)%(u32)n); }
-static u32 sys_id(int i){ return !home_cluster() ? amix(galaxy_seed,i) : (u32)i + 1; }      // the star's 32-bit name code
+static u32 sys_id(int i){ return !home_cluster() ? amix(gsk(107),i) : (u32)i + 1; }      // the star's 32-bit name code
 // ---------------------------------------------------------------- THE UNIVERSE: a flat, tight map of star clusters that wraps round at its edges
 // 2^155 clusters on a side, 25 light years each: about 1.1 quindecillion light years across. Neighbouring clusters touch, so there is always
 // somewhere close to go; far places need fuel, a better warp drive, and stops on the way. Your place is two big numbers: how far east of home
@@ -91,13 +91,13 @@ static void u_settle(void){                                     // fold an addre
 #define GAL_SHIFT 20                                            // a galaxy is a block of 2^20 x 2^20 clusters (about 26 million light years across)
 static u32 gal_hash(void){ u32 a[UAX], b[UAX]; ax_get(0,a); ax_get(1,b); ax_shr(a,GAL_SHIFT); ax_shr(b,GAL_SHIFT); if(ax_zero(a)&&ax_zero(b)) return 0;
     u32 h=0x6C8E9CF5u; for(int w=0;w<UAX;w++){ h=hmix(h^a[w]^(u32)w*0x9E3779B1u); h=hmix(h^b[w]^(u32)(w+7)*0x9E3779B1u); } return h|1; }
-static void gal_name(char *b){ u32 h=gal_hash(); if(!h){ scpy(b,"THE BUG WAY"); return; } u32 ws=wseed; name_of(h^galaxy_seed,b); wseed=ws; scat(b," GALAXY"); }
+static void gal_name(char *b){ u32 h=gal_hash(); if(!h){ scpy(b,"THE BUG WAY"); return; } u32 ws=wseed; name_of(h^gsk(108),b); wseed=ws; scat(b," GALAXY"); }
 static void here_ly(char *out, const u32 *ex, const u32 *ey){ u32 a[UAX],b[UAX],dx[UAX],dy[UAX],ly[LYW]; ax_get(0,a); ax_get(1,b); ax_delta(dx,a,ex); ax_delta(dy,b,ey); ly_between(ly,dx,dy); ly_text(out,ly); }
 static void home_ly(char *out){ u32 z[UAX]={0,0,0,0,0}; here_ly(out,z,z); }
 static int sys_dist(int a, int b){ int dx=sys[a].x-sys[b].x, dy=sys[a].y-sys[b].y; return isqrt(dx*dx+dy*dy); }
 static void gen_cluster(void){
     clus_refold();
-    lseed = amix(galaxy_seed ^ 0x5bd1e995, 99);
+    lseed = amix(gsk(109) ^ 0x5bd1e995, 99);
     int start=0;
     if(home_cluster()){                                                  // only the home cluster has the six story stars
         static const u8 pos[6][2]={{20,74},{52,52},{86,80},{120,54},{156,82},{196,60}};
@@ -127,13 +127,13 @@ static int can_jump(int i){ if(i==cur_sys) return 0; if(sys[i].kind<6) return sy
 // ---- planets and moons: every uncharted star has 1 or more planets, and each planet can have moons you can land on and mine.
 // A few galaxies are CROWDED: every star there has 6 to 16 planets. (story stars and the hives keep their one world)
 #define DENSE_ODDS 12                                         // 1 galaxy in 12 is crowded
-static int galaxy_dense(void){ u32 h=gal_hash(); if(!h) return 0; return hmix(h^0xD3A5E000u^galaxy_seed)%DENSE_ODDS==0; }
+static int galaxy_dense(void){ u32 h=gal_hash(); if(!h) return 0; return hmix(h^0xD3A5E000u^gsk(110))%DENSE_ODDS==0; }
 static int sys_nplan(int i){ if(sys[i].kind<6 || is_hive(i)) return 1;
-    u32 h=amix(galaxy_seed^0x504C414Eu,i); int r=(int)(h%1000u);
+    u32 h=amix(gsk(111)^0x504C414Eu,i); int r=(int)(h%1000u);
     if(galaxy_dense()) return 6+(int)((h>>12)%11u);                                    // 6..16 planets: more than ten about half the time
     return r<480?1 : r<740?2 : r<880?3 : r<950?4 : r<985?5 : 6+(int)((h>>12)%3u); }      // about half the stars have 2 or more planets; a few have 6 to 8
 static int sys_nmoon(int i, int p){ if(sys[i].kind<6 || is_hive(i)) return 0;
-    int r=(int)(amix(galaxy_seed^0x4D4F4F4Eu^((u32)p*0x9E3779B1u),i)%100u); return r<40?0 : r<70?1 : r<88?2 : r<96?3 : 4; }
+    int r=(int)(amix(gsk(112)^0x4D4F4F4Eu^((u32)p*0x9E3779B1u),i)%100u); return r<40?0 : r<70?1 : r<88?2 : r<96?3 : 4; }
 static int body_count(int i){ int n=0, np=sys_nplan(i); for(int p=0;p<np;p++) n+=1+sys_nmoon(i,p); return n; }
 static void body_at(int i, int k, int *pp, int *pm){ int np=sys_nplan(i); for(int p=0;p<np;p++){ int nm=sys_nmoon(i,p); if(k<=nm){ *pp=p; *pm=k; return; } k-=nm+1; } *pp=0; *pm=0; }
 
@@ -303,7 +303,7 @@ static void ship_dies(Pirate *p, int by_you){
     if(lr(3)==0) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].good=255; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; }
 }
 static void space_enter(int from_planet){
-    lseed = galaxy_seed ^ 0x1234567 ^ frames;
+    lseed = gsk(113) ^ 0x1234567 ^ frames;
     for(int i=0;i<96;i++){ s16 *d=&star_dir[i*3]; d[0]=lr(32768)-16384; d[1]=lr(32768)-16384; d[2]=lr(32768)-16384; norm3(d); }
     for(int i=0;i<60;i++) dust[i]=lr(1600)-800;
     norm3(sun);
@@ -773,7 +773,7 @@ static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, 
     char tot[40], ds[96]; ly_fmt(tot,t10); int n; { u32 t[LYW]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); n=big_dec(ds,t); }
     int big = n>6, T = kind==0 ? 110+(int)((t10[1]||t10[0]>2400?2400:t10[0])/20) : (kind==3||kind==4) ? 120 : 170+n*7; if(T>400) T=400;   // how long it takes, in 60ths: longer trips take longer
     tv_log(t10,hours);
-    EW static s16 sa[40], sr[40], sv[40]; lseed=amix(galaxy_seed,(u32)frames); for(int i=0;i<40;i++){ sa[i]=(s16)lr(256); sr[i]=(s16)(lr(120)<<4); sv[i]=(s16)(10+lr(26)); }
+    EW static s16 sa[40], sr[40], sv[40]; lseed=amix(gsk(114),(u32)frames); for(int i=0;i<40;i++){ sa[i]=(s16)lr(256); sr[i]=(s16)(lr(120)<<4); sv[i]=(s16)(10+lr(26)); }
     char cap[44], cap2[48]; int cap_t=0, last_k=1; cap[0]=cap2[0]=0;
     if(kind==1){ scpy(cap,"CROSSING THE DARK"); scpy(cap2,"BETWEEN TWO STAR CLUSTERS"); cap_t=150; }
     else if(kind==3||kind==4){ scpy(cap,kind==3?"INTO THE BEAST'S LAIR":"WARPING OUT"); cap_t=110; }
@@ -858,10 +858,10 @@ static int fav_add_here(void){ fav_init(); Fav h, f; if(uni_alloc(uni_w)<0) retu
     for(int i=0;i<NFAV;i++){ if(fav_get(i,&f)){ if(fav_eq(&f,&h)) return -2; } else if(empty<0) empty=i; }
     if(empty<0) return -1; fav_set(empty,&h); return empty; }
 static void fav_name(const Fav *f, char *b){                                  // the star's name, and which planet or moon
-    u32 keep[2*UAX]; for(int w=0;w<2*UAX;w++) keep[w]=clus[w]; u32 ks=galaxy_seed, ws=wseed;
-    for(int w=0;w<UAX;w++){ clus[w]=f->cx[w]; clus[UAX+w]=f->cy[w]; } { u32 fu[4]; fav_uni(f,fu); galaxy_seed=fu[0]^uni_fold(fu); } clus_refold();
+    u32 keep[2*UAX]; for(int w=0;w<2*UAX;w++) keep[w]=clus[w]; u32 ks=galaxy_seed, ws=wseed, kuw[4]; for(int w=0;w<4;w++) kuw[w]=uni_w[w];
+    for(int w=0;w<UAX;w++){ clus[w]=f->cx[w]; clus[UAX+w]=f->cy[w]; } { u32 fu[4]; fav_uni(f,fu); for(int w=0;w<4;w++) uni_w[w]=fu[w]; galaxy_seed=fu[0]^uni_fold(fu); } clus_refold();
     if(home_cluster() && f->star<6) scpy(b,tint_name[f->star]); else name_of(sys_id(f->star),b);
-    for(int w=0;w<2*UAX;w++) clus[w]=keep[w]; galaxy_seed=ks; wseed=ws; clus_refold();
+    for(int w=0;w<2*UAX;w++) clus[w]=keep[w]; galaxy_seed=ks; for(int w=0;w<4;w++) uni_w[w]=kuw[w]; wseed=ws; clus_refold();
     if(f->body){ scat(b," P"); ncat(b,(f->body>>3)+1); if(f->body&7){ scat(b," MOON "); ncat(b,f->body&7); } }
 }
 static int too_close_to_jump(void){ s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4; return !in_lair && pd<PR*2; }

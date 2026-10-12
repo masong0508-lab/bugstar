@@ -12,6 +12,8 @@ static const char *const bug_power[6]={"+10 GOLD","+5 HEALTH","LIGHTS THE DARK",
 // ---- endless galaxy (after the Ant King)
 static int kw_mode=0, mw_force=0;                                 // Kart World (kart3.inc), and it asking for weird or hell worlds
 static int endless=0, world_no=0, best_depth=0, w_dlv=6; static int hellw(void), hell_tier(void); static s64 loot=0; static u32 galaxy_seed=1;
+static u32 uni_w[4]={1,0,0,0};   // the universe number, 128 bits (see save.inc)
+static u32 gsk(u32 k){ return (uni_w[1]|uni_w[2]|uni_w[3]) ? hmix(uni_w[0]^hmix(uni_w[1]^hmix(uni_w[2]^hmix(uni_w[3]^k*0x9E3779B1u^0x7F4A7C15u)))) : uni_w[0]; }   // what each generator mixes: all 128 bits, a different mix for each use (k), so two universes never make the same world. The old 32-bit universes (upper words 0) give back their own number, so they do not change
 // ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
 static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
 #define TZ (zone+(opt_diff==5?6:0))
@@ -213,7 +215,7 @@ static void bug_obj(int slot, int cx, int body_cy, int mtx, int pd){            
 static void name_of(u32 wn, char *b){
     static const char *const syl[32]={"ZA","KOR","MI","LUX","PO","BRA","NU","TIK","VO","RAN","SPI","GLO","QUA","FEN","DOR","ULM","OB","TEL","YAR","SNU","GRIB","OLO","PEM","VAX","HU","LIM","CRO","DIZ","WOB","ESK","TAN","JIB"};
     static const char *const suf[8]={""," PRIME"," II"," MAJOR"," MINOR"," X"," IX"," B"};
-    wseed = galaxy_seed ^ (wn*2654435761u) ^ (wn>>7)*0x85EBCA6Bu;
+    wseed = gsk(101) ^ (wn*2654435761u) ^ (wn>>7)*0x85EBCA6Bu;
     b[0]=0; int n=2+wr(2); for(int i=0;i<n;i++) scat(b,syl[wr(32)]); scat(b,suf[wr(8)]);
 }
 // ---- planet DNA. Every world is grown from its own code: the shape of the land, the sea, the sky, the hour, the weather,
@@ -312,12 +314,12 @@ static u32 body_salt(void){ int b=cur_pl*8+cur_moon; return b ? hmix((u32)b*0x9E
 static void make_world(void){                                   // three independent 32-bit seeds from the full address: 96 bits, so every planet is its own
     int gal = sys[cur_sys].kind==6; u32 base = gal ? sys_id(cur_sys) : (u32)world_no;
     u32 bsalt = gal ? body_salt() : 0; name_of(base^bsalt,w_name); if(gal && cur_moon) scat(w_name," MOON");
-    u32 A = gal ? amix(galaxy_seed^0xA1u^bsalt,cur_sys) : base*0x9E3779B1u, B = gal ? amix(galaxy_seed^0xB2u^bsalt,cur_sys) : base*0x85EBCA6Bu+7, C = gal ? amix(galaxy_seed^0xC3u^bsalt,cur_sys) : base*0xC2B2AE35u+3;
+    u32 A = gal ? amix(gsk(102)^0xA1u^bsalt,cur_sys) : base*0x9E3779B1u, B = gal ? amix(gsk(103)^0xB2u^bsalt,cur_sys) : base*0x85EBCA6Bu+7, C = gal ? amix(gsk(104)^0xC3u^bsalt,cur_sys) : base*0xC2B2AE35u+3;
     wseed = A ^ 0x7F4A7C15u; wr(2);
     int r=40+wr(216), g=40+wr(216), b=40+wr(216); int k=wr(3); if(k==0) r=230; else if(k==1) g=230; else b=230;
     { int c=wr(100); wd.cls = c<20?PC_TEMPERATE : c<32?PC_MOUNTAIN : c<42?PC_MEADOW : c<54?PC_OCEAN : c<64?PC_DESERT : c<72?PC_ICE : c<82?PC_JUNGLE : c<89?PC_DEATH : c<92?PC_ECUMENOPOLIS : PC_PARADISE; if(gal && cur_moon){ static const u8 mc[3]={PC_MOUNTAIN,PC_DESERT,PC_ICE}; wd.cls=mc[c%3]; } }   // a moon is bare rock, dust or ice
 
-    if((gal && !cur_moon && !is_hive(cur_sys)) || (mw_force&2)){ u32 hh = gal ? amix(galaxy_seed^0xE1F0u^bsalt,cur_sys) : hmix(base*0x51ED27u+0xE1F0u); int hp=8+(w_dlv>32?32:w_dlv)/2; if((mw_force&2) || (int)(hh%100u)<hp) wd.cls=PC_INFERNO+(int)((hh>>8)%6u); }   // (Kart World can ask for a hell world)   // HELL WORLDS: 8% of worlds near home, up to 24% far out
+    if((gal && !cur_moon && !is_hive(cur_sys)) || (mw_force&2)){ u32 hh = gal ? amix(gsk(105)^0xE1F0u^bsalt,cur_sys) : hmix(base*0x51ED27u+0xE1F0u); int hp=8+(w_dlv>32?32:w_dlv)/2; if((mw_force&2) || (int)(hh%100u)<hp) wd.cls=PC_INFERNO+(int)((hh>>8)%6u); }   // (Kart World can ask for a hell world)   // HELL WORLDS: 8% of worlds near home, up to 24% far out
 #ifdef TEST_CLASS
     wd.cls=TEST_CLASS;
 #endif
@@ -362,7 +364,7 @@ static void make_world(void){                                   // three indepen
     if(hellw()){ wd.mood=MOOD_HATE; wd.city=0; wd.csize=0; wd.ruins=0; wd.fauna=5; wd.beetles=3; }                    // nobody lives here by choice
     if(gal && cur_moon){ wd.city=0; wd.csize=0; wd.weather=0; wd.mood=MOOD_MEH; wd.ruins=0; }      // no cities, no weather: moons are for mining
     // a weird world: one planet in 111, only out in the galaxy. It stacks 1 to 4 of the 1000 traits
-    { u32 F = gal ? amix(galaxy_seed^0xF6u^bsalt,cur_sys) : base*0x2545F491u; wd.ntr=0;
+    { u32 F = gal ? amix(gsk(106)^0xF6u^bsalt,cur_sys) : base*0x2545F491u; wd.ntr=0;
       if(((F%111u)==0 && gal) || (mw_force&1)){ int n = 1 + ((F>>8)%3u==0) + ((F>>12)%5u==0) + ((F>>20)%9u==0); u32 h=F;
           for(int t=0;t<40 && wd.ntr<n;t++){ h=hmix(h+0x9E3779B9u); int id=(int)(h%NTRAIT), m=id%NMW, ok=1;
               for(int j=0;j<wd.ntr;j++){ int mj=wd.tr[j]%NMW; if(mj==m || (mj==MW_SHY&&m==MW_ANGRY) || (mj==MW_ANGRY&&m==MW_SHY) || (mj==MW_FLOOD&&m==MW_DROUGHT) || (mj==MW_DROUGHT&&m==MW_FLOOD) || (mj==MW_MAGNET&&m==MW_SHYORE) || (mj==MW_SHYORE&&m==MW_MAGNET)) ok=0; }
