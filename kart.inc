@@ -326,6 +326,7 @@ static int kitem_roll(int place){                                  // further ba
     return r<20?KI_PEPPER3 : r<38?KI_SHELL : r<52?KI_MAGNET : r<66?KI_CLOUD : r<80?KI_SNEEZE : r<92?KI_PEPPER : KI_BUBBLE; }
 static void kspin(int r, const char *why){
     Racer *k=&rc[r]; if(k->fin || k->la || (r==0 && kloop_on)) return;                      // (nothing hits you upside down in a loop)
+    if(k->spin) return;
     if(k->shield){ k->shield=0; if(r==0) show_msg("YOUR BUBBLE POPPED!"); sfx(2); return; }
     k->spin=48; if(r==0){ show_msg(why); sfx(4); kboost_t=0; kdrift=0; kcharge=0; } }
 static int kahead(int r){                                          // the racer just ahead of r (or -1)
@@ -757,6 +758,9 @@ static void kpart_add(int x, int y, int vx, int vy, int life, int c){ KPart *p=&
 static void kart_fx(volatile u16 *pg, int sy){
     int g=kl.part[KP_GLOW];
     if(g && !cam_fp){ if(g==7) BG_PAL[KRC_GLOW]=kglow_col[1+((frames>>3)%6)]; for(int y=-3;y<=3;y++){ int w=24-y*y*2; for(int x=-w;x<=w;x+=2){ int xx=120+x+(y&1), yy=sy+y; if(yy>18&&yy<160) pix(pg,xx,yy,KRC_GLOW); } } }
+    if(!cam_fp && !kair && !kloop_on){ for(int y=-1;y<=1;y++){ int w=19-y*y*7; for(int x=-w;x<=w;x++) if(((x+y)&1)==0){ int yy=sy+y; if(yy>18 && yy<160) pix(pg,120+x,yy,C_DGREY); } } }   // shadow
+    if(!kair && !kloop_on && (kboost_t || kv>K_VBASE*3/2)){ for(int i=0;i<(kboost_t?6:3);i++){ int a=rndi(256), r0=64+rndi(36); s32 ca=cosx(a), sa=sinx(a);   // speed streaks
+        for(int t=0;t<(kboost_t?16:9);t++){ int rr=r0+t*3, x=120+((ca*rr)>>14), y=sy-34+(((sa*rr)>>14)*2/3); if(x>1 && x<238 && y>19 && y<150) pix(pg,x,y,kboost_t?((t&1)?C_GOLD:C_WHITE):C_WHITE); } } }
     int tr=kl.part[KP_TRAIL], mv = kv>K_VBASE/4;
     if(!cam_fp && mv && tr && (frames&1)==0){ static const u8 tc[10][2]={{0,0},{C_DGREY,C_GREY},{C_GOLD,C_WHITE},{C_CYAN,C_WHITE},{C_RED,C_RED},{C_RED,C_GOLD},{C_GREY,C_DGREY},{C_GOLD,C_WHITE},{C_RED,C_GOLD},{C_GREEN,C_CYAN}};
         int c = tr==5 ? (int)(C_RED+((frames>>1)%4==0?0:(frames>>1)%4==1?3:(frames>>1)%4==2?2:6)) : tr==9 ? (int)(C_RED+rndi(8)) : tc[tr][rndi(2)];
