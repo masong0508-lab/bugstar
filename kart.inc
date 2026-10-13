@@ -591,13 +591,15 @@ static void kart_step(void){
     if(kboost_t){ kboost_t--; boosting=1; }
     if(boosting) vcap = onroad ? vmax*160/100 : vmax*120/100;
     if(rc[0].cloud) vcap=vcap*3/4;
+    if(kr_mode==1 && ks_state==KS_RACE && !kair && !rc[0].spin){ for(int r=1;r<nrc;r++){ s32 sdx=wrapd(rc[r].x-ppx)>>8, sdy=wrapd(rc[r].y-ppy)>>8;   // SLIPSTREAM: close behind a rival
+        s32 fwd=(sdx*sinx(khd>>2)+sdy*cosx(khd>>2))>>14, sd=(sdx*cosx(khd>>2)-sdy*sinx(khd>>2))>>14; if(fwd>128 && fwd<1400 && sd>-200 && sd<200){ vcap=vcap*106/100; break; } } }
     if(kr_mode==1 && ks_state==KS_DONE){ kart_auto(vmax*7/10); s=0; up=0; dn=0; }
     else if(rc[0].spin){ kv -= kv/16; s=0; }
     else if(kair){ kair_t++; khd=(khd+s*(tr/3))&1023; kturn=s; if(HIT(K_R) && !ktrick && kair_t<30){ ktrick=1; sfx(2); } }   // flying: a little steering; R does a trick
     else {
         s32 spd=kv<0?-kv:kv; int fa=(int)((spd*768)/(vmax?vmax:1)); if(fa>256) fa=256; tr=(tr*fa)>>8;
-        if(HELD(K_R) && s && kv>vmax/2){ if(!kdrift){ kdrift=s; sfx(11); } if(s==kdrift){ tr=tr*3/2; if(kcharge<200) kcharge++; } }
-        if(kdrift && !(HELD(K_R) && s==kdrift)){ if(kcharge>110){ kboost_t=50; show_msg("SUPER MINI-TURBO!"); sfx(10); } else if(kcharge>50){ kboost_t=28; sfx(10); } kdrift=0; kcharge=0; }
+        if(HELD(K_R) && s && kv>vmax/2){ if(!kdrift){ kdrift=s; sfx(11); } if(s==kdrift){ tr=tr*3/2; if(kcharge<200) kcharge += 1 + (kcharge<110 && (frames&1)); } else tr=tr*3/4; }
+        if(kdrift && !(HELD(K_R) && s==kdrift)){ if(kcharge>170){ kboost_t=72; show_msg("ULTRA MINI-TURBO!"); sfx(10); } else if(kcharge>110){ kboost_t=50; show_msg("SUPER MINI-TURBO!"); sfx(10); } else if(kcharge>50){ kboost_t=28; sfx(10); } kdrift=0; kcharge=0; }
         khd=(khd+s*tr)&1023; kturn=s;
         int acc=(int)(vmax/(110-kstat(&kl,KST_ACC)*7)); if(acc<16) acc=16;
         if(kstall){ kstall--; up=0; }
@@ -640,11 +642,15 @@ static void kai(int r, int n){
     if(k->cloud){ vtop=vtop*3/4; k->cloud = k->cloud>n ? k->cloud-n : 0; }
     if(k->boost){ vtop=vtop*155/100; k->boost = k->boost>n ? k->boost-n : 0; }
     int la=5+(int)(k->v>>11), tp=(k->pi+la)%knp, dir=kp_dir(tp), nd=(dir+256)&1023;
-    s32 tx=kp_cx(tp)+((sinx(nd>>2)*(k->lane>>8))>>6), ty=kp_cy(tp)+((cosx(nd>>2)*(k->lane>>8))>>6);
+    int bd=((kp_dir((k->pi+la+10)%knp)-dir+512)&1023)-512, ins = bd>40 ? 1 : bd<-40 ? -1 : 0; s32 ln=k->lane; if(ins) ln = ins*(2<<14) + ln/3;   // the inside of the next bend
+    s32 tx=kp_cx(tp)+((sinx(nd>>2)*(ln>>8))>>6), ty=kp_cy(tp)+((cosx(nd>>2)*(ln>>8))>>6);
     s32 dx=wrapd(tx-k->x), dy=wrapd(ty-k->y); int want=iatan2(dx>>4,dy>>4), err=((want-k->hd+512)&1023)-512, trm=14*n;
     if(k->spin){ k->spin = k->spin>n ? k->spin-n : 0; k->v -= (k->v/8)*n/2; }
     else { if(err>trm) err=trm; if(err<-trm) err=-trm; k->hd=(s16)((k->hd+err)&1023);
-        int d0=kp_dir(k->pi), d1=kp_dir((k->pi+12)%knp), cv=((d1-d0+512)&1023)-512; if(cv<0) cv=-cv; if(cv>170) cv=170;
+        int d0=kp_dir(k->pi), d1=kp_dir((k->pi+12)%knp), cv=((d1-d0+512)&1023)-512; if(cv<0) cv=-cv;
+        { int d2=kp_dir((k->pi+26)%knp), cv2=((d2-d0+512)&1023)-512; if(cv2<0) cv2=-cv2; cv2=cv2*3/4; if(cv2>cv) cv=cv2; }          // a bend further on counts too: brake early
+        if(cv>110){ if(k->pad2<200) k->pad2++; } else if(cv<40){ if(k->pad2>45 && !k->boost) k->boost=26+(k->skill>100?10:0); k->pad2=0; }   // came out of a sharp bend: a mini-turbo
+        if(cv>170) cv=170;
         s32 vt=vtop*(256-cv/2)/256; if(k->v<vt){ k->v+=vt/40*n; if(k->v>vt) k->v=vt; } else k->v-=(k->v-vt)/8; }
     s32 st=k->v*n; k->x=(k->x+((sinx(k->hd>>2)*st)>>14))&((TW<<16)-1); k->y=(k->y+((cosx(k->hd>>2)*st)>>14))&((TW<<16)-1);
     int tx2=(k->x>>15)&255, ty2=(k->y>>15)&255;
