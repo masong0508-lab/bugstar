@@ -13,10 +13,10 @@ EW static u8 seen[MW*MW]; static u8 room_seen[10];     // what you have seen on 
 EW static u8 wmat[MW*MW], fmat[MW*MW], rid[MW*MW], wdec[MW*MW];
 static u16 lampcell[12]; static int nlamps;
 typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; s32 kvx, kvy; u8 stag, lunge, wind, ph; } DObj;     // wind: ticks of wind-up before it bites. ph: boss phase
-enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL, K_CORE };   // K_CORE: an outpost's power core: smash it
+enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL, K_CORE, K_SLIME, K_SCORP, K_GHOST, K_TOAD };   // K_SLIME: splits in two when it dies (sub=1: a small one). K_SCORP: fast, hits hard. K_GHOST: floats, erratic, fragile. K_TOAD: spits slow heavy blobs. // K_CORE: an outpost's power core: smash it
 static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT","VILE","FROST","ROTTEN"};
-static const char *const kind_name[12]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE"};
-static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE; }
+static const char *const kind_name[16]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE","SLIME","SCORPION","GHOST","TOAD"};
+static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE||k==K_SLIME||k==K_SCORP||k==K_GHOST||k==K_TOAD; }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 160                                   // objects on a floor (was 64): room for crowds on the deep floors
 static s32 tgt_x, tgt_y, up_x, up_y; static int lantk=58;
@@ -116,13 +116,25 @@ static void build_labyrinth(void){                      // a real maze: one-wide
     if(mboss){ pillar_at(13,13,M_MARBLE); pillar_at(17,13,M_MARBLE); pillar_at(13,17,M_MARBLE); pillar_at(17,17,M_MARBLE); }   // the boss's arena
     nrooms=5; if(mboss) say("A DARK LABYRINTH. SOMETHING IS HERE"); else say("A LABYRINTH! FOLLOW THE TORCHES"); msg_timer=70;
 }
-static int pick_kind(void){                                                      // a monster for this dungeon's creature mix
+static int pick_kind0(void){                                                      // a monster for this dungeon's creature mix
     int r=rndi(10);
     if(!ddna.on) return r<5 ? K_SPIDER : (r<7 && (dlv()>=1||depth_no>=2)) ? K_BEETLE : (r<9 && (dlv()>=2||depth_no>=3)) ? K_WASP : K_SPIDER;
     const u8 *w=mx_w[ddna.mix&3];
     if(r<w[0]) return K_SPIDER;
     if(r<w[0]+w[1]) return (dlv()>=1||depth_no>=2) ? K_BEETLE : K_SPIDER;
     return (dlv()>=2||depth_no>=3) ? K_WASP : K_SPIDER;
+}
+static int pick_kind(void){                                                      // the old mix, plus a few new creatures from the early floors on
+    int k=pick_kind0(), x=rndi(100);
+    if(x<8) return K_SLIME;
+    if(x<15 && (dlv()>=1||depth_no>=2)) return K_SCORP;
+    if(x<21 && (dlv()>=2||depth_no>=3)) return K_TOAD;
+    if(x<26 && (dlv()>=3||depth_no>=4)) return K_GHOST;
+    return k;
+}
+static int kind_hp(int k, int b){
+    switch(k){ case K_BEETLE: return b*5/2; case K_WASP: return b*4/5; case K_SLIME: return b*3/2; case K_SCORP: return b*6/5; case K_GHOST: return b*3/5; case K_TOAD: return b*9/10; }
+    return b;
 }
 static void make_floor(void){
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_BRICK; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
@@ -240,7 +252,7 @@ static void make_floor(void){
           if(c>24) c=24; }
         for(int k=0;k<c && ndo<NDO-28;k++){                                           // (28 slots stay free for chests, loot, bats, lamps and the boss)
             int kind = pick_kind();
-            int hp = kind==K_BEETLE ? base_hp*5/2 : kind==K_WASP ? base_hp*4/5 : base_hp;
+            int hp = kind_hp(kind, base_hp);
             SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0);
             if(rndi(100)<8){ DObj *o=&dob[ndo-1]; o->champ=1; o->cname=rndi(8); o->hp=o->maxhp=hp*3; }
         }
@@ -251,7 +263,7 @@ static void make_floor(void){
         for(int t2=0;t2<400 && made<(mboss?7:14+dd/2);t2++){ int x=1+rndi(MW-2), y=1+rndi(MW-2), c2=y*MW+x; if(dmap[c2]!=D_FLOOR || rid[c2]!=255) continue;
             int dx2=x-(up%MW), dy2=y-(up/MW); if(dx2*dx2+dy2*dy2<36) continue;
             if(made<4) SPAWN(K_CHEST, c2, 1, 0);
-            else { int kind = pick_kind(); SPAWN(kind, c2, kind==K_BEETLE ? base_hp*5/2 : kind==K_WASP ? base_hp*4/5 : base_hp, 0); }
+            else { int kind = pick_kind(); SPAWN(kind, c2, kind_hp(kind, base_hp), 0); }
             made++; } }
     #define SPAWN_GEAR(cell_,g_) do{ Gear gg_=(g_); SPAWN(K_ITEM,(cell_),1,gg_.sub); DObj *o_=&dob[ndo-1]; o_->it=gg_.it; o_->rar=gg_.rar; o_->pre=gg_.pre; o_->suf=gg_.suf; o_->lvl=gg_.lvl; }while(0)
     for(int i=0;i<nrooms;i++){ int c = 1 + rndi(2); for(int k=0;k<c;k++) SPAWN_GEAR(room_floor_cell(&rooms[i]), roll_drop(ilvl,0)); }
@@ -541,6 +553,10 @@ __attribute__((noinline)) static SprArt sprite_art(DObj *o){      // runs from R
         case K_CAGE: art=art_cage; aw=CAGE_W; ah=CAGE_H; hw=0x9000; tint=224+o->sub; break;
         case K_CORE: art=art_gem; aw=GEM_W; ah=GEM_H; hw=0x14000; tint=(frames&8)?R_CRYSTAL+7:R_CRYSTAL+5; break;
         case K_BEETLE: art=anim?beetle_art2:beetle_art; aw=BEETLE_W; ah=BEETLE_H; hw=0x8000; break;
+        case K_SLIME: art=art_slime; aw=SLIME_W; ah=SLIME_H; hw=o->sub?0x4000:0x7000; break;
+        case K_SCORP: art=art_scorp; aw=SCORP_W; ah=SCORP_H; hw=0x6000; break;
+        case K_GHOST: art=art_ghost; aw=GHOST_W; ah=GHOST_H; hw=0x6000; tint=0; break;
+        case K_TOAD: art=art_toad; aw=TOAD_W; ah=TOAD_H; hw=0x6000; break;
         case K_WASP: if((frames>>1)&1){ art=art_wasp2; aw=WASP2_W; ah=WASP2_H; } else { art=art_wasp; aw=WASP_W; ah=WASP_H; } hw=0x4000; break;
         case K_PET: { static const u16 pt[4]={216,R_FLAME+5,R_STONE+5,218}; static const u16 ph[4]={0x3000,0x3800,0x4200,0x5800}; art=art_pet; aw=PET_W; ah=PET_H; hw=ph[pet_form]; tint=pt[pet_form]; break; }
         default: { int it=o->it, sub=o->sub;
@@ -572,7 +588,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
     if(hpx<2||wcols<1) return;
     s32 z0 = 0;
     if(o->champ) hw = hw*11/8;
-    if(o->kind==K_BAT || o->kind==K_WASP) z0 = 0x8000 + (sinI[(frames*6+(int)(o-dob)*13)&255]>>3);
+    if(o->kind==K_BAT || o->kind==K_WASP || o->kind==K_GHOST) z0 = 0x8000 + (sinI[(frames*6+(int)(o-dob)*13)&255]>>3);
     if(o->kind==K_ITEM && o->rar) z0 = 0x1000 + (sinI[(frames*8)&255]>>4);
     if(o->kind==K_LAMP) z0 = 0x18000 - hw;
     s32 eyo=eyeat(o->x,o->y); int bot = hz + (s32)(((long long)(eyo-z0)*FOC)/tY);
