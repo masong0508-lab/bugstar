@@ -81,7 +81,7 @@ static int sys_req=0, cluster_no=0;                 // cluster_no: how many inte
 // u_settle folds any old address into today's universe, so every word above clus[0..9] is zero in play. The upper words live in spare SRAM (see save.inc),
 // and a world's land and parts are hashed from the whole address (see gen_terrain and make_world).
 #define NCW0 32                                                   // the cluster words the older saves and the hash walk know about
-#define NCW 64                                                    // cluster words kept in EWRAM (saves only store NCW0 of them; the old 1024 wasted 4 KB of EWRAM)
+#define NCW 32                                                    // cluster words kept in EWRAM (saves only store NCW0 of them; the old 1024 wasted 4 KB of EWRAM)
 _Static_assert(NCW>=NCW0, "clus must hold every word a save stores");
 static u32 galaxy_no=0; static u32 clus[NCW] __attribute__((section(".ewram")));
 static u32 clus_f=0, clus_up=0;                                   // the upper cluster words folded into one, and whether any of them is set (see clus_refold)
@@ -168,6 +168,103 @@ static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MA
 static u32 sys_id(int i); static int is_hive(int i);
 static int cargo_n(void){ int n=0; for(int i=0;i<8;i++) n+=cargo[i]; return n; }
 #define VISPG ((volatile u16*)(0x06000000 + (((REG_DISPCNT&0x10) && !m7_on)?0xA000:0)))   // the page on screen right now (in a kart race, always the first)
+// ================================================================= MORE OPTIONS (OPTIONS screen, press SELECT)
+// Every extra option is a row in XOT. Its setting is stored as (index XOR default), so a zero byte (a fresh game, or EWRAM at power on)
+// always means "the normal setting". xo_v(XO_...) is the number the game uses; xo_i(XO_...) is which choice is picked.
+#define NXO 48
+typedef struct { const char *name, *help; const char *const *lab; const s32 *val; u8 n, def, grp; } XOpt;
+#define XL(id,...) static const char *const id##_l[]={__VA_ARGS__};
+#define XV(id,...) static const s32 id##_v[]={__VA_ARGS__};
+#define XR(nm,hp,id,df,gr) { nm, hp, id##_l, id##_v, (u8)(sizeof(id##_v)/sizeof(id##_v[0])), df, gr }
+enum { XG_COMBAT, XG_ENEMY, XG_SURV, XG_MOVE, XG_REWARD, XG_EXTRA, NXG };
+static const char *const xo_gname[NXG]={"COMBAT","ENEMIES","SURVIVAL","MOVEMENT","REWARDS","EXTRAS"};
+enum { XO_DMGIN, XO_DMGOUT, XO_CRIT, XO_BITESPD, XO_BITERNG, XO_KNOCK, XO_HITSTOP, XO_CRUNCH, XO_VAMP, XO_SPELL, XO_INVT, XO_GOD,
+       XO_ESPEED, XO_EHP, XO_ECOUNT, XO_EAWARE, XO_ESTR, XO_BOSSES,
+       XO_HUNGER, XO_REGEN, XO_HEAL, XO_MANA, XO_MAXH, XO_FUEL,
+       XO_MOVE, XO_DODGEI, XO_DODGED, XO_FLOORS,
+       XO_XP, XO_GOLD, XO_DROPS, XO_UNIQUE, XO_XPNEED,
+       XO_VOL, XO_FPS, XO_MSGT, NXOPT };
+XL(xl_dmgin,"NONE","1/4","1/2","NORMAL","X2","X4","X10")           XV(xl_dmgin,0,25,50,100,200,400,1000)
+XL(xl_dmgout,"1/4","1/2","NORMAL","X2","X5","X10","X100","X1000")  XV(xl_dmgout,25,50,100,200,500,1000,10000,100000)
+XL(xl_crit,"NORMAL","+10%","+25%","+50%","ALWAYS")                   XV(xl_crit,0,10,25,50,100)
+XL(xl_bspd,"X1/2","X3/4","NORMAL","X1.5","X2","X3")                 XV(xl_bspd,50,75,100,150,200,300)
+XL(xl_brng,"SHORT","NORMAL","LONG","VERY LONG","HUGE")              XV(xl_brng,50,100,150,200,400)
+XL(xl_knock,"NONE","1/2","NORMAL","X2","X4")                        XV(xl_knock,0,50,100,200,400)
+XL(xl_hstop,"NONE","SHORT","NORMAL","LONG")                         XV(xl_hstop,0,50,100,200)
+XL(xl_crunch,"EVERY BITE","EVERY 2ND","EVERY 3RD","EVERY 5TH","EVERY 7TH") XV(xl_crunch,0,1,2,4,6)
+XL(xl_vamp,"OFF","1","2","5","10","50")                             XV(xl_vamp,0,1,2,5,10,50)
+XL(xl_spell,"FREE","1/4","1/2","NORMAL")                            XV(xl_spell,0,25,50,100)
+XL(xl_invt,"SHORT","NORMAL","LONG","2 SEC","5 SEC")                 XV(xl_invt,15,30,60,120,300)
+XL(xl_yn,"OFF","ON")                                                XV(xl_yn,0,1)
+XL(xl_espd,"FROZEN","1/2","3/4","NORMAL","X1.5","X2","X3")          XV(xl_espd,0,50,75,100,150,200,300)
+XL(xl_ehp,"1/4","1/2","NORMAL","X2","X5","X10")                     XV(xl_ehp,25,50,100,200,500,1000)
+XL(xl_ecnt,"NONE","1/4","1/2","NORMAL","X2","X3","X5")              XV(xl_ecnt,0,25,50,100,200,300,500)
+XL(xl_eawr,"SHORT","NORMAL","LONG","VERY LONG","EVERYWHERE")        XV(xl_eawr,50,100,200,400,1000)
+XL(xl_estr,"1/4","1/2","NORMAL","X1.5","X2","X5")                   XV(xl_estr,25,50,100,150,200,500)
+XL(xl_boss,"NONE","+1","+2","+4","+8","+15")                        XV(xl_boss,0,1,2,4,8,15)
+XL(xl_hung,"X1/4","X1/2","NORMAL","X2","X4")                        XV(xl_hung,25,50,100,200,400)
+XL(xl_regn,"NORMAL","X2","X4","X10")                                XV(xl_regn,100,200,400,1000)
+XL(xl_heal,"OFF","1","2","5","10","25")                             XV(xl_heal,0,1,2,5,10,25)
+XL(xl_mana,"NORMAL","X2","X5","X10")                                XV(xl_mana,1,2,5,10)
+XL(xl_maxh,"NORMAL","X1.5","X2","X5","X10","X100")                  XV(xl_maxh,100,150,200,500,1000,10000)
+XL(xl_fuel,"FREE","1/4","1/2","NORMAL","X2")                        XV(xl_fuel,0,25,50,100,200)
+XL(xl_move,"1/2","3/4","NORMAL","X1.25","X1.5","X2","X3")           XV(xl_move,50,75,100,125,150,200,300)
+XL(xl_dgi,"SHORT","NORMAL","LONG","VERY LONG")                      XV(xl_dgi,7,14,30,60)
+XL(xl_dgd,"SHORT","NORMAL","FAR","VERY FAR")                        XV(xl_dgd,50,100,150,200)
+XL(xl_flr,"1/10","1/4","1/2","NORMAL","X2","X5")                    XV(xl_flr,10,25,50,100,200,500)
+XL(xl_big,"X1","X2","X5","X10","X25","X100")                        XV(xl_big,1,2,5,10,25,100)
+XL(xl_drop,"NONE","1/6","NORMAL","1/2","2/3","ALWAYS")              XV(xl_drop,0,50,100,150,200,300)
+XL(xl_uniq,"NORMAL","X2","X5","X10","X50","X250")                   XV(xl_uniq,100,200,500,1000,5000,25000)
+XL(xl_xpn,"1/10","1/4","1/2","NORMAL","X2","X5")                    XV(xl_xpn,10,25,50,100,200,500)
+XL(xl_vol,"100%","85%","70%","55%","40%","30%","15%","MUTE")        XV(xl_vol,0,1,2,3,4,5,6,7)
+XL(xl_msgt,"SHORT","NORMAL","LONG","VERY LONG")                     XV(xl_msgt,50,100,200,400)
+static const XOpt XOT[NXOPT]={
+  [XO_DMGIN]  =XR("DAMAGE YOU TAKE","HOW MUCH EVERY BITE AND STING HURTS YOU. NONE = YOU CANNOT BE HURT",xl_dmgin,3,XG_COMBAT),
+  [XO_DMGOUT] =XR("DAMAGE YOU DEAL","HOW HARD YOUR BITE HITS. X1000 ONE-SHOTS ALMOST EVERYTHING",xl_dmgout,2,XG_COMBAT),
+  [XO_CRIT]   =XR("CRIT CHANCE","EXTRA PERCENT CHANCE FOR A CRITICAL BITE ON TOP OF YOUR GEAR",xl_crit,0,XG_COMBAT),
+  [XO_BITESPD]=XR("BITE SPEED","HOW FAST YOU CAN BITE AGAIN",xl_bspd,2,XG_COMBAT),
+  [XO_BITERNG]=XR("BITE REACH","HOW FAR IN FRONT OF YOU A BITE LANDS",xl_brng,1,XG_COMBAT),
+  [XO_KNOCK]  =XR("KNOCKBACK","HOW FAR YOUR BITES SHOVE MONSTERS BACK",xl_knock,2,XG_COMBAT),
+  [XO_HITSTOP]=XR("HIT FREEZE","THE TINY FREEZE WHEN A BITE LANDS. NONE FEELS SNAPPY",xl_hstop,2,XG_COMBAT),
+  [XO_CRUNCH] =XR("CRUNCH COMBO","HOW OFTEN YOUR DOUBLE-POWER CRUNCH BITE COMES",xl_crunch,2,XG_COMBAT),
+  [XO_VAMP]   =XR("HEAL ON BITE","HEARTS YOU GET BACK WITH EVERY BITE (ADDS TO YOUR GEAR)",xl_vamp,0,XG_COMBAT),
+  [XO_SPELL]  =XR("SPELL COST","HOW MUCH MANA SPELLS USE",xl_spell,3,XG_COMBAT),
+  [XO_INVT]   =XR("SAFE TIME AFTER HIT","HOW LONG YOU CANNOT BE HIT AFTER GETTING HURT",xl_invt,1,XG_COMBAT),
+  [XO_GOD]    =XR("GOD MODE","FULL HEARTS, FOOD, MANA AND SHIELD ALL THE TIME",xl_yn,0,XG_COMBAT),
+  [XO_ESPEED] =XR("MONSTER SPEED","HOW FAST MONSTERS WALK. FROZEN = THEY STAND STILL",xl_espd,3,XG_ENEMY),
+  [XO_EHP]    =XR("MONSTER HEALTH","HEALTH OF EVERY NEW MONSTER AND BOSS (NEXT FLOOR)",xl_ehp,2,XG_ENEMY),
+  [XO_ECOUNT] =XR("MONSTER COUNT","HOW MANY MONSTERS FILL EACH ROOM (NEXT FLOOR)",xl_ecnt,3,XG_ENEMY),
+  [XO_EAWARE] =XR("MONSTER SIGHT","HOW FAR AWAY MONSTERS NOTICE YOU AND COME",xl_eawr,1,XG_ENEMY),
+  [XO_ESTR]   =XR("MONSTER STRENGTH","HOW HARD MONSTERS HIT, BEFORE YOUR ARMOUR",xl_estr,2,XG_ENEMY),
+  [XO_BOSSES] =XR("EXTRA BOSSES","MORE BOSSES AT THE BOTTOM OF EVERY ZONE (NEXT FLOOR)",xl_boss,0,XG_ENEMY),
+  [XO_HUNGER] =XR("HUNGER SPEED","HOW FAST YOU GET HUNGRY (IF HUNGER IS ON)",xl_hung,2,XG_SURV),
+  [XO_REGEN]  =XR("HEAL TIMER","HOW OFTEN SLOW HEALING AND MANA TICK",xl_regn,0,XG_SURV),
+  [XO_HEAL]   =XR("HEARTS PER TICK","HEARTS YOU HEAL ON EVERY HEAL TICK",xl_heal,0,XG_SURV),
+  [XO_MANA]   =XR("MANA REGEN","HOW MUCH MANA COMES BACK ON EVERY HEAL TICK",xl_mana,0,XG_SURV),
+  [XO_MAXH]   =XR("MAX HEARTS","MULTIPLIES YOUR MAXIMUM HEARTS",xl_maxh,0,XG_SURV),
+  [XO_FUEL]   =XR("FUEL USE","HOW MUCH FUEL SHIP TRAVEL BURNS. FREE = NEVER LOSE ANY",xl_fuel,3,XG_SURV),
+  [XO_MOVE]   =XR("WALK SPEED","HOW FAST YOU RUN AROUND ON FOOT",xl_move,2,XG_MOVE),
+  [XO_DODGEI] =XR("DODGE SAFE TIME","HOW LONG YOU CANNOT BE HIT DURING A DODGE DASH",xl_dgi,1,XG_MOVE),
+  [XO_DODGED] =XR("DODGE DISTANCE","HOW FAR A DOUBLE-TAP L OR R DASH GOES",xl_dgd,1,XG_MOVE),
+  [XO_FLOORS] =XR("DUNGEON DEPTH","HOW MANY FLOORS BEFORE EACH ZONE BOSS",xl_flr,3,XG_MOVE),
+  [XO_XP]     =XR("XP GAIN","MULTIPLIES ALL XP YOU EARN (ON TOP OF THE OPTION BEFORE)",xl_big,0,XG_REWARD),
+  [XO_GOLD]   =XR("GOLD FIND","MULTIPLIES ALL GOLD YOU EARN (ON TOP OF THE OPTION BEFORE)",xl_big,0,XG_REWARD),
+  [XO_DROPS]  =XR("LOOT DROPS","HOW OFTEN MONSTERS DROP GEAR",xl_drop,2,XG_REWARD),
+  [XO_UNIQUE] =XR("UNIQUE ITEM CHANCE","HOW OFTEN THE RARE UNIQUE ITEMS DROP",xl_uniq,0,XG_REWARD),
+  [XO_XPNEED] =XR("XP TO LEVEL UP","HOW MUCH XP EACH LEVEL NEEDS",xl_xpn,3,XG_REWARD),
+  [XO_VOL]    =XR("MASTER VOLUME","HOW LOUD EVERYTHING IS. MUTE TURNS ALL SOUND OFF",xl_vol,0,XG_EXTRA),
+  [XO_FPS]    =XR("FPS COUNTER","SHOWS FRAMES PER SECOND IN THE CORNER",xl_yn,0,XG_EXTRA),
+  [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),
+};
+_Static_assert(NXOPT<=NXO, "the extra options must fit the NXO bytes");
+static u8 xo[NXO] __attribute__((section(".ewram")));
+static int xo_i(int o){ int i=xo[o]^XOT[o].def; return i<XOT[o].n ? i : XOT[o].def; }
+static int xo_v(int o){ return XOT[o].val[xo_i(o)]; }
+static u16 xo_snd(void){ int i=xo_i(XO_VOL); if(i>=7) return 0; { int l=7-i; return (u16)(0xFF00|(l<<4)|l); } }   // the sound chip's master volume (and mute)
+static int xo_hp(int h){ long long v=(long long)h*xo_v(XO_EHP)/100; if(v<1) v=1; if(v>32000) v=32000; return (int)v; }   // monster health is a 16-bit number
+static int xo_n(int c){ int v=xo_v(XO_ECOUNT); if(v==100) return c; c=c*v/100; if(v && c<1) c=1; return c; }
+static int xo_fuel(int n){ return (n*xo_v(XO_FUEL)+99)/100; }
+
 #include "sound.inc"
 #include "game.inc"
 #include "ship.inc"
@@ -201,7 +298,7 @@ static void hud_now(void){ if(scene==2) return; if(scene==0) planet_hud(); else 
 static void say(const char *t){
     if(in_menu){ int n=0; while(t[n] && n<39){ menu_msg[n]=t[n]; n++; } menu_msg[n]=0; return; }
     if(scene==0){ show_msg(t); return; }
-    int n=0; while(t[n] && n<39){ msg[n]=t[n]; n++; } msg[n]=0; msg_timer=24;
+    int n=0; while(t[n] && n<39){ msg[n]=t[n]; n++; } msg[n]=0; msg_timer=24*xo_v(XO_MSGT)/100;
 }
 static void compass(volatile u16 *pg, s32 dirx, s32 diry){
     s32 dx=tgt_x-px_, dy=tgt_y-py_;
@@ -240,6 +337,7 @@ static int mon_dmg(DObj *o){
     switch(o->kind){ case K_BEETLE: b=b*9/5; break; case K_BAT: b=b*7/10+1; break; case K_BOSS: b=b*5/2; break; case K_SCORP: b=b*3/2; break; case K_GHOST: b=b*4/5; break; case K_SLIME: b = o->sub ? b/2+1 : b*3/4; break; case K_CENTI: b=b*3/5+1; break; case K_GOLEM: b=b*2; break; case K_DRONE: b=b*9/10; break; case K_MOTH: b=b/2+1; break; case K_SHROOM: b=b*4/5; break; case K_CRAB: b=b*5/3; break; case K_WISP: b=b*7/10; break; }
     if(o->champ) b=b*3/2;
     if(fl_ev==FE_CURSED) b=b*3/2;
+    { int sv=xo_v(XO_ESTR); if(sv!=100){ b=(int)((long long)b*sv/100); if(b<1) b=1; } }
     return b;
 }
 static void kill_mon(DObj *o){
@@ -273,9 +371,9 @@ static void kill_mon(DObj *o){
     gain_xp(xpv);
     Gear g; int drop=0;
     int uq_chance = hive ? 1000 : boss ? (mboss?600:(endless&&cur_moon)?450:300) : o->champ ? 50 : 4;          // in 1000
-    if(rndi(1000) < uq_chance){ g=roll_unique(ilvl); drop=1; st_uniq++; say("A UNIQUE ITEM DROPPED!"); sfx(6); }
+    if(rndi(1000) < uq_chance*xo_v(XO_UNIQUE)/100){ g=roll_unique(ilvl); drop=1; st_uniq++; say("A UNIQUE ITEM DROPPED!"); sfx(6); }
     else if(boss || o->champ){ g=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, ilvl+4, 40); drop=1; }
-    else if(rndi(3)==0){ g=roll_drop(ilvl,0); drop=1; }
+    else if(rndi(300) < xo_v(XO_DROPS)){ g=roll_drop(ilvl,0); drop=1; }
     s32 x=o->x, y=o->y;
     o->alive=0;
     if(drop){ memset(o,0,sizeof(DObj)); o->kind=K_ITEM; o->alive=1; o->x=x; o->y=y; o->it=g.it; o->sub=g.sub; o->rar=g.rar; o->pre=g.pre; o->suf=g.suf; o->lvl=g.lvl; }
@@ -331,10 +429,11 @@ static void barrel_break(DObj *o){
     if(g.it){ memset(o,0,sizeof(DObj)); o->kind=K_ITEM; o->alive=1; o->x=x; o->y=y; o->it=g.it; o->sub=g.sub; o->rar=g.rar; o->pre=g.pre; o->suf=g.suf; o->lvl=g.lvl; }
 }
 static void knock(DObj *o, s32 dx, s32 dy, s32 power){       // dx,dy: a direction (16.16, length about 1)
-    s32 kb = power*5/body_m(o); if(kb>0x3400) kb=0x3400;
+    s32 kb = power*5/body_m(o); kb=kb*xo_v(XO_KNOCK)/100; if(kb>0x3400) kb=0x3400;
     o->kvx += (s32)(((long long)dx*kb)>>16); o->kvy += (s32)(((long long)dy*kb)>>16);
 }
 static void player_move(s32 tvx, s32 tvy){
+    if(!dodge_t){ int mv=xo_v(XO_MOVE); if(mv!=100){ tvx=tvx*mv/100; tvy=tvy*mv/100; } }
     if(pknock_t){ pvx+=(tvx-pvx)>>4; pvy+=(tvy-pvy)>>4; }
     else if(tvx||tvy){ pvx+=(tvx-pvx)>>2; pvy+=(tvy-pvy)>>2; }      // speeding up takes a moment...
     else { pvx-=pvx>>1; pvy-=pvy>>1; }                              // ...and stopping is quick, with a little weight
@@ -499,19 +598,19 @@ static int foe_ahead(s32 dirx, s32 diry){
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
         s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16);
         s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(side<0) side=-side;
-        s32 rng_=o->kind==K_BOSS?0x22000:0x1A000;
+        s32 rng_=(o->kind==K_BOSS?0x22000:0x1A000)*xo_v(XO_BITERNG)/100;
         if(fwd>0 && fwd<rng_ && side<0xE000) return 1; }
     return 0;
 }
 static void do_bite(s32 dirx, s32 diry){
-    atk_len=(14-d_haste)*2/3; if(atk_len<4) atk_len=4; atk_t=atk_len;        // was 14 (min 6): a bite every 0.9 s was slow
+    atk_len=(14-d_haste)*2/3; if(atk_len<4) atk_len=4; atk_len=atk_len*100/xo_v(XO_BITESPD); if(atk_len<2) atk_len=2; atk_t=atk_len;        // was 14 (min 6): a bite every 0.9 s was slow
     int crit; int pw=bite_power(&crit); sfx(0);
-    int landed=0, killed=0, finisher = combo>=2;          // every third bite in a row is a CRUNCH: double power, big shove
+    int landed=0, killed=0, finisher = combo>=xo_v(XO_CRUNCH);          // every third bite in a row is a CRUNCH: double power, big shove
     if(finisher){ pw*=2; atk_t=atk_len+3; }
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!(is_mon(o->kind)||o->kind==K_BARREL)) continue;
         s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16);
         s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(side<0) side=-side;
-        s32 rng_=o->kind==K_BOSS?0x22000:0x1A000;
+        s32 rng_=(o->kind==K_BOSS?0x22000:0x1A000)*xo_v(XO_BITERNG)/100;
         if(fwd>0 && fwd<rng_ && side<0xE000){
             landed=1; knock(o,dirx,diry,(finisher?0x4000:crit?0x1800:0x0C00)*(strong_t?3:2)/2);
             if(o->kind==K_BARREL){ o->flash=6; sfx(13); debris(o->x,o->y,0x4000,3,2,dirx>>4,diry>>4); if(--o->hp<=0) barrel_break(o); continue; }
@@ -519,7 +618,7 @@ static void do_bite(s32 dirx, s32 diry){
             o->stag = o->kind==K_BOSS ? (crit||finisher?3:0) : (finisher?8:crit?5:3); o->wind=0;
             hit_mon(o,p2,crit||finisher); if(!o->alive) killed=1; }
     }
-    if(landed){ hitstop = finisher ? 8 : killed ? 7 : crit ? 6 : 3; if((crit||finisher) && opt_shake) shake_t=2;
+    if(landed){ hitstop = (finisher ? 8 : killed ? 7 : crit ? 6 : 3)*xo_v(XO_HITSTOP)/100; if((crit||finisher) && opt_shake) shake_t=2;
         if(finisher){ combo=0; say("CRUNCH!"); sfx(12); } else { combo++; combo_t=50; } }
     else if(finisher) combo=0;
 }
@@ -573,10 +672,10 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     s32 tvx=0, tvy=0;
     if(sp){ fish_state=0; tvx=(s32)((((long long)dirx*spf)-((long long)diry*sps))>>16); tvy=(s32)((((long long)diry*spf)+((long long)dirx*sps))>>16); }
     // double-tap L or R: a quick dodge dash to that side. you can't be hit while you dash
-    if(!dizzy_t && !HELD(K_SEL)){ if(HIT(K_L)){ if(tapL_t && !dodge_t){ dodge_t=9; dodge_dir=-1; invuln=14; sfx(11); dodge_msg_t=30; } tapL_t=14; }
-                                  if(HIT(K_R)){ if(tapR_t && !dodge_t){ dodge_t=9; dodge_dir=1; invuln=14; sfx(11); dodge_msg_t=30; } tapR_t=14; } }
+    if(!dizzy_t && !HELD(K_SEL)){ if(HIT(K_L)){ if(tapL_t && !dodge_t){ dodge_t=9; dodge_dir=-1; invuln=xo_v(XO_DODGEI); sfx(11); dodge_msg_t=30; } tapL_t=14; }
+                                  if(HIT(K_R)){ if(tapR_t && !dodge_t){ dodge_t=9; dodge_dir=1; invuln=xo_v(XO_DODGEI); sfx(11); dodge_msg_t=30; } tapR_t=14; } }
     if(tapL_t) tapL_t--; if(tapR_t) tapR_t--; if(dodge_msg_t) dodge_msg_t--;
-    if(dodge_t){ dodge_t--; s32 ds=0x1400*dodge_dir; tvx=(s32)((-(long long)diry*ds)>>16); tvy=(s32)(((long long)dirx*ds)>>16); pvx=tvx; pvy=tvy; }
+    if(dodge_t){ dodge_t--; s32 ds=(0x1400*xo_v(XO_DODGED)/100)*dodge_dir; tvx=(s32)((-(long long)diry*ds)>>16); tvy=(s32)(((long long)dirx*ds)>>16); pvx=tvx; pvy=tvy; }
     if(wtick && combo_t && --combo_t==0) combo=0;
     if(!freeze){ player_move(tvx,tvy); bodies_tick(); knock_tick(); if(kick_t) kick_t--; if(bump_cd) bump_cd--; if(pknock_t) pknock_t--; }
     if(wtick) mon_bodies();
@@ -586,8 +685,8 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     // ---- spells
     if(cast_flag>=0){ int s=cast_flag; cast_flag=-1;
         if(!spell_known[s]) say("FIND A SPELL BOOK FIRST");
-        else if(mp<spell_cost[s]){ say("NOT ENOUGH MANA"); }
-        else { mp-=spell_cost[s];
+        else if(mp<spell_cost[s]*xo_v(XO_SPELL)/100){ say("NOT ENOUGH MANA"); }
+        else { mp-=spell_cost[s]*xo_v(XO_SPELL)/100;
             if(s==SP_FIRE){ fire_proj(0, px_+(dirx>>2), py_+(diry>>2), 0x7000, (dirx*3)>>5, (diry*3)>>5, clampi(sadd(sadd(6,smul(st_mag,2)),level))); sfx(3); }
             else if(s==SP_SPARK){ int best=-1; s32 bd=0x60000;
                 for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; s32 d=dist8(o->x-px_,o->y-py_); if(d<bd){ bd=d; best=i; } }
@@ -643,8 +742,8 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             if(mboss && boss){                                  // the labyrinth boss: it sleeps, then it hunts you down the corridors
                 if(hunt_t){ if(--hunt_t==0){ say("IT HAS YOUR SCENT"); sfx(14); } }
                 else if(!stun_t && !o->stag && !o->wind && td>contact+0x800) hunt_move(o, 0x0580+tier_now()*0x30); }
-            else if(!stun_t && !o->stag && !o->wind && td<0x70000){
-                s32 st = boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : o->kind==K_SLIME?(o->sub?0x0480:0x0300) : o->kind==K_SCORP?0x0780 : toad?0x0420 : o->kind==K_ANT?0x0660 : o->kind==K_CENTI?0x0800 : o->kind==K_GOLEM?0x0240 : drone?0x0500 : shroom?0x0300 : o->kind==K_CRAB?0x0340 : 0x0600;
+            else if(!stun_t && !o->stag && !o->wind && td<0x70000*xo_v(XO_EAWARE)/100){
+                s32 st = boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : o->kind==K_SLIME?(o->sub?0x0480:0x0300) : o->kind==K_SCORP?0x0780 : toad?0x0420 : o->kind==K_ANT?0x0660 : o->kind==K_CENTI?0x0800 : o->kind==K_GOLEM?0x0240 : drone?0x0500 : shroom?0x0300 : o->kind==K_CRAB?0x0340 : 0x0600; st=st*xo_v(XO_ESPEED)/100;
                 int away = wasp && td<0x18000, keep = wasp && td<0x40000 && td>=0x18000;
                 if(!keep && (td>contact+0x800 || away)){
                     s32 stx=(tdx>0?st:-st), sty=(tdy>0?st:-st); if(away){ stx=-stx; sty=-sty; }
@@ -1033,8 +1132,8 @@ static void pet_away_tick(void){
 static void run_game(void){
     while(1){
         read_keys(); if(scene!=1){ frames++; if(invuln) invuln--; }
-        if(dbg_god){ hearts=maxh; food=100; mp=maxmp; hull=100; shield=20+shield_lv*20; pet_hp=pet_maxhp; }
-        if(dbg_fps){ static int lv=0; int d=vbl_count-lv; lv=vbl_count; char b[12]; scpy(b,"FPS "); ncat(b, d>0 ? (60+d/2)/d : 60); text(VISPG,208,150,b,C_WHITE,1); }
+        if(dbg_god || xo_i(XO_GOD)){ hearts=maxh; food=100; mp=maxmp; hull=100; shield=20+shield_lv*20; pet_hp=pet_maxhp; }
+        if(dbg_fps || xo_i(XO_FPS)){ static int lv=0; int d=vbl_count-lv; lv=vbl_count; char b[12]; scpy(b,"FPS "); ncat(b, d>0 ? (60+d/2)/d : 60); text(VISPG,208,150,b,C_WHITE,1); }
         if(sys_req){ int rq=sys_req; sys_req=0; if(rq==2) return; start_game(1); continue; }
         rng_s += keys;
         if(scene!=1) pet_away_tick();

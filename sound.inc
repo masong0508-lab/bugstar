@@ -70,7 +70,7 @@ IWRAM static void irq_handler(void){
 static void music(int n){ if(mus_track==n) return; mus_track=n; mus_step=0; mus_t=1; if(n<0){ SND(0x08)=0; SND(0x12)=0; } }
 static void sound_init(void){
     SND(0x24)=0x80;                 // master on
-    SND(0x20)=0xFF77;               // all four channels, both speakers, full volume
+    SND(0x20)=xo_snd();               // all four channels, both speakers, full volume
     SND(0x22)=0x0002;               // chip volume 100%
     // channel 3: a soft bass wave
     SND(0x10)=0x40;                 // write bank 0 while bank 1 plays

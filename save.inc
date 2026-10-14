@@ -84,12 +84,24 @@ static int meta_read(int slot, Meta *m){
 // ---------------------------------------------------------------- options (saved at the far end of SRAM)
 typedef struct { u32 magic; u8 music, sfx, autosave, shake, last, pad[3]; u32 sum; } Settings;
 _Static_assert(__builtin_offsetof(Settings,sum)==sizeof(Settings)-4, "Settings: the sum must be the last 4 bytes");
+// ---------------------------------------------------------------- the MORE OPTIONS settings (saved just after the options, at the far end of SRAM)
+#define XS_OFF 0x7F40
+typedef struct { u32 magic; u8 v[NXO]; u32 sum; } XSet;
+_Static_assert(XS_OFF >= SET_OFF+20 && XS_OFF+sizeof(XSet) <= 0x8000, "the extra options must fit between the options and the end of SRAM");
+static void xo_apply(void){ SND(0x20)=xo_snd(); }
+static void xo_save(void){ XSet s; memset(&s,0,sizeof s); s.magic=0x584F5053; for(int i=0;i<NXO;i++) s.v[i]=xo[i]; s.sum=fnv(&s,sizeof s-4); sram_write(XS_OFF,&s,sizeof s); }
+static void xo_load(void){
+    XSet s; sram_read(XS_OFF,&s,sizeof s);
+    if(s.magic!=0x584F5053 || s.sum!=fnv(&s,sizeof s-4)) return;                                  // never saved: everything stays normal
+    for(int i=0;i<NXO;i++) xo[i] = (i<NXOPT && (s.v[i]^XOT[i].def)<XOT[i].n) ? s.v[i] : 0;
+}
 static void settings_save(void){
     Settings s; memset(&s,0,sizeof(s)); s.magic=0x53544553;
     s.music=opt_music; s.sfx=opt_sfx; s.autosave=opt_autosave; s.shake=opt_shake; s.last=last_slot; s.pad[0]=opt_diff; s.pad[1]=(opt_minimap)|(opt_nums<<1)|(opt_hints<<2)|(opt_arrow<<3)|(opt_insane<<4); s.pad[2]=opt_cam|(opt_baby<<1)|((!opt_hunger)<<2)|((!opt_faintloss)<<3)|(opt_xpm<<4)|(opt_goldm<<6);
-    s.sum=fnv(&s,sizeof(s)-4); sram_write(SET_OFF,&s,sizeof(s));
+    s.sum=fnv(&s,sizeof(s)-4); sram_write(SET_OFF,&s,sizeof(s)); xo_save();
 }
 static void settings_load(void){
+    xo_load(); xo_apply();
     Settings s; sram_read(SET_OFF,&s,sizeof(s));
     if(s.magic!=0x53544553 || s.sum!=fnv(&s,sizeof(s)-4) || s.music>2 || s.last>=NSLOT) return;   // first run: keep the defaults
     opt_music=s.music; opt_sfx=s.sfx&1; opt_autosave=s.autosave&1; opt_shake=s.shake&1; last_slot=s.last; opt_insane=(s.pad[1]>>4)&1; opt_diff=s.pad[0]%6; if(opt_diff==5 && !opt_insane) opt_diff=4; opt_easy=(opt_diff==0); opt_minimap=s.pad[1]&1; opt_nums=(s.pad[1]>>1)&1; opt_hints=(s.pad[1]>>2)&1; opt_arrow=(s.pad[1]>>3)&1; opt_cam=s.pad[2]&1; opt_baby=(s.pad[2]>>1)&1; opt_hunger=!((s.pad[2]>>2)&1); opt_faintloss=!((s.pad[2]>>3)&1); opt_xpm=(s.pad[2]>>4)&3; if(opt_xpm>2) opt_xpm=2; opt_goldm=(s.pad[2]>>6)&3; if(opt_goldm>2) opt_goldm=2;
@@ -244,6 +256,36 @@ static int slot_picker(volatile u16 *pg, int mode, int src){
     }
 }
 
+// ---------------------------------------------------------------- the MORE OPTIONS screen (press SELECT on the options screen)
+static void options_more(volatile u16 *pg){
+    int sel=0, top=0, dirty=1; oam_hide_all(); oam_flush(); if(in_game) rect(pg,0,18,240,142,0); wait_release();
+    while(1){
+        if(sel<top) top=sel; if(sel>=top+10) top=sel-9;
+        if(dirty){ dirty=0; char b[24], t[32];
+            scpy(t,"MORE: "); scat(t,xo_gname[XOT[sel].grp]); panel(pg,12,20,216,136,t);
+            for(int r=0;r<10 && top+r<NXOPT;r++){ int i=top+r, y=37+r*9, v=xo_i(i);
+                if(i==sel) rect(pg,18,y-2,204,10,6);
+                text(pg,26,y,XOT[i].name,i==sel?C_WHITE:C_GREY,1);
+                scpy(b,"< "); scat(b,XOT[i].lab[v]); scat(b," >");
+                rtext(pg,206,y,b, i==sel?C_GOLD : v!=XOT[i].def ? C_CYAN : C_GREY);
+            }
+            if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<NXOPT) text(pg,216,118,"v",C_CYAN,1);
+            rect(pg,18,128,204,1,C_DGREY);
+            { const char *h=XOT[sel].help; int L=textlen(h); if(L>52){ char h1[56]; int k=0; while(k<52 && h[k]) k++; while(k>0 && h[k]!=' ') k--; for(int j=0;j<k;j++) h1[j]=h[j]; h1[k]=0; ctext(pg,120,132,h1,C_GREY); ctext(pg,120,140,h+k+1,C_GREY); } else ctext(pg,120,134,h,C_GREY); }
+            ctext(pg,120,148,"<>: CHANGE  L/R: GROUP  SEL: RESET  B: BACK",C_CYAN);
+        }
+        vsync(); read_keys();
+        if(HIT(K_UP)){ sel=(sel+NXOPT-1)%NXOPT; sfx(7); dirty=1; }
+        if(HIT(K_DOWN)){ sel=(sel+1)%NXOPT; sfx(7); dirty=1; }
+        if(HIT(K_R)){ int g=XOT[sel].grp; while(sel<NXOPT && XOT[sel].grp==g) sel++; if(sel>=NXOPT) sel=0; sfx(7); dirty=1; }
+        if(HIT(K_L)){ int g=XOT[sel].grp; while(sel>0 && XOT[sel].grp==g) sel--; g=XOT[sel].grp; while(sel>0 && XOT[sel-1].grp==g) sel--; sfx(7); dirty=1; }
+        int d = HIT(K_RIGHT)||HIT(K_A) ? 1 : HIT(K_LEFT) ? -1 : 0;
+        if(d){ int n=XOT[sel].n; xo[sel]=(u8)(((xo_i(sel)+d+n)%n)^XOT[sel].def); xo_apply(); sfx(2); dirty=1; }
+        if(HIT(K_SEL)){ if(confirm(pg,"RESET MORE OPTIONS?","BACK TO THE NORMAL SETTINGS")){ for(int i=0;i<NXO;i++) xo[i]=0; xo_apply(); sfx(4); } dirty=1; }
+        if(HIT(K_B)||HIT(K_START)){ settings_save(); wait_release(); return; }
+    }
+}
+
 // ---------------------------------------------------------------- the options screen
 static void options_screen(volatile u16 *pg){
     enum { OP_BABY, OP_DIFF, OP_HUNGER, OP_FAINT, OP_XP, OP_GOLD, OP_CAM, OP_MUSIC, OP_SFX, OP_AUTO, OP_SHAKE, OP_MAP, OP_NUMS, OP_HINTS, OP_ARROW, NOPT };
@@ -265,7 +307,7 @@ static void options_screen(volatile u16 *pg){
             if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<NOPT) text(pg,216,118,"v",C_CYAN,1);
             rect(pg,18,128,204,1,C_DGREY);
             { const char *h=hlp[sel]; int L=textlen(h); if(L>52){ char h1[56]; int k=0; while(k<52 && h[k]) k++; while(k>0 && h[k]!=' ') k--; for(int j=0;j<k;j++) h1[j]=h[j]; h1[k]=0; ctext(pg,120,132,h1,C_GREY); ctext(pg,120,140,h+k+1,C_GREY); } else ctext(pg,120,134,h,C_GREY); }
-            ctext(pg,120,148,"LEFT/RIGHT: CHANGE  B: BACK",C_CYAN);
+            ctext(pg,120,148,"LEFT/RIGHT: CHANGE  SELECT: MORE  B: BACK",C_CYAN);
         }
         vsync(); read_keys();
         if(HIT(K_UP)){ sel=(sel+NOPT-1)%NOPT; sfx(7); dirty=1; }
@@ -282,6 +324,7 @@ static void options_screen(volatile u16 *pg){
             else if(sel==OP_MAP) opt_minimap^=1; else if(sel==OP_NUMS) opt_nums^=1; else if(sel==OP_HINTS) opt_hints^=1; else opt_arrow^=1;
             sfx(2);
         }
+        if(HIT(K_SEL)){ options_more(pg); dirty=1; }
         if(HIT(K_B)||HIT(K_START)){ settings_save(); wait_release(); return; }
     }
 }

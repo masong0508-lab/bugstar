@@ -248,7 +248,7 @@ static void make_floor(void){
     tgt_x=((dn%MW)<<16)+0x8000; tgt_y=((dn/MW)<<16)+0x8000;
     up_x=((up%MW)<<16)+0x8000; up_y=((up/MW)<<16)+0x8000;
     ndo=0;
-    #define SPAWN(k_,cell_,hp_,sub_) do{ if(ndo<NDO){ DObj *o=&dob[ndo++]; memset(o,0,sizeof(DObj)); int c_=(cell_); o->kind=(k_); o->alive=1; o->hp=o->maxhp=(hp_); o->sub=(sub_); o->x=((c_%MW)<<16)+0x8000; o->y=((c_/MW)<<16)+0x8000; } }while(0)
+    #define SPAWN(k_,cell_,hp_,sub_) do{ if(ndo<NDO){ DObj *o=&dob[ndo++]; memset(o,0,sizeof(DObj)); int c_=(cell_); o->kind=(k_); o->alive=1; o->hp=o->maxhp=xo_hp(hp_); o->sub=(sub_); o->x=((c_%MW)<<16)+0x8000; o->y=((c_/MW)<<16)+0x8000; } }while(0)
     int base_hp = 6 + dlv()*5 + depth_no*2; if(endless && cur_moon) base_hp = base_hp*(100+moon_tier()*10)/100;      // every moon tier: +10% monster health
     int bcell = mboss ? 14*MW+15 : dn;                                  // the labyrinth boss waits in the middle arena
     int ilvl = dlv()*3 + depth_no;
@@ -258,7 +258,7 @@ static void make_floor(void){
         { int dm=dlv()+depth_no, ex=dm/5; if(ex>6) ex=6; c+=ex;                           // deeper floors: more monsters in every room
           if(!base_mode && (dlv()>=22 || depth_no>=40)) c=c*2+8;                         // the deepest floors: packed
           if(c>24) c=24; }
-        for(int k=0;k<c && ndo<NDO-28;k++){                                           // (28 slots stay free for chests, loot, bats, lamps and the boss)
+        c=xo_n(c); for(int k=0;k<c && ndo<NDO-28;k++){                                           // (28 slots stay free for chests, loot, bats, lamps and the boss)
             int kind = pick_kind();
             int hp = kind_hp(kind, base_hp);
             SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0);
@@ -282,8 +282,8 @@ static void make_floor(void){
     for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), base_hp/2+1, 0);
     for(int k=0;k<nlamps;k++) SPAWN(K_LAMP, lampcell[k], 1, 0);
     if(last && !base_mode){ SPAWN(K_BOSS, bcell, 40+dlv()*30 + tier_now()*40, 0); }       // the boss is always at the bottom: beat it again for the next tier
-    if(last && !base_mode && !endless && !forge_on && opt_diff>=3){                      // MULTIBOSS: higher difficulties send more bosses down deep. Insane-sect: 11+ on its deepest tiers
-        int ex = opt_diff==5 ? (tier_now()*10+zone*8)/40 : opt_diff==4 ? (tier_now()+1)/2 : tier_now()/4; if(opt_diff==5 && ex<1) ex=1; if(ex>15) ex=15;
+    if(last && !base_mode && !endless && !forge_on && (opt_diff>=3 || xo_v(XO_BOSSES))){                      // MULTIBOSS: higher difficulties send more bosses down deep. Insane-sect: 11+ on its deepest tiers
+        int ex = opt_diff==5 ? (tier_now()*10+zone*8)/40 : opt_diff==4 ? (tier_now()+1)/2 : tier_now()/4; if(opt_diff==5 && ex<1) ex=1; if(opt_diff<3) ex=0; ex+=xo_v(XO_BOSSES); if(ex>15) ex=15;
         for(int k=0;k<ex && ndo<NDO-8;k++){ SPAWN(K_BOSS, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), (40+dlv()*30+tier_now()*40)*6/10+1, 0); if(k%3==2) dob[ndo-1].champ=1; } }
     if(base_mode){                                                                       // an outpost floor: a locked door guards the way on, the keycard is somewhere else
         if(last){ SPAWN(K_CORE, dn, 80+dlv()*25+outposts_done*20, 0); }

@@ -28,7 +28,7 @@ static u32 base_mask; static int data_cores, outposts_done, base_mode;   // base
 static int tier_lock=-1;                                                           // the tier this dungeon run started at: beating the boss must not change the floor count under your feet
 static int tier_now(void){ if(scene==1 && tier_lock>=0) return tier_lock; return (!endless && zone_cleared) ? tiers[TZ]+1 : 0; }     // 0 on a first run, 1+ when you go back down a cleared zone
 static int dlv(void){ int d = endless ? w_dlv + (hellw() ? 2+hell_tier()/2 : 0) : zone + tier_now()*2; return d>30?30:d; }
-static int zone_floors(void){ return endless ? 9999 : (zone+3)*(opt_diff==5?54:3)+tier_now()*3; }
+static int zone_floors(void){ if(endless) return 9999; { int f=((zone+3)*(opt_diff==5?54:3)+tier_now()*3)*xo_v(XO_FLOORS)/100; return f<1 ? 1 : f; } }
 static int gold_find=100;
 // ---- FLOOR EVENTS: most dungeon floors roll one, with a twist or a goal
 enum { FE_NONE, FE_VAULT, FE_NEST, FE_ELITE, FE_DARK, FE_SPEED, FE_CURSED, FE_RUSH, FE_BLESSED, FE_AMBUSH, FE_QUIET, NFE };
@@ -36,8 +36,8 @@ static const char *const fe_name[NFE]={"","TREASURE VAULT","MONSTER NEST","ELITE
 static const char *const fe_what[NFE]={"","CHESTS EVERYWHERE. SO ARE THE GUARDS","EXTRA MONSTERS. EXTRA GOLD","SLAY THE ELITES FOR A BIG REWARD","LESS LIGHT. DOUBLE LOOT","REACH THE STAIRS IN 60 SECONDS",
     "TOUGHER MONSTERS. BETTER LOOT","GOLD, GOLD, GOLD","A SHRINE BLESSES YOU","THEY ARE WAITING AT THE STAIRS","NOTHING HERE WANTS TO FIGHT. BREATHE"};
 static int fl_ev=0, fl_need=0, fl_have=0, fl_bonus=100, fl_done=0; static u32 fl_end=0;
-static int goldx(void){ static const u8 m[3]={1,2,5}; return m[opt_goldm%3]*(opt_baby?2:1); }      // OPTIONS: gold multiplier (BABY MODE doubles it)
-static int xpx(void){ static const u8 m[3]={1,2,5}; return m[opt_xpm%3]*(opt_baby?2:1); }
+static int goldx(void){ static const u8 m[3]={1,2,5}; return m[opt_goldm%3]*(opt_baby?2:1)*xo_v(XO_GOLD); }      // OPTIONS: gold multiplier (BABY MODE doubles it)
+static int xpx(void){ static const u8 m[3]={1,2,5}; return m[opt_xpm%3]*(opt_baby?2:1)*xo_v(XO_XP); }
 static void earn(int g){ s64 v=sdiv((s64)g*gold_find*goldx(),100); if(hellw()) v=sdiv(v*(100+hell_tier()*15),100); if(fl_bonus!=100) v=sdiv(v*fl_bonus,100); if(endless && scene==1) loot=sadd(loot,v); else gold=sadd(gold,v); }
 static u16 w_tint[6], w_mon[8]; static u8 w_styles[3]; static char w_name[24];
 static u32 wseed;
@@ -491,7 +491,7 @@ static void recalc(void){
     { int tp=trophy_points(); d_dmg += tp/15; gold_find += tp/5; maxh += tp/10; d_def += tp/30; }   // your trophy case
     gold_find+=dif_gold[opt_diff];                                                   // hard mode pays better
     { int r = fame>=1200?5: fame>=700?4: fame>=350?3: fame>=150?2: fame>=50?1:0; gold_find += r*5; maxh += r*3; d_crit += r; }   // fame has its perks
-    maxh=sadd(maxh,sadd(20,sadd(smul(st_vit,3),smul(level,2)))); if(maxh<1) maxh=1;
+    maxh=sadd(maxh,sadd(20,sadd(smul(st_vit,3),smul(level,2)))); if(maxh<1) maxh=1; if(xo_v(XO_MAXH)!=100){ maxh=sdiv(smul(maxh,xo_v(XO_MAXH)),100); if(maxh<1) maxh=1; }
     maxmp=sadd(maxmp,sadd(5,smul(st_mag,3))); if(maxmp<0) maxmp=0;
     d_dmg=sadd(d_dmg,sdiv(st_str,2)); d_def=sadd(d_def,sdiv(st_vit,4));
     if(hearts>maxh) hearts=maxh; if(mp>maxmp) mp=maxmp;
@@ -646,12 +646,13 @@ static void kw_unlock(void); static int kw_unlocked(void); static void kart_worl
 static void hurt(int n){
     if(invuln || (kr_mode && scene==0)) return;                                      // in a kart nothing can bite you
     s64 def = sadd(d_def, shield_t ? sadd(5,sdiv(st_mag,2)) : 0);
-    s64 nn = n - sdiv(def,2); if(nn>=1){ if(opt_easy) nn=(nn+1)>>1; else if(opt_diff>=2) nn=(nn*dif_dmg[opt_diff])>>1; } if(nn<1) nn=1; if(opt_baby) nn=1;                                                       // BABY MODE: never more than 1 damage
+    s64 nn = n - sdiv(def,2); if(nn>=1){ if(opt_easy) nn=(nn+1)>>1; else if(opt_diff>=2) nn=(nn*dif_dmg[opt_diff])>>1; } if(nn<1) nn=1; if(opt_baby) nn=1; { int dv=xo_v(XO_DMGIN); if(dv!=100){ nn=nn*dv/100; if(dv && nn<1) nn=1; } }                                                       // BABY MODE: never more than 1 damage
     if(def>=100 || rndi(100) < (int)def){ say("BLOCKED!"); invuln=15; return; }
-    hearts-=nn; invuln=30; shake_t=opt_shake?10:0; sfx(4); hud_now();
+    hearts-=nn; invuln=xo_v(XO_INVT); shake_t=opt_shake?10:0; sfx(4); hud_now();
 }
 static void hunger_tick(int every){
     if(!opt_hunger || opt_baby) return;                                                  // HUNGER off, or BABY MODE: nobody ever gets hungry
+    every=every*100/xo_v(XO_HUNGER); if(every<1) every=1;
     if(opt_easy) every+=every/2; else if(opt_diff>=2) every=every*dif_hun[opt_diff]/12;
     if(mark_on(MK_FULL)) every+=every/2; if(mark_on(MK_HUNGRY)) every=every*2/3;
     if(++hunger_t < every) return; hunger_t=0;
@@ -659,11 +660,12 @@ static void hunger_tick(int every){
     else { hearts-=1+maxh/20; say("STARVING! EAT SOMETHING"); hud_now(); }
 }
 static void regen_tick(int every){          // slow healing and mana
-    if(++regen_t < every) return; regen_t=0;
+    every=every*100/xo_v(XO_REGEN); if(every<1) every=1; if(++regen_t < every) return; regen_t=0;
     int ch=0;
-    if(mp<maxmp){ mp+=1+st_mag/12; if(mp>maxmp) mp=maxmp; ch=1; }
+    if(mp<maxmp){ mp+=(1+st_mag/12)*xo_v(XO_MANA); if(mp>maxmp) mp=maxmp; ch=1; }
     if(opt_baby && hearts<maxh){ hearts++; ch=1; }                                       // BABY MODE: Buddy blows on the boo-boos
     if(d_regen && hearts<maxh){ hearts+=d_regen; if(hearts>maxh) hearts=maxh; ch=1; }
+    if(xo_v(XO_HEAL) && hearts<maxh){ hearts+=xo_v(XO_HEAL); if(hearts>maxh) hearts=maxh; ch=1; }
     if(ch) hud_now();
 }
 
@@ -748,9 +750,11 @@ static void bag_input(void){
 static int bite_power(int *crit){
     s64 pp = sadd(d_dmg,(s64)d_fire+d_venom); int p = pp>250000000 ? 250000000 : pp<-250000000 ? -250000000 : (int)pp;
     if(strong_t) p*=2;
-    *crit = rndi(100) < d_crit; if(*crit) p*=2;
+    *crit = rndi(100) < d_crit+xo_v(XO_CRIT); if(*crit) p*=2;
     if(eqw.it==IT_THORN && eqw.sub==3 && rndi(6)==0){ say("THE DARK THORN BITES YOU"); hearts-=2; hud_now(); }
     if(d_vamp && hearts<maxh){ hearts+=d_vamp; }
+    if(xo_v(XO_VAMP) && hearts<maxh){ hearts+=xo_v(XO_VAMP); if(hearts>maxh) hearts=maxh; }
+    { int dv=xo_v(XO_DMGOUT); if(dv!=100){ long long q=(long long)p*dv/100; if(q>250000000LL) q=250000000LL; if(q<-250000000LL) q=-250000000LL; if(p>0 && q<1) q=1; p=(int)q; } }
     return p;
 }
 static void mark_tick(void){                                   // once a second: passing marks run down
@@ -761,12 +765,12 @@ static void tick_timers(void){ mark_tick(); if(speed_t) speed_t--; if(strong_t) 
     if(pet_form_t && --pet_form_t==0){ say("BUDDY CHANGES BACK"); pet_form=0; } }
 
 // ---------------------------------------------------------------- experience and levels
-static s64 xp_next(void){ return sadd(smul(smul(level,level),18),12); }
+static s64 xp_next(void){ s64 v=sadd(smul(smul(level,level),18),12); if(xo_v(XO_XPNEED)!=100){ v=sdiv(smul(v,xo_v(XO_XPNEED)),100); if(v<1) v=1; } return v; }
 // ---- RUBBERBANDING: xp bends toward where you should be. Behind the content = big catch-up bonus, way ahead = gentle brake (never below 40%).
 // A kill streak (kills within ~6s of each other) adds momentum. Every 5th level is a milestone, every 10th a big one.
 static int xp_streak=0; static u32 xp_last=0;
 static int content_level(void){ return 2 + dlv()*3 + depth_no; }
-static void gain_xp(int n){ n*=xpx();
+static void gain_xp(int n){ { long long q=(long long)n*xpx(); n = q>1000000000LL ? 1000000000 : (int)q; }
     int pct=100;
     { s64 gap = (s64)content_level() - level;
       if(gap>0) pct += gap>12 ? 300 : (int)gap*25;                               // behind: up to +300%

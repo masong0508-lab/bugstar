@@ -552,7 +552,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
     int in_air = !in_lair && pd < PR*5/2;                                          // close to the planet there is air
     { int a16=ship_accel16(); int burn = HELD(K_L) && fuel>0;
-      if(HELD(K_B)){ int a=a16*(burn?2:1); svx_ += (bf[0]*a)>>18; svy_ += (bf[1]*a)>>18; svz_ += (bf[2]*a)>>18; if(burn && (frames&15)==0) fuel--; }
+      if(HELD(K_B)){ int a=a16*(burn?2:1); svx_ += (bf[0]*a)>>18; svy_ += (bf[1]*a)>>18; svz_ += (bf[2]*a)>>18; if(burn && (frames&15)==0) fuel-=xo_fuel(1); }
       if(HELD(K_R)){ int k=6+ship.fins*2; svx_ -= svx_*k/64; svy_ -= svy_*k/64; svz_ -= svz_*k/64; }           // retro thrusters
       // drag: a whisper in space, a hand in the air. in the air the wings pull the ship round to where the nose points
       if(in_air){ int g = 10 + ship.wsize*6 + (ship.wings?6:0); s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
@@ -875,12 +875,12 @@ static int cluster_hop(int dir){                                              //
     if(fuel<30){ space_say("NEED 3.0 LY OF FUEL TO JUMP CLUSTERS"); return 0; }
     char fn[24], tn[24]; sys_name(cur_sys,fn);
     u32 a[UAX], one[UAX]={1,0,0,0,0}; int axis = dir<2 ? 0 : 1; ax_get(axis,a); if(dir==0||dir==2) ax_add(a,a,one); else ax_sub(a,a,one); ax_put(axis,a);
-    u_settle(); gen_cluster(); cur_sys=edge_star(dir); cur_pl=cur_moon=0; fuel-=30; visits++; sys_name(cur_sys,tn);
+    u_settle(); gen_cluster(); cur_sys=edge_star(dir); cur_pl=cur_moon=0; fuel-=xo_fuel(30); visits++; sys_name(cur_sys,tn);
     { u32 t10[LYW]={250}; voyage(fn,tn,t10,25*24,1); } space_enter(0); { static const char *const dn[4]={"EAST: ","WEST: ","NORTH: ","SOUTH: "}; arrive_msg(dn[dir]); } return 1; }
 static int warp_by(const u32 *dx, int sx, const u32 *dy, int sy, int exact, const Fav *f){   // a warp of (dx,dy) clusters; exact = land on f
     u32 ly[LYW]; ly_between(ly,dx,dy); char tx[48]; int cost=warp_cost(ly_text(tx,ly));
     if(cost>fuel){ char m[48]; scpy(m,"NEED "); ncat(m,cost/10); scat(m,"."); ncat(m,cost%10); scat(m," LY OF FUEL. YOU HAVE "); ncat(m,fuel/10); scat(m,"."); ncat(m,fuel%10); space_say(m); return 0; }
-    fuel-=cost; char fn[24], tn[24]; sys_name(cur_sys,fn);
+    fuel-=xo_fuel(cost); char fn[24], tn[24]; sys_name(cur_sys,fn);
     u32 a[UAX], b[UAX]; ax_get(0,a); ax_get(1,b);
     if(exact){ for(int w=0;w<UAX;w++){ a[w]=f->cx[w]; b[w]=f->cy[w]; } } else { if(sx>0) ax_add(a,a,dx); else ax_sub(a,a,dx); if(sy>0) ax_add(b,b,dy); else ax_sub(b,b,dy); }
     ax_put(0,a); ax_put(1,b); u_settle(); gen_cluster();
@@ -916,7 +916,7 @@ static int universe_go(const u32 *to, const Fav *f){                    // jump 
     if(fuel<UNI_COST){ space_say("A UNIVERSE JUMP NEEDS 5.0 LY OF FUEL"); return 0; }
     u32 dest[UW]; for(int i=0;i<UW;i++) dest[i]=to[i];                     // (to may point at the universe you are in)
     char fn[28], tn[28]; uni_name(fn,uni_w); uni_name(tn,dest); u32 t10[LYW]; uni_ly(t10,uni_w,dest);
-    for(int i=0;i<UW;i++){ vy_ufrom[i]=uni_w[i]; vy_uto[i]=dest[i]; } fuel-=UNI_COST; uni_set(dest);
+    for(int i=0;i<UW;i++){ vy_ufrom[i]=uni_w[i]; vy_uto[i]=dest[i]; } fuel-=xo_fuel(UNI_COST); uni_set(dest);
     if(f){ for(int w=0;w<UAX;w++){ clus[w]=f->cx[w]; clus[UAX+w]=f->cy[w]; } }
     u_settle(); gen_cluster(); if(f){ cur_sys=f->star; cur_pl=f->body>>3; cur_moon=f->body&7; } else { cur_pl=cur_moon=0; } visits++;
     { u32 t[LYW]; char d[144]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); int dg=big_dec(d,t); voyage(fn,tn,t10,(u32)(30+dg*25)*24,5); }
@@ -971,7 +971,7 @@ static int fav_go(const Fav *f){                                              //
         if(!can_jump(f->star)){ space_say("THAT STAR IS STILL LOCKED"); return 0; }
         int d=sys_dist(cur_sys,f->star); if(d>fuel){ space_say("NOT ENOUGH FUEL. REFUEL AT A STATION"); return 0; }
         char fn[24], tn[24]; sys_name(cur_sys,fn); sys_name(f->star,tn); u32 t10[LYW]={(u32)d};
-        fuel-=d; cur_sys=f->star; cur_pl=f->body>>3; cur_moon=f->body&7; visits++; voyage(fn,tn,t10,(u32)d*24/10+1,0); space_enter(0); arrive_after("ARRIVED: ",t10,0); return 1; }
+        fuel-=xo_fuel(d); cur_sys=f->star; cur_pl=f->body>>3; cur_moon=f->body&7; visits++; voyage(fn,tn,t10,(u32)d*24/10+1,0); space_enter(0); arrive_after("ARRIVED: ",t10,0); return 1; }
     if(!ant_king){ space_say("BEAT THE ANT KING TO LEAVE THIS CLUSTER"); return 0; }
     int bits=ax_bits(dx); if(ax_bits(dy)>bits) bits=ax_bits(dy); int over=bits+1-warp_bits();
     if(over<=0){ if(!warp_by(dx,sx,dy,sy,1,f)) return 0; arrive_msg("ARRIVED: "); return 1; }
@@ -1099,7 +1099,7 @@ static int galaxy_map(void){     // returns 1 if you jumped
         if(HIT(K_B)){ wait_release(); return 0; }
         if(HIT(K_L) && beast_stage>=3){
             if(fuel<20){ space_say("NEED 2.0 LY OF FUEL FOR THE LAIR"); wait_release(); return 0; }
-            fuel-=20; { u32 t10[LYW]={20}; char fn[24]; sys_name(cur_sys,fn); voyage(fn,"THE BEAST'S LAIR",t10,48,3); } lair_enter(); wait_release(); return 1; }
+            fuel-=xo_fuel(20); { u32 t10[LYW]={20}; char fn[24]; sys_name(cur_sys,fn); voyage(fn,"THE BEAST'S LAIR",t10,48,3); } lair_enter(); wait_release(); return 1; }
         if(HIT(K_SEL)){ if(fav_screen(pg)) return 1; dirty=1; }                    // your favourite places
         if(HIT(K_START) && ant_king){ if(cluster_jump(pg)) return 1; dirty=1; }     // the next cluster over, or a blind warp
         if(HIT(K_R) && ant_king){ if(too_close_to_jump()){ space_say("TOO CLOSE TO THE PLANET TO JUMP"); wait_release(); return 0; } if(blind_warp()){ wait_release(); return 1; } }
@@ -1107,7 +1107,7 @@ static int galaxy_map(void){     // returns 1 if you jumped
             s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
             if(pd<PR*2){ space_say("TOO CLOSE TO THE PLANET TO JUMP"); wait_release(); return 0; }
             int d=sys_dist(sel,cur_sys); char fn[24], tn[24]; sys_name(cur_sys,fn); sys_name(sel,tn); u32 t10[LYW]={(u32)d};
-            fuel-=d; cur_sys=sel; cur_pl=cur_moon=0; visits++;
+            fuel-=xo_fuel(d); cur_sys=sel; cur_pl=cur_moon=0; visits++;
             voyage(fn,tn,t10,(u32)d*24/10+1,0); space_enter(0); arrive_after("ARRIVED: ",t10,0);
             wait_release(); return 1; }
     }
