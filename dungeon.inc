@@ -18,7 +18,7 @@ static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT"
 static const char *const kind_name[12]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE"};
 static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE; }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
-#define NDO 64
+#define NDO 160                                   // objects on a floor (was 64): room for crowds on the deep floors
 static s32 tgt_x, tgt_y, up_x, up_y; static int lantk=58;
 EW static DObj dob[NDO]; static int ndo;
 static s32 px_, py_; static int pang;
@@ -235,7 +235,10 @@ static void make_floor(void){
     for(int i=1;i<nrooms;i++){
         int c = 1 + (rooms[i].w*rooms[i].h>60) + (rooms[i].w*rooms[i].h>110) + (rooms[i].w*rooms[i].h>160) + ((dlv()+depth_no)/4 > 3 ? 3 : (dlv()+depth_no)/4);
         if(ddna.on){ c = c*(ddna.dens==0?2:ddna.dens==1?3:5)/3; if(c<1) c=1; }
-        for(int k=0;k<c;k++){
+        { int dm=dlv()+depth_no, ex=dm/5; if(ex>6) ex=6; c+=ex;                           // deeper floors: more monsters in every room
+          if(!base_mode && (dlv()>=22 || depth_no>=40)) c=c*2+8;                         // the deepest floors: packed
+          if(c>24) c=24; }
+        for(int k=0;k<c && ndo<NDO-28;k++){                                           // (28 slots stay free for chests, loot, bats, lamps and the boss)
             int kind = pick_kind();
             int hp = kind==K_BEETLE ? base_hp*5/2 : kind==K_WASP ? base_hp*4/5 : base_hp;
             SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0);

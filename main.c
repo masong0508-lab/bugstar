@@ -727,7 +727,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
           if(!box_solid(cx,cy,0x1000)){ px_=cx; py_=cy; } } }
     if(terr_on) render_terrace(pg,dirx,diry,plx,ply); else render_view(pg,dirx,diry,plx,ply);
     EW static u8 ord[NDO+1]; EW static s32 dd[NDO+1]; int n=0;
-    for(int i=0;i<ndo;i++) if(dob[i].alive){ s32 dx=dob[i].x-px_, dy=dob[i].y-py_; dd[i]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=i; }
+    for(int i=0;i<ndo;i++) if(dob[i].alive){ s32 dx=dob[i].x-px_, dy=dob[i].y-py_; dd[i]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); if(dd[i]<12845056) ord[n++]=i; }   // (things more than 14 cells away are not drawn or sorted: keeps big crowds fast)
     if(pet_here){ petobj.kind=K_PET; petobj.alive=1; petobj.x=pet_x; petobj.y=pet_y; s32 dx=pet_x-px_, dy=pet_y-py_; dd[NDO]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=NDO; }
     for(int i=1;i<n;i++){ u8 t=ord[i]; int j=i; while(j>0 && dd[ord[j-1]]<dd[t]){ ord[j]=ord[j-1]; j--; } ord[j]=t; }
     for(int i=0;i<n;i++) draw_sprite(pg, ord[i]==NDO ? &petobj : &dob[ord[i]], dirx,diry,plx,ply);
