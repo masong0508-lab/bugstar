@@ -13,10 +13,10 @@ EW static u8 seen[MW*MW]; static u8 room_seen[10];     // what you have seen on 
 EW static u8 wmat[MW*MW], fmat[MW*MW], rid[MW*MW], wdec[MW*MW];
 static u16 lampcell[12]; static int nlamps;
 typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; s32 kvx, kvy; u8 stag, lunge, wind, ph; } DObj;     // wind: ticks of wind-up before it bites. ph: boss phase
-enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL, K_CORE, K_SLIME, K_SCORP, K_GHOST, K_TOAD, K_ANT, K_CENTI, K_GOLEM, K_DRONE };   // K_SLIME: splits in two when it dies (sub=1: a small one). K_SCORP: fast, hits hard. K_GHOST: floats, erratic, fragile. K_TOAD: spits slow heavy blobs. // K_CORE: an outpost's power core: smash it
+enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL, K_CORE, K_SLIME, K_SCORP, K_GHOST, K_TOAD, K_ANT, K_CENTI, K_GOLEM, K_DRONE, K_MOTH, K_SHROOM, K_CRAB, K_WISP };   // K_MOTH: flutters fast, fragile, comes in packs. K_SHROOM: slow, spits spore clouds. K_CRAB: armoured, slow, hits very hard. K_WISP: floats, fires quick bolts, fragile. // K_SLIME: splits in two when it dies (sub=1: a small one). K_SCORP: fast, hits hard. K_GHOST: floats, erratic, fragile. K_TOAD: spits slow heavy blobs. // K_CORE: an outpost's power core: smash it
 static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT","VILE","FROST","ROTTEN"};
-static const char *const kind_name[20]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE","SLIME","SCORPION","GHOST","TOAD","ANT","CENTIPEDE","GOLEM","DRONE"};
-static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE||k==K_SLIME||k==K_SCORP||k==K_GHOST||k==K_TOAD||k==K_ANT||k==K_CENTI||k==K_GOLEM||k==K_DRONE; }
+static const char *const kind_name[24]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE","SLIME","SCORPION","GHOST","TOAD","ANT","CENTIPEDE","GOLEM","DRONE","MOTH","SHROOM","CRAB","WISP"};
+static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE||k==K_SLIME||k==K_SCORP||k==K_GHOST||k==K_TOAD||k==K_ANT||k==K_CENTI||k==K_GOLEM||k==K_DRONE||k==K_MOTH||k==K_SHROOM||k==K_CRAB||k==K_WISP; }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 160                                   // objects on a floor (was 64): room for crowds on the deep floors
 static s32 tgt_x, tgt_y, up_x, up_y; static int lantk=58;
@@ -134,10 +134,14 @@ static int pick_kind(void){                                                     
     if(x<15 && (dlv()>=1||depth_no>=2)) return K_SCORP;
     if(x<21 && (dlv()>=2||depth_no>=3)) return K_TOAD;
     if(x<26 && (dlv()>=3||depth_no>=4)) return K_GHOST;
+    if(x>=26 && x<31 && (dlv()>=1||depth_no>=2)) return K_MOTH;
+    if(x>=31 && x<36 && (dlv()>=2||depth_no>=3)) return K_SHROOM;
+    if(x>=36 && x<40 && (dlv()>=2||depth_no>=3)) return K_CRAB;
+    if(x>=40 && x<44 && (dlv()>=4||depth_no>=6)) return K_WISP;
     return k;
 }
 static int kind_hp(int k, int b){
-    switch(k){ case K_BEETLE: return b*5/2; case K_WASP: return b*4/5; case K_SLIME: return b*3/2; case K_SCORP: return b*6/5; case K_GHOST: return b*3/5; case K_TOAD: return b*9/10; case K_ANT: return b*9/10; case K_CENTI: return b/2+1; case K_GOLEM: return b*4; case K_DRONE: return b*7/10; }
+    switch(k){ case K_BEETLE: return b*5/2; case K_WASP: return b*4/5; case K_SLIME: return b*3/2; case K_SCORP: return b*6/5; case K_GHOST: return b*3/5; case K_TOAD: return b*9/10; case K_ANT: return b*9/10; case K_CENTI: return b/2+1; case K_GOLEM: return b*4; case K_DRONE: return b*7/10; case K_MOTH: return b/2+1; case K_SHROOM: return b; case K_CRAB: return b*3; case K_WISP: return b/2+1; }
     return b;
 }
 static void make_floor(void){
@@ -259,7 +263,7 @@ static void make_floor(void){
             int hp = kind_hp(kind, base_hp);
             SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0);
             if(rndi(100)<8){ DObj *o=&dob[ndo-1]; o->champ=1; o->cname=rndi(8); o->hp=o->maxhp=hp*3; }
-            if(kind==K_ANT || kind==K_CENTI){ for(int p=0;p<2 && ndo<NDO-28;p++) SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0); }   // ants and centipedes come in packs of three
+            if(kind==K_ANT || kind==K_CENTI || kind==K_MOTH){ for(int p=0;p<2 && ndo<NDO-28;p++) SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0); }   // ants and centipedes come in packs of three
         }
         if(rnd()&1) SPAWN(K_CHEST, room_floor_cell(&rooms[i]), 1, 0);
     }
@@ -566,6 +570,10 @@ __attribute__((noinline)) static SprArt sprite_art(DObj *o){      // runs from R
         case K_CENTI: art=art_centi; aw=CENTI_W; ah=CENTI_H; hw=0x4000; break;
         case K_GOLEM: art=art_golem; aw=GOLEM_W; ah=GOLEM_H; hw=0xE000; break;
         case K_DRONE: art=art_drone; aw=DRONE_W; ah=DRONE_H; hw=0x5000; break;
+        case K_MOTH: art=art_moth; aw=MOTH_W; ah=MOTH_H; hw=0x3800; break;
+        case K_SHROOM: art=art_shroom; aw=SHROOM_W; ah=SHROOM_H; hw=0x6800; break;
+        case K_CRAB: art=art_crab; aw=CRAB_W; ah=CRAB_H; hw=0x7800; break;
+        case K_WISP: art=art_wisp; aw=WISP_W; ah=WISP_H; hw=0x4800; break;
         case K_WASP: if((frames>>1)&1){ art=art_wasp2; aw=WASP2_W; ah=WASP2_H; } else { art=art_wasp; aw=WASP_W; ah=WASP_H; } hw=0x4000; break;
         case K_PET: { static const u16 pt[4]={216,R_FLAME+5,R_STONE+5,218}; static const u16 ph[4]={0x3000,0x3800,0x4200,0x5800}; art=art_pet; aw=PET_W; ah=PET_H; hw=ph[pet_form]; tint=pt[pet_form]; break; }
         default: { int it=o->it, sub=o->sub;
@@ -597,7 +605,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
     if(hpx<2||wcols<1) return;
     s32 z0 = 0;
     if(o->champ) hw = hw*11/8;
-    if(o->kind==K_BAT || o->kind==K_WASP || o->kind==K_GHOST || o->kind==K_DRONE) z0 = 0x8000 + (sinI[(frames*6+(int)(o-dob)*13)&255]>>3);
+    if(o->kind==K_BAT || o->kind==K_WASP || o->kind==K_GHOST || o->kind==K_DRONE || o->kind==K_MOTH || o->kind==K_WISP) z0 = 0x8000 + (sinI[(frames*6+(int)(o-dob)*13)&255]>>3);
     if(o->kind==K_ITEM && o->rar) z0 = 0x1000 + (sinI[(frames*8)&255]>>4);
     if(o->kind==K_LAMP) z0 = 0x18000 - hw;
     s32 eyo=eyeat(o->x,o->y); int bot = hz + (s32)(((long long)(eyo-z0)*FOC)/tY);
