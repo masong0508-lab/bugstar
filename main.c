@@ -81,7 +81,8 @@ static int sys_req=0, cluster_no=0;                 // cluster_no: how many inte
 // u_settle folds any old address into today's universe, so every word above clus[0..9] is zero in play. The upper words live in spare SRAM (see save.inc),
 // and a world's land and parts are hashed from the whole address (see gen_terrain and make_world).
 #define NCW0 32                                                   // the cluster words the older saves and the hash walk know about
-#define NCW 1024                                                  // the cluster address is 1024 words = 32,768 bits (the upper words live in spare SRAM, see save.inc)
+#define NCW 64                                                    // cluster words kept in EWRAM (saves only store NCW0 of them; the old 1024 wasted 4 KB of EWRAM)
+_Static_assert(NCW>=NCW0, "clus must hold every word a save stores");
 static u32 galaxy_no=0; static u32 clus[NCW] __attribute__((section(".ewram")));
 static u32 clus_f=0, clus_up=0;                                   // the upper cluster words folded into one, and whether any of them is set (see clus_refold)
 #define NGH 9
