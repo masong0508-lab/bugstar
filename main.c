@@ -335,12 +335,14 @@ static s32 dist8(s32 dx, s32 dy){ s32 adx=dx<0?-dx:dx, ady=dy<0?-dy:dy; return a
 static int mon_dmg(DObj *o){
     int b=3+dlv()*2+depth_no/2;
     switch(o->kind){ case K_BEETLE: b=b*9/5; break; case K_BAT: b=b*7/10+1; break; case K_BOSS: b=b*5/2; break; case K_SCORP: b=b*3/2; break; case K_GHOST: b=b*4/5; break; case K_SLIME: b = o->sub ? b/2+1 : b*3/4; break; case K_CENTI: b=b*3/5+1; break; case K_GOLEM: b=b*2; break; case K_DRONE: b=b*9/10; break; case K_MOTH: b=b/2+1; break; case K_SHROOM: b=b*4/5; break; case K_CRAB: b=b*5/3; break; case K_WISP: b=b*7/10; break; }
+    if(nm_of(o->kind)) b=b*nm_of(o->kind)->dmm/8;
     if(o->champ) b=b*3/2;
     if(fl_ev==FE_CURSED) b=b*3/2;
     { int sv=xo_v(XO_ESTR); if(sv!=100){ b=(int)((long long)b*sv/100); if(b<1) b=1; } }
     return b;
 }
 static void kill_mon(DObj *o){
+    if(o->kind==K_SKELE && !o->ph){ o->ph=1; o->hp=o->maxhp/2+1; o->flash=8; o->stag=12; o->venom=0; say("THE BONES RISE AGAIN!"); sfx(14); return; }   // skeletons get up once
     fl_kill(o);
     int boss=o->kind==K_BOSS, hive = boss && endless && hive_boss_floor(); int nbo=0; if(boss) for(int i=0;i<ndo;i++) if(&dob[i]!=o && dob[i].alive && dob[i].kind==K_BOSS) nbo++;
     if(o->kind>=0 && o->kind<11) st_kills[o->kind]++;
@@ -352,6 +354,7 @@ static void kill_mon(DObj *o){
         base_card=1; escape_flag=1; say("THE CORE SHATTERS! BOLT: I'LL BEAM US OUT"); hud_now(); return; }
     int xpv = (4+dlv()*2+depth_no) * (o->kind==K_BEETLE?2 : o->kind==K_WASP?3 : boss?10 : 1) / (o->kind==K_WASP?2:1);
     if(o->kind==K_SCORP||o->kind==K_GHOST) xpv=xpv*2; else if(o->kind==K_TOAD) xpv=xpv*3/2; else if(o->kind==K_SLIME) xpv = o->sub ? xpv/2+1 : xpv*3/2; else if(o->kind==K_GOLEM) xpv=xpv*4; else if(o->kind==K_DRONE) xpv=xpv*2; else if(o->kind==K_SHROOM) xpv=xpv*3/2; else if(o->kind==K_CRAB) xpv=xpv*3; else if(o->kind==K_WISP) xpv=xpv*2;
+    if(nm_of(o->kind)) xpv=xpv*nm_of(o->kind)->xpm/8;
     if(o->champ) xpv*=3;
     earn(boss ? 100+depth_no*10 : 6+dlv()*4+(o->champ?40:0));
     if(!forge_on && q_type==Q_HUNT){ q_have++; if(q_have>=q_need && !q_done){ q_done=1; say("QUEST DONE! GO BACK TO YOUR SHIP"); } }
@@ -380,6 +383,7 @@ static void kill_mon(DObj *o){
     hud_now();
 }
 static void hit_mon(DObj *o, int dmg, int crit){
+    if(nm_has(o,NF_ARMOR)){ dmg=(dmg+1)/2; if(dmg<1) dmg=1; }                         // rockbacks: half damage
     o->hp-=dmg; o->flash=6; add_fnum(o->x,o->y,dmg,crit?C_GOLD:C_WHITE); sfx(1);
     if(d_fire) burst(o->x,o->y,0x6000,4,0);
     if(d_venom) o->venom=90;
@@ -395,10 +399,10 @@ static int combo=0, combo_t=0, dodge_t=0, dodge_dir=0, tapL_t=0, tapR_t=0, dodge
 static s32 pvx=0, pvy=0; static int hitstop=0, kick_t=0, bump_cd=0, pknock_t=0, moved_real=0;
 static s32 body_r(DObj *o){ s32 r; switch(o->kind){ case K_SPIDER: r=0x3000; break; case K_BEETLE: r=0x4000; break; case K_BOSS: r=0x6800; break; case K_BAT: r=0x2400; break;
     case K_SLIME: r=o->sub?0x2400:0x3800; break; case K_SCORP: r=0x3000; break; case K_GHOST: r=0x2800; break; case K_TOAD: r=0x3400; break; case K_ANT: r=0x2C00; break; case K_CENTI: r=0x2800; break; case K_GOLEM: r=0x5800; break; case K_DRONE: r=0x2800; break; case K_MOTH: r=0x2400; break; case K_SHROOM: r=0x3400; break; case K_CRAB: r=0x4800; break; case K_WISP: r=0x2800; break;
-    case K_WASP: r=0x2800; break; case K_BARREL: r=o->sub?0x3800:0x3200; break; case K_CAGE: r=0x3000; break; case K_CORE: r=0x5000; break; default: return 0; } return o->champ ? r*5/4 : r; }
+    case K_WASP: r=0x2800; break; case K_BARREL: r=o->sub?0x3800:0x3200; break; case K_CAGE: r=0x3000; break; case K_CORE: r=0x5000; break; default: if(nm_of(o->kind)){ r=nm_of(o->kind)->rad; break; } return 0; } return o->champ ? r*5/4 : r; }
 static int body_m(DObj *o){ int m; switch(o->kind){ case K_SPIDER: m=3; break; case K_BEETLE: m=8; break; case K_BOSS: m=40; break; case K_BAT: m=1; break;
     case K_SLIME: m=o->sub?2:4; break; case K_SCORP: m=3; break; case K_GHOST: m=1; break; case K_TOAD: m=5; break; case K_ANT: m=3; break; case K_CENTI: m=2; break; case K_GOLEM: m=20; break; case K_DRONE: m=1; break; case K_MOTH: m=1; break; case K_SHROOM: m=6; break; case K_CRAB: m=12; break; case K_WISP: m=1; break;
-    case K_WASP: m=2; break; case K_BARREL: m=o->sub?9:5; break; default: m=999; } return o->champ ? m*2 : m; }
+    case K_WASP: m=2; break; case K_BARREL: m=o->sub?9:5; break; default: m = nm_of(o->kind) ? nm_of(o->kind)->mass : 999; } return o->champ ? m*2 : m; }
 static int box_solid(s32 x, s32 y, s32 r){ return solid(x-r,y-r)||solid(x+r,y-r)||solid(x-r,y+r)||solid(x+r,y+r); }
 static s32 iabs(s32 v){ return v<0?-v:v; }
 // push two round bodies apart; the heavier one moves less. a wall stops a body, and then the other one gets the whole push
@@ -728,7 +732,8 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         s32 dx=px_-o->x, dy=py_-o->y, d=dist8(dx,dy);
         if(o->kind==K_CORE){ if(d<named_d){ named_p=o; named_d=d; } if(blast_flag && d<0x30000) hit_mon(o,clampi(sadd(8,smul(level,2))),0); continue; }
         if(is_mon(o->kind)){
-            int boss=o->kind==K_BOSS, bat=o->kind==K_BAT||o->kind==K_GHOST||o->kind==K_MOTH||o->kind==K_WISP, wasp=o->kind==K_WASP||o->kind==K_TOAD||o->kind==K_DRONE||o->kind==K_SHROOM||o->kind==K_WISP, toad=o->kind==K_TOAD, drone=o->kind==K_DRONE, shroom=o->kind==K_SHROOM, wisp=o->kind==K_WISP;   // ghosts move like bats; toads keep their distance and shoot like wasps
+            const NMon *nm=nm_of(o->kind);
+            int boss=o->kind==K_BOSS, bat=o->kind==K_BAT||o->kind==K_GHOST||o->kind==K_MOTH||o->kind==K_WISP, wasp=(nm&&(nm->fl&NF_SHOOT))||o->kind==K_WASP||o->kind==K_TOAD||o->kind==K_DRONE||o->kind==K_SHROOM||o->kind==K_WISP, toad=o->kind==K_TOAD, drone=o->kind==K_DRONE, shroom=o->kind==K_SHROOM, wisp=o->kind==K_WISP;   // ghosts move like bats; toads keep their distance and shoot like wasps
             s32 contact = 0x7800 + body_r(o), reach = contact + 0x2800;     // they walk up until they touch you, then bite
             if((o->champ||boss) && d<named_d){ named_p=o; named_d=d; }
             if(o->venom){ o->venom--; if((o->venom%15)==0){ int vd=1+d_venom/3; o->hp-=vd; add_fnum(o->x,o->y,vd,C_GREEN); if(o->hp<=0){ kill_mon(o); continue; } } }
@@ -743,7 +748,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
                 if(hunt_t){ if(--hunt_t==0){ say("IT HAS YOUR SCENT"); sfx(14); } }
                 else if(!stun_t && !o->stag && !o->wind && td>contact+0x800) hunt_move(o, 0x0580+tier_now()*0x30); }
             else if(!stun_t && !o->stag && !o->wind && td<0x70000*xo_v(XO_EAWARE)/100){
-                s32 st = boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : o->kind==K_SLIME?(o->sub?0x0480:0x0300) : o->kind==K_SCORP?0x0780 : toad?0x0420 : o->kind==K_ANT?0x0660 : o->kind==K_CENTI?0x0800 : o->kind==K_GOLEM?0x0240 : drone?0x0500 : shroom?0x0300 : o->kind==K_CRAB?0x0340 : 0x0600; st=st*xo_v(XO_ESPEED)/100;
+                s32 st = nm ? (s32)nm->stp : boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : o->kind==K_SLIME?(o->sub?0x0480:0x0300) : o->kind==K_SCORP?0x0780 : toad?0x0420 : o->kind==K_ANT?0x0660 : o->kind==K_CENTI?0x0800 : o->kind==K_GOLEM?0x0240 : drone?0x0500 : shroom?0x0300 : o->kind==K_CRAB?0x0340 : 0x0600; st=st*xo_v(XO_ESPEED)/100;
                 int away = wasp && td<0x18000, keep = wasp && td<0x40000 && td>=0x18000;
                 if(!keep && (td>contact+0x800 || away)){
                     s32 stx=(tdx>0?st:-st), sty=(tdy>0?st:-st); if(away){ stx=-stx; sty=-sty; }
@@ -754,6 +759,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
                 s32 l=isqrt((u32)((dx>>8)*(dx>>8)+(dy>>8)*(dy>>8))); if(l<1) l=1;
                 if(toad) fire_proj(1, o->x, o->y, 0x6000, (dx>>8)*0x0B00/l, (dy>>8)*0x0B00/l, mon_dmg(o)*3/2), o->cool=85+rndi(40);
                 else if(shroom) fire_proj(1, o->x, o->y, 0x6000, (dx>>8)*0x0900/l, (dy>>8)*0x0900/l, mon_dmg(o)*2), o->cool=95+rndi(40);
+                else if(nm) fire_proj(1, o->x, o->y, 0x7000, (dx>>8)*nm->pspd/l, (dy>>8)*nm->pspd/l, mon_dmg(o)*nm->pdm/4), o->cool=nm->pcool+rndi(30);
                 else if(wisp) fire_proj(1, o->x, o->y, 0x8000, (dx>>8)*0x1C00/l, (dy>>8)*0x1C00/l, mon_dmg(o)), o->cool=35+rndi(25);
                 else if(drone) fire_proj(1, o->x, o->y, 0x8000, (dx>>8)*0x1800/l, (dy>>8)*0x1800/l, mon_dmg(o)), o->cool=40+rndi(20);
                 else fire_proj(1, o->x, o->y, 0x8000, (dx>>8)*0x1400/l, (dy>>8)*0x1400/l, mon_dmg(o)), o->cool=55+rndi(30); }
@@ -765,13 +771,14 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
                         else { if(invuln && dodge_msg_t){ say("DODGED!"); st_dodges++; gain_xp(1); }
                                else if(!invuln){ s64 before=hearts; hurt(mon_dmg(o)); if(hearts<before){ hurt_flash=8; hitstop=5; kick_t=7; pknock_t=12; combo=0;
                                    s32 kp = boss?0x2400 : o->kind==K_GOLEM?0x2000 : o->kind==K_CRAB?0x1C00 : o->kind==K_BEETLE?0x1A00 : 0x1000; if(d>0x100){ pvx+=(s32)(((long long)dx*kp)/d); pvy+=(s32)(((long long)dy*kp)/d); } } }
+                               if(nm && (nm->fl&NF_LEECH) && !invuln){ o->hp+=mon_dmg(o)/2; if(o->hp>o->maxhp) o->hp=o->maxhp; }   // leeches and reapers drink
                                int ret=d_reflect+d_sting; if(ret){ hit_mon(o,ret,0); if(!o->alive) continue; } }
                     } else { o->stag=3; }                      // it snapped at empty air and is open for a moment
                 }
             }
-            else if(!wasp && !stun_t && !o->stag && td<reach && !o->cool){ o->cool=boss?34:46; o->wind = boss?3:o->kind==K_BEETLE?6:o->kind==K_SCORP||o->kind==K_CENTI?3:o->kind==K_SLIME?5:o->kind==K_GOLEM?9 : o->kind==K_CRAB?7 : 4; sfx(14); }
+            else if(!wasp && !stun_t && !o->stag && td<reach && !o->cool){ o->cool=boss?34:46; o->wind = nm?nm->wind : boss?3:o->kind==K_BEETLE?6:o->kind==K_SCORP||o->kind==K_CENTI?3:o->kind==K_SLIME?5:o->kind==K_GOLEM?9 : o->kind==K_CRAB?7 : 4; sfx(14); }
             // beetles charge from a distance: a long wind-up, then they barrel at you. into a wall, and they are stunned
-            else if((o->kind==K_BEETLE||o->kind==K_SCORP) && !stun_t && !o->stag && !o->cool && td>0x18000 && td<0x50000 && rndi(o->kind==K_SCORP?55:40)==0){ o->cool=70; o->wind=8; o->lunge=1; sfx(14); }
+            else if((o->kind==K_BEETLE||o->kind==K_SCORP||(nm&&(nm->fl&NF_CHARGE))) && !stun_t && !o->stag && !o->cool && td>0x18000 && td<0x50000 && rndi(o->kind==K_SCORP?55:40)==0){ o->cool=70; o->wind=8; o->lunge=1; sfx(14); }
             if(o->lunge && !o->wind){ o->lunge=0; if(td>0x100){ o->kvx=(s32)(((long long)tdx*0x3000)/td); o->kvy=(s32)(((long long)tdy*0x3000)/td); } }
             // the boss calls her brood at half health, and gets angry
             if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1; say("THE QUEEN CALLS HER BROOD!"); sfx(9);

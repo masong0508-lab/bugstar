@@ -14,9 +14,48 @@ EW static u8 wmat[MW*MW], fmat[MW*MW], rid[MW*MW], wdec[MW*MW];
 static u16 lampcell[12]; static int nlamps;
 typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; s32 kvx, kvy; u8 stag, lunge, wind, ph; } DObj;     // wind: ticks of wind-up before it bites. ph: boss phase
 enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL, K_CORE, K_SLIME, K_SCORP, K_GHOST, K_TOAD, K_ANT, K_CENTI, K_GOLEM, K_DRONE, K_MOTH, K_SHROOM, K_CRAB, K_WISP };   // K_MOTH: flutters fast, fragile, comes in packs. K_SHROOM: slow, spits spore clouds. K_CRAB: armoured, slow, hits very hard. K_WISP: floats, fires quick bolts, fragile. // K_SLIME: splits in two when it dies (sub=1: a small one). K_SCORP: fast, hits hard. K_GHOST: floats, erratic, fragile. K_TOAD: spits slow heavy blobs. // K_CORE: an outpost's power core: smash it
+// ---- PLANET MONSTERS: 16 creatures that belong to particular worlds. One table row each: how it looks, moves, bites, shoots.
+enum { K_SNAIL=24, K_BUMBLE, K_JELLY, K_ROCKBK, K_SANDWM, K_FROSTM, K_MANTIS, K_REAPER, K_SENTRY, K_GLOWFLY, K_FIREIMP, K_ACIDLG, K_SHARD, K_SKELE, K_LEECH, K_WRAITH, K_NEND };
+#define NF_FLY 1       // hovers
+#define NF_SHOOT 2     // keeps its distance and shoots
+#define NF_CHARGE 4    // winds up, then barrels at you (like beetles)
+#define NF_PACK 8      // comes in threes
+#define NF_LEECH 16    // heals itself when it bites you
+#define NF_ARMOR 32    // takes half damage
+typedef struct { const u8 *art; u8 w,h; u16 hw, stp, rad, pspd; u8 hpm,dmm,xpm,wind,mass,fl,pdm,pcool,mdl,mdp; } NMon;   // hpm/dmm/xpm: x/8 of the usual health/bite/XP. pspd,pdm(x/4),pcool: its shots. mdl/mdp: first level / first floor it appears
+static const NMon nm_tab[16]={
+ {art_snail,SNAIL_W,SNAIL_H,    0x6000,0x0180,0x3000,0,     16, 6,10,6, 6, 0,           0, 0, 0,1},   // SNAIL: slow, tough, soft bite
+ {art_bumble,BUMBLE_W,BUMBLE_H, 0x4800,0x0500,0x2800,0x1400, 6, 6,12,4, 2, NF_FLY|NF_SHOOT, 4,50, 1,2},   // BUMBLEBEE: buzzes about and flings stingers
+ {art_jelly,JELLY_W,JELLY_H,    0x5000,0x0380,0x2C00,0x0A00, 7, 7,12,5, 1, NF_FLY|NF_SHOOT, 6,70, 1,2},   // JELLYFISH: drifts, slow shocks
+ {art_rockbk,ROCKBK_W,ROCKBK_H, 0x7000,0x0200,0x4000,0,     28,12,20,8,14, NF_ARMOR,     0, 0, 2,3},   // ROCKBACK: armoured, half damage from everything
+ {art_sandwm,SANDWM_W,SANDWM_H, 0x8000,0x0420,0x4000,0,     20,11,20,6,10, NF_CHARGE,    0, 0, 2,3},   // SANDWORM: charges
+ {art_frostm,FROSTM_W,FROSTM_H, 0x3800,0x0700,0x2000,0,      4, 5, 8,3, 1, NF_PACK,      0, 0, 0,1},   // FROSTMITE: fast little packs
+ {art_mantis,MANTIS_W,MANTIS_H, 0x7000,0x0600,0x2C00,0,     12,13,18,3, 4, NF_CHARGE,    0, 0, 2,3},   // MANTIS: lunges
+ {art_reaper,REAPER_W,REAPER_H, 0x8000,0x0500,0x3000,0,     16,14,28,5, 5, NF_LEECH,     0, 0, 4,6},   // REAPER: steals life
+ {art_sentry,SENTRY_W,SENTRY_H, 0x5800,0x0000,0x3000,0x2000,16, 8,16,4,20, NF_SHOOT,     6,45, 2,3},   // SENTRY: never moves, shoots fast
+ {art_glowfly,GLOWFLY_W,GLOWFLY_H,0x3800,0x0700,0x2000,0x1800,4, 6,10,4, 1, NF_FLY|NF_SHOOT|NF_PACK, 4,55, 1,2},   // GLOWFLY: glowing swarms
+ {art_fireimp,FIREIMP_W,FIREIMP_H,0x5000,0x0680,0x2800,0x1000,8, 8,14,4, 3, NF_SHOOT,     6,70, 1,2},   // FIRE IMP: throws fireballs
+ {art_acidlg,ACIDLG_W,ACIDLG_H, 0x4800,0x0300,0x2C00,0x0A00,10, 7,12,5, 4, NF_SHOOT,     8,90, 1,2},   // ACIDLING: spits acid (hits hard)
+ {art_shard,SHARD_W,SHARD_H,    0x5800,0x0600,0x2800,0x2000,10, 9,16,4, 5, NF_FLY|NF_SHOOT, 4,40, 3,4},   // SHARD: floating crystal, fast needles
+ {art_skele,SKELE_W,SKELE_H,    0x7000,0x0540,0x2C00,0,      9,10,14,5, 4, 0,           0, 0, 1,2},   // SKELETON: gets up once after it dies
+ {art_leech,LEECH_W,LEECH_H,    0x3800,0x0640,0x2800,0,      7, 7,12,4, 2, NF_LEECH,     0, 0, 0,1},   // LEECH: heals when it bites
+ {art_wraith,WRAITH_W,WRAITH_H, 0x7000,0x0480,0x2C00,0,      5,11,22,4, 1, NF_FLY,       0, 0, 3,4},   // WRAITH: fragile, bites hard
+};
+static const NMon *nm_of(int k){ return (k>=K_SNAIL && k<K_NEND) ? &nm_tab[k-K_SNAIL] : 0; }
+static int nm_has(DObj *o, int f){ const NMon *n=nm_of(o->kind); return n && (n->fl&f); }
+// which two creatures live on which world: the six story planets, then every kind of planet out in the galaxy (moons count as rock, dust or ice)
+static const u8 zone_pool[6][2]={{K_SNAIL,K_BUMBLE},{K_JELLY,K_LEECH},{K_BUMBLE,K_ACIDLG},{K_GLOWFLY,K_WRAITH},{K_BUMBLE,K_MANTIS},{K_SANDWM,K_ROCKBK}};
+static const u8 cls_pool[NPC][2]={{K_SNAIL,K_BUMBLE},{K_ROCKBK,K_SHARD},{K_BUMBLE,K_GLOWFLY},{K_JELLY,K_LEECH},{K_SANDWM,K_ROCKBK},{K_FROSTM,K_WRAITH},{K_MANTIS,K_SNAIL},{K_REAPER,K_SKELE},{K_SENTRY,K_GLOWFLY},{K_GLOWFLY,K_BUMBLE},
+    {K_FIREIMP,K_SKELE},{K_ACIDLG,K_FIREIMP},{K_SHARD,K_FIREIMP},{K_SKELE,K_REAPER},{K_LEECH,K_JELLY},{K_WRAITH,K_FROSTM}};   // order of the PC_ classes
+static int nm_pick(void){                      // a creature of this planet, or -1 (forge designs keep the mix their maker chose)
+    if(forge_on) return -1;
+    int k;
+    if(endless) k = cls_pool[wd.cls<NPC?wd.cls:0][rndi(2)]; else k = zone_pool[zone>=0&&zone<6?zone:0][rndi(2)];
+    const NMon *n=nm_of(k); return (dlv()>=n->mdl || depth_no>=n->mdp) ? k : -1;
+}
 static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT","VILE","FROST","ROTTEN"};
-static const char *const kind_name[24]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE","SLIME","SCORPION","GHOST","TOAD","ANT","CENTIPEDE","GOLEM","DRONE","MOTH","SHROOM","CRAB","WISP"};
-static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE||k==K_SLIME||k==K_SCORP||k==K_GHOST||k==K_TOAD||k==K_ANT||k==K_CENTI||k==K_GOLEM||k==K_DRONE||k==K_MOTH||k==K_SHROOM||k==K_CRAB||k==K_WISP; }
+static const char *const kind_name[40]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE","SLIME","SCORPION","GHOST","TOAD","ANT","CENTIPEDE","GOLEM","DRONE","MOTH","SHROOM","CRAB","WISP","SNAIL","BUMBLEBEE","JELLYFISH","ROCKBACK","SANDWORM","FROSTMITE","MANTIS","REAPER","SENTRY","GLOWFLY","FIRE IMP","ACIDLING","SHARD","SKELETON","LEECH","WRAITH"};
+static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE||k==K_SLIME||k==K_SCORP||k==K_GHOST||k==K_TOAD||k==K_ANT||k==K_CENTI||k==K_GOLEM||k==K_DRONE||k==K_MOTH||k==K_SHROOM||k==K_CRAB||k==K_WISP||(k>=K_SNAIL&&k<K_NEND); }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 160                                   // objects on a floor (was 64): room for crowds on the deep floors
 static s32 tgt_x, tgt_y, up_x, up_y; static int lantk=58;
@@ -126,7 +165,9 @@ static int pick_kind0(void){                                                    
 }
 static int pick_kind(void){                                                      // the old mix, plus a few new creatures from the early floors on
     int k=pick_kind0(), x=rndi(100);
-    if(base_mode && x<30) return K_DRONE;                                          // outposts: the ants' drones
+    if(base_mode && x<30) return K_DRONE;
+    if(base_mode && x>=30 && x<42 && (dlv()>=2||depth_no>=3)) return K_SENTRY;      // outposts: drones, and sentries that never move
+    if(!base_mode && rndi(100)<30){ int pk=nm_pick(); if(pk>=0) return pk; }          // about 3 in 10: a creature of THIS planet                                          // outposts: the ants' drones
     if(x>=90 && (dlv()>=1||depth_no>=2)) return K_ANT;
     if(x>=84 && x<90) return K_CENTI;
     if(x>=80 && x<84 && (dlv()>=3||depth_no>=5)) return K_GOLEM;
@@ -142,6 +183,7 @@ static int pick_kind(void){                                                     
 }
 static int kind_hp(int k, int b){
     switch(k){ case K_BEETLE: return b*5/2; case K_WASP: return b*4/5; case K_SLIME: return b*3/2; case K_SCORP: return b*6/5; case K_GHOST: return b*3/5; case K_TOAD: return b*9/10; case K_ANT: return b*9/10; case K_CENTI: return b/2+1; case K_GOLEM: return b*4; case K_DRONE: return b*7/10; case K_MOTH: return b/2+1; case K_SHROOM: return b; case K_CRAB: return b*3; case K_WISP: return b/2+1; }
+    if(nm_of(k)) return b*nm_of(k)->hpm/8;
     return b;
 }
 static void make_floor(void){
@@ -263,7 +305,7 @@ static void make_floor(void){
             int hp = kind_hp(kind, base_hp);
             SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0);
             if(rndi(100)<8){ DObj *o=&dob[ndo-1]; o->champ=1; o->cname=rndi(8); o->hp=o->maxhp=hp*3; }
-            if(kind==K_ANT || kind==K_CENTI || kind==K_MOTH){ for(int p=0;p<2 && ndo<NDO-28;p++) SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0); }   // ants and centipedes come in packs of three
+            if(kind==K_ANT || kind==K_CENTI || kind==K_MOTH || nm_has(&dob[ndo-1],NF_PACK)){ for(int p=0;p<2 && ndo<NDO-28;p++) SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0); }   // ants and centipedes come in packs of three
         }
         if(rnd()&1) SPAWN(K_CHEST, room_floor_cell(&rooms[i]), 1, 0);
     }
@@ -552,6 +594,7 @@ typedef struct { const u8 *art; int aw, ah, hw, tint; } SprArt;
 __attribute__((noinline)) static SprArt sprite_art(DObj *o){      // runs from ROM: which picture, how big, what tint
     int anim = ((frames>>2) + (int)(o-dob)) & 1;
     const u8 *art; int aw, ah, hw, tint=0;
+    { const NMon *nm=nm_of(o->kind); if(nm){ SprArt r={nm->art,nm->w,nm->h,nm->hw,0}; return r; } }      // the planet monsters
     switch(o->kind){
         case K_SPIDER: art=anim?spider_art2:spider_art; aw=SPIDER_W; ah=SPIDER_H; hw=0x7000; break;
         case K_BOSS: art=anim?spider_art2:spider_art; aw=SPIDER_W; ah=SPIDER_H; hw=0x11000; break;
@@ -605,7 +648,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
     if(hpx<2||wcols<1) return;
     s32 z0 = 0;
     if(o->champ) hw = hw*11/8;
-    if(o->kind==K_BAT || o->kind==K_WASP || o->kind==K_GHOST || o->kind==K_DRONE || o->kind==K_MOTH || o->kind==K_WISP) z0 = 0x8000 + (sinI[(frames*6+(int)(o-dob)*13)&255]>>3);
+    if(o->kind==K_BAT || o->kind==K_WASP || o->kind==K_GHOST || o->kind==K_DRONE || o->kind==K_MOTH || o->kind==K_WISP || nm_has(o,NF_FLY)) z0 = 0x8000 + (sinI[(frames*6+(int)(o-dob)*13)&255]>>3);
     if(o->kind==K_ITEM && o->rar) z0 = 0x1000 + (sinI[(frames*8)&255]>>4);
     if(o->kind==K_LAMP) z0 = 0x18000 - hw;
     s32 eyo=eyeat(o->x,o->y); int bot = hz + (s32)(((long long)(eyo-z0)*FOC)/tY);

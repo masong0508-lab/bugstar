@@ -47,6 +47,12 @@ The bug's sprite is drawn by the game from your choices, so every bug is differe
 
 **Humanoids** have their own creator too: body (human or furry), height, build, **10 hair styles** (or 10 kinds of ears), 8 faces (glasses, shades, eyepatch...), beards and moustaches, **10 tops** (t-shirt, hoodie, robe, dress, armour...), 6 bottoms, 5 kinds of shoes, **12 hats** (wizard, cowboy, crown, halo...), and something on your back (cape, wings, backpack, scarf or jetpack). 16 ready-made looks.
 
+## Planet monsters (new)
+Every planet now has its own creatures down in the dungeon (about 3 in 10 monsters are local ones; deeper floors bring the nastier ones). They fight in different ways:
+- **Garden:** SNAIL (slow, tough), BUMBLEBEE (hovers and flings stingers). **Pond / ocean worlds:** JELLYFISH (drifting slow shocks), LEECH (heals when it bites). **Picnic:** bumblebees and ACIDLINGS (spit acid). **Night Lawn:** GLOWFLY swarms and WRAITHS. **Beehive:** bumblebees and MANTISES (lunge). **Anthill:** SANDWORMS (charge) and ROCKBACKS (armoured: half damage).
+- **Galaxy worlds:** temperate/meadow/paradise: snails, bumblebees, glowflies. Mountain: rockbacks and SHARDS (floating crystals, fast needles). Desert: sandworms. Ice: FROSTMITE packs and wraiths. Jungle: mantises. Death planet: REAPERS (steal life) and SKELETONS (get up once). City planet: SENTRIES (never move, shoot fast). Hell worlds: fire imps, acidlings, shards, skeletons, reapers, leeches, wraiths. Moons count as rock, dust or ice. Drone outposts also have sentries.
+- Fixed: the ant now has its body colour.
+
 ## Baby mode and more options (new)
 The options screen scrolls and has five new rows. **BABY MODE** (for babies, really): you take 1 damage at most, you never get hungry, fainting costs nothing, Buddy heals your boo-boos, and gold and XP are doubled. **HUNGER** on/off, **LOSE STUFF WHEN YOU FAINT** on/off, **XP SPEED** and **GOLD** x1 / x2 / x5. All remembered on the cartridge.
 
