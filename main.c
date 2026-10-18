@@ -183,7 +183,7 @@ enum { XO_DMGIN, XO_DMGOUT, XO_CRIT, XO_BITESPD, XO_BITERNG, XO_KNOCK, XO_HITSTO
        XO_HUNGER, XO_REGEN, XO_HEAL, XO_MANA, XO_MAXH, XO_FUEL,
        XO_MOVE, XO_DODGEI, XO_DODGED, XO_FLOORS,
        XO_XP, XO_GOLD, XO_DROPS, XO_UNIQUE, XO_XPNEED,
-       XO_VOL, XO_FPS, XO_MSGT, NXOPT };
+       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, NXOPT };
 XL(xl_dmgin,"NONE","1/4","1/2","NORMAL","X2","X4","X10")           XV(xl_dmgin,0,25,50,100,200,400,1000)
 XL(xl_dmgout,"1/4","1/2","NORMAL","X2","X5","X10","X100","X1000")  XV(xl_dmgout,25,50,100,200,500,1000,10000,100000)
 XL(xl_crit,"NORMAL","+10%","+25%","+50%","ALWAYS")                   XV(xl_crit,0,10,25,50,100)
@@ -197,8 +197,9 @@ XL(xl_spell,"FREE","1/4","1/2","NORMAL")                            XV(xl_spell,
 XL(xl_invt,"SHORT","NORMAL","LONG","2 SEC","5 SEC")                 XV(xl_invt,15,30,60,120,300)
 XL(xl_yn,"OFF","ON")                                                XV(xl_yn,0,1)
 XL(xl_espd,"FROZEN","1/2","3/4","NORMAL","X1.5","X2","X3")          XV(xl_espd,0,50,75,100,150,200,300)
+XL(xl_bud,"1","2","3","5","10")                                   XV(xl_bud,1,2,3,5,10)
 XL(xl_ehp,"1/4","1/2","NORMAL","X2","X5","X10")                     XV(xl_ehp,25,50,100,200,500,1000)
-XL(xl_ecnt,"NONE","1/4","1/2","NORMAL","X2","X3","X5")              XV(xl_ecnt,0,25,50,100,200,300,500)
+XL(xl_ecnt,"NONE","1/4","1/2","NORMAL","X2","X3","X5","X7","X10")  XV(xl_ecnt,0,25,50,100,200,300,500,700,1000)
 XL(xl_eawr,"SHORT","NORMAL","LONG","VERY LONG","EVERYWHERE")        XV(xl_eawr,50,100,200,400,1000)
 XL(xl_estr,"1/4","1/2","NORMAL","X1.5","X2","X5")                   XV(xl_estr,25,50,100,150,200,500)
 XL(xl_boss,"NONE","+1","+2","+4","+8","+15")                        XV(xl_boss,0,1,2,4,8,15)
@@ -236,6 +237,7 @@ static const XOpt XOT[NXOPT]={
   [XO_ECOUNT] =XR("MONSTER COUNT","HOW MANY MONSTERS FILL EACH ROOM (NEXT FLOOR)",xl_ecnt,3,XG_ENEMY),
   [XO_EAWARE] =XR("MONSTER SIGHT","HOW FAR AWAY MONSTERS NOTICE YOU AND COME",xl_eawr,1,XG_ENEMY),
   [XO_ESTR]   =XR("MONSTER STRENGTH","HOW HARD MONSTERS HIT, BEFORE YOUR ARMOUR",xl_estr,2,XG_ENEMY),
+  [XO_BUDDY]  =XR("LADYBUG BUDDIES","HOW MANY BUDDIES FIGHT BY YOUR SIDE IN DUNGEONS. UP TO 10",xl_bud,0,XG_ENEMY),
   [XO_BOSSES] =XR("EXTRA BOSSES","MORE BOSSES AT THE BOTTOM OF EVERY ZONE (NEXT FLOOR)",xl_boss,0,XG_ENEMY),
   [XO_HUNGER] =XR("HUNGER SPEED","HOW FAST YOU GET HUNGRY (IF HUNGER IS ON)",xl_hung,2,XG_SURV),
   [XO_REGEN]  =XR("HEAL TIMER","HOW OFTEN SLOW HEALING AND MANA TICK",xl_regn,0,XG_SURV),
@@ -262,6 +264,14 @@ static int xo_i(int o){ int i=xo[o]^XOT[o].def; return i<XOT[o].n ? i : XOT[o].d
 static int xo_v(int o){ return XOT[o].val[xo_i(o)]; }
 static u16 xo_snd(void){ int i=xo_i(XO_VOL); if(i>=7) return 0; { int l=7-i; return (u16)(0xFF00|(l<<4)|l); } }   // the sound chip's master volume (and mute)
 static int xo_hp(int h){ long long v=(long long)h*xo_v(XO_EHP)/100; if(v<1) v=1; if(v>32000) v=32000; return (int)v; }   // monster health is a 16-bit number
+#define NBUD 9                                                   // the extra Buddies (LADYBUG BUDDIES): they bite, they never get hurt
+typedef struct { s32 x, y; s16 cool; u8 flash, pad; } Bud;
+static Bud bud[NBUD]; static s32 bud_dd[NBUD];
+static int nbud(void){
+#ifdef TEST_BUD
+    return NBUD;
+#endif
+    return xo_v(XO_BUDDY)-1; }
 static int xo_n(int c){ int v=xo_v(XO_ECOUNT); if(v==100) return c; c=c*v/100; if(v && c<1) c=1; return c; }
 static int xo_fuel(int n){ return (n*xo_v(XO_FUEL)+99)/100; }
 
@@ -726,6 +736,16 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         if(pet_hp<=0){ pet_down_t=900; say("BUDDY IS HURT. HE'LL BE BACK"); }
     }
     if(wtick && pet_down_t && --pet_down_t==0){ pet_hp=pet_maxhp/2; pet_x=px_; pet_y=py_; say("BUDDY IS BACK!"); }
+    // ---- the other Buddies: each goes for the monster nearest to it, or keeps its place in a ring round you
+    if(wtick) for(int k=0;k<nbud();k++){ Bud *b=&bud[k]; int tg=-1; s32 best=0x48000;
+        for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; if(dist8(o->x-px_,o->y-py_)>0x50000) continue; s32 d=dist8(o->x-b->x,o->y-b->y); if(d<best){ best=d; tg=i; } }
+        s32 tx,ty; if(tg>=0){ int a=(k*256/NBUD)&255; tx=dob[tg].x+((cosx(a)*0x0C00)>>14); ty=dob[tg].y+((sinx(a)*0x0C00)>>14); }
+        else { s32 side=(k&1)?1:-1, lat=side*(0x5000+(k>>1)*0x4000), fwd=0x1C000+(k>>1)*0x6000; tx=px_+(s32)(((long long)dirx*fwd)>>16)-(s32)(((long long)diry*lat)>>16); ty=py_+(s32)(((long long)diry*fwd)>>16)+(s32)(((long long)dirx*lat)>>16); }   // a V at your sides
+        s32 dx=tx-b->x, dy=ty-b->y, d=dist8(dx,dy), st = d>0x20000 ? 0x2000 : d>0x10000 ? 0x1400 : 0x0900;   // (far behind: they hurry)
+        if(d>(tg>=0?0x7000:0x3000)){ s32 sx=dx>0x800?st:dx<-0x800?-st:0, sy=dy>0x800?st:dy<-0x800?-st:0; if(!solid(b->x+sx*3,b->y)) b->x+=sx; if(!solid(b->x,b->y+sy*3)) b->y+=sy; }
+        if(dist8(px_-b->x,py_-b->y)>0x80000){ b->x=px_; b->y=py_; }
+        if(b->cool) b->cool--; if(b->flash) b->flash--;
+        if(tg>=0 && best<0xC000 && !b->cool){ hit_mon(&dob[tg], pet_dmg(), 0); b->cool=(s16)(20+(k&3)); b->flash=4; } }
     // ---- monsters, pickups, cages
     s32 named_d=0x60000; if(wtick){ near_cage_p=-1; named_p=0; }
     for(int i=0;wtick && i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(o->flash) o->flash--;
@@ -845,8 +865,11 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     EW static u8 ord[NDO+1]; EW static s32 dd[NDO+1]; int n=0;
     for(int i=0;i<ndo;i++) if(dob[i].alive){ s32 dx=dob[i].x-px_, dy=dob[i].y-py_; dd[i]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); if(dd[i]<12845056) ord[n++]=i; }   // (things more than 14 cells away are not drawn or sorted: keeps big crowds fast)
     if(pet_here){ petobj.kind=K_PET; petobj.alive=1; petobj.x=pet_x; petobj.y=pet_y; s32 dx=pet_x-px_, dy=pet_y-py_; dd[NDO]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=NDO; }
-    for(int i=1;i<n;i++){ u8 t=ord[i]; int j=i; while(j>0 && dd[ord[j-1]]<dd[t]){ ord[j]=ord[j-1]; j--; } ord[j]=t; }
-    for(int i=0;i<n;i++) draw_sprite(pg, ord[i]==NDO ? &petobj : &dob[ord[i]], dirx,diry,plx,ply);
+    for(int k=0;k<nbud() && n<NDO+1;k++){ s32 dx=bud[k].x-px_, dy=bud[k].y-py_; bud_dd[k]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); if(bud_dd[k]<12845056) ord[n++]=(u8)(NDO+1+k); }   // (the other Buddies sort in too)
+    #define ODD(t) ((t)>NDO ? bud_dd[(t)-NDO-1] : dd[t])
+    for(int i=1;i<n;i++){ u8 t=ord[i]; int j=i; while(j>0 && ODD(ord[j-1])<ODD(t)){ ord[j]=ord[j-1]; j--; } ord[j]=t; }
+    for(int i=0;i<n;i++){ int t=ord[i]; if(t>NDO){ static DObj bo; Bud *b=&bud[t-NDO-1]; bo=petobj; bo.kind=K_PET; bo.alive=1; bo.x=b->x; bo.y=b->y; bo.flash=0; draw_sprite(pg,&bo,dirx,diry,plx,ply); }
+        else draw_sprite(pg, t==NDO ? &petobj : &dob[t], dirx,diry,plx,ply); }
     for(int i=0;i<NPROJ;i++){ Proj *p=&proj[i]; if(!p->alive) continue;
         if(p->kind==0) draw_glow(pg,p->x,p->y,p->h,0x2400 + (sinI[(frames*40)&255]>>6),R_FLAME+7,R_FLAME+4,dirx,diry,plx,ply);
         else draw_glow(pg,p->x,p->y,p->h,0x0C00,R_CHEST+7,R_CHEST+5,dirx,diry,plx,ply); }
