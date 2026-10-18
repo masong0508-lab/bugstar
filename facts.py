@@ -161,12 +161,44 @@ OLD = [(1,"0"),(5,"32768"),(5,"38400"),(5,"65536"),(6,"27033"),(10,"42949"),(10,
        (50,"13547"),(56,"10228"),(58,"49039"),(94,"20859"),(95,"66749"),(96,"37600"),(105,"28668"),(106,"16100"),(152,"52205"),(507,"85781"),
        (1492,"22998"),(26742,"12490"),(39457,"40141"),(78914,"16113"),(173394,"18945")]
 
-# THE BUGSTARILLION: 10 to the power (3 x S + 3), where S is "EVERY SECOND OF THE SCREEN". In the Conway-Wechsler system its name
-# is ONE, then S's own digits read in threes as Latin (each three: units-tens-hundreds, then ILLI), ending in ILLION. One word.
+# THE BUGSTARILLION: S (the "EVERY SECOND OF THE SCREEN" number), then three zeros for every Planck volume in the observable universe.
+# So BY NAME lists every group of S, each with a name for a power of a thousand that is itself a 185-digit number: about 30 lines each.
 BIGN_SRC = "EVERY SECOND OF THE SCREEN"
-def cw_words(v):                       # how many hyphen pieces the Latin for one group of three is (the same split the game draws)
-    if v < 10: return 1
-    return (v % 10 != 0) + ((v // 10) % 10 != 0) + (v // 100 != 0)
+def planck_volumes():                  # a sphere 46.5 billion light years across in radius, cut into boxes one Planck length a side
+    from decimal import Decimal, getcontext
+    getcontext().prec = 300
+    getcontext().prec += 2; t = s = Decimal(3); lasts, n, na, d, da = 0, 1, 0, 0, 24
+    while s != lasts: lasts = s; n, na = n + na, na + 8; d, da = d + da, da + 32; t = (t * n) / d; s += t
+    getcontext().prec -= 2
+    R = Decimal(46500000000) * Decimal(9460730472580800); l = Decimal("1.616255e-35")
+    return int((Decimal(4) / 3 * s * R ** 3 / l ** 3).to_integral_value(rounding="ROUND_FLOOR"))
+SM = ["NI","MI","BI","TRI","QUADRI","QUINTI","SEXTI","SEPTI","OCTI","NONI"]
+UN = ["","UN","DUO","TRE","QUATTUOR","QUIN","SE","SEPTE","OCTO","NOVE"]
+TE = ["","DECI","VIGINTI","TRIGINTA","QUADRAGINTA","QUINQUAGINTA","SEXAGINTA","SEPTUAGINTA","OCTOGINTA","NONAGINTA"]
+HU = ["","CENTI","DUCENTI","TRECENTI","QUADRINGENTI","QUINGENTI","SESCENTI","SEPTINGENTI","OCTINGENTI","NONGENTI"]
+TM = [0,1,2|4,1|4,1|4,1|4,1,1,2|8,0]; HM = [0,1|8,1,1|4,1|4,1|4,1,1,2|8,0]
+def cw(v):                             # the Latin for 0..999, exactly as the game's cw_prefix makes it
+    if v < 10: return SM[v]
+    u, t, h = v % 10, (v // 10) % 10, v // 100; o = ""
+    if u:
+        m = TM[t] if t else HM[h]; o = UN[u]
+        if u == 3 and (m & 12): o += "S"
+        if u == 6: o += "S" if m & 4 else ("X" if m & 8 else "")
+        if u in (7, 9): o += "M" if m & 2 else ("N" if m & 1 else "")
+    return o + TE[t] + HU[h]
+def big_lines(n, W=48):                # the name of the n-th -illion, wrapped into lines of W letters at ILLI (as the game draws it)
+    ch = []
+    while True:
+        ch.append(n % 1000); n //= 1000
+        if not n: break
+    ch.reverse(); lines = [""]
+    for k, c in enumerate(ch):
+        p = cw(c)
+        if p and p[-1] in "IA": p = p[:-1]
+        p += "ILLION" if k == len(ch) - 1 else "ILLI"
+        if lines[-1] and len(lines[-1]) + len(p) > W: lines.append("")
+        lines[-1] += p
+    return lines
 def make(arr, out):
     data = bytearray(); offs, nds, nzs, abs_, leads = [], [], [], [], []
     big = None
@@ -179,13 +211,24 @@ def make(arr, out):
         data += bytes.fromhex(s + ("0" if n % 2 else ""))
         if t == BIGN_SRC: big = (len(F) and [x[1] for x in F].index(t), s)
     open("facts.bin", "wb").write(bytes(data))
-    # the Bugstarillion's name: one word in parts (a part is a group of three of S), counted in hyphen pieces
+    # the Bugstarillion: S, then 3 x P zeros. Group j of S (from the top) is said with the name of the (P + g-2-j)th -illion
     bi, bs = big; n = len(bs); lead = n - 3 * ((n - 1) // 3)
-    groups = [int(bs[:lead])] + [int(bs[i:i + 3]) for i in range(lead, n, 3)]
-    words = 1 + sum(cw_words(g) + 1 for g in groups)        # ONE, then each group's Latin and its ILLI (the last one: ILLION)
-    secs = words // 2
+    groups = [int(bs[:lead])] + [int(bs[i:i + 3]) for i in range(lead, n, 3)]; g = len(groups); nz = sum(1 for v in groups if v)
+    P = planck_volumes(); pc = []; x = P - 1                     # (the game adds g-1-j to P-1)
+    while x: pc.append(x % 1000); x //= 1000
+    pc.reverse()
+    H = 0
+    for off in list(range(0, 3000)) + list(range(g - 3000, g)) + list(range(0, g, 997)): H = max(H, len(big_lines(P - 1 + off)))
+    L0 = big_lines(P - 1 + g - 1)
+    letters = sum(len(l) for l in L0)
+    words = nz * (1 + len(pc))                                    # each name: its value, then one word for every group of P
+    secs = words // 2; yrs = secs // 31557600; days = (secs % 31557600) // 86400
+    D = n + 3 * P; ds = str(D)
     out.append("#define NSOLD %d" % len(OLD)); out.append("#define NFACT %d" % len(F))
-    out.append("#define BIGN_SRC %d\n#define BIGN_PARTS %d\n#define BIGN_WORDS %du\n#define BIGN_DAYS %d\n#define BIGN_HOURS %d" % (bi, len(groups), words, secs // 86400, (secs % 86400) // 3600))
+    out.append("#define BIGN_SRC %d\n#define BIGS_G %d\n#define BIGS_NZ %d\n#define BIG_H %d\n#define BIGP_N %d\n#define BIG_WORDS %du\n#define BIG_YEARS %d\n#define BIG_DAYS %d\n#define BIG_LETTERS %d"
+               % (bi, g, nz, H, len(pc), words, yrs, days, letters))
+    out.append('#define BIG_DIGITS "%s.%s"\n#define BIG_DEXP %d\n#define BIG_PLANCK "%s.%s"\n#define BIG_PEXP %d' % (ds[0], ds[1:3], len(ds) - 1, str(P)[0], str(P)[1:3], len(str(P)) - 1))
+    arr("bigp", "unsigned short", pc)
     arr("fact_off", "unsigned int", offs); arr("fact_nd", "unsigned int", nds); arr("fact_nz", "unsigned int", nzs)
     arr("fact_ab", "unsigned char", abs_); arr("fact_lead", "unsigned int", leads)
     q = lambda s_: "0" if s_ is None else '"' + s_ + '"'
