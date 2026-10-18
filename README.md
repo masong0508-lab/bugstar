@@ -47,6 +47,15 @@ The bug's sprite is drawn by the game from your choices, so every bug is differe
 
 **Humanoids** have their own creator too: body (human or furry), height, build, **10 hair styles** (or 10 kinds of ears), 8 faces (glasses, shades, eyepatch...), beards and moustaches, **10 tops** (t-shirt, hoodie, robe, dress, armour...), 6 bottoms, 5 kinds of shoes, **12 hats** (wizard, cowboy, crown, halo...), and something on your back (cape, wings, backpack, scarf or jetpack). 16 ready-made looks.
 
+## Even more planet monsters (new)
+50 more creatures, so there are now 66 planet monsters, and every kind of world has 8 of its own (it was 2). About half the monsters in a dungeon now belong to that planet.
+- **Green worlds:** earwig, aphid packs, dragonfly, stinkbug, flatworm, hornet, weevil, hopper, monarch, tick, pixie, puffball.
+- **Water worlds:** crayfish, piranha packs, eel, urchin, squid, mosquito swarms, newt, angler.
+- **Dry and rocky worlds:** antlion, scarab, solifuge, geode, gecko. **Ice:** iceworm, yeti, snowball, icicle, penguins.
+- **Jungle:** tarantula, tree frog, strangler vine, pitcher plant, bullet ants. **Death and bone:** zombug, banshee, mummy, crows, graveworm.
+- **City:** roaches, turret, rats, scrapbot, pigeons. **Fire:** lava worm, cinders, salamander, hellhounds, pyre.
+- Two new tricks: **BOOM** monsters (stinkbug, snowball, scrapbot, cinder) blow up when they die, so stand back. **SPLIT** monsters (flatworm, puffball, geode, zombug) break into two smaller ones.
+
 ## Planet monsters (new)
 Every planet now has its own creatures down in the dungeon (about 3 in 10 monsters are local ones; deeper floors bring the nastier ones). They fight in different ways:
 - **Garden:** SNAIL (slow, tough), BUMBLEBEE (hovers and flings stingers). **Pond / ocean worlds:** JELLYFISH (drifting slow shocks), LEECH (heals when it bites). **Picnic:** bumblebees and ACIDLINGS (spit acid). **Night Lawn:** GLOWFLY swarms and WRAITHS. **Beehive:** bumblebees and MANTISES (lunge). **Anthill:** SANDWORMS (charge) and ROCKBACKS (armoured: half damage).

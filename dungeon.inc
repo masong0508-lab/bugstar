@@ -15,15 +15,19 @@ static u16 lampcell[12]; static int nlamps;
 typedef struct { s32 x,y; s16 hp, maxhp; s8 kind, alive, flash; u8 sub, it, rar, pre, suf, lvl, champ, cname; s16 cool, venom; s32 kvx, kvy; u8 stag, lunge, wind, ph; } DObj;     // wind: ticks of wind-up before it bites. ph: boss phase
 enum { K_SPIDER, K_CHEST, K_ITEM, K_CAGE, K_BOSS, K_BAT, K_LAMP, K_BEETLE, K_WASP, K_PET, K_BARREL, K_CORE, K_SLIME, K_SCORP, K_GHOST, K_TOAD, K_ANT, K_CENTI, K_GOLEM, K_DRONE, K_MOTH, K_SHROOM, K_CRAB, K_WISP };   // K_MOTH: flutters fast, fragile, comes in packs. K_SHROOM: slow, spits spore clouds. K_CRAB: armoured, slow, hits very hard. K_WISP: floats, fires quick bolts, fragile. // K_SLIME: splits in two when it dies (sub=1: a small one). K_SCORP: fast, hits hard. K_GHOST: floats, erratic, fragile. K_TOAD: spits slow heavy blobs. // K_CORE: an outpost's power core: smash it
 // ---- PLANET MONSTERS: 16 creatures that belong to particular worlds. One table row each: how it looks, moves, bites, shoots.
-enum { K_SNAIL=24, K_BUMBLE, K_JELLY, K_ROCKBK, K_SANDWM, K_FROSTM, K_MANTIS, K_REAPER, K_SENTRY, K_GLOWFLY, K_FIREIMP, K_ACIDLG, K_SHARD, K_SKELE, K_LEECH, K_WRAITH, K_NEND };
+enum { K_SNAIL=24, K_BUMBLE, K_JELLY, K_ROCKBK, K_SANDWM, K_FROSTM, K_MANTIS, K_REAPER, K_SENTRY, K_GLOWFLY, K_FIREIMP, K_ACIDLG, K_SHARD, K_SKELE, K_LEECH, K_WRAITH,
+       K_EARWIG, K_APHID, K_DRAGONFLY, K_STINKBUG, K_FLATWORM, K_HORNET, K_WEEVIL, K_HOPPER, K_MONARCH, K_TICK, K_PIXIE, K_PUFFBALL, K_CRAYFISH, K_PIRANHA, K_EEL, K_URCHIN, K_SQUID, K_MOSQUITO, K_NEWT, K_ANGLER, K_ANTLION, K_SCARAB, K_SOLIFUGE, K_GEODE, K_GECKO, K_ICEWORM, K_YETI, K_SNOWBALL, K_ICICLE, K_PENGUIN, K_TARANTULA, K_TREEFROG, K_STRANGLER, K_PITCHER, K_BULLETANT, K_ZOMBUG, K_BANSHEE, K_MUMMY, K_CROW, K_GRAVEWORM, K_ROACH, K_TURRET, K_RAT, K_SCRAPBOT, K_PIGEON, K_LAVAWORM, K_CINDER, K_SALAMANDER, K_HELLHOUND, K_PYRE,   // the 50 from monsters.py
+       K_NEND };
 #define NF_FLY 1       // hovers
 #define NF_SHOOT 2     // keeps its distance and shoots
 #define NF_CHARGE 4    // winds up, then barrels at you (like beetles)
 #define NF_PACK 8      // comes in threes
 #define NF_LEECH 16    // heals itself when it bites you
 #define NF_ARMOR 32    // takes half damage
+#define NF_BOOM 64     // blows up when it dies: stand back
+#define NF_SPLIT 128   // splits into two smaller ones when it dies (they don't split again)
 typedef struct { const u8 *art; u8 w,h; u16 hw, stp, rad, pspd; u8 hpm,dmm,xpm,wind,mass,fl,pdm,pcool,mdl,mdp; } NMon;   // hpm/dmm/xpm: x/8 of the usual health/bite/XP. pspd,pdm(x/4),pcool: its shots. mdl/mdp: first level / first floor it appears
-static const NMon nm_tab[16]={
+static const NMon nm_tab[K_NEND-K_SNAIL]={
  {art_snail,SNAIL_W,SNAIL_H,    0x6000,0x0180,0x3000,0,     16, 6,10,6, 6, 0,           0, 0, 0,1},   // SNAIL: slow, tough, soft bite
  {art_bumble,BUMBLE_W,BUMBLE_H, 0x4800,0x0500,0x2800,0x1400, 6, 6,12,4, 2, NF_FLY|NF_SHOOT, 4,50, 1,2},   // BUMBLEBEE: buzzes about and flings stingers
  {art_jelly,JELLY_W,JELLY_H,    0x5000,0x0380,0x2C00,0x0A00, 7, 7,12,5, 1, NF_FLY|NF_SHOOT, 6,70, 1,2},   // JELLYFISH: drifts, slow shocks
@@ -40,21 +44,88 @@ static const NMon nm_tab[16]={
  {art_skele,SKELE_W,SKELE_H,    0x7000,0x0540,0x2C00,0,      9,10,14,5, 4, 0,           0, 0, 1,2},   // SKELETON: gets up once after it dies
  {art_leech,LEECH_W,LEECH_H,    0x3800,0x0640,0x2800,0,      7, 7,12,4, 2, NF_LEECH,     0, 0, 0,1},   // LEECH: heals when it bites
  {art_wraith,WRAITH_W,WRAITH_H, 0x7000,0x0480,0x2C00,0,      5,11,22,4, 1, NF_FLY,       0, 0, 3,4},   // WRAITH: fragile, bites hard
+ {art_mn_earwig,MN_EARWIG_W,MN_EARWIG_H, 0x4800,0x0700,0x2800,0, 7, 9,12,3, 3, NF_CHARGE, 0, 0, 0,1},   // EARWIG
+ {art_mn_aphid,MN_APHID_W,MN_APHID_H, 0x2800,0x0500,0x1800,0, 2, 3, 4,2, 1, NF_PACK, 0, 0, 0,1},   // APHID
+ {art_mn_dragonfly,MN_DRAGONFLY_W,MN_DRAGONFLY_H, 0x5000,0x0900,0x2400,0, 6, 8,14,3, 1, NF_FLY|NF_CHARGE, 0, 0, 1,2},   // DRAGONFLY
+ {art_mn_stinkbug,MN_STINKBUG_W,MN_STINKBUG_H, 0x4800,0x0300,0x2C00,0, 9, 6,12,5, 5, NF_BOOM, 0, 0, 0,1},   // STINKBUG
+ {art_mn_flatworm,MN_FLATWORM_W,MN_FLATWORM_H, 0x3000,0x0380,0x2C00,0, 10, 6,12,5, 2, NF_SPLIT, 0, 0, 0,1},   // FLATWORM
+ {art_mn_hornet,MN_HORNET_W,MN_HORNET_H, 0x5000,0x0600,0x2800,0x1800, 8,10,16,4, 2, NF_FLY|NF_SHOOT, 6,45, 2,3},   // HORNET
+ {art_mn_weevil,MN_WEEVIL_W,MN_WEEVIL_H, 0x4000,0x0400,0x2800,0, 12, 7,14,5, 6, NF_ARMOR, 0, 0, 1,2},   // WEEVIL
+ {art_mn_hopper,MN_HOPPER_W,MN_HOPPER_H, 0x5000,0x0A00,0x2800,0, 7, 8,12,2, 2, NF_CHARGE, 0, 0, 0,1},   // HOPPER
+ {art_mn_monarch,MN_MONARCH_W,MN_MONARCH_H, 0x5000,0x0600,0x2400,0x1200, 5, 5,10,4, 1, NF_FLY|NF_SHOOT, 4,70, 0,1},   // MONARCH
+ {art_mn_tick,MN_TICK_W,MN_TICK_H, 0x2C00,0x0500,0x1C00,0, 4, 5, 8,3, 1, NF_LEECH|NF_PACK, 0, 0, 1,2},   // TICK
+ {art_mn_pixie,MN_PIXIE_W,MN_PIXIE_H, 0x4800,0x0800,0x2000,0x1C00, 5, 7,16,3, 1, NF_FLY|NF_SHOOT, 5,50, 2,3},   // PIXIE
+ {art_mn_puffball,MN_PUFFBALL_W,MN_PUFFBALL_H, 0x5000,0x0300,0x3000,0, 12, 5,12,6, 3, NF_SPLIT, 0, 0, 0,1},   // PUFFBALL
+ {art_mn_crayfish,MN_CRAYFISH_W,MN_CRAYFISH_H, 0x5800,0x0480,0x3400,0, 14,10,18,5,10, NF_ARMOR|NF_CHARGE, 0, 0, 2,3},   // CRAYFISH
+ {art_mn_piranha,MN_PIRANHA_W,MN_PIRANHA_H, 0x3800,0x0800,0x2000,0, 4, 9,10,2, 1, NF_PACK, 0, 0, 1,2},   // PIRANHA
+ {art_mn_eel,MN_EEL_W,MN_EEL_H, 0x4000,0x0900,0x2C00,0, 9,11,16,4, 3, NF_CHARGE, 0, 0, 1,2},   // EEL
+ {art_mn_urchin,MN_URCHIN_W,MN_URCHIN_H, 0x4800,0x0000,0x2C00,0x1600,14, 7,14,4,20, NF_SHOOT|NF_ARMOR, 5,55, 1,2},   // URCHIN
+ {art_mn_squid,MN_SQUID_W,MN_SQUID_H, 0x6000,0x0500,0x2C00,0x1000,10, 8,14,4, 3, NF_FLY|NF_SHOOT, 6,65, 1,2},   // SQUID
+ {art_mn_mosquito,MN_MOSQUITO_W,MN_MOSQUITO_H, 0x3800,0x0800,0x1C00,0, 3, 5, 8,2, 1, NF_FLY|NF_LEECH|NF_PACK, 0, 0, 0,1},   // MOSQUITO
+ {art_mn_newt,MN_NEWT_W,MN_NEWT_H, 0x3000,0x0800,0x2000,0, 5, 6, 8,3, 1, 0, 0, 0, 0,1},   // NEWT
+ {art_mn_angler,MN_ANGLER_W,MN_ANGLER_H, 0x6000,0x0400,0x3000,0, 14,13,20,6, 6, NF_LEECH, 0, 0, 3,4},   // ANGLER
+ {art_mn_antlion,MN_ANTLION_W,MN_ANTLION_H, 0x4800,0x0300,0x3000,0, 14,13,18,8, 8, NF_CHARGE, 0, 0, 2,3},   // ANTLION
+ {art_mn_scarab,MN_SCARAB_W,MN_SCARAB_H, 0x5000,0x0500,0x3000,0, 14, 8,16,5, 8, NF_ARMOR, 0, 0, 1,2},   // SCARAB
+ {art_mn_solifuge,MN_SOLIFUGE_W,MN_SOLIFUGE_H, 0x5000,0x0A00,0x2C00,0, 8,11,16,3, 3, 0, 0, 0, 1,2},   // SOLIFUGE
+ {art_mn_geode,MN_GEODE_W,MN_GEODE_H, 0x5800,0x0240,0x3400,0, 20, 9,20,6,14, NF_ARMOR|NF_SPLIT, 0, 0, 2,3},   // GEODE
+ {art_mn_gecko,MN_GECKO_W,MN_GECKO_H, 0x3800,0x0900,0x2400,0, 5, 6,10,3, 1, NF_PACK, 0, 0, 0,1},   // GECKO
+ {art_mn_iceworm,MN_ICEWORM_W,MN_ICEWORM_H, 0x5000,0x0500,0x3400,0, 14,10,16,6, 8, NF_CHARGE, 0, 0, 1,2},   // ICEWORM
+ {art_mn_yeti,MN_YETI_W,MN_YETI_H, 0x9800,0x0400,0x4800,0, 34,18,40,8,24, NF_ARMOR, 0, 0, 4,6},   // YETI
+ {art_mn_snowball,MN_SNOWBALL_W,MN_SNOWBALL_H, 0x4000,0x0600,0x2800,0, 6, 5,10,4, 2, NF_BOOM, 0, 0, 0,1},   // SNOWBALL
+ {art_mn_icicle,MN_ICICLE_W,MN_ICICLE_H, 0x7000,0x0000,0x2400,0x2200,10, 8,14,4,20, NF_SHOOT, 5,40, 1,2},   // ICICLE
+ {art_mn_penguin,MN_PENGUIN_W,MN_PENGUIN_H, 0x6000,0x0700,0x2C00,0, 9, 8,12,3, 4, NF_CHARGE|NF_PACK, 0, 0, 1,2},   // PENGUIN
+ {art_mn_tarantula,MN_TARANTULA_W,MN_TARANTULA_H, 0x6800,0x0500,0x3800,0, 18,14,24,5, 8, NF_LEECH, 0, 0, 2,3},   // TARANTULA
+ {art_mn_treefrog,MN_TREEFROG_W,MN_TREEFROG_H, 0x4000,0x0500,0x2400,0x1400, 6, 6,12,4, 2, NF_SHOOT, 7,60, 1,2},   // TREE FROG
+ {art_mn_strangler,MN_STRANGLER_W,MN_STRANGLER_H, 0x8000,0x0000,0x3000,0, 22,12,20,3,30, NF_LEECH, 0, 0, 1,2},   // STRANGLER
+ {art_mn_pitcher,MN_PITCHER_W,MN_PITCHER_H, 0x7000,0x0000,0x3000,0x0C00,16, 8,16,4,30, NF_SHOOT, 9,90, 2,3},   // PITCHER
+ {art_mn_bulletant,MN_BULLETANT_W,MN_BULLETANT_H, 0x4800,0x0700,0x2800,0, 6,12,14,3, 3, NF_PACK, 0, 0, 2,3},   // BULLET ANT
+ {art_mn_zombug,MN_ZOMBUG_W,MN_ZOMBUG_H, 0x6000,0x0200,0x3000,0, 18, 9,14,8, 8, NF_SPLIT, 0, 0, 1,2},   // ZOMBUG
+ {art_mn_banshee,MN_BANSHEE_W,MN_BANSHEE_H, 0x7000,0x0500,0x2800,0x1800, 7, 9,20,4, 1, NF_FLY|NF_SHOOT, 6,55, 3,4},   // BANSHEE
+ {art_mn_mummy,MN_MUMMY_W,MN_MUMMY_H, 0x7800,0x0280,0x3000,0, 22,12,22,7,10, NF_ARMOR, 0, 0, 2,3},   // MUMMY
+ {art_mn_crow,MN_CROW_W,MN_CROW_H, 0x5000,0x0900,0x2400,0, 5, 8,12,3, 1, NF_FLY|NF_CHARGE|NF_PACK, 0, 0, 1,2},   // CROW
+ {art_mn_graveworm,MN_GRAVEWORM_W,MN_GRAVEWORM_H, 0x4800,0x0400,0x3000,0, 12,11,16,5, 5, NF_CHARGE|NF_LEECH, 0, 0, 2,3},   // GRAVEWORM
+ {art_mn_roach,MN_ROACH_W,MN_ROACH_H, 0x3800,0x0900,0x2000,0, 5, 5, 8,2, 1, NF_PACK, 0, 0, 0,1},   // ROACH
+ {art_mn_turret,MN_TURRET_W,MN_TURRET_H, 0x5800,0x0000,0x3000,0x2400,14, 7,16,4,20, NF_SHOOT|NF_ARMOR, 5,35, 2,3},   // TURRET
+ {art_mn_rat,MN_RAT_W,MN_RAT_H, 0x4000,0x0800,0x2400,0, 6, 7,10,3, 2, NF_PACK, 0, 0, 0,1},   // RAT
+ {art_mn_scrapbot,MN_SCRAPBOT_W,MN_SCRAPBOT_H, 0x5000,0x0500,0x2C00,0, 10, 8,16,4, 6, NF_BOOM, 0, 0, 1,2},   // SCRAPBOT
+ {art_mn_pigeon,MN_PIGEON_W,MN_PIGEON_H, 0x4800,0x0700,0x2400,0, 5, 6,10,3, 1, NF_FLY|NF_PACK, 0, 0, 0,1},   // PIGEON
+ {art_mn_lavaworm,MN_LAVAWORM_W,MN_LAVAWORM_H, 0x5000,0x0500,0x3400,0, 16,12,18,6, 8, NF_CHARGE, 0, 0, 1,2},   // LAVA WORM
+ {art_mn_cinder,MN_CINDER_W,MN_CINDER_H, 0x4000,0x0800,0x2000,0, 4, 7,10,3, 1, NF_FLY|NF_BOOM|NF_PACK, 0, 0, 1,2},   // CINDER
+ {art_mn_salamander,MN_SALAMANDER_W,MN_SALAMANDER_H, 0x3800,0x0800,0x2400,0x1400, 8, 8,14,3, 2, NF_SHOOT, 6,60, 1,2},   // SALAMANDER
+ {art_mn_hellhound,MN_HELLHOUND_W,MN_HELLHOUND_H, 0x5800,0x0900,0x3000,0, 12,13,20,3, 6, NF_CHARGE|NF_PACK, 0, 0, 3,4},   // HELLHOUND
+ {art_mn_pyre,MN_PYRE_W,MN_PYRE_H, 0x7800,0x0000,0x2C00,0x1600,18, 9,18,4,30, NF_SHOOT|NF_ARMOR, 7,50, 2,3},   // PYRE
 };
 static const NMon *nm_of(int k){ return (k>=K_SNAIL && k<K_NEND) ? &nm_tab[k-K_SNAIL] : 0; }
 static int nm_has(DObj *o, int f){ const NMon *n=nm_of(o->kind); return n && (n->fl&f); }
 // which two creatures live on which world: the six story planets, then every kind of planet out in the galaxy (moons count as rock, dust or ice)
-static const u8 zone_pool[6][2]={{K_SNAIL,K_BUMBLE},{K_JELLY,K_LEECH},{K_BUMBLE,K_ACIDLG},{K_GLOWFLY,K_WRAITH},{K_BUMBLE,K_MANTIS},{K_SANDWM,K_ROCKBK}};
-static const u8 cls_pool[NPC][2]={{K_SNAIL,K_BUMBLE},{K_ROCKBK,K_SHARD},{K_BUMBLE,K_GLOWFLY},{K_JELLY,K_LEECH},{K_SANDWM,K_ROCKBK},{K_FROSTM,K_WRAITH},{K_MANTIS,K_SNAIL},{K_REAPER,K_SKELE},{K_SENTRY,K_GLOWFLY},{K_GLOWFLY,K_BUMBLE},
-    {K_FIREIMP,K_SKELE},{K_ACIDLG,K_FIREIMP},{K_SHARD,K_FIREIMP},{K_SKELE,K_REAPER},{K_LEECH,K_JELLY},{K_WRAITH,K_FROSTM}};   // order of the PC_ classes
+#define NPOOL 8                                    // creatures that live on each kind of world
+static const u8 zone_pool[6][NPOOL]={{K_SNAIL,K_BUMBLE,K_EARWIG,K_APHID,K_STINKBUG,K_HOPPER,K_FLATWORM,K_WEEVIL},{K_JELLY,K_LEECH,K_NEWT,K_MOSQUITO,K_DRAGONFLY,K_CRAYFISH,K_EEL,K_FLATWORM},{K_BUMBLE,K_ACIDLG,K_ROACH,K_RAT,K_HORNET,K_APHID,K_PIGEON,K_STINKBUG},{K_GLOWFLY,K_WRAITH,K_MOSQUITO,K_TICK,K_CROW,K_BANSHEE,K_EARWIG,K_ZOMBUG},{K_BUMBLE,K_MANTIS,K_HORNET,K_MONARCH,K_PIXIE,K_PUFFBALL,K_DRAGONFLY,K_APHID},{K_SANDWM,K_ROCKBK,K_ANTLION,K_BULLETANT,K_SCARAB,K_SOLIFUGE,K_GECKO,K_WEEVIL}};
+static const u8 cls_pool[NPC][NPOOL]={{K_SNAIL,K_BUMBLE,K_EARWIG,K_APHID,K_STINKBUG,K_HOPPER,K_WEEVIL,K_TICK},
+    {K_ROCKBK,K_SHARD,K_GEODE,K_SCARAB,K_GECKO,K_WEEVIL,K_CROW,K_YETI},
+    {K_BUMBLE,K_GLOWFLY,K_HOPPER,K_MONARCH,K_APHID,K_DRAGONFLY,K_HORNET,K_FLATWORM},
+    {K_JELLY,K_LEECH,K_CRAYFISH,K_PIRANHA,K_EEL,K_URCHIN,K_SQUID,K_ANGLER},
+    {K_SANDWM,K_ROCKBK,K_ANTLION,K_SCARAB,K_SOLIFUGE,K_GECKO,K_MUMMY,K_STINKBUG},
+    {K_FROSTM,K_WRAITH,K_ICEWORM,K_YETI,K_SNOWBALL,K_ICICLE,K_PENGUIN,K_SHARD},
+    {K_MANTIS,K_SNAIL,K_TARANTULA,K_TREEFROG,K_STRANGLER,K_PITCHER,K_BULLETANT,K_MOSQUITO},
+    {K_REAPER,K_SKELE,K_ZOMBUG,K_BANSHEE,K_MUMMY,K_CROW,K_GRAVEWORM,K_WRAITH},
+    {K_SENTRY,K_GLOWFLY,K_ROACH,K_TURRET,K_RAT,K_SCRAPBOT,K_PIGEON,K_MOSQUITO},
+    {K_GLOWFLY,K_BUMBLE,K_PIXIE,K_PUFFBALL,K_MONARCH,K_DRAGONFLY,K_NEWT,K_HOPPER},
+    {K_FIREIMP,K_SKELE,K_LAVAWORM,K_CINDER,K_SALAMANDER,K_HELLHOUND,K_PYRE,K_ANTLION},
+    {K_ACIDLG,K_FIREIMP,K_CINDER,K_SALAMANDER,K_PYRE,K_LAVAWORM,K_STINKBUG,K_HELLHOUND},
+    {K_SHARD,K_FIREIMP,K_GEODE,K_SCARAB,K_LAVAWORM,K_SOLIFUGE,K_GECKO,K_CINDER},
+    {K_SKELE,K_REAPER,K_ZOMBUG,K_GRAVEWORM,K_MUMMY,K_CROW,K_BANSHEE,K_RAT},
+    {K_LEECH,K_JELLY,K_PIRANHA,K_MOSQUITO,K_EEL,K_SQUID,K_TICK,K_ANGLER},
+    {K_WRAITH,K_FROSTM,K_ICEWORM,K_BANSHEE,K_SNOWBALL,K_ICICLE,K_YETI,K_PENGUIN}};   // order of the PC_ classes
 static int nm_pick(void){                      // a creature of this planet, or -1 (forge designs keep the mix their maker chose)
     if(forge_on) return -1;
     int k;
-    if(endless) k = cls_pool[wd.cls<NPC?wd.cls:0][rndi(2)]; else k = zone_pool[zone>=0&&zone<6?zone:0][rndi(2)];
-    const NMon *n=nm_of(k); return (dlv()>=n->mdl || depth_no>=n->mdp) ? k : -1;
+    for(int t=0;t<4;t++){                       // (the nastier ones wait for deeper floors: try a few)
+        if(endless) k = cls_pool[wd.cls<NPC?wd.cls:0][rndi(NPOOL)]; else k = zone_pool[zone>=0&&zone<6?zone:0][rndi(NPOOL)];
+        const NMon *n=nm_of(k); if(dlv()>=n->mdl || depth_no>=n->mdp) return k; }
+    return -1;
 }
 static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT","VILE","FROST","ROTTEN"};
-static const char *const kind_name[40]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE","SLIME","SCORPION","GHOST","TOAD","ANT","CENTIPEDE","GOLEM","DRONE","MOTH","SHROOM","CRAB","WISP","SNAIL","BUMBLEBEE","JELLYFISH","ROCKBACK","SANDWORM","FROSTMITE","MANTIS","REAPER","SENTRY","GLOWFLY","FIRE IMP","ACIDLING","SHARD","SKELETON","LEECH","WRAITH"};
+static const char *const kind_name[K_NEND]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE","SLIME","SCORPION","GHOST","TOAD","ANT","CENTIPEDE","GOLEM","DRONE","MOTH","SHROOM","CRAB","WISP","SNAIL","BUMBLEBEE","JELLYFISH","ROCKBACK","SANDWORM","FROSTMITE","MANTIS","REAPER","SENTRY","GLOWFLY","FIRE IMP","ACIDLING","SHARD","SKELETON","LEECH","WRAITH","EARWIG","APHID","DRAGONFLY","STINKBUG","FLATWORM","HORNET","WEEVIL","HOPPER","MONARCH","TICK","PIXIE","PUFFBALL","CRAYFISH","PIRANHA","EEL","URCHIN","SQUID","MOSQUITO","NEWT","ANGLER","ANTLION","SCARAB","SOLIFUGE","GEODE","GECKO","ICEWORM","YETI","SNOWBALL","ICICLE","PENGUIN","TARANTULA","TREE FROG","STRANGLER","PITCHER","BULLET ANT","ZOMBUG","BANSHEE","MUMMY","CROW","GRAVEWORM","ROACH","TURRET","RAT","SCRAPBOT","PIGEON","LAVA WORM","CINDER","SALAMANDER","HELLHOUND","PYRE"};
 static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE||k==K_SLIME||k==K_SCORP||k==K_GHOST||k==K_TOAD||k==K_ANT||k==K_CENTI||k==K_GOLEM||k==K_DRONE||k==K_MOTH||k==K_SHROOM||k==K_CRAB||k==K_WISP||(k>=K_SNAIL&&k<K_NEND); }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 160                                   // objects on a floor (was 64): room for crowds on the deep floors
@@ -165,9 +236,12 @@ static int pick_kind0(void){                                                    
 }
 static int pick_kind(void){                                                      // the old mix, plus a few new creatures from the early floors on
     int k=pick_kind0(), x=rndi(100);
+#ifdef TEST_SPLITBOOM
+    return x&1 ? K_FLATWORM : x&2 ? K_STINKBUG : K_PUFFBALL;
+#endif
     if(base_mode && x<30) return K_DRONE;
     if(base_mode && x>=30 && x<42 && (dlv()>=2||depth_no>=3)) return K_SENTRY;      // outposts: drones, and sentries that never move
-    if(!base_mode && rndi(100)<30){ int pk=nm_pick(); if(pk>=0) return pk; }          // about 3 in 10: a creature of THIS planet                                          // outposts: the ants' drones
+    if(!base_mode && rndi(100)<50){ int pk=nm_pick(); if(pk>=0) return pk; }          // about half: a creature of THIS planet                                          // outposts: the ants' drones
     if(x>=90 && (dlv()>=1||depth_no>=2)) return K_ANT;
     if(x>=84 && x<90) return K_CENTI;
     if(x>=80 && x<84 && (dlv()>=3||depth_no>=5)) return K_GOLEM;
@@ -594,7 +668,7 @@ typedef struct { const u8 *art; int aw, ah, hw, tint; } SprArt;
 __attribute__((noinline)) static SprArt sprite_art(DObj *o){      // runs from ROM: which picture, how big, what tint
     int anim = ((frames>>2) + (int)(o-dob)) & 1;
     const u8 *art; int aw, ah, hw, tint=0;
-    { const NMon *nm=nm_of(o->kind); if(nm){ SprArt r={nm->art,nm->w,nm->h,nm->hw,0}; return r; } }      // the planet monsters
+    { const NMon *nm=nm_of(o->kind); if(nm){ SprArt r={nm->art,nm->w,nm->h,o->sub?nm->hw*2/3:nm->hw,0}; return r; } }   // (a split-off one is smaller)      // the planet monsters
     switch(o->kind){
         case K_SPIDER: art=anim?spider_art2:spider_art; aw=SPIDER_W; ah=SPIDER_H; hw=0x7000; break;
         case K_BOSS: art=anim?spider_art2:spider_art; aw=SPIDER_W; ah=SPIDER_H; hw=0x11000; break;

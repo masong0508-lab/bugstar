@@ -352,6 +352,10 @@ static int mon_dmg(DObj *o){
     return b;
 }
 static void kill_mon(DObj *o){
+    if(nm_has(o,NF_SPLIT) && !o->sub){ for(int s=0;s<2 && ndo<NDO;s++){ DObj *c=&dob[ndo++]; *c=*o; c->sub=1; c->champ=0; c->venom=0; c->hp=c->maxhp=(s16)(o->maxhp/2>0?o->maxhp/2:1);   // flatworms, puffballs, geodes, zombugs: two smaller ones
+            c->x=o->x+(s?0x2400:-0x2400); c->y=o->y+(s?-0x1000:0x1000); if(solid(c->x,c->y)){ c->x=o->x; c->y=o->y; } c->flash=6; c->stag=14; c->wind=0; }
+        say("IT SPLITS IN TWO!"); }
+    if(nm_has(o,NF_BOOM)){ burst(o->x,o->y,0x6000,12,0); sfx(3); if(dist8(px_-o->x,py_-o->y)<0x18000){ hurt(mon_dmg(o)*2); hurt_flash=8; say("BOOM! IT BLEW UP"); } }   // stinkbugs, snowballs, scrapbots, cinders
     if(o->kind==K_SKELE && !o->ph){ o->ph=1; o->hp=o->maxhp/2+1; o->flash=8; o->stag=12; o->venom=0; say("THE BONES RISE AGAIN!"); sfx(14); return; }   // skeletons get up once
     fl_kill(o);
     int boss=o->kind==K_BOSS, hive = boss && endless && hive_boss_floor(); int nbo=0; if(boss) for(int i=0;i<ndo;i++) if(&dob[i]!=o && dob[i].alive && dob[i].kind==K_BOSS) nbo++;
@@ -736,6 +740,16 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         if(pet_hp<=0){ pet_down_t=900; say("BUDDY IS HURT. HE'LL BE BACK"); }
     }
     if(wtick && pet_down_t && --pet_down_t==0){ pet_hp=pet_maxhp/2; pet_x=px_; pet_y=py_; say("BUDDY IS BACK!"); }
+#ifdef TEST_ZOO
+    { static int zg=-1; int g=(int)((vbl_count/160)%10); stun_t=50; hearts=maxh;     // (test: the new monsters, five at a time, lined up in front of you)
+      if(g!=zg){ zg=g; int k=0; for(int i=0;i<ndo && k<5;i++){ DObj *o=&dob[i]; if(!o->alive || !is_mon(o->kind)) continue; o->kind=(s8)(K_EARWIG+g*5+k); o->sub=0; o->champ=0;
+          s32 lat=(k-2)*0xB000; o->x=px_+(s32)(((long long)dirx*0x24000)>>16)-(s32)(((long long)diry*lat)>>16); o->y=py_+(s32)(((long long)diry*0x24000)>>16)+(s32)(((long long)dirx*lat)>>16); k++; } }
+      for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(o->alive && is_mon(o->kind) && (o->kind<K_EARWIG+zg*5 || o->kind>=K_EARWIG+zg*5+5)) o->x=o->y=0x10000; } }
+#endif
+#ifdef TEST_SPLITBOOM
+    if(hearts<maxh/2) hearts=maxh;
+    { char b[24]; static int mx=0; int n=0; for(int i=0;i<ndo;i++) if(dob[i].alive && dob[i].sub) n++; if(n>mx) mx=n; scpy(b,"SPLITS "); ncat(b,mx); scat(b," NDO "); ncat(b,ndo); say(b); }
+#endif
     // ---- the other Buddies: each goes for the monster nearest to it, or keeps its place in a ring round you
     if(wtick) for(int k=0;k<nbud();k++){ Bud *b=&bud[k]; int tg=-1; s32 best=0x48000;
         for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; if(dist8(o->x-px_,o->y-py_)>0x50000) continue; s32 d=dist8(o->x-b->x,o->y-b->y); if(d<best){ best=d; tg=i; } }
