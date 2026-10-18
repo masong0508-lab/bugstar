@@ -14,7 +14,7 @@ _Static_assert(__builtin_offsetof(KWSave,sum)==sizeof(KWSave)-4, "KWSave: the su
 _Static_assert(KW_OFF+sizeof(KWSave) <= FG_OFF, "Kart World's block must end before the Dungeon Forge's");
 EW static KWSave kw;
 static int kw_quit=0, kw_tour=0, kw_endless_n=0;
-static void kw_defaults(int unlocked){ memset(&kw,0,sizeof kw); kw.magic=0x444C524Bu; kw.unlocked=(u8)unlocked; kw.cls=1; kw.riv=7; kw.items=1; kw.skill=1; kw.catchup=1; kw.seed=1000; kw.coins=500; kw.cls_open=2;
+static void kw_defaults(int unlocked){ memset(&kw,0,sizeof kw); kw.magic=0x444C524Bu; kw.unlocked=(u8)unlocked; kw.cls=1; kw.riv=11; kw.items=1; kw.skill=1; kw.catchup=1; kw.seed=1000; kw.coins=500; kw.cls_open=2;
     kw.look.part[KP_SIZE]=1; kw.look.part[KP_EXH]=1; kw.look.number=1; kw.look.col[0]=C15(60,140,255); kw.look.col[1]=C15(250,250,250); kw.look.col[2]=C15(255,200,40); scpy(kw.look.name,"STARKART"); { static const u8 dc[8]={0,1,1,1,1,0,1,1}; for(int i=0;i<8;i++) kw.cam[i]=dc[i]; } }
 static void kw_load(void){ sram_read(KW_OFF,&kw,sizeof kw); if(kw.magic!=0x444C524Bu || kw.sum!=fnv(&kw,sizeof kw-4)) kw_defaults(0); }
 static void kw_store(void){ kw.sum=fnv(&kw,sizeof kw-4); sram_write(KW_OFF,&kw,sizeof kw); }
@@ -164,7 +164,7 @@ static int kw_options(volatile u16 *pg, int mode){                 // mode 0 qui
                 case KO_SIZE: kw.fsize=(u8)((kw.fsize+d+7)%7); kw.seed=kw_find(kw.seed,kw.ftype,kw.fsize,1); kw.track=0; break;
                 case KO_WEIRD: kw.weird^=1; kw.seed=kw_find(kw.seed,kw.ftype,kw.fsize,1); kw.track=0; break;
                 case KO_TRACK: kw.track=(u32)(((s32)kw.track+d*big+(s32)KW_TRACKS)%(s32)KW_TRACKS); break; case KO_CLASS: kw.cls=(u8)((kw.cls+d+kw.cls_open)%kw.cls_open); break;
-                case KO_LAPS: kw.laps=(u8)((kw.laps+d+10)%10); break; case KO_RIV: kw.riv=(u8)((kw.riv+d+8)%8); break; case KO_ITEMS: kw.items=(u8)((kw.items+d+3)%3); break; case KO_STUNTS: kw.stunts=(u8)((kw.stunts+d+3)%3); break;
+                case KO_LAPS: kw.laps=(u8)((kw.laps+d+10)%10); break; case KO_RIV: kw.riv=(u8)((kw.riv+d+NRC)%NRC); break; case KO_ITEMS: kw.items=(u8)((kw.items+d+3)%3); break; case KO_STUNTS: kw.stunts=(u8)((kw.stunts+d+3)%3); break;
                 case KO_SKILL: kw.skill=(u8)((kw.skill+d+4)%4); break; case KO_CATCH: kw.catchup^=1; break; case KO_MIRROR: kw.mirror^=1; break; case KO_REV: kw.reverse^=1; break;
                 case KO_TIME: kw.hour=(u8)((kw.hour+d+4)%4); break; case KO_WEATHER: kw.weather=(u8)((kw.weather+d+6)%6); break; }
             kw_dna(kw.seed,kw_force(kw.ftype)); }

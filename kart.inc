@@ -7,12 +7,13 @@
 #define KG_MAX 24                                  // gates on a track
 #define KP_MAX 600                                 // points on a track's path (about one per half cell)
 #define KMM_N 300                                  // minimap points (every other path point)
-#define NRC 8                                      // karts in a race: you and 7 rivals
+#define NRC 12                                     // karts in a race: you and 11 rivals
+#define KT(r) ((r)<8 ? (r) : 1+((r)-8)%7)            // whose kart tiles and colours racer r uses (sprite memory holds 8 karts: the last 4 rivals drive copies)
 #define NKREC 50                                   // your tracks kept on the cartridge
 static void thump(int big); static int kw_quit; static int kw_driver_on(void); static int kw_draw_driver(int slot, int cx, int feet, int inv, int flip);
 enum { KRC_A=96, KRC_B, KRC_KR, KRC_KW, KRC_LINE, KRC_CK0, KRC_CK1, KRC_PAD, KRC_GLOW, KRC_RAMP, KRC_RAMP2 };   // BG palette: the road, your underglow, the ramps
 static int kroad(int c){ return (c>=KRC_A && c<=KRC_PAD) || c==KRC_RAMP || c==KRC_RAMP2; }
-_Static_assert(T_KDYN+NRC*16 <= 1024, "the karts built at run time must fit in sprite memory");
+_Static_assert(T_KDYN+8*16 <= 1024, "the karts built at run time must fit in sprite memory");
 
 // ---------------------------------------------------------------- the parts of a kart
 enum { KP_BODY, KP_SIZE, KP_PAT, KP_STICK, KP_WHEEL, KP_SPOIL, KP_EXH, KP_TOP, KP_TRAIL, KP_GLOW, KP_HORN, NKPART };
@@ -155,7 +156,7 @@ static void kt_official(int idx, KTrack *t){                       // this plane
     switch(wd.cls){ case PC_ICE: case PC_COCYTUS: t->surf=(h>>24)&1 ? 2 : 0; break; case PC_DESERT: case PC_MEADOW: case PC_JUNGLE: case PC_BONE: t->surf=(h>>24)%3 ? 1 : 0; break;
         case PC_ECUMENOPOLIS: case PC_OBSIDIAN: t->surf=(h>>24)&1 ? 3 : 0; break; case PC_PARADISE: t->surf=(h>>24)%3==0 ? 4 : 0; break; default: t->surf=(h>>24)%4==0 ? 1 : 0; }
     if(wd.weird && (h>>26)%3==0) t->surf=3+(int)((h>>28)%2u); if((h>>27)%41==0) t->surf=5;      // weird worlds: neon or candy. Now and then: a gold road
-    t->flags=KF_ITEMS|((h>>29)&1 || idx==0 ? KF_PADS : 0)|(idx && (h>>30) ? KF_JUMPS : 0)|(idx && hmix(h^0x100Fu)%10u<7 ? KF_LOOPS : 0); t->riv=7; t->cls=255; t->laps=3;
+    t->flags=KF_ITEMS|((h>>29)&1 || idx==0 ? KF_PADS : 0)|(idx && (h>>30) ? KF_JUMPS : 0)|(idx && hmix(h^0x100Fu)%10u<7 ? KF_LOOPS : 0); t->riv=11; t->cls=255; t->laps=3;
     kt_name(t,h); }
 
 // ---------------------------------------------------------------- the path: a smooth loop through the gates (Catmull-Rom)
@@ -297,7 +298,7 @@ static const u8 kcls_pct[5]={85,100,115,130,150};
 static const char *const kcls_name[5]={"LARVA","PUPA","IMAGO","STARBUG","HYPER"};
 #define K_VBASE 0x3200                             // a balanced kart's top speed in the PUPA class: 0.2 cells a 60th
 static s32 k_vmax(const KLook *l){ return (s32)K_VBASE*kcls_pct[k_cls]/100*(82+kstat(l,KST_SPD)*3)/100; }
-static const char *kplace_s(int p){ static const char *const s[9]={"","1ST","2ND","3RD","4TH","5TH","6TH","7TH","8TH"}; return s[p<0?0:p>8?8:p]; }
+static const char *kplace_s(int p){ static const char *const s[13]={"","1ST","2ND","3RD","4TH","5TH","6TH","7TH","8TH","9TH","10TH","11TH","12TH"}; return s[p<0?0:p>12?12:p]; }
 static void kfmt_time(char *b, int fr){ int cs=fr*100/60, s=cs/100; b[0]=0; ncat(b,s/60); scat(b,":"); if(s%60<10) scat(b,"0"); ncat(b,s%60); scat(b,"."); ncat(b,(cs%100)/10); }
 
 // ---------------------------------------------------------------- borrowing a few of the planet's little things (pebbles, tufts) to be karts, boxes and slime
@@ -453,7 +454,7 @@ static void kart_go(int riders, int grid_me, int keep, int repaint){   // paint 
     nrc=riders<1?1:riders>NRC?NRC:riders; int used=0;
     { u16 pts=rc[0].pts; memset(&rc[0],0,sizeof(Racer)); rc[0].look=kl; scpy(rc[0].name,look.name); rc[0].skill=100; if(keep) rc[0].pts=pts; }
     for(int r=1;r<nrc;r++){ if(keep){ Racer *k=&rc[r]; k->lap=0; k->fin=0; k->place=0; k->item=0; k->item_n=0; k->spin=0; k->shield=0; k->boost=0; k->cloud=0; k->v=0; k->ftime=0; k->nextg=0; }
-        else { krival(r,used); used|=1<<rc[r].being; } }
+        else { krival(r,used); used|=1<<rc[r].being; if(r>=8){ rc[r].look=rc[KT(r)].look; rc[r].look.number=(u8)((rc[r].look.number+50)%100); } } }
     if(grid_me<0) grid_me = nrc>=6 ? nrc-3 : nrc-1;
     int slot=0; for(int r=0;r<nrc;r++){ if(slot==grid_me) slot++; kart_place_grid(r, r==0?grid_me:slot); if(r) slot++; }
     for(int r=1;r<nrc;r++){ int p=kgrab(O_KART,rc[r].x,rc[r].y); rc[r].po=(u8)(p<0?255:p); if(p>=0) po[p].var=(u8)r; }
@@ -463,7 +464,7 @@ static void kart_go(int riders, int grid_me, int keep, int repaint){   // paint 
     { int nd=(kp_dir(0)+256)&1023; for(int s=-1;s<=1;s+=2) kgrab(O_BEACON,kp_cx(0)+((sinx(nd>>2)*s*19)>>1),kp_cy(0)+((cosx(nd>>2)*s*19)>>1));   // flags either side of the start line
       for(int k=0;k<4;k++){ int pi=(k*4+3)%knp, nd2=(kp_dir(pi)+256)&1023, sd=(k&1)?1:-1; int p=kgrab(O_LOCAL,kp_cx(pi)+((sinx(nd2>>2)*sd*30)>>1),kp_cy(pi)+((cosx(nd2>>2)*sd*30)>>1)); if(p>=0){ po[p].var=(u8)(k&1); po[p].hp=0; } } }   // a few locals came to watch
     for(int s=0;s<3;s++) ksh[s].life=0; for(int s=0;s<6;s++) kslm_life[s]=0;
-    for(int r=0;r<nrc;r++){ kart_build(r); rc[r].la=0; }
+    for(int r=0;r<nrc;r++){ if(r<8) kart_build(r); rc[r].la=0; }
     if(!kr_mode) kfp_keep=cam_fp; kr_mode=1; kcam_apply();
     ppx=rc[0].x; ppy=rc[0].y; khd=heading=rc[0].hd; heading_rays(); cam_h=ground_h(ppx,ppy)+cam_up();
     kv=0; kdrift=kcharge=kboost_t=kturn=kstall=0; kart_boost=100; k_rocket=0; k_wrong=0; k_lapmsg=0; kair=0; ktrick=0; kwet=0; kalt=ground_h(ppx,ppy); k_lap_t0=0; k_best_lap=0;
@@ -735,9 +736,9 @@ static int kart_draw_obj(int slot, PObj *o, int sx, int sy, int m, s32 f){
     int rel=(k->hd-heading)&1023; if(k->spin) rel=(rel+frames*48)&1023;
     int view, flip; if(rel<128||rel>=896){ view=0; flip=0; } else if(rel<384){ view=1; flip=0; } else if(rel<640){ view=0; flip=1; } else { view=1; flip=1; }
     int s=8+m*4, sz=k->look.part[KP_SIZE]; if(sz==0) s=s*85/100; if(sz==2) s=s*118/100; if(s<6) return slot;
-    int inv=16384/s, mid=2*r-1; set_affine(mid, flip?-inv:inv, 0, 0, upside?-inv:inv);
+    int inv=16384/s, mid = r<8 ? 2*r-1 : 2*(r-8)+15, kt_=KT(r); set_affine(mid, flip?-inv:inv, 0, 0, upside?-inv:inv);
     int kh=16*s/64, cy=sy-kh/2;
-    shadow_oam[slot].a0=((cy-16)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((sx-32)&511)|(mid<<9)|(2<<14); shadow_oam[slot].a2=(T_KDYN+r*16+view*8)|((7+r)<<12); slot++;
+    shadow_oam[slot].a0=((cy-16)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((sx-32)&511)|(mid<<9)|(2<<14); shadow_oam[slot].a2=(T_KDYN+kt_*16+view*8)|((7+kt_)<<12); slot++;
     if(upside) return slot;                                                                 // (upside down at the top: just the kart)
     int b=k->look.part[KP_BODY]; const u8 *an=kb_anchor+b*3; int fs=flip?-1:1;
     if(k->look.part[KP_TOP]){ int top = view ? an[2] : an[0], tx = view ? sx+((an[1]+3-16)*s/64)*fs : sx, ty=sy-(16-top)*s/64-4*s/64;

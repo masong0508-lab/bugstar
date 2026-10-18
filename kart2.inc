@@ -94,11 +94,11 @@ static void kres_order(u8 *ord){                                    // finishers
 static void kart_results(void){
     volatile u16 *pg=VISPG; u8 ord[NRC]; kres_order(ord); int me=0; for(int i=0;i<nrc;i++){ rc[ord[i]].place=(u8)(i+1); if(ord[i]==0) me=i+1; }
     oam_hide_all(); oam_flush(); in_menu++;
-    static const u8 cpts[8]={15,12,10,8,6,4,2,1};
+    static const u8 cpts[NRC]={15,12,10,8,7,6,5,4,3,2,1,0};
     int prize=0, medal=0; char l1[64], l2[64];
     int base=(30+dlv()*6)*(k_cls==0?100:k_cls==1?160:k_cls==2?240:350)/100;
     if(nrc>1){ kst_races++; if(me==1) kst_wins++; if(me<=3) kst_pods++;
-        if(k_type!=1){ static const u8 pc[8]={100,60,40,20,5,5,5,5}; prize=base*pc[me-1]/100; }
+        if(k_type!=1){ static const u8 pc[NRC]={100,60,40,20,5,5,5,5,3,3,3,3}; prize=base*pc[me-1]/100; }
         if(k_type==1) for(int i=0;i<nrc;i++) rc[ord[i]].pts+=cpts[i];
         if(me==1 && pq_type==8 && !pq_done){ kart_won=1; job_tick(); }
         if(kst_wins>=10) kown[KP_TOP]|=1u<<15; }
@@ -109,7 +109,7 @@ static void kart_results(void){
     // the card
     box(pg,8,20,224,132); rect(pg,9,21,222,12,6);
     { char t[40]; scpy(t,k_type==1?"CUP RACE ":"RESULTS: "); if(k_type==1){ ncat(t,k_cup_i+1); scat(t," OF 4: "); } scat(t,kt.name); ctext(pg,120,24,t,C_GOLD); }
-    for(int i=0;i<nrc;i++){ Racer *k=&rc[ord[i]]; int y=38+i*9, c = ord[i]==0 ? C_GOLD : C_WHITE; char t[48];
+    for(int i=0;i<nrc;i++){ Racer *k=&rc[ord[i]]; int y=38+i*(nrc>8?6:9), c = ord[i]==0 ? C_GOLD : C_WHITE; char t[48];
         scpy(t,kplace_s(i+1)); text(pg,16,y,t,i==0?C_GOLD:C_GREY,1);
         scpy(t, ord[i]==0 ? "YOU" : k->name); t[19]=0; text(pg,36,y,t,c,1);
         if(ord[i] && (k->being==KB_CRIT0||k->being==KB_CRIT1)) scpy(t,"CREATURE"); else scpy(t, ord[i]==0 ? (form==FORM_HUMAN?"HUMANOID":form==FORM_CREATURE?"CREATURE":"BUG") : kbeing_kind[k->being]); text(pg,120,y,t,C_DGREY,1);
@@ -149,7 +149,7 @@ static void kart_cup_next(void){
     for(int i=0;i<nrc;i++) for(int j=i+1;j<nrc;j++) if(rc[ord[j]].pts>rc[ord[i]].pts){ u8 t=ord[i]; ord[i]=ord[j]; ord[j]=t; }
     int me=0; for(int i=0;i<nrc;i++) if(ord[i]==0) me=i+1;
     in_menu++; box(pg,8,20,224,132); rect(pg,9,21,222,12,6); ctext(pg,120,24, k_cup_i<3 ? "CUP STANDINGS" : "FINAL STANDINGS", C_GOLD);
-    for(int i=0;i<nrc;i++){ Racer *k=&rc[ord[i]]; char t[40]; int y=38+i*9, c = ord[i]==0 ? C_GOLD : C_WHITE;
+    for(int i=0;i<nrc;i++){ Racer *k=&rc[ord[i]]; char t[40]; int y=38+i*(nrc>8?6:9), c = ord[i]==0 ? C_GOLD : C_WHITE;
         text(pg,16,y,kplace_s(i+1),C_GREY,1); scpy(t, ord[i]==0 ? "YOU" : k->name); t[22]=0; text(pg,40,y,t,c,1); scpy(t,""); ncat(t,k->pts); scat(t," PTS"); text(pg,170,y,t,c,1); }
     if(k_cup_i>=3){ int prize=0; char t[48];
         if(me<=3){ int base=(30+dlv()*6)*(k_cls==0?100:k_cls==1?160:k_cls==2?240:350)/100; static const u8 mul[3]={8,4,2}; prize=base*mul[me-1]; gold+=prize; fame+=me==1?30:10;
