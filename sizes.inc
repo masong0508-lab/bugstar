@@ -148,10 +148,10 @@ static void sz_sort(void){                                        // the order: 
     kn[SZ_TRAVEL]=0; kl[SZ_TRAVEL]=0;
     for(int i=1;i<NSIZE;i++){ u16 t=sz_ord[i]; int j=i; while(j>0 && (kn[sz_ord[j-1]]>kn[t] || (kn[sz_ord[j-1]]==kn[t] && kl[sz_ord[j-1]]>kl[t]))){ sz_ord[j]=sz_ord[j-1]; j--; } sz_ord[j]=t; } }
 
-// ---- the Bugstarillion's name: one group of three of S at a time, as Latin in hyphenated pieces
+// ---- the Bugstarillion's name: one group of three of S at a time, as Latin, one continuous word
 static int big_grp(int j){ const u8 *d=fact_bin+fact_off[BIGN_SRC]; int n=(int)fact_nd[BIGN_SRC], ng=(n+2)/3, lead=n-3*(ng-1);
     int a = j ? lead+3*(j-1) : 0, e = j ? a+3 : lead, v=0; for(int k=a;k<e;k++){ u8 b=d[k>>1]; v=v*10+((k&1)?(b&15):(b>>4)); } return v; }
-static void big_part(char *o, int j){                             // part j: e.g. TRES-SEPTUAGINT-NONGENT-ILLI- (the last one ends ILLION)
+static void big_part(char *o, int j){                             // part j: e.g. TRESSEPTUAGINTANONGENTILLI (the last one ends ILLION)
     static const char *const sm[10]={"NI","MI","BI","TRI","QUADRI","QUINTI","SEXTI","SEPTI","OCTI","NONI"};
     static const char *const un[10]={"","UN","DUO","TRE","QUATTUOR","QUIN","SE","SEPTE","OCTO","NOVE"};
     static const char *const te[10]={"","DECI","VIGINTI","TRIGINTA","QUADRAGINTA","QUINQUAGINTA","SEXAGINTA","SEPTUAGINTA","OCTOGINTA","NONAGINTA"};
@@ -161,9 +161,9 @@ static void big_part(char *o, int j){                             // part j: e.g
     if(v<10) scpy(o,sm[v]);
     else { int u=v%10, t=(v/10)%10, h=v/100;
         if(u){ int m = t ? tm[t] : hm[h]; scpy(o,un[u]); if(u==3 && (m&12)) scat(o,"S"); if(u==6){ if(m&4) scat(o,"S"); else if(m&8) scat(o,"X"); } if(u==7||u==9){ if(m&2) scat(o,"M"); else if(m&1) scat(o,"N"); } }
-        if(t){ if(o[0]) scat(o,"-"); scat(o,te[t]); } if(h){ if(o[0]) scat(o,"-"); scat(o,hu[h]); } }
+        if(t) scat(o,te[t]); if(h) scat(o,hu[h]); }
     int L=textlen(o); if(L && (o[L-1]=='I'||o[L-1]=='A')) o[--L]=0;
-    scat(o, j==BIGN_PARTS-1 ? "-ILLION" : "-ILLI-"); }
+    scat(o, j==BIGN_PARTS-1 ? "ILLION" : "ILLI"); }
 
 // ---- saying it
 static void nb_short(char *o){                                   // "ABOUT 4.3 BILLION", "1 TRILLION", "120,000"
