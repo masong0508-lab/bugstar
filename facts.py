@@ -161,22 +161,32 @@ OLD = [(1,"0"),(5,"32768"),(5,"38400"),(5,"65536"),(6,"27033"),(10,"42949"),(10,
        (50,"13547"),(56,"10228"),(58,"49039"),(94,"20859"),(95,"66749"),(96,"37600"),(105,"28668"),(106,"16100"),(152,"52205"),(507,"85781"),
        (1492,"22998"),(26742,"12490"),(39457,"40141"),(78914,"16113"),(173394,"18945")]
 
+# THE BUGSTARILLION: 10 to the power (3 x S + 3), where S is "EVERY SECOND OF THE SCREEN". In the Conway-Wechsler system its name
+# is ONE, then S's own digits read in threes as Latin (each three: units-tens-hundreds, then ILLI), ending in ILLION. One word.
+BIGN_SRC = "EVERY SECOND OF THE SCREEN"
+def cw_words(v):                       # how many hyphen pieces the Latin for one group of three is (the same split the game draws)
+    if v < 10: return 1
+    return (v % 10 != 0) + ((v // 10) % 10 != 0) + (v // 100 != 0)
 def make(arr, out):
-    data = bytearray(); offs, nds, nzs, abs_, keys = [], [], [], [], []
+    data = bytearray(); offs, nds, nzs, abs_, leads = [], [], [], [], []
+    big = None
     for (v, t, a, b, ab) in F:
         for s_ in (t, a, b):
             assert s_ is None or (len(s_) <= (28 if s_ is t else 58)), s_
         s = v() if callable(v) else str(v); n = len(s); lead = n - 3 * ((n - 1) // 3)
         nz = (1 if int(s[:lead]) else 0) + sum(1 for i in range(lead, n, 3) if s[i:i + 3] != "000")
-        offs.append(len(data)); nds.append(n); nzs.append(nz); abs_.append(ab)
-        keys.append(n - 1 + math.log10(int(s[:5].ljust(5, "0")) / 10000))
+        offs.append(len(data)); nds.append(n); nzs.append(nz); abs_.append(ab); leads.append(int(s[:5].ljust(5, "0")))
         data += bytes.fromhex(s + ("0" if n % 2 else ""))
+        if t == BIGN_SRC: big = (len(F) and [x[1] for x in F].index(t), s)
     open("facts.bin", "wb").write(bytes(data))
-    allk = [(-1 if i == 0 else (d - 1 + math.log10(int(l) / 10000) if int(l) else 0), i) for i, (d, l) in enumerate(OLD)]
-    allk += [(keys[j] + 1e-9, len(OLD) + j) for j in range(len(F))]
-    order = [i for k, i in sorted(allk)]
+    # the Bugstarillion's name: one word in parts (a part is a group of three of S), counted in hyphen pieces
+    bi, bs = big; n = len(bs); lead = n - 3 * ((n - 1) // 3)
+    groups = [int(bs[:lead])] + [int(bs[i:i + 3]) for i in range(lead, n, 3)]
+    words = 1 + sum(cw_words(g) + 1 for g in groups)        # ONE, then each group's Latin and its ILLI (the last one: ILLION)
+    secs = words // 2
     out.append("#define NSOLD %d" % len(OLD)); out.append("#define NFACT %d" % len(F))
+    out.append("#define BIGN_SRC %d\n#define BIGN_PARTS %d\n#define BIGN_WORDS %du\n#define BIGN_DAYS %d\n#define BIGN_HOURS %d" % (bi, len(groups), words, secs // 86400, (secs % 86400) // 3600))
     arr("fact_off", "unsigned int", offs); arr("fact_nd", "unsigned int", nds); arr("fact_nz", "unsigned int", nzs)
-    arr("fact_ab", "unsigned char", abs_); arr("sz_ord", "unsigned short", order)
+    arr("fact_ab", "unsigned char", abs_); arr("fact_lead", "unsigned int", leads)
     q = lambda s_: "0" if s_ is None else '"' + s_ + '"'
     out.append("static const char *const fact_txt[NFACT][3]={" + ",".join("{%s,%s,%s}" % (q(t), q(a), q(b)) for (v, t, a, b, ab) in F) + "};")

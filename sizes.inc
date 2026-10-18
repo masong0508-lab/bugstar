@@ -14,7 +14,8 @@ static int big_unlocked(void){ if(ant_king) return 1; KWSave keep=kw; int u=kw_u
 static const u8 *nb_d; static int nb_n, nb_nz, nb_about;         // its packed digits, how many digits, how many groups are not 000, and whether it is an estimate
 static int nb_ngv, nb_leadv;                                     // how many groups of three digits it has, and how many digits the first group has
 EW static u8 nb_ram[128];                                        // (the numbers worked out here are packed into this)
-static inline int nb_dig(int k){ u8 b=nb_d[k>>1]; return (k&1) ? (b&15) : (b>>4); }
+static int nb_virt;                                              // the Bugstarillion: a 1 and then zeros, made up as they are drawn
+static inline int nb_dig(int k){ if(nb_virt) return k==0; u8 b=nb_d[k>>1]; return (k&1) ? (b&15) : (b>>4); }
 static int nb_ng(void){ return nb_ngv; }                         // groups of three digits (the first can be shorter)
 static int nb_lead(void){ return nb_leadv; }                     // how many digits the first group has: 1, 2 or 3
 static int nb_bign;                                              // BY NAME uses big type for this number's names (its biggest name fits)
@@ -22,7 +23,7 @@ static void nb_shape(void){ nb_ngv=(nb_n+2)/3; nb_leadv=nb_n-3*(nb_ngv-1); nb_bi
 static int nb_grp(int j){ int a = j ? nb_lead()+3*(j-1) : 0, e = j ? a+3 : nb_lead(), v=0; for(int k=a;k<e;k++) v=v*10+nb_dig(k); return v; }   // group j, from the left
 static int nz_next(int j){ int ng=nb_ng(); do j++; while(j<ng && !nb_grp(j)); return j; }   // the next group that is not 000 (the first group never is)
 static int nz_prev(int j){ do j--; while(j>0 && !nb_grp(j)); return j<0?0:j; }
-static void nb_rom(const u8 *d, int nd, int nz){ nb_d=d; nb_n=nd; nb_nz=nz; nb_about=0; nb_shape(); }
+static void nb_rom(const u8 *d, int nd, int nz){ nb_virt=0; nb_d=d; nb_n=nd; nb_nz=nz; nb_about=0; nb_shape(); }
 static void nb_from(const u32 *v, int about){                    // put a big number on show (an estimate is rounded to 3 figures)
     EW static char tmp[248], d[248]; u32 t[BNW]; for(int i=0;i<BNW;i++) t[i]=v[i]; int n=0;
     if(big_zero(t,BNW)) tmp[n++]='0';
@@ -32,13 +33,18 @@ static void nb_from(const u32 *v, int about){                    // put a big nu
     if(about && n>3){ int up=d[3]>='5'; for(int k=3;k<n;k++) d[k]='0';
         if(up){ int k=2; while(k>=0 && d[k]=='9'){ d[k]='0'; k--; } if(k>=0) d[k]++; else { for(int i=n;i>0;i--) d[i]=d[i-1]; d[0]='1'; n++; } } }
     for(int i=0;i<(n+1)/2;i++){ int hi=d[2*i]-'0', lo = 2*i+1<n ? d[2*i+1]-'0' : 0; nb_ram[i]=(u8)(hi*16+lo); }
-    nb_d=nb_ram; nb_n=n; nb_about=about; nb_shape(); nb_nz=0; for(int j=0;j<nb_ng();j++) if(nb_grp(j)) nb_nz++; if(!nb_nz) nb_nz=1; }   // (0 is said as 0)
+    nb_virt=0; nb_d=nb_ram; nb_n=n; nb_about=about; nb_shape(); nb_nz=0; for(int j=0;j<nb_ng();j++) if(nb_grp(j)) nb_nz++; if(!nb_nz) nb_nz=1; }   // (0 is said as 0)
 
 // ---- the pages, smallest first (after your own travels)
 enum { SZ_TRAVEL, SZ_COLOURS, SZ_DOTS, SZ_RELICS, SZ_NAMES, SZ_KWPLAN, SZ_UNIS, SZ_WEIRD, SZ_BUGNAMES, SZ_BEAST, SZ_KWTRK, SZ_BEASTMAX, SZ_GOLD, SZ_SHIPS,
        SZ_TRKNAMES, SZ_RACES, SZ_KARTS, SZ_DNA, SZ_TROPHIES, SZ_TOUR, SZ_FAR, SZ_WIDE, SZ_HUMS, SZ_BUGS, SZ_WIDEALL, SZ_CLUS, SZ_STARS, SZ_WORLDS,
        SZ_STARSALL, SZ_WORLDSALL, SZ_LOOKS, SZ_ORDER, SZ_TRIPS, SZ_FAVS, SZ_MAPS, SZ_SAVES, SZ_SCREENS, NSOLD_E };
-#define NSIZE (NSOLD+NFACT)                                       // the game's own numbers and the facts from facts.py, in sz_ord's order
+#define SZ_BIG (NSOLD+NFACT)                                      // the last page: the Bugstarillion
+#define NSIZE (NSOLD+NFACT+1)                                     // the game's own numbers, the facts from facts.py and the Bugstarillion, in sz_ord's order
+#define SZ_SCR ((u32*)((((u32)(void*)gen_acc)+3)&~3u))           // the world builder's scratch (the internal RAM is full): sort keys, the order, each page's digit count
+#define sz_ord ((u16*)(SZ_SCR+3*NSIZE))                  // the order, worked out each time the screen opens (yours first, then smallest to biggest, the Bugstarillion last).
+                                                                   // It lives in the world builder's scratch, after the sort keys: the internal RAM is full
+static const char *const big_txt[3]={"THE BUGSTARILLION","A 1, THEN 3 X (EVERY SECOND OF THE SCREEN) + 3 ZEROS.","ITS NAME IS ONE WORD. IT TAKES MONTHS TO SAY"};
 static const char *const sz_otxt[NSOLD][3]={
     {"LIGHT YEARS YOU HAVE FLOWN","IN THIS SAVE, SO FAR","(THE SNACK BAR IS STILL NOT BUILT)"},
     {"COLOURS YOU CAN MIX","32 REDS, 32 GREENS AND 32 BLUES","MIX THEM IN THE MIRROR, HANGAR OR GARAGE. GO WILD"},
@@ -81,9 +87,12 @@ static void bn_set64(u32 *b, u64 x){ bn_set(b,(u32)x); b[1]=(u32)(x>>32); }
 static u64 nck(int n, int k){ if(k<0 || k>n) return 0; u64 r=1; for(int i=1;i<=k;i++) r=r*(u64)(n-k+i)/(u64)i; return r; }   // n choose k
 __asm__(".pushsection .rodata\n.balign 4\n.global fact_bin\nfact_bin:\n.incbin \"facts.bin\"\n.popsection");   // every fact's digits, packed
 extern const u8 fact_bin[];
-static const char *szt(int pi, int k){ int id=sz_ord[pi]; return id<NSOLD ? sz_otxt[id][k] : fact_txt[id-NSOLD][k]; }   // page pi's text
-static void size_set(int i){                                     // put page i's number on show
-    i=sz_ord[i]; if(i>=NSOLD){ int f=i-NSOLD; nb_rom(fact_bin+fact_off[f],(int)fact_nd[f],(int)fact_nz[f]); nb_about=fact_ab[f]; return; }
+static const char *szt(int pi, int k){ int id=sz_ord[pi]; return id==SZ_BIG ? big_txt[k] : id<NSOLD ? sz_otxt[id][k] : fact_txt[id-NSOLD][k]; }   // page pi's text
+static void size_id(int i);
+static void size_set(int pi){ size_id(sz_ord[pi]); }               // put page pi's number on show
+static void size_id(int i){
+    if(i==SZ_BIG){ nb_virt=1; nb_n=2000000002; nb_about=0; nb_shape(); nb_nz=1; return; }   // (its digits never end: you can scroll through the first two billion)
+    if(i>=NSOLD){ int f=i-NSOLD; nb_rom(fact_bin+fact_off[f],(int)fact_nd[f],(int)fact_nz[f]); nb_about=fact_ab[f]; return; }
     static const u8 bug_n[13]={3,5,4,12,8,6,8,3,4,6,6,5,12}, hum_n[11]={2,5,3,10,8,6,10,6,5,12,6}, ship_n[15]={NHULL,3,3,3,NWING,3,3,3,4,3,3,4,4,2,4};   // the options in each maker
     static const u8 race_n[14]={NPC+1,7,2,5,10,8,3,3,4,2,2,2,4,6};   // Kart World's quick race: world type, size, weird, class, laps, rivals, items, stunts, skill, catch-up, mirror, reverse, time, weather
     EW static u32 v[BNW]; int about=0;
@@ -130,6 +139,32 @@ static void size_set(int i){                                     // put page i's
         while(cols--) bn_mul(v,32768); } }
     nb_from(v,about); }
 
+static void sz_sort(void){                                        // the order: worked out from the numbers themselves, so new ones always land in place
+    u32 *kn=SZ_SCR, *kl=SZ_SCR+NSIZE;   // (the world builder's scratch: nothing else needs it while you look at numbers)
+    for(int i=0;i<NSIZE;i++){ sz_ord[i]=(u16)i;
+        if(i==SZ_BIG){ kn[i]=0xFFFFFFFFu; kl[i]=0; }
+        else if(i>=NSOLD){ kn[i]=fact_nd[i-NSOLD]; kl[i]=fact_lead[i-NSOLD]; }
+        else { size_id(i); kn[i]=(u32)nb_n; u32 l=0; for(int k=0;k<5;k++) l=l*10+(u32)(k<nb_n?nb_dig(k):0); kl[i]=l; } }
+    kn[SZ_TRAVEL]=0; kl[SZ_TRAVEL]=0;
+    for(int i=1;i<NSIZE;i++){ u16 t=sz_ord[i]; int j=i; while(j>0 && (kn[sz_ord[j-1]]>kn[t] || (kn[sz_ord[j-1]]==kn[t] && kl[sz_ord[j-1]]>kl[t]))){ sz_ord[j]=sz_ord[j-1]; j--; } sz_ord[j]=t; } }
+
+// ---- the Bugstarillion's name: one group of three of S at a time, as Latin in hyphenated pieces
+static int big_grp(int j){ const u8 *d=fact_bin+fact_off[BIGN_SRC]; int n=(int)fact_nd[BIGN_SRC], ng=(n+2)/3, lead=n-3*(ng-1);
+    int a = j ? lead+3*(j-1) : 0, e = j ? a+3 : lead, v=0; for(int k=a;k<e;k++){ u8 b=d[k>>1]; v=v*10+((k&1)?(b&15):(b>>4)); } return v; }
+static void big_part(char *o, int j){                             // part j: e.g. TRES-SEPTUAGINT-NONGENT-ILLI- (the last one ends ILLION)
+    static const char *const sm[10]={"NI","MI","BI","TRI","QUADRI","QUINTI","SEXTI","SEPTI","OCTI","NONI"};
+    static const char *const un[10]={"","UN","DUO","TRE","QUATTUOR","QUIN","SE","SEPTE","OCTO","NOVE"};
+    static const char *const te[10]={"","DECI","VIGINTI","TRIGINTA","QUADRAGINTA","QUINQUAGINTA","SEXAGINTA","SEPTUAGINTA","OCTOGINTA","NONAGINTA"};
+    static const char *const hu[10]={"","CENTI","DUCENTI","TRECENTI","QUADRINGENTI","QUINGENTI","SESCENTI","SEPTINGENTI","OCTINGENTI","NONGENTI"};
+    static const u8 tm[10]={0,1,2|4,1|4,1|4,1|4,1,1,2|8,0}, hm[10]={0,1|8,1,1|4,1|4,1|4,1,1,2|8,0};
+    int v=big_grp(j); o[0]=0;
+    if(v<10) scpy(o,sm[v]);
+    else { int u=v%10, t=(v/10)%10, h=v/100;
+        if(u){ int m = t ? tm[t] : hm[h]; scpy(o,un[u]); if(u==3 && (m&12)) scat(o,"S"); if(u==6){ if(m&4) scat(o,"S"); else if(m&8) scat(o,"X"); } if(u==7||u==9){ if(m&2) scat(o,"M"); else if(m&1) scat(o,"N"); } }
+        if(t){ if(o[0]) scat(o,"-"); scat(o,te[t]); } if(h){ if(o[0]) scat(o,"-"); scat(o,hu[h]); } }
+    int L=textlen(o); if(L && (o[L-1]=='I'||o[L-1]=='A')) o[--L]=0;
+    scat(o, j==BIGN_PARTS-1 ? "-ILLION" : "-ILLI-"); }
+
 // ---- saying it
 static void nb_short(char *o){                                   // "ABOUT 4.3 BILLION", "1 TRILLION", "120,000"
     int n=nb_n; o[0]=0;
@@ -168,7 +203,7 @@ static int sz_wrap(const char *s, char ln[3][32]){               // break a line
 #define SZ_TOP 37                                                // the first row of the scrolling views; rows are 13 high
 #define SZ_Y0 36                                                 // the scrolling rows show in lines 36 to 147
 #define SZ_Y1 148
-static void sz_fill(volatile u16 *pg, int y, int lines){ static u32 zero=0; *(volatile u32*)0x040000D4=(u32)&zero; *(volatile u32*)0x040000D8=(u32)(pg+y*120); *(volatile u32*)0x040000DC=(u32)(lines*60)|(2<<23)|(1<<26)|(1u<<31); }   // a DMA fill: black
+static void sz_fill(volatile u16 *pg, int y, int lines){ static u32 zero; zero = y==SZ_Y0 ? U_INK*0x01010101u : 0; *(volatile u32*)0x040000D4=(u32)&zero; *(volatile u32*)0x040000D8=(u32)(pg+y*120); *(volatile u32*)0x040000DC=(u32)(lines*60)|(2<<23)|(1<<26)|(1u<<31); }   // a DMA fill: black
 IWRAM static void clip_text(volatile u16 *pg, int x, int y, const char *s, int c, int sc, int y0, int y1){   // text cut off outside lines y0..y1-1 (big text needs an even x).
     u16 cc=(u16)(c|(c<<8)); int whole = y>=y0 && y+5*sc<=y1;                                               // ARM code in IWRAM: long numbers scroll at full speed
     for(;*s;s++, x+=4*sc){ u32 g=font[(u8)*s & 127]; if(!g) continue;
@@ -190,53 +225,65 @@ static void sz_name_row(volatile u16 *pg, int j, int y, int c){  // group j said
     else if(n<=49) clip_text(pg,36,y+3,nm,c,1,SZ_Y0,SZ_Y1);
     else { int cut=illi_cut(nm,49); if(!cut) cut=49; char a2[52]; for(int k=0;k<cut;k++) a2[k]=nm[k]; a2[cut]=0;    // and on two lines when it is very long
         clip_text(pg,36,y,a2,c,1,SZ_Y0,SZ_Y1); clip_text(pg,36,y+6,nm+cut,c,1,SZ_Y0,SZ_Y1); } }
+static void big_name_row(volatile u16 *pg, int r, int y, int c){  // row r of the Bugstarillion said by name: ONE, then one part a row
+    char b[48]; if(r==0){ clip_text(pg,36,y,"ONE",C_GOLD,2,SZ_Y0,SZ_Y1); return; }
+    scpy(b,""); kcomma(b,(u32)r); clip_text(pg,30-textlen(b)*4,y+3,b,U_GLOW,1,SZ_Y0,SZ_Y1);
+    big_part(b,r-1); clip_text(pg,36,y+3,b,c,1,SZ_Y0,SZ_Y1); }
 static void sz_head(volatile u16 *pg, int pi, int view){         // view 3 is the list of them all
-    rect(pg,0,0,240,12,1); text(pg,4,3,"HOW BIG IS IT?",C_GOLD,1);
-    char b[16]; scpy(b,""); if(view==3){ ncat(b,NSIZE); scat(b," NUMBERS"); } else { ncat(b,pi+1); scat(b," / "); ncat(b,NSIZE); } text(pg,236-textlen(b)*4,3,b,C_GREY,1);
-    const char *t = view==3 ? "ALL THE NUMBERS" : szt(pi,0); text(pg,120-textlen(t)*4,14,t,C_GOLD,2);
-    static const char *const vn[3]={"IN SHORT","EVERY DIGIT","BY NAME"}; static const u8 vx[3]={52,100,160};
-    if(view==3) ctext(pg,120,27,"YOURS FIRST, THEN SMALLEST TO BIGGEST",C_GREY);
-    else for(int k=0;k<3;k++){ if(k==view){ rect(pg,vx[k]-3,26,textlen(vn[k])*4+5,8,6); text(pg,vx[k],27,vn[k],C_WHITE,1); } else text(pg,vx[k],27,vn[k],C_DGREY,1); }
-    rect(pg,0,35,240,1,6);
-    rect(pg,0,148,240,1,6); rect(pg,0,149,240,11,1);
-    static const char *const help[4]={"LEFT/RIGHT: MORE  SELECT: LIST  A: EVERY DIGIT  B: BACK","UP/DOWN: SCROLL  L/R: FAST  SEL: ROLL  A: NAMES  B: BACK",
-        "UP/DOWN: SCROLL  L/R: FAST  SEL: ROLL  A: SHORT  B: BACK","UP/DOWN: PICK   L/R: FAST   A: SEE IT   B: BACK"};
-    ctext(pg,120,152,help[view],C_CYAN); }
+    ui_bg(pg,0,SZ_Y0); rect(pg,0,0,240,12,U_BG0); rect(pg,0,12,240,1,U_RAISE); rect(pg,4,3,2,5,U_ACCENT); stext(pg,9,3,"HOW BIG IS IT?",C_GOLD);
+    char b[16]; scpy(b,""); if(view==3){ ncat(b,NSIZE); scat(b," NUMBERS"); } else { ncat(b,pi+1); scat(b," / "); ncat(b,NSIZE); } text(pg,236-textlen(b)*4,3,b,U_SOFT,1);
+    const char *t = view==3 ? "ALL THE NUMBERS" : szt(pi,0); text(pg,121-textlen(t)*4,16,t,U_EDGE,2); text(pg,120-textlen(t)*4,15,t,C_GOLD,2);
+    static const char *const vn[3]={"IN SHORT","EVERY DIGIT","BY NAME"}; static const u8 vx[3]={50,100,162};
+    if(view==3) ctext(pg,120,27,"YOURS FIRST, THEN SMALLEST TO BIGGEST",U_SOFT);
+    else for(int k=0;k<3;k++){ int w=textlen(vn[k])*4+7; if(k==view){ rect(pg,vx[k]-3,25,w,9,U_RAISE); rect(pg,vx[k]-3,25,w,1,U_SHINE); rect(pg,vx[k]-3,33,w,1,U_ACCENT); text(pg,vx[k],27,vn[k],C_WHITE,1); } else text(pg,vx[k],27,vn[k],U_GLOW,1); }
+    rect(pg,0,SZ_Y0-1,240,1,U_EDGE); rect(pg,0,SZ_Y0,240,SZ_Y1-SZ_Y0,U_INK); rect(pg,0,SZ_Y1,240,1,U_RAISE);
+    static const char *const help[4]={"LEFT/RIGHT: MORE  SEL: LIST  A: DIGITS  B: BACK","UP/DOWN: SCROLL  L/R: FAST  SEL: ROLL  A: NAMES","UP/DOWN: SCROLL  L/R: FAST  SEL: ROLL  A: SHORT","UP/DOWN: PICK  L/R: FAST  A: SEE IT  B: BACK"};
+    rect(pg,0,SZ_Y1+1,240,160-SZ_Y1-1,U_BG0); ui_chint(pg,120,152,help[view],U_SOFT); }
 static void sz_short_view(volatile u16 *pg, int pi){
-    for(int k=0;k<24;k++) pix(pg,(k*53+11)%240,40+(k*29+7)%104,C_DGREY);
-    int y=40; if(szt(pi,1)){ ctext(pg,120,y,szt(pi,1),C_GREY); y+=7; } if(szt(pi,2)){ ctext(pg,120,y,szt(pi,2),C_GREY); y+=7; }
-    y+=6; { char s[96], ln[3][32]; nb_short(s); int nl=sz_wrap(s,ln); for(int k=0;k<nl;k++){ text(pg,120-textlen(ln[k])*4,y,ln[k],C_WHITE,2); y+=13; } }
+    for(int k=0;k<24;k++) pix(pg,(k*53+11)%240,40+(k*29+7)%104,U_GLOW);
+    if(sz_ord[pi]==SZ_BIG){ char b[64]; int y=40;                    // the Bugstarillion
+        ctext(pg,120,y,szt(pi,1),U_SOFT); y+=7; ctext(pg,120,y,szt(pi,2),U_SOFT); y+=12;
+        text(pg,121-15*4,y+1,"1 BUGSTARILLION",U_EDGE,2); text(pg,120-15*4,y,"1 BUGSTARILLION",C_WHITE,2); y+=16;
+        scpy(b,"ITS NAME: "); kcomma(b,BIGN_WORDS); scat(b," WORDS, IN "); kcomma(b,BIGN_PARTS+1); scat(b," PARTS"); ctext(pg,120,y,b,C_CYAN); y+=9;
+        scpy(b,"ONE WORD EVERY HALF SECOND: "); ncat(b,BIGN_DAYS); scat(b," DAYS "); ncat(b,BIGN_HOURS); scat(b," HOURS"); ctext(pg,120,y,b,C_GOLD); y+=9;
+        ctext(pg,120,y,"NO SLEEP, NO SNACKS, NO BREATHING",U_SOFT); y+=12;
+        scpy(b,"HOW MANY DIGITS? A NUMBER "); kcomma(b,fact_nd[BIGN_SRC]); scat(b," DIGITS LONG"); ctext(pg,120,y,b,C_WHITE); y+=8;
+        ctext(pg,120,y,"MORE THAN ANY OTHER NUMBER HERE, BY FAR",C_GREEN); y+=12;
+        ctext(pg,120,y,"PRESS A TWICE TO START SAYING IT",C_CYAN); return; }
+    int y=40; if(szt(pi,1)){ ctext(pg,120,y,szt(pi,1),U_SOFT); y+=7; } if(szt(pi,2)){ ctext(pg,120,y,szt(pi,2),U_SOFT); y+=7; }
+    y+=6; { char s[96], ln[3][32]; nb_short(s); int nl=sz_wrap(s,ln); for(int k=0;k<nl;k++){ text(pg,121-textlen(ln[k])*4,y+1,ln[k],U_EDGE,2); text(pg,120-textlen(ln[k])*4,y,ln[k],C_WHITE,2); y+=13; } }
     y+=2; { char b[64]; scpy(b,""); kcomma(b,(u32)nb_n); scat(b, nb_n==1 ? " DIGIT" : " DIGITS");
         if(nb_n>=1000){ u32 m=(u32)nb_n/60; scat(b,". READING ONE A SECOND: "); if(m<120){ ncat(b,(int)m); scat(b," MINUTES"); } else { ncat(b,(int)(m/60)); scat(b," HOURS"); } }
         ctext(pg,120,y,b,C_CYAN); y+=11; }
     if(nb_n>6){ int R=(nb_ng()+6)/7, room=((pi==SZ_TRAVEL?128:148)-y)/13;   // the number itself, in full if it fits
         if(R<=room) for(int k=0;k<R;k++) sz_row(pg,k,y+k*13,(k&1)?C_CYAN:C_WHITE,R==1,0,160);
         else { int sh=room-1; if(sh<1) sh=1; for(int k=0;k<sh;k++) sz_row(pg,k,y+k*13,(k&1)?C_CYAN:C_WHITE,0,0,160);
-            int seen=nb_lead()+21*sh-3; char b[64]; scpy(b,"...AND "); kcomma(b,(u32)(nb_n-seen)); scat(b," MORE. PRESS A TO SEE THEM ALL"); ctext(pg,120,y+sh*13+2,b,C_GREY); } }
+            int seen=nb_lead()+21*sh-3; char b[64]; scpy(b,"...AND "); kcomma(b,(u32)(nb_n-seen)); scat(b," MORE. PRESS A TO SEE THEM ALL"); ctext(pg,120,y+sh*13+2,b,U_SOFT); } }
     if(pi==SZ_TRAVEL){ char b[64], d[40];
         scpy(b,""); kcomma(b,tv_trips); scat(b,tv_trips==1?" TRIP. LONGEST: ":" TRIPS. LONGEST: "); ly_fmt(d,tv_best); d[26]=0; scat(b,d); ctext(pg,120,130,b,C_GOLD);
         hours_fmt(d,tv_hours); scpy(b,"TIME BETWEEN THE STARS: "); scat(b,d); ctext(pg,120,138,b,C_GOLD); } }
-static int sz_lsel, sz_ltop, sz_nd[NSIZE];                      // the list: which number is picked, the top row, and how many digits each one has
+#define sz_nd ((int*)(SZ_SCR+2*NSIZE))
+static int sz_lsel, sz_ltop;                      // the list: which number is picked, the top row, and how many digits each one has
 static void sz_list_view(volatile u16 *pg){
     for(int k=0;k<12;k++){ int i=sz_ltop+k, on=i==sz_lsel; if(i>=NSIZE) break; int y=SZ_TOP+2+k*9;
-        if(on) rect(pg,4,y-2,229,9,6);
+        if(on) ui_sel(pg,4,y-2,229,9,U_SEL);
         char b[24]; scpy(b,""); ncat(b,i+1); text(pg,22-textlen(b)*4,y,b,on?C_GOLD:C_DGREY,1);
-        text(pg,28,y,szt(i,0),on?C_WHITE:C_GREY,1);
-        scpy(b,""); kcomma(b,(u32)sz_nd[i]); scat(b, sz_nd[i]==1 ? " DIGIT" : " DIGITS"); text(pg,232-textlen(b)*4,y,b,on?C_CYAN:C_DGREY,1); }
-    { int th=110*12/NSIZE, ty=SZ_TOP+(110-th)*sz_ltop/(NSIZE-12); rect(pg,236,SZ_TOP,3,110,6); rect(pg,236,ty,3,th,C_GREY); } }
+        text(pg,28,y,szt(i,0),on?C_WHITE:U_SOFT,1);
+        if(sz_ord[i]==SZ_BIG) scpy(b,"ENDLESS"); else { scpy(b,""); kcomma(b,(u32)sz_nd[i]); scat(b, sz_nd[i]==1 ? " DIGIT" : " DIGITS"); } text(pg,232-textlen(b)*4,y,b,on?C_CYAN:C_DGREY,1); }
+    { int th=110*12/NSIZE, ty=SZ_TOP+(110-th)*sz_ltop/(NSIZE-12); rect(pg,236,SZ_TOP,3,110,U_TROUGH); rect(pg,236,ty,3,th,U_SHINE); } }
 static void sz_draw(volatile u16 *pg, int full, int pi, int view, int pos, int ridx, int gcur, int R, int maxpos, char *was){   // full: the whole page, else just what scrolls
     if(full){ sz_fill(pg,0,160); sz_head(pg,pi,view); } else sz_fill(pg,SZ_Y0,SZ_Y1-SZ_Y0);
     if(view==0) sz_short_view(pg,pi);
     else if(view==3) sz_list_view(pg);
     else { int off=pos%13; char mid[40];
         for(int k=0;k<10;k++){ int r=ridx+k, y=SZ_TOP+13*k-off; if(r>=R || y>=SZ_Y1) break; int c=(r&1)?C_CYAN:C_WHITE;
-            if(view==1) sz_row(pg,r,y,c,R==1,SZ_Y0,SZ_Y1); else { sz_name_row(pg,gcur,y,c); gcur=nz_next(gcur); } }
+            if(view==1) sz_row(pg,r,y,c,R==1,SZ_Y0,SZ_Y1); else if(nb_virt) big_name_row(pg,r,y,c); else { sz_name_row(pg,gcur,y,c); gcur=nz_next(gcur); } }
         if(maxpos){ int th=110*111/(13*R); if(th<6) th=6; if(th>110) th=110; int ty=SZ_TOP+(int)((s64)(110-th)*pos/maxpos);   // where you are in it
-            rect(pg,236,SZ_TOP,3,110,6); rect(pg,236,ty,3,th,C_GREY); }
+            rect(pg,236,SZ_TOP,3,110,U_TROUGH); rect(pg,236,ty,3,th,U_SHINE); }
         if(view==1){ int before = ridx ? nb_lead()+3*(7*ridx-1) : 0; scpy(mid,"DIGIT "); kcomma(mid,(u32)before+1); }   // the count in the bar
-        else { scpy(mid,"NAME "); kcomma(mid,(u32)ridx+1); }
-        scat(mid," OF "); kcomma(mid,(u32)(view==1?nb_n:nb_nz));
-        if(full || !seq(mid,was)){ rect(pg,62,0,144,12,1); ctext(pg,134,3,mid,C_CYAN); scpy(was,mid); } } }   // (was: what this page's bar says now)
+        else { scpy(mid, nb_virt ? "PART " : "NAME "); kcomma(mid,(u32)ridx+1); }
+        if(nb_virt && view==1) scat(mid," OF ENDLESS"); else { scat(mid," OF "); kcomma(mid,(u32)(view==1?nb_n: nb_virt ? BIGN_PARTS+1 : nb_nz)); }
+        if(full || !seq(mid,was)){ rect(pg,66,0,130,12,U_BG0); ctext(pg,134,3,mid,C_CYAN); scpy(was,mid); } } }   // (was: what this page's bar says now)
 
 static void size_screen(volatile u16 *pg, int from_title){       // LEFT/RIGHT: another number. A: another view. UP/DOWN, L/R, SELECT: scroll. B: back
     if(from_title) tv_load();                                    // (in a game the travel log in memory is the newest)
@@ -252,9 +299,12 @@ static void size_screen(volatile u16 *pg, int from_title){       // LEFT/RIGHT: 
 #ifdef TEST_SZVIEW
     view=TEST_SZVIEW;
 #endif
-    wait_release();
+    sz_sort(); wait_release();
+#ifdef TEST_SZORD
+    { u32 *kn=SZ_SCR; sz_fill(pa,0,160); for(int i=0;i<60;i++){ char b[24]; scpy(b,""); ncat(b,sz_ord[i]); scat(b,":"); ncat(b,(int)kn[sz_ord[i]]); text(pa,2+(i/20)*80,2+(i%20)*8,b,C_WHITE,1); } REG_DISPCNT&=~0x10; while(1) vsync(); }
+#endif
 #ifdef TEST_SZCHECK
-    sz_fill(pa,0,160); for(int i=0;i<NSIZE;i++){ size_set(i); u32 h=2166136261u; for(int k=0;k<nb_n;k++){ h^=(u32)nb_dig(k); h*=16777619u; }   // every digit of every page, as a fingerprint
+    sz_fill(pa,0,160); for(int i=0;i<NSIZE;i++){ size_set(i); if(nb_virt) continue; u32 h=2166136261u; for(int k=0;k<nb_n;k++){ h^=(u32)nb_dig(k); h*=16777619u; }   // every digit of every page, as a fingerprint
         char b[40], x[12]; scpy(b,""); ncat(b,i+1); scat(b," "); ncat(b,nb_n); scat(b," "); for(int k=0;k<8;k++){ int q=(int)((h>>(28-4*k))&15); x[k]=(char)(q<10?'0'+q:'A'+q-10); } x[8]=0; scat(b,x);
         text(pa,4+(i/19)*120,4+(i%19)*8,b,C_WHITE,1); }
     REG_DISPCNT&=~0x10; while(1) vsync();
@@ -262,8 +312,8 @@ static void size_screen(volatile u16 *pg, int from_title){       // LEFT/RIGHT: 
     while(1){
         if(set!=pi){ size_set(pi); set=pi; pos=ridx=gcur=0; roll=0; dirty=1; ok[0]=ok[1]=0; }
         if(view!=lastv || view==3){ lastv=view; ok[0]=ok[1]=0; }
-        R = view==1 ? (nb_ng()+6)/7 : view==2 ? nb_nz : 0; maxpos = R*13>109 ? R*13-109 : 0;
-        { int nr=pos/13; if(view==2){ while(ridx<nr){ gcur=nz_next(gcur); ridx++; } while(ridx>nr){ gcur=nz_prev(gcur); ridx--; } } else ridx=nr; }
+        R = view==1 ? (nb_ng()+6)/7 : view==2 ? (nb_virt ? BIGN_PARTS+1 : nb_nz) : 0; maxpos = R*13>109 ? R*13-109 : 0;
+        { int nr=pos/13; if(view==2 && !nb_virt){ while(ridx<nr){ gcur=nz_next(gcur); ridx++; } while(ridx>nr){ gcur=nz_prev(gcur); ridx--; } } else ridx=nr; }
         if(dirty){ dirty=0; int bi = front ? 0 : 1; volatile u16 *bk = bi ? pb : pa;
             sz_draw(bk,!ok[bi],pi,view,pos,ridx,gcur,R,maxpos,was[bi]); ok[bi]=1;
             vsync(); REG_DISPCNT=(REG_DISPCNT&~0x10)|(front ? bita : bita^0x10); front^=1; }
