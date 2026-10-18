@@ -281,7 +281,7 @@ static void kgarage(volatile u16 *pg){
     KLook before=kl, hist[6]; int hn=0, hp=0, sel=1, top=0, dirty=1, t=0, view=1, arm=-1, rep=0, sch=-1, note_t=0; char note[44]; note[0]=0;
     #define G_PUSH() do{ hist[hp]=kl; hp=(hp+1)%6; if(hn<6) hn++; }while(0)
     kart_build(0); oam_hide_all(); oam_flush(); wait_release(); in_menu++;
-    for(int i=0;i<24;i++) kpt[i].life=0;
+    for(int i=0;i<NKPT;i++) kpt[i].life=0;
     while(1){
         if(dirty){ dirty=0; char b[48];
             panel(pg,4,20,232,136,"THE KART GARAGE"); { char g2[20]="G"; ncat(g2,gold); text(pg,232-textlen(g2)*4,24,g2,C_GOLD,1); }
@@ -309,7 +309,7 @@ static void kgarage(volatile u16 *pg){
           if(kl.part[KP_GLOW]){ BG_PAL[KRC_GLOW]= kl.part[KP_GLOW]==7 ? kglow_col[1+((t>>3)%6)] : kglow_col[kl.part[KP_GLOW]]; for(int y=-2;y<=2;y++){ int w=26-y*y*3; for(int x=-w;x<=w;x+=2) pix(pg,cx+x+(y&1),gy+y,KRC_GLOW); } }
           int tr=kl.part[KP_TRAIL]; if(tr && (t&1)==0){ static const u8 tc[10][2]={{0,0},{C_DGREY,C_GREY},{C_GOLD,C_WHITE},{C_CYAN,C_WHITE},{C_RED,C_RED},{C_RED,C_GOLD},{C_GREY,C_DGREY},{C_GOLD,C_WHITE},{C_RED,C_GOLD},{C_GREEN,C_CYAN}};
               int c = tr==5 ? C_RED+((t>>1)%4==0?0:(t>>1)%4==1?3:(t>>1)%4==2?2:6) : tr==9 ? C_RED+rndi(8) : tc[tr][rndi(2)]; int ex = view ? cx-26 : cx; kpart_add(ex+rndi(5)-2, gy-3, view ? -(2+rndi(3)) : rndi(5)-2, view ? -rndi(3) : 3+rndi(3), 12+rndi(6), c); }
-          for(int i=0;i<24;i++){ KPart *q=&kpt[i]; if(!q->life) continue; q->life--; q->x+=q->vx; q->y+=q->vy; int x=q->x>>4, y=q->y>>4; if(x<142||x>229||y<36||y>81){ q->life=0; continue; } pix(pg,x,y,q->c); if(tr==3||tr==4||tr==7){ pix(pg,x+1,y,q->c); pix(pg,x,y+1,q->c); } }
+          for(int i=0;i<NKPT;i++){ KPart *q=&kpt[i]; if(!q->life) continue; q->life--; q->x+=q->vx; q->y+=q->vy; int x=q->x>>4, y=q->y>>4; if(x<142||x>229||y<36||y>81){ q->life=0; continue; } pix(pg,x,y,q->c); if(tr==3||tr==4||tr==7){ pix(pg,x+1,y,q->c); pix(pg,x,y+1,q->c); } }
           int sz=kl.part[KP_SIZE], inv = sz==0 ? 150 : sz==2 ? 100 : 120, b=kl.part[KP_BODY], bob=(t>>4)&1; const u8 *an=kb_anchor+b*3;
           set_affine(29,inv,0,0,inv); int kh=16*256/inv, ky=gy-kh/2-bob, slot=0;
           shadow_oam[slot].a0=((ky-16)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((cx-32)&511)|(29<<9)|(2<<14); shadow_oam[slot].a2=(T_KDYN+view*8)|(7<<12); slot++;
@@ -340,7 +340,7 @@ static void kgarage(volatile u16 *pg){
                 else if(gold<pr){ scpy(note,"NOT ENOUGH GOLD"); note_t=60; sfx(4); }
                 else if(arm!=sel) arm=sel;
                 else { gold-=pr; kown[p]|=(u16)(1u<<kl.part[p]); arm=-1; scpy(note,"BOUGHT! IT IS YOURS"); note_t=70; sfx(6); kart_save(); } } }
-        if(HIT(K_L)){ view^=1; for(int i=0;i<24;i++) kpt[i].life=0; sfx(7); }
+        if(HIT(K_L)){ view^=1; for(int i=0;i<NKPT;i++) kpt[i].life=0; sfx(7); }
         if(HIT(K_R)){ G_PUSH(); sch=(sch+1)%9; int h0,s0,v0; cc_hsv(kl.col[0],&h0,&s0,&v0);
             kl.col[1]=cc_rgb(sch>=7?cc_dh[sch][0]:h0+cc_dh[sch][0],cc_ss[sch][0],cc_vv[sch][0]); kl.col[2]=cc_rgb(sch>=7?cc_dh[sch][1]:h0+cc_dh[sch][1],cc_ss[sch][1],cc_vv[sch][1]);
             kart_build(0); scpy(note,"COLOURS: "); scat(note,cc_sch_nm[sch]); note_t=70; dirty=1; sfx(6); }

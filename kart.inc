@@ -754,8 +754,9 @@ static int kart_draw_obj(int slot, PObj *o, int sx, int sy, int m, s32 f){
 
 // ---------------------------------------------------------------- trails, sparks and the underglow (drawn into the picture)
 typedef struct { s16 x, y; s8 vx, vy; u8 life, c; } KPart;
-EW static KPart kpt[24]; static int kpt_i=0;
-static void kpart_add(int x, int y, int vx, int vy, int life, int c){ KPart *p=&kpt[kpt_i]; kpt_i=(kpt_i+1)%24; p->x=(s16)(x<<4); p->y=(s16)(y<<4); p->vx=(s8)vx; p->vy=(s8)vy; p->life=(u8)life; p->c=(u8)c; }
+#define NKPT 20
+EW static KPart kpt[NKPT]; static int kpt_i=0;
+static void kpart_add(int x, int y, int vx, int vy, int life, int c){ KPart *p=&kpt[kpt_i]; kpt_i=(kpt_i+1)%NKPT; p->x=(s16)(x<<4); p->y=(s16)(y<<4); p->vx=(s8)vx; p->vy=(s8)vy; p->life=(u8)life; p->c=(u8)c; }
 static void kart_fx(volatile u16 *pg, int sy){
     int g=kl.part[KP_GLOW];
     if(g && !cam_fp){ if(g==7) BG_PAL[KRC_GLOW]=kglow_col[1+((frames>>3)%6)]; for(int y=-3;y<=3;y++){ int w=24-y*y*2; for(int x=-w;x<=w;x+=2){ int xx=120+x+(y&1), yy=sy+y; if(yy>18&&yy<160) pix(pg,xx,yy,KRC_GLOW); } } }
@@ -768,7 +769,7 @@ static void kart_fx(volatile u16 *pg, int sy){
         for(int s=-1;s<=1;s+=2) kpart_add(120+s*14+rndi(3)-1, sy-2, s*(1+rndi(2)), 4+rndi(4), 14+rndi(8), c); }
     if(kdrift && (frames&1)==0){ int c = kcharge>110 ? C_GOLD : kcharge>50 ? C_CYAN : C_WHITE; for(int s=-1;s<=1;s+=2) kpart_add(120+s*13, sy-1, s*(2+rndi(3)), -(rndi(6)), 8, c); }
     if(kboost_t && (frames&1)==0) kpart_add(120+rndi(9)-4, sy-6, 0, 8, 10, (frames&2)?C_GOLD:C_RED);
-    for(int i=0;i<24;i++){ KPart *p=&kpt[i]; if(!p->life) continue; p->life--; p->x+=p->vx; p->y+=p->vy; int x=p->x>>4, y=p->y>>4; if(x<1||x>238||y<19||y>158) { p->life=0; continue; }
+    for(int i=0;i<NKPT;i++){ KPart *p=&kpt[i]; if(!p->life) continue; p->life--; p->x+=p->vx; p->y+=p->vy; int x=p->x>>4, y=p->y>>4; if(x<1||x>238||y<19||y>158) { p->life=0; continue; }
         pix(pg,x,y,p->c); if(tr==3 || tr==4 || tr==7){ pix(pg,x+1,y,p->c); pix(pg,x,y+1,p->c); } } }
 
 // ---------------------------------------------------------------- the race's own status: place, lap, time, item, minimap
