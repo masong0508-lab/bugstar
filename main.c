@@ -976,10 +976,11 @@ static int title_screen(void){
             if(sel>=n) sel=0; dirty=1; }
         if(dirty){ dirty=0; char b[40];
             title_restore(pg,56,146);
-            for(int i=0;i<n && !FILM;i++){ int y=60+i*10; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
-                if(i==sel){ rect(pg,66,y-2,108,10,6); text(pg,x,y,nm,C_GOLD,1); text(pg,70,y,">",C_GOLD,1); text(pg,166,y,"<",C_GOLD,1); }
-                else stext(pg,x,y,nm,((it[i]==TI_KART||it[i]==TI_SIZE) && !kwu)?C_DGREY:C_WHITE); }
-            int y=60+n*10+3; b[0]=0;
+            if(!FILM){ ui_panel(pg,46,58,148,n*9+22); rect(pg,50,62+n*9+1,140,1,U_RAISE); }      // the menu sits on a card
+            for(int i=0;i<n && !FILM;i++){ int y=63+i*9; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
+                if(i==sel){ ui_sel(pg,60,y-2,120,9,U_SEL); stext(pg,x,y,nm,C_GOLD); rect(pg,66,y+1,3,3,C_GOLD); rect(pg,171,y+1,3,3,C_GOLD); }
+                else stext(pg,x,y,nm,((it[i]==TI_KART||it[i]==TI_SIZE) && !kwu)?C_DGREY:U_SOFT); }
+            int y=62+n*9+5; b[0]=0;
             if(it[sel]==TI_CONT){ const SlotInfo *o=&sinf[cs]; char w[28]; slot_where(o,w); scpy(b,"SLOT "); ncat(b,cs+1); scat(b,"  LV "); ncat(b,o->level); scat(b,"  "); scat(b,w); }
             else if(it[sel]==TI_NEW) scpy(b,"START A NEW ADVENTURE");
             else if(it[sel]==TI_LOAD) scpy(b,"PICK ONE OF YOUR 3 SAVE SLOTS");

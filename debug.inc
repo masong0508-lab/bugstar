@@ -101,7 +101,7 @@ static int dbg_menu(volatile u16 *pg){                         // 0: back to the
             rect(pg,8,110,224,1,C_DGREY);
             { const char *h=hlp[sel]; int L=textlen(h); if(L>54){ char h1[60]; int k=0; while(k<54 && h[k]) k++; while(k>0 && h[k]!=' ') k--; for(int j=0;j<k;j++) h1[j]=h[j]; h1[k]=0; ctext(pg,120,115,h1,C_GREY); ctext(pg,120,123,h+k+1,C_GREY); } else ctext(pg,120,118,h,C_GREY); }
             if(note[0]) ctext(pg,120,134,note,C_GOLD);
-            ctext(pg,120,146,"LEFT/RIGHT: CHANGE   A: GO   B: BACK TO THE TITLE",C_CYAN);
+            ui_chint(pg,120,146,"LEFT/RIGHT: CHANGE   A: GO   B: BACK TO THE TITLE",C_CYAN);
             vsync(); page^=1; REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page?(1<<4):0);
         }
         vsync(); read_keys();

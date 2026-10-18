@@ -16,10 +16,17 @@ pal=[(0,0,0)]*256
 SPACE=[(6,6,16),(18,16,38),(40,34,70),(120,110,160),(240,236,255)]
 for i,c in enumerate(SPACE): pal[1+i]=c
 pal[6]=(46,56,86)          # HUD line
-HUD={'white':(232,230,222),'red':(232,72,80),'dred':(70,30,40),'green':(120,200,110),'gold':(255,210,90),'grey':(120,130,150),'dgrey':(60,64,80),'cyan':(140,220,255)}
+HUD={'white':(232,230,222),'red':(232,72,80),'dred':(70,30,40),'green':(120,200,110),'gold':(255,210,90),'grey':(120,130,150),'dgrey':(86,94,120),'cyan':(140,220,255)}
 for i,k in enumerate(HUD): pal[30+i]=HUD[k]
 out.append("enum{C_WHITE=30,C_RED,C_DRED,C_GREEN,C_GOLD,C_GREY,C_DGREY,C_CYAN,C_UNIQ};")
 pal[38]=(255,140,50)       # unique items
+# the interface kit's colours (menus, panels, bars: see ui_* in save.inc). These slots were black and unused.
+UIC=[(7,'U_BG0',(10,12,22)),(8,'U_BG1',(16,19,34)),(9,'U_BG2',(23,28,48)),(10,'U_PANEL',(28,34,58)),(11,'U_RAISE',(42,51,84)),
+     (12,'U_SHINE',(96,114,168)),(13,'U_EDGE',(5,6,12)),(14,'U_ACCENT',(120,160,240)),(15,'U_SEL',(48,66,120)),
+     (22,'U_TROUGH',(12,14,26)),(23,'U_SOFT',(160,170,196)),(24,'U_GLRED',(255,150,150)),(25,'U_GLCYAN',(210,244,255)),
+     (26,'U_GLGREEN',(196,244,176)),(27,'U_GLGOLD',(255,240,176)),(28,'U_INK',(18,22,40)),(29,'U_GLOW',(70,92,150))]
+for i,n,c in UIC: pal[i]=c
+out.append("enum{"+",".join("%s=%d"%(n,i) for i,n,c in UIC)+"};")
 TINTS=[("THE GARDEN",[(10,22,18),(30,62,40),(68,118,62),(132,176,92),(214,232,160)],(60,110,90)),
        ("THE POND",[(6,14,28),(20,46,86),(44,96,150),(110,170,214),(210,240,255)],(70,130,190)),
        ("THE PICNIC",[(26,6,10),(82,16,26),(150,36,48),(214,90,96),(255,200,190)],(150,60,70)),

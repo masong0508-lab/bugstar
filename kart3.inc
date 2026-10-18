@@ -119,7 +119,7 @@ static u32 kw_num_edit(volatile u16 *pg, const char *title, u32 v, int nd, u32 l
     char d[10]; for(int i=nd-1;i>=0;i--){ d[i]=(char)('0'+v%10); v/=10; } int cur=nd-1, t=0, x0=120-nd*6; wait_release();
     while(1){ box(pg,24,56,192,46); rect(pg,25,57,190,12,6); ctext(pg,120,60,title,C_GOLD);
         for(int i=0;i<nd;i++){ char c[2]={d[i],0}; rect(pg,x0+i*12,74,10,12,0); text(pg,x0+i*12,76,c,i==cur?C_GOLD:C_WHITE,2); if(i==cur && (t&16)) rect(pg,x0+i*12,87,6,1,C_GOLD); }
-        ctext(pg,120,93,"UP/DOWN: DIGIT  LEFT/RIGHT: MOVE  A: OK",C_GREY); vsync(); read_keys(); t++;
+        ui_chint(pg,120,93,"UP/DOWN: DIGIT  LEFT/RIGHT: MOVE  A: OK",C_GREY); vsync(); read_keys(); t++;
         if(HIT(K_UP)) d[cur]=(char)(d[cur]=='9'?'0':d[cur]+1); if(HIT(K_DOWN)) d[cur]=(char)(d[cur]=='0'?'9':d[cur]-1);
         if(HIT(K_LEFT) && cur>0) cur--; if(HIT(K_RIGHT) && cur<nd-1) cur++;
         if(HIT(K_A)||HIT(K_B)||HIT(K_START)){ u32 s=0; for(int i=0;i<nd;i++){ u32 dg=(u32)(d[i]-'0'); if(s>(0xFFFFFFFFu-dg)/10u){ s=0xFFFFFFFFu; break; } s=s*10u+dg; }
@@ -151,7 +151,7 @@ static int kw_options(volatile u16 *pg, int mode){                 // mode 0 qui
                 b[38]=0; text(pg,76,y,b,top+j==sel?C_GOLD:C_GREY,1); }
             if(top>0) text(pg,226,30,"^",C_CYAN,1); if(top+12<ns) text(pg,226,128,"V",C_CYAN,1);
             int i=show[sel]; const char *h = i==KO_PLANET ? "LEFT/RIGHT: NEXT PLANET THAT FITS   A: TYPE A NUMBER" : i==KO_TRACK ? "1,000,000 TRACKS ON EVERY PLANET. A: TYPE ONE" : i==KO_STUNTS ? "RAMPS, WATER JUMPS AND LOOP-DE-LOOPS" : i==KO_GO ? "A: GO!" : "LEFT/RIGHT: CHANGE IT";
-            ctext(pg,120,136,h,C_CYAN); ctext(pg,120,145,"B: BACK   SELECT: RANDOM PLANET",C_DGREY); }
+            ctext(pg,120,136,h,C_CYAN); ui_chint(pg,120,145,"B: BACK   SELECT: RANDOM PLANET",C_DGREY); }
         vsync(); read_keys();
         int i=show[sel];
         if(HIT(K_UP)){ sel=(sel+ns-1)%ns; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%ns; dirty=1; sfx(7); }

@@ -180,18 +180,61 @@ static void ctext(volatile u16 *pg, int cx, int y, const char *s, int c){ text(p
 static void rtext(volatile u16 *pg, int rx, int y, const char *s, int c){ text(pg,rx-textlen(s)*4,y,s,c,1); }
 static void stext(volatile u16 *pg, int x, int y, const char *s, int c){ text(pg,x+1,y+1,s,0,1); text(pg,x,y,s,c,1); }    // text with a drop shadow
 static void frame1(volatile u16 *pg, int x, int y, int w, int h, int c){ rect(pg,x,y,w,1,c); rect(pg,x,y+h-1,w,1,c); rect(pg,x,y,1,h,c); rect(pg,x+w-1,y,1,h,c); }
-static void panel(volatile u16 *pg, int x, int y, int w, int h, const char *title){
-    rect(pg,x,y,w,h,0); frame1(pg,x,y,w,h,6);
-    rect(pg,x+1,y+1,w-2,11,C_DGREY); rect(pg,x+1,y+12,w-2,1,6);
-    text(pg,x+7,y+4,title,0,1); text(pg,x+6,y+3,title,C_GOLD,1);
+// ---------------------------------------------------------------- THE INTERFACE KIT: every menu is built from these
+// A soft dithered backdrop, raised panels with rounded corners and a lit top edge, section headings with an accent tick,
+// glossy rounded bars, a selection bar with an accent edge, and button chips for the hints ("A: USE" draws an A key).
+static void ui_bg(volatile u16 *pg, int y0, int y1){              // the backdrop: three blues, dithered into each other, with a faint dot grid
+    int h=y1-y0; if(h<1) return;
+    for(int y=y0;y<y1;y++){ int L=(y-y0)*8/h; int ca = L<4 ? U_BG2 : U_BG1, cb = L<4 ? U_BG1 : U_BG0, lv=(L&3);   // lv: how far into the next colour (0..3 quarters)
+        static const u8 bay[2][2]={{0,2},{3,1}}; int p0 = bay[y&1][0]<lv ? cb : ca, p1 = bay[y&1][1]<lv ? cb : ca;
+        u16 cc=(u16)(p0|(p1<<8)); volatile u16 *row=pg+y*120; for(int k=0;k<120;k++) row[k]=cc;
+        if((y&15)==8) for(int x=8;x<240;x+=16){ volatile u16 *p=row+(x>>1); *p=(*p&0xFF00)|U_PANEL; } } }
+static void ui_panel(volatile u16 *pg, int x, int y, int w, int h){   // a raised card: dark rim with cut corners, lit top edge, soft inner shadow
+    rect(pg,x+1,y+1,w-2,h-2,U_PANEL);
+    rect(pg,x+2,y,w-4,1,U_EDGE); rect(pg,x+2,y+h-1,w-4,1,U_EDGE); rect(pg,x,y+2,1,h-4,U_EDGE); rect(pg,x+w-1,y+2,1,h-4,U_EDGE);
+    pix(pg,x+1,y+1,U_EDGE); pix(pg,x+w-2,y+1,U_EDGE); pix(pg,x+1,y+h-2,U_EDGE); pix(pg,x+w-2,y+h-2,U_EDGE);
+    rect(pg,x+2,y+1,w-4,1,U_SHINE); rect(pg,x+1,y+2,1,h-4,U_RAISE); rect(pg,x+2,y+h-2,w-4,1,U_BG1); }
+static void ui_well(volatile u16 *pg, int x, int y, int w, int h){    // a sunken box inside a panel (for pictures and lists)
+    rect(pg,x,y,w,h,U_INK); rect(pg,x,y,w,1,U_EDGE); rect(pg,x,y,1,h,U_EDGE); rect(pg,x,y+h-1,w,1,U_RAISE); rect(pg,x+w-1,y,1,h,U_RAISE); }
+static void ui_head(volatile u16 *pg, int x, int y, int w, const char *t, int acc){   // a section heading: accent tick, gold title, a rule to the edge
+    rect(pg,x,y,2,5,acc); stext(pg,x+5,y,t,C_GOLD); int rx=x+9+textlen(t)*4; if(rx<x+w) rect(pg,rx,y+2,x+w-rx,1,U_RAISE); }
+static int ui_glint(int c){ return c==C_RED ? U_GLRED : c==C_CYAN ? U_GLCYAN : c==C_GREEN ? U_GLGREEN : c==C_GOLD ? U_GLGOLD : C_WHITE; }
+static void ui_bar(volatile u16 *pg, int x, int y, int w, int h, s64 val, s64 max, int col){   // a rounded glossy bar
+    rect(pg,x+1,y,w-2,h,U_TROUGH); rect(pg,x,y+1,1,h-2,U_TROUGH); rect(pg,x+w-1,y+1,1,h-2,U_TROUGH);
+    int f=ratio(val,max,w-2); if(f>0){ rect(pg,x+1,y+1,f,h-2,col); rect(pg,x+1,y+1,f,1,ui_glint(col)); } }
+static void ui_sel(volatile u16 *pg, int x, int y, int w, int h, int c){   // the selection bar: rounded, with a bright edge on the left
+    rect(pg,x+1,y,w-2,h,c); rect(pg,x,y+1,1,h-2,c); rect(pg,x+w-1,y+1,1,h-2,c); rect(pg,x,y+1,2,h-2,U_ACCENT); }
+static int ui_chip(volatile u16 *pg, int x, int y, const char *k, int draw){   // a button key: a little raised cap with its name
+    int w=textlen(k)*4+5; if(draw){ rect(pg,x+1,y,w-2,9,U_RAISE); rect(pg,x,y+1,1,7,U_RAISE); rect(pg,x+w-1,y+1,1,7,U_RAISE); rect(pg,x+1,y,w-2,1,U_SHINE); rect(pg,x+1,y+8,w-2,1,U_EDGE);
+        text(pg,x+3,y+2,k,C_WHITE,1); } return w; }
+static int ui_iskey(const char *s, int n){                         // is s[0..n) the name of a button? (only those become key chips)
+    static const char *const k[]={"A","B","L","R","SEL","SELECT","START","UP/DOWN","LEFT/RIGHT","L R","L/R","SEL+L/R","HOLD A"};
+    for(unsigned i=0;i<sizeof k/sizeof k[0];i++){ const char *p=k[i]; int j=0; while(j<n && p[j] && p[j]==s[j]) j++; if(j==n && !p[j]) return 1; } return 0; }
+static int ui_hints(volatile u16 *pg, int x, int y, const char *s, int col, int draw){   // "A: USE  B: DROP" as key chips and words. Returns where it ends
+    char seg[48]; int i=0;
+    while(s[i]){ int n=0; while(s[i] && !(s[i]==' ' && s[i+1]==' ') && n<47) seg[n++]=s[i++]; seg[n]=0; while(s[i]==' ') i++;
+        int c=-1; for(int k=0;k<n;k++) if(seg[k]==':'){ c=k; break; }
+        if(c>0 && c<12 && ui_iskey(seg,c)){ seg[c]=0; x+=ui_chip(pg,x,y-2,seg,draw)+3; const char *lab=seg+c+1; while(*lab==' ') lab++; if(draw) text(pg,x,y,lab,col,1); x+=textlen(lab)*4+7; }
+        else { if(draw) text(pg,x,y,seg,col,1); x+=n*4+7; } }
+    return x; }
+static void ui_chint(volatile u16 *pg, int cx, int y, const char *s, int c){   // a hint line, centred, with key chips (plain text if it would not fit)
+    int w=ui_hints(pg,0,y,s,c,0)-7; if(w>236){ ctext(pg,cx,y,s,c); return; } int x=cx-w/2; if(x<2) x=2; if(x+w>238) x=238-w; ui_hints(pg,x,y,s,c,1); }
+static void ui_lhint(volatile u16 *pg, int x, int y, const char *s, int c){ int w=ui_hints(pg,0,y,s,c,0)-7; if(x+w>238){ text(pg,x,y,s,c,1); return; } ui_hints(pg,x,y,s,c,1); }
+static void ui_foot(volatile u16 *pg, const char *left, const char *right){   // the hint strip along the bottom
+    rect(pg,0,149,240,11,U_BG0); rect(pg,0,149,240,1,U_RAISE);
+    int e = left && left[0] ? ui_hints(pg,4,152,left,U_SOFT,1) : 4;
+    if(right){ int w=ui_hints(pg,0,152,right,C_GREY,0); if(e+4<236-w) ui_hints(pg,236-w,152,right,C_GREY,1); } }
+static void panel(volatile u16 *pg, int x, int y, int w, int h, const char *title){   // a titled window
+    ui_panel(pg,x,y,w,h); rect(pg,x+2,y+2,w-4,11,U_RAISE); rect(pg,x+2,y+2,w-4,1,U_SHINE); rect(pg,x+2,y+13,w-4,1,U_EDGE);
+    rect(pg,x+5,y+5,2,5,U_ACCENT); stext(pg,x+10,y+5,title,C_GOLD);
 }
 static void hbar(volatile u16 *pg, int x, int y, int w, s64 val, s64 max, int col){
-    rect(pg,x,y,w,3,C_DGREY); int f = ratio(val,max,w); if(f) rect(pg,x,y,f,3,col);
+    rect(pg,x,y,w,3,U_TROUGH); int f = ratio(val,max,w); if(f){ rect(pg,x,y,f,3,col); rect(pg,x,y,f,1,ui_glint(col)); }
 }
 static int confirm(volatile u16 *pg, const char *l1, const char *l2){
-    panel(pg,30,62,180,54,"ARE YOU SURE?");
-    ctext(pg,120,80,l1,C_WHITE); if(l2) ctext(pg,120,89,l2,C_GREY);
-    ctext(pg,120,103,"A: YES    B: NO",C_CYAN);
+    panel(pg,30,60,180,58,"ARE YOU SURE?");
+    ctext(pg,120,80,l1,C_WHITE); if(l2) ctext(pg,120,89,l2,U_SOFT);
+    { int w=ui_hints(pg,0,104,"A: YES  B: NO",C_WHITE,0); ui_hints(pg,120-w/2,104,"A: YES  B: NO",C_WHITE,1); }
     wait_release();
     while(1){ vsync(); read_keys(); if(HIT(K_A)){ sfx(2); wait_release(); return 1; } if(HIT(K_B)){ wait_release(); return 0; } }
 }
@@ -206,7 +249,7 @@ static void slot_card(volatile u16 *pg, int i, int y, int sel, int mode){
     if(in_game && i==cur_slot) text(pg,cx+44,y+5,"IN USE",C_CYAN,1);
     if(!o->ok){
         ctext(pg,cx+w/2,y+17,"- EMPTY -",sel?C_WHITE:C_DGREY);
-        if(sel && mode!=SP_LOAD) ctext(pg,cx+w/2,y+25,"A: USE THIS SLOT",C_CYAN);
+        if(sel && mode!=SP_LOAD) ui_chint(pg,cx+w/2,y+25,"A: USE THIS SLOT",C_CYAN);
         return;
     }
     fmt_time(b,o->secs); rtext(pg,cx+w-8,y+5,b,C_GREY);
@@ -307,7 +350,7 @@ static void options_screen(volatile u16 *pg){
             if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<NOPT) text(pg,216,118,"v",C_CYAN,1);
             rect(pg,18,128,204,1,C_DGREY);
             { const char *h=hlp[sel]; int L=textlen(h); if(L>52){ char h1[56]; int k=0; while(k<52 && h[k]) k++; while(k>0 && h[k]!=' ') k--; for(int j=0;j<k;j++) h1[j]=h[j]; h1[k]=0; ctext(pg,120,132,h1,C_GREY); ctext(pg,120,140,h+k+1,C_GREY); } else ctext(pg,120,134,h,C_GREY); }
-            ctext(pg,120,148,"LEFT/RIGHT: CHANGE  SELECT: MORE  B: BACK",C_CYAN);
+            ui_chint(pg,120,148,"LEFT/RIGHT: CHANGE  SELECT: MORE  B: BACK",C_CYAN);
         }
         vsync(); read_keys();
         if(HIT(K_UP)){ sel=(sel+NOPT-1)%NOPT; sfx(7); dirty=1; }

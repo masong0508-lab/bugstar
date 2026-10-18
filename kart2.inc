@@ -57,7 +57,7 @@ static void kname_edit(volatile u16 *pg, const char *title, char *nm, int max){
     while(1){
         box(pg,16,52,208,56); rect(pg,17,53,206,12,6); ctext(pg,120,56,title,C_GOLD);
         int x0=120-max*4; for(int k=0;k<max;k++){ char ch[2]={ k<n?b[k]:'_',0 }; int c = k==cur ? C_GOLD : k<n ? C_WHITE : C_DGREY; rect(pg,x0+k*8,70,8,12,0); text(pg,x0+k*8,72,ch,c,2); if(k==cur && (t&16)) rect(pg,x0+k*8,83,6,1,C_GOLD); }
-        ctext(pg,120,94,"UP/DOWN: LETTER   LEFT/RIGHT: MOVE   A: OK",C_GREY);
+        ui_chint(pg,120,94,"UP/DOWN: LETTER   LEFT/RIGHT: MOVE   A: OK",C_GREY);
         vsync(); read_keys(); t++;
         if(HIT(K_UP)||HIT(K_DOWN)){ if(cur>=n){ b[cur]='A'; n=cur+1; b[n]=0; } else { char c=b[cur]; c = HIT(K_UP) ? (c=='Z'?' ':c==' '?'0':c=='9'?'A':(c>='A'&&c<'Z')||(c>='0'&&c<'9')?c+1:'A') : (c=='A'?'9':c=='0'?' ':c==' '?'Z':(c>'A'&&c<='Z')||(c>'0'&&c<='9')?c-1:'Z'); b[cur]=c; } sfx(7); }
         if(HIT(K_RIGHT) && cur<max-1){ cur++; if(cur>=n){ b[cur]='A'; n=cur+1; b[n]=0; } }

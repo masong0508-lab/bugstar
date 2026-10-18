@@ -43,12 +43,11 @@ static int delta_text(const Gear *g, char *b){     // "DMG +2  DEF -1" in b; ret
     if(!b[0]) scpy(b,"SAME AS NOW");
     return sc>0?1:sc<0?-1:0;
 }
-static void vbar(volatile u16 *pg, int x, int y, int w, s64 val, s64 max, int col, const char *lab){     // a labelled bar with the numbers on it
-    rect(pg,x,y,w,7,C_DGREY); int f = ratio(val,max,w-2); if(f) rect(pg,x+1,y+1,f,5,col);
-    frame1(pg,x,y,w,7,6); char b[16]; b[0]=0; ncat(b,val); scat(b,"/"); ncat(b,max);
-    text(pg,x-textlen(lab)*4-3,y+1,lab,C_GREY,1); text(pg,x+w-textlen(b)*4-2,y+1,b,C_WHITE,1);
+static void vbar(volatile u16 *pg, int x, int y, int w, s64 val, s64 max, int col, const char *lab){     // a labelled glossy bar with the numbers on it
+    ui_bar(pg,x,y,w,7,val,max,col); char b[16]; b[0]=0; ncat(b,val); scat(b,"/"); ncat(b,max);
+    text(pg,x-textlen(lab)*4-3,y+1,lab,U_SOFT,1); text(pg,x+w-textlen(b)*4-2,y+2,b,U_EDGE,1); text(pg,x+w-textlen(b)*4-3,y+1,b,C_WHITE,1);
 }
-static void box(volatile u16 *pg, int x, int y, int w, int h){ rect(pg,x,y,w,h,0); rect(pg,x,y,w,1,6); rect(pg,x,y+h-1,w,1,6); rect(pg,x,y,1,h,6); rect(pg,x+w-1,y,1,h,6); }
+static void box(volatile u16 *pg, int x, int y, int w, int h){ ui_panel(pg,x,y,w,h); }      // (every box is a raised card now)
 
 static void card(volatile u16 *pg, const char *title, const char *const *ln, int n);
 static const char *const bring_nm[4]={"FISH","BERRIES","SEEDS","POTIONS"}; static const u8 bring_it[4]={IT_FISH,IT_BERRY,IT_SEED,IT_POTION};
@@ -100,12 +99,12 @@ static void bolt_talk(volatile u16 *pg){
 // ---------------------------------------------------------------- story cards: a few short lines, then A
 static void card(volatile u16 *pg, const char *title, const char *const *ln, int n){
     int h=34+n*11+14, y0=88-h/2;
-    box(pg,10,y0,220,h); rect(pg,11,y0+1,218,12,6);
-    text(pg,120-textlen(title)*2,y0+4,title,C_GOLD,1);
-    for(int i=0;i<n;i++) text(pg,120-textlen(ln[i])*2,y0+20+i*11,ln[i],C_WHITE,1);
+    ui_panel(pg,10,y0,220,h); rect(pg,12,y0+2,216,13,U_RAISE); rect(pg,12,y0+2,216,1,U_SHINE); rect(pg,12,y0+15,216,1,U_EDGE);   // a title band
+    { int tw=textlen(title)*4; rect(pg,120-tw/2-8,y0+7,3,3,U_ACCENT); rect(pg,120+tw/2+5,y0+7,3,3,U_ACCENT); stext(pg,120-tw/2,y0+6,title,C_GOLD); }
+    for(int i=0;i<n;i++) stext(pg,120-textlen(ln[i])*2,y0+21+i*11,ln[i],C_WHITE);
     wait_release();
     for(int t=0;;t++){ vsync(); read_keys(); if(HIT(K_A)||HIT(K_START)) break;
-        text(pg,104,y0+h-11,"A: OK",(t&32)?C_CYAN:C_DGREY,1); }
+        if((t&31)==0){ rect(pg,96,y0+h-13,48,11,U_PANEL); if(t&32) ui_hints(pg,104,y0+h-10,"A: OK",C_WHITE,1); else ui_hints(pg,104,y0+h-10,"A: OK",U_SOFT,1); } }
     sfx(2); wait_release();
 }
 // ---------------------------------------------------------------- the colour picker: 16 presets, or mix your own with red, green and blue sliders
@@ -129,7 +128,7 @@ static u16 pick_colour(volatile u16 *pg, const char *what, u16 cur){
             swatch(pg,140,84,88,22,mix); frame1(pg,140,84,88,22,6);
             scpy(t,"R"); ncat(t,r); scat(t," G"); ncat(t,g); scat(t," B"); ncat(t,b); text(pg,144,110,t,C_GREY,1);
             ctext(pg,120,126, zone==0 ? "LEFT/RIGHT/UP/DOWN: PICK   A: USE IT" : "LEFT/RIGHT: SLIDE   UP/DOWN: NEXT   A: USE IT",C_CYAN);
-            ctext(pg,120,138,"START: SWITCH PRESETS / MIX    B: KEEP THE OLD ONE",C_DGREY);
+            ui_chint(pg,120,138,"START: SWITCH PRESETS / MIX    B: KEEP THE OLD ONE",C_DGREY);
         }
         vsync(); read_keys();
         if(HIT(K_START)){ zone^=1; if(zone==1){ r=mix&31; g=(mix>>5)&31; b=(mix>>10)&31; sel=0; } dirty=1; sfx(7); }
@@ -231,7 +230,7 @@ static void cc_name(volatile u16 *pg, char *nm){
     while(1){
         box(pg,36,52,168,56); rect(pg,37,53,166,12,6); ctext(pg,120,56,"WHAT IS YOUR NAME?",C_GOLD);
         for(int k=0;k<8;k++){ char ch[2]={ k<n?b[k]:'_',0 }; int c = k==cur ? C_GOLD : k<n ? C_WHITE : C_DGREY; text(pg,80+k*10,72,ch,c,2); if(k==cur && (t&16)) rect(pg,80+k*10,89,8,1,C_GOLD); }
-        ctext(pg,120,94,"UP/DOWN: LETTER   LEFT/RIGHT: MOVE   A: OK",C_GREY);
+        ui_chint(pg,120,94,"UP/DOWN: LETTER   LEFT/RIGHT: MOVE   A: OK",C_GREY);
         vsync(); read_keys(); t++;
         if(HIT(K_UP)||HIT(K_DOWN)){ if(cur>=n){ b[cur]='A'; n=cur+1; b[n]=0; } else { char c=b[cur]; c = HIT(K_UP) ? (c=='Z'?' ':c==' '?'A':c+1) : (c=='A'?' ':c==' '?'Z':c-1); b[cur]=c; } sfx(7); }
         if(HIT(K_RIGHT) && cur<7){ cur++; if(cur>=n){ b[cur]='A'; n=cur+1; b[n]=0; } }
@@ -367,9 +366,9 @@ static void help_screen(volatile u16 *pg){
     while(1){
         if(dirty){ dirty=0;
             title_restore(pg,18,160);
-            rect(pg,8,22,224,126,0); frame1(pg,8,22,224,126,6); rect(pg,9,23,222,12,C_DGREY); rect(pg,9,35,222,1,6);
-            char b[24]; scpy(b,"HOW TO PLAY  "); ncat(b,p+1); scat(b,"/5"); text(pg,14,26,b,C_GREY,1);
-            rtext(pg,226,26,help_ttl[p],C_GOLD);
+            ui_panel(pg,8,22,224,126); rect(pg,10,24,220,11,U_RAISE); rect(pg,10,24,220,1,U_SHINE); rect(pg,10,35,220,1,U_EDGE); rect(pg,13,27,2,5,U_ACCENT);
+            char b[24]; scpy(b,"HOW TO PLAY  "); ncat(b,p+1); scat(b,"/5"); stext(pg,18,27,b,U_SOFT);
+            { int w=textlen(help_ttl[p])*4; stext(pg,226-w,27,help_ttl[p],C_GOLD); }
             for(int i=0;i<7;i++){ const HelpLine *h=&help_pg[p][i]; int y=41+i*13; int c=badge_col(h->btn);
                 if(c>=0){ int w=textlen(h->btn)*4+6; rect(pg,14,y-2,w,9,c); text(pg,17,y,h->btn,0,1); }
                 else { rect(pg,16,y+2,3,2,C_DGREY); }
@@ -465,112 +464,130 @@ static void char_screen(volatile u16 *pg){
     wait_release();
     while(1){
         if(dirty){ dirty=0; char b[64];
-            // ---- the tab bar: a picture and a name for every page
-            rect(pg,0,18,240,142,0); rect(pg,0,18,240,16,1); rect(pg,0,34,240,1,6);
+            // ---- the backdrop and the tab bar: a picture and a name for every page; the open tab is a raised card
+            ui_bg(pg,18,149); rect(pg,0,18,240,17,U_BG0); rect(pg,0,35,240,1,U_RAISE);
             for(int t=0;t<8;t++){ int x=t*30, on=t==ti;
-                if(on){ rect(pg,x+1,18,28,17,0); rect(pg,x+1,18,28,1,tabc[t]); }
-                icon8(pg,x+11,20,tab_icon[t], on?tabc[t]:C_DGREY);
-                ctext(pg,x+15,29,tabn[t], on?C_GOLD:C_GREY); }
-            rect(pg,0,149,240,1,6);
-            int y=38;
+                if(on){ rect(pg,x+2,19,26,17,U_PANEL); rect(pg,x+1,20,1,16,U_RAISE); rect(pg,x+28,20,1,16,U_EDGE); rect(pg,x+3,19,24,2,tabc[t]); rect(pg,x+3,21,24,1,U_SHINE); }
+                icon8(pg,x+11,22,tab_icon[t], on?tabc[t]:U_GLOW);
+                ctext(pg,x+15,30,tabn[t], on?C_GOLD:U_GLOW); }
+            const char *foot=""; int y=38;
             if(page==0){
                 // ---- BUG: you, your bars, your stats, your friends
-                scpy(b,bug_name); scat(b,"  LEVEL "); ncat(b,level); text(pg,8,y,b,C_GOLD,1); y+=9;
-                vbar(pg,30,y,90,hearts,maxh,C_RED,"HP"); y+=9;
-                vbar(pg,30,y,90,mp,maxmp,C_CYAN,"MP"); y+=9;
-                vbar(pg,30,y,90,food,100,food>25?C_GREEN:C_RED,"FOOD"); y+=9;
-                vbar(pg,30,y,90,xp,xp_next(),C_GOLD,"XP"); y+=11;
+                ui_panel(pg,4,38,122,48);
+                stext(pg,10,42,bug_name,C_GOLD); { char lv[12]="LV "; ncat(lv,level); int w=textlen(lv)*4+6; rect(pg,120-w,41,w,8,U_RAISE); rect(pg,120-w,41,w,1,U_SHINE); text(pg,123-w,43,lv,C_WHITE,1); }
+                vbar(pg,30,51,90,hearts,maxh,C_RED,"HP");
+                vbar(pg,30,59,90,mp,maxmp,C_CYAN,"MP");
+                vbar(pg,30,67,90,food,100,food>25?C_GREEN:C_RED,"FOOD");
+                vbar(pg,30,75,90,xp,xp_next(),C_GOLD,"XP");
+                // the portrait: a sunken window with a floor and a shadow (your sprite stands in it every frame, below)
+                ui_panel(pg,128,38,108,48); ui_well(pg,132,42,100,40);
+                for(int yy=66;yy<81;yy++) rect(pg,133,yy,98,1, yy<70?U_INK:yy<74?U_BG0:U_BG1);
+                for(int k=0;k<5;k++){ int w=34-k*6; rect(pg,182-w/2,79+(k>>1),w,1,U_EDGE); }
+                { const char *fn = form==FORM_CREATURE ? body_name[form_body] : form_name[form]; text(pg,136,45,fn,U_GLOW,1); }
+                // stats
+                ui_panel(pg,4,88,122,40); ui_head(pg,9,91,112,"STATS",C_GREEN);
                 s64 *sv[4]={&st_str,&st_dex,&st_vit,&st_mag};
-                rect(pg,4,y-2,118,36,1);
-                for(int i=0;i<4;i++){ if(cur==i){ rect(pg,4,y-1,118,8,HI); text(pg,6,y,">",C_CYAN,1); } text(pg,12,y,stn[i],cur==i?C_WHITE:C_GREY,1); b[0]=0; ncat(b,*sv[i]); text(pg,58,y,b,C_WHITE,1);
-                    for(int k=0;k<10;k++) rect(pg,72+k*4,y+1,3,4, k<*sv[i]? (i==0?C_RED:i==1?C_GOLD:i==2?C_GREEN:C_CYAN) : C_DGREY); y+=8; }
-                y+=2; if(stat_pts){ scpy(b,"A: ADD A POINT ("); ncat(b,stat_pts); scat(b," LEFT)"); text(pg,8,y,b,C_GREEN,1); } else text(pg,8,y,"LEVEL UP FOR MORE POINTS",C_DGREY,1);
-                // the portrait frame (your sprite is drawn into it every frame, below)
-                rect(pg,128,38,108,44,1); frame1(pg,128,38,108,44,6); for(int x=129;x<235;x+=2) pix(pg,x,72,C_DGREY);
-                { const char *fn = form==FORM_CREATURE ? body_name[form_body] : form_name[form]; ctext(pg,182,40,fn,C_DGREY); }
-                scpy(b,fame_rank()); scat(b,"  FAME "); ncat(b,fame); rtext(pg,236,85,b,C_GOLD);
-                int yy=95;
-                scpy(b,"DAMAGE  "); ncat(b,d_dmg+d_fire+d_venom); text(pg,130,yy,b,C_WHITE,1); scpy(b,"DEFENCE "); ncat(b,d_def); text(pg,186,yy,b,C_WHITE,1); yy+=8;
-                scpy(b,"CRIT "); ncat(b,d_crit); scat(b,"%"); text(pg,130,yy,b,C_WHITE,1); scpy(b,"GOLD "); ncat(b,gold_find); scat(b,"%"); text(pg,186,yy,b,C_WHITE,1); yy+=8;
-                if(d_spd){ scpy(b,"SPEED "); scat(b,d_spd>0?"+":"-"); ncat(b,d_spd>0?d_spd:-d_spd); scat(b,"%"); text(pg,130,yy,b,d_spd>0?C_GREEN:C_RED,1); }
-                if(d_haste){ scpy(b,"BITES +"); ncat(b,d_haste); text(pg,186,yy,b,C_GREEN,1); } yy+=9;
-                text(pg,130,yy,std[cur],C_GREY,1);
-                y+=11; rect(pg,4,y-2,232,1,6); y+=2;
-                scpy(b,"BUDDY LV"); ncat(b,pet_lv+1); scat(b,": "); scat(b,pet_form_name[pet_form]); text(pg,8,y,b,C_CYAN,1);
-                if(pet_away_t) rtext(pg,236,y,"AWAY SELLING",C_GREY); else if(pet_down_t) rtext(pg,236,y,"RESTING",C_GREY); else { int pm=pet_maxhp*(pet_form==2?2:1); hbar(pg,152,y+2,84,pet_hp,pm,C_GREEN); } y+=9;
-                int any=0, x=8;
-                for(int t=0;t<6;t++) if(have_bug[t]){ any=1; scpy(b,friend_name[t]); scat(b," X"); ncat(b,have_bug[t]); text(pg,x,y,b,C_WHITE,1); x+=76; if(x>200){ x=8; y+=7; } }
-                if(!any) text(pg,8,y,"NO BUG FRIENDS YET. OPEN CAGES TO FREE THEM",C_DGREY,1);
+                for(int i=0;i<4;i++){ int yy=99+i*7; if(cur==i) ui_sel(pg,7,yy-1,116,7,HI);
+                    text(pg,12,yy,stn[i],cur==i?C_WHITE:U_SOFT,1); b[0]=0; ncat(b,*sv[i]); text(pg,58,yy,b,C_WHITE,1);
+                    int pc = i==0?C_RED:i==1?C_GOLD:i==2?C_GREEN:C_CYAN; for(int k=0;k<10;k++){ int on=k<*sv[i]; rect(pg,74+k*4,yy,3,5, on?pc:U_TROUGH); if(on) rect(pg,74+k*4,yy,3,1,ui_glint(pc)); } }
+                // power
+                ui_panel(pg,128,88,108,40); ui_head(pg,133,91,98,"POWER",C_RED);
+                { int yy=99;
+                  text(pg,134,yy,"DMG",U_SOFT,1); b[0]=0; ncat(b,d_dmg+d_fire+d_venom); text(pg,150,yy,b,C_WHITE,1); text(pg,184,yy,"DEF",U_SOFT,1); b[0]=0; ncat(b,d_def); text(pg,200,yy,b,C_WHITE,1); yy+=7;
+                  text(pg,134,yy,"CRIT",U_SOFT,1); b[0]=0; ncat(b,d_crit); scat(b,"%"); text(pg,154,yy,b,C_WHITE,1); text(pg,184,yy,"GOLD",U_SOFT,1); b[0]=0; ncat(b,gold_find); scat(b,"%"); text(pg,204,yy,b,C_WHITE,1); yy+=7;
+                  if(d_spd){ scpy(b,"SPD "); scat(b,d_spd>0?"+":"-"); ncat(b,d_spd>0?d_spd:-d_spd); scat(b,"%"); text(pg,134,yy,b,d_spd>0?C_GREEN:C_RED,1); }
+                  if(d_haste){ scpy(b,"BITES +"); ncat(b,d_haste); text(pg,184,yy,b,C_GREEN,1); } yy+=7;
+                  scpy(b,fame_rank()); scat(b," * FAME "); ncat(b,fame); b[25]=0; text(pg,134,yy,b,C_GOLD,1); }
+                // Buddy and your friends
+                ui_panel(pg,4,130,232,18);
+                scpy(b,"BUDDY LV"); ncat(b,pet_lv+1); scat(b," "); scat(b,pet_form_name[pet_form]); text(pg,10,133,b,C_CYAN,1);
+                if(pet_away_t) rtext(pg,232,133,"AWAY SELLING",U_SOFT); else if(pet_down_t) rtext(pg,232,133,"RESTING",U_SOFT); else { int pm=pet_maxhp*(pet_form==2?2:1); ui_bar(pg,150,133,82,5,pet_hp,pm,C_GREEN); }
+                { int any=0, x=10; for(int t=0;t<6;t++) if(have_bug[t]){ any=1; scpy(b,friend_name[t]); scat(b," X"); ncat(b,have_bug[t]); if(x+textlen(b)*4>232) break; text(pg,x,141,b,C_WHITE,1); x+=textlen(b)*4+8; }
+                  if(!any) text(pg,10,141,"NO BUG FRIENDS YET. OPEN CAGES TO FREE THEM",C_DGREY,1); }
+                if(stat_pts){ static char ft[32]; scpy(ft,"A: ADD A POINT ("); ncat(ft,stat_pts); scat(ft," LEFT)"); foot=ft; }
             } else if(page==1){
-                const Gear *eq[3]={&eqw,&eqa,&eqc}; static const char *const lab[3]={"BITE","WEAR","CHARM"};
-                for(int i=0;i<3;i++){ int x=8+i*78; rect(pg,x-2,y-2,74,18,1); frame1(pg,x-2,y-2,74,18,C_DGREY); text(pg,x,y,lab[i],C_GOLD,1);
-                    if(eq[i]->it){ gear_name(eq[i],b); b[17]=0; text(pg,x,y+8,b,rar_color(eq[i]),1); } else text(pg,x,y+8,"NOTHING",C_DGREY,1); }
-                y+=20; scpy(b,"YOUR BAG  "); ncat(b,bag_n); scat(b,"/"); ncat(b,BAGMAX); if(bag_n>12){ scat(b,"  PAGE "); ncat(b,cur/12+1); scat(b,"/"); ncat(b,(bag_n+11)/12); } text(pg,8,y,b,C_GOLD,1); y+=8;
-                int y0=y;
-                for(int i=(cur/12)*12;i<bag_n && i<(cur/12)*12+12;i++){ int k12=i%12; int col=k12/6, yy=y0+(k12%6)*8, x=8+col*116;
-                    if(cur==i){ rect(pg,x-4,yy-1,114,8,HI); text(pg,x-3,yy,">",C_CYAN,1); }
-                    gear_name(&bag[i],b); b[26]=0; text(pg,x+3,yy,b,rar_color(&bag[i]),1);
-                    if(is_gear(&bag[i])){ Delta d=gear_delta(&bag[i]); int v=d.dmg+d.def+d.hp/4; if(v) text(pg,x+100,yy,v>0?"+":"-",v>0?C_GREEN:C_RED,1); } }
-                if(!bag_n) text(pg,10,y0,"EMPTY. PICK THINGS UP IN DUNGEONS",C_DGREY,1);
-                y=y0+49; rect(pg,4,y-2,232,1,6);
-                if(bag_n){ describe(&bag[cur],b); b[56]=0; text(pg,8,y+1,b,C_WHITE,1);
-                    int sc=delta_text(&bag[cur],b); b[56]=0; text(pg,8,y+9,b, sc>0?C_GREEN:sc<0?C_RED:C_GREY,1);
+                const Gear *eq[3]={&eqw,&eqa,&eqc}; static const char *const lab[3]={"BITE","WEAR","CHARM"}; static const u8 lc[3]={C_RED,C_CYAN,C_UNIQ};
+                for(int i=0;i<3;i++){ int x=4+i*78; ui_panel(pg,x,38,76,22); rect(pg,x+5,42,2,5,lc[i]); text(pg,x+10,42,lab[i],U_SOFT,1);
+                    if(eq[i]->it){ gear_name(eq[i],b); b[17]=0; text(pg,x+5,51,b,rar_color(eq[i]),1); } else text(pg,x+5,51,"NOTHING",C_DGREY,1); }
+                ui_panel(pg,4,62,232,58);
+                scpy(b,"YOUR BAG"); ui_head(pg,9,65,222,b,C_CYAN); scpy(b,""); ncat(b,bag_n); scat(b,"/"); ncat(b,BAGMAX); if(bag_n>12){ scat(b,"  PAGE "); ncat(b,cur/12+1); scat(b,"/"); ncat(b,(bag_n+11)/12); }
+                { int w=textlen(b)*4+6; rect(pg,231-w,64,w,8,U_PANEL); text(pg,234-w,65,b,U_SOFT,1); }
+                int y0=74;
+                for(int i=(cur/12)*12;i<bag_n && i<(cur/12)*12+12;i++){ int k12=i%12; int col=k12/6, yy=y0+(k12%6)*7, x=10+col*114;
+                    if(cur==i) ui_sel(pg,x-3,yy-1,112,7,HI);
+                    gear_name(&bag[i],b); b[25]=0; text(pg,x+2,yy,b,rar_color(&bag[i]),1);
+                    if(is_gear(&bag[i])){ Delta d=gear_delta(&bag[i]); int v=d.dmg+d.def+d.hp/4; if(v){ int c=v>0?C_GREEN:C_RED; rect(pg,x+101,yy+2,5,1,c); if(v>0) rect(pg,x+103,yy,1,5,c); } } }
+                if(!bag_n) text(pg,12,y0+2,"EMPTY. PICK THINGS UP IN DUNGEONS",C_DGREY,1);
+                ui_panel(pg,4,122,232,26);
+                if(bag_n){ describe(&bag[cur],b); b[56]=0; text(pg,10,125,b,C_WHITE,1);
+                    int sc=delta_text(&bag[cur],b); b[40]=0; text(pg,10,133,b, sc>0?C_GREEN:sc<0?C_RED:U_SOFT,1);
                     scpy(b,"WORTH "); ncat(b,item_value(&bag[cur])); scat(b,"G");
-                    if(is_gear(&bag[cur])){ scat(b,"  SCRAP "); ncat(b,scrap_of(bag[cur].rar)); scat(b,"  KEEP +"); ncat(b,keep_points(bag[cur].rar)); }
-                    rtext(pg,236,y+17,b,C_GOLD); }
-                text(pg,6,152, bag_n && is_gear(&bag[cur]) ? "A: WEAR  B: SCRAP  SEL: BUDDY SELLS" : "A: USE  B: DROP  SEL: BUDDY SELLS",C_CYAN,1);
+                    if(is_gear(&bag[cur])){ scat(b,"  SCRAP "); ncat(b,scrap_of(bag[cur].rar)); }
+                    rtext(pg,231,140,b,C_GOLD); }
+                foot = bag_n && is_gear(&bag[cur]) ? "A: WEAR  B: SCRAP  SEL: SELL" : bag_n ? "A: USE  B: DROP  SEL: SELL" : "";
             } else if(page==2){
-                scpy(b,"MANA "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); scat(b,"   SPELL POWER "); ncat(b,st_mag); text(pg,8,y,b,C_CYAN,1); y+=12;
+                ui_panel(pg,4,38,232,60); ui_head(pg,9,41,150,"SPELLS",C_UNIQ);
+                scpy(b,"MANA "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); scat(b,"  POWER "); ncat(b,st_mag); rtext(pg,231,41,b,C_CYAN);
                 static const char *const sd[NSPELL]={"A BALL OF FIRE FLIES AHEAD","LIGHTNING HITS THE NEAREST FOE","HEALS YOU","HARDER TO HURT FOR A WHILE","PORTAL HOME. THE DOOR RETURNS"};
-                for(int i=0;i<NSPELL;i++){ if(cur==i){ rect(pg,4,y-1,232,8,HI); text(pg,4,y,">",C_CYAN,1); }
-                    scpy(b,spell_name[i]); if(i==spell_sel) scat(b," *"); text(pg,10,y,b, spell_known[i] ? (i==spell_sel?C_GOLD:C_WHITE) : C_DGREY,1);
-                    b[0]=0; ncat(b,spell_cost[i]); scat(b," MP"); text(pg,76,y,b,C_CYAN,1);
-                    text(pg,104,y, spell_known[i]?sd[i]:"FIND ITS BOOK",spell_known[i]?C_GREY:C_DGREY,1); y+=9; }
-                y+=6; text(pg,8,y,"IN A DUNGEON: TAP SELECT TO CAST.",C_WHITE,1); y+=8;
-                text(pg,8,y,"HOLD SELECT + L OR R TO CHANGE SPELL.",C_WHITE,1); y+=8;
-                text(pg,6,152,"A: MAKE IT YOUR SPELL",C_CYAN,1);
+                y=51; for(int i=0;i<NSPELL;i++){ if(cur==i) ui_sel(pg,7,y-1,226,7,HI);
+                    if(i==spell_sel){ rect(pg,11,y+1,3,3,C_GOLD); }
+                    text(pg,17,y,spell_name[i], spell_known[i] ? (i==spell_sel?C_GOLD:C_WHITE) : C_DGREY,1);
+                    b[0]=0; ncat(b,spell_cost[i]); scat(b," MP"); text(pg,76,y,b,spell_known[i]?C_CYAN:C_DGREY,1);
+                    text(pg,108,y, spell_known[i]?sd[i]:"FIND ITS BOOK",spell_known[i]?U_SOFT:C_DGREY,1); y+=9; }
+                ui_panel(pg,4,100,232,32); ui_head(pg,9,103,222,"HOW TO CAST",C_CYAN);
+                ui_hints(pg,12,113,"SEL: CAST IT, IN A DUNGEON",C_WHITE,1);
+                ui_hints(pg,12,123,"SEL+L/R: CHANGE SPELL",C_WHITE,1);
+                foot="A: MAKE IT YOUR SPELL";
             } else if(page==3){
-                text(pg,8,y,"QUEST",C_GOLD,1); y+=8;
-                quest_refresh(); if(q_type==Q_NONE) text(pg,8,y,"NONE. VISIT YOUR SHIP'S QUEST BOARD.",C_DGREY,1);
-                else { text(pg,8,y,q_name,C_WHITE,1); y+=7; scpy(b, q_done ? "DONE! GO BACK TO YOUR SHIP" : "IN PROGRESS"); if(!q_done && q_counted(q_type)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,8,y,b,q_done?C_GREEN:C_WHITE,1); }
-                y+=12; scpy(b,"FAME "); ncat(b,fame); scat(b,"  RANK: "); scat(b,fame_rank()); text(pg,8,y,b,C_GOLD,1); y+=12;
-                if(endless){ scpy(b,"ENDLESS GALAXY  WORLD "); ncat(b,world_no); scat(b,"  DEEPEST B"); ncat(b,best_depth); text(pg,8,y,b,C_CYAN,1); y+=10; }
-                text(pg,8,y,"WHAT YOU HAVE LEARNED",C_GOLD,1); y+=8;
-                for(int i=0;i<8;i++){ scpy(b,berry_col[i]); scat(b,":"); scat(b, berry_known[i]?berry_eff[berry_map[i]]:"?"); text(pg,8+(i&3)*58,y+(i>>2)*7,b,berry_known[i]?C_WHITE:C_DGREY,1); }
-                y+=16;
-                for(int i=0;i<6;i++){ scpy(b,seed_look[i]); scat(b,":"); scat(b, seed_known[i]?seed_eff[seed_map[i]]:"?"); text(pg,8+(i%3)*76,y+(i/3)*7,b,seed_known[i]?C_WHITE:C_DGREY,1); }
+                quest_refresh();
+                ui_panel(pg,4,38,232,30); ui_head(pg,9,41,140,"QUEST",C_GOLD);
+                scpy(b,"FAME "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); rtext(pg,231,41,b,C_GOLD);
+                if(q_type==Q_NONE) text(pg,12,51,"NONE. VISIT YOUR SHIP'S QUEST BOARD.",C_DGREY,1);
+                else { text(pg,12,51,q_name,C_WHITE,1); scpy(b, q_done ? "DONE! GO BACK TO YOUR SHIP" : "IN PROGRESS"); text(pg,12,59,b,q_done?C_GREEN:U_SOFT,1);
+                    if(!q_done && q_counted(q_type)){ ui_bar(pg,130,59,70,5,q_have,q_need,C_GOLD); scpy(b,""); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); text(pg,204,59,b,C_WHITE,1); } }
+                ui_panel(pg,4,70,232,78); y=73;
+                if(endless){ scpy(b,"ENDLESS GALAXY  WORLD "); ncat(b,world_no); scat(b,"  DEEPEST B"); ncat(b,best_depth); text(pg,12,y,b,C_CYAN,1); y+=10; }
+                ui_head(pg,9,y,222,"WHAT YOU HAVE LEARNED",C_GREEN); y+=10;
+                text(pg,12,y,"BERRIES",U_GLOW,1); y+=8;
+                for(int i=0;i<8;i++){ scpy(b,berry_col[i]); scat(b,":"); scat(b, berry_known[i]?berry_eff[berry_map[i]]:"?"); text(pg,12+(i&3)*56,y+(i>>2)*7,b,berry_known[i]?C_WHITE:C_DGREY,1); }
+                y+=17; text(pg,12,y,"SEEDS",U_GLOW,1); y+=8;
+                for(int i=0;i<6;i++){ scpy(b,seed_look[i]); scat(b,":"); scat(b, seed_known[i]?seed_eff[seed_map[i]]:"?"); text(pg,12+(i%3)*74,y+(i/3)*7,b,seed_known[i]?C_WHITE:C_DGREY,1); }
             } else if(page==4){
-                if(sub){ relic_shelf(pg,y); text(pg,6,152,"A: SHOW YOUR FEATS",C_CYAN,1); }
+                ui_panel(pg,4,37,232,111); y=40;
+                if(sub){ relic_shelf(pg,y); foot="A: SHOW YOUR FEATS"; }
                 else {
-                    text(pg,8,y,"FEATS",C_GOLD,1); { int dn=0; for(int i=0;i<NACH;i++) dn+=(ach_done>>i)&1; scpy(b,""); ncat(b,dn); scat(b,"/"); ncat(b,NACH); scat(b," DONE"); rtext(pg,236,y,b,C_GREY); } y+=9;
+                    ui_head(pg,9,y,150,"FEATS",C_GOLD); { int dn=0; for(int i=0;i<NACH;i++) dn+=(ach_done>>i)&1; scpy(b,""); ncat(b,dn); scat(b,"/"); ncat(b,NACH); scat(b," DONE"); rtext(pg,231,y,b,U_SOFT); } y+=9;
                     for(int i=0;i<NACH;i++){ int done=(ach_done>>i)&1, hv=ach_have(i); if(hv>ach[i].goal) hv=ach[i].goal; int yy=y+i*7;
-                        text(pg,8,yy,ach[i].name,done?C_GOLD:C_WHITE,1); text(pg,76,yy,ach[i].what,done?C_GREY:C_DGREY,1);
-                        if(done) text(pg,184,yy,"DONE",C_GREEN,1); else { hbar(pg,184,yy+1,24,hv,ach[i].goal,C_CYAN); scpy(b,""); ncat(b,hv); scat(b,"/"); ncat(b,ach[i].goal); text(pg,211,yy,b,C_DGREY,1); } }
-                    text(pg,6,152,"A: SHOW YOUR RELICS",C_CYAN,1); }
-            } else if(page==6){ map_page(pg);
-            } else if(page==7){ world_page(pg,y); text(pg,6,152, big_unlocked() ? "A: FAVOURITE  SEL: HOW BIG IS IT?" : "A: SAVE THIS PLACE AS A FAVOURITE",C_CYAN,1);
+                        if(done){ rect(pg,9,yy+1,3,3,C_GOLD); } else rect(pg,9,yy+1,3,3,U_TROUGH);
+                        text(pg,15,yy,ach[i].name,done?C_GOLD:C_WHITE,1); text(pg,80,yy,ach[i].what,done?U_SOFT:C_DGREY,1);
+                        if(done) text(pg,190,yy,"DONE",C_GREEN,1); else { hbar(pg,184,yy+1,24,hv,ach[i].goal,C_CYAN); scpy(b,""); ncat(b,hv); scat(b,"/"); ncat(b,ach[i].goal); text(pg,211,yy,b,C_DGREY,1); } }
+                    foot="A: SHOW YOUR RELICS"; }
+            } else if(page==6){ if(scene!=1) ui_panel(pg,4,37,232,30); map_page(pg);
+            } else if(page==7){ ui_panel(pg,4,37,232,111); world_page(pg,41); foot = big_unlocked() ? "A: FAVOURITE  SEL: HOW BIG IS IT?" : "A: SAVE AS A FAVOURITE";
             } else {
                 static const char *const sn[5]={"SAVE GAME","SAVE TO ANOTHER SLOT","LOAD GAME","OPTIONS","QUIT TO TITLE"};
-                scpy(b,"SLOT "); ncat(b,cur_slot+1); text(pg,8,y,b,C_CYAN,1);
-                fmt_time(b,play_secs()); scat(b," PLAYED"); text(pg,60,y,b,C_GREY,1);
-                text(pg,170,y,opt_autosave?"AUTOSAVE ON":"AUTOSAVE OFF",opt_autosave?C_GREEN:C_DGREY,1); y+=12;
+                ui_panel(pg,4,38,232,72);
+                scpy(b,"SLOT "); ncat(b,cur_slot+1); ui_head(pg,9,41,60,b,C_CYAN);
+                fmt_time(b,play_secs()); scat(b," PLAYED"); text(pg,80,41,b,U_SOFT,1);
+                text(pg,172,41,opt_autosave?"AUTOSAVE ON":"AUTOSAVE OFF",opt_autosave?C_GREEN:C_DGREY,1); y=51;
                 for(int i=0;i<5;i++){
                     int ok = !(i<2 && (scene==2 || (scene==1 && (forge_on || base_mode))));
-                    if(cur==i) rect(pg,4,y-2,232,10,HI);
-                    text(pg,10,y,sn[i],!ok?C_DGREY: cur==i?C_WHITE:C_GREY,1);
-                    if(i==0){ scpy(b,"-> SLOT "); ncat(b,cur_slot+1); text(pg,150,y,b,ok?C_CYAN:C_DGREY,1); }
+                    if(cur==i) ui_sel(pg,7,y-2,226,10,HI);
+                    text(pg,14,y,sn[i],!ok?C_DGREY: cur==i?C_WHITE:U_SOFT,1);
+                    if(i==0){ scpy(b,"SLOT "); ncat(b,cur_slot+1); text(pg,190,y,b,ok?C_CYAN:C_DGREY,1); }
                     y+=11;
                 }
-                if(scene==2 || (scene==1 && (forge_on || base_mode))) text(pg,8,y,"YOU CAN'T SAVE HERE. TRY ON A PLANET",C_DGREY,1);
+                if(scene==2 || (scene==1 && (forge_on || base_mode))) text(pg,12,y-2,"YOU CAN'T SAVE HERE. TRY ON A PLANET",C_DGREY,1);
                 // ---- your records
-                y=116; rect(pg,4,y-3,232,1,6); text(pg,8,y,"YOUR RECORDS",C_GOLD,1); y+=9;
+                ui_panel(pg,4,112,232,36); ui_head(pg,9,115,222,"YOUR RECORDS",C_GOLD); y=125;
                 { s64 kills=0; for(int i=0;i<11;i++) kills+=st_kills[i];
-                  scpy(b,"PLANETS "); ncat(b,st_planets); scat(b,"   FLOORS "); ncat(b,st_floors); scat(b,"   MONSTERS "); ncat(b,kills); text(pg,8,y,b,C_WHITE,1); y+=8;
-                  scpy(b,"FISH "); ncat(b,st_fish); scat(b,"   ORE "); ncat(b,st_mined); scat(b,"   DODGES "); ncat(b,st_dodges); scat(b,"   WEIRD WORLDS "); ncat(b,weird_seen); text(pg,8,y,b,C_WHITE,1); }
-                if(sys_msg[0]){ char sm[40]; scpy(sm,sys_msg); sm[34]=0; text(pg,6,152,sm,sys_col,1); } else text(pg,6,152,"A: CHOOSE",C_CYAN,1);
+                  scpy(b,"PLANETS "); ncat(b,st_planets); scat(b,"   FLOORS "); ncat(b,st_floors); scat(b,"   MONSTERS "); ncat(b,kills); text(pg,12,y,b,C_WHITE,1); y+=8;
+                  scpy(b,"FISH "); ncat(b,st_fish); scat(b,"   ORE "); ncat(b,st_mined); scat(b,"   DODGES "); ncat(b,st_dodges); scat(b,"   WEIRD "); ncat(b,weird_seen); text(pg,12,y,b,C_WHITE,1); }
+                foot="A: CHOOSE";
             }
-            if(menu_msg[0]){ char mm[40]; scpy(mm,menu_msg); mm[34]=0; rect(pg,0,150,240,10,0); text(pg,6,152,mm,C_GREEN,1); }
-            rtext(pg,236,152,"L R: PAGE  START: BACK",C_DGREY);
+            ui_foot(pg,foot,"L R: PAGE  START: BACK");
+            if(page==5 && sys_msg[0]){ char sm[40]; scpy(sm,sys_msg); sm[34]=0; rect(pg,0,150,150,10,U_BG0); text(pg,6,152,sm,sys_col,1); }
+            if(menu_msg[0]){ char mm[40]; scpy(mm,menu_msg); mm[34]=0; rect(pg,0,150,150,10,U_BG0); text(pg,6,152,mm,C_GREEN,1); }
         }
         // ---- every frame: the selection bar breathes, and your bug stands in its frame on the BUG page
         tick++; { int s=sinx((tick*5)&255); int t=((s+16384)*16)>>15; if(t>16) t=16; BG_PAL[HI]=rgb15(24+t*2,34+t*3,64+t*5); }
@@ -632,12 +649,12 @@ static int list_pick(volatile u16 *pg, const char *title, int n, void (*row)(int
     wait_release();
     while(1){
         if(dirty){ dirty=0; char b[64]; int c;
-            box(pg,12,20,216,136); text(pg,20,24,title,C_GOLD,1);
-            char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
-            for(int i=0;i<n;i++){ c=C_GREY; row(i,b,&c); b[48]=0; if(i==*sel){ text(pg,16,34+i*8,">",C_CYAN,1); if(c==C_GREY) c=C_WHITE; } text(pg,22,34+i*8,b,c,1); }
-            text(pg,20,148,help,C_CYAN,1);
-            if(list_desc && n){ int c2=C_GREY; list_desc(*sel,b,&c2); b[52]=0; text(pg,20,124,b,c2,1); }
-            if(menu_msg[0]) text(pg,20,139,menu_msg,C_GREEN,1); else if(list_desc && n){ int c2=C_GREY; list_desc(-1-*sel,b,&c2); b[52]=0; text(pg,20,132,b,c2,1); }
+            panel(pg,12,20,216,136,title);
+            { char g[16]=""; ncat(g,gold); scat(g,"G"); int gx=222-textlen(g)*4; rect(pg,gx-9,26,5,5,C_GOLD); rect(pg,gx-8,26,2,1,U_GLGOLD); stext(pg,gx,25,g,C_GOLD); }   // your gold, with a coin
+            for(int i=0;i<n;i++){ c=C_GREY; row(i,b,&c); b[48]=0; if(i==*sel){ ui_sel(pg,16,36+i*8,208,8,U_SEL); if(c==C_GREY) c=C_WHITE; } text(pg,22,37+i*8,b,c,1); }
+            rect(pg,14,141,212,1,U_RAISE); ui_hints(pg,20,145,help,U_SOFT,1);
+            if(list_desc && n){ int c2=C_GREY; list_desc(*sel,b,&c2); b[52]=0; rect(pg,18,120,204,1,U_RAISE); text(pg,20,124,b,c2,1); }
+            if(menu_msg[0]) text(pg,20,132,menu_msg,C_GREEN,1); else if(list_desc && n){ int c2=C_GREY; list_desc(-1-*sel,b,&c2); b[52]=0; text(pg,20,132,b,c2,1); }
         }
         vsync(); read_keys();
         if(keys!=keys_old) dirty=1;
@@ -716,7 +733,7 @@ static void workbench(volatile u16 *pg){
                 scpy(b,"NEXT: "); if(g->it==IT_THORN){ scat(b,"DAMAGE "); ncat(b,weapon_base(g)); scat(b," -> "); ncat(b,weapon_base(&t)); } else if(g->it==IT_SHELL){ scat(b,"DEFENCE "); ncat(b,armor_base(g)); scat(b," -> "); ncat(b,armor_base(&t)); } else { scat(b,"STRONGER CHARM EFFECTS"); } (void)d;
                 text(pg,20,132,b,C_WHITE,1); }
             if(menu_msg[0]) text(pg,20,140,menu_msg,C_GREEN,1);
-            text(pg,20,148,"A: UPGRADE  B: BACK   MINE GOODS ON PLANETS",C_CYAN,1); }
+            ui_lhint(pg,20,148,"A: UPGRADE  B: BACK   MINE GOODS ON PLANETS",C_CYAN); }
         vsync(); read_keys(); if(keys!=keys_old) dirty=1;
         if(HIT(K_UP)){ sel=(sel+n-1)%n; menu_msg[0]=0; } if(HIT(K_DOWN)){ sel=(sel+1)%n; menu_msg[0]=0; }
         if(HIT(K_B)||HIT(K_START)) break;
@@ -739,13 +756,13 @@ static int shop_menu(void){   // returns 1 to fly on
         if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); main_opt[0]=nxt; }
         int dirty=1; wait_release();
         while(1){
-            if(dirty){ dirty=0; box(pg,12,20,216,136); text(pg,20,24,"YOUR SHIP",C_GOLD,1); char g[16]="G"; ncat(g,gold); text(pg,190,24,g,C_GOLD,1);
-                for(int i=0;i<NSHOP;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:(i==11)?C_CYAN:C_GREY); if(i==sel) text(pg,16,33+i*6,">",C_CYAN,1); text(pg,22,33+i*6,main_opt[i],c,1); if(i==12){ char fb[24]; scpy(fb,"("); scat(fb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); scat(fb,")"); text(pg,82,33+i*6,fb,C_CYAN,1); } }
-                if(next_ok) rtext(pg,224,44,"HOLD A: FLY YOURSELF",C_DGREY);
-                { char hb[40]; scpy(hb,ship.name); scat(hb,"  HOLD "); ncat(hb,cargo_n()); scat(hb,"/"); ncat(hb,cargo_cap+ship_hold_bonus()); rtext(pg,224,34,hb,C_CYAN); }
+            if(dirty){ dirty=0; panel(pg,12,20,216,136,"YOUR SHIP"); { char g[16]=""; ncat(g,gold); scat(g,"G"); int gx=222-textlen(g)*4; rect(pg,gx-9,26,5,5,C_GOLD); rect(pg,gx-8,26,2,1,U_GLGOLD); stext(pg,gx,25,g,C_GOLD); }
+                for(int i=0;i<NSHOP;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:(i==11)?C_CYAN:C_GREY); if(i==sel) ui_sel(pg,16,36+i*6,120,7,U_SEL); text(pg,22,37+i*6,main_opt[i],c,1); if(i==12){ char fb[24]; scpy(fb,"("); scat(fb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); scat(fb,")"); text(pg,82,37+i*6,fb,C_CYAN,1); } }
+                if(next_ok) rtext(pg,224,47,"HOLD A: FLY YOURSELF",C_DGREY);
+                { char hb[40]; scpy(hb,ship.name); scat(hb,"  HOLD "); ncat(hb,cargo_n()); scat(hb,"/"); ncat(hb,cargo_cap+ship_hold_bonus()); rtext(pg,224,38,hb,C_CYAN); }
                 if(q_type!=Q_NONE && q_done) text(pg,130,70,"! QUEST DONE",C_GREEN,1);
-                if(menu_msg[0]) text(pg,20,139,menu_msg,C_GREEN,1);
-                text(pg,20,148,"A: CHOOSE  B: LEAVE",C_CYAN,1); }
+                if(menu_msg[0]) text(pg,20,134,menu_msg,C_GREEN,1);
+                rect(pg,14,141,212,1,U_RAISE); ui_hints(pg,20,145,"A: CHOOSE  B: LEAVE",U_SOFT,1); }
             vsync(); read_keys(); if(keys!=keys_old) dirty=1;
             if(HIT(K_UP)){ sel=(sel+NSHOP-1)%NSHOP; menu_msg[0]=0; } if(HIT(K_DOWN)){ sel=(sel+1)%NSHOP; menu_msg[0]=0; }
             if(HIT(K_B)){ in_menu--; wait_release(); return 0; }
@@ -782,9 +799,9 @@ static int shop_menu(void){   // returns 1 to fly on
                     int t = q_type<0 ? -q_type : q_type;
                     text(pg,20,40,q_name,C_WHITE,1);
                     scpy(b,"REWARD "); ncat(b,q_gold); scat(b,"G, "); ncat(b,q_fame); scat(b," FAME, A PRIZE"); text(pg,20,50,b,C_GOLD,1);
-                    if(q_type<0) text(pg,20,70,"A: TAKE THIS QUEST   B: NOT NOW",C_CYAN,1);
+                    if(q_type<0) ui_lhint(pg,20,70,"A: TAKE THIS QUEST   B: NOT NOW",C_CYAN);
                     else if(q_done) text(pg,20,70,"DONE! A: CLAIM YOUR REWARD",C_GREEN,1);
-                    else { scpy(b,"IN PROGRESS"); if(q_counted(t)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,20,70,b,C_WHITE,1); text(pg,20,80,"A: GIVE UP   B: BACK",C_CYAN,1); }
+                    else { scpy(b,"IN PROGRESS"); if(q_counted(t)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,20,70,b,C_WHITE,1); ui_lhint(pg,20,80,"A: GIVE UP   B: BACK",C_CYAN); }
                     scpy(b,"YOUR FAME: "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); text(pg,20,140,b,C_GOLD,1); }
                 vsync(); read_keys(); if(keys!=keys_old) dirty2=1;
                 if(HIT(K_B)){ if(q_type<0) q_type=Q_NONE; break; }

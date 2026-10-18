@@ -61,7 +61,7 @@ static int forge_menu(volatile u16 *pg){                                      //
                 text(pg,22,34+i*7,fg_rn[i],i==sel?C_WHITE:C_GREY,1); if(i<10) rtext(pg,224,34+i*7,b,i==sel?C_GOLD:C_CYAN); else if(i==9||i==10) {} }
             { char b[32]; fg_val(9,b); rtext(pg,224,34+9*7,b,sel==9?C_GOLD:C_CYAN); }
             if(menu_msg[0]) text(pg,20,139,menu_msg,C_GREEN,1);
-            text(pg,20,148,"A: DO  B: BACK  SELECT: DICE  L/R: +100",C_DGREY,1); }
+            ui_lhint(pg,20,148,"A: DO  B: BACK  SELECT: DICE  L/R: +100",C_DGREY); }
         vsync(); read_keys(); if(keys!=keys_old) dirty=1;
         if(HIT(K_UP)){ sel=(sel+12)%13; menu_msg[0]=0; } if(HIT(K_DOWN)){ sel=(sel+1)%13; menu_msg[0]=0; }
         if(HIT(K_LEFT)) fg_adj(sel,-1); if(HIT(K_RIGHT)) fg_adj(sel,1);

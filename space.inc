@@ -522,7 +522,7 @@ static int body_menu(void){
                 int y=24+r*10; if(top+r==cur) rect(pg,2,y-1,236,9,C_DGREY);
                 text(pg,8,y,l,top+r==cur?C_WHITE:C_GREY,1); if(m) text(pg,150,y,"ORE RICH",C_GOLD,1); }
             if(top>0) text(pg,226,22,"^",C_CYAN,1); if(top+9<n) text(pg,226,112,"v",C_CYAN,1);
-            rect(pg,0,132,240,28,57); text(pg,4,138,"UP/DOWN: PICK A WORLD",C_GREY,1); text(pg,4,148,"A: LAND   B: BACK",C_GREEN,1);
+            rect(pg,0,132,240,28,57); ui_lhint(pg,4,138,"UP/DOWN: PICK A WORLD",C_GREY); ui_lhint(pg,4,148,"A: LAND   B: BACK",C_GREEN);
         }
         vsync(); read_keys();
         if(HIT(K_UP) && cur>0){ cur--; dirty=1; sfx(7); }
@@ -797,7 +797,7 @@ static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, 
             for(int arm=0;arm<2;arm++) for(int t=1;t<15;t++){ int an=(rot*2+arm*128+t*12+g*40)&255, rr=t*sz/14; dot2(pg,gx+(sinx((an+64)&255)*rr>>14),gy+(sinx(an)*rr>>15),t<4?49:(t&1)?50:54); } dot2(pg,gx,gy,49); dot2(pg,gx+1,gy,49); } }
         if(p>196){ int R=(p-196)*30/60; for(int y=-R;y<=R;y++){ int w=isqrt((u32)(R*R-y*y)); int yy=VCY+y; if(yy<0||yy>127) continue; int x0=120-w, x1=120+w; if(x0<0) x0=0; if(x1>239) x1=239; for(int x=x0;x<=x1;x++) pix(pg,x,yy,(x-120)*(x-120)+y*y < R*R/3 ? 49 : 50); } }   // the star you are heading for swells up
         if(p>250) for(int i=0;i<120*128;i++) pg[i]=54|(54<<8);
-        if(!FILM){ char b[48]; scpy(b,"JUMP: "); scat(b,tot); b[44]=0; text(pg,4,3,b,C_GOLD,1); if(T>150) text(pg,236-9*4,3,"B: FASTER",C_DGREY,1); }
+        if(!FILM){ char b[48]; scpy(b,"JUMP: "); scat(b,tot); b[44]=0; text(pg,4,3,b,C_GOLD,1); if(T>150) ui_lhint(pg,236-9*4,3,"B: FASTER",C_DGREY); }
         if(kind==5 && !FILM){ u32 dv4[UW]; uni_sub(dv4,vy_uto,vy_ufrom); char ud[144]; int m=uni_dec(ud,dv4); int k = p>250 ? m : 1+(m-1)*q/256;   // the universes behind you, in step with the light years:
             char b[80], g1[24], g2[24]; digits_named(g1,ud,k); digits_named(g2,ud,m); scpy(b,"UNIVERSES PASSED: "); scat(b,g1); scat(b," OF "); scat(b,g2); b[56]=0; text(pg,4,11,b,C_CYAN,1); }                // it rolls up as you arrive
         if((kind==2||kind==5) && big){ int k = p>250 ? n : 1+(n-1)*q/256; if(k>last_k){ for(int kk=last_k+1;kk<=k;kk++){ if(kk>=4 && (kk-1)%3==0){ scpy(cap,"1 "); scat(cap,illion((kk-1)/3)); scat(cap," LIGHT YEARS"); cap2[0]=0; cap_t=70; }
@@ -926,7 +926,7 @@ static void uni_edit(volatile u16 *pg, u32 *u){                         // type 
     int cur=77, t=0; wait_release();
     while(1){ box(pg,4,34,232,92); ctext(pg,120,38,"UNIVERSE NUMBER (0 TO 2^256-1)",C_GOLD);
         for(int i=0;i<78;i++){ int r=i/26, x=i%26; int px=16+x*8, py=56+r*14; char c[2]={d[i],0}; rect(pg,px-1,py-1,8,10,0); text(pg,px,py,c,i==cur?C_GOLD:C_WHITE,1); if(i==cur && (t&16)) rect(pg,px,py+8,5,1,C_GOLD); }
-        ctext(pg,120,108,"UP/DOWN: DIGIT  LEFT/RIGHT: MOVE",C_GREY); ctext(pg,120,116,"A: OK  B: CANCEL",C_GREY); vsync(); read_keys(); t++;
+        ui_chint(pg,120,108,"UP/DOWN: DIGIT  LEFT/RIGHT: MOVE",C_GREY); ui_chint(pg,120,116,"A: OK  B: CANCEL",C_GREY); vsync(); read_keys(); t++;
         if(HIT(K_UP)) d[cur]=(char)(d[cur]=='9'?'0':d[cur]+1); if(HIT(K_DOWN)) d[cur]=(char)(d[cur]=='0'?'9':d[cur]-1);
         if(HIT(K_LEFT) && cur>0) cur--; if(HIT(K_RIGHT) && cur<77) cur++;
         if(HIT(K_B)){ wait_release(); return; }
@@ -942,8 +942,8 @@ static int universe_menu(volatile u16 *pg){                             // pick 
                 ctext(pg,120,38,"THERE ARE 116 QUATTUORVIGINTILLION UNIVERSES.",C_GREY); ctext(pg,120,46,"EACH ONE IS 1.1 QUINDECILLION LY ACROSS.",C_GREY);
                 ctext(pg,120,60,"JUMP TO:",C_GOLD);
                 scpy(b,"IT TAKES 5.0 LY OF FUEL. YOU HAVE "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10); ctext(pg,120,106,b,fuel>=UNI_COST?C_GREEN:C_RED);
-                ctext(pg,120,120,"LEFT/RIGHT: CHANGE IT (HOLD: FASTER)",C_WHITE); ctext(pg,120,128,"A: TYPE A NUMBER   SELECT: A RANDOM ONE",C_WHITE);
-                ctext(pg,120,142,"START: JUMP!   B: BACK",C_GOLD); }
+                ui_chint(pg,120,120,"LEFT/RIGHT: CHANGE IT (HOLD: FASTER)",C_WHITE); ui_chint(pg,120,128,"A: TYPE A NUMBER   SELECT: A RANDOM ONE",C_WHITE);
+                ui_chint(pg,120,142,"START: JUMP!   B: BACK",C_GOLD); }
             rect(pg,8,68,224,34,0);                                                                       // then only the lines that change
             { int n=uni_dec(dd,to);
               if(n<=10){ uni_name(c,to); scpy(b,"< "); scat(b,c); scat(b," >"); text(pg,120-textlen(b)*4,70,b,C_GOLD,2); }
@@ -998,7 +998,7 @@ static int fav_screen(volatile u16 *pg){                                      //
                 b[30]=0; text(pg,236-textlen(b)*4,y,b,other?(ant_king?C_CYAN:C_DGREY):C_GREY,1); }
             if(rows>9){ text(pg,232,30,"^",top>0?C_WHITE:C_DGREY,1); text(pg,232,112,"v",top+9<rows?C_WHITE:C_DGREY,1); }
             rect(pg,0,122,240,1,58);
-            if(sel==0){ text(pg,4,126,"SAVES THE STAR YOU ARE AT, SO YOU CAN COME BACK",C_GREY,1); text(pg,4,140,"A: SAVE IT   B: BACK",C_CYAN,1); }
+            if(sel==0){ text(pg,4,126,"SAVES THE STAR YOU ARE AT, SO YOU CAN COME BACK",C_GREY,1); ui_lhint(pg,4,140,"A: SAVE IT   B: BACK",C_CYAN); }
             else { Fav f; fav_get(idx[sel-1],&f);
                 if(!fav_in_uni(&f)){ if(ant_king){ u32 fu[UW]; fav_uni(&f,fu); uni_name(b,fu); scat(b,": A UNIVERSE JUMP, 5.0 LY OF FUEL"); text(pg,4,126,b,fuel>=UNI_COST?C_GREEN:C_RED,1); }
                     else text(pg,4,126,"IN ANOTHER UNIVERSE. BEAT THE ANT KING TO GO THERE",C_DGREY,1); }
@@ -1032,8 +1032,8 @@ static int cluster_jump(volatile u16 *pg){                                    //
     text(pg,40,76,"NEXT CLUSTER: 3.0 LY OF FUEL",C_GREY,1);
     { u32 r[LYW]={0}; int wb=warp_bits(); if(wb>154) wb=154; r[wb>>5]=1u<<(wb&31); big_mul(r,LYW,ULY); ly_text(r2,r); }
     scpy(b,"R: WARP UP TO "); scat(b,r2); b[42]=0; text(pg,40,88,b,C_CYAN,1);
-    text(pg,40,98,"A: JUMP TO ANOTHER UNIVERSE",C_GOLD,1);
-    text(pg,40,112,"B: BACK",C_DGREY,1);
+    ui_lhint(pg,40,98,"A: JUMP TO ANOTHER UNIVERSE",C_GOLD);
+    ui_lhint(pg,40,112,"B: BACK",C_DGREY);
     wait_release();
     while(1){ vsync(); read_keys();
         if(HIT(K_B)){ wait_release(); return 0; }
@@ -1080,9 +1080,9 @@ static int galaxy_map(void){     // returns 1 if you jumped
             { scpy(b,"BOLT'S MEMORY "); ncat(b,data_cores); scat(b,"/8"); text(pg,4,122-(beast_stage>=3?10:0),b,C_CYAN,1); }
             const char *st = sel==cur_sys ? "YOU ARE HERE" : !can_jump(sel) ? (sys[sel].kind<6 ? "LOCKED: BEAT THE BOSS BEFORE IT" : "LOCKED: BEAT THE ANT KING") : d>fuel ? "TOO FAR: REFUEL AT A STATION" : "A: JUMP HERE";
             text(pg,236-textlen(st)*4,151,st, (sel!=cur_sys && can_jump(sel) && d<=fuel)?C_GREEN:C_RED,1);
-            text(pg,236-15*4,3,"SEL: FAVOURITES",C_DGREY,1); if(ant_king) text(pg,236-19*4,17,"START: CLUSTER JUMP",C_DGREY,1); else text(pg,236-7*4,17,"B: BACK",C_DGREY,1);
+            ui_lhint(pg,236-15*4,3,"SEL: FAVOURITES",C_DGREY); if(ant_king) ui_lhint(pg,236-19*4,17,"START: CLUSTER JUMP",C_DGREY); else ui_lhint(pg,236-7*4,17,"B: BACK",C_DGREY);
             text(pg,4,17,"D-PAD: PICK A STAR",C_DGREY,1);
-            if(beast_stage>=3) text(pg,4,122,"L: FIGHT THE TECHNOBEAST - 2.0 LY",C_RED,1);
+            if(beast_stage>=3) ui_lhint(pg,4,122,"L: FIGHT THE TECHNOBEAST - 2.0 LY",C_RED);
         }
         vsync(); read_keys();
         // a tap jumps to the nearest star that way; holding keeps going
@@ -1133,7 +1133,7 @@ static void station_menu(void){
                 for(int i=0;i<8;i++){ if(i==sel) text(pg,6,36+i*10,">",C_CYAN,1); scpy(b,goods[i]); while(textlen(b)<13) scat(b," "); ncat(b,good_price(i)); scat(b,"G"); while(textlen(b)<21) scat(b," "); ncat(b,cargo[i]);
                     text(pg,14,36+i*10,b,i==sel?C_WHITE:C_GREY,1); }
                 scpy(b,"HOLD "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); text(pg,14,122,b,C_WHITE,1);
-                text(pg,6,148,"A: BUY  B: SELL  L/R: SHIPYARD  START: LEAVE",C_CYAN,1);
+                ui_lhint(pg,6,148,"A: BUY  B: SELL  L/R: SHIPYARD  START: LEAVE",C_CYAN);
             } else if(tab==2){
                 // three regulars at the bar. what they say moves with the story
                 static const char *const who[3]={"VESPER, OLD MOTH PILOT","HUM, A TRADER BEE","NIB, AN ANT WHO RAN AWAY"};
@@ -1147,7 +1147,7 @@ static void station_menu(void){
                 say2[2] = outposts_done ? "THE KING IS AFRAID OF YOU. GOOD. SO WAS I." : "THE KING KEEPS KEYCARDS ON HIS DRONES. LOOK FOR THEM.";
                 for(int i=0;i<3;i++){ int y=28+i*36; if(i==sel) text(pg,6,y,">",C_CYAN,1); text(pg,14,y,who[i],i==sel?C_GOLD:C_GREY,1);
                     if(i==sel){ char q[52]; scpy(q,"\""); scat(q,say1[i]); scat(q,"\""); q[51]=0; text(pg,14,y+10,q,C_WHITE,1); scpy(q,"\""); scat(q,say2[i]); scat(q,"\""); q[51]=0; text(pg,14,y+19,q,C_WHITE,1); } }
-                text(pg,6,148,"UP/DOWN: TALK TO SOMEONE  L/R: MARKET  START: LEAVE",C_CYAN,1);
+                ui_lhint(pg,6,148,"UP/DOWN: TALK TO SOMEONE  L/R: MARKET  START: LEAVE",C_CYAN);
             } else {
                 int cost[11]={ (fuel_max()-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<2000?cargo_cap*10:0, tech_cost(), wing_n<MAXWING?300+wing_n*150:0, 0,
                     fuel_tank<8?400*(fuel_tank+1):0, warp_lv<8?1500*(warp_lv+1)*(warp_lv+1):0, 0 };
@@ -1160,7 +1160,7 @@ static void station_menu(void){
                 scpy(b,"WINGMEN "); ncat(b,wing_n); scat(b,"/"); ncat(b,MAXWING); scat(b,"   LASER MK"); ncat(b,laser_lv); scat(b,"  SHIELD MK"); ncat(b,shield_lv); text(pg,14,121,b,C_WHITE,1);
                 scpy(b,"HULL "); ncat(b,hull); scat(b,"%  FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10); scat(b,"/"); ncat(b,fuel_max()/10); scat(b," LY  CARGO "); ncat(b,cargo_cap); text(pg,14,129,b,C_WHITE,1);
                 scpy(b,"TECH "); ncat(b,tech_lv); scat(b,"  SCRAP "); ncat(b,scrap); text(pg,14,137,b,C_CYAN,1);
-                text(pg,6,148,"A: BUY  L/R: MARKET  START: LEAVE",C_CYAN,1);
+                ui_lhint(pg,6,148,"A: BUY  L/R: MARKET  START: LEAVE",C_CYAN);
             }
         }
         vsync(); read_keys();
