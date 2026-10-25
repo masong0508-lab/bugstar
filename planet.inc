@@ -41,10 +41,12 @@ static int cam_fp=0, heading=0;                            // first person? and 
 static u8 kcam[8]={0,1,1,1,1,0,1,1};                       // the kart camera (kart.inc): view, distance, height, field of view, swing, look into turns, speed zoom, bump shake
 static int kfovk=180;                                      // the kart camera's field of view: sideways cells per cell of depth at the screen's edge (8.8)
 static s32 kcam_back(void); static s32 kcam_up(void); static s32 kcam_base(void);
-static int kloop_on=0; static s32 kloop_cb=0;                      // riding a loop-de-loop (kart.inc): the camera swings out to watch from the side
+static int kloop_on=0, kloop_hide=0; static s32 kloop_cb=0;                      // riding a loop-de-loop (kart.inc): the camera swings out to watch from the side
 static s32 cam_back(void){ if(m7_snap) return m7_cb_snap; if(kloop_on) return kloop_cb; if(kr_mode && !cam_fp) return kcam_back(); return cam_fp ? (1<<16)/2 : CAM_BACK; }
 static s32 cam_up(void){ if(kr_mode && !cam_fp) return kcam_up(); return cam_fp ? (5<<8)/4 : CAM_UP; }
-static int fov_k(void){ return kr_mode ? kfovk : 180; }
+static int kfov_add=0;                                     // the kart camera widens as you speed up and boost (kart.inc): the world rushes past
+static int m7_fovs=0;                                              // the field of view the frame on show was drawn with
+static int fov_k(void){ if(m7_snap && m7_fovs) return m7_fovs; return kr_mode ? kfovk+(kloop_on?0:kfov_add) : 180; }
 IWRAM_DATA static s16 rayvx[120], rayvy[120];              // per column: the ray direction on the map, 8.8 per cell of depth
 static int hcs=256, hsn=0;                                 // cos and sin of the heading, 8.8
 static void heading_rays(void){
@@ -55,8 +57,11 @@ static int pw_h=0, pw_v=0, pw_step=0, mine_t=0;
 IWRAM_DATA static s8 wob64[64];                            // WOBBLE: how far each spot of the hills is breathing this frame
 static int g_nst=NSTEP, g_wob=0, g_fog=0;                  // FOG: how far the view reaches; WOBBLE on or off
 static u16 gbase[16], skybase[8];                          // the ground and sky colours before the animated traits touch them
-static int curv_k(void){ static const u8 ks[6]={12,7,4,3,2,1}; int k=ks[wd.psz%6]; if(WL(MW_TINY)){ int t=8<<(WL(MW_TINY)/7); if(t>k) k=t; } return k; }   // how fast the horizon falls away: the planet's size, and TINY PLANET
-static s32 curv(s32 z){ return (((z*z)>>14)*curv_k())>>3; }                          // how far the ground has dropped out of sight at distance z (8.8 cells); 4 is the old z*z/32768
+// how fast the horizon falls away: the planet's size, and TINY PLANET
+static int curv_k(void){ static const u8 ks[6]={12,7,4,3,2,1}; int k=ks[wd.psz%6]; if(WL(MW_TINY)){ int t=8<<(WL(MW_TINY)/7); if(t>k) k=t; }
+    return k; }
+static int curv_sh(void){ return kr_mode==1 && !kloop_on ? 5 : 3; }   // racing: the world bends away a quarter as fast, so the road ahead stays in view
+static s32 curv(s32 z){ return (((z*z)>>14)*curv_k())>>curv_sh(); }                          // how far the ground has dropped out of sight at distance z (8.8 cells); 4 is the old z*z/32768
 static s32 tiny_sub(void){ return curv_k()>4 ? curv(cam_back()>>8) : 0; }
 static void pknock(s32 dx, s32 dy, int k){                    // push the bug away along (dx,dy) (map direction, bug minus enemy), in walk-input terms
     s32 side=((dx>>8)*hcs - (dy>>8)*hsn), fwd=((dx>>8)*hsn + (dy>>8)*hcs);
@@ -322,7 +327,7 @@ static void planet_tables(void){
 IWRAM static void render_planet(volatile u16 *pg){
     s32 cb=cam_back(); s32 cam_x = ppx - ((hsn*cb)>>8), cam_y = ppy - ((hcs*cb)>>8);
     int ck = curv_k(); s32 csub = tiny_sub();                                       // small planets: the horizon falls away faster (measured from the bug)
-    for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((((z*z)>>14)*ck)>>3) - csub;     // the world drops away
+    for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((((z*z)>>14)*ck)>>curv_sh()) - csub;     // the world drops away
         stp_base[i] = ((cam_h + curve) * stp_f[i])>>8; }                             // (8.8 cells) * (8.8 px/cell) >> 8 = 8.8 px
     u32 sparkle=frames;
     for(int c=0;c<120;c++){
@@ -652,7 +657,7 @@ sprites:;
         int c=sx>>1; if(c<0) c=0; if(c>119) c=119;
         int si; { int lo=0, hi=NSTEP-1; while(lo<hi){ int mid=(lo+hi)>>1; if(stp_z[mid]<zc) lo=mid+1; else hi=mid; } si=lo; } int bin=(si>>3)-1; if(bin>7) bin=7;
         if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
-        static const u8 ksz[29]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14, 13,18,12,14};      // size of each kind in 16ths of a cell
+        static const u8 ksz[29]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14, 17,18,12,14};      // size of each kind in 16ths of a cell
         int s=(f>>6)*ksz[o->kind]>>4; if(s<8) continue; int m=(s-8)/4; if(m>27) m=27;       // px per cell / 16 px * 64. too far away to see: skip it (it used to be drawn too big)
         if(o->kind==O_KART){ slot=kart_draw_obj(slot,o,sx,sy,m,f); continue; }               // a rival kart (kart.inc)
         if(kr_mode) m&=~1;                                                              // in a race the odd scales belong to the rivals
