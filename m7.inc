@@ -20,7 +20,7 @@ static volatile int m7_arm=0, m7_armed=0;       // arm: a table is ready. armed:
 static int m7_wx0=0, m7_wy0=0, m7_nwx0=0, m7_nwy0=0;   // the map window in page 1 (its top-left texel), and the next one
 static int m7_horizon=160, m7_nstrip=160, m7_cock=0;   // where the ground stops, the strip being built, cockpit view
 static int m7_sy=0;                             // the kart's screen row (for its dust and sparks)
-static s32 m7_sppx, m7_sppy, m7_scamh; static int m7_shsn, m7_shcs, m7_sphz, m7_sloop, m7_shide, m7_sfp, m7_want=0;   // a snapshot of the camera the frame on show was drawn with
+static s32 m7_sppx, m7_sppy, m7_scamh; static int m7_shsn, m7_shcs, m7_sphz, m7_sloop, m7_shide, m7_shead, m7_sfp, m7_want=0;   // a snapshot of the camera the frame on show was drawn with
 #ifdef TEST_FPS
 static u32 m7_t[6];
 #endif
@@ -102,8 +102,17 @@ static void m7_frame(void){
 }
 static void m7_present(void){                   // the end of the frame's drawing: this table goes live at the next VBlank; remember the camera it was drawn with
     m7_tab^=1; m7_strip=m7_nstrip; m7_copy = (m7_nwx0!=m7_wx0 || m7_nwy0!=m7_wy0 || !m7_arm); m7_wx0=m7_nwx0; m7_wy0=m7_nwy0; m7_arm=1;
-    m7_sppx=ppx; m7_sppy=ppy; m7_scamh=cam_h; m7_shsn=hsn; m7_shcs=hcs; m7_sphz=g_phz; m7_sloop=kloop_on; m7_shide=kloop_hide; m7_fovs=fov_k(); m7_sfp=cam_fp; m7_cb_snap=cam_back(); m7_want=1; }
-static void kloop_draw(volatile u16 *pg, int cy0, int cy1); static void kart_fx(volatile u16 *pg, int sy); static void weather_draw(volatile u16 *pg); static void kart_hud(volatile u16 *pg);
+    m7_sppx=ppx; m7_sppy=ppy; m7_scamh=cam_h; m7_shsn=hsn; m7_shcs=hcs; m7_sphz=g_phz; m7_sloop=kloop_on; m7_shide=kloop_hide; m7_shead=heading; m7_fovs=fov_k(); m7_sfp=cam_fp; m7_cb_snap=cam_back(); m7_want=1; }
+static void kloop_draw(volatile u16 *pg, int cy0, int cy1); static void kbridge_draw(volatile u16 *pg, int cy0, int cy1); static void kart_fx(volatile u16 *pg, int sy); static void weather_draw(volatile u16 *pg); static void kart_hud(volatile u16 *pg);
+static void sky_hills(volatile u16 *pg){                                          // two ranges of hills on the horizon that slide past as you turn: the sense of turning, for free
+    int hor=m7_horizon; if(hor<24 || hor>160 || WL(MW_VOID)) return;
+    BG_PAL[108]=lerp15(BG_PAL[SKY_B+7],BG_PAL[GND_B+8],8); BG_PAL[109]=lerp15(BG_PAL[SKY_B+7],BG_PAL[GND_B+3],14);
+    int fv=fov_k(), b0=m7_shead;
+    for(int c=0;c<120;c++){ int i=(b0+(((c*2+1)-120)*fv)/188)&1023;                                 // the compass bearing of this column
+        int sf=sinx((i*3)>>2)*3+sinx(((i*7)>>2)+40)*2+sinx(((i*13)>>2)+90), sn=sinx(((i*5)>>2)+10)*3+sinx(((i*11)>>2)+120)*2+sinx(((i*23)>>2)+200);
+        int hf=9+(sf>>14), hn=5+(sn>>14); if(hf<2) hf=2; if(hn<0) hn=0;
+        for(int k=1;k<=hf;k++){ int y=hor-k; if(y>=19) pg[y*120+c]=108|(108<<8); }
+        for(int k=1;k<=hn;k++){ int y=hor-k; if(y>=19) pg[y*120+c]=109|(109<<8); } } }
 static void m7_sky(void){                     // the sky, the loops, the dust, the messages and the HUD, on page 0 (ground pixels find their way onto the map)
     volatile u16 *pg=M7_PG0;
     s32 kpx=ppx, kpy=ppy, kch=cam_h; int khs=hsn, khc=hcs, kph=g_phz, klo=kloop_on, kfp=cam_fp, khd_=kloop_hide;                 // the loops are drawn where the frame on show has its camera
@@ -117,7 +126,7 @@ static void m7_sky(void){                     // the sky, the loops, the dust, t
     u32 tb=TMR();
 #endif
     kart_hud(pg);                                                                   // (the HUD first: it must be done before the beam is back at the top)
-    if(kr_mode==1) kloop_draw(pg,18,160);
+    if(kr_mode==1){ sky_hills(pg); kloop_draw(pg,18,160); kbridge_draw(pg,18,160); }
 #ifdef TEST_FPS
     u32 tc=TMR();
 #endif

@@ -41,7 +41,7 @@ static int cam_fp=0, heading=0;                            // first person? and 
 static u8 kcam[8]={0,1,1,1,1,0,1,1};                       // the kart camera (kart.inc): view, distance, height, field of view, swing, look into turns, speed zoom, bump shake
 static int kfovk=180;                                      // the kart camera's field of view: sideways cells per cell of depth at the screen's edge (8.8)
 static s32 kcam_back(void); static s32 kcam_up(void); static s32 kcam_base(void);
-static int kloop_on=0, kloop_hide=0; static s32 kloop_cb=0;                      // riding a loop-de-loop (kart.inc): the camera swings out to watch from the side
+static int kloop_on=0, kloop_hide=0; static s32 kbr_cur=0, kloop_cb=0;  // (kbr_cur: how far up a flyover you are, 8.8)                        // riding a loop-de-loop (kart.inc): the camera swings out to watch from the side
 static s32 cam_back(void){ if(m7_snap) return m7_cb_snap; if(kloop_on) return kloop_cb; if(kr_mode && !cam_fp) return kcam_back(); return cam_fp ? (1<<16)/2 : CAM_BACK; }
 static s32 cam_up(void){ if(kr_mode && !cam_fp) return kcam_up(); return cam_fp ? (5<<8)/4 : CAM_UP; }
 static int kfov_add=0;                                     // the kart camera widens as you speed up and boost (kart.inc): the world rushes past
@@ -554,7 +554,7 @@ static void planet_frame(void){
     if(m7_on){ m7_t[0]=t_r0-t_f0; m7_t[1]=t_r1-t_r0; }
 #endif
     if(m7_on) goto sprites;                                                            // (a race: the loops, messages and HUD are drawn after the blank, by m7_strip)
-    if(kr_mode==1) kloop_draw(pg,18,160);                                                // loop-de-loops stand on the road (kart.inc)
+    if(kr_mode==1){ kloop_draw(pg,18,160); kbridge_draw(pg,18,160); }                    // loop-de-loops stand on the road (kart.inc)
     if(msg_timer && !FILM){ int L=textlen(msg); if(kr_mode) stext(pg,120-L*2,50,msg,C_WHITE);                                                            // in a kart: under the HUD
                    else if(L<=29) text(pg,120-L*4,24,msg,C_WHITE,2); else stext(pg,120-L*2,26,msg,C_WHITE); }
 #ifdef TEST_FPS
@@ -587,7 +587,7 @@ sprites:;
     oam_hide_all();
     int slot=0;
     s32 bug_sy;
-    { s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=curv(dz>>8) - tiny_sub();
+    { s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy)+kbr_cur; s32 curve=curv(dz>>8) - tiny_sub();
       bug_sy = PHZ + (((cam_h + curve - gh) * f)>>16); }
     if(kr_mode && (!cam_fp || kloop_on)){ slot=kart_draw_me(slot,bug_sy); if(!kart_glow() && !kloop_on && slot<120){ shadow_oam[slot].a0=((bug_sy-6)&255)|(1<<14); shadow_oam[slot].a1=((120-8)&511); shadow_oam[slot].a2=T_SHADOW; slot++; } }   // in a kart
     else if(kr_mode){}

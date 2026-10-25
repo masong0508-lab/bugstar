@@ -1131,6 +1131,13 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_KJUMP
     if(nkj){ int p=(kjl[TEST_KJUMP%nkj]-26+knp)%knp; ppx=kp_cx(p); ppy=kp_cy(p); heading=kp_dir(p); heading_rays(); cam_h=ground_h(ppx,ppy)+CAM_UP; rc[0].pi=(s16)p; for(int r=1;r<nrc;r++){ rc[r].x=kp_cx((p+knp-30)%knp); rc[r].y=kp_cy((p+knp-30)%knp); } }
 #endif
+#ifdef TEST_KBR
+    if(nkb){ int pc=kbs[0]+KBR_S, p=(pc-TEST_KBR+knp)%knp;
+#ifdef TEST_KBRL
+      for(int i=0;i<knp;i++){ int d=i-pc; if(d<0) d=-d; if(d<40 || d>knp-40) continue; int dx=kwrap8(kpx[i]-kpx[pc]), dy=kwrap8(kpy[i]-kpy[pc]); if(dx*dx+dy*dy<=8){ p=(i-TEST_KBR+knp)%knp; break; } }
+#endif
+      ppx=kp_cx(p); ppy=kp_cy(p); khd=heading=kp_dir(p); heading_rays(); cam_h=ground_h(ppx,ppy)+CAM_UP; rc[0].pi=(s16)p; for(int r=1;r<nrc;r++){ rc[r].x=kp_cx((p+knp-30-r*3)%knp); rc[r].y=kp_cy((p+knp-30-r*3)%knp); rc[r].pi=(s16)((p+knp-30-r*3)%knp); } }
+#endif
 #ifdef TEST_TOPMAP
     { volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); for(int y=0;y<160;y++) for(int x=0;x<120;x++){ int tx=(x*2*256/240+((ppx>>15)&255)-60)&255, ty=(y*256/240*2/2+((ppy>>15)&255)-80)&255; int c=cmap[ty*HW+tx]; pg[y*120+x]=c|(c<<8); }
       while(1) vsync(); }
