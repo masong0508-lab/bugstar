@@ -38,6 +38,7 @@ static char msg[40];
 static int enter_dungeon_flag=0;
 IWRAM_DATA static s16 raydx[120];                          // per column: sideways cells per cell of depth, 8.8 (before turning)
 static int cam_fp=0, heading=0;                            // first person? and which way you face (0..1023, 0 = north = up the map)
+static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc);
 static u8 kcam[8]={0,1,1,1,1,0,1,1};                       // the kart camera (kart.inc): view, distance, height, field of view, swing, look into turns, speed zoom, bump shake
 static int kfovk=180;                                      // the kart camera's field of view: sideways cells per cell of depth at the screen's edge (8.8)
 static s32 kcam_back(void); static s32 kcam_up(void); static s32 kcam_base(void);
@@ -307,6 +308,15 @@ static void new_planet(void){
       { int n=0,f=0; for(int i=0;i<NPO;i++){ if(po[i].alive) n++; if(po[i].alive&&po[i].kind==want) f++; } scpy(tdbg,"TEST K"); ncat(tdbg,n); scat(tdbg," F"); ncat(tdbg,f); scat(tdbg," W"); ncat(tdbg,wd.weird); }
       cam_h=ground_h(ppx,ppy)+CAM_UP; }
 #endif
+#ifdef TEST_SHIPHIDE
+    { s32 best=0; s32 cam_x0=ppx - ((hsn*cam_back())>>8), cam_y0=ppy - ((hcs*cam_back())>>8);     // (testing: park the ship where a ridge stands in front of it, straight ahead)
+      for(int d=8; d<=18; d++) for(int l=-3; l<=3; l++){
+        s32 ox=((l*hcs + d*hsn)<<8), oy=((-l*hsn + d*hcs)<<8);                          // cells ahead and sideways, 16.16
+        s32 sx_=ppx+ox, sy_=ppy+oy, gh=ground_h(sx_,sy_), mx=-999999;
+        for(int t=2;t<d;t++){ s32 h=ground_h(ppx+(ox*t/d), ppy+(oy*t/d)); if(h>mx) mx=h; }
+        if(mx-gh>best){ best=mx-gh; po[0].x=sx_; po[0].y=sy_; } } (void)cam_x0; (void)cam_y0; }
+#endif
+
 #ifdef TEST_MINE
     po[3].kind=O_TREE; po[3].alive=1; po[3].hp=3; po[3].x=(64<<16)+(1<<16); po[3].y=(64<<16)-(1<<16); po[4].kind=O_ROCK; po[4].alive=1; po[4].hp=3; po[4].x=(64<<16)+(2<<16); po[4].y=(64<<16)+(1<<16);
 #endif
@@ -651,14 +661,21 @@ sprites:;
         int sx = 120 + (s32)(((((long long)dx*f)>>24)*fovq)>>8);                       // (16.16 cells * 8.8) >> 24 = px, spread to match the land's field of view
         s32 gh=ground_h(o->x,o->y); s32 curve=curv(zc) - tiny_sub();
         int sy = PHZ + (((cam_h + curve - gh) * f)>>16);                                // (8.8 cells * 8.8) >> 16 = px
+#ifdef TEST_SHIPHIDE
+        if(o->kind==O_SHIP){ char db[40]; scpy(db,"SHIP "); ncat(db,sx); scat(db," "); ncat(db,sy); scat(db," Z"); ncat(db,zc>>8); text(pg,4,70,db,C_GOLD,1); }
+#endif
         if(sx<-40||sx>280||sy<10||sy>190) continue;
+        int c=sx>>1; if(c<0) c=0; if(c>119) c=119;
+        int si; { int lo=0, hi=NSTEP-1; while(lo<hi){ int mid=(lo+hi)>>1; if(stp_z[mid]<zc) lo=mid+1; else hi=mid; } si=lo; } int bin=(si>>3)-1; if(bin>7) bin=7;
         if(o->kind==O_SHIP){                                                           // your ship: the real 3D model, parked
             BG_PAL[236]=ship.paint; BG_PAL[237]=ship.trim;
             int sc=f/50; if(sc<2) sc=2;                                                   // 100 model units = 2 cells
+#ifndef TEST_NOOCC
+            if(!m7_on) sh_occ = bin>=0 ? ybin+bin : 0;                                    // a nearer hill or canyon wall hides it (and its shadow)
+#endif
+            if(!m7_on) ship_shadow(pg, sx, sy, sc);
             ship_draw(pg, sx, sy-(f>>9), sc, (1024-heading)&1023, cam_fp?30:70, 236, 237, 0,18,240,160);
-            continue; }
-        int c=sx>>1; if(c<0) c=0; if(c>119) c=119;
-        int si; { int lo=0, hi=NSTEP-1; while(lo<hi){ int mid=(lo+hi)>>1; if(stp_z[mid]<zc) lo=mid+1; else hi=mid; } si=lo; } int bin=(si>>3)-1; if(bin>7) bin=7;
+            sh_occ=0; continue; }
         if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
         static const u8 ksz[29]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14, 17,18,12,14};      // size of each kind in 16ths of a cell
         int s=(f>>6)*ksz[o->kind]>>4; if(s<8) continue; int m=(s-8)/4; if(m>27) m=27;       // px per cell / 16 px * 64. too far away to see: skip it (it used to be drawn too big)
@@ -689,6 +706,14 @@ sprites:;
     if(m7_on) m7_t[2]=TMR()-t_s0;
 #endif
     if(m7_on) m7_present();
+}
+static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc){      // a soft shadow under the parked ship: the ground under it, a few shades darker
+    int rx=sc*5/12+2, ry=rx/3+1;
+    for(int dy=-ry; dy<=ry; dy++){ int y=cy+dy; if(y<18||y>=160) continue;
+        int w=rx*(int)isqrt((u32)(ry*ry-dy*dy))/ry;
+        for(int x=cx-w; x<=cx+w; x++){ if(x<0||x>=240) continue; if(sh_occ && sh_occ[(x>>1)<<3]<=y) continue;
+            volatile u16 *p=pg+y*120+(x>>1); u16 v=*p; int ix = (x&1) ? (v>>8) : (v&255);
+            if(ix>=GND_B && ix<GND_B+16){ int dk = (x-cx>-w/2 && x-cx<w/2) ? 5 : 3; ix-=dk; if(ix<GND_B) ix=GND_B; *p = (x&1) ? (u16)((v&0x00FF)|(ix<<8)) : (u16)((v&0xFF00)|ix); } } }
 }
 static void planet_enter(void){
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BG2CNT=3; hdma_on=0; REG_BLDCNT=0;

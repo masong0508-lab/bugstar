@@ -34,6 +34,7 @@ EW static s16 shv[SV_MAX*3]; EW static u8 she[SE_MAX*3]; static int snv, sne, sn
 typedef struct { u8 n, grp, two; u8 v[8]; } Face;          // grp 0 paint, 1 trim. two: visible from both sides (wings, fins)
 EW static Face shf[SF_MAX];
 EW static s16 shn[SF_MAX*3];                 // per face: unit normal in model space, 256 = 1.0
+static s16 sh_mz[2][3]; static int sh_mzn=2;                               // where the guns' muzzles are in the model (x, y, z): the chase view fires the lasers from here
 EW static u8 sh_ord[SF_MAX]; static int sh_ord_n=-1;   // the draw order is kept from frame to frame: it barely changes, so re-sorting it is almost free
 EW static u32 sh_rt[256]; static int sh_rt_ok=0;       // 65536/i, so lines and polygon edges need no division
 EW static s16 sh_l[160], sh_r[160];                    // polygon fill: the left and right end of every row
@@ -87,9 +88,10 @@ static void ship_build_model(void){
         tube(r,r2,8,1); sf_add(2,0,8,r2+7,r2+6,r2+5,r2+4,r2+3,r2+2,r2+1,r2); } }
     if(ship.fins==1){ int a=sv_add(0,hh,LX(-15)), b=sv_add(0,hh+26,LX(-45)), c=sv_add(0,hh,LX(-48)); se_add(a,b,1); se_add(b,c,1); TRI(1,1,a,b,c); }
     else if(ship.fins==2){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*hw*3/4,hh/2,LX(-15)), b=sv_add(sx*hw,hh/2+22,LX(-45)), c=sv_add(sx*hw*3/4,hh/2,LX(-48)); se_add(a,b,1); se_add(b,c,1); TRI(1,1,a,b,c); } }
-    if(ship.cannon==1){ int a=sv_add(0,-hh/2,nose-10), b=sv_add(0,-hh/2,nose+22); se_add(a,b,1); }
-    else if(ship.cannon==2){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*(hw+s/2),dy-4,wz-20), b=sv_add(sx*(hw+s/2),dy-4,wz+30); se_add(a,b,1); } }
-    else if(ship.cannon==3){ int a=sv_add(-6,-hh-4,-20), b=sv_add(-6,-hh-4,nose+10), c=sv_add(6,-hh-4,-20), d=sv_add(6,-hh-4,nose+10); se_add(a,b,1); se_add(c,d,1); se_add(b,d,1); se_add(a,c,1); QUAD(1,1,a,b,d,c); }
+    sh_mzn=2; sh_mz[0][0]=(s16)(-hw/2); sh_mz[1][0]=(s16)(hw/2); sh_mz[0][1]=sh_mz[1][1]=0; sh_mz[0][2]=sh_mz[1][2]=(s16)nose;       // no cannon: a pair of bolts from the nose
+    if(ship.cannon==1){ int a=sv_add(0,-hh/2,nose-10), b=sv_add(0,-hh/2,nose+22); se_add(a,b,1); sh_mzn=1; sh_mz[0][0]=0; sh_mz[0][1]=(s16)(-hh/2); sh_mz[0][2]=(s16)(nose+22); }
+    else if(ship.cannon==2){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*(hw+s/2),dy-4,wz-20), b=sv_add(sx*(hw+s/2),dy-4,wz+30); se_add(a,b,1); sh_mz[sx>0][0]=(s16)(sx*(hw+s/2)); sh_mz[sx>0][1]=(s16)(dy-4); sh_mz[sx>0][2]=(s16)(wz+30); } }
+    else if(ship.cannon==3){ sh_mz[0][0]=-6; sh_mz[1][0]=6; sh_mz[0][1]=sh_mz[1][1]=(s16)(-hh-4); sh_mz[0][2]=sh_mz[1][2]=(s16)(nose+10); int a=sv_add(-6,-hh-4,-20), b=sv_add(-6,-hh-4,nose+10), c=sv_add(6,-hh-4,-20), d=sv_add(6,-hh-4,nose+10); se_add(a,b,1); se_add(c,d,1); se_add(b,d,1); se_add(a,c,1); QUAD(1,1,a,b,d,c); }
     if(ship.cockpit==0){ int a=sv_add(0,hh,LX(20)), b=sv_add(0,hh+9,LX(10)), c=sv_add(0,hh,0); se_add(a,b,2); se_add(b,c,2); TRI(2,1,a,b,c); }
     else { int a=sv_add(-hw/2,hh-1,LX(20)), b=sv_add(hw/2,hh-1,LX(20)); se_add(a,b,2); }
     if(ship.decal==1){ int a=sv_add(0,hh+1,nose-8), b=sv_add(0,hh+1,tail+4); se_add(a,b,1); int c=sv_add(-4,hh+1,nose-12), d=sv_add(-4,hh+1,tail+4); se_add(c,d,1); }
@@ -109,6 +111,7 @@ static void ship_build_model(void){
 #define SHP_TRIM 208
 #define SHP_GLOW 216
 static void ship_ramps(void){ for(int k=0;k<8;k++){ BG_PAL[SHP_PAINT+k] = k<4 ? shade15(ship.paint,6+k*3) : lift15(ship.paint,(k-4)*4); BG_PAL[SHP_TRIM+k] = k<4 ? shade15(ship.trim,6+k*3) : lift15(ship.trim,(k-4)*4); BG_PAL[SHP_GLOW+k] = k<3 ? shade15(ship.glow,10+k*2) : lift15(ship.glow,(k-3)*3); } }
+static const u8 *sh_occ=0;                                                     // on a planet: the terrain's top row per column (every 8th byte), so hills and canyon walls hide what is behind them. 0 = nothing hides it
 static void linep(volatile u16 *pg, int x0, int y0, int x1, int y1, int c, int cx0, int cy0, int cx1, int cy1){
     int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(n>300) return;
     if(m7_on){ s32 fx=(x0<<16)+0x8000, fy=(y0<<16)+0x8000, sx=n?(dx<<16)/n:0, sy=n?(dy<<16)/n:0;         // (a kart race: each pixel finds its own way to the screen)
@@ -116,6 +119,7 @@ static void linep(volatile u16 *pg, int x0, int y0, int x1, int y1, int c, int c
     if(!n){ if(x0>=cx0&&x0<cx1&&y0>=cy0&&y0<cy1) pix(pg,x0,y0,c); return; }
     s32 sx, sy; if(n<256){ sx=dx*(s32)sh_rt[n]; sy=dy*(s32)sh_rt[n]; } else { sx=(dx<<16)/n; sy=(dy<<16)/n; }
     s32 fx=(x0<<16)+0x8000, fy=(y0<<16)+0x8000; u16 lo=(u16)c, hi=(u16)(c<<8);
+    if(sh_occ){ for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; if(x>=cx0&&x<cx1&&y>=cy0&&y<cy1 && sh_occ[(x>>1)<<3]>y){ volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|hi; else *p=(*p&0xFF00)|lo; } fx+=sx; fy+=sy; } return; }   // (on a planet: not through a hill)
     if(x0>=cx0&&x0<cx1&&x1>=cx0&&x1<cx1&&y0>=cy0&&y0<cy1&&y1>=cy0&&y1<cy1){        // both ends inside: no clipping per pixel
         for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|hi; else *p=(*p&0xFF00)|lo; fx+=sx; fy+=sy; }
         return; }
@@ -155,6 +159,9 @@ static void polyfill_(volatile u16 *pg, const int *px, const int *py, int n, int
 #ifdef TEST_FPS
         dbg_rows++; dbg_px+=xr-xl+1;
 #endif
+        if(sh_occ){ int x=xl;                                                       // on a planet: columns a nearer hill covers from this row down are skipped
+            while(x<=xr){ while(x<=xr && sh_occ[(x>>1)<<3]<=y) x++; if(x>xr) break; int s0=x; while(x<=xr && sh_occ[(x>>1)<<3]>y) x++; hspan(pg,y,s0,x-1,c); }
+            continue; }
         hspan(pg,y,xl,xr,c); }
 }
 static int ship_roll=0;                                                        // extra bank applied on screen (the chase camera)
@@ -187,4 +194,11 @@ static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pi
         int base = F->grp==2 ? SHP_GLOW : F->grp ? SHP_TRIM : SHP_PAINT; if(F->grp==2) sh = 5+((frames>>2)&1)*2;      // engines glow and flicker
         polyfill(pg,X,Y,F->n,base+sh,cx0,cy0,cx1,cy1); }
     for(int i=0;i<sne;i++){ int a=she[i*3], b=she[i*3+1], g=she[i*3+2]; linep(pg,px[a],py[a],px[b],py[b], g==2?SHP_GLOW+6 : g?SHP_TRIM:SHP_PAINT, cx0,cy0,cx1,cy1); }
+}
+static void ship_proj(int mx, int my, int mz, int cx, int cy, int sc, int yaw_, int pitch_, int *ox, int *oy){   // where a point of the model lands on the screen (the same maths as ship_draw)
+    s32 rc=cosx(ship_roll>>2), rs=sinx(ship_roll>>2), cy_=cosx(yaw_>>2), sy_=sinx(yaw_>>2), cp=cosx(pitch_>>2), sp=sinx(pitch_>>2);
+    s32 rx=(mx*cy_ + mz*sy_)>>14, rz=(-mx*sy_ + mz*cy_)>>14, ry=(my*cp - rz*sp)>>14; rz=(my*sp + rz*cp)>>14;
+    s32 d=400+rz; if(d<60) d=60; s32 f=(sc*25600)/d, X=(rx*f)>>14, Y=-((ry*f)>>14);
+    if(!(rs==0 && rc>0)){ s32 X2=(X*rc - Y*rs)>>14, Y2=(X*rs + Y*rc)>>14; X=X2; Y=Y2; }
+    *ox=(int)(X+cx); *oy=(int)(Y+cy);
 }

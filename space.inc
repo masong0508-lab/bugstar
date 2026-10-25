@@ -700,7 +700,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
         int col = p->team ? 53 : 52;
         { int sx,sy; s32 z; if(!sproj(p->x,p->y,p->z,&sx,&sy,&z)) continue;
-          if(p->fire_t){ int tx_,ty_; if(p->tgt==-1) line2(pg,sx,sy,120+(frames&7)-4,124,col); else if(p->tgt>=0 && sproj(pir[p->tgt].x,pir[p->tgt].y,pir[p->tgt].z,&tx_,&ty_,0)) line2(pg,sx,sy,tx_,ty_,col); }
+          if(p->fire_t){ int tx_,ty_; if(p->tgt==-1) line2(pg,sx,sy,120+(frames&7)-4,chase_cam?100:124,col); else if(p->tgt>=0 && sproj(pir[p->tgt].x,pir[p->tgt].y,pir[p->tgt].z,&tx_,&ty_,0)) line2(pg,sx,sy,tx_,ty_,col); }
           if(z>5500){ dot2(pg,sx,sy,col); dot2(pg,sx-1,sy,col); dot2(pg,sx+1,sy,col); dot2(pg,sx,sy-1,col); continue; } }   // far away: a small mark
         s16 R[3]={p->f[2],0,(s16)-p->f[0]}; norm3(R); s16 U[3]={(s16)((p->f[1]*R[2]-p->f[2]*R[1])>>14),(s16)((p->f[2]*R[0]-p->f[0]*R[2])>>14),(s16)((p->f[0]*R[1]-p->f[1]*R[0])>>14)};
         static const s16 mdl[6][3]={{0,0,110},{-110,0,-50},{110,0,-50},{0,35,-50},{0,-18,-50},{0,0,-70}};
@@ -709,12 +709,18 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         wire(pg,v,6,pe,12,col); }
     for(int k=0;k<4;k++) if(cans[k].alive){ int sx,sy; s32 z; if(sproj(cans[k].x,cans[k].y,cans[k].z,&sx,&sy,&z)){ int r=(int)(60*FOCS/z)+1; line2(pg,sx-r,sy,sx,sy-r,50); line2(pg,sx,sy-r,sx+r,sy,50); line2(pg,sx+r,sy,sx,sy+r,50); line2(pg,sx,sy+r,sx-r,sy,50); } }
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; int sx,sy; if(sproj(p->x,p->y,p->z,&sx,&sy,0)){ dot2(pg,sx,sy,p->life>12?49:p->col); dot2(pg,sx+1,sy,p->col); } }
-    if(laser_t){ laser_t--; line2(pg,30,127,120,VCY,52); line2(pg,210,127,120,VCY,52); }
+    int lz=laser_t; if(laser_t) laser_t--;
+    if(lz && !chase_cam){ line2(pg,30,127,120,VCY,52); line2(pg,210,127,120,VCY,52); }          // (the cockpit view: bolts from the bottom corners)
     // crosshair
     if(!FILM) for(int k=4;k<9;k++){ dot2(pg,120+k,VCY,52); dot2(pg,120-k,VCY,52); dot2(pg,120,VCY+k,52); dot2(pg,120,VCY-k,52); }
     // the chase camera: your own ship, seen from behind, banking into turns and nosing up and down
     if(chase_cam){ ship_roll=(-roll_*2)&1023; int bob=(sinx((frames*3)&255)>>12);
-        ship_draw(pg, 120 + (yawv>>2), 100 + bob + (pitv>>2), 52 + speed/6, (-(yawv*2))&1023, (40 - pitv)&1023, 0,0, 0,0,240,128);
+        { int scx=120 + (yawv>>2), scy=100 + bob + (pitv>>2), scs=52 + speed/6, syw=(-(yawv*2))&1023, spt=(40 - pitv)&1023;
+          ship_draw(pg, scx, scy, scs, syw, spt, 0,0, 0,0,240,128);
+          if(lz) for(int m=0;m<sh_mzn;m++){ int mx_,my_; ship_proj(sh_mz[m][0],sh_mz[m][1],sh_mz[m][2],scx,scy,scs,syw,spt,&mx_,&my_);          // the bolts leave the ship's own guns and run to where you are aiming
+              int uh=(5-lz)*7, ut=uh-7; if(ut<0) ut=0;                                                       // a bolt flies out along the line to the crosshair, a few frames
+              int hx=mx_+(120-mx_)*uh/20, hy=my_+(VCY-my_)*uh/20, tx=mx_+(120-mx_)*ut/20, ty=my_+(VCY-my_)*ut/20;
+              line2(pg,tx,ty,hx,hy,52); line2(pg,tx+1,ty,hx+1,hy,52); line2(pg,(tx+hx)/2,(ty+hy)/2,hx,hy,54); } }
         if(HELD(K_B)){ int fl = 3 + (frames&3); for(int k=-1;k<=1;k++) line2(pg,120+k*4+(yawv>>2),106+bob,120+k*6+(yawv>>2),106+bob+fl+(HELD(K_L)&&fuel>0?6:0),SHP_GLOW+6); }   // engine flame
         ship_roll=0; }
     if(hit_t){ hit_t--; if(!FILM) for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
