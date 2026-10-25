@@ -92,7 +92,7 @@ static void m7_frame(void){
     for(int y=0;y<160;y++){ M7Line *L=&tab[y];
         int ground = y>=strip && m7_rowz[y]>0 && !(m7_cock && y>=140);
         if(!ground) fog[y]=16;
-        else { s32 z8=m7_rowz[y]; int f = z8<(14<<8) ? 0 : (int)((z8-(14<<8))>>10); if(f>12) f=12; fog[y]=(u16)((16-f)|(f<<8)); }   // the haze: none up close, thickest at the horizon
+        else { s32 z8=m7_rowz[y]; int f = z8<(9<<8) ? 0 : (int)((z8-(9<<8))>>9); if(f>13) f=13; fog[y]=(u16)((16-f)|(f<<8)); }   // the haze: none up close, thickest at the horizon
         if(!ground){ dc[y]=base; L->pa=256; L->pb=0; L->pc=0; L->pd=256; L->x=0; L->y=y<<8; }
         else { s32 z8=m7_rowz[y], zt8=z8*2; s32 pa=((((hcs*zt8)>>8)*fkq)>>12), pc=-(((((hsn*zt8)>>8)*fkq)>>12));
             s32 cx8=(cam_x>>7)+((hsn*z8)>>7), cy8=(cam_y>>7)+((hcs*z8)>>7);
