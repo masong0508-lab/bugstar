@@ -13,7 +13,7 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | B | Use the picked item | Use the picked item |
 | L / R | Pick an item in your bag | Strafe left / right |
 | SELECT | Tap: switch between third person and first person. Hold SELECT + L/R: point the arrow at the door or your ship. Hold SELECT + LEFT/RIGHT (third person): turn the camera around your bug | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
-| START | Character screen (BUG, GEAR, MAGIC, QUEST, SYSTEM, MAP) | Opens on the MAP |
+| START | Pause screen (BUG, GEAR, MAGIC, QUEST, WORLD, FEATS, EXTRAS, MAP, SYSTEM). EXTRAS lists everything you can unlock: UNLOCKED or LOCKED, and what you need | Opens on the MAP |
 
 ## The story
 Your little droid **Bolt** rolls after you everywhere. He does not know what he is. He knows he is yours.

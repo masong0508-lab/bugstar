@@ -438,9 +438,11 @@ static void sys_action(volatile u16 *pg, int cur){
 }
 
 static void map_page(volatile u16 *pg); static void size_screen(volatile u16 *pg, int from_title); static int big_unlocked(void);
-// ---------------------------------------------------------------- the pause screen: eight pages with picture tabs, your bug in a frame, where you are, what you have done
+#define EX_N 12                                                  // lines on the EXTRAS page (extras.inc)
+static void extras_page(volatile u16 *pg, int cur, int *top, const char **foot); static int extras_press(volatile u16 *pg, int cur);
+// ---------------------------------------------------------------- the pause screen: nine pages with picture tabs, your bug in a frame, where you are, what you have done
 static void world_page(volatile u16 *pg, int y); static void relic_shelf(volatile u16 *pg, int y); static int fav_add_here(void); static int me_oam(int slot, int cx, int feet, int frame);
-static const u8 tab_icon[8][8]={
+static const u8 tab_icon[9][8]={
     {0x24,0x18,0x3C,0xBD,0x7E,0xBD,0x3C,0x42},   // BUG: a little beetle
     {0x7E,0xFF,0xFF,0xFF,0x7E,0x7E,0x3C,0x18},   // GEAR: a shield
     {0x18,0x18,0xFF,0x7E,0x3C,0x7E,0x66,0x42},   // MAGIC: a star
@@ -448,16 +450,17 @@ static const u8 tab_icon[8][8]={
     {0x3C,0x5A,0x99,0xFF,0x99,0x5A,0x3C,0x00},   // WORLD: a globe
     {0xFF,0xFF,0x7E,0x3C,0x18,0x18,0x3C,0x7E},   // FEATS: a cup
     {0xFE,0x92,0x92,0xFE,0x92,0x92,0xFE,0x00},   // MAP: a grid
-    {0xFC,0x8A,0x8A,0xFE,0x82,0xBA,0xBA,0xFE}};  // SYSTEM: a save disk
+    {0xFC,0x8A,0x8A,0xFE,0x82,0xBA,0xBA,0xFE},   // SYSTEM: a save disk
+    {0x3C,0x42,0x42,0xFF,0xFF,0xE7,0xE7,0xFF}};  // EXTRAS: a padlock
 static void icon8(volatile u16 *pg, int x, int y, const u8 *ic, int col){ for(int r=0;r<8;r++) for(int c=0;c<8;c++) if(ic[r]&(0x80>>c)) pix(pg,x+c,y+r,col); }
 #define HI 255                                                 // the selection bar's colour: it gently pulses while the pause screen is open
 static int pause_last[2]={0,6};                                // the page you were on last time, on the surface and down in a dungeon
 static void char_screen(volatile u16 *pg){
-    static const u8 ord[8]={0,1,2,3,7,4,6,5};                  // page numbers in tab order (7 = WORLD, the new one)
-    static const char *const tabn[8]={"BUG","GEAR","MAGIC","QUEST","WORLD","FEATS","MAP","SYSTEM"};
-    static const u8 tabc[8]={C_GREEN,C_CYAN,C_UNIQ,C_GOLD,C_CYAN,C_GOLD,C_GREEN,C_WHITE};
-    int ti=0; { int want=pause_last[scene==1]; for(int i=0;i<8;i++) if(ord[i]==want) ti=i; }
-    int page=ord[ti], cur=0, dirty=1, sub=0, tick=0; sys_msg[0]=0; in_menu++; menu_msg[0]=0;
+    static const u8 ord[9]={0,1,2,3,7,4,8,6,5};                // page numbers in tab order (7 = WORLD, 8 = EXTRAS; pause_last keeps page numbers, so older orders still work)
+    static const char *const tabn[9]={"BUG","GEAR","MAGIC","QUEST","WORLD","FEATS","EXTRAS","MAP","SYSTEM"};
+    static const u8 tabc[9]={C_GREEN,C_CYAN,C_UNIQ,C_GOLD,C_CYAN,C_GOLD,C_UNIQ,C_GREEN,C_WHITE};
+    int ti=0; { int want=pause_last[scene==1]; for(int i=0;i<9;i++) if(ord[i]==want) ti=i; }
+    int page=ord[ti], cur=0, dirty=1, sub=0, tick=0, extop=0; sys_msg[0]=0; in_menu++; menu_msg[0]=0;
     static const char *const stn[4]={"STRENGTH","DEXTERITY","VITALITY","MAGIC"};
     static const char *const std[4]={"BITE DAMAGE","CRITS, FASTER BITES","HEALTH, DEFENCE","MANA, SPELL POWER"};
     bug_build(); form_palette();
@@ -466,10 +469,10 @@ static void char_screen(volatile u16 *pg){
         if(dirty){ dirty=0; char b[64];
             // ---- the backdrop and the tab bar: a picture and a name for every page; the open tab is a raised card
             ui_bg(pg,18,149); rect(pg,0,18,240,17,U_BG0); rect(pg,0,35,240,1,U_RAISE);
-            for(int t=0;t<8;t++){ int x=t*30, on=t==ti;
-                if(on){ rect(pg,x+2,19,26,17,U_PANEL); rect(pg,x+1,20,1,16,U_RAISE); rect(pg,x+28,20,1,16,U_EDGE); rect(pg,x+3,19,24,2,tabc[t]); rect(pg,x+3,21,24,1,U_SHINE); }
-                icon8(pg,x+11,22,tab_icon[t], on?tabc[t]:U_GLOW);
-                ctext(pg,x+15,30,tabn[t], on?C_GOLD:U_GLOW); }
+            for(int t=0;t<9;t++){ int x=t*240/9, on=t==ti;                  // nine tabs, 26 or 27 dots apart
+                if(on){ rect(pg,x,19,26,17,U_PANEL); rect(pg,x,20,1,16,U_RAISE); rect(pg,x+25,20,1,16,U_EDGE); rect(pg,x+1,19,24,2,tabc[t]); rect(pg,x+1,21,24,1,U_SHINE); }
+                icon8(pg,x+9,22,tab_icon[t], on?tabc[t]:U_GLOW);
+                ctext(pg,x+13,30,tabn[t], on?C_GOLD:U_GLOW); }
             const char *foot=""; int y=38;
             if(page==0){
                 // ---- BUG: you, your bars, your stats, your friends
@@ -563,6 +566,7 @@ static void char_screen(volatile u16 *pg){
                         if(done) text(pg,190,yy,"DONE",C_GREEN,1); else { hbar(pg,184,yy+1,24,hv,ach[i].goal,C_CYAN); scpy(b,""); ncat(b,hv); scat(b,"/"); ncat(b,ach[i].goal); text(pg,211,yy,b,C_DGREY,1); } }
                     foot="A: SHOW YOUR RELICS"; }
             } else if(page==6){ if(scene!=1) ui_panel(pg,4,37,232,30); map_page(pg);
+            } else if(page==8){ ui_panel(pg,4,37,232,111); extras_page(pg,cur,&extop,&foot);
             } else if(page==7){ ui_panel(pg,4,37,232,111); world_page(pg,41); foot = big_unlocked() ? "A: FAVOURITE  SEL: HOW BIG IS IT?" : "A: SAVE AS A FAVOURITE";
             } else {
                 static const char *const sn[5]={"SAVE GAME","SAVE TO ANOTHER SLOT","LOAD GAME","OPTIONS","QUIT TO TITLE"};
@@ -594,9 +598,9 @@ static void char_screen(volatile u16 *pg){
         oam_hide_all(); if(page==0) me_oam(0,182,76,(tick>>4)&1); oam_flush();
         vsync(); read_keys();
         if(HIT(K_START)) break;
-        if(HIT(K_L)){ ti=(ti+7)%8; page=ord[ti]; cur=0; sub=0; dirty=1; sys_msg[0]=0; sfx(7); }
-        if(HIT(K_R)){ ti=(ti+1)%8; page=ord[ti]; cur=0; sub=0; dirty=1; sys_msg[0]=0; sfx(7); }
-        int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : page==5?5 : 0;
+        if(HIT(K_L)){ ti=(ti+8)%9; page=ord[ti]; cur=0; sub=0; dirty=1; sys_msg[0]=0; sfx(7); }
+        if(HIT(K_R)){ ti=(ti+1)%9; page=ord[ti]; cur=0; sub=0; dirty=1; sys_msg[0]=0; sfx(7); }
+        int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : page==5?5 : page==8?EX_N : 0;
         if(nmax){ if(HIT(K_UP)){ cur=(cur+nmax-1)%nmax; dirty=1; } if(HIT(K_DOWN)){ cur=(cur+1)%nmax; dirty=1; }
             if(page==1){ if(HIT(K_RIGHT) && cur+6<nmax){ cur+=6; dirty=1; } if(HIT(K_LEFT) && cur>=6){ cur-=6; dirty=1; } } }
         if(HIT(K_A)){
@@ -607,6 +611,7 @@ static void char_screen(volatile u16 *pg){
             if(page==4){ sub^=1; sfx(2); }
             if(page==7){ int r=fav_add_here(); scpy(menu_msg, r>=0 ? "SAVED TO YOUR FAVOURITES" : r==-2 ? "IT IS ALREADY A FAVOURITE" : r==-3 ? "31 UNIVERSES IN USE" : "FAVOURITES ARE FULL (256)"); if(r>=0) sfx(6); }
             if(page==5){ sys_action(pg,cur); if(sys_req) break; }
+            if(page==8){ if(extras_press(pg,cur)) break; }
         }
         if(HIT(K_B) && page==1 && bag_n){
             if(is_gear(&bag[cur])){ int n=scrap_of(bag[cur].rar); scrap+=n; char m[32]; scpy(m,"SCRAPPED: +"); ncat(m,n); scat(m," TECH SCRAP"); drop_at(cur); say(m); sfx(13); }

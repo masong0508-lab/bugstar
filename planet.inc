@@ -552,7 +552,7 @@ static void planet_frame(void){
     }
     if(frames%600==0){ for(int i=0;i<NPO;i++) if(po[i].kind==O_PLANT && !po[i].alive){ place(&po[i],O_PLANT,4,64); break; } }
     if(!kart_on) bag_input(); tick_timers(); hunger_tick(240); regen_tick(120);
-    if(HIT(K_START) && !kr_mode){ oam_hide_all(); oam_flush(); char_screen(VISPG); planet_hud(); msg_timer=0; p_last=vbl_count; return; }
+    if(HIT(K_START) && !kr_mode){ oam_hide_all(); oam_flush(); char_screen(VISPG); planet_hud(); msg_timer=0; p_last=vbl_count; if(kart_req){ kart_req=0; kart_menu(0); } return; }
     if(cast_flag>=0){ cam_fp^=1; planet_tables(); show_msg(cam_fp?"FIRST PERSON. SELECT: SWITCH VIEW":"THIRD PERSON. HOLD SELECT + LEFT/RIGHT: TURN"); sfx(2); }
     escape_flag=call_flag=blast_flag=0; cast_flag=-1;
     if(hearts<=0){ hearts=maxh; food=60; int nolose=!opt_faintloss||opt_baby; if(!nolose) gold=sdiv(gold,2); if(!nolose && !opt_easy){ bag_n=0; bag_sel=0; } show_msg(nolose?"YOU FAINTED. NOTHING LOST. NAP TIME":opt_easy?"YOU FAINTED. HALF YOUR GOLD IS GONE":"YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }

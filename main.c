@@ -300,6 +300,7 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 #include "kart3.inc"
 #include "sizes.inc"
 #include "deep.inc"
+#include "extras.inc"
 #include "debug.inc"
 #ifdef TEST_LAUNCH
 #include "film.inc"
