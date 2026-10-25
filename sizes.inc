@@ -3,7 +3,7 @@
 // exactly: the smaller ones here with big whole numbers (24 words: up to 231 digits), the giants (up to 78,914 digits) by bignums.py
 // when the game is built. The number on show is always packed decimal digits, two to a byte, so any part of it can be drawn at once.
 // Three views: IN SHORT (ABOUT 4.3 BILLION), EVERY DIGIT (with commas, in big type, scrolling) and BY NAME (each group of three digits
-// with its name: 4 BILLION, 294 MILLION...). Names past the common ones follow the Conway-Wechsler rules (see illion in space.inc).
+// with its name: 4 BILLION, 294 MILLION...). Names are the dictionary ones up to VIGINTILLION, then the Conway-Wechsler rules (see illion in space.inc).
 #define BNW 24
 static void bn_set(u32 *b, u32 v){ b[0]=v; for(int i=1;i<BNW;i++) b[i]=0; }
 static void bn_pow2(u32 *b, int e){ bn_set(b,0); b[e>>5]=1u<<(e&31); }

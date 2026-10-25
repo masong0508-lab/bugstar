@@ -51,14 +51,14 @@ static int big_dec(char *s, u32 *b){                                          //
     while(n>1 && tmp[n-1]=='0') n--;
     for(int i=0;i<n;i++) s[i]=tmp[n-1-i]; s[n]=0; return n;
 }
-static const char *const big_nm[34]={"","THOUSAND","MILLION","BILLION","TRILLION","QUADRILLION","QUINTILLION","SEXTILLION","SEPTILLION","OCTILLION","NONILLION","DECILLION",
-    "UNDECILLION","DUODECILLION","TREDECILLION","QUATTUORDECILLION","QUINDECILLION","SEXDECILLION","SEPTENDECILLION","OCTODECILLION","NOVEMDECILLION","VIGINTILLION",
-    "UNVIGINTILLION","DUOVIGINTILLION","TRESVIGINTILLION","QUATTUORVIGINTILLION","QUINVIGINTILLION","SEXVIGINTILLION","SEPTENVIGINTILLION","OCTOVIGINTILLION","NOVEMVIGINTILLION",
-    "TRIGINTILLION","UNTRIGINTILLION","DUOTRIGINTILLION"};            // the names of the big numbers, a thousand times apart (the short scale: a billion is a thousand million)
+static const char *const big_nm[22]={"","THOUSAND","MILLION","BILLION","TRILLION","QUADRILLION","QUINTILLION","SEXTILLION","SEPTILLION","OCTILLION","NONILLION","DECILLION",
+    "UNDECILLION","DUODECILLION","TREDECILLION","QUATTUORDECILLION","QUINDECILLION","SEXDECILLION","SEPTENDECILLION","OCTODECILLION","NOVEMDECILLION","VIGINTILLION"};
+                                                                // the dictionary names, a thousand times apart, up to VIGINTILLION (the short scale: a billion is a thousand million).
+                                                                // Everything bigger is made by the Conway-Wechsler rules below, so UNVIGINTILLION, QUINQUAVIGINTILLION, SESVIGINTILLION...
 static void cw_prefix(int v, char *o){                          // the Latin for v (0..999) in the Conway-Wechsler system for naming -illions
     static const char *const sm[10]={"NI","MI","BI","TRI","QUADRI","QUINTI","SEXTI","SEPTI","OCTI","NONI"};
     if(v<10){ scpy(o,sm[v]); return; }
-    static const char *const un[10]={"","UN","DUO","TRE","QUATTUOR","QUIN","SE","SEPTE","OCTO","NOVE"};
+    static const char *const un[10]={"","UN","DUO","TRE","QUATTUOR","QUINQUA","SE","SEPTE","OCTO","NOVE"};
     static const char *const te[10]={"","DECI","VIGINTI","TRIGINTA","QUADRAGINTA","QUINQUAGINTA","SEXAGINTA","SEPTUAGINTA","OCTOGINTA","NONAGINTA"};
     static const char *const hu[10]={"","CENTI","DUCENTI","TRECENTI","QUADRINGENTI","QUINGENTI","SESCENTI","SEPTINGENTI","OCTINGENTI","NONGENTI"};
     static const u8 tm[10]={0,1,2|4,1|4,1|4,1|4,1,1,2|8,0}, hm[10]={0,1|8,1,1|4,1|4,1|4,1,1,2|8,0};   // what each tens and hundreds word asks of the unit before it: 1 N, 2 M, 4 S, 8 X
@@ -69,7 +69,7 @@ static void cw_prefix(int v, char *o){                          // the Latin for
         if(u==7||u==9){ if(m&2) scat(o,"M"); else if(m&1) scat(o,"N"); } }
     if(t) scat(o,te[t]); if(h) scat(o,hu[h]); }
 static const char *illion(int g){                               // the name of a thousand to the power g (1 THOUSAND, 2 MILLION...), any size at all
-    if(g<34) return big_nm[g<0?0:g];
+    if(g<22) return big_nm[g<0?0:g];
     static char b[100]; int n=g-1, gs[4], ng=0; b[0]=0;          // the n-th -illion: its number in groups of three, each group's Latin, joined with ILLI
     do { gs[ng++]=n%1000; n/=1000; } while(n && ng<4);
     for(int k=ng-1;k>=0;k--){ char p[40]; cw_prefix(gs[k],p); int L=textlen(p); if(L && (p[L-1]=='I'||p[L-1]=='A')) p[L-1]=0; scat(b,p); scat(b, k ? "ILLI" : "ILLION"); }

@@ -4696,7 +4696,7 @@ static const unsigned char giant_screens[86697]={
 #define BIG_WORDS 218259279u
 #define BIG_YEARS 3
 #define BIG_DAYS 167
-#define BIG_LETTERS 1395
+#define BIG_LETTERS 1407
 #define BIG_DIGITS "2.53"
 #define BIG_DEXP 185
 #define BIG_PLANCK "8.44"

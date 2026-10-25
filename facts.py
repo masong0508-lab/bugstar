@@ -173,7 +173,7 @@ def planck_volumes():                  # a sphere 46.5 billion light years acros
     R = Decimal(46500000000) * Decimal(9460730472580800); l = Decimal("1.616255e-35")
     return int((Decimal(4) / 3 * s * R ** 3 / l ** 3).to_integral_value(rounding="ROUND_FLOOR"))
 SM = ["NI","MI","BI","TRI","QUADRI","QUINTI","SEXTI","SEPTI","OCTI","NONI"]
-UN = ["","UN","DUO","TRE","QUATTUOR","QUIN","SE","SEPTE","OCTO","NOVE"]
+UN = ["","UN","DUO","TRE","QUATTUOR","QUINQUA","SE","SEPTE","OCTO","NOVE"]
 TE = ["","DECI","VIGINTI","TRIGINTA","QUADRAGINTA","QUINQUAGINTA","SEXAGINTA","SEPTUAGINTA","OCTOGINTA","NONAGINTA"]
 HU = ["","CENTI","DUCENTI","TRECENTI","QUADRINGENTI","QUINGENTI","SESCENTI","SEPTINGENTI","OCTINGENTI","NONGENTI"]
 TM = [0,1,2|4,1|4,1|4,1|4,1,1,2|8,0]; HM = [0,1|8,1,1|4,1|4,1|4,1,1,2|8,0]
