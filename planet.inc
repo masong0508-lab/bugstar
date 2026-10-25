@@ -435,6 +435,9 @@ static void hell_frame(int n){                                                  
 #include "m7.inc"
 static void planet_frame(void){
     u32 t_f0=TMR();
+#ifdef TEST_FPS
+    { static u32 lf=0; kfr_sum+=t_f0-lf; lf=t_f0; if(++kfr_n==30){ kfr_avg=kfr_sum/30; kfr_sum=0; kfr_n=0; } }
+#endif
     { int want = kr_mode && !in_menu; if(want && !m7_on) m7_begin(); else if(!want && m7_on) m7_end(); }      // a kart race: the hardware ground (m7.inc)
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
     int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>4) n=4;           // the view takes a few 60ths to draw: move by that much

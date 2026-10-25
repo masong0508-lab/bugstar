@@ -128,7 +128,16 @@ static void hspan(volatile u16 *pg, int y, int x0, int x1, int c){              
     if(x1>=x0 && !(x1&1)){ volatile u16 *p=row+(x1>>1); *p=(*p&0xFF00)|c; x1--; }
     u16 cc=(u16)(c|(c<<8)); for(int k=x0>>1, e=x1>>1; k<=e && x0<=x1; k++) row[k]=cc;
 }
+#ifdef TEST_FPS
+static u32 dbg_pc=0, dbg_rows=0, dbg_px=0, dbg_pt=0, dbg_kt=0, dbg_kn=0;
+#endif
+static void polyfill_(volatile u16 *pg, const int *px, const int *py, int n, int c, int cx0, int cy0, int cx1, int cy1);
 static void polyfill(volatile u16 *pg, const int *px, const int *py, int n, int c, int cx0, int cy0, int cx1, int cy1){
+#ifdef TEST_FPS
+    u32 t0=*(volatile u16*)0x04000100 | ((u32)*(volatile u16*)0x04000104<<16); polyfill_(pg,px,py,n,c,cx0,cy0,cx1,cy1); dbg_pt+=(*(volatile u16*)0x04000100 | ((u32)*(volatile u16*)0x04000104<<16))-t0;
+}
+static void polyfill_(volatile u16 *pg, const int *px, const int *py, int n, int c, int cx0, int cy0, int cx1, int cy1){
+#endif
     int ymin=py[0], ymax=py[0]; for(int i=1;i<n;i++){ if(py[i]<ymin) ymin=py[i]; if(py[i]>ymax) ymax=py[i]; }
     if(ymin<cy0) ymin=cy0; if(ymax>=cy1) ymax=cy1-1; if(ymin>ymax) return;
     for(int y=ymin;y<=ymax;y++){ sh_l[y]=32767; sh_r[y]=-32768; }
@@ -139,7 +148,14 @@ static void polyfill(volatile u16 *pg, const int *px, const int *py, int n, int 
         s32 dy=y1-y0, dx=x1-x0, sl = dy<256 ? dx*(s32)sh_rt[dy] : (dx<<16)/dy;
         s32 x=(x0<<16)+0x8000+sl*(ys-y0);
         for(int y=ys;y<=ye;y++){ int xi=x>>16; if(xi<sh_l[y]) sh_l[y]=xi; if(xi>sh_r[y]) sh_r[y]=xi; x+=sl; } }
-    for(int y=ymin;y<=ymax;y++){ int xl=sh_l[y], xr=sh_r[y]; if(xl>xr) continue; if(xl<cx0) xl=cx0; if(xr>=cx1) xr=cx1-1; if(xl>xr) continue; hspan(pg,y,xl,xr,c); }
+#ifdef TEST_FPS
+    dbg_pc++;
+#endif
+    for(int y=ymin;y<=ymax;y++){ int xl=sh_l[y], xr=sh_r[y]; if(xl>xr) continue; if(xl<cx0) xl=cx0; if(xr>=cx1) xr=cx1-1; if(xl>xr) continue;
+#ifdef TEST_FPS
+        dbg_rows++; dbg_px+=xr-xl+1;
+#endif
+        hspan(pg,y,xl,xr,c); }
 }
 static int ship_roll=0;                                                        // extra bank applied on screen (the chase camera)
 static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pitch_, int cpaint, int ctrim, int cx0,int cy0,int cx1,int cy1){

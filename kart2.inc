@@ -422,7 +422,7 @@ static int kart_buttons(void){                                     // A, SELECT 
             if(sel==0) kbuild_finish(); else if(sel==2) kcam_menu(pg,1); else if(sel==3) kart_stop();
             planet_hud(); p_last=vbl_count; return 1; }
         return 0; }
-    if(HIT(K_A) && rc[0].item && ks_state==KS_RACE && !rc[0].spin) kuse_item(0);
+    if(HIT(K_A) && rc[0].item && !kroul && ks_state==KS_RACE && !rc[0].spin) kuse_item(0);
     if(HIT(K_START)){ oam_hide_all(); oam_flush(); in_menu++; static const char *const o[4]={"KEEP RACING","START AGAIN","CAMERA","QUIT THE RACE"}; int sel=0; volatile u16 *pg=VISPG;
         while(1){ box(pg,50,46,140,62); rect(pg,51,47,138,12,6); ctext(pg,120,50,"PAUSED",C_GOLD); for(int i=0;i<4;i++){ if(i==sel) text(pg,60,64+i*10,">",C_CYAN,1); text(pg,68,64+i*10,o[i],i==sel?C_WHITE:C_GREY,1); }
             vsync(); read_keys(); if(HIT(K_UP)) sel=(sel+3)%4; if(HIT(K_DOWN)) sel=(sel+1)%4; if(HIT(K_B)||HIT(K_START)){ sel=0; break; } if(HIT(K_A)) break; }

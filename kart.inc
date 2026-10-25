@@ -205,7 +205,7 @@ static void kart_palette(void){
 #define NKJ 10
 #define NKL 3
 static s16 klp[NKL]; static int nkl=0;             // the loop-de-loops: where each one stands on the path
-static int kloop_j=0, kloop_t=0, kloop_dir=0, kloop_sd=1, kloop_ph=0, kloop_prev=-1, kdraft=0, kstuck=0, kdrift_t=0, kstar=0; static s32 kla=0, kloop_v=0, kloop_da=0;   // your ride round one (see below)
+static int kloop_j=0, kloop_t=0, kloop_dir=0, kloop_sd=1, kloop_ph=0, kloop_prev=-1, kdraft=0, kstuck=0, kdrift_t=0, kstar=0, kroul=0; static s32 kla=0, kloop_v=0, kloop_da=0;   // your ride round one (see below)
 static int k_stunts=0;                             // Kart World's STUNTS option: 0 as the track comes, 1 lots, 2 none
 EW static u8 kpf[KP_MAX];                          // what each point of the path is
 #define KPF_TAKEN 32                               // (a star bit here has been picked up this lap)
@@ -362,11 +362,12 @@ static void kuse_item(int r){
         case KI_CLOUD: for(int i=0;i<nrc;i++) if(rc[i].place==1 && i!=r){ rc[i].cloud=200; if(i==0) show_msg("A GRUMPY CLOUD! IT IS RAINING ON YOU"); } if(r==0) sfx(8); break; }
     k->item=0; k->item_n=0; }
 static void kitems_tick(int n){
+    if(kroul>0){ kroul-=n; if(kroul<=0){ kroul=0; if(rc[0].item){ char b2[40]; scpy(b2,"GOT: "); scat(b2,kitem_name[rc[0].item]); scat(b2,"! A: USE"); show_msg(b2); sfx(7); } } }   // the item box spins for a moment before it shows what you got
     for(int b=0;b<15;b++){ if(kbox_po[b]==255) continue; PObj *o=&po[kbox_po[b]];
         if(kbox_t[b]){ if(kbox_t[b]>n) kbox_t[b]-=n; else { kbox_t[b]=0; o->alive=1; } continue; }
         for(int r=0;r<nrc;r++){ s32 dx=wrapd(rc[r].x-o->x), dy=wrapd(rc[r].y-o->y); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<0xE000){ o->alive=0; kbox_t[b] = k_items==2 ? 80 : 200;
             if(!rc[r].item && !rc[r].fin){ int it=kitem_roll(rc[r].place); if(kl.part[KP_TOP]==11 && r==0 && it<=KI_SLIME && rndi(3)==0) it=KI_PEPPER3;   // the cherry is lucky
-                rc[r].item=(u8)it; rc[r].item_n = it==KI_PEPPER3 ? 3 : 1; rc[r].ai_t=(u8)(30+rndi(120)); if(r==0){ char b2[40]; scpy(b2,"GOT: "); scat(b2,kitem_name[it]); scat(b2,"! A: USE"); show_msg(b2); sfx(7); } }
+                rc[r].item=(u8)it; rc[r].item_n = it==KI_PEPPER3 ? 3 : 1; rc[r].ai_t=(u8)(30+rndi(120)); if(r==0){ kroul=40; sfx(7); } }
             break; } } }
     for(int s=0;s<3;s++){ KShell *h=&ksh[s]; if(!h->life) continue; if(h->life>n) h->life-=n; else h->life=0;
         s32 tx, ty; int tg=h->tgt;
@@ -465,7 +466,7 @@ static void kart_place_grid(int r, int slot){
     k->x=(kp_cx(pi)+((sinx(nd>>2)*side*9)>>1))&((TW<<16)-1); k->y=(kp_cy(pi)+((cosx(nd>>2)*side*9)>>1))&((TW<<16)-1); }   // two columns, 1.1 cells either side
 static void kart_go(int riders, int grid_me, int keep, int repaint){   // paint the track, line everyone up and start the countdown
     if(!kr_mode){ kret_x=ppx; kret_y=ppy; kret_h=heading; }
-    kgive_back(); katan_init(); kloop_on=0; kloop_ph=0; kla=0; kloop_prev=-1; kdraft=0; kstuck=0; kbr_cur=0; kstar=0; for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; kloop_hide=0;
+    kgive_back(); katan_init(); kloop_on=0; kloop_ph=0; kla=0; kloop_prev=-1; kdraft=0; kstuck=0; kbr_cur=0; kstar=0; kroul=0; for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; kloop_hide=0;
     if(repaint || !kt_painted){ kt_unpaint(); kt_build(); kt_paint(); }
     khide_road(); kart_palette();
     nrc=riders<1?1:riders>NRC?NRC:riders; int used=0;
@@ -516,11 +517,34 @@ static void kjump_throw(void){                                      // off a jum
 static s32 kloop_r(void){ static const u8 r4[6]={12,13,14,16,18,20}; return (s32)r4[wd.psz%6]<<6; }   // a loop's radius, 8.8 cells: 3 on a tiny world up to 5 on a giant one
 static s32 kloop_zs(void){ return (kloop_r()*120/40)<<8; }          // how far away the side camera watches from (16.16 cells): the loop fills the view
 static void kloop_fov(int fk){ kfovk=fk; for(int c=0;c<120;c++) raydx[c]=(s16)(((2*c-119)*fk)/120); heading_rays(); }   // (square pixels from the side, so the loop is round)
-static int kproj(s32 wx, s32 wy, s32 wh, int *sx, int *sy, s32 *zc){  // a point on the map (16.16 cells), wh high (8.8 cells), onto the screen. 0: behind you
-    s32 cb=cam_back(), cx=ppx-((hsn*cb)>>8), cy=ppy-((hcs*cb)>>8), dxw=wrapd(wx-cx), dyw=wrapd(wy-cy);
+static int kpc_on=0, kpc_fi=0, kpc_ck=0, kpc_sh=0; static s32 kpc_cx=0, kpc_cy=0, kpc_sub=0;   // (while a whole picture is projected the camera's numbers are worked out once)
+static void kproj_prep(void){ s32 cb=cam_back(); kpc_cx=ppx-((hsn*cb)>>8); kpc_cy=ppy-((hcs*cb)>>8); kpc_fi=(256<<16)/fov_k(); kpc_ck=curv_k(); kpc_sh=curv_sh(); kpc_sub=tiny_sub(); kpc_on=1; }
+static int kproj_(s32 wx, s32 wy, s32 wh, int *sx, int *sy, s32 *zc){  // a point on the map (16.16 cells), wh high (8.8 cells), onto the screen. 0: behind you
+    s32 cx, cy; if(kpc_on){ cx=kpc_cx; cy=kpc_cy; } else { s32 cb=cam_back(); cx=ppx-((hsn*cb)>>8); cy=ppy-((hcs*cb)>>8); }
+    s32 dxw=wrapd(wx-cx), dyw=wrapd(wy-cy);
     s32 dz=((dxw*hsn)>>8)+((dyw*hcs)>>8), dx=((dxw*hcs)>>8)-((dyw*hsn)>>8); if(dz<(1<<15)) return 0;
-    s32 z=dz>>8, f=(FOCP<<16)/z; long long xx=(((long long)dx*f)>>24)*256/fov_k(); s32 yy=PHZ+(((cam_h+curv(z)-tiny_sub()-wh)*f)>>16);
-    if(xx<-2000) xx=-2000; if(xx>2000) xx=2000; if(yy<-2000) yy=-2000; if(yy>2000) yy=2000; *sx=120+(int)xx; *sy=(int)yy; *zc=z; return 1; }
+    s32 z=dz>>8, f=(FOCP<<16)/z; long long t=((long long)dx*f)>>24; int xx, yy;
+    if(kpc_on){ if(t>8000) t=8000; if(t<-8000) t=-8000; xx=(int)(((long long)(s32)t*kpc_fi)>>16); yy=PHZ+(((cam_h+((((z*z)>>14)*kpc_ck)>>kpc_sh)-kpc_sub-wh)*f)>>16); }
+    else { xx=(int)(t*256/fov_k()); yy=PHZ+(((cam_h+curv(z)-tiny_sub()-wh)*f)>>16); }
+    if(xx<-2000) xx=-2000; if(xx>2000) xx=2000; if(yy<-2000) yy=-2000; if(yy>2000) yy=2000; *sx=120+xx; *sy=yy; *zc=z; return 1; }
+static int kproj2_(s32 wx, s32 wy, s32 h1, s32 h2, int *sx, int *sy1, int *sy2, s32 *zc, s32 *fo){   // the same, for two heights over one spot (one division, not two): the top and the foot of a post
+    s32 cx, cy; if(kpc_on){ cx=kpc_cx; cy=kpc_cy; } else { s32 cb=cam_back(); cx=ppx-((hsn*cb)>>8); cy=ppy-((hcs*cb)>>8); }
+    s32 dxw=wrapd(wx-cx), dyw=wrapd(wy-cy);
+    s32 dz=((dxw*hsn)>>8)+((dyw*hcs)>>8), dx=((dxw*hcs)>>8)-((dyw*hsn)>>8); if(dz<(1<<15)) return 0;
+    s32 z=dz>>8, f=(FOCP<<16)/z; long long t=((long long)dx*f)>>24; int xx, ya, yb; s32 base;
+    if(kpc_on){ if(t>8000) t=8000; if(t<-8000) t=-8000; xx=(int)(((long long)(s32)t*kpc_fi)>>16); base=cam_h+((((z*z)>>14)*kpc_ck)>>kpc_sh)-kpc_sub; }
+    else { xx=(int)(t*256/fov_k()); base=cam_h+curv(z)-tiny_sub(); }
+    ya=PHZ+(((base-h1)*f)>>16); yb=PHZ+(((base-h2)*f)>>16);
+    if(xx<-2000) xx=-2000; if(xx>2000) xx=2000; if(ya<-2000) ya=-2000; if(ya>2000) ya=2000; if(yb<-2000) yb=-2000; if(yb>2000) yb=2000;
+    *sx=120+xx; *sy1=ya; *sy2=yb; *zc=z; *fo=f; return 1; }
+#ifdef TEST_FPS
+static int kproj(s32 wx, s32 wy, s32 wh, int *sx, int *sy, s32 *zc){ u32 t0=TMR(); int r=kproj_(wx,wy,wh,sx,sy,zc); dbg_kt+=TMR()-t0; dbg_kn++; return r; }
+static int kproj2(s32 wx, s32 wy, s32 h1, s32 h2, int *sx, int *sy1, int *sy2, s32 *zc, s32 *fo){ u32 t0=TMR(); int r=kproj2_(wx,wy,h1,h2,sx,sy1,sy2,zc,fo); dbg_kt+=TMR()-t0; dbg_kn++; return r; }
+#else
+static int kproj(s32 wx, s32 wy, s32 wh, int *sx, int *sy, s32 *zc){ return kproj_(wx,wy,wh,sx,sy,zc); }
+static int kproj2(s32 wx, s32 wy, s32 h1, s32 h2, int *sx, int *sy1, int *sy2, s32 *zc, s32 *fo){ return kproj2_(wx,wy,h1,h2,sx,sy1,sy2,zc,fo); }
+#endif
+static int klat(s32 L, s32 f){ return (int)((((L*f)>>16)*kpc_fi)>>16); }      // how many pixels wide L (8.8 cells) is at a spot whose scale is f
 #define KLSEG 28
 #define KLSH 256                                                    // the loop is a little corkscrew: it comes out a cell to the right of where it went in
 static void kloop_one(volatile u16 *pg, int j, int cy0, int cy1){                     // one loop: 28 pieces of ribbon, far ones first
@@ -542,73 +566,120 @@ static void kloop_one(volatile u16 *pg, int j, int cy0, int cy1){               
         int kc=(i&1)?KRC_KR:KRC_KW; polyfill(pg,qx,qy,4,kc,0,cy0,240,cy1);                                 // the kerbs: the whole ribbon in the kerb colour...
         int ix[4]={qx[0]+2,qx[1]-2,qx[2]-2,qx[3]+2}; if(ix[0]<ix[1] && ix[3]<ix[2]) polyfill(pg,ix,qy,4,col,0,cy0,240,cy1);   // ...then the road inside it
         if(top && (i&3)==1) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); } }   // the centre line
-static void kloop_draw(volatile u16 *pg, int cy0, int cy1){ if(!nkl || kr_mode!=1 || cy0>=cy1) return; for(int j=0;j<nkl;j++) kloop_one(pg,j,cy0,cy1); }
+static void kloop_draw(volatile u16 *pg, int cy0, int cy1){ if(!nkl || kr_mode!=1 || cy0>=cy1) return; kproj_prep(); for(int j=0;j<nkl;j++) kloop_one(pg,j,cy0,cy1); kpc_on=0; }
 static int kstar_at(int i){ int f=kpf[i]; return i>=10 && i<knp-10 && (i%3)==0 && ((i>>4)%4)==2 && !(f&(KPF_GAP|KPF_RAMP|KPF_LOOP|KPF_TAKEN)); }   // star bits: little trails of four along the road
 static void kstar_xy(int i, s32 *x, s32 *y, s32 *h){ int d=kp_dir(i); s32 rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6), w=(sinx((i*9)&255)*380)>>14; *x=kp_cx(i)+rx*w; *y=kp_cy(i)+ry*w; *h=ground_h(*x,*y)+kbr_h(i)+150; }
 static int kst_dbg=0, kst_dbg2=0;
 static void kstar_draw(volatile u16 *pg, int cy0, int cy1){
     kst_dbg=0; kst_dbg2=0;              // the star bits: spinning gold diamonds a little above the road
     if(kr_mode!=1 || knp<30 || cy0>=cy1 || kloop_on) return;
-    int p0=rc[0].pi;
-    for(int d=-2; d<=56; d++){ int i=(p0+d+knp)%knp; if(!kstar_at(i)) continue; s32 x,y,h,z; kstar_xy(i,&x,&y,&h); int sx,sy; if(!kproj(x,y,h+(sinx((frames*5+i*20)&255)>>9),&sx,&sy,&z) || z>(26<<8)) continue;
+    int p0=rc[0].pi, nst=0;
+    for(int d=-2; d<=40; d++){ int i=p0+d; if(i<0) i+=knp; if(i>=knp) i-=knp; if(!kstar_at(i)) continue; s32 x,y,h,z; kstar_xy(i,&x,&y,&h); int sx,sy; if(!kproj(x,y,h+(sinx((frames*5+i*20)&255)>>9),&sx,&sy,&z) || z>(15<<8)) continue;
         kst_dbg++; kst_dbg2=sy;
         s32 f=(FOCP<<16)/z; int r=(int)((f*170)>>16); if(r<3) r=3; int ww=r*(10+(cosx((frames*7+i*50)&255)>>9<0 ? -(cosx((frames*7+i*50)&255)>>9) : (cosx((frames*7+i*50)&255)>>9)))/42; if(ww<1) ww=1;
         int qx[4]={sx,sx+ww,sx,sx-ww}, qy[4]={sy-r,sy,sy+r,sy}; polyfill(pg,qx,qy,4,C_GOLD,0,cy0,240,cy1);
-        if(r>=4){ int ix[4]={sx,sx+ww/2,sx,sx-ww/2}, iy[4]={sy-r/2,sy,sy+r/2,sy}; polyfill(pg,ix,iy,4,C_WHITE,0,cy0,240,cy1); } } }
-static void ksign_draw(volatile u16 *pg, int cy0, int cy1){              // trackside: bend signs on the outside of a curve, pennants on poles along the straights
+        if(++nst>=6) break; } }
+static void ksign_draw(volatile u16 *pg, int cy0, int cy1){              // trackside: bend signs on the outside of a curve, pennants on poles along the straights (flat boards that face you)
     if(kr_mode!=1 || knp<30 || cy0>=cy1 || kloop_on) return;
     int p0=rc[0].pi;
-    for(int dd=2; dd<=40; dd++){ int i=(p0+dd)%knp; int f=kpf[i]; if(i<6 || i>knp-6 || (f&(KPF_GAP|KPF_RAMP|KPF_LOOP|KPF_BRIDGE))) continue;
-        int d=kp_dir(i), bend=((kp_dir((i+7)%knp)-kp_dir((i+knp-3)%knp)+512)&1023)-512; s32 rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6), fx=sinx(d>>2)>>6, fy=cosx(d>>2)>>6, cx=kp_cx(i), cy=kp_cy(i), zz; int a,b;
-        if((i%6)==0 && (bend>60 || bend<-60)){ int sg = bend>0 ? 1 : -1; s32 wl=-sg*1080, x=cx+rx*wl, y=cy+ry*wl, g=ground_h(x,y); int bx[4],by[4];
-            if(!kproj(x,y,g,&a,&b,&zz) || zz>(24<<8)) continue;
-            { int px[4],py[4]; int ok=1; s32 ws[4]={-15,15,15,-15}, hs[4]={0,0,300,300}; for(int k=0;k<4;k++){ if(!kproj(x+rx*ws[k],y+ry*ws[k],g+hs[k],&px[k],&py[k],&zz)) ok=0; } if(ok) polyfill(pg,px,py,4,C_GREY,0,cy0,240,cy1); }   // the post
-            { int ok=1; s32 ws[4]={-210,210,210,-210}, hs[4]={290,290,630,630}; for(int k=0;k<4;k++){ if(!kproj(x+rx*ws[k],y+ry*ws[k],g+hs[k],&bx[k],&by[k],&zz)) ok=0; } if(!ok) continue; polyfill(pg,bx,by,4,C_GOLD,0,cy0,240,cy1); }   // the board
-            { int ok=1, tx[3],ty[3]; s32 ws[3]={sg*140,-sg*100,-sg*100}, hs[3]={460,590,330}; for(int k=0;k<3;k++){ if(!kproj(x+rx*ws[k],y+ry*ws[k],g+hs[k],&tx[k],&ty[k],&zz)) ok=0; } if(ok) polyfill(pg,tx,ty,3,1,0,cy0,240,cy1); } }   // the arrow
-        else if((i%10)==4 && bend<40 && bend>-40){ int sg=((i/10)&1)?1:-1; s32 wl=sg*1020, x=cx+rx*wl, y=cy+ry*wl, g=ground_h(x,y); int px[4],py[4],ok=1;
-            if(!kproj(x,y,g,&a,&b,&zz) || zz>(26<<8)) continue;
-            s32 ws[4]={-12,12,12,-12}, hs[4]={0,0,640,640}; for(int k=0;k<4;k++){ if(!kproj(x+rx*ws[k],y+ry*ws[k],g+hs[k],&px[k],&py[k],&zz)) ok=0; } if(ok) polyfill(pg,px,py,4,C_WHITE,0,cy0,240,cy1);   // the pole
-            { int tx[3],ty[3]; s32 wx[3]={0,0,-fx*180/256}, wy[3]={0,0,-fy*180/256}, hs3[3]={640,500,570}; int ok2=1; for(int k=0;k<3;k++){ if(!kproj(x+wx[k]*256+0,y+wy[k]*256+0,g+hs3[k],&tx[k],&ty[k],&zz)) ok2=0; } if(ok2) polyfill(pg,tx,ty,3,(i/10)%3==0?KRC_KR:(i/10)%3==1?C_GOLD:C_CYAN,0,cy0,240,cy1); } } } }
+    int nsg=0; for(int dd=2; dd<=30 && nsg<2; dd++){ int i=p0+dd; if(i>=knp) i-=knp; int s6=(i%6)==0, s10=(i%10)==4; if(!s6 && !s10) continue; int f=kpf[i]; if(i<6 || i>knp-6 || (f&(KPF_GAP|KPF_RAMP|KPF_LOOP|KPF_BRIDGE))) continue;
+        int d=kp_dir(i), bend=((kp_dir((i+7)%knp)-kp_dir((i+knp-3)%knp)+512)&1023)-512; s32 rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6), cx=kp_cx(i), cy=kp_cy(i), zz, fo; int sx,ya,yb;
+        if(s6 && (bend>60 || bend<-60)){ int sg = bend>0 ? 1 : -1; s32 wl=-sg*1080, x=cx+rx*wl, y=cy+ry*wl, g=ground_h(x,y);
+            if(!kproj2(x,y,g,g+630,&sx,&ya,&yb,&zz,&fo) || zz>(15<<8)) continue; nsg++;
+            int hh=ya-yb, ym=ya-hh*290/630, bw=klat(210,fo), pw=klat(15,fo); if(bw<2) bw=2; if(pw<1) pw=1;
+            linep(pg,sx,ya,sx,ym,C_GREY,0,cy0,240,cy1); (void)pw;                                                                                  // the post
+            { int bx[4]={sx-bw,sx+bw,sx+bw,sx-bw}, by[4]={ym,ym,yb,yb}; polyfill(pg,bx,by,4,C_GOLD,0,cy0,240,cy1); }                              // the board
+            { int tx[3]={sx+sg*bw*2/3, sx-sg*bw/2, sx-sg*bw/2}, ty[3]={ya-hh*460/630, ya-hh*590/630, ya-hh*330/630}; polyfill(pg,tx,ty,3,1,0,cy0,240,cy1); } }   // the arrow
+        else if(s10 && bend<40 && bend>-40){ int sg=((i/10)&1)?1:-1; s32 wl=sg*1020, x=cx+rx*wl, y=cy+ry*wl, g=ground_h(x,y);
+            if(!kproj2(x,y,g,g+640,&sx,&ya,&yb,&zz,&fo) || zz>(15<<8)) continue; nsg++;
+            int hh=ya-yb, pw=klat(12,fo); if(pw<1) pw=1; int fw=klat(180,fo); if(fw<2) fw=2; int fh=hh*140/640; if(fh<2) fh=2; int fl=(frames>>2)&1;
+            linep(pg,sx,ya,sx,yb,C_WHITE,0,cy0,240,cy1); (void)pw;                                                                                  // the pole
+            { int tx[3]={sx,sx,sx-sg*fw}, ty[3]={yb,yb+fh,yb+fh/2+fl}; polyfill(pg,tx,ty,3,(i/10)%3==0?KRC_KR:(i/10)%3==1?C_GOLD:C_CYAN,0,cy0,240,cy1); } } } }   // the flag
+static void kdecor_draw(volatile u16 *pg, int cy0, int cy1){             // trackside: trees (dark spires in the ground's own colours) off the road, tyre walls on the outside of the hard bends
+    if(kr_mode!=1 || knp<30 || cy0>=cy1 || kloop_on || WL(MW_VOID)) return;
+    BG_PAL[110]=lerp15(BG_PAL[GND_B+4],rgb15(0,10,0),7); BG_PAL[111]=rgb15(88,58,34);
+    int p0=rc[0].pi, nt=0, nw=0;
+    for(int dd=3; dd<=30 && (nt<2 || nw<3); dd++){ int i=p0+dd; if(i>=knp) i-=knp; int tr=(i%7)==3, ty=(i%4)==1; if(!tr && !ty) continue; int f=kpf[i]; if(i<6 || i>knp-6 || (f&(KPF_GAP|KPF_RAMP|KPF_LOOP|KPF_BRIDGE))) continue;
+        int d=kp_dir(i); s32 rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6), cx=kp_cx(i), cy=kp_cy(i), zz, fo; int sx,ya,yb;
+        if(tr && nt<2){ int sg=(i&8)?1:-1; s32 wl=sg*(1500+(((i*37)&127)<<4)), x=cx+rx*wl, y=cy+ry*wl; if(kroad(cmap[((y>>15)&HMASK)*HW+((x>>15)&HMASK)])) continue; s32 g=ground_h(x,y), H=760+(((i*29)&63)<<3);
+            if(!kproj2(x,y,g,g+H,&sx,&ya,&yb,&zz,&fo) || zz>(12<<8)) continue; nt++;
+            int hh=ya-yb, yc=ya-hh*30/100, cw=klat(250,fo); if(cw<2) cw=2;
+            linep(pg,sx,ya,sx,yc,111,0,cy0,240,cy1);                                                                                        // the trunk
+            if(yc-yb<=14){ int tx[3]={sx,sx+cw,sx-cw}, tyy[3]={yb,yc,yc}; polyfill(pg,tx,tyy,3,110,0,cy0,240,cy1); }                          // the crown (a solid spire...
+            else { linep(pg,sx,yb,sx+cw,yc,110,0,cy0,240,cy1); linep(pg,sx,yb,sx-cw,yc,110,0,cy0,240,cy1); linep(pg,sx,yb,sx,yc,110,0,cy0,240,cy1); } }   // ...or, near by, just its edges)
+        else if(ty && nw<3){ int bend=((kp_dir((i+7)%knp)-kp_dir((i+knp-3)%knp)+512)&1023)-512; if(bend<90 && bend>-90) continue; int sg = bend>0 ? 1 : -1; s32 wl=-sg*1150, x=cx+rx*wl, y=cy+ry*wl, g=ground_h(x,y);
+            if(!kproj2(x,y,g,g+170,&sx,&ya,&yb,&zz,&fo) || zz>(13<<8)) continue; nw++;
+            int bw=klat(150,fo); if(bw<2) bw=2; int bx[4]={sx-bw,sx+bw,sx+bw,sx-bw}, by[4]={ya,ya,yb,yb}; polyfill(pg,bx,by,4,((i>>2)&1)?KRC_KR:KRC_KW,0,cy0,240,cy1); } } }                  // (red and white blocks)
 static void kgantry_draw(volatile u16 *pg, int cy0, int cy1){            // the start gantry: two posts and a chequered banner over the line
     if(kr_mode!=1 || cy0>=cy1 || knp<20) return;
     int pi=1, d=kp_dir(pi); s32 ex=kp_cx(pi), ey=kp_cy(pi), g=ground_h(ex,ey), rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6);
-    { s32 cb=cam_back(), dxw=wrapd(ex-(ppx-((hsn*cb)>>8))), dyw=wrapd(ey-(ppy-((hcs*cb)>>8))), dz=((dxw*hsn)>>8)+((dyw*hcs)>>8); if(dz>(40<<16) || dz<(7<<16)) return; }
+    s32 dzn; { s32 cb=cam_back(), dxw=wrapd(ex-(ppx-((hsn*cb)>>8))), dyw=wrapd(ey-(ppy-((hcs*cb)>>8))), dz=((dxw*hsn)>>8)+((dyw*hcs)>>8); if(dz>(24<<16) || dz<(7<<16)) return; dzn=dz; }
     #define KGW 800
     #define KGH 900
-    int px[11], py[11], qx[11], qy[11]; s32 zd; int ok=1;
-    for(int i=0;i<=10;i++){ s32 w=-KGW+KGW*2*i/10, x=ex+rx*w, y=ey+ry*w; int a,b; if(!kproj(x,y,g+KGH-300,&a,&b,&zd)) ok=0; px[i]=a; py[i]=b; if(!kproj(x,y,g+KGH,&a,&b,&zd)) ok=0; qx[i]=a; qy[i]=b; }
+    #define KGN 6
+    int px[KGN+1], py[KGN+1], qy[KGN+1]; s32 zd, fo; int ok=1;
+    for(int i=0;i<=KGN;i++){ s32 w=-KGW+KGW*2*i/KGN; if(!kproj2(ex+rx*w,ey+ry*w,g+KGH-300,g+KGH,&px[i],&py[i],&qy[i],&zd,&fo)){ ok=0; break; } }
     if(!ok) return;
-    for(int s=-1;s<=1;s+=2){ s32 w=s*KGW; int bx0,by0,tx0,ty0,bx1,by1,tx1,ty1; s32 x0=ex+rx*(w-45), y0=ey+ry*(w-45), x1=ex+rx*(w+45), y1=ey+ry*(w+45);
-        if(!kproj(x0,y0,g,&bx0,&by0,&zd) || !kproj(x0,y0,g+KGH,&tx0,&ty0,&zd) || !kproj(x1,y1,g,&bx1,&by1,&zd) || !kproj(x1,y1,g+KGH,&tx1,&ty1,&zd)) return;
-        int ax[4]={bx0,tx0,tx1,bx1}, ay[4]={by0,ty0,ty1,by1}; polyfill(pg,ax,ay,4,C_RED,0,cy0,240,cy1); }
-    for(int i=0;i<10;i++){ int ax[4]={px[i],qx[i],qx[i+1],px[i+1]}, ay[4]={py[i],qy[i],qy[i+1],py[i+1]}; polyfill(pg,ax,ay,4,(i&1)?KRC_CK1:KRC_CK0,0,cy0,240,cy1); } }
+    for(int s=-1;s<=1;s+=2){ s32 w=s*KGW; int bx0,by0,ty0,bx1,by1,ty1; s32 x0=ex+rx*(w-45), y0=ey+ry*(w-45), x1=ex+rx*(w+45), y1=ey+ry*(w+45);
+        if(!kproj2(x0,y0,g,g+KGH,&bx0,&by0,&ty0,&zd,&fo) || !kproj2(x1,y1,g,g+KGH,&bx1,&by1,&ty1,&zd,&fo)) return;
+        if(dzn<(14<<16)){ int ax[4]={bx0,bx0,bx1,bx1}, ay[4]={by0,ty0,ty1,by1}; polyfill(pg,ax,ay,4,C_RED,0,cy0,240,cy1); }                                 // (a post: near, a solid slab...
+        else { linep(pg,bx0,by0,bx0,ty0,C_RED,0,cy0,240,cy1); linep(pg,bx1,by1,bx1,ty1,C_RED,0,cy0,240,cy1); } }                                          // ...far, a line)
+    { int ax[4]={px[0],px[0],px[KGN],px[KGN]}, ay[4]={py[0],qy[0],qy[KGN],py[KGN]}; polyfill(pg,ax,ay,4,KRC_CK1,0,cy0,240,cy1); }                                // the banner: white...
+    for(int i=0;i<KGN;i+=2){ int ax[4]={px[i],px[i],px[i+1],px[i+1]}, ay[4]={py[i],qy[i],qy[i+1],py[i+1]}; polyfill(pg,ax,ay,4,KRC_CK0,0,cy0,240,cy1); } }                        // ...with black squares
 #define KBDW 640                                                    // the deck's half-width (8.8 cells) and thickness
 #define KBTH 110
 static int kunder(s32 x, s32 y, int pi){                                  // under a flyover's deck (so out of sight from the high camera)?
     for(int b=0;b<nkb;b++){ if(pi>=kbs[b] && pi<=kbe[b]) return 0; int pc=kbs[b]+KBR_S; int dx=wrapd(x-kp_cx(pc))>>15, dy=wrapd(y-kp_cy(pc))>>15; if(dx*dx+dy*dy<=64) return 1; } return 0; }
-static void kbridge_draw(volatile u16 *pg, int cy0, int cy1){            // the flyovers: a deck on its ramps, over the road it crosses
-    ksign_draw(pg,cy0,cy1); kstar_draw(pg,cy0,cy1); kgantry_draw(pg,cy0,cy1);
+#define KBN 12                                                          // the deck is drawn in 12 pieces, a cell and a half each
+static void kbridge_draw_(volatile u16 *pg, int cy0, int cy1){           // the flyovers: a deck on its ramps, over the road it crosses
+#ifdef TEST_FPS
+    u32 kq0=TMR();
+#endif
+    ksign_draw(pg,cy0,cy1); kdecor_draw(pg,cy0,cy1);
+#ifdef TEST_FPS
+    u32 kq1=TMR();
+#endif
+    kstar_draw(pg,cy0,cy1);
+#ifdef TEST_FPS
+    u32 kq2=TMR();
+#endif
+    kgantry_draw(pg,cy0,cy1);
+#ifdef TEST_FPS
+    u32 kq3=TMR(); kt_v[0]=kq1-kq0; kt_v[1]=kq2-kq1; kt_v[2]=kq3-kq2; kt_t0=kq3;
+#endif
     if(!nkb || kr_mode!=1 || cy0>=cy1) return;
-    for(int b=0;b<nkb;b++){ const int NP=KBR_S+1; int pc=kbs[b]+KBR_S; s32 near = kbr_cur>=64 ? 128 : 900;   // (a deck right overhead would fill the screen: leave it out)
+    for(int b=0;b<nkb;b++){ int pc=kbs[b]+KBR_S; s32 near = kbr_cur>=64 ? 128 : 900;   // (a deck right overhead would fill the screen: leave it out)
         { s32 cb=cam_back(), dxw=wrapd(kp_cx(pc)-(ppx-((hsn*cb)>>8))), dyw=wrapd(kp_cy(pc)-(ppy-((hcs*cb)>>8))), dz=((dxw*hsn)>>8)+((dyw*hcs)>>8), dx=((dxw*hcs)>>8)-((dyw*hsn)>>8);
-          if(dz>(48<<16) || dz<-(10<<16) || dx>(40<<16) || dx<-(40<<16)) continue; }
-        s16 tx[KBR_S+1][2], ty[KBR_S+1][2], bx[KBR_S+1][2], by[KBR_S+1][2]; s32 zz[KBR_S+1]; u8 ok[KBR_S+1];
-        for(int i=0;i<NP;i++){ int pi=(kbs[b]+i*2)%knp, d=kp_dir(pi); s32 ex=kp_cx(pi), ey=kp_cy(pi), g=ground_h(ex,ey)+kbr_h(pi), rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6); ok[i]=1; zz[i]=0;
-            for(int e=0;e<2;e++){ s32 w = e ? KBDW : -KBDW; s32 x=ex+rx*w, y=ey+ry*w, z; int qx,qy;
-                if(!kproj(x,y,g,&qx,&qy,&z) || z<near) ok[i]=0; else { zz[i]+=z; tx[i][e]=(s16)qx; ty[i][e]=(s16)qy; }
-                if(!kproj(x,y,g-KBTH,&qx,&qy,&z)) ok[i]=0; else { bx[i][e]=(s16)qx; by[i][e]=(s16)qy; } } }
-        u8 ord[KBR_S]; int n=0; for(int i=0;i<KBR_S;i++) if(ok[i] && ok[i+1]) ord[n++]=(u8)i;
+          if(dz>(40<<16) || dz<-(10<<16) || dx>(36<<16) || dx<-(36<<16)) continue; }
+#ifdef TEST_FPS
+        u32 d0=TMR();
+#endif
+        s16 tx[KBN+1][2], ty[KBN+1][2], by[KBN+1][2]; s32 zz[KBN+1]; u8 ok[KBN+1];
+        for(int i=0;i<=KBN;i++){ int pi=kbs[b]+i*3; if(pi>=knp) pi-=knp; int d=kp_dir(pi); s32 ex=kp_cx(pi), ey=kp_cy(pi), g=ground_h(ex,ey)+kbr_h(pi), rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6); ok[i]=1; zz[i]=0;
+            for(int e=0;e<2;e++){ s32 w = e ? KBDW : -KBDW, z, fo; int qx,qa,qb;
+                if(!kproj2(ex+rx*w,ey+ry*w,g,g-KBTH,&qx,&qa,&qb,&z,&fo) || z<near) ok[i]=0; else { zz[i]+=z; tx[i][e]=(s16)qx; ty[i][e]=(s16)qa; by[i][e]=(s16)qb; } } }
+#ifdef TEST_FPS
+        u32 d1=TMR();
+#endif
+        u8 ord[KBN]; int n=0; for(int i=0;i<KBN;i++) if(ok[i] && ok[i+1]) ord[n++]=(u8)i;
         for(int a=1;a<n;a++){ u8 t=ord[a]; int c=a; s32 zt=zz[t]+zz[t+1]; while(c>0 && zz[ord[c-1]]+zz[ord[c-1]+1]<zt){ ord[c]=ord[c-1]; c--; } ord[c]=t; }
         if(!sh_rt_ok) sh_rt_init();
         for(int k=0;k<n;k++){ int i=ord[k], i2=i+1; int qx[4]={tx[i][0],tx[i][1],tx[i2][1],tx[i2][0]}, qy[4]={ty[i][0],ty[i][1],ty[i2][1],ty[i2][0]};
             s32 cr=(s32)(qx[1]-qx[0])*(qy[3]-qy[0])-(s32)(qy[1]-qy[0])*(qx[3]-qx[0]); int top=cr<0;
-            int ux[4]={bx[i][0],bx[i][1],bx[i2][1],bx[i2][0]}, uy[4]={by[i][0],by[i][1],by[i2][1],by[i2][0]};
-            for(int e=0;e<2;e++){ int wx[4]={tx[i][e],tx[i2][e],bx[i2][e],bx[i][e]}, wy[4]={ty[i][e],ty[i2][e],by[i2][e],by[i][e]}; polyfill(pg,wx,wy,4,(i&1)?C_DGREY:C_GREY,0,cy0,240,cy1); }   // the two sides
-            if(!top) polyfill(pg,ux,uy,4,C_DGREY,0,cy0,240,cy1);                                                  // seen from below: the underside
-            else { int kc=(i&1)?KRC_KR:KRC_KW; polyfill(pg,qx,qy,4,kc,0,cy0,240,cy1);                              // from above: kerbs, then the road
-                int ix[4]={qx[0]+(qx[1]-qx[0])/8, qx[1]-(qx[1]-qx[0])/8, qx[2]-(qx[2]-qx[3])/8, qx[3]+(qx[2]-qx[3])/8}, iy[4]={qy[0]+(qy[1]-qy[0])/8, qy[1]-(qy[1]-qy[0])/8, qy[2]-(qy[2]-qy[3])/8, qy[3]+(qy[2]-qy[3])/8};
-                polyfill(pg,ix,iy,4,(i&1)?KRC_A:KRC_B,0,cy0,240,cy1);                                            // (the kerbs are an eighth of the width each side)
-                if((i&3)==1) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); } } } }
+            int wd0=qx[1]-qx[0]; if(wd0<0) wd0=-wd0;
+            if(wd0>=26 || !top){ for(int e=0;e<2;e++){ int wx[4]={tx[i][e],tx[i2][e],tx[i2][e],tx[i][e]}, wy[4]={ty[i][e],ty[i2][e],by[i2][e],by[i][e]};      // the sides (far away they are a pixel high: left out)
+                    s32 ce=(s32)(wx[1]-wx[0])*(wy[3]-wy[0])-(s32)(wy[1]-wy[0])*(wx[3]-wx[0]); if((ce<0)==(e==0) && ce!=0) continue;   // (only the side that faces you: the other is hidden)
+                    polyfill(pg,wx,wy,4,(i&1)?C_DGREY:C_GREY,0,cy0,240,cy1); } }
+            if(!top){ int ux[4]={tx[i][0],tx[i][1],tx[i2][1],tx[i2][0]}, uy[4]={by[i][0],by[i][1],by[i2][1],by[i2][0]}; polyfill(pg,ux,uy,4,C_DGREY,0,cy0,240,cy1); continue; }     // seen from below: the underside
+            polyfill(pg,qx,qy,4,(i&1)?KRC_A:KRC_B,0,cy0,240,cy1);                                                     // the road...
+            if(wd0<26) continue;                                                                                     // (far away: just the road)
+            { int kc=(i&1)?KRC_KR:KRC_KW; linep(pg,qx[0]+1,qy[0],qx[3]+1,qy[3],kc,0,cy0,240,cy1); linep(pg,qx[1]-1,qy[1],qx[2]-1,qy[2],kc,0,cy0,240,cy1); }   // ...a kerb down each side...
+            if(!(i&1)) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); }   // ...and a dash down the middle
+#ifdef TEST_FPS
+        { u32 d3=TMR(); kt_v[3]=d1-d0; kt_d[2]=d3-d1; kt_d[3]=n; }
+#endif
+    } }
+static void kbridge_draw(volatile u16 *pg, int cy0, int cy1){ kproj_prep(); kbridge_draw_(pg,cy0,cy1); kpc_on=0; }
 static void kloop_cam(void);
 static void kloop_begin(int j){
     s32 vmax=k_vmax(&kl);
@@ -885,7 +956,8 @@ static const char *const kicon[NKI]={0,
 static int kicon_c(char ch){ switch(ch){ case 'r': return C_RED; case 'g': return C_GREEN; case 'w': return C_WHITE; case 'c': return C_CYAN; case 'd': return C_GREY; default: return -1; } }
 static void kart_minimap(volatile u16 *pg){
     int ox=194+(40-kmm_w)/2, oy=20+(40-kmm_h)/2;
-    for(int i=0;i<(knp>>1) && i<KMM_N;i++) pix(pg,ox+kmmx[i],oy+kmmy[i],(i==0)?C_WHITE:C_GREY);
+    if(oy+40<m7_strip){ int n=(knp>>1)<KMM_N ? (knp>>1) : KMM_N; int lx=-1, ly=-1; for(int i=0;i<n;i++){ int x=ox+kmmx[i], y=oy+kmmy[i], c=(i==0)?C_WHITE:C_GREY; if(x==lx && y==ly) continue; lx=x; ly=y; volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|(c<<8); else *p=(*p&0xFF00)|c; } }   // (the path, a pixel each: straight into the page)
+    else for(int i=0;i<(knp>>1) && i<KMM_N;i++) pix(pg,ox+kmmx[i],oy+kmmy[i],(i==0)?C_WHITE:C_GREY);
     if(kr_mode==1) for(int r=nrc-1;r>=0;r--){ int i=(rc[r].pi>>1); if(i>=KMM_N) i=KMM_N-1; int x=ox+kmmx[i], y=oy+kmmy[i], c = r==0 ? C_GOLD : (rc[r].place==1 ? C_RED : C_CYAN);
         if(r==0){ rect(pg,x-1,y-1,3,3,c); } else pix(pg,x,y,c); } }
 static void kart_cockpit(volatile u16 *pg){                        // the cockpit view: a dashboard, a wheel that turns, your speed
@@ -910,19 +982,41 @@ static void kart_hud(volatile u16 *pg){
             for(int i=0;i<=kt.n;i++){ int x=194+(ux[i]-mnx)*40/span, y=21+(uy[i]-mny)*40/span; if(i==kt.n) rect(pg,x-1,y-1,3,3,C_GOLD); else rect(pg,x,y,2,2,i==0?C_WHITE:C_CYAN);
                 if(i>0){ int x0=194+(ux[i-1]-mnx)*40/span, y0=21+(uy[i-1]-mny)*40/span; for(int t=1;t<8;t++) pix(pg,x0+(x-x0)*t/8,y0+(y-y0)*t/8,C_GREY); } } }
         rect(pg,56,58,50,3,C_DGREY); if(kart_boost>0) rect(pg,56,58,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); return; }
-    if(nrc>1 && ks_state!=KS_COUNT){ const char *p=kplace_s(rc[0].place); text(pg,5,21,p,0,2); text(pg,4,20,p,rc[0].place==1?C_GOLD:C_WHITE,2); scpy(b,"/"); ncat(b,nrc); stext(pg,4+textlen(p)*8,26,b,C_GREY); }
+#ifdef TEST_FPS
+    u32 h0=TMR();
+#endif
+    if(nrc>1 && ks_state!=KS_COUNT){ const char *p=kplace_s(rc[0].place); text(pg,6,21,p,0,2); text(pg,4,20,p,rc[0].place==1?C_GOLD:C_WHITE,2); scpy(b,"/"); ncat(b,nrc); stext(pg,4+textlen(p)*8,26,b,C_GREY); }
+#ifdef TEST_FPS
+    u32 h1=TMR();
+#endif
     { int lp=rc[0].lap<1?1:rc[0].lap>kt.laps?kt.laps:rc[0].lap; scpy(b,"LAP "); ncat(b,lp); scat(b,"/"); ncat(b,kt.laps); stext(pg,4,33,b,C_CYAN); }
     { char t[12]; kfmt_time(t, rc[0].fin ? rc[0].ftime : k_clock); stext(pg,4,40,t,C_WHITE); }
-    if(rc[0].item){ rect(pg,28,48,16,16,1); frame1(pg,28,48,16,16,(frames&16)?C_GOLD:C_WHITE); const char *ic=kicon[rc[0].item];
-        for(int y=0;y<8;y++) for(int x=0;x<8;x++){ int c=kicon_c(ic[y*8+x]); if(c>=0) rect(pg,29+x*2-(x==7),49+y*2-(y==7),2,2,c); }
-        if(rc[0].item_n>1){ scpy(b,"X"); ncat(b,rc[0].item_n); stext(pg,46,57,b,C_GOLD); } }
+#ifdef TEST_FPS
+    u32 h2=TMR();
+#endif
+    if(rc[0].item){ rect(pg,28,48,16,16,1); const char *ic=kicon[kroul ? 1+((frames>>1)%(NKI-1)) : rc[0].item];
+        for(int y=0;y<8;y++){ volatile u16 *row=pg+(48+y*2)*120+14; for(int x=0;x<8;x++){ int c=kicon_c(ic[y*8+x]); if(c>=0){ u16 cc=(u16)(c|(c<<8)); row[x]=cc; row[x+120]=cc; } } }   // (each icon dot is a pair of pixels, two rows: whole halfwords)
+        frame1(pg,28,48,16,16,(frames&16)?C_GOLD:C_WHITE);
+        if(rc[0].item_n>1 && !kroul){ scpy(b,"X"); ncat(b,rc[0].item_n); stext(pg,46,57,b,C_GOLD); } }
+#ifdef TEST_FPS
+    u32 h3=TMR();
+#endif
     { char sb[20]; scpy(sb,"STAR BITS "); ncat(sb,kstar); stext(pg,192,66,sb,kstar>=10?C_GOLD:C_WHITE); }
+#ifdef TEST_FPS
+    u32 h4=TMR();
+#endif
     rect(pg,192,19,44,44,1); frame1(pg,192,19,44,44,C_DGREY); kart_minimap(pg);
+#ifdef TEST_FPS
+    u32 h5=TMR();
+#endif
     rect(pg,56,58,50,3,C_DGREY); if(kart_boost>0) rect(pg,56,58,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED);
     if(kdraft>0){ rect(pg,56,62,50,2,C_DGREY); rect(pg,56,62,kdraft*50/90,2,C_CYAN); }
     if(ks_state==KS_RACE && !kloop_on && !kair && kv>K_VBASE/4 && knp>40){ int p=rc[0].pi, d0=kp_dir((p+4)%knp), d1=kp_dir((p+16)%knp), d2=kp_dir((p+30)%knp);   // a sharp bend ahead: arrows say which way
         int a1=((d1-d0+512)&1023)-512, a2=((d2-d1+512)&1023)-512, a=(a1*3/2>a2*3/2 ? a1 : a2); if((a2>0?a2:-a2)>(a1>0?a1:-a1)) a=a2; else a=a1;
         if((a>70 || a<-70) && ((frames>>3)&1)){ int big=(a>140||a<-140); text(pg,a>0?196:22,78,a>0?">>":"<<",big?C_GOLD:C_WHITE,2); if(big) text(pg,a>0?180:38,78,a>0?">":"<",C_RED,2); } }
+#ifdef TEST_FPS
+    u32 h6=TMR(); kh_t[0]=h1-h0; kh_t[1]=h2-h1; kh_t[2]=h3-h2; kh_t[3]=h4-h3; kh_t[4]=h5-h4; kh_t[5]=h6-h5;
+#endif
     if(kdrift){ rect(pg,110,58,40,3,C_DGREY); rect(pg,110,58,kcharge>110?40:kcharge*40/110,3,kcharge>110?C_GOLD:kcharge>50?C_CYAN:C_WHITE); }
     if(ks_state==KS_COUNT){ const char *c = k_count>190 ? "3" : k_count>130 ? "2" : k_count>70 ? "1" : "GO!"; int L=textlen(c); text(pg,120-L*6+1,25,c,0,3); text(pg,120-L*6,24,c,k_count>70?C_WHITE:C_GREEN,3);
         if(k_count>190) ctext(pg,120,42,"HOLD UP TO GO. UP RIGHT AT 1 = ROCKET START",C_GREY);

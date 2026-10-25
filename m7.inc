@@ -22,7 +22,7 @@ static int m7_horizon=160, m7_nstrip=160, m7_cock=0;   // where the ground stops
 static int m7_sy=0;                             // the kart's screen row (for its dust and sparks)
 static s32 m7_sppx, m7_sppy, m7_scamh; static int m7_shsn, m7_shcs, m7_sphz, m7_sloop, m7_shide, m7_shead, m7_sfp, m7_want=0;   // a snapshot of the camera the frame on show was drawn with
 #ifdef TEST_FPS
-static u32 m7_t[6];
+static u32 m7_t[6], kt_v[4], kt_t0, kt_d[4], kfr_sum=0, kfr_n=0, kfr_avg=0, kh_t[8];
 #endif
 static inline void m7_wr8(volatile u16 *pg, int u, int v, int c){ volatile u16 *p=pg+((v*240+u)>>1); if(u&1) *p=(*p&0x00FF)|(c<<8); else *p=(*p&0xFF00)|c; }
 static void m7_pix(int x, int y, int c){         // a pixel of the screen: into the sky half, or onto the map texel the ground shows there
@@ -31,6 +31,20 @@ static void m7_pix(int x, int y, int c){         // a pixel of the screen: into 
     if(!(m7_dc[m7_tab][y]&(1<<4))) return; const M7Line *L=&M7_TAB(m7_tab)[y];
     int u=(L->x+L->pa*x)>>8, v=(L->y+L->pc*x)>>8; if((unsigned)u<240 && (unsigned)v<160) m7_wr8(M7_PG1,u,v,c);
 }
+static inline void m7_wt(int u, int v, int c){ if((unsigned)u<240 && (unsigned)v<160) m7_wr8(M7_PG1,u,v,c); }
+static void m7_gspan(s32 U0, s32 V0, s32 U1, s32 V1, int c){      // the texels a row of the screen passes over, from (U0,V0) to (U1,V1) (8.8 texels), each painted once
+    s32 dU=U1-U0, dV=V1-V0; int sw = (dV<0?-dV:dV) > (dU<0?-dU:dU);                              // walk along whichever axis moves more
+    s32 P0,Q0,P1,Q1,dP,dQ; if(sw){ P0=V0; Q0=U0; P1=V1; Q1=U1; dP=dV; dQ=dU; } else { P0=U0; Q0=V0; P1=U1; Q1=V1; dP=dU; dQ=dV; }
+    int m=P0>>8, m1=P1>>8; if(m==m1 || !dQ){ int ia=Q0>>8, ib=Q1>>8; if(!dQ){ ib=ia; }
+        if(m==m1){ int st = ib>=ia ? 1 : -1; for(int q=ia;;q+=st){ if(sw) m7_wt(q,m,c); else m7_wt(m,q,c); if(q==ib) break; } return; }
+        int dir = dP>0 ? 1 : -1; for(;;m+=dir){ if(sw) m7_wt(ia,m,c); else m7_wt(m,ia,c); if(m==m1) break; } return; }    // (straight along the axis: no minor steps at all)
+    int dir = dP>0 ? 1 : -1; s32 qs=(dQ*256)/dP, qa=Q0, qb;                                          // (qs: the minor axis moves this much for each whole texel along the major one)
+    { s32 Pb = dir>0 ? ((m+1)<<8) : (m<<8); qb=Q0+(((Pb-P0)*qs)>>8); }
+    for(;;){ if(m==m1) qb=Q1;
+        int ia=qa>>8, ib=qb>>8;
+        if(ia==ib){ if(sw) m7_wt(ia,m,c); else m7_wt(m,ia,c); }
+        else { int st = ib>ia ? 1 : -1; for(int q=ia;;q+=st){ if(sw) m7_wt(q,m,c); else m7_wt(m,q,c); if(q==ib) break; } }
+        if(m==m1) break; m+=dir; qa=qb; qb=qa+(dir>0?qs:-qs); } }
 static void m7_span(int y, int x0, int x1, int c){
     if(y<0||y>=160) return; if(x0<0) x0=0; if(x1>239) x1=239; if(x0>x1) return;
     if(y<m7_strip || (m7_cock && y>=140)){ volatile u16 *row=M7_PG0+y*120;                                    // the sky: pairs at a time
@@ -38,7 +52,12 @@ static void m7_span(int y, int x0, int x1, int c){
         if(x1>=x0 && !(x1&1)){ volatile u16 *p=row+(x1>>1); *p=(*p&0xFF00)|c; x1--; }
         u16 cc=(u16)(c|(c<<8)); for(int k=x0>>1, e=x1>>1; k<=e && x0<=x1; k++) row[k]=cc; return; }
     if(!(m7_dc[m7_tab][y]&(1<<4))) return; const M7Line *L=&M7_TAB(m7_tab)[y];
-    s32 u=L->x+L->pa*x0, v=L->y+L->pc*x0, pa=L->pa, pc=L->pc; int lu=-1, lv=-1;                               // the ground: each texel once
+    s32 pa=L->pa, pc=L->pc, u=L->x+pa*x0, v=L->y+pc*x0; int lu=-1, lv=-1;                                       // the ground: each texel once
+    { int n=x1-x0; s32 du=pa*n, dv=pc*n; int adu=du<0?-du:du, adv=dv<0?-dv:dv, mx=adu>adv?adu:adv;
+#ifndef TEST_NODDA
+      if(((mx>>8)+1)*5 < (n+1)*2){ m7_gspan(u,v,u+du,v+dv,c); return; }
+#endif
+    }                                      // (near the camera a texel is many pixels wide: walk the texels, not the pixels)
     for(int x=x0;x<=x1;x++, u+=pa, v+=pc){ int uu=u>>8, vv=v>>8; if(uu==lu && vv==lv) continue; lu=uu; lv=vv; if((unsigned)uu<240 && (unsigned)vv<160) m7_wr8(M7_PG1,uu,vv,c); }
 }
 static void m7_begin(void){ m7_dc=(M7Dc*)(void*)gen_acc; m7_rowz=(s16*)(void*)gen_acc+320; m7_fog=(M7Fog*)(void*)((s16*)(void*)gen_acc+480); m7_on=1; m7_arm=0; m7_tab=0; m7_strip=160; page_back=0; REG_DISPCNT=4|(1<<10)|(1<<12)|(1<<6); }
@@ -103,16 +122,16 @@ static void m7_frame(void){
 static void m7_present(void){                   // the end of the frame's drawing: this table goes live at the next VBlank; remember the camera it was drawn with
     m7_tab^=1; m7_strip=m7_nstrip; m7_copy = (m7_nwx0!=m7_wx0 || m7_nwy0!=m7_wy0 || !m7_arm); m7_wx0=m7_nwx0; m7_wy0=m7_nwy0; m7_arm=1;
     m7_sppx=ppx; m7_sppy=ppy; m7_scamh=cam_h; m7_shsn=hsn; m7_shcs=hcs; m7_sphz=g_phz; m7_sloop=kloop_on; m7_shide=kloop_hide; m7_shead=heading; m7_fovs=fov_k(); m7_sfp=cam_fp; m7_cb_snap=cam_back(); m7_want=1; }
-static void kloop_draw(volatile u16 *pg, int cy0, int cy1); static void kbridge_draw(volatile u16 *pg, int cy0, int cy1); static void kart_fx(volatile u16 *pg, int sy); static void weather_draw(volatile u16 *pg); static void kart_hud(volatile u16 *pg);
+static void kproj_prep(void); static int kpc_on; static void kloop_draw(volatile u16 *pg, int cy0, int cy1); static void kbridge_draw(volatile u16 *pg, int cy0, int cy1); static void kart_fx(volatile u16 *pg, int sy); static void weather_draw(volatile u16 *pg); static void kart_hud(volatile u16 *pg); static int kproj(s32 wx, s32 wy, s32 wh, int *sx, int *sy, s32 *zc);
 static void sky_hills(volatile u16 *pg){                                          // two ranges of hills on the horizon that slide past as you turn: the sense of turning, for free
     int hor=m7_horizon; if(hor<24 || hor>160 || WL(MW_VOID)) return;
     BG_PAL[108]=lerp15(BG_PAL[SKY_B+7],BG_PAL[GND_B+8],8); BG_PAL[109]=lerp15(BG_PAL[SKY_B+7],BG_PAL[GND_B+3],14);
     int fv=fov_k(), b0=m7_shead;
-    for(int c=0;c<120;c++){ int i=(b0+(((c*2+1)-120)*fv)/188)&1023;                                 // the compass bearing of this column
+    for(int c=0;c<120;c+=2){ int i=(b0+(((c*2+2)-120)*fv)/188)&1023;                                 // the compass bearing of this pair of columns
         int sf=sinx((i*3)>>2)*3+sinx(((i*7)>>2)+40)*2+sinx(((i*13)>>2)+90), sn=sinx(((i*5)>>2)+10)*3+sinx(((i*11)>>2)+120)*2+sinx(((i*23)>>2)+200);
         int hf=9+(sf>>14), hn=5+(sn>>14); if(hf<2) hf=2; if(hn<0) hn=0;
-        for(int k=1;k<=hf;k++){ int y=hor-k; if(y>=19) pg[y*120+c]=108|(108<<8); }
-        for(int k=1;k<=hn;k++){ int y=hor-k; if(y>=19) pg[y*120+c]=109|(109<<8); } } }
+        for(int k=1;k<=hf;k++){ int y=hor-k; if(y>=19) *(volatile u32*)(pg+y*120+c)=0x6C6C6C6Cu; }
+        for(int k=1;k<=hn;k++){ int y=hor-k; if(y>=19) *(volatile u32*)(pg+y*120+c)=0x6D6D6D6Du; } } }
 static void m7_sky(void){                     // the sky, the loops, the dust, the messages and the HUD, on page 0 (ground pixels find their way onto the map)
     volatile u16 *pg=M7_PG0;
     s32 kpx=ppx, kpy=ppy, kch=cam_h; int khs=hsn, khc=hcs, kph=g_phz, klo=kloop_on, kfp=cam_fp, khd_=kloop_hide;                 // the loops are drawn where the frame on show has its camera
@@ -126,9 +145,23 @@ static void m7_sky(void){                     // the sky, the loops, the dust, t
     u32 tb=TMR();
 #endif
     kart_hud(pg);                                                                   // (the HUD first: it must be done before the beam is back at the top)
-    if(kr_mode==1){ sky_hills(pg); kloop_draw(pg,18,160); kbridge_draw(pg,18,160); }
 #ifdef TEST_FPS
-    u32 tc=TMR();
+    u32 t1=TMR();
+#endif
+    if(kr_mode==1) sky_hills(pg);
+#ifdef TEST_FPS
+    u32 t2=TMR();
+#endif
+    if(kr_mode==1) kloop_draw(pg,18,160);
+#ifdef TEST_FPS
+    u32 t3=TMR();
+#endif
+#ifdef TEST_FPS
+    dbg_pc=0; dbg_rows=0; dbg_px=0; dbg_pt=0; dbg_kt=0; dbg_kn=0;
+#endif
+    if(kr_mode==1) kbridge_draw(pg,18,160);
+#ifdef TEST_FPS
+    u32 tc=TMR(), qpc=dbg_pc, qrows=dbg_rows, qpx=dbg_px, qpt=dbg_pt, qkt=dbg_kt, qkn=dbg_kn;
 #endif
     if(!m7_cock && !kloop_on) kart_fx(pg,m7_sy);
     weather_draw(pg); if(wd.weird) sky_decor(pg); if(hellw()) hell_sky(pg);
@@ -137,8 +170,13 @@ static void m7_sky(void){                     // the sky, the loops, the dust, t
     u32 td=TMR();
 #endif
 #ifdef TEST_FPS
-    { u32 te=TMR(); char fb[48]; scpy(fb,"LOGIC "); ncat(fb,(int)(m7_t[0]/1000)); scat(fb,"K TAB "); ncat(fb,(int)(m7_t[1]/1000)); scat(fb,"K SPR "); ncat(fb,(int)(m7_t[2]/1000)); scat(fb,"K COPY "); ncat(fb,(int)(m7_t[3]/1000)); scat(fb,"K WAIT "); ncat(fb,(int)(m7_t[4]/1000)); scat(fb,"K SKY "); ncat(fb,(int)(m7_t[5]/1000)); scat(fb,"K"); rect(pg,0,19,240,8,0); text(pg,2,20,fb,C_GOLD,1);
-      scpy(fb,"FILL "); ncat(fb,(int)((tb-ta)/1000)); scat(fb,"K LOOP "); ncat(fb,(int)((tc-tb)/1000)); scat(fb,"K FX "); ncat(fb,(int)((td-tc)/1000)); scat(fb,"K HUD "); ncat(fb,(int)((te-td)/1000)); scat(fb,"K"); rect(pg,0,27,240,8,0); text(pg,2,28,fb,C_GOLD,1); }
+    { char fb[80]; scpy(fb,"LOGIC "); ncat(fb,(int)(m7_t[0]/1000)); scat(fb,"K TAB "); ncat(fb,(int)(m7_t[1]/1000)); scat(fb,"K SPR "); ncat(fb,(int)(m7_t[2]/1000)); scat(fb,"K COPY "); ncat(fb,(int)(m7_t[3]/1000)); scat(fb,"K WAIT "); ncat(fb,(int)(m7_t[4]/1000)); scat(fb,"K SKY "); ncat(fb,(int)(m7_t[5]/1000)); scat(fb,"K"); rect(pg,0,19,240,8,0); text(pg,2,20,fb,C_GOLD,1);
+      scpy(fb,"FILL "); ncat(fb,(int)((tb-ta)/1000)); scat(fb," HUD "); ncat(fb,(int)((t1-tb)/1000)); scat(fb," HILL "); ncat(fb,(int)((t2-t1)/1000)); scat(fb," LOOP "); ncat(fb,(int)((t3-t2)/1000)); scat(fb," BR "); ncat(fb,(int)((tc-t3)/1000)); scat(fb,"K FX "); ncat(fb,(int)((td-tc)/1000)); scat(fb,"K"); rect(pg,0,27,240,8,0); text(pg,2,28,fb,C_GOLD,1);
+      { static u32 sm[4]={0,0,0,0}, ss[4]={0,0,0,0}, sn=0, sa[4]={0,0,0,0}, sx[4]={0,0,0,0}; u32 v[4]={kt_v[0],kt_v[1],kt_v[2],tc-kt_t0}; for(int q=0;q<4;q++){ ss[q]+=v[q]; if(v[q]>sm[q]) sm[q]=v[q]; }
+        if(++sn==60){ for(int q=0;q<4;q++){ sa[q]=ss[q]/60; sx[q]=sm[q]; ss[q]=0; sm[q]=0; } sn=0; }
+        scpy(fb,"SIGN "); ncat(fb,(int)(sa[0]/1000)); scat(fb,"/"); ncat(fb,(int)(sx[0]/1000)); scat(fb," STAR "); ncat(fb,(int)(sa[1]/1000)); scat(fb,"/"); ncat(fb,(int)(sx[1]/1000)); scat(fb," GANT "); ncat(fb,(int)(sa[2]/1000)); scat(fb,"/"); ncat(fb,(int)(sx[2]/1000)); scat(fb," DECK "); ncat(fb,(int)(sa[3]/1000)); scat(fb,"/"); ncat(fb,(int)(sx[3]/1000));
+        { int qa,qb; s32 qz;
+          rect(pg,0,35,240,8,0); text(pg,2,36,fb,C_GOLD,1); scpy(fb,"P "); ncat(fb,(int)qpc); scat(fb," R "); ncat(fb,(int)qrows); scat(fb," X "); ncat(fb,(int)qpx); scat(fb," PT "); ncat(fb,(int)(qpt/1000)); scat(fb," KT "); ncat(fb,(int)(qkt/1000)); scat(fb," KN "); ncat(fb,(int)qkn);  rect(pg,0,43,240,8,0); text(pg,2,44,fb,C_GOLD,1); scpy(fb,"FRAME "); ncat(fb,(int)(kfr_avg/1000)); scat(fb,"K FPS "); ncat(fb,(int)(16780000u/(kfr_avg?kfr_avg:1))); rect(pg,0,51,240,8,0); text(pg,2,52,fb,C_GOLD,1); scpy(fb,"HUD PLACE "); ncat(fb,(int)(kh_t[0]/1000)); scat(fb," LAP "); ncat(fb,(int)(kh_t[1]/1000)); scat(fb," ITEM "); ncat(fb,(int)(kh_t[2]/1000)); scat(fb," STAR "); ncat(fb,(int)(kh_t[3]/1000)); scat(fb," MAP "); ncat(fb,(int)(kh_t[4]/1000)); scat(fb," BAR "); ncat(fb,(int)(kh_t[5]/1000)); rect(pg,0,59,240,8,0); text(pg,2,60,fb,C_GOLD,1); } } }
 #endif
     ppx=kpx; ppy=kpy; cam_h=kch; hsn=khs; hcs=khc; g_phz=kph; kloop_on=klo; kloop_hide=khd_; cam_fp=kfp; m7_snap=0;                                   // (and back to the frame being built)
 }
