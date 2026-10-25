@@ -299,6 +299,7 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 #include "kart2.inc"
 #include "kart3.inc"
 #include "sizes.inc"
+#include "deep.inc"
 #include "debug.inc"
 #ifdef TEST_LAUNCH
 #include "film.inc"
@@ -1076,6 +1077,14 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_MAP
     scene=2; page_back=1; space_enter(1); galaxy_map();
 #endif
+#ifdef TEST_FOLD
+    map_lv=TEST_FOLD&7; fold_lv=(TEST_FOLD>>3)&7; warp_lv=8; fuel_tank=8; fuel=fuel_max(); gold=999999; scene=2; page_back=1; space_enter(1); shx=PR*3; shy=0; shz=0;
+#ifdef TEST_FOLDGO
+    dp_fold(TEST_FOLDGO); page_back=1; REG_DISPCNT&=~(1<<4); wait_release(); galaxy_map();
+#else
+    { volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000)); int rr=deep_chart(pg); (void)rr; page_back=1; REG_DISPCNT&=~(1<<4); galaxy_map(); }
+#endif
+#endif
 #ifdef TEST_FAVUNI
     fav_add_here(); uni_set32(5); gen_cluster();                                  // a favourite here, then off to universe 5
 #endif
@@ -1262,6 +1271,9 @@ static void run_game(void){
 }
 
 int main(void){
+#ifdef TEST_STACK
+    { extern u32 __bss_end; u32 *p=&__bss_end; u32 sp_now; __asm__ volatile("mov %0, sp":"=r"(sp_now)); while((u32)p<sp_now-0x100) *p++=0xA5A5A5A5u; }   // (testing: paint the free stack so its deepest use can be seen)
+#endif
     REG_DISPCNT = 0x80;
     REG_WAITCNT = 0x4317;
 #ifndef NO_LOGO

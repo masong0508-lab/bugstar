@@ -17,6 +17,9 @@ static u32 sys_id(int i){ return !home_cluster() ? amix(gsk(107),i) : (u32)i + 1
 #define UTOP 0x07FFFFFFu                                       // the top word of each axis keeps 27 bits: 4*32+27 = 155 bits
 #define ULY 25                                                 // light years across one cluster
 static int fuel_tank=0, warp_lv=0, u_far=0;                    // shipyard upgrades, and how deep in space you are (it makes worlds more dangerous)
+static int map_lv=0, fold_lv=0, map_units=0, dp_ix=0;          // far travel (deep.inc): the map computer and fold drive levels, how big distances are said (0 names, 1 powers of ten, 2 metres, 3 Planck lengths), and which far landmark you are at (0: none)
+static void dist_units(char *out, const char *d, int n); static void dp_home_text(char *out); static void dp_here_name(char *b); static void dp_save(void); static void dp_load(void); static void dp_defaults(void);
+static int deep_chart(volatile u16 *pg); static void dp_nav_draw(volatile u16 *pg, int sel); static int dp_nav_press(volatile u16 *pg, int sel);
 static int fuel_max(void){ return 70+ship_fuel_bonus()+fuel_tank*40; }
 static int warp_bits(void){ int b=4+warp_lv*19; return b>156?156:b; }        // one warp crosses up to 2^this clusters (MK 8 reaches anywhere)
 static int warp_cost(int digits){ return 20+3*digits; }                      // fuel for a warp: a little more for every extra digit of distance
@@ -74,8 +77,9 @@ static const char *illion(int g){                               // the name of a
     do { gs[ng++]=n%1000; n/=1000; } while(n && ng<4);
     for(int k=ng-1;k>=0;k--){ char p[40]; cw_prefix(gs[k],p); int L=textlen(p); if(L && (p[L-1]=='I'||p[L-1]=='A')) p[L-1]=0; scat(b,p); scat(b, k ? "ILLI" : "ILLION"); }
     return b; }
-static int ly_text(char *out, u32 *ly){                                       // "1.1 QUINDECILLION LY"; returns how many digits the distance has
+static int ly_text(char *out, u32 *ly){                                       // "1.1 QUINDECILLION LY"; returns how many digits the distance has (map_units can change how it is said)
     char d[144]; int n=big_dec(d,ly); out[0]=0;
+    if(!(n==1 && d[0]=='0') && (map_units>=2 || (map_units==1 && n>6))){ dist_units(out,d,n); return n; }
     if(n<=6) scpy(out,d);                                                     // up to 999999: just the number
     else { int g=(n-1)/3; int lead=n-3*g; char t[8]; int k=0; for(;k<lead && k<3;k++) t[k]=d[k]; if(lead<3){ t[k++]='.'; t[k++]=d[lead]; } t[k]=0;
         scpy(out,t); scat(out," "); scat(out,illion(g)); }
@@ -87,13 +91,14 @@ static void u_settle(void){                                     // fold an addre
         for(int w=0;w<2*UAX;w++){ h=hmix(h+0x632BE5ABu); clus[w]=h; } for(int i=2*UAX;i<NCW;i++) clus[i]=0; galaxy_no=0; for(int i=0;i<NGH;i++) galaxy_hi[i]=0; }
     clus[UAX-1]&=UTOP; clus[2*UAX-1]&=UTOP; clus_refold();
     { u32 a[UAX], b[UAX], m[UAX], z[UAX]={0,0,0,0,0}; ax_get(0,a); ax_get(1,b); ax_delta(m,z,a); int bx=ax_bits(m); ax_delta(m,z,b); int by=ax_bits(m); u_far=(bx>by?bx:by)/4; }
+    if(dp_ix>0 && u_far<40+dp_ix) u_far=40+dp_ix;                  // the far landmarks are as hard as it gets
 }
 #define GAL_SHIFT 20                                            // a galaxy is a block of 2^20 x 2^20 clusters (about 26 million light years across)
 static u32 gal_hash(void){ u32 a[UAX], b[UAX]; ax_get(0,a); ax_get(1,b); ax_shr(a,GAL_SHIFT); ax_shr(b,GAL_SHIFT); if(ax_zero(a)&&ax_zero(b)) return 0;
     u32 h=0x6C8E9CF5u; for(int w=0;w<UAX;w++){ h=hmix(h^a[w]^(u32)w*0x9E3779B1u); h=hmix(h^b[w]^(u32)(w+7)*0x9E3779B1u); } return h|1; }
 static void gal_name(char *b){ u32 h=gal_hash(); if(!h){ scpy(b,"THE BUG WAY"); return; } u32 ws=wseed; name_of(h^gsk(108),b); wseed=ws; scat(b," GALAXY"); }
 static void here_ly(char *out, const u32 *ex, const u32 *ey){ u32 a[UAX],b[UAX],dx[UAX],dy[UAX],ly[LYW]; ax_get(0,a); ax_get(1,b); ax_delta(dx,a,ex); ax_delta(dy,b,ey); ly_between(ly,dx,dy); ly_text(out,ly); }
-static void home_ly(char *out){ u32 z[UAX]={0,0,0,0,0}; here_ly(out,z,z); }
+static void home_ly(char *out){ if(dp_ix>0){ dp_home_text(out); return; } u32 z[UAX]={0,0,0,0,0}; here_ly(out,z,z); }   // (at a far landmark: its distance)
 static int sys_dist(int a, int b){ int dx=sys[a].x-sys[b].x, dy=sys[a].y-sys[b].y; return isqrt(dx*dx+dy*dy); }
 static void gen_cluster(void){
     clus_refold();
@@ -775,11 +780,12 @@ static void digits_named(char *out, const char *d, int k){          // the first
     if(k<=6){ int j=0; for(int i=0;i<k;i++){ out[j++]=d[i]; if(i<k-1 && (k-1-i)%3==0) out[j++]=','; } out[j]=0; return; }
     int g=(k-1)/3; int lead=k-3*g, j=0; for(int i=0;i<lead && i<3;i++) out[j++]=d[i]; if(lead<3){ out[j++]='.'; out[j++]=d[lead]; } out[j]=0; scat(out," "); scat(out,illion(g)); }
 static void tv_log(const u32 *t10, u32 hours){ big_add(tv_ly,t10,LYW); tv_trips++; tv_hours = tv_hours+hours<tv_hours ? 0xFFFFFFFFu : tv_hours+hours; if(big_cmp(t10,tv_best)>0) for(int i=0;i<LYW;i++) tv_best[i]=t10[i]; }
+EW static s16 vsa[40], vsr[40], vsv[40];                              // the streaking stars of a voyage (the fold drive's voyage uses them too)
 static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, int kind){   // kind: 0 a star in this cluster, 1 the next cluster, 2 a warp, 3 into the beast's lair, 4 out of it, 5 to another universe
     char tot[40], ds[144]; ly_fmt(tot,t10); int n; { u32 t[LYW]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); n=big_dec(ds,t); }
     int big = n>6, T = kind==0 ? 110+(int)((t10[1]||t10[0]>2400?2400:t10[0])/20) : (kind==3||kind==4) ? 120 : 170+n*7; if(T>400) T=400;   // how long it takes, in 60ths: longer trips take longer
     tv_log(t10,hours);
-    EW static s16 sa[40], sr[40], sv[40]; lseed=amix(gsk(114),(u32)frames); for(int i=0;i<40;i++){ sa[i]=(s16)lr(256); sr[i]=(s16)(lr(120)<<4); sv[i]=(s16)(10+lr(26)); }
+    s16 *sa=vsa, *sr=vsr, *sv=vsv; lseed=amix(gsk(114),(u32)frames); for(int i=0;i<40;i++){ sa[i]=(s16)lr(256); sr[i]=(s16)(lr(120)<<4); sv[i]=(s16)(10+lr(26)); }
     char cap[44], cap2[48]; int cap_t=0, last_k=1; cap[0]=cap2[0]=0;
     if(kind==1){ scpy(cap,"CROSSING THE DARK"); scpy(cap2,"BETWEEN TWO STAR CLUSTERS"); cap_t=150; }
     else if(kind==3||kind==4){ scpy(cap,kind==3?"INTO THE BEAST'S LAIR":"WARPING OUT"); cap_t=110; }
@@ -889,7 +895,7 @@ static int warp_by(const u32 *dx, int sx, const u32 *dy, int sy, int exact, cons
     fuel-=xo_fuel(cost); char fn[24], tn[24]; sys_name(cur_sys,fn);
     u32 a[UAX], b[UAX]; ax_get(0,a); ax_get(1,b);
     if(exact){ for(int w=0;w<UAX;w++){ a[w]=f->cx[w]; b[w]=f->cy[w]; } } else { if(sx>0) ax_add(a,a,dx); else ax_sub(a,a,dx); if(sy>0) ax_add(b,b,dy); else ax_sub(b,b,dy); }
-    ax_put(0,a); ax_put(1,b); u_settle(); gen_cluster();
+    ax_put(0,a); ax_put(1,b); dp_ix=0; u_settle(); gen_cluster();
     if(exact){ cur_sys=f->star; cur_pl=f->body>>3; cur_moon=f->body&7; } else { cur_sys=lr(NSYS); cur_pl=cur_moon=0; }
     visits++; sys_name(cur_sys,tn); { u32 t10[LYW], l2[LYW]; ly_between(l2,dx,dy); for(int i=0;i<LYW;i++) t10[i]=l2[i]; big_mul(t10,LYW,10); int dg=ly_text(tx,l2); voyage(fn,tn,t10,(u32)(30+dg*25)*24,2); } space_enter(0); return 1; }
 static int blind_warp(void){                                                  // somewhere random, as far as the drive reaches
@@ -924,7 +930,7 @@ static int universe_go(const u32 *to, const Fav *f){                    // jump 
     char fn[28], tn[28]; uni_name(fn,uni_w); uni_name(tn,dest); u32 t10[LYW]; uni_ly(t10,uni_w,dest);
     for(int i=0;i<UW;i++){ vy_ufrom[i]=uni_w[i]; vy_uto[i]=dest[i]; } fuel-=xo_fuel(UNI_COST); uni_set(dest);
     if(f){ for(int w=0;w<UAX;w++){ clus[w]=f->cx[w]; clus[UAX+w]=f->cy[w]; } }
-    u_settle(); gen_cluster(); if(f){ cur_sys=f->star; cur_pl=f->body>>3; cur_moon=f->body&7; } else { cur_pl=cur_moon=0; } visits++;
+    dp_ix=0; u_settle(); gen_cluster(); if(f){ cur_sys=f->star; cur_pl=f->body>>3; cur_moon=f->body&7; } else { cur_pl=cur_moon=0; } visits++;
     { u32 t[LYW]; char d[144]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); int dg=big_dec(d,t); voyage(fn,tn,t10,(u32)(30+dg*25)*24,5); }
     space_enter(0); { char b[48], nm[24]; uni_name(b,dest); scat(b,": "); sys_name(cur_sys,nm); nm[13]=0; scat(b,nm); b[39]=0; space_say(b); } return 1; }
 static void uni_edit(volatile u16 *pg, u32 *u){                         // type a universe number digit by digit: 78 digits, 3 rows of 26
@@ -1031,18 +1037,24 @@ static int fav_screen(volatile u16 *pg){                                      //
     }
     #undef FAV_REBUILD
 }
-static int cluster_jump(volatile u16 *pg){                                    // START on the galaxy map: to a neighbouring cluster, or a blind warp
-    char b[48], r2[40];
-    rect(pg,30,40,180,84,0); frame1(pg,30,40,180,84,58); text(pg,40,46,"CLUSTER JUMP",C_GOLD,1);
-    text(pg,40,58,"UP: NORTH       DOWN: SOUTH",C_WHITE,1); text(pg,40,66,"LEFT: WEST      RIGHT: EAST",C_WHITE,1);
-    text(pg,40,76,"NEXT CLUSTER: 3.0 LY OF FUEL",C_GREY,1);
-    { u32 r[LYW]={0}; int wb=warp_bits(); if(wb>154) wb=154; r[wb>>5]=1u<<(wb&31); big_mul(r,LYW,ULY); ly_text(r2,r); }
-    scpy(b,"R: WARP UP TO "); scat(b,r2); b[42]=0; text(pg,40,88,b,C_CYAN,1);
-    ui_lhint(pg,40,98,"A: JUMP TO ANOTHER UNIVERSE",C_GOLD);
-    ui_lhint(pg,40,112,"B: BACK",C_DGREY);
+static int cluster_jump(volatile u16 *pg){                                    // START on the galaxy map: to a neighbouring cluster, a blind warp, another universe, or the long-range chart
+    char b[48], r2[40]; int dirty=1;
     wait_release();
-    while(1){ vsync(); read_keys();
+    while(1){
+        if(dirty){ dirty=0;
+            rect(pg,30,34,180,96,0); frame1(pg,30,34,180,96,58); text(pg,40,39,"CLUSTER JUMP",C_GOLD,1);
+            text(pg,40,50,"UP: NORTH       DOWN: SOUTH",C_WHITE,1); text(pg,40,58,"LEFT: WEST      RIGHT: EAST",C_WHITE,1);
+            text(pg,40,67,"NEXT CLUSTER: 3.0 LY OF FUEL",C_GREY,1);
+            { u32 r[LYW]={0}; int wb=warp_bits(); if(wb>154) wb=154; r[wb>>5]=1u<<(wb&31); big_mul(r,LYW,ULY); ly_text(r2,r); }
+            scpy(b,"R: WARP UP TO "); scat(b,r2); b[42]=0; text(pg,40,77,b,C_CYAN,1);
+            ui_lhint(pg,40,88,"A: JUMP TO ANOTHER UNIVERSE",C_GOLD);
+            ui_lhint(pg,40,98,"L: LONG-RANGE CHART",C_GOLD);
+            { static const char *const un[4]={"NAMES","POWERS OF TEN","METRES","PLANCK LENGTHS"}; scpy(b,"SELECT: UNITS = "); scat(b,un[map_units]); ui_lhint(pg,40,108,b,C_GREY); }
+            ui_lhint(pg,40,119,"B: BACK",C_DGREY); }
+        vsync(); read_keys();
         if(HIT(K_B)){ wait_release(); return 0; }
+        if(HIT(K_SEL)){ map_units=(map_units+1)&3; dirty=1; sfx(7); }
+        if(HIT(K_L)){ int r=deep_chart(pg); wait_release(); return r; }                        // (the chart clears the screen: the map draws itself again)
         int dir = HIT(K_RIGHT)?0 : HIT(K_LEFT)?1 : HIT(K_UP)?2 : HIT(K_DOWN)?3 : -1;
         if(dir>=0){ if(too_close_to_jump()){ space_say("TOO CLOSE TO THE PLANET TO JUMP"); wait_release(); return 0; } int r=cluster_hop(dir); wait_release(); return r; }
         if(HIT(K_R)){ if(too_close_to_jump()){ space_say("TOO CLOSE TO THE PLANET TO JUMP"); wait_release(); return 0; } int r=blind_warp(); wait_release(); return r; }
@@ -1079,7 +1091,7 @@ static int galaxy_map(void){     // returns 1 if you jumped
             text(pg,4,151,b,C_GREY,1);
             line2(pg,186,126,236,126,C_GREY); line2(pg,186,124,186,128,C_GREY); line2(pg,236,124,236,128,C_GREY); text(pg,200,119,"5 LY",C_GREY,1);   // the map's scale
             if(sys[sel].kind==6 && !is_hive(sel)){ int bc=body_count(sel); if(bc>1){ scpy(b,"WORLDS "); ncat(b,bc); text(pg,236-textlen(b)*4,143,b,C_CYAN,1); } }
-            if(ant_king){ uni_name(b,uni_w); text(pg,4,24,b,C_CYAN,1); }
+            if(ant_king){ if(dp_ix>0) dp_here_name(b); else uni_name(b,uni_w); text(pg,4,24,b,C_CYAN,1); }
             if(galaxy_dense()) text(pg,236-14*4,24,"CROWDED GALAXY",C_GOLD,1);
             if(is_hive(sel)){ scpy(b,"OVERLORD ON FLOOR "); ncat(b,hive_floors[hive_done]); text(pg,236-textlen(b)*4,135,b,C_RED,1); }
             else if(has_base(sel)) text(pg,236-13*4,135,"DRONE OUTPOST",C_RED,1);
@@ -1132,7 +1144,7 @@ static void station_menu(void){
             for(int i=0;i<240*160/2;i++) pg[i]=57|(57<<8);
             char nm[24]; sys_name(cur_sys,nm); scpy(b,nm); scat(b," STATION"); text(pg,6,4,b,C_GOLD,1);
             scpy(b,"G"); ncat(b,gold); text(pg,190,4,b,C_GOLD,1);
-            text(pg,6,14,"MARKET",tab==0?C_WHITE:C_DGREY,1); text(pg,46,14,"SHIPYARD",tab==1?C_WHITE:C_DGREY,1); text(pg,90,14,"LOUNGE",tab==2?C_WHITE:C_DGREY,1); scpy(b,eco_name[sys[cur_sys].eco]); scat(b," WORLD"); text(pg,140,14,b,C_CYAN,1);
+            text(pg,6,14,"MARKET",tab==0?C_WHITE:C_DGREY,1); text(pg,46,14,"SHIPYARD",tab==1?C_WHITE:C_DGREY,1); text(pg,90,14,"LOUNGE",tab==2?C_WHITE:C_DGREY,1); if(ant_king) text(pg,122,14,"NAV",tab==3?C_WHITE:C_DGREY,1); scpy(b,eco_name[sys[cur_sys].eco]); scat(b," WORLD"); text(pg,150,14,b,C_CYAN,1);
             if(tab==0){
                 int n=0; for(int i=0;i<8;i++) n+=cargo[i];
                 text(pg,14,26,"GOODS        PRICE   YOU HAVE",C_GREY,1);
@@ -1154,6 +1166,8 @@ static void station_menu(void){
                 for(int i=0;i<3;i++){ int y=28+i*36; if(i==sel) text(pg,6,y,">",C_CYAN,1); text(pg,14,y,who[i],i==sel?C_GOLD:C_GREY,1);
                     if(i==sel){ char q[52]; scpy(q,"\""); scat(q,say1[i]); scat(q,"\""); q[51]=0; text(pg,14,y+10,q,C_WHITE,1); scpy(q,"\""); scat(q,say2[i]); scat(q,"\""); q[51]=0; text(pg,14,y+19,q,C_WHITE,1); } }
                 ui_lhint(pg,6,148,"UP/DOWN: TALK TO SOMEONE  L/R: MARKET  START: LEAVE",C_CYAN);
+            } else if(tab==3){
+                dp_nav_draw(pg,sel);
             } else {
                 int cost[11]={ (fuel_max()-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<2000?cargo_cap*10:0, tech_cost(), wing_n<MAXWING?300+wing_n*150:0, 0,
                     fuel_tank<8?400*(fuel_tank+1):0, warp_lv<8?1500*(warp_lv+1)*(warp_lv+1):0, 0 };
@@ -1170,11 +1184,13 @@ static void station_menu(void){
             }
         }
         vsync(); read_keys();
-        int n = tab==0 ? 8 : tab==2 ? 3 : 11;
+        int nt = ant_king ? 4 : 3, n = tab==0 ? 8 : tab==2 ? 3 : tab==3 ? 4 : 11;
         if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; } if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; }
-        if(HIT(K_R)){ tab=(tab+1)%3; sel=0; dirty=1; } if(HIT(K_L)){ tab=(tab+2)%3; sel=0; dirty=1; }
+        if(HIT(K_R)){ tab=(tab+1)%nt; sel=0; dirty=1; } if(HIT(K_L)){ tab=(tab+nt-1)%nt; sel=0; dirty=1; }
         if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==10)) break;
-        if(tab==0){
+        if(tab==3){
+            if(HIT(K_A)){ if(dp_nav_press(pg,sel)) break; dirty=1; }
+        } else if(tab==0){
             int held=0; for(int i=0;i<8;i++) held+=cargo[i];
             if(HIT(K_A)){ int p=good_price(sel); if(gold>=p && held<cargo_cap){ gold-=p; cargo[sel]++; sfx(7); } dirty=1; }
             if(HIT(K_B) && cargo[sel]){ gold+=good_price(sel); cargo[sel]--; sfx(7); dirty=1; }
@@ -1210,7 +1226,7 @@ static void save_ext(void){
     { u32 g[NGH+2]; g[0]=0x324C4147u; for(int i=0;i<NGH;i++) g[1+i]=galaxy_hi[i]; u32 h=2166136261u; for(int i=0;i<NGH+1;i++){ h^=g[i]; h*=16777619u; } g[NGH+1]=h; sram_write(slot_base(cur_slot)+0x9C0,g,sizeof g); }   // the upper galaxy words: their own block (ends at 0x9EC), so older saves still load
     { u32 g[3]; g[0]=0x59444F42u; g[1]=(u32)(cur_pl*8+cur_moon); g[2]=(2166136261u^g[0])*16777619u; g[2]=(g[2]^g[1])*16777619u; sram_write(slot_base(cur_slot)+0x9EC,g,sizeof g); }   // which planet or moon you are on
     // (the spare memory past the slots holds the favourites now; old far-off addresses are folded into the compact universe, see u_settle)
-    hum_save(); kart_save(); tv_save();
+    hum_save(); kart_save(); tv_save(); dp_save();
 }
 static void addr_load(void){ u32 a[NCW0+10]; sram_read(slot_base(cur_slot)+0x900,a,sizeof a); u32 h9=2166136261u, h7=2166136261u, h=2166136261u, h5=2166136261u; for(int i=0;i<NCW0+9;i++){ h9^=a[i]; h9*=16777619u; } for(int i=0;i<NCW0+7;i++){ h7^=a[i]; h7*=16777619u; if(i<NCW0+6){ h^=a[i]; h*=16777619u; } if(i<NCW0+5){ h5^=a[i]; h5*=16777619u; } }
     wing_n=0; fuel_tank=0; warp_lv=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; form_body=0; form_col=0;
@@ -1283,14 +1299,14 @@ static void load_ext_defaults(void){
     fuel=70; hull=100; shield_lv=1; laser_lv=1; cargo_cap=10; visits=0; cluster_no=0; galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; clus_f=0; clus_up=0; relic_bits=0; weird_seen=0; relic_gold=0; mark_perm=0; for(int k=0;k<NGH;k++) galaxy_hi[k]=0; cur_pl=cur_moon=0; wing_n=0; form=0; form_t=0; forms_open=1; tools_owned=0; tool_held=0; for(int k=0;k<NMK;k++) mark_t[k]=0; memset(cargo,0,8);
     if(endless){ ant_king=1; zones_open=6; cleared_mask=63; w_dlv=6+world_no/2; cur_sys=6; }
     else { ant_king=0; zones_open=zone+1+(zone_cleared?1:0); if(zones_open>6) zones_open=6; cleared_mask=((1<<zone)-1)|(zone_cleared?1<<zone:0); cur_sys=zone; }
-    beast_defaults(); kart_defaults(); for(int i=0;i<LYW;i++){ tv_ly[i]=0; tv_best[i]=0; } tv_trips=0; tv_hours=0; gen_cluster();
+    beast_defaults(); kart_defaults(); dp_defaults(); for(int i=0;i<LYW;i++){ tv_ly[i]=0; tv_best[i]=0; } tv_trips=0; tv_hours=0; gen_cluster();
 }
 static int load_ext(void){
     SaveX *s=&svx; u8 *p=(u8*)s; for(unsigned i=0;i<sizeof(SaveX);i++) p[i]=SRAM[slot_base(cur_slot)+SX_OFF+i];
     if(s->magic!=0x50494853 || s->sum!=sx_sum(s)){ load_ext_defaults(); beast_load(); trophy_load(); tv_load(); return 0; }
     cur_sys=s->cur_sys; cluster_no=s->cluster_no; fuel=s->fuel; hull=s->hull; shield_lv=s->shield_lv; laser_lv=s->laser_lv; cargo_cap=s->cargo_cap;
     ant_king=s->ant_king; cleared_mask=s->cleared_mask; zones_open=s->zones_open; visits=s->visits; w_dlv=s->w_dlv; memcpy(cargo,s->cargo,8);
-    beast_load(); trophy_load(); tv_load(); addr_load(); u_settle(); hum_load(); kart_load(); gen_cluster(); if(ant_king) kw_unlock(); return 1;
+    beast_load(); trophy_load(); tv_load(); dp_load(); addr_load(); u_settle(); hum_load(); kart_load(); gen_cluster(); if(ant_king) kw_unlock(); return 1;
 }
 static void story_boss_beaten(void){
     cleared_mask|=1<<zone; if(zones_open<zone+2) zones_open=zone+2; if(zones_open>6) zones_open=6;

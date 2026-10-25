@@ -228,6 +228,7 @@ def make(arr, out):
     out.append("#define BIGN_SRC %d\n#define BIGS_G %d\n#define BIGS_NZ %d\n#define BIG_H %d\n#define BIGP_N %d\n#define BIG_WORDS %du\n#define BIG_YEARS %d\n#define BIG_DAYS %d\n#define BIG_LETTERS %d"
                % (bi, g, nz, H, len(pc), words, yrs, days, letters))
     out.append('#define BIG_DIGITS "%s.%s"\n#define BIG_DEXP %d\n#define BIG_PLANCK "%s.%s"\n#define BIG_PEXP %d' % (ds[0], ds[1:3], len(ds) - 1, str(P)[0], str(P)[1:3], len(str(P)) - 1))
+    out.append('#define BIG_E "%s"\n#define BIG_SIG %d' % (str(D - 1), int(bs[:3])))      # the Bugstarillion as a distance: BIG_SIG/100 x 10^BIG_E light years
     arr("bigp", "unsigned short", pc)
     arr("fact_off", "unsigned int", offs); arr("fact_nd", "unsigned int", nds); arr("fact_nz", "unsigned int", nzs)
     arr("fact_ab", "unsigned char", abs_); arr("fact_lead", "unsigned int", leads)
