@@ -172,6 +172,7 @@ static void make_pond(int x0,int y0,int x1,int y1){
                if(near && fmat[i]!=FL_WATER && fmat[i]!=FL_SHALLOW) fmat[i] = (pm_h(mx,my,seed)&3)==0 ? FL_MOSS : FL_DIRT; } }
 }
 typedef struct { u8 x,y,str; } Light;
+static u8 lsub[128*128] __attribute__((section(".ewram")));     // smooth light, 4x4 per tile
 EW static Light lights[64]; static int nlights;
 EW static s32 torch_x[32], torch_y[32]; static int ntorch;
 static void build_light(void); static void build_walls(void); static int base_floors(void);
@@ -199,7 +200,7 @@ static void corridor(Room *a, Room *b, int wide, int fm){
     else  { for(int y=(ay<by?ay:by); y<=(ay<by?by:ay); y++){ cor_cell(ax,y,fm); for(int o=1;o<=wide;o++) cor_cell(ax+o,y,fm); }
             for(int x=(ax<bx?ax:bx); x<=(ax<bx?bx:ax); x++){ cor_cell(x,by,fm); for(int o=1;o<=wide;o++) cor_cell(x,by+o,fm); } }
 }
-static void pillar_at(int x,int y,int m){ if(x<1||y<1||x>=MW-1||y>=MW-1) return; int i=y*MW+x; dmap[i]=D_PILLAR; wmat[i]=m; }
+static void pillar_at(int x,int y,int m){ if(x<1||y<1||x>=MW-1||y>=MW-1) return; int i=y*MW+x; if(fmat[i]==FL_WATER||fmat[i]==FL_SHALLOW||dmap[i]==D_UP||dmap[i]==D_DOWN) return; dmap[i]=D_PILLAR; wmat[i]=m; }
 static int room_floor_cell(Room *r){
     for(int t=0;t<40;t++){ int x=r->x+1+rndi(r->w-2), y=r->y+1+rndi(r->h-2); if(dmap[y*MW+x]==D_FLOOR && fmat[y*MW+x]!=FL_WATER && fmat[y*MW+x]!=FL_SHALLOW) return y*MW+x; }   // nothing is placed in the water: stairs, monsters, chests all stand on dry ground
     return (r->y+r->h/2)*MW + r->x+r->w/2;
@@ -312,6 +313,16 @@ static void make_floor(void){
         if(st==ST_GROTTO){ if(want_pond(100)){ make_pond(x+2,y+2,x+w-3,y+h-3); ponds_made++; } add_light(x+w/2,y+h/2,45); }   // a grotto has a pond more often than not, never more than two on a floor
         if(st==ST_CRYSTAL){ for(int k=0;k<2;k++){ pillar_at(x+2+rndi(w-4), y+2+rndi(h-4), M_CRYSTAL); } add_light(x+w/2,y+h/2,40); }
         if(st==ST_CAVE) add_light(x+w/2,y+h/2,28);
+        if(st==ST_CAVE||st==ST_GROTTO||st==ST_CRYSTAL){          // cave dressing: stalagmites, moss and mud patches, and a glow somewhere in the dark
+            int n=2+w*h/45;
+            for(int k=0;k<n;k++){ int qx=x+2+rndi(w-4), qy=y+2+rndi(h-4); if(dmap[qy*MW+qx]==D_FLOOR) pillar_at(qx,qy, st==ST_CRYSTAL?M_CRYSTAL:M_STONE); }
+            for(int yy=y;yy<y+h;yy++) for(int xx=x;xx<x+w;xx++){ int i=yy*MW+xx; if(dmap[i]!=D_FLOOR || fmat[i]==FL_WATER || fmat[i]==FL_SHALLOW) continue;
+                int q=((xx>>1)*29+(yy>>1)*41+depth_no*5+nrooms*3)%8;
+                if(st==ST_CAVE){ if(q==0) fmat[i]=FL_MOSS; }
+                else if(st==ST_GROTTO){ if(q<2) fmat[i]=FL_DIRT; }
+                else if(q==0) fmat[i]=FL_FLAG; }
+            add_light(x+1+rndi(w-2), y+1+rndi(h-2), 36);
+        }
         if(w*h>=100){ if((st==ST_HALL||st==ST_CRYPT) && want_pond(40)){ make_pond(x+w/3-1,y+h/3-1,x+w-w/3,y+h-h/3); ponds_made++; }   // a still pool in the middle of a big chamber
             add_light(x+w/4,y+h/4,50); add_light(x+w-1-w/4,y+h-1-h/4,50); }
         if(st==ST_HALL||st==ST_CRYPT){
@@ -339,6 +350,7 @@ static void make_floor(void){
         if((st==ST_HALL||st==ST_CRYPT) && hsh<2){ wmat[i]|=F_TORCH; add_light(f%MW,f/MW,72); if(ntorch<32){ torch_x[ntorch]=(x<<16)+0x8000+((f%MW-x)*0x8C00); torch_y[ntorch]=(y<<16)+0x8000+((f/MW-y)*0x8C00); ntorch++; } if(wdec[i]!=DC_PANEL) wdec[i]=DC_NONE; }
         else if(st<0 && ((x*5+y*3)%9)==0){ wmat[i]|=F_TORCH; add_light(f%MW,f/MW,60); if(ntorch<32){ torch_x[ntorch]=(x<<16)+0x8000+((f%MW-x)*0x8C00); torch_y[ntorch]=(y<<16)+0x8000+((f/MW-y)*0x8C00); ntorch++; } }
         else if(st==ST_CAVE && ((x+y)%3)==0) wmat[i]|=F_BEAM;
+        else if((st==ST_CAVE||st==ST_GROTTO) && ((x*13+y*7)%5)==0) wmat[i]=M_MOSS;      // moss streaks down the cave walls
         else if(st==ST_CRYSTAL && hsh==3) add_light(f%MW,f/MW,34);
         if((st==ST_HALL||st==ST_CRYPT||st<0) && !(wmat[i]&0x30) && ((x*13+y*7)%vm)==0) wmat[i]=M_MOSS;      // vines and moss, thicker the deeper you go
     }
@@ -351,6 +363,15 @@ static void make_floor(void){
     for(int i=1;i<nrooms;i++){ int d=(rooms[i].x-r0->x)*(rooms[i].x-r0->x)+(rooms[i].y-r0->y)*(rooms[i].y-r0->y); if(d>fd){ fd=d; far=i; } }
     int up=room_floor_cell(r0), dn=room_floor_cell(&rooms[far]);
     dmap[up]=D_UP; dmap[dn]=D_DOWN; add_light(up%MW,up/MW,40); add_light(dn%MW,dn/MW,40);
+    { u16 *bq=(u16*)(lsub+2048); u8 *bv=lsub; int pass, ok=0;     // glitch guard: the stairs down must be reachable; if a column or pillar blocks the way, knock it out
+      for(pass=0;pass<3 && !ok;pass++){
+        if(pass==1){ for(int i=0;i<MW*MW;i++) if(dmap[i]==D_PILLAR) dmap[i]=D_FLOOR; }
+        if(pass==2) corridor(&rooms[0],&rooms[far],2,FL_FLAG);
+        for(int i=0;i<MW*MW;i++) bv[i]=0;
+        int h=0,t=0; bq[t++]=(u16)up; bv[up]=1;
+        while(h<t){ int c=bq[h++]; int nb[4]={c-1,c+1,c-MW,c+MW}; for(int k=0;k<4;k++){ int j=nb[k]; if(j<0||j>=MW*MW||bv[j]||!floorish(j)) continue; bv[j]=1; bq[t++]=(u16)j; } }
+        ok=bv[dn]; }
+    }
     build_light(); build_walls();
     // player on the up stairs, facing the next room
     px_=((up%MW)<<16)+0x8000; py_=((up/MW)<<16)+0x8000;
@@ -489,7 +510,6 @@ static s32 camtab[120];
 static u8 fcode[MW*MW], wtex[MW*MW];
 static u16 wramp[20*8], framp[10*8], cramp[2*8];
 static s16 sinI[256];
-static u8 lsub[128*128] __attribute__((section(".ewram")));     // smooth light, 4x4 per tile
 
 // ---------------------------------------------------------------- baking the light
 static int opaque(int tx,int ty){ if(tx<0||ty<0||tx>=MW||ty>=MW) return 1; int t=dmap[ty*MW+tx]; return t==D_WALL||t==D_PILLAR||t==D_LOCK; }
