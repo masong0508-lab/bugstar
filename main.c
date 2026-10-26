@@ -37,7 +37,12 @@ static int film_mode=0;                               // the debug menu's HIDE T
 #define FILM film_mode
 #endif
 // ---- the debug menu (the Konami code on the title screen): what it asks of the game
-static u32 g_w0,g_w1,g_w2;
+static u32 g_w0,g_w1,g_w2,pp[6],pq;
+#ifdef SHOW_PROF
+#define PPT(i) do{ u32 t_=TMR(); pp[i]=t_-pq; pq=t_; }while(0)
+#else
+#define PPT(i) do{}while(0)
+#endif
 static int dbg_cls=-1, dbg_weird=-1, dbg_hour=-1, dbg_weather=-1, dbg_god=0, dbg_fps=DBGFPS;
 // ---- the kart races' hardware ground (m7.inc): on, and the first screen row the ground can use (the rows above come from page 0)
 static int m7_on=0, m7_strip=160, m7_snap=0; static s32 m7_cb_snap=0; static void m7_pix(int x, int y, int c); static void m7_span(int y, int x0, int x1, int c); IWRAM static void m7_irq(void); static void m7_after_vsync(void);
@@ -885,7 +890,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
       if(amt||jit){ s32 cx=px_+(s32)(((long long)dirx*amt)>>16)-(s32)(((long long)diry*jit)>>16), cy=py_+(s32)(((long long)diry*amt)>>16)+(s32)(((long long)dirx*jit)>>16);
           if(!box_solid(cx,cy,0x1000)){ px_=cx; py_=cy; } } }
     if(terr_on) render_terrace(pg,dirx,diry,plx,ply); else render_view(pg,dirx,diry,plx,ply);
-    u32 tq=TMR();
+    u32 tq=TMR(); pq=tq;
     EW static u8 ord[NDO+1]; EW static s32 dd[NDO+1]; int n=0;
     for(int i=0;i<ndo;i++) if(dob[i].alive){ s32 dx=dob[i].x-px_, dy=dob[i].y-py_; dd[i]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); if(dd[i]<12845056) ord[n++]=i; }   // (things more than 14 cells away are not drawn or sorted: keeps big crowds fast)
     if(pet_here){ petobj.kind=K_PET; petobj.alive=1; petobj.x=pet_x; petobj.y=pet_y; s32 dx=pet_x-px_, dy=pet_y-py_; dd[NDO]=(dx>>8)*(dx>>8)+(dy>>8)*(dy>>8); ord[n++]=NDO; }
@@ -897,7 +902,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     for(int i=0;i<NPROJ;i++){ Proj *p=&proj[i]; if(!p->alive) continue;
         if(p->kind==0) draw_glow(pg,p->x,p->y,p->h,0x2400 + (sinI[(frames*40)&255]>>6),R_FLAME+7,R_FLAME+4,dirx,diry,plx,ply);
         else draw_glow(pg,p->x,p->y,p->h,0x0C00,R_CHEST+7,R_CHEST+5,dirx,diry,plx,ply); }
-    parts_draw(pg,dirx,diry,plx,ply);
+    PPT(0); parts_draw(pg,dirx,diry,plx,ply); PPT(1);
     if(!FILM) draw_fnums(pg,dirx,diry,plx,ply);
     px_=cam_px; py_=cam_py;
     if(spark_t){ int c=60, y=140; for(int k=0;k<12;k++){ int c2=60+(spark_c-60)*(k+1)/12+(k<11?rndi(5)-2:0), y2=140+(spark_y-140)*(k+1)/12;
@@ -919,8 +924,9 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
 #endif
  }
 #ifdef SHOW_PROF
-    { char pb[48]; pb[0]=0; ncat(pb,prof[0]); scat(pb," "); ncat(pb,prof[3]); scat(pb," "); ncat(pb,prof[1]); scat(pb," "); ncat(pb,prof[2]); scat(pb," "); ncat(pb,prof[7]); text(pg,4,60,pb,C_WHITE,1); }
+    { char pb[48]; pb[0]=0; ncat(pb,prof[0]); scat(pb," "); ncat(pb,prof[3]); scat(pb," "); ncat(pb,prof[1]); scat(pb," "); ncat(pb,prof[2]); scat(pb," "); ncat(pb,prof[7]); text(pg,4,60,pb,C_WHITE,1); pb[0]=0; for(int q=0;q<4;q++){ ncat(pb,pp[q]); scat(pb," "); } text(pg,4,70,pb,C_WHITE,1); }
 #endif
+    PPT(2);
     if(FILM){} else { hud3d(pg); fl_draw(pg);
     if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
@@ -950,7 +956,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         shadow_oam[0].a0 = ((136-64+dy)&255) | (1<<8) | (1<<9); shadow_oam[0].a1 = ((52-64+dx)&511) | (30<<9) | (3<<14); shadow_oam[0].a2 = T_JAW;
         shadow_oam[1].a0 = ((136-64+dy)&255) | (1<<8) | (1<<9); shadow_oam[1].a1 = ((188-64-dx)&511) | (29<<9) | (3<<14); shadow_oam[1].a2 = T_JAW;
     }
-    prof[7]=TMR()-tq;
+    PPT(3); prof[7]=TMR()-tq;
     return 0;
 }
 

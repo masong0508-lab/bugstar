@@ -553,10 +553,18 @@ static void build_walls(void){
     }
 }
 
+static const u16 recT[256]={65408,65154,64902,64652,64403,64157,63913,63670,63429,63191,62953,62718,62484,62253,62022,61794,61567,61342,61119,60897,60677,60458,60241,60025,59811,59599,59388,59178,58970,58764,58559,58355,58153,57952,57752,57554,57358,57162,56968,56775,56584,56394,56205,56017,55831,55645,55461,55279,55097,54917,54738,54560,54383,54207,54032,53859,53687,53515,53345,53176,53008,52841,52675,52510,52347,52184,52022,51861,51701,51542,51385,51228,51072,50917,50763,50610,50457,50306,50156,50006,49857,49710,49563,49417,49272,49128,48984,48841,48700,48559,48419,48279,48141,48003,47866,47730,47594,47460,47326,47193,47060,46929,46798,46668,46538,46410,46281,46154,46028,45902,45776,45652,45528,45405,45282,45160,45039,44918,44798,44679,44560,44442,44325,44208,44092,43976,43862,43747,43633,43520,43408,43296,43184,43073,42963,42853,42744,42635,42527,42420,42313,42206,42100,41995,41890,41786,41682,41579,41476,41374,41272,41171,41070,40970,40870,40770,40672,40573,40475,40378,40281,40184,40088,39993,39898,39803,39709,39615,39522,39429,39336,39244,39153,39062,38971,38881,38791,38701,38612,38524,38435,38347,38260,38173,38086,38000,37914,37829,37744,37659,37574,37490,37407,37324,37241,37158,37076,36994,36913,36832,36751,36671,36591,36511,36432,36353,36275,36196,36118,36041,35964,35887,35810,35734,35658,35582,35507,35432,35357,35283,35209,35135,35062,34988,34916,34843,34771,34699,34627,34556,34485,34414,34344,34274,34204,34134,34065,33996,33927,33859,33790,33723,33655,33588,33520,33454,33387,33321,33255,33189,33123,33058,32993,32928,32864,32800};   // 2^30/x for x=0.5..1 in steps, >>15 (fast 1/x for the ray pass: table + one Newton step)
+static const u8 tonemap[512]={0,2,4,6,8,10,11,13,15,17,18,20,21,23,25,26,27,29,30,32,33,34,35,37,38,39,40,41,42,43,45,46,47,48,49,50,50,51,52,53,54,55,56,57,57,58,59,60,61,61,62,63,63,64,65,66,66,67,67,68,69,69,70,71,71,72,72,73,73,74,75,75,76,76,77,77,78,78,79,79,80,80,80,81,81,82,82,83,83,83,84,84,85,85,85,86,86,87,87,87,88,88,88,89,89,90,90,90,91,91,91,91,92,92,92,93,93,93,94,94,94,95,95,95,95,96,96,96,96,97,97,97,98,98,98,98,99,99,99,99,100,100,100,100,100,101,101,101,101,102,102,102,102,102,103,103,103,103,103,104,104,104,104,104,105,105,105,105,105,106,106,106,106,106,106,107,107,107,107,107,108,108,108,108,108,108,108,109,109,109,109,109,109,110,110,110,110,110,110,110,111,111,111,111,111,111,111,112,112,112,112,112,112,112,113,113,113,113,113,113,113,113,114,114,114,114,114,114,114,114,115,115,115,115,115,115,115,115,115,116,116,116,116,116,116,116,116,116,116,117,117,117,117,117,117,117,117,117,117,118,118,118,118,118,118,118,118,118,118,119,119,119,119,119,119,119,119,119,119,119,120,120,120,120,120,120,120,120,120,120,120,120,120,121,121,121,121,121,121,121,121,121,121,121,121,122,122,122,122,122,122,122,122,122,122,122,122,122,122,123,123,123,123,123,123,123,123,123,123,123,123,123,123,123,124,124,124,124,124,124,124,124,124,124,124,124,124,124,124,124,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,125,126,126,126,126,126,126,126,126,126,126,126,126,126,126,126,126,126,126,126,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,129,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,130,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131,131};   // the light tone curve (L*150)/(L+70)
+static inline u32 recip32(u32 a){      // about 0xFFFFFFFF/a for a>2, to 16 bits
+    int sh=__builtin_clz(a); u32 m=a<<sh; u32 y=(u32)recT[(m>>23)&255]<<15;
+    u32 e=0x80000000u-(u32)(((u64)m*y)>>32);
+    y=(u32)(((u64)y*e)>>30);
+    return y>>(30-sh);
+}
 u32 prof[8];
 IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     u32 t0=TMR();
-    const int H=hz; const int gq=xo_i(XO_GFX), wthr=gq==0?0:gq==1?56:9999, sthr=gq==0?0:gq==1?14:40;
+    const int H=hz; const int gq=xo_i(XO_GFX), wthr=gq==0?0:gq==1?40:9999, sthr=gq==0?0:gq==1?12:40;
     // pass 1: one ray per column
     for(int c=0;c<120;c++){
         s32 cam=camtab[c];
@@ -564,8 +572,8 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
         rdx[c]=rx; rdy[c]=ry;
         int mx=px_>>16, my=py_>>16, pmx=mx, pmy=my;
         u32 arx=rx<0?-rx:rx, ary=ry<0?-ry:ry;
-        u32 qx = arx>2? 0xFFFFFFFFu/arx : 0x7fffffff; if(qx>0x7fffffff) qx=0x7fffffff;
-        u32 qy = ary>2? 0xFFFFFFFFu/ary : 0x7fffffff; if(qy>0x7fffffff) qy=0x7fffffff;
+        u32 qx = arx>2? recip32(arx) : 0x7fffffff; if(qx>0x7fffffff) qx=0x7fffffff;
+        u32 qy = ary>2? recip32(ary) : 0x7fffffff; if(qy>0x7fffffff) qy=0x7fffffff;
         s32 ddx=(s32)qx, ddy=(s32)qy;
         int sx = rx<0?-1:1, sy = ry<0?-1:1;
         s32 fx = px_&0xFFFF, fy = py_&0xFFFF;
@@ -589,10 +597,10 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
         int lx=(hx-((rx*5)>>4))>>14, ly=(hy-((ry*5)>>4))>>14; if(lx<0)lx=0; if(lx>127)lx=127; if(ly<0)ly=0; if(ly>127)ly=127;
         int li=perp>>12; if(li>511) li=511;
         int L = ((light_tab[li]*lantk)>>6) + ((lsub[(ly<<7)|lx]*fog_tab[li])>>6);
-        L = (L*150)/(L+70); if(side==0) L=(L*48)>>6;
+        L = tonemap[L>511?511:L]; if(side==0) L=(L*48)>>6;
         L += ((cell*37)&7)-3; if(L<0) L=0;
         clit[c] = L>127?127:L;
-        int h=(FOC<<16)/perp; ctop[c]=H-h; cbot[c]=H+h/2;
+        int h=(FOC*recip32(perp))>>16; ctop[c]=H-h; cbot[c]=H+h/2;
     }
     u32 t1=TMR(); prof[0]=t1-t0;
     // pass 2: walls, one column at a time, from the baked textures
@@ -743,16 +751,19 @@ __attribute__((noinline)) static SprArt sprite_art(DObj *o){      // runs from R
                         default: art=art_crumb; aw=CRUMB_W; ah=CRUMB_H; hw=0x2400; break; } }
     }
     SprArt r={art,aw,ah,hw,tint}; return r; }
+#define DIV9(d) (((d)>>9) ? ((d)>>9) : 1)      // (camera transform in 32 bits: the same numbers, scaled down, so no slow 64-bit divide)
+#define XF_X(sx,sy) (((diry>>4)*((sx)>>5) - (dirx>>4)*((sy)>>5))/DIV9(det))
+#define XF_Y(sx,sy) (((((-ply)>>4)*((sx)>>5)) + ((plx>>4)*((sy)>>5)))/DIV9(det))
 IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32 plx, s32 ply){
     s32 sx=o->x-px_, sy=o->y-py_;
     s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16);
     if(!det) return;
-    s32 tX = (s32)((((long long)diry*sx) - ((long long)dirx*sy))/det);
-    s32 tY = (s32)((((long long)-ply*sx) + ((long long)plx*sy))/det);
+    s32 tX = XF_X(sx,sy);
+    s32 tY = XF_Y(sx,sy);
     if(tY < 0x3000) return;
-    int scx = 60 + (s32)(((long long)tX*60)/tY);
+    int scx = 60 + (tX*60/tY);
     SprArt sa=sprite_art(o); const u8 *art=sa.art; int aw=sa.aw, ah=sa.ah, hw=sa.hw, tint=sa.tint;
-    int hpx = (s32)(((long long)FOC*hw)/tY);
+    int hpx = (FOC*hw/tY);
     int wcols = hpx*aw/ah/2;
     if(hpx<2||wcols<1) return;
     s32 z0 = 0;
@@ -760,7 +771,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
     if(o->kind==K_BAT || o->kind==K_WASP || o->kind==K_GHOST || o->kind==K_DRONE || o->kind==K_MOTH || o->kind==K_WISP || nm_has(o,NF_FLY)) z0 = 0x8000 + (sinI[(frames*6+(int)(o-dob)*13)&255]>>3);
     if(o->kind==K_ITEM && o->rar) z0 = 0x1000 + (sinI[(frames*8)&255]>>4);
     if(o->kind==K_LAMP) z0 = 0x18000 - hw;
-    s32 eyo=eyeat(o->x,o->y); int bot = hz + (s32)(((long long)(eyo-z0)*FOC)/tY);
+    s32 eyo=eyeat(o->x,o->y); int bot = hz + ((eyo-z0)*FOC/tY);
     int top = bot - hpx;
     int x0 = scx - wcols/2;
     // how much light falls on it: the smooth light map plus your lantern
@@ -816,12 +827,12 @@ static void parts_draw(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16); if(!det) return;
     for(int i=0;i<NPART;i++){ Part *p=&part[i]; if(p->life<=0) continue;
         s32 sx=p->x-px_, sy=p->y-py_;
-        s32 tX = (s32)((((long long)diry*sx) - ((long long)dirx*sy))/det);
-        s32 tY = (s32)((((long long)-ply*sx) + ((long long)plx*sy))/det);
+        s32 tX = XF_X(sx,sy);
+        s32 tY = XF_Y(sx,sy);
         if(tY<0x4000 || tY>0x60000) continue;
-        int c = 60 + (s32)(((long long)tX*60)/tY); if(c<0||c>=120) continue;
+        int c = 60 + (tX*60/tY); if(c<0||c>=120) continue;
         if(tY>=zbuf[c]) continue;
-        int y = hz + (s32)(((long long)(eyeat(p->x,p->y)-p->h)*FOC)/tY); y&=~1; if(y<18||y>156) continue;
+        int y = hz + ((eyeat(p->x,p->y)-p->h)*FOC/tY); y&=~1; if(y<18||y>156) continue;
         int ix = p->kind==0 ? R_FLAME+5+(p->life>20) : p->kind==2 ? R_WOOD+4+(i&1)*2 : p->kind==3 ? R_SPIDER+3+(i&3) : R_STONE+5;
         u16 px2=ix|(ix<<8); int big = tY<0x18000;
         pg[y*120+c]=px2; pg[y*120+120+c]=px2;
@@ -846,11 +857,11 @@ static void burst(s32 x, s32 y, s32 h, int n, int kind){        // a puff of spa
 static void draw_glow(volatile u16 *pg, s32 wx, s32 wy, s32 h, s32 rad, int c_in, int c_out, s32 dirx, s32 diry, s32 plx, s32 ply){
     s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16); if(!det) return;
     s32 sx=wx-px_, sy=wy-py_;
-    s32 tX = (s32)((((long long)diry*sx) - ((long long)dirx*sy))/det);
-    s32 tY = (s32)((((long long)-ply*sx) + ((long long)plx*sy))/det);
+    s32 tX = XF_X(sx,sy);
+    s32 tY = XF_Y(sx,sy);
     if(tY<0x3000) return;
-    int c0 = 60 + (s32)(((long long)tX*60)/tY), y0 = hz + (s32)(((long long)(eyeat(wx,wy)-h)*FOC)/tY);
-    int r = (s32)(((long long)rad*FOC)/tY); if(r<2) r=2; if(r>30) r=30; int rc=(r+1)/2;
+    int c0 = 60 + (tX*60/tY), y0 = hz + ((eyeat(wx,wy)-h)*FOC/tY);
+    int r = (rad*FOC/tY); if(r<2) r=2; if(r>30) r=30; int rc=(r+1)/2;
     for(int dc=-rc; dc<=rc; dc++){ int c=c0+dc; if(c<0||c>=120||tY>=zbuf[c]) continue;
         for(int dy=-r; dy<=r; dy++){ int y=y0+dy; if(y<18||y>159) continue; int d2=dc*dc*4+dy*dy; if(d2>r*r) continue;
             int ix = d2*3 < r*r ? c_in : c_out; pg[y*120+c]=ix|(ix<<8); } }
@@ -864,10 +875,10 @@ static void draw_fnums(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16); if(!det) return;
     for(int i=0;i<8;i++){ FNum *f=&fnum[i]; if(f->life<=0) continue;
         s32 sx=f->x-px_, sy=f->y-py_;
-        s32 tX = (s32)((((long long)diry*sx) - ((long long)dirx*sy))/det);
-        s32 tY = (s32)((((long long)-ply*sx) + ((long long)plx*sy))/det);
+        s32 tX = XF_X(sx,sy);
+        s32 tY = XF_Y(sx,sy);
         if(tY<0x3000) continue;
-        int c = 60 + (s32)(((long long)tX*60)/tY), y = hz + (s32)(((long long)(eyeat(f->x,f->y)-f->h)*FOC)/tY);
+        int c = 60 + (tX*60/tY), y = hz + ((eyeat(f->x,f->y)-f->h)*FOC/tY);
         char b[8]; b[0]=0; ncat(b,f->v); int x=c*2-textlen(b)*2;
         if(x<0||x>228||y<20||y>150) continue;
         text(pg,x+1,y+1,b,0,1); text(pg,x,y,b,f->col,1);
