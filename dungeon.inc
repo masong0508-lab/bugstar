@@ -556,7 +556,7 @@ static void build_walls(void){
 u32 prof[8];
 IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     u32 t0=TMR();
-    const int H=hz; const int gq=xo_i(XO_GFX), wthr=gq==0?0:gq==1?64:9999, sthr=gq==0?0:gq==1?20:40;
+    const int H=hz; const int gq=xo_i(XO_GFX), wthr=gq==0?0:gq==1?56:9999, sthr=gq==0?0:gq==1?14:40;
     // pass 1: one ray per column
     for(int c=0;c<120;c++){
         s32 cam=camtab[c];
@@ -638,7 +638,7 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
         int sl=rl_rel[d], fg=rf_rel[d];
         const u8 *bz=bayi+((y>>1)&3)*4;
         volatile u16 *row=pg+y*120;
-        int two = y+1<160, rip = sinI[(y*12+wob)&255]>>13, half = d>(gq==0?0:gq==1?8:16), last=R_CEIL, pv=cbot[0];
+        int two = y+1<160, rip = sinI[(y*12+wob)&255]>>13, half = d>(gq==0?0:gq==1?4:16), last=R_CEIL, pv=cbot[0];
         for(int c=0;c<120;c++, fx+=sx, fy+=sy){
             int cb=cbot[c], pcb=pv; pv=cb; if(y+(st4?3:1)<=cb) continue;
             u32 tx=fx>>16, ty=fy>>16; int ix;
@@ -883,12 +883,14 @@ static void map_reveal(void){
 }
 // a little map in the corner: 15x15 cells around you, north up. one cell = one column by two rows
 static void minimap(volatile u16 *pg){
-    int cx=px_>>16, cy=py_>>16, ox=2, oy=30;
-    for(int j=0;j<15;j++) for(int i=0;i<15;i++){ int x=cx-7+i, y=cy-7+j; int ix=0;
-        if(x>=0&&y>=0&&x<MW&&y<MW && seen[y*MW+x]){ int t=dmap[y*MW+x];
-            ix = t==D_LOCK ? C_RED : t==D_WALL||t==D_PILLAR ? R_STONE+3 : t==D_DOWN ? C_GOLD : t==D_UP ? C_CYAN : 2; }
-        else if(!(x>=0&&y>=0&&x<MW&&y<MW)) ix=0; else ix=1;
-        u16 p2=ix|(ix<<8); pg[(oy+j*2)*120+ox+i]=p2; pg[(oy+j*2+1)*120+ox+i]=p2; }
+    static u8 mc[15*15]; static int lcx=-99, lcy=-99, lseen=-1; int cx=px_>>16, cy=py_>>16, ox=2, oy=30;
+    if(cx!=lcx || cy!=lcy || (frames&15)==0){ lcx=cx; lcy=cy; lseen=0;                      // the picture of the map only changes when you step, or things are revealed
+        for(int j=0;j<15;j++) for(int i=0;i<15;i++){ int x=cx-7+i, y=cy-7+j; int ix=0;
+            if(x>=0&&y>=0&&x<MW&&y<MW && seen[y*MW+x]){ int t=dmap[y*MW+x];
+                ix = t==D_LOCK ? C_RED : t==D_WALL||t==D_PILLAR ? R_STONE+3 : t==D_DOWN ? C_GOLD : t==D_UP ? C_CYAN : 2; }
+            else if(!(x>=0&&y>=0&&x<MW&&y<MW)) ix=0; else ix=1;
+            mc[j*15+i]=ix; } }
+    for(int j=0;j<15;j++){ volatile u16 *r0=pg+(oy+j*2)*120+ox; const u8 *m=mc+j*15; for(int i=0;i<15;i++){ int ix=m[i]; u16 p2=ix|(ix<<8); r0[i]=p2; r0[i+120]=p2; } }
     for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(!o->alive) continue; int x=(o->x>>16)-cx+7, y=(o->y>>16)-cy+7; if(x<0||y<0||x>14||y>14||!seen[(o->y>>16)*MW+(o->x>>16)]) continue;
         int ix = is_mon(o->kind) ? (o->kind==K_BOSS?C_RED:C_RED) : o->kind==K_CAGE ? C_GREEN : o->kind==K_CHEST||(o->kind==K_ITEM&&o->rar) ? C_GOLD : -1; if(ix<0) continue;
         if(is_mon(o->kind) && (frames&4)) continue; pg[(oy+y*2)*120+ox+x]=ix|(ix<<8); pg[(oy+y*2+1)*120+ox+x]=ix|(ix<<8); }
