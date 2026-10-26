@@ -585,11 +585,21 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
         if((c>0 && zbuf[c-1]-perp > 0x4000) || (c<119 && zbuf[c+1]-perp > 0x4000)){ for(int y=y0;y<=y1;y++) col[y*120]=dark; continue; }
         s32 vstep=(48<<16)/(hh+1), v=(y0-top)*vstep, v2=vstep*2;
         const u8 *bz = bayer + (c&3);
-        for(int y=y0; y<=y1; y+=2, v+=v2){
+        volatile u16 *q = col + y0*120; int by = (y0>>1)&3;
+        if(hh>=100){                                                // a close wall: each texel is already 3+ rows tall, so draw 4 rows at a time
+            v2=vstep*4;
+            for(int y=y0; y<=y1; y+=4, v+=v2, q+=480, by=(by+2)&3){
+                int t=tcol[v>>16]; int e=rp[t>>5];
+                int s = (e&0x100) ? (t&31)<<2 : ((t&31)*L)>>5;
+                int ix=(e&0xFF)+lvt[s+bz[by<<2]];
+                u16 p2=ix|(ix<<8); q[0]=p2; if(y<y1) q[120]=p2; if(y+1<y1) q[240]=p2; if(y+2<y1) q[360]=p2;
+            }
+        } else
+        for(int y=y0; y<=y1; y+=2, v+=v2, q+=240, by=(by+1)&3){
             int t=tcol[v>>16]; int e=rp[t>>5];
             int s = (e&0x100) ? (t&31)<<2 : ((t&31)*L)>>5;
-            int ix=(e&0xFF)+lvt[s+bz[((y>>1)&3)<<2]];
-            u16 p2=ix|(ix<<8); col[y*120]=p2; if(y<y1) col[y*120+120]=p2;
+            int ix=(e&0xFF)+lvt[s+bz[by<<2]];
+            u16 p2=ix|(ix<<8); q[0]=p2; if(y<y1) q[120]=p2;
         }
         if(top>=18) col[top*120]=dark;
         if(bot<=159) col[bot*120]=dark;
@@ -597,8 +607,8 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
     u32 t2=TMR(); prof[3]=t2-t1;
     // pass 3: floor, two rows at a time; water and polished tiles mirror the walls
     int wob=frames*5;
-    for(int y=H+1;y<160;y+=((y-H)>40)?4:2){
-        int d=y-H, st4=d>40; s32 rd=rd_rel[d];
+    for(int y=H+1;y<160;y+=((y-H)>32)?4:2){
+        int d=y-H, st4=d>32; s32 rd=rd_rel[d];
         s32 fx=px_+(s32)(((long long)rd*rdx[0])>>16), fy=py_+(s32)(((long long)rd*rdy[0])>>16);
         s32 sx=(s32)((((long long)rd*(rdx[119]-rdx[0])>>16)*8812)>>20), sy=(s32)((((long long)rd*(rdy[119]-rdy[0])>>16)*8812)>>20);   // (a multiply, not a slow divide by 119)
         int sl=rl_rel[d], fg=rf_rel[d];
@@ -634,8 +644,8 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
     }
     u32 t3=TMR(); prof[1]=t3-t2;
     // pass 4: ceiling, two rows at a time
-    for(int y=18;y<H;y+=2){
-        int d=H-y; s32 rd=cd_rel[d];
+    for(int y=18;y<H;y+=((H-y)>32)?4:2){
+        int d=H-y, st4=d>32; s32 rd=cd_rel[d];
         s32 fx=px_+(s32)(((long long)rd*rdx[0])>>16), fy=py_+(s32)(((long long)rd*rdy[0])>>16);
         s32 sx=(s32)((((long long)rd*(rdx[119]-rdx[0])>>16)*8812)>>20), sy=(s32)((((long long)rd*(rdy[119]-rdy[0])>>16)*8812)>>20);   // (a multiply, not a slow divide by 119)
         int sl=cl_rel[d], fg=cf_rel[d];
@@ -658,6 +668,7 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
             u16 p2=ix|(ix<<8);
             row[c]=p2;
             if(two && y+1<ct) row[c+120]=p2;
+            if(st4){ if(y+2<H && y+2<ct) row[c+240]=p2; if(y+3<H && y+3<ct) row[c+360]=p2; }
         }
     }
     prof[2]=TMR()-t3;
