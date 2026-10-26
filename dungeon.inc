@@ -333,6 +333,10 @@ static void make_floor(void){
     for(int i=1;i<nrooms;i++) corridor(&rooms[i-1],&rooms[i], 2, (i&1)?FL_FLAG:FL_PLANK);
     if(nrooms>3) corridor(&rooms[0],&rooms[nrooms-1], 2, FL_FLAG);     // a loop, so it is not one long line
     if(maze) build_labyrinth();
+    if(!maze && depth_no>=4){ int np=0;                           // deep down, ruined pillars rise out of the still water
+        for(int y=2;y<MW-2 && np<8;y++) for(int x=2;x<MW-2 && np<8;x++){ int i=y*MW+x; if(fmat[i]!=FL_WATER || dmap[i]!=D_FLOOR || ((x*7+y*11+depth_no)%9)) continue;
+            int deep=1; for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++){ int j=i+dy*MW+dx; if(fmat[j]!=FL_WATER || dmap[j]!=D_FLOOR) deep=0; }
+            if(deep){ dmap[i]=D_PILLAR; wmat[i]=M_MARBLE; np++; } } }
     if(terr_on) terr_build();
     // walls take the look of the room they face; decorate the faces
     for(int y=1;y<MW-1;y++) for(int x=1;x<MW-1;x++){
