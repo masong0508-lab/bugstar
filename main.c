@@ -37,6 +37,7 @@ static int film_mode=0;                               // the debug menu's HIDE T
 #define FILM film_mode
 #endif
 // ---- the debug menu (the Konami code on the title screen): what it asks of the game
+static u32 g_w0,g_w1,g_w2;
 static int dbg_cls=-1, dbg_weird=-1, dbg_hour=-1, dbg_weather=-1, dbg_god=0, dbg_fps=DBGFPS;
 // ---- the kart races' hardware ground (m7.inc): on, and the first screen row the ground can use (the rows above come from page 0)
 static int m7_on=0, m7_strip=160, m7_snap=0; static s32 m7_cb_snap=0; static void m7_pix(int x, int y, int c); static void m7_span(int y, int x0, int x1, int c); IWRAM static void m7_irq(void); static void m7_after_vsync(void);
@@ -186,7 +187,7 @@ enum { XO_DMGIN, XO_DMGOUT, XO_CRIT, XO_BITESPD, XO_BITERNG, XO_KNOCK, XO_HITSTO
        XO_HUNGER, XO_REGEN, XO_HEAL, XO_MANA, XO_MAXH, XO_FUEL,
        XO_MOVE, XO_DODGEI, XO_DODGED, XO_FLOORS,
        XO_XP, XO_GOLD, XO_DROPS, XO_UNIQUE, XO_XPNEED,
-       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, NXOPT };
+       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, XO_GFX, NXOPT };
 XL(xl_dmgin,"NONE","1/4","1/2","NORMAL","X2","X4","X10")           XV(xl_dmgin,0,25,50,100,200,400,1000)
 XL(xl_dmgout,"1/4","1/2","NORMAL","X2","X5","X10","X100","X1000")  XV(xl_dmgout,25,50,100,200,500,1000,10000,100000)
 XL(xl_crit,"NORMAL","+10%","+25%","+50%","ALWAYS")                   XV(xl_crit,0,10,25,50,100)
@@ -198,6 +199,7 @@ XL(xl_crunch,"EVERY BITE","EVERY 2ND","EVERY 3RD","EVERY 5TH","EVERY 7TH") XV(xl
 XL(xl_vamp,"OFF","1","2","5","10","50")                             XV(xl_vamp,0,1,2,5,10,50)
 XL(xl_spell,"FREE","1/4","1/2","NORMAL")                            XV(xl_spell,0,25,50,100)
 XL(xl_invt,"SHORT","NORMAL","LONG","2 SEC","5 SEC")                 XV(xl_invt,15,30,60,120,300)
+XL(xl_gfx,"FAST","BALANCED","SMOOTH")                               XV(xl_gfx,0,1,2)
 XL(xl_yn,"OFF","ON")                                                XV(xl_yn,0,1)
 XL(xl_espd,"FROZEN","1/2","3/4","NORMAL","X1.5","X2","X3")          XV(xl_espd,0,50,75,100,150,200,300)
 XL(xl_bud,"1","2","3","5","10")                                   XV(xl_bud,1,2,3,5,10)
@@ -258,6 +260,7 @@ static const XOpt XOT[NXOPT]={
   [XO_UNIQUE] =XR("UNIQUE ITEM CHANCE","HOW OFTEN THE RARE UNIQUE ITEMS DROP",xl_uniq,0,XG_REWARD),
   [XO_XPNEED] =XR("XP TO LEVEL UP","HOW MUCH XP EACH LEVEL NEEDS",xl_xpn,3,XG_REWARD),
   [XO_VOL]    =XR("MASTER VOLUME","HOW LOUD EVERYTHING IS. MUTE TURNS ALL SOUND OFF",xl_vol,0,XG_EXTRA),
+  [XO_GFX]    =XR("DUNGEON LOOK","FAST IS CHUNKIER BUT RUNS MUCH SMOOTHER",xl_gfx,1,XG_EXTRA),
   [XO_FPS]    =XR("FPS COUNTER","SHOWS FRAMES PER SECOND IN THE CORNER",xl_yn,0,XG_EXTRA),
   [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),
 };
@@ -467,7 +470,7 @@ static void player_move(s32 tvx, s32 tvy){
     moved_real = iabs(px_-ox)+iabs(py_-oy) > 0x200;
 }
 static void bodies_tick(void){          // you against everything solid, every 60th
-    for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; s32 r=body_r(o); if(!r) continue; s32 nx,ny;
+    for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(iabs(o->x-px_)>0x40000 || iabs(o->y-py_)>0x40000) continue; s32 r=body_r(o); if(!r) continue; s32 nx,ny;
         s32 me = is_mon(o->kind) ? 0x7800 : PRAD;          // monsters stop at biting distance, not in your face
         if(separate(&px_,&py_,me,5,PRAD,&o->x,&o->y,r,body_m(o),r>>1,&nx,&ny)){
             s32 vn=(s32)(((long long)pvx*nx+(long long)pvy*ny)>>16);
@@ -618,10 +621,11 @@ static int skip_draw=0, wtick=1, turn_held=0, hud_f=0, dt_last=0, wacc=0, mv_now
 static DObj *named_p=0; static u32 dhud_sig=0; static int lock_ahead=0;
 // is there something to bite right in front of you? (same box the bite uses)
 static int foe_ahead(s32 dirx, s32 diry){
+    const s32 rb_=xo_v(XO_BITERNG);
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
-        s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16);
+        s32 dx=o->x-px_, dy=o->y-py_; if(iabs(dx)>0x40000||iabs(dy)>0x40000) continue; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16);
         s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(side<0) side=-side;
-        s32 rng_=(o->kind==K_BOSS?0x22000:0x1A000)*xo_v(XO_BITERNG)/100;
+        s32 rng_=(o->kind==K_BOSS?0x22000:0x1A000)*rb_/100;
         if(fwd>0 && fwd<rng_ && side<0xE000) return 1; }
     return 0;
 }
@@ -909,7 +913,11 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
 #endif
     if(FILM){} else { if(sight || have_bug[BUG_ANT] || stairs_seen()) compass(pg,dirx,diry);
     if(opt_minimap) minimap(pg); }
-    if(dbg_fps || xo_i(XO_FPS)){ static int lv=0; int d=vbl_count-lv; lv=vbl_count; char b[12]; scpy(b,"FPS "); ncat(b, d>0 ? (60+d/2)/d : 60); text(pg,196,150,b,C_WHITE,1); }
+    if(dbg_fps || xo_i(XO_FPS)){ static int lv=0; int d=vbl_count-lv; lv=vbl_count; char b[12]; scpy(b,"FPS "); ncat(b, d>0 ? (60+d/2)/d : 60); text(pg,196,150,b,C_WHITE,1);
+#ifdef TEST_CYC
+ { static u32 lt=0; u32 nw=TMR(); char c2[16]; c2[0]=0; ncat(c2,(g_w2-g_w0)/1000); scat(c2," ");ncat(c2,(nw-g_w0)/1000); text(pg,150,150,c2,C_WHITE,1); lt=nw; }
+#endif
+ }
 #ifdef SHOW_PROF
     { char pb[48]; pb[0]=0; ncat(pb,prof[0]); scat(pb," "); ncat(pb,prof[3]); scat(pb," "); ncat(pb,prof[1]); scat(pb," "); ncat(pb,prof[2]); scat(pb," "); ncat(pb,prof[7]); text(pg,4,60,pb,C_WHITE,1); }
 #endif
@@ -1238,7 +1246,7 @@ static void run_game(void){
                 pvx=pvy=0; hitstop=kick_t=pknock_t=0; page_back=1; music(boss_floor()?4:1); fade(0); wacc=WDIV-1; dt_last=vbl_count; }
         } else {
             int r=0;
-            int n = vbl_count - dt_last; dt_last = vbl_count;          // 60ths of a second since the last picture
+            g_w0=TMR(); int n = vbl_count - dt_last; dt_last = vbl_count;          // 60ths of a second since the last picture
             if(n>12) n = (n>30) ? 1 : 12;                              // after a menu or a load, don't fast-forward
             if(n<1) n=1;
             for(int i=0;i<n;i++){
@@ -1246,10 +1254,11 @@ static void run_game(void){
                 if(wtick){ wacc=0; frames++; if(invuln) invuln--; pet_away_tick(); }
                 if(i) keys_old=keys;
                 skip_draw = (i<n-1);
+                if(i==n-1) g_w2=TMR();
                 r=dungeon_frame();
                 if(r) break;
             }
-            skip_draw=0; wtick=1;
+            skip_draw=0; wtick=1; g_w1=TMR();
             vsync_flip();
             if(scene==1){ REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; }
             oam_flush();

@@ -532,7 +532,7 @@ static void build_walls(void){
 u32 prof[8];
 IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     u32 t0=TMR();
-    const int H=hz;
+    const int H=hz; const int gq=xo_i(XO_GFX), wthr=gq==0?0:gq==1?64:9999, sthr=gq==0?0:gq==1?20:40;
     // pass 1: one ray per column
     for(int c=0;c<120;c++){
         s32 cam=camtab[c];
@@ -586,7 +586,7 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
         s32 vstep=(48<<16)/(hh+1), v=(y0-top)*vstep, v2=vstep*2;
         const u8 *bz = bayer + (c&3);
         volatile u16 *q = col + y0*120; int by = (y0>>1)&3;
-        if(hh>=100){                                                // a close wall: each texel is already 3+ rows tall, so draw 4 rows at a time
+        if(hh>=wthr){                                                // a close wall: each texel is already 3+ rows tall, so draw 4 rows at a time
             v2=vstep*4;
             for(int y=y0; y<=y1; y+=4, v+=v2, q+=480, by=(by+2)&3){
                 int t=tcol[v>>16]; int e=rp[t>>5];
@@ -607,14 +607,14 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
     u32 t2=TMR(); prof[3]=t2-t1;
     // pass 3: floor, two rows at a time; water and polished tiles mirror the walls
     int wob=frames*5;
-    for(int y=H+1;y<160;y+=((y-H)>32)?4:2){
-        int d=y-H, st4=d>32; s32 rd=rd_rel[d];
+    for(int y=H+1;y<160;y+=((y-H)>sthr)?4:2){
+        int d=y-H, st4=d>sthr; s32 rd=rd_rel[d];
         s32 fx=px_+(s32)(((long long)rd*rdx[0])>>16), fy=py_+(s32)(((long long)rd*rdy[0])>>16);
         s32 sx=(s32)((((long long)rd*(rdx[119]-rdx[0])>>16)*8812)>>20), sy=(s32)((((long long)rd*(rdy[119]-rdy[0])>>16)*8812)>>20);   // (a multiply, not a slow divide by 119)
         int sl=rl_rel[d], fg=rf_rel[d];
         const u8 *bz=bayi+((y>>1)&3)*4;
         volatile u16 *row=pg+y*120;
-        int two = y+1<160, rip = sinI[(y*12+wob)&255]>>13, half = d>16, last=R_CEIL, pv=cbot[0];
+        int two = y+1<160, rip = sinI[(y*12+wob)&255]>>13, half = d>(gq==0?0:gq==1?8:16), last=R_CEIL, pv=cbot[0];
         for(int c=0;c<120;c++, fx+=sx, fy+=sy){
             int cb=cbot[c], pcb=pv; pv=cb; if(y+(st4?3:1)<=cb) continue;
             u32 tx=fx>>16, ty=fy>>16; int ix;
@@ -644,8 +644,8 @@ IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32
     }
     u32 t3=TMR(); prof[1]=t3-t2;
     // pass 4: ceiling, two rows at a time
-    for(int y=18;y<H;y+=((H-y)>32)?4:2){
-        int d=H-y, st4=d>32; s32 rd=cd_rel[d];
+    for(int y=18;y<H;y+=((H-y)>sthr)?4:2){
+        int d=H-y, st4=d>sthr; s32 rd=cd_rel[d];
         s32 fx=px_+(s32)(((long long)rd*rdx[0])>>16), fy=py_+(s32)(((long long)rd*rdy[0])>>16);
         s32 sx=(s32)((((long long)rd*(rdx[119]-rdx[0])>>16)*8812)>>20), sy=(s32)((((long long)rd*(rdy[119]-rdy[0])>>16)*8812)>>20);   // (a multiply, not a slow divide by 119)
         int sl=cl_rel[d], fg=cf_rel[d];
