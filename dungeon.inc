@@ -173,6 +173,7 @@ static void make_pond(int x0,int y0,int x1,int y1){
 }
 typedef struct { u8 x,y,str; } Light;
 static u8 lsub[128*128] __attribute__((section(".ewram")));     // smooth light, 4x4 per tile
+static int gq_adapt=0, ad_t=0;                               // drops to the faster look for a couple of seconds when a picture took more than 3/60 s
 EW static Light lights[64]; static int nlights;
 EW static s32 torch_x[32], torch_y[32]; static int ntorch;
 static void build_light(void); static void build_walls(void); static int base_floors(void);
@@ -564,7 +565,7 @@ static inline u32 recip32(u32 a){      // about 0xFFFFFFFF/a for a>2, to 16 bits
 u32 prof[8];
 IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     u32 t0=TMR();
-    const int H=hz; const int gq=xo_i(XO_GFX), wthr=gq==0?0:gq==1?40:9999, sthr=gq==0?0:gq==1?12:40;
+    const int H=hz; const int gq=(gq_adapt && xo_i(XO_GFX)==1) ? 0 : xo_i(XO_GFX), wthr=gq==0?0:gq==1?40:9999, sthr=gq==0?0:gq==1?12:40;
     // pass 1: one ray per column
     for(int c=0;c<120;c++){
         s32 cam=camtab[c];
@@ -754,6 +755,14 @@ __attribute__((noinline)) static SprArt sprite_art(DObj *o){      // runs from R
 #define DIV9(d) (((d)>>9) ? ((d)>>9) : 1)      // (camera transform in 32 bits: the same numbers, scaled down, so no slow 64-bit divide)
 #define XF_X(sx,sy) (((diry>>4)*((sx)>>5) - (dirx>>4)*((sy)>>5))/DIV9(det))
 #define XF_Y(sx,sy) (((((-ply)>>4)*((sx)>>5)) + ((plx>>4)*((sy)>>5)))/DIV9(det))
+__attribute__((noinline)) static void spr_bar(volatile u16 *pg, DObj *o, int scx, int top, int wcols, s32 tY){   // (runs from ROM: keeps the fast RAM for the pixel loops)
+    // a health bar over every hurt monster, and a red ! while it winds up to bite
+    if(is_mon(o->kind) && (o->hp<o->maxhp || o->wind) && tY<0x80000){
+        int by=top-4; if(by<20) by=20; int w=wcols<8?8:wcols>24?24:wcols; int bx=scx-w/2;
+        if(o->hp<o->maxhp){ int f=o->hp*w/(o->maxhp>0?o->maxhp:1); for(int c=bx;c<bx+w;c++){ if(c<0||c>=120||tY>=zbuf[c]) continue; int ix=(c-bx<f)?(o->kind==K_BOSS?C_RED:C_GREEN):C_DGREY; pg[by*120+c]=ix|(ix<<8); pg[(by+1)*120+c]=ix|(ix<<8); } }
+        if(o->wind && (frames&2)){ int cx=scx; int y0=by-9; if(y0<19) y0=19; for(int y=y0;y<y0+5;y++) if(cx>=0&&cx<120&&tY<zbuf[cx]) pg[y*120+cx]=C_RED|(C_RED<<8); if(cx>=0&&cx<120&&tY<zbuf[cx]) pg[(y0+6)*120+cx]=C_RED|(C_RED<<8); }
+    }
+}
 IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32 plx, s32 ply){
     s32 sx=o->x-px_, sy=o->y-py_;
     s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16);
@@ -782,6 +791,24 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
     s32 ustep=(aw<<16)/wcols, vstp=(ah<<16)/hpx;
     int c0 = x0<0?0:x0, y0 = top<18?18:top;
     s32 ua = (c0-x0)*ustep;
+    if(!terr_on && wcols*hpx>1500){                             // fast path (big sprites only: the table costs about 3000 cycles to build): one palette table and one row table per sprite, no per-pixel branches or multiplies
+        u8 lut[256]; u16 vrow[76]; int nr=0;
+        for(int i=0;i<256;i++){ int ix=i; if(ix==1) ix=tint; else if(dark && ix>=64 && ix<216){ int l=(ix&7)-dark; ix=(ix&~7)+(l<0?0:l>7?7:l); }
+            if(o->flash){ if(o->flash>=5) ix = R_UP+7; else if(ix>=64 && ix<216){ int l=(ix&7)+3; ix=(ix&~7)+(l>7?7:l); } }
+            lut[i]=(u8)ix; }
+        { s32 va=(y0-top)*vstp; for(int y=y0; y<bot && y<160 && nr<76; y+=2, va+=2*vstp) vrow[nr++]=(u16)((va>>16)*aw); }
+        int yend = bot<160?bot:160;
+        for(int c=c0; c<x0+wcols && c<120; c++, ua+=ustep){
+            if(tY >= zbuf[c]) continue;
+            const u8 *acol = art + (ua>>16);
+            volatile u16 *q = pg + y0*120 + c; int y=y0;
+            for(int k=0;k<nr;k++, y+=2, q+=240){
+                int ix=acol[vrow[k]];
+                if(!ix) continue;
+                u16 p2=lut[ix]; p2|=p2<<8; q[0]=p2; if(y+1<yend) q[120]=p2;
+            }
+        }
+    } else
     for(int c=c0; c<x0+wcols && c<120; c++, ua+=ustep){
         if(!terr_on && tY >= zbuf[c]) continue;
         const u8 *acol = art + (ua>>16);
@@ -795,12 +822,7 @@ IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32
             u16 p2=ix|(ix<<8); pg[y*120+c]=p2; if(y+1<bot && y+1<160) pg[y*120+120+c]=p2;
         }
     }
-    // a health bar over every hurt monster, and a red ! while it winds up to bite
-    if(is_mon(o->kind) && (o->hp<o->maxhp || o->wind) && tY<0x80000){
-        int by=top-4; if(by<20) by=20; int w=wcols<8?8:wcols>24?24:wcols; int bx=scx-w/2;
-        if(o->hp<o->maxhp){ int f=o->hp*w/(o->maxhp>0?o->maxhp:1); for(int c=bx;c<bx+w;c++){ if(c<0||c>=120||tY>=zbuf[c]) continue; int ix=(c-bx<f)?(o->kind==K_BOSS?C_RED:C_GREEN):C_DGREY; pg[by*120+c]=ix|(ix<<8); pg[(by+1)*120+c]=ix|(ix<<8); } }
-        if(o->wind && (frames&2)){ int cx=scx; int y0=by-9; if(y0<19) y0=19; for(int y=y0;y<y0+5;y++) if(cx>=0&&cx<120&&tY<zbuf[cx]) pg[y*120+cx]=C_RED|(C_RED<<8); if(cx>=0&&cx<120&&tY<zbuf[cx]) pg[(y0+6)*120+cx]=C_RED|(C_RED<<8); }
-    }
+    spr_bar(pg,o,scx,top,wcols,tY);
 }
 
 // ---------------------------------------------------------------- embers off the torches, dust in the light

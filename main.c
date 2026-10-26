@@ -912,19 +912,19 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(FILM){} else { if(auto_run && (frames&32)) text(pg,4,34,"RUN",C_CYAN,1);        // a small blinking reminder, out of the way
     if(combo){ char cb[12]; scpy(cb,"COMBO X"); ncat(cb,combo+1); text(pg,120-textlen(cb)*2,100,cb,combo>=2?C_GOLD:C_WHITE,1); }
     if(dodge_msg_t) text(pg,120-5*2,108,"DODGE",C_CYAN,1); }
-#ifdef TEST_FOE
+#ifdef TEST_FOE_DBG
     { char db[40]; scpy(db,"ATK "); ncat(db,atk_t); scat(db," FOE "); ncat(db,foe); scat(db," CB "); ncat(db,combo); scat(db," CT "); ncat(db,combo_t); scat(db," HS "); ncat(db,hitstop); text(pg,4,60,db,C_WHITE,1);
       int dl=0; for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; s32 dx=o->x-px_, dy=o->y-py_; s32 fwd=(s32)(((long long)dx*dirx+(long long)dy*diry)>>16); s32 side=(s32)(((long long)dx*(-diry)+(long long)dy*dirx)>>16); if(fwd>0x40000||fwd<-0x40000||side>0x40000||side<-0x40000) continue; db[0]=0; scpy(db,"K"); ncat(db,o->kind); scat(db," F"); ncat(db,fwd>>8); scat(db," S"); ncat(db,side>>8); scat(db," W"); ncat(db,o->wind); scat(db," ST"); ncat(db,o->stag); text(pg,4,68+dl*7,db,C_WHITE,1); if(++dl>2) break; } }
 #endif
     if(FILM){} else { if(sight || have_bug[BUG_ANT] || stairs_seen()) compass(pg,dirx,diry);
     if(opt_minimap) minimap(pg); }
-    if(dbg_fps || xo_i(XO_FPS)){ static int lv=0; int d=vbl_count-lv; lv=vbl_count; char b[12]; scpy(b,"FPS "); ncat(b, d>0 ? (60+d/2)/d : 60); text(pg,196,150,b,C_WHITE,1);
+    if(dbg_fps || xo_i(XO_FPS)){ static int lv=0; int d=vbl_count-lv; lv=vbl_count; char b[12]; scpy(b,"FPS "); ncat(b, d>0 ? (60+d/2)/d : 60); text(pg,206,40,b,C_WHITE,1);
 #ifdef TEST_CYC
- { static u32 lt=0; u32 nw=TMR(); char c2[16]; c2[0]=0; ncat(c2,(g_w2-g_w0)/1000); scat(c2," ");ncat(c2,(nw-g_w0)/1000); text(pg,150,150,c2,C_WHITE,1); lt=nw; }
+ { static u32 lt=0; u32 nw=TMR(); char c2[16]; c2[0]=0; ncat(c2,(g_w2-g_w0)/1000); scat(c2," ");ncat(c2,(nw-g_w0)/1000); text(pg,150,52,c2,C_WHITE,1); lt=nw; }
 #endif
  }
 #ifdef SHOW_PROF
-    { char pb[48]; pb[0]=0; ncat(pb,prof[0]); scat(pb," "); ncat(pb,prof[3]); scat(pb," "); ncat(pb,prof[1]); scat(pb," "); ncat(pb,prof[2]); scat(pb," "); ncat(pb,prof[7]); text(pg,4,60,pb,C_WHITE,1); pb[0]=0; for(int q=0;q<4;q++){ ncat(pb,pp[q]); scat(pb," "); } text(pg,4,70,pb,C_WHITE,1); }
+    { char pb[48]; pb[0]=0; ncat(pb,prof[0]); scat(pb," "); ncat(pb,prof[3]); scat(pb," "); ncat(pb,prof[1]); scat(pb," "); ncat(pb,prof[2]); scat(pb," "); ncat(pb,prof[7]); text(pg,4,96,pb,C_WHITE,1); pb[0]=0; for(int q=0;q<4;q++){ ncat(pb,pp[q]); scat(pb," "); } text(pg,4,104,pb,C_WHITE,1); }
 #endif
     PPT(2);
     if(FILM){} else { hud3d(pg); fl_draw(pg);
@@ -1253,6 +1253,7 @@ static void run_game(void){
         } else {
             int r=0;
             g_w0=TMR(); int n = vbl_count - dt_last; dt_last = vbl_count;          // 60ths of a second since the last picture
+            if(n>=4 && n<=12){ if(!gq_adapt){ gq_adapt=1; ad_t=150; } else ad_t=150; } else if(ad_t>0 && --ad_t==0) gq_adapt=0;
             if(n>12) n = (n>30) ? 1 : 12;                              // after a menu or a load, don't fast-forward
             if(n<1) n=1;
             for(int i=0;i<n;i++){
