@@ -353,33 +353,102 @@ static int human_creator(volatile u16 *pg, int first){ return cc_run(pg,1,first)
 static int make_bug(volatile u16 *pg, int first){ return cc_run(pg,0,first); }
 // how to play: lively pages with button badges, over the title planet, with your bug walking along
 typedef struct { const char *btn; const char *txt; } HelpLine;
-static const HelpLine help_pg[5][7]={
-  {{"D-PAD","WALK OVER THE HILLS"},{"SEL","TAP: SWITCH 3RD / 1ST PERSON VIEW"},{"A","DOOR, SHIP, CAGE, SLUG, PLANT, ORE"},{"B","USE THE PICKED ITEM"},{"L R","PICK AN ITEM (1ST PERSON: SIDESTEP)"},{"SEL+LR","ARROW: DOOR, SHIP OR NEAREST ORE"},{"SEL+LT RT","3RD PERSON: TURN THE CAMERA"}},
+#define HELP_N 18
+static const HelpLine help_pg[18][7]={
+  {{"","YOU ARE A PILL BUG. BOLT IS YOUR DROID."},{"","EVERY WORLD HAS A DOOR TO A DUNGEON."},{"","GO DOWN. FIGHT. FIND LOOT AND FRIENDS."},{"","BEAT THE QUEEN AT THE BOTTOM: WORLD FREED."},{"","FLY YOUR SHIP TO THE NEXT STAR. REPEAT."},{"","AT YOUR SHIP: TALK TO BOLT. HE SAYS WHAT'S NEXT"},{"START","THE PAUSE SCREEN: BUG, GEAR, MAGIC, MAP..."}},
+  {{"D-PAD","WALK OVER THE HILLS"},{"SEL","TAP: SWITCH 3RD / 1ST PERSON VIEW"},{"A","DOOR, SHIP, CAGE, SLUG, PLANT, ORE"},{"B","USE THE PICKED ITEM"},{"L R","PICK AN ITEM (1ST PERSON: SIDESTEP)"},{"SEL+LR","ARROW: DOOR, SHIP OR NEAREST ORE"},{"SEL+<>","3RD PERSON: TURN THE CAMERA"}},
+  {{"A","PLANTS: LEAVES, BERRIES, SEEDS (THEY REGROW)"},{"A","ORE: AMBER, CRYSTAL, SILK, NECTAR (3 HITS)"},{"A","SLUGS AND CREATURES: CATCH THEM FOR FOOD"},{"A","FOSSILS: DIG THEM UP. RELICS FOR YOUR HOLD"},{"","RUINS ASK A RIDDLE. RIGHT = GOLD AND A RELIC"},{"","WEIRD WORLDS HIDE A RELIC SHRINE"},{"","THE GOLD LINE AT THE TOP SAYS WHAT A WILL DO"}},
+  {{"","ABOUT ONE WORLD IN THREE HAS A TOWN OR CITY"},{"A","MARKET: SELL YOUR GOODS, BUY LOCAL ONES"},{"A","CANTINA: SOUP, GOSSIP, A ROUND FOR FAME"},{"A","BOUNTY OFFICE: A JOB. PAYS AT ONCE"},{"A","RACE POST: KART RACE. BEAT THE PAR TIME"},{"A","HOUSES: KNOCK. LOCALS: TALK TO THEM"},{"","SOME LOCALS GIVE GIFTS. MOODS CHANGE PRICES"}},
   {{"UP DN","WALK FORWARD AND BACK"},{"LT RT","TURN (TAP A LITTLE, HOLD FOR MORE)"},{"L R","STEP SIDEWAYS. TAP TWICE TO DODGE"},{"A","BITE. HOLD IT. THREE IN A ROW = CRUNCH"},{"A","OPEN CAGES, TAKE STAIRS, FISH IN POOLS"},{"SEL","CAST A SPELL. HOLD + L/R PICKS THE SPELL"},{"START","THE MAP OF THIS FLOOR"}},
+  {{"!","A RED ! MEANS A MONSTER IS ABOUT TO BITE"},{"","STEP BACK OR DODGE, THEN BITE IT"},{"L R","TAP TWICE TO DASH. DASHING CAN'T BE HURT"},{"A","BITES IN A ROW MAKE A COMBO. 3RD: CRUNCH"},{"","BEETLES CHARGE: SIDESTEP, THEY HIT THE WALL"},{"","BOOM MONSTERS BLOW UP. SPLIT ONES SPLIT"},{"","THE QUEEN CALLS HER BROOD AT HALF HEALTH"}},
+  {{"","EACH FLOOR CAN HAVE AN EVENT. READ THE GOAL"},{"","VAULT, NEST, ELITE HUNT, DARK, SPEED RUN..."},{"","SOME FLOORS ARE LABYRINTHS: A REAL MAZE"},{"","OUTPOSTS: FIND THE KEYCARD, OPEN THE DOOR"},{"","BITE CHESTS AND BARRELS. FREE CAGED BUGS"},{"","YOU START ON THE UP STAIRS. STEP OFF FIRST"},{"START","MAP: GOLD = DOWN, BLUE = UP, GREEN = CAGE"}},
+  {{"SEL","TAP: CAST YOUR SPELL (COSTS MP)"},{"SEL","HOLD + L/R: CHANGE SPELL. UP/DN: BAG ITEM"},{"","FIREBALL, SPARK, HEAL, SHIELD: FIND THEIR BOOKS"},{"","PORTAL (12 MP): POP UP TO THE SURFACE"},{"","THE DOOR THEN TAKES YOU BACK TO THAT FLOOR"},{"L R","PICK A BAG ITEM"},{"B","USE IT: POTIONS, BERRIES, SEEDS, CRYSTALS"}},
+  {{"","HEARTS GO DOWN WHEN YOU GET BITTEN"},{"","FOOD GOES DOWN SLOWLY. EAT WHEN IT'S LOW"},{"","CRUMBS, FISH AND BERRIES FILL THE GREEN BAR"},{"","UNKNOWN BERRIES CAN BE BAD. TRY THEM SAFE"},{"","FAINTING: YOU WAKE AT THE SHIP, LOSE SOME STUFF"},{"START","SYSTEM TAB: SAVE ANY TIME ON THE SURFACE"},{"","OPTIONS > DIFFICULTY: BABY IS THE GENTLEST"}},
+  {{"","THORNS = BITE. SHELLS = ARMOUR. CHARMS = MAGIC"},{"","WHITE IS PLAIN, BLUE IS MAGIC, GOLD IS RARE"},{"","ORANGE IS UNIQUE: BOSSES AND OVERLORDS DROP IT"},{"","+ OR - TELLS YOU IF IT BEATS WHAT YOU WEAR"},{"","WORKBENCH (YOUR SHIP): UPGRADE GEAR +2 LEVELS"},{"","TROPHY CASE: KEEP LOOT FOREVER FOR POINTS"},{"B","ON THE GEAR PAGE: SCRAP IT FOR TECH SCRAP"}},
+  {{"","BUDDY FOLLOWS YOU AND FIGHTS BESIDE YOU"},{"","FEED HIM FISH: FIRE BEETLE, STONE, STAG KING"},{"","HE LEVELS UP FROM THE XP YOU EARN"},{"SEL","ON THE GEAR PAGE: SEND HIM OFF TO SELL GEAR"},{"","FREE CAGED BUGS: MORE FRIENDS TRAIL YOU"},{"","BABY MODE: BUDDY HEALS YOUR BOO-BOOS"},{"","A FAINTED BUDDY COMES BACK AFTER A WHILE"}},
   {{"D-PAD","STEER THE SHIP"},{"B","THRUST.  R: BRAKE"},{"A","SHOOT PIRATES AND ROCKS"},{"A","NEAR THE PLANET: LAND.  AT THE BOX: DOCK"},{"SEL","THE GALAXY MAP. PICK A STAR, A: JUMP"},{"","JUMPS BURN FUEL. BUY FUEL AT STATIONS"},{"","STATIONS BUY THE GOODS YOU MINE"}},
-  {{"!","A RED ! MEANS A MONSTER IS ABOUT TO BITE"},{"","STEP BACK OR DODGE, THEN BITE IT"},{"","BEETLES CHARGE. SIDESTEP: THEY HIT THE WALL"},{"","BUDDY FIGHTS BESIDE YOU. FEED HIM FISH"},{"","EAT CRUMBS WHEN THE GREEN BAR IS LOW"},{"","FAINTING LOSES YOUR BAG (NOT ON EASY)"},{"","SAVE: START > SYSTEM (DUNGEONS TOO)"}},
-  {{"1","FOLLOW THE ARROW TO THE DOOR. GO DOWN"},{"2","BEAT THE BOSS AT THE BOTTOM"},{"3","AT YOUR SHIP: AUTOPILOT TO THE NEXT STAR"},{"","MINE ORE. SELL IT, OR UPGRADE GEAR"},{"","DRONE OUTPOSTS: FIND THE KEYCARD, SMASH THE CORE"},{"","EACH CORE GIVES BOLT A MEMORY BACK"},{"","BEAT A BOSS, THEN GO BACK DOWN ITS DOOR: NEW TIER"}}};
-static const char *const help_ttl[5]={"ON A PLANET","IN A DUNGEON","IN SPACE","STAYING ALIVE","YOUR QUEST"};
+  {{"","BUY AND SELL 8 KINDS OF GOODS"},{"","PRICES CHANGE WITH EACH WORLD'S ECONOMY"},{"","BUY LOW AT ONE STAR, SELL HIGH AT ANOTHER"},{"","HOLD FULL? BUY A BIGGER ONE"},{"","SHIPYARD: HIRE WINGMEN, UPGRADE LASER, SHIELD"},{"","LOUNGE: RUMOURS AND TIPS FROM THREE REGULARS"},{"","REPAIR AND REFUEL HERE"}},
+  {{"SEL","OPEN IT IN SPACE. IT OPENS ON YOUR NEXT STAR"},{"A","JUMP TO THE PICKED STAR (USES FUEL)"},{"","IT SHOWS LIGHT YEARS AND DAYS FOR THE TRIP"},{"","RED MARKS ARE DRONE OUTPOSTS"},{"L","FIND THE TECHNOBEAST"},{"START","NEXT CLUSTER, FAR WARP, UNIVERSE JUMP"},{"","FAVOURITES: JUMP STRAIGHT TO ONE"}},
+  {{"","AT YOUR SHIP: MIRROR REMAKES YOUR BUG"},{"","HANGAR BUILDS YOUR SHIP IN 3D"},{"","KART CLUB: RACE ANY TIME"},{"","YOUR SHAPE: BECOME A CREATURE OR HUMANOID"},{"","HUMANOIDS HOLD TOOLS: PICKAXE, SWORD, BLASTER"},{"SEL","HUMANOID: SELECT + UP/DN SWITCHES THE TOOL"},{"","SELECT SURPRISES YOU IN THE CREATORS"}},
+  {{"1","FOLLOW THE ARROW TO THE DOOR. GO DOWN"},{"2","BEAT THE BOSS AT THE BOTTOM"},{"3","AT YOUR SHIP: AUTOPILOT TO THE NEXT STAR"},{"","MINE ORE. SELL IT, OR UPGRADE GEAR"},{"","DRONE OUTPOSTS: FIND THE KEYCARD, SMASH THE CORE"},{"","EACH CORE GIVES BOLT A MEMORY BACK"},{"","BEAT A BOSS, GO BACK DOWN ITS DOOR: NEW TIER"}},
+  {{"","THE TECHNOBEAST EATS SHIPS TO GROW"},{"","YOU MEET IT 3 TIMES. SHOOT ITS GLOWING CORE"},{"","ALL 8 CORES: 8X DAMAGE (BOLT SAYS HIS NAME)"},{"","ITS WOUNDS NEVER HEAL. WARP OUT, COME BACK"},{"","AFTER THE ANT KING: 5 TECH HIVES KEEP IT SAFE"},{"","DIVE EACH HIVE. THE OVERLORD WAITS BELOW"},{"","DEAD HIVES CRACK ITS ARMOUR: 2X DAMAGE EACH"}},
+  {{"","BOLT TELLS YOU WHAT TO DO NEXT. ASK HIM"},{"","START > FEATS AND EXTRAS: GOALS AND UNLOCKS"},{"","START > WORLD: HOW BIG IS IT? AFTER THE STORY"},{"","FEATS PAY GOLD AND FAME. FAME GIVES PERKS"},{"","KART WORLD AND MORE OPEN AFTER THE ENDING"},{"","STUCK? EASIER DIFFICULTY IS IN OPTIONS"},{"","TITLE: UP UP DOWN DOWN LT RT LT RT B A"}},
+};
+static const char *const help_ttl[18]={"THE BASICS","ON A PLANET","THINGS TO DO UP HERE","CITIES","IN A DUNGEON","FIGHTING","DUNGEON FLOORS","SPELLS AND BAG","STAYING ALIVE","GEAR","BUDDY AND FRIENDS","IN SPACE","STATIONS AND TRADE","THE GALAXY MAP","YOUR LOOK AND SHIP","YOUR QUEST","THE BIG BAD","TIPS"};
+enum{IC_BUG=0,IC_HEART,IC_COIN,IC_STAR,IC_DOOR,IC_SHIP,IC_SWORD,IC_SHELL,IC_POTION,IC_FISH,IC_PLANT,IC_GEM,IC_KEY,IC_MON,IC_HOUSE,IC_FLAG,IC_BOOK,IC_FIRE,IC_BOLT,IC_MOON,IC_PLANET,IC_SKULL,IC_CHEST,IC_KART};
+static const char *const ico_art[24][8]={
+  {"..dddd..",".dRRRRd.","dRWRRWRd","dRRddRRd","dRWRRWRd",".dRRRRd.",".dg..gd.","........"},
+  {".RR..RR.","RWRRRRRR","RRRRRRRR","RRRRRRRR",".RRRRRR.","..RRRR..","...RR...","........"},
+  {"..YYYY..",".YOOOOY.","YOYYYYOY","YOYOOYOY","YOYOOYOY","YOYYYYOY",".YOOOOY.","..YYYY.."},
+  {"...YY...","...YY...","YYYYYYYY",".YYYYYY.","..YYYY..",".YYYYYY.",".YY..YY.","........"},
+  {"..OOOO..",".OOOOOO.","OOOOOOOO","OOOOOOOO","OOOOOYOO","OOOOOOOO","OOOOOOOO","dddddddd"},
+  {"...CC...","..CWWC..","..CWWC..",".CCWWCC.","CCCCCCCC","CC.CC.CC","C..RR..C","...RR..."},
+  {"......WW",".....WWg","....WWg.","...WWg..","Y.WWg...",".YWg....","..Y.....",".OY....."},
+  {"CCCCCCCC","CWWCCCCC","CWCCCCCC","CCCCCCCC",".CCCCCC.","..CCCC..","...CC...","........"},
+  {"...gg...","...WW...","..WWWW..",".WRRRRW.",".WRRRRW.",".WRRRRW.","..WWWW..","........"},
+  {"........","..C..CC.",".CCCCCCC","CCYCCCC.","CCCCCCCC",".CCCCCC.","..C..CC.","........"},
+  {"...GG...","..GGGG..",".GGGGGG.","G.GGGG.G","..GGGG..","...GG...","...GG...","..GGGG.."},
+  {"..CCCC..",".CWCCCC.","CWCCCCCC","CCCCCCCC",".CCCCCC.","..CCCC..","...CC...","........"},
+  {"..YYY...",".Y...Y..",".Y...Y..","..YYY...","...Y....","...YYY..","...Y....","...YY..."},
+  {"..G..G..","..GGGG..",".GGGGGG.","GRGGGGRG","GGGGGGGG","GGWWWWGG",".GGGGGG.","G.G..G.G"},
+  {"...RR...","..RRRR..",".RRRRRR.","RRRRRRRR",".OOOOOO.",".OWOOWO.",".OOOYOO.",".OOOOOO."},
+  {"gRRR....","gRRRR...","gRRRRR..","gRRRR...","gRRR....","g.......","g.......","gggg...."},
+  {"CCCCCCC.","CYYYYYC.","CYCCCYC.","CYYYYYC.","CCCCCCC.","CWWWWWC.","CWWWWWC.",".CCCCC.."},
+  {"...R....","..RR..R.","..RRR.RR",".RRORRRR",".ROOORRR","RROYOORR",".ROYYORR","..ROORR."},
+  {"...C....","..CCC...","..gggg..",".gCCCCg.",".gCWWCg.",".gCCCCg.","..gggg..",".g.gg.g."},
+  {"..WWW...",".WW.....","WW......","WW......","WW......",".WW.....","..WWW...","........"},
+  {"..GGGG..",".GCCGGG.","YYYYYYYY","GCCCGGGG","GGGGGCCG",".GGGGGG.","..GGGG..","........"},
+  {".WWWWWW.","WWWWWWWW","WddWWddW","WddWWddW","WWWddWWW",".WWWWWW.",".WdWdWW.","........"},
+  {"........",".OOOOOO.","OOOOOOOO","YYYYYYYY","OOOOYOOO","OOOOOOOO","OOOOOOOO","dddddddd"},
+  {"........","..RRRR..",".RWRRRR.","RRRRRRRR","RRRRRRRR",".dd..dd.","dddd.ddd",".dd..dd."},
+};
+static void ico_draw(volatile u16 *pg, int x, int y, int id){                  // an 8x8 picture drawn at double size
+    for(int r=0;r<8;r++) for(int c=0;c<8;c++){ char ch=ico_art[id][r][c]; int col;
+        switch(ch){ case 'W': col=C_WHITE; break; case 'R': col=C_RED; break; case 'D': col=C_DRED; break; case 'G': col=C_GREEN; break; case 'Y': col=C_GOLD; break;
+            case 'g': col=C_GREY; break; case 'd': col=C_DGREY; break; case 'C': col=C_CYAN; break; case 'O': col=C_UNIQ; break; default: col=-1; }
+        if(col>=0){ int px=x+c*2, py=y+r*2; pix(pg,px,py,col); pix(pg,px+1,py,col); pix(pg,px,py+1,col); pix(pg,px+1,py+1,col); } }
+}
+static const u8 help_ico[HELP_N][6]={
+  {IC_BUG,IC_BOLT,IC_DOOR,IC_MON,IC_SHIP,IC_STAR},
+  {IC_BUG,IC_PLANET,IC_PLANT,IC_GEM,IC_DOOR,IC_SHIP},
+  {IC_PLANT,IC_GEM,IC_FISH,IC_SKULL,IC_BOOK,IC_STAR},
+  {IC_HOUSE,IC_COIN,IC_POTION,IC_FLAG,IC_BUG,IC_KART},
+  {IC_DOOR,IC_BUG,IC_MON,IC_CHEST,IC_KEY,IC_HEART},
+  {IC_MON,IC_BUG,IC_SWORD,IC_SHELL,IC_HEART,IC_FIRE},
+  {IC_CHEST,IC_KEY,IC_DOOR,IC_SKULL,IC_FIRE,IC_STAR},
+  {IC_BOOK,IC_FIRE,IC_HEART,IC_SHELL,IC_STAR,IC_POTION},
+  {IC_HEART,IC_POTION,IC_FISH,IC_PLANT,IC_BUG,IC_SHIP},
+  {IC_SWORD,IC_SHELL,IC_BOOK,IC_GEM,IC_STAR,IC_CHEST},
+  {IC_BOLT,IC_FISH,IC_BUG,IC_HEART,IC_FIRE,IC_STAR},
+  {IC_SHIP,IC_PLANET,IC_MOON,IC_STAR,IC_SKULL,IC_COIN},
+  {IC_COIN,IC_GEM,IC_SHIP,IC_POTION,IC_FLAG,IC_HOUSE},
+  {IC_STAR,IC_PLANET,IC_MOON,IC_SHIP,IC_SKULL,IC_FLAG},
+  {IC_BUG,IC_SHIP,IC_KART,IC_BOLT,IC_STAR,IC_HEART},
+  {IC_DOOR,IC_SKULL,IC_KEY,IC_GEM,IC_BOLT,IC_STAR},
+  {IC_SKULL,IC_FIRE,IC_SHIP,IC_BOLT,IC_STAR,IC_GEM},
+  {IC_STAR,IC_HEART,IC_BOLT,IC_BOOK,IC_COIN,IC_KART},
+};
 static int badge_col(const char *b){ if(!b[0]) return -1; if(b[0]=='A'&&!b[1]) return C_RED; if(b[0]=='B'&&!b[1]) return C_CYAN; if(b[0]=='!') return C_RED; if(b[0]>='1'&&b[0]<='3') return C_GOLD; if(b[0]=='S') return C_GOLD; if(b[0]=='D') return C_GREEN; return C_GREY; }
+static int big_unlocked(void);
 static void help_screen(volatile u16 *pg){
-    int p=0, dirty=1, t=0; wait_release(); bug_build();
+    int p=0, dirty=1, t=0, crawl=((((unsigned long long)rnd()<<32)|rnd())%(big_unlocked()?78539ULL:31415926535ULL))==0; wait_release(); bug_build();     // the little bug only trots along the bottom now and then (1 in 31,415,926,535; 1 in 78,539 once the game is beaten)
     while(1){
         if(dirty){ dirty=0;
             title_restore(pg,18,160);
             ui_panel(pg,8,22,224,126); rect(pg,10,24,220,11,U_RAISE); rect(pg,10,24,220,1,U_SHINE); rect(pg,10,35,220,1,U_EDGE); rect(pg,13,27,2,5,U_ACCENT);
-            char b[24]; scpy(b,"HOW TO PLAY  "); ncat(b,p+1); scat(b,"/5"); stext(pg,18,27,b,U_SOFT);
+            char b[24]; scpy(b,"HOW TO PLAY  "); ncat(b,p+1); scat(b,"/18"); stext(pg,18,27,b,U_SOFT);
             { int w=textlen(help_ttl[p])*4; stext(pg,226-w,27,help_ttl[p],C_GOLD); }
-            for(int i=0;i<7;i++){ const HelpLine *h=&help_pg[p][i]; int y=41+i*13; int c=badge_col(h->btn);
+            for(int i=0;i<7;i++){ const HelpLine *h=&help_pg[p][i]; int y=40+i*11; int c=badge_col(h->btn);
                 if(c>=0){ int w=textlen(h->btn)*4+6; rect(pg,14,y-2,w,9,c); text(pg,17,y,h->btn,0,1); }
                 else { rect(pg,16,y+2,3,2,C_DGREY); }
-                text(pg,50,y,h->txt,C_WHITE,1); }
-            for(int k=0;k<5;k++) rect(pg,106+k*7,140,4,3, k==p?C_GOLD:C_DGREY);
-            text(pg,14,140,"< >: PAGE",C_CYAN,1); rtext(pg,226,140,"B: BACK",C_CYAN); }
-        t++; int wf=(t>>3)&1; int bx=((t>>1)%300)-40;                    // the bug trots along the bottom
-        set_affine(31, -128, 0, 0, 128);
-        bug_obj(0,bx,150-16-wf,31,128); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
+                text(pg,c>=0?50:22,y,h->txt,C_WHITE,1); }
+            rect(pg,14,121,212,1,C_DGREY); for(int k=0;k<6;k++) ico_draw(pg,22+k*33,124-((((t/10)+k)&1)<<1),help_ico[p][k]);
+            for(int k=0;k<HELP_N;k++) rect(pg,120-HELP_N*3+k*6,142,4,3, k==p?C_GOLD:C_DGREY);
+            text(pg,14,141,"< >: PAGE",C_CYAN,1); rtext(pg,226,141,"B: BACK",C_CYAN); }
+        t++; if(t%10==0) dirty=1; int wf=(t>>3)&1; int bx=((t>>1)%300)-40;                    // the bug trots along the bottom
+        if(crawl){ set_affine(31, -128, 0, 0, 128); bug_obj(0,bx,150-16-wf,31,128); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK; }
         vsync(); oam_flush(); read_keys(); twinkle(pg,t);
-        if(HIT(K_RIGHT)||HIT(K_R)||HIT(K_A)){ if(p<4){ p++; dirty=1; sfx(7); } else if(HIT(K_A)) break; }
+        if(HIT(K_RIGHT)||HIT(K_R)||HIT(K_A)){ if(p<HELP_N-1){ p++; dirty=1; sfx(7); } else if(HIT(K_A)) break; }
         if(HIT(K_LEFT)||HIT(K_L)){ if(p>0){ p--; dirty=1; sfx(7); } }
         if(HIT(K_B)||HIT(K_START)) break;
     }

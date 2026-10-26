@@ -34,7 +34,7 @@ static void ex_lines(int i, int open, char *b1, char *b2){
     b1[0]=b2[0]=0;
     switch(i){
     case EX_BIG:    scpy(b1,"THE HUGE NUMBERS IN THIS GAME"); scpy(b2, open ? "PRESS A TO OPEN IT NOW" : "ONCE OPEN: PRESS A HERE TO OPEN IT"); break;
-    case EX_KARTW:  scpy(b1,"THE KART RACING GAME, ALL ON ITS OWN"); scpy(b2, open ? "START IT FROM THE TITLE SCREEN" : "ONCE OPEN: START IT FROM THE TITLE SCREEN"); break;
+    case EX_KARTW:  scpy(b1,"THE KART RACING GAME, ALL ON ITS OWN"); scpy(b2, open ? "TITLE SCREEN > EXTRAS" : "ONCE OPEN: TITLE SCREEN > EXTRAS"); break;
     case EX_KCLS:   scpy(b1,"OPEN: "); for(int k=0;k<4 && k<kcls_open;k++){ if(k) scat(b1,", "); scat(b1,kcls_name[k]); }
                     scpy(b2,"A: KART CLUB. CUPS ARE RUN AT A RACE POST"); break;
     case EX_INSANE: scpy(b1,"THE HARDEST DIFFICULTY"); scpy(b2, open ? "PRESS A FOR OPTIONS, THEN PICK DIFFICULTY" : "ONCE OPEN: PICK IT IN OPTIONS"); break;
@@ -86,7 +86,7 @@ static int extras_press(volatile u16 *pg, int cur){
     if(cur==EX_INSANE){ options_screen(pg); return 0; }
     sfx(2);
     switch(cur){
-    case EX_KARTW:  scpy(menu_msg,"START IT FROM THE TITLE SCREEN"); break;
+    case EX_KARTW:  scpy(menu_msg,"TITLE SCREEN > EXTRAS"); break;
     case EX_STARS:
     case EX_FAR:    scpy(menu_msg,"FLY THERE ON THE GALAXY MAP"); break;
     case EX_FORGE:  scpy(menu_msg,"GO TO YOUR SHIP: DUNGEON FORGE"); break;
@@ -96,4 +96,35 @@ static int extras_press(volatile u16 *pg, int cur){
     default:        scpy(menu_msg,"BUY UPGRADES AT A STATION: NAV TAB"); break;
     }
     return 0;
+}
+
+// ---------------------------------------------------------------- EXTRAS from the title screen: Kart World and HOW BIG IS IT? live here
+// Returns 2 when Kart World should start, 0 otherwise. They open when the game is beaten (any save), or from the debug menu (Konami code).
+static int title_extras(volatile u16 *pg, int cs){
+    static const char *const nm[2]={"KART WORLD","HOW BIG IS IT?"}, *const d1[2]={"A WHOLE KART RACING GAME, ALL ON ITS OWN","EVERY HUGE NUMBER IN THE GAME, EVERY DIGIT"},
+        *const d2[2]={"BILLIONS OF TRACKS, 18 DRIVERS, A GARAGE","BY NAME, IN SHORT, OR EVERY DIGIT"};
+    int sel=0, dirty=1, t=0; wait_release(); oam_hide_all(); oam_flush();
+    while(1){
+        int u=kw_unlocked(); int open[2]={u,u};
+        if(dirty){ dirty=0; title_restore(pg,18,160);
+            ui_panel(pg,14,28,212,118); ui_head(pg,19,32,200,"EXTRAS",C_UNIQ);
+            for(int i=0;i<2;i++){ int y=48+i*28;
+                if(i==sel) ui_sel(pg,18,y-3,204,25,U_SEL);
+                ex_mark(pg,22,y+1,open[i]); text(pg,36,y,nm[i],open[i]||i==sel?C_WHITE:C_GREY,1);
+                if(open[i]) rtext(pg,216,y,"UNLOCKED",C_GREEN); else rtext(pg,216,y,"LOCKED",C_RED);
+                text(pg,36,y+9,d1[i],U_SOFT,1); text(pg,36,y+17,open[i]?d2[i]:"BEAT THE ANT KING TO OPEN IT",open[i]?U_SOFT:C_GOLD,1); }
+            rect(pg,20,108,200,1,U_RAISE);
+            text(pg,22,112,"ONE BEATEN GAME OPENS THESE FOR EVERY SAVE.",C_GREY,1);
+            text(pg,22,121,"MORE UNLOCKS: START > EXTRAS IN A GAME.",C_GREY,1);
+            text(pg,22,134,"A: OPEN IT",C_CYAN,1); rtext(pg,218,134,"B: BACK",C_CYAN); }
+        t++; vsync(); read_keys(); twinkle(pg,t);
+        if(HIT(K_UP)||HIT(K_DOWN)){ sel^=1; dirty=1; sfx(7); }
+        if(HIT(K_B)) break;
+        if(HIT(K_A)||HIT(K_START)){
+            if(!open[sel]){ sfx(12); continue; }
+            sfx(2); wait_release();
+            if(sel==0) return 2;
+            if(cs>=0) cur_slot=cs; size_screen(pg,1); dirty=1; wait_release(); }
+    }
+    wait_release(); return 0;
 }

@@ -331,21 +331,21 @@ static void options_more(volatile u16 *pg){
 
 // ---------------------------------------------------------------- the options screen
 static void options_screen(volatile u16 *pg){
-    enum { OP_BABY, OP_DIFF, OP_HUNGER, OP_FAINT, OP_XP, OP_GOLD, OP_CAM, OP_MUSIC, OP_SFX, OP_AUTO, OP_SHAKE, OP_MAP, OP_NUMS, OP_HINTS, OP_ARROW, NOPT };
-    static const char *const nm[NOPT]={"BABY MODE","DIFFICULTY","HUNGER","LOSE STUFF WHEN YOU FAINT","XP SPEED","GOLD","PLANET CAMERA","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE","MINIMAP","DAMAGE NUMBERS","BUTTON HINTS","GUIDE ARROW"};
-    static const char *const hlp[NOPT]={"1 DAMAGE MAX, NO HUNGER, NOTHING LOST, 2X GOLD AND XP. FOR BABIES. SIMPLY WOW","EASY: HALF DAMAGE, KEEP YOUR BAG. HARD: MORE DAMAGE, +25% GOLD","OFF: NOBODY EVER STARVES","OFF: FAINTING COSTS NO GOLD AND NO BAG","HOW FAST YOU LEVEL UP","HOW MUCH GOLD EVERYTHING PAYS","WHICH VIEW A NEW GAME STARTS WITH","THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT","THE LITTLE MAP IN THE DUNGEON CORNER","NUMBERS THAT FLY OFF THINGS YOU BITE","THE 'A: ...' LINES THAT SAY WHAT A DOES","THE YELLOW ARROW ON PLANETS"};
-    static const char *const dif[6]={"EASY","NORMAL","HARD","BRUTAL","NIGHTMARE","INSANE-SECT"}, *const cam[2]={"3RD PERSON","1ST PERSON"}, *const mv[3]={"OFF","LOW","FULL"}, *const yn[2]={"OFF","ON"}, *const mx[3]={"X1","X2","X5"};
+    enum { OP_DIFF, OP_HUNGER, OP_FAINT, OP_XP, OP_GOLD, OP_CAM, OP_MUSIC, OP_SFX, OP_AUTO, OP_SHAKE, OP_MAP, OP_NUMS, OP_HINTS, OP_ARROW, NOPT };
+    static const char *const nm[NOPT]={"DIFFICULTY","HUNGER","LOSE STUFF WHEN YOU FAINT","XP SPEED","GOLD","PLANET CAMERA","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE","MINIMAP","DAMAGE NUMBERS","BUTTON HINTS","GUIDE ARROW"};
+    static const char *const hlp[NOPT]={"BABY: 1 DAMAGE, NO HUNGER, NOTHING LOST, 2X GOLD AND XP. EASY: HALF DAMAGE. HARD UP: MORE DAMAGE, MORE GOLD","OFF: NOBODY EVER STARVES","OFF: FAINTING COSTS NO GOLD AND NO BAG","HOW FAST YOU LEVEL UP","HOW MUCH GOLD EVERYTHING PAYS","WHICH VIEW A NEW GAME STARTS WITH","THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT","THE LITTLE MAP IN THE DUNGEON CORNER","NUMBERS THAT FLY OFF THINGS YOU BITE","THE 'A: ...' LINES THAT SAY WHAT A DOES","THE YELLOW ARROW ON PLANETS"};
+    static const char *const dif[7]={"BABY","EASY","NORMAL","HARD","BRUTAL","NIGHTMARE","INSANE-SECT"}, *const cam[2]={"3RD PERSON","1ST PERSON"}, *const mv[3]={"OFF","LOW","FULL"}, *const yn[2]={"OFF","ON"}, *const mx[3]={"X1","X2","X5"};
     int sel=0, top=0, dirty=1; oam_hide_all(); oam_flush(); if(in_game) rect(pg,0,18,240,142,0); wait_release();
     while(1){
         if(sel<top) top=sel; if(sel>=top+10) top=sel-9;
         if(dirty){ dirty=0; char b[20];
             panel(pg,12,20,216,136,"OPTIONS");
             for(int r=0;r<10;r++){ int i=top+r;
-                int y=37+r*9; int *pv = i==OP_BABY?&opt_baby : i==OP_DIFF?&opt_diff : i==OP_HUNGER?&opt_hunger : i==OP_FAINT?&opt_faintloss : i==OP_XP?&opt_xpm : i==OP_GOLD?&opt_goldm : i==OP_CAM?&opt_cam : i==OP_MUSIC?&opt_music : i==OP_SFX?&opt_sfx : i==OP_AUTO?&opt_autosave : i==OP_SHAKE?&opt_shake : i==OP_MAP?&opt_minimap : i==OP_NUMS?&opt_nums : i==OP_HINTS?&opt_hints : &opt_arrow;
+                int y=37+r*9; int dsel = opt_baby ? 0 : opt_diff+1; int *pv = i==OP_DIFF?&dsel : i==OP_HUNGER?&opt_hunger : i==OP_FAINT?&opt_faintloss : i==OP_XP?&opt_xpm : i==OP_GOLD?&opt_goldm : i==OP_CAM?&opt_cam : i==OP_MUSIC?&opt_music : i==OP_SFX?&opt_sfx : i==OP_AUTO?&opt_autosave : i==OP_SHAKE?&opt_shake : i==OP_MAP?&opt_minimap : i==OP_NUMS?&opt_nums : i==OP_HINTS?&opt_hints : &opt_arrow;
                 int v=*pv; if(i==sel) rect(pg,18,y-2,204,10,6);
                 text(pg,26,y,nm[i],i==sel?C_WHITE:C_GREY,1);
                 scpy(b,"< "); scat(b, i==OP_DIFF?dif[v] : i==OP_CAM?cam[v] : i==OP_MUSIC?mv[v] : (i==OP_XP||i==OP_GOLD)?mx[v] : yn[v]); scat(b," >");
-                rtext(pg,206,y,b, i==sel?C_GOLD : (i==OP_DIFF ? (v==0?C_GREEN:v>=2?C_RED:C_GREY) : (i==OP_BABY && v) ? C_GREEN : C_GREY));
+                rtext(pg,206,y,b, i==sel?C_GOLD : (i==OP_DIFF ? (v<=1?C_GREEN:v>=3?C_RED:C_GREY) : C_GREY));
             }
             if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<NOPT) text(pg,216,118,"v",C_CYAN,1);
             rect(pg,18,128,204,1,C_DGREY);
@@ -357,8 +357,7 @@ static void options_screen(volatile u16 *pg){
         if(HIT(K_DOWN)){ sel=(sel+1)%NOPT; sfx(7); dirty=1; }
         int d = HIT(K_RIGHT)||HIT(K_A) ? 1 : HIT(K_LEFT) ? -1 : 0;
         if(d){ dirty=1;
-            if(sel==OP_BABY) opt_baby^=1;
-            else if(sel==OP_DIFF){ { int nd=opt_insane?6:5; opt_diff=(opt_diff+d+nd)%nd; } opt_easy=(opt_diff==0); }
+            if(sel==OP_DIFF){ int nd=opt_insane?7:6, ds=((opt_baby?0:opt_diff+1)+d+nd)%nd; opt_baby=(ds==0); opt_diff=ds?ds-1:0; opt_easy=(opt_diff==0); }
             else if(sel==OP_HUNGER) opt_hunger^=1; else if(sel==OP_FAINT) opt_faintloss^=1;
             else if(sel==OP_XP) opt_xpm=(opt_xpm+d+3)%3; else if(sel==OP_GOLD) opt_goldm=(opt_goldm+d+3)%3;
             else if(sel==OP_CAM) opt_cam^=1;

@@ -136,9 +136,9 @@ static int kw_options(volatile u16 *pg, int mode){                 // mode 0 qui
     wait_release();
     while(1){
         if(dirty){ dirty=0; char b[48];
-            panel(pg,4,20,232,136,mt[mode]); { char g[20]="COINS "; ncat(g,kw.coins); text(pg,232-textlen(g)*4,24,g,C_GOLD,1); }
-            if(sel<top) top=sel; if(sel>=top+12) top=sel-11;
-            for(int j=0;j<12 && top+j<ns;j++){ int i=show[top+j], y=37+j*8; if(top+j==sel) rect(pg,7,y-2,226,9,6);
+            ui_panel(pg,4,20,232,136); ui_head(pg,9,24,150,mt[mode],C_GOLD); { char g[20]="COINS "; ncat(g,kw.coins); text(pg,232-textlen(g)*4,24,g,C_GOLD,1); }
+            if(sel<top) top=sel; if(sel>=top+11) top=sel-10;
+            for(int j=0;j<11 && top+j<ns;j++){ int i=show[top+j], y=36+j*9; if(top+j==sel) ui_sel(pg,7,y-2,226,10,U_SEL);
                 if(i==KO_GO){ ctext(pg,120,y, mode==3?"> GO AND BUILD <":"> START <", top+j==sel?C_GREEN:C_CYAN); continue; }
                 text(pg,12,y,ko_name[i],top+j==sel?C_WHITE:C_GREY,1); b[0]=0;
                 switch(i){ case KO_PLANET: scpy(b,"#"); kcomma(b,kw.seed); scat(b,"  "); scat(b,w_name); break; case KO_TYPE: scpy(b,kw_type_name[kw.ftype]); if(!kw.ftype){ scat(b," ("); scat(b,pc_name[wd.cls]); scat(b,")"); } break;
@@ -149,7 +149,7 @@ static int kw_options(volatile u16 *pg, int mode){                 // mode 0 qui
                     case KO_CATCH: scpy(b,kw.catchup?"ON":"OFF"); break; case KO_MIRROR: scpy(b,kw.mirror?"ON":"OFF"); break; case KO_REV: scpy(b,kw.reverse?"ON":"OFF"); break;
                     case KO_TIME: { static const char *const s[4]={"AS IT IS","DAY","DUSK","NIGHT"}; scpy(b,s[kw.hour&3]); } break; case KO_WEATHER: { static const char *const s[6]={"AS IT IS","CLEAR","RAIN","SNOW","DUST","EMBERS"}; scpy(b,s[kw.weather%6]); } break; }
                 b[38]=0; text(pg,76,y,b,top+j==sel?C_GOLD:C_GREY,1); }
-            if(top>0) text(pg,226,30,"^",C_CYAN,1); if(top+12<ns) text(pg,226,128,"V",C_CYAN,1);
+            if(top>0) text(pg,228,36,"^",C_WHITE,1); if(top+11<ns) text(pg,228,126,"v",C_WHITE,1);
             int i=show[sel]; const char *h = i==KO_PLANET ? "LEFT/RIGHT: NEXT PLANET THAT FITS   A: TYPE A NUMBER" : i==KO_TRACK ? "1,000,000 TRACKS ON EVERY PLANET. A: TYPE ONE" : i==KO_STUNTS ? "RAMPS, WATER JUMPS AND LOOP-DE-LOOPS" : i==KO_GO ? "A: GO!" : "LEFT/RIGHT: CHANGE IT";
             ctext(pg,120,136,h,C_CYAN); ui_chint(pg,120,145,"B: BACK   SELECT: RANDOM PLANET",C_DGREY); }
         vsync(); read_keys();
@@ -190,22 +190,34 @@ static void kw_records(volatile u16 *pg){
     card(pg,"KART WORLD RECORDS",ln,6); }
 
 // ---------------------------------------------------------------- the Kart World menu
+static void kw_strip(volatile u16 *pg, int ph){                      // the chequered strip under the logo: it scrolls
+    int o=ph&7, c0=(ph>>3)&1;
+    for(int i=0;i<41;i++){ int x=40+i*4-o, w=4; if(x<40){ w=x+4-40; x=40; } if(x+w>200) w=200-x; if(w<=0) continue;
+        int k=(i+c0)&1; rect(pg,x,27,w,2,k?C_WHITE:C_DGREY); rect(pg,x,29,w,2,k?C_DGREY:C_WHITE); } }
 static void kw_paint_bg(volatile u16 *pg){
     for(int i=0;i<120*160;i++) pg[i]=0; u32 r=0x51ED27u; for(int k=0;k<90;k++){ r=r*1664525u+1013904223u; int x=(r>>8)%240, y=(r>>20)%160; pix(pg,x,y,(k%9)==0?5:(k&1)?3:2); }
     rect(pg,0,128,240,32,1); for(int x=0;x<240;x+=8){ rect(pg,x,128,4,2,C_DGREY); }
-    text(pg,22,10,"KART WORLD",0,4); text(pg,20,8,"KART WORLD",C_GOLD,4); }
+    // the logo: KART in gold, WORLD in cyan, a drop shadow, a chequered strip underneath, a little kart and flag at the sides
+    text(pg,61,5,"KART",C_DGREY,3); text(pg,60,4,"KART",C_GOLD,3); text(pg,121,5,"WORLD",C_DGREY,3); text(pg,120,4,"WORLD",C_CYAN,3);
+    kw_strip(pg,0);
+    ico_draw(pg,22,6,IC_KART); ico_draw(pg,202,6,IC_FLAG); }
 static int kw_menu(void){
     volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10)|(1<<12)|(1<<6); REG_BLDCNT=0;
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i]; obj_palette(); kart_build(0); kwd_palette();
     static const char *const it[14]={"GRAND TOUR","QUICK RACE","RANDOM RACE","TIME ATTACK","ELIMINATION","ENDLESS RUN","TRACK MAKER","YOUR TRACKS","GARAGE","DRIVER","RECORDS","HOW IT WORKS","BACK TO THE TITLE","CAMERA"};
     static const char *const dsc[14]={"10 TOURS OF 4 RACES ON 4 PLANETS. WIN TROPHIES.","ANY OF 4.3 QUADRILLION TRACKS. EVERY OPTION.","ONE BUTTON. A SURPRISE PLANET AND TRACK.","JUST YOU AND THE CLOCK.","EVERY 20 SECONDS THE LAST KART IS OUT.",
         "TOP 3 GOES ON TO A NEW PLANET. HOW FAR CAN YOU GET?","BUILD A TRACK ON ANY PLANET YOU LIKE.","EVERY TRACK YOU HAVE SAVED. RACE ANY OF THEM.","DRESS UP YOUR KART. COINS BUY PARTS.","WHO DRIVES? YOUR BUG OR NEARLY ANYONE.","TROPHIES, WINS AND BEST TIMES.","THE BUTTONS AND THE BASICS.","BACK TO BUGSTAR.","DISTANCE, HEIGHT, FIELD OF VIEW, SWING, COCKPIT."};
-    int sel=0, dirty=1, t=0; kw_paint_bg(pg); wait_release(); fade(0);
+    int sel=0, top=0, dirty=1, t=0; kw_paint_bg(pg); wait_release(); fade(0);
     while(1){
-        if(dirty){ dirty=0; char b[48]; rect(pg,0,34,148,94,0);
+        if(dirty){ dirty=0; char b[48]; rect(pg,0,33,148,96,0);                                  // the list sits on a card, 7 rows at a time, and scrolls
             static const u8 ord[14]={0,1,2,3,4,5,6,7,8,9,13,10,11,12};
-            for(int j=0;j<14;j++){ int i=ord[j], y=36+j*6+(j>0)*0, c = j==sel ? C_GOLD : C_WHITE; if(j==sel){ rect(pg,6,y-1,138,6,6); text(pg,8,y,">",C_GOLD,1); } text(pg,14,y,it[i],c,1);
-                if(i==9){ scpy(b,kw.driver?kwd_name[kw.driver]:look.name); text(pg,60,y,b,C_CYAN,1); } }
+            if(sel<top) top=sel; if(sel>=top+7) top=sel-6;
+            ui_panel(pg,3,33,142,95);
+            for(int r=0;r<7;r++){ int j=top+r, i=ord[j], y=38+r*12;
+                if(j==sel){ ui_sel(pg,7,y-2,134,11,U_SEL); rect(pg,10,y+1,3,3,C_GOLD); }
+                text(pg,18,y,it[i],j==sel?C_GOLD:U_SOFT,1);
+                if(i==9){ scpy(b,kw.driver?kwd_name[kw.driver]:look.name); b[9]=0; rtext(pg,136,y,b,C_CYAN); } }
+            if(top>0) text(pg,136,36,"^",C_WHITE,1); if(top+7<14) text(pg,136,119,"v",C_WHITE,1);
             { static const u8 ord2[14]={0,1,2,3,4,5,6,7,8,9,13,10,11,12}; rect(pg,0,130,240,30,1); ctext(pg,120,134,dsc[ord2[sel]],C_CYAN); }
             scpy(b,"COINS "); ncat(b,kw.coins); scat(b,"    TROPHIES "); ncat(b,kw_trophies(0)); scat(b,"/50    WINS "); ncat(b,kw.wins); ctext(pg,120,146,b,C_GOLD); }
         // your kart on the right, turning slowly on its stand
@@ -219,7 +231,7 @@ static int kw_menu(void){
           else if(view){ set_affine(31,-200,0,0,200); int dh=16*256/200; bug_obj(slot,cx+dx2,feet-dh/2+3,31,200); shadow_oam[slot].a2=bug_tile(0)|BUG_BANK; slot++; }
           else { set_affine(31,330,0,0,330); int cy2=feet-31*256/330; shadow_oam[slot].a0=((cy2-64)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((cx-64)&511)|(31<<9)|(3<<14); shadow_oam[slot].a2=T_BACK|BUG_BANK; slot++; }
           for(;slot<128;slot++) shadow_oam[slot].a0=0x0200; }
-        vsync(); oam_flush(); read_keys(); t++; rng_s+=t;
+        kw_strip(pg,t>>1); vsync(); oam_flush(); read_keys(); t++; rng_s+=t;
         if(HIT(K_UP)){ sel=(sel+13)%14; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%14; dirty=1; sfx(7); }
         if(HIT(K_B)){ sel=13; dirty=1; }
         if(HIT(K_A)||HIT(K_START)){ static const u8 ord3[14]={0,1,2,3,4,5,6,7,8,9,13,10,11,12}; sfx(2); oam_hide_all(); oam_flush(); wait_release(); return ord3[sel]; } } }

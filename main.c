@@ -961,8 +961,8 @@ static void twinkle(volatile u16 *pg, int t){        // a few stars blink in the
 // returns 1 to continue or load the game in cur_slot, 0 to start a new one there
 static int title_screen(void){
     volatile u16 *pg=VRAM;
-    enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT, TI_KART, TI_SIZE };
-    static const char *const tn[7]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS","KART WORLD","HOW BIG IS IT?"};
+    enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT, TI_EXTRA };
+    static const char *const tn[7]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS","EXTRAS"};
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
     bug_build();
     hdma_on=0; title_paint(pg);
@@ -974,21 +974,20 @@ static int title_screen(void){
     int fading_in=1;
     while(1){
         if(full){ full=0; title_paint(pg); slots_refresh(); cs=first_good_slot();
-            kwu=kw_unlocked(); n=0; if(cs>=0) it[n++]=TI_CONT; it[n++]=TI_NEW; if(cs>=0) it[n++]=TI_LOAD; it[n++]=TI_KART; it[n++]=TI_SIZE; it[n++]=TI_HELP; it[n++]=TI_OPT;
+            kwu=kw_unlocked(); n=0; if(cs>=0) it[n++]=TI_CONT; it[n++]=TI_NEW; if(cs>=0) it[n++]=TI_LOAD; it[n++]=TI_HELP; it[n++]=TI_OPT; it[n++]=TI_EXTRA;
             if(sel>=n) sel=0; dirty=1; }
         if(dirty){ dirty=0; char b[40];
             title_restore(pg,56,146);
             if(!FILM){ ui_panel(pg,46,58,148,n*9+22); rect(pg,50,62+n*9+1,140,1,U_RAISE); }      // the menu sits on a card
             for(int i=0;i<n && !FILM;i++){ int y=63+i*9; const char *nm=tn[it[i]]; int x=120-textlen(nm)*2;
                 if(i==sel){ ui_sel(pg,60,y-2,120,9,U_SEL); stext(pg,x,y,nm,C_GOLD); rect(pg,66,y+1,3,3,C_GOLD); rect(pg,171,y+1,3,3,C_GOLD); }
-                else stext(pg,x,y,nm,((it[i]==TI_KART||it[i]==TI_SIZE) && !kwu)?C_DGREY:U_SOFT); }
+                else stext(pg,x,y,nm,U_SOFT); }
             int y=62+n*9+5; b[0]=0;
             if(it[sel]==TI_CONT){ const SlotInfo *o=&sinf[cs]; char w[28]; slot_where(o,w); scpy(b,"SLOT "); ncat(b,cs+1); scat(b,"  LV "); ncat(b,o->level); scat(b,"  "); scat(b,w); }
             else if(it[sel]==TI_NEW) scpy(b,"START A NEW ADVENTURE");
             else if(it[sel]==TI_LOAD) scpy(b,"PICK ONE OF YOUR 3 SAVE SLOTS");
             else if(it[sel]==TI_HELP) scpy(b,"THE BUTTONS, AND TIPS");
-            else if(it[sel]==TI_KART) scpy(b, kwu ? "THE KART RACING GAME, ALL ON ITS OWN" : "BEAT THE GAME TO UNLOCK THIS");
-            else if(it[sel]==TI_SIZE) scpy(b, kwu ? "THE HUGE NUMBERS IN THIS GAME" : "BEAT THE GAME TO UNLOCK THIS");
+            else if(it[sel]==TI_EXTRA) scpy(b, kwu ? "KART WORLD AND HOW BIG IS IT?" : "UNLOCKABLES: KART WORLD AND MORE");
             else scpy(b,"SOUND, AUTOSAVE AND MORE");
             b[34]=0; if(!FILM) stext(pg,120-textlen(b)*2,y,b,C_CYAN);
         }
@@ -1010,9 +1009,7 @@ static int title_screen(void){
             if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; return 1; } full=1; }
             if(a==TI_OPT){ oam_hide_all(); oam_flush(); options_screen(pg); full=1; }
             if(a==TI_HELP){ oam_hide_all(); oam_flush(); help_screen(pg); full=1; }
-            if(a==TI_SIZE){ oam_hide_all(); oam_flush(); if(kwu){ if(cs>=0) cur_slot=cs; size_screen(pg,1); }
-                else { const char *ln[3]={"THE GAME'S HUGE NUMBERS, EVERY DIGIT.","BEAT THE ANT KING TO OPEN IT.","(ONE BEATEN GAME OPENS IT FOR EVERYONE)"}; card(pg,"HOW BIG IS IT?",ln,3); } full=1; }
-            if(a==TI_KART){ if(kwu){ oam_hide_all(); oam_flush(); return 2; } const char *ln[3]={"A WHOLE KART RACING GAME IS HIDDEN HERE.","BEAT THE ANT KING TO OPEN IT.","(ONE BEATEN GAME OPENS IT FOR EVERYONE)"}; oam_hide_all(); oam_flush(); card(pg,"KART WORLD",ln,3); full=1; }
+            if(a==TI_EXTRA){ oam_hide_all(); oam_flush(); if(title_extras(pg,cs)==2) return 2; full=1; }
             wait_release();
         }
     }
@@ -1042,6 +1039,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     if(!(cont && load_game(1))){ cont=0; new_game(); story_dna(0); cam_fp=opt_cam; planet_tables(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
 #ifdef TEST_WORLD
     endless=1; world_no=TEST_WORLD; make_world();
+#endif
+#ifdef TEST_KW
+    kw_unlock(); kart_world();
 #endif
 #ifdef TEST_SAVE
     {   // set something in every save block, save, wipe it all, load, and check each value came back
