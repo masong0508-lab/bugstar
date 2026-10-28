@@ -154,7 +154,7 @@ static inline __attribute__((always_inline)) int hell_paint(int c, int h, int x,
     }
     return c; }
 // ---- the three big loops of making a world run from fast internal memory (they touch 65,536 points each)
-IWRAM static void land_octave(s16 *acc, const u8 *grid, const u16 *sm, int sh, int n, int am){
+static void land_octave(s16 *acc, const u8 *grid, const u16 *sm, int sh, int n, int am){
     int nm=n-1; u16 T[TW], B[TW], S[TW]; int band=-1;                                    // T/B: the grid rows above and below, already blended across x
     for(int x=0;x<TW;x++) S[x]=sm[x];
     for(int y=0;y<TW;y++){ int gy=y>>sh, fy=S[y];
@@ -163,7 +163,7 @@ IWRAM static void land_octave(s16 *acc, const u8 *grid, const u16 *sm, int sh, i
         s16 *ac=acc+y*TW; int wy=256-fy;
         for(int x=0;x<TW;x++){ int v=(T[x]*wy+B[x]*fy)>>16; ac[x]+=((v-128)*am)>>7; } }
 }
-IWRAM static void land_smooth(void){                         // the map smoothed up to two texels per cell (texel centres at 1/4 and 3/4 of a cell)
+static void land_smooth(void){                         // the map smoothed up to two texels per cell (texel centres at 1/4 and 3/4 of a cell)
     for(int y0=0;y0<TW;y0++){ const u8 *r0=hmap+y0*TW, *r1=hmap+((y0+1)&TMASK)*TW; u16 *o0=(u16*)(hfine+(y0*2)*HW), *o1=(u16*)(hfine+(y0*2+1)*HW);
         int a=r0[0], c=r1[0];
         for(int x0=0;x0<TW;x0++){ int x1=(x0+1)&TMASK, b=r0[x1], d=r1[x1];          // one cell -> its four texels, written two at a time
@@ -172,7 +172,7 @@ IWRAM static void land_smooth(void){                         // the map smoothed
             o1[x0]=(u16)(((t0+b0*3)>>4) | (((t1+b1*3)>>4)<<8));
             a=b; c=d; } }
 }
-IWRAM static void land_paint(const s8 *htab, int rst, int rch, int sl, int hw_){  // the colour of every texel: shade, sun, beaches, snow, stripes, hell patterns
+static void land_paint(const s8 *htab, int rst, int rch, int sl, int hw_){  // the colour of every texel: shade, sun, beaches, snow, stripes, hell patterns
     u8 b4[16]; for(int i=0;i<16;i++) b4[i]=bay4[i];
     s8 ht[256]; for(int i=0;i<256;i++) ht[i]=htab[i];                               // the tables live on the fast stack
     int wl=water_lv, two=wd.twotone, sand=wd.sand, snow=wd.snow;
@@ -708,6 +708,7 @@ sprites:;
     if(m7_on) m7_present();
 }
 static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc){      // a soft shadow under the parked ship: the ground under it, a few shades darker
+    if(sc>140) sc=140;                                                  // (first person: the ship can stand right beside you; never paint a shadow wider than the screen)
     int rx=sc*5/12+2, ry=rx/3+1;
     for(int dy=-ry; dy<=ry; dy++){ int y=cy+dy; if(y<18||y>=160) continue;
         int w=rx*(int)isqrt((u32)(ry*ry-dy*dy))/ry;

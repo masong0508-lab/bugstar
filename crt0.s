@@ -10,7 +10,7 @@ rom_start:
     ldr sp,=0x03007fa0
     mov r0,#0x1f
     msr cpsr_c,r0
-    ldr sp,=0x03007f00
+    ldr sp,=0x03007e80
     ldr r0,=__iwram_lma
     ldr r1,=__iwram_start
     ldr r2,=__iwram_end
