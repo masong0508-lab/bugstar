@@ -1306,7 +1306,7 @@ static int load_ext(void){
     if(s->magic!=0x50494853 || s->sum!=sx_sum(s)){ load_ext_defaults(); beast_load(); trophy_load(); tv_load(); return 0; }
     cur_sys=s->cur_sys; cluster_no=s->cluster_no; fuel=s->fuel; hull=s->hull; shield_lv=s->shield_lv; laser_lv=s->laser_lv; cargo_cap=s->cargo_cap;
     ant_king=s->ant_king; cleared_mask=s->cleared_mask; zones_open=s->zones_open; visits=s->visits; w_dlv=s->w_dlv; memcpy(cargo,s->cargo,8);
-    beast_load(); trophy_load(); tv_load(); dp_load(); addr_load(); u_settle(); hum_load(); kart_load(); gen_cluster(); if(ant_king) kw_unlock(); return 1;
+    beast_load(); trophy_load(); tv_load(); dp_load(); addr_load(); u_settle(); hum_load(); kart_load(); ore_load(); gen_cluster(); if(ant_king) kw_unlock(); return 1;
 }
 static void story_boss_beaten(void){
     cleared_mask|=1<<zone; if(zones_open<zone+2) zones_open=zone+2; if(zones_open>6) zones_open=6;

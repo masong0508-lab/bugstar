@@ -125,7 +125,7 @@ static void do_save(void){        // always saves, into the slot you are playing
     s->pet_form=pet_form; s->pet_form_t=pet_form_t; s->pet_maxhp=pet_maxhp; s->pet_hp=pet_hp;
     s->sum=save_sum(s);
     sram_write(slot_base(cur_slot), s, sizeof(Save));
-    save_ext(); uni_save(); grind_save();
+    save_ext(); uni_save(); grind_save(); ore_save();
     Meta m, old; meta_read(cur_slot,&old);
     m.magic=0x4154454D; m.secs=play_secs(); m.saves=old.saves+1; m.sum=meta_sum(&m);
     sram_write(slot_base(cur_slot)+META_OFF, &m, sizeof(Meta));

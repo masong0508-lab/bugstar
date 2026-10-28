@@ -287,9 +287,11 @@ static int xo_n(int c){ int v=xo_v(XO_ECOUNT); if(v==100) return c; c=c*v/100; i
 static int xo_fuel(int n){ return (n*xo_v(XO_FUEL)+99)/100; }
 
 #include "sound.inc"
+static void ore_reset(void); static void ore_save(void); static void ore_load(void);   // (ore.inc, after save.inc)
 #include "game.inc"
 #include "ship.inc"
 #include "save.inc"
+#include "ore.inc"
 static void title_restore(volatile u16 *pg, int y0, int y1); static void twinkle(volatile u16 *pg, int t);
 static int beast_stage;
 #include "ui.inc"
