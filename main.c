@@ -44,6 +44,11 @@ static u32 g_w0,g_w1,g_w2,pp[6],pq;
 #define PPT(i) do{}while(0)
 #endif
 static int dbg_cls=-1, dbg_weird=-1, dbg_hour=-1, dbg_weather=-1, dbg_god=0, dbg_fps=DBGFPS;
+static int dbg_on=0, dbg_mp=0, dbg_food=0, dbg_gold=0, dbg_fuel=0, dbg_ohk=0, dbg_noclip=0, dbg_spd=0, dbg_info=0, dbg_live_ctx=0, dbg_kon=0;   // the live cheats (debug.inc): dbg_on = the code was typed this session
+static const u16 dbg_kc[10]={K_UP,K_UP,K_DOWN,K_DOWN,K_LEFT,K_RIGHT,K_LEFT,K_RIGHT,K_B,K_A};
+static int dbg_live_menu(volatile u16 *pg);
+#define DBG_EDGE(x,y) ((x)<0x10000||(y)<0x10000||(x)>=((MW-1)<<16)||(y)>=((MW-1)<<16))
+#define PBOX(x,y,r) (dbg_noclip ? DBG_EDGE(x,y) : box_solid(x,y,r))
 // ---- the kart races' hardware ground (m7.inc): on, and the first screen row the ground can use (the rows above come from page 0)
 static int m7_on=0, m7_strip=160, m7_snap=0; static s32 m7_cb_snap=0; static void m7_pix(int x, int y, int c); static void m7_span(int y, int x0, int x1, int c); IWRAM static void m7_irq(void); static void m7_after_vsync(void);
 
@@ -412,6 +417,7 @@ static void kill_mon(DObj *o){
     hud_now();
 }
 static void hit_mon(DObj *o, int dmg, int crit){
+    if(dmg>32000) dmg=32000;                                                           // (monster health is 16 bits: a bigger hit must not wrap round)
     if(nm_has(o,NF_ARMOR)){ dmg=(dmg+1)/2; if(dmg<1) dmg=1; }                         // rockbacks: half damage
     o->hp-=dmg; o->flash=6; add_fnum(o->x,o->y,dmg,crit?C_GOLD:C_WHITE); sfx(1);
     if(d_fire) burst(o->x,o->y,0x6000,4,0);
@@ -471,9 +477,9 @@ static void player_move(s32 tvx, s32 tvy){
     else if(tvx||tvy){ pvx+=(tvx-pvx)>>2; pvy+=(tvy-pvy)>>2; }      // speeding up takes a moment...
     else { pvx-=pvx>>1; pvy-=pvy>>1; }                              // ...and stopping is quick, with a little weight
     if(iabs(pvx)<0x60) pvx=0; if(iabs(pvy)<0x60) pvy=0;
-    s32 r = box_solid(px_,py_,PRAD) ? 0x1000 : PRAD, ox=px_, oy=py_;
-    s32 nx=px_+pvx; if(!box_solid(nx,py_,r)) px_=nx; else { s32 v=iabs(pvx); if(v>0x500) thump(v>0x1000); pvx=0; }
-    s32 ny=py_+pvy; if(!box_solid(px_,ny,r)) py_=ny; else { s32 v=iabs(pvy); if(v>0x500) thump(v>0x1000); pvy=0; }
+    s32 r = PBOX(px_,py_,PRAD) ? 0x1000 : PRAD, ox=px_, oy=py_;
+    s32 nx=px_+pvx; if(!PBOX(nx,py_,r)) px_=nx; else { s32 v=iabs(pvx); if(v>0x500) thump(v>0x1000); pvx=0; }
+    s32 ny=py_+pvy; if(!PBOX(px_,ny,r)) py_=ny; else { s32 v=iabs(pvy); if(v>0x500) thump(v>0x1000); pvy=0; }
     moved_real = iabs(px_-ox)+iabs(py_-oy) > 0x200;
 }
 static void bodies_tick(void){          // you against everything solid, every 60th
@@ -699,7 +705,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     s32 spf = (HELD(ku) || auto_run) ? WALK_FWD : HELD(kd) ? -WALK_BACK : 0;
     s32 sps = HELD(ksr) ? WALK_SIDE : HELD(ksl) ? -WALK_SIDE : 0;
     if(spf && sps){ spf=spf*3/4; sps=sps*3/4; }          // diagonals are not faster
-    spf = spf*(100+d_spd+(endless&&cur_moon?15:0)+have_bug[BUG_CRICKET]*25)/100; sps = sps*(100+d_spd+(endless&&cur_moon?15:0)+have_bug[BUG_CRICKET]*25)/100;
+    spf = spf*(100+d_spd+dbg_spd+(endless&&cur_moon?15:0)+have_bug[BUG_CRICKET]*25)/100; sps = sps*(100+d_spd+dbg_spd+(endless&&cur_moon?15:0)+have_bug[BUG_CRICKET]*25)/100;
     if(speed_t){ spf=spf*8/5; sps=sps*8/5; }
     if(auto_run){ spf=spf*7/5; sps=sps*7/5; }
     int sp = (spf||sps);
@@ -1216,7 +1222,7 @@ static void pet_away_tick(void){
 static void run_game(void){
     while(1){
         read_keys(); if(scene!=1){ frames++; if(invuln) invuln--; }
-        if(dbg_god || xo_i(XO_GOD)){ hearts=maxh; food=100; mp=maxmp; hull=100; shield=20+shield_lv*20; pet_hp=pet_maxhp; }
+        dbg_tick();                                                                          // (the live cheats and the info overlay, debug.inc)
         if(dbg_fps || xo_i(XO_FPS)){ static int lv=0; int d=vbl_count-lv; lv=vbl_count; char b[12]; scpy(b,"FPS "); ncat(b, d>0 ? (60+d/2)/d : 60); text(VISPG,208,150,b,C_WHITE,1); }
         if(sys_req){ int rq=sys_req; sys_req=0; if(rq==2) return; start_game(1); continue; }
         rng_s += keys;

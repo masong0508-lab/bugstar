@@ -15,6 +15,11 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 | SELECT | Tap: switch between third person and first person. Hold SELECT + L/R: point the arrow at the door or your ship. Hold SELECT + LEFT/RIGHT (third person): turn the camera around your bug | Tap: cast your spell. Hold: up/down picks a bag item, L/R changes spell |
 | START | Pause screen (BUG, GEAR, MAGIC, QUEST, WORLD, FEATS, EXTRAS, MAP, SYSTEM). EXTRAS lists everything you can unlock: UNLOCKED or LOCKED, and what you need | Opens on the MAP |
 
+## Debug and cheat menu
+Type the Konami code (UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT B A) on the **title screen**, or on the **SYSTEM page of the pause screen** in a game (after that, SELECT on the SYSTEM page opens it).
+Pages (L/R): **GAME** (new/continue unlocked, save now, difficulty), **CHEAT** (god mode, infinite mana/gold/fuel, never hungry, one-hit kills, no-clip, move speed, level, add gold/XP, max stats), **ITEMS** (give gear by type/rarity/level, all 12 uniques, potions and gems, spells, friends, relics, tools, cores, ore), **WORLD** (hour, weather, world type, weird traits, kill monsters, reveal the map, teleport to the stairs), **SHIP** (fuel, repair, every shipyard level), **GO** (jump to a floor, a boss, space, a fleet battle, the beast...), **INFO** (position/seed overlay, FPS, hide HUD, state report), **TOOLS** (makers, music, sound test).
+Rows that do not fit where you are are hidden or greyed with the reason. Hold LEFT/RIGHT on a number to go fast.
+
 ## The story
 Your little droid **Bolt** rolls after you everywhere. He does not know what he is. He knows he is yours.
 Long ago a seed ship, the **Star Cruiser DAWN**, planted your worlds: the Garden, the Pond, the Night Lawn. Its crew were bugs. Its mind was Bolt. It fell on the Anthill. The Ant King opened its heart and built a mouth around it: the **Technobeast**, which eats ships to grow. The ants broke Bolt's memory into eight **data cores** and used them to power their drone outposts.

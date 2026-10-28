@@ -473,7 +473,7 @@ static void planet_frame(void){
           pw_h += th ? (th-pw_h)/4 + (th>pw_h?1:th<pw_h?-1:0) : -pw_h/3; pw_v += tv ? (tv-pw_v)/4 + (tv>pw_v?1:tv<pw_v?-1:0) : -pw_v/3;
           if(ik && (frames+k)%ik){ if(!th) pw_h=ph0; else pw_h=ph0+(pw_h-ph0)/2; if(!tv) pw_v=pv0; else pw_v=pv0+(pw_v-pv0)/2; } }
         s32 sp = 0x1600 + (wd.grav-1)*0x200; if(WL(MW_ZEROG)) sp=sp*(14+WL(MW_ZEROG))/10;   // ZERO-G: you bounce along
-        if(WL(MW_STICKY)) sp=sp*10/(12+WL(MW_STICKY)); if(d_spd) sp=sp*(100+d_spd)/100;      // STICKY GROUND; your marks and gear                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
+        if(WL(MW_STICKY)) sp=sp*10/(12+WL(MW_STICKY)); if(d_spd||dbg_spd) sp=sp*(100+d_spd+dbg_spd)/100;      // STICKY GROUND; your marks and gear                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
         if(kart_on){ sp=sp*9/4; if(HELD(K_B) && kart_boost>0){ sp=sp*7/4; kart_boost--; } else if(!HELD(K_B) && kart_boost<100 && (frames+k)%3==0) kart_boost++; }   // the kart: fast, and B boosts
         if(hm_at(ppx,ppy)<water_lv && !(form==FORM_CREATURE && form_body==2)) sp=sp*2/3;   // wading is slow (flyers don't wade)
         s32 mvx=(pw_h*sp)>>4, mvy=(pw_v*sp)>>4;

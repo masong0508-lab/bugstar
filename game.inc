@@ -754,6 +754,7 @@ static int bite_power(int *crit){
     if(eqw.it==IT_THORN && eqw.sub==3 && rndi(6)==0){ say("THE DARK THORN BITES YOU"); hearts-=2; hud_now(); }
     if(d_vamp && hearts<maxh){ hearts+=d_vamp; }
     if(xo_v(XO_VAMP) && hearts<maxh){ hearts+=xo_v(XO_VAMP); if(hearts>maxh) hearts=maxh; }
+    if(dbg_ohk) p=32000;
     { int dv=xo_v(XO_DMGOUT); if(dv!=100){ long long q=(long long)p*dv/100; if(q>250000000LL) q=250000000LL; if(q<-250000000LL) q=-250000000LL; if(p>0 && q<1) q=1; p=(int)q; } }
     return p;
 }

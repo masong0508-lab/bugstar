@@ -656,7 +656,7 @@ static void char_screen(volatile u16 *pg){
                 { s64 kills=0; for(int i=0;i<11;i++) kills+=st_kills[i];
                   scpy(b,"PLANETS "); ncat(b,st_planets); scat(b,"   FLOORS "); ncat(b,st_floors); scat(b,"   MONSTERS "); ncat(b,kills); text(pg,12,y,b,C_WHITE,1); y+=8;
                   scpy(b,"FISH "); ncat(b,st_fish); scat(b,"   ORE "); ncat(b,st_mined); scat(b,"   DODGES "); ncat(b,st_dodges); scat(b,"   WEIRD "); ncat(b,weird_seen); text(pg,12,y,b,C_WHITE,1); }
-                foot="A: CHOOSE";
+                foot= dbg_on ? "A: CHOOSE  SELECT: DEBUG" : "A: CHOOSE";
             }
             ui_foot(pg,foot,"L R: PAGE  START: BACK");
             if(page==5 && sys_msg[0]){ char sm[40]; scpy(sm,sys_msg); sm[34]=0; rect(pg,0,150,150,10,U_BG0); text(pg,6,152,sm,sys_col,1); }
@@ -667,6 +667,11 @@ static void char_screen(volatile u16 *pg){
         oam_hide_all(); if(page==0) me_oam(0,182,76,(tick>>4)&1); oam_flush();
         vsync(); read_keys();
         if(HIT(K_START)) break;
+        if(page==5){                                                   // the Konami code here (or SELECT, once it has been typed) opens the debug menu
+            int dq=0; u16 k=0; for(int i=0;i<10;i++) if(HIT(dbg_kc[i])) k=dbg_kc[i];
+            if(k){ if(k==dbg_kc[dbg_kon]) dbg_kon++; else dbg_kon=(k==K_UP)?1:0; if(dbg_kon==10){ dbg_kon=0; dq=1; } }
+            if(HIT(K_SEL) && dbg_on) dq=1;
+            if(dq){ int r=dbg_live_menu(pg); wait_release(); dirty=1; menu_msg[0]=0; sys_msg[0]=0; if(r) break; continue; } }
         if(HIT(K_L)){ ti=(ti+8)%9; page=ord[ti]; cur=0; sub=0; dirty=1; sys_msg[0]=0; sfx(7); }
         if(HIT(K_R)){ ti=(ti+1)%9; page=ord[ti]; cur=0; sub=0; dirty=1; sys_msg[0]=0; sfx(7); }
         int nmax = page==0?4 : page==1?bag_n : page==2?NSPELL : page==5?5 : page==8?EX_N : 0;
