@@ -194,15 +194,31 @@ static int cam3(s32 x, s32 y, s32 z, s32 *cx, s32 *cy, s32 *cz){
 }
 static int sproj(s32 x, s32 y, s32 z, int *sx, int *sy, s32 *zz){
     s32 cx,cy,cz; if(!cam3(x,y,z,&cx,&cy,&cz)) return 0;
-    s32 px=120+(s32)(((long long)cx*FOCS)/cz), py=VCY-(s32)(((long long)cy*FOCS)/cz);
+    s32 px, py;
+    if(cx>-8000000 && cx<8000000 && cy>-8000000 && cy<8000000){ px=120+cx*FOCS/cz; py=VCY-cy*FOCS/cz; }   // fits in 32 bits: a plain divide (the 64-bit one is a slow library call on the GBA, and every ship does 12 of them)
+    else { px=120+(s32)(((long long)cx*FOCS)/cz); py=VCY-(s32)(((long long)cy*FOCS)/cz); }
     if(px<-4000||px>4000||py<-4000||py>4000) return 0;
     *sx=px; *sy=py; if(zz) *zz=cz; return 1;
 }
 static void dot2(volatile u16 *pg, int x, int y, int c){ if(x>=0&&x<240&&y>=0&&y<128) pix(pg,x,y,c); }
+static int l2div(int a, int b){ if(b<0){ a=-a; b=-b; } return a>=0 ? (a+(b>>1))/b : -((-a+(b>>1))/b); }   // a/b rounded to the nearest
 static void line2(volatile u16 *pg, int x0, int y0, int x1, int y1, int c){
-    int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(n>400) return; if(!n){ dot2(pg,x0,y0,c); return; }
+    // clip to the 240x128 view first (Cohen-Sutherland), so a line that is off screen costs nothing and one that is partly on screen only walks its visible part
+    #define L2OC(x,y) (((x)<0) | (((x)>239)<<1) | (((y)<0)<<2) | (((y)>127)<<3))
+    if(x0<-20000||x0>20000||y0<-20000||y0>20000||x1<-20000||x1>20000||y1<-20000||y1>20000) return;
+    int o0=L2OC(x0,y0), o1=L2OC(x1,y1);
+    while(o0|o1){
+        if(o0&o1) return;                                                       // wholly off one side
+        int first = o0!=0, o = first?o0:o1, x, y;
+        if(o&8){ x=x0+l2div((x1-x0)*(127-y0),y1-y0); y=127; }
+        else if(o&4){ x=x0+l2div((x1-x0)*(0-y0),y1-y0); y=0; }
+        else if(o&2){ y=y0+l2div((y1-y0)*(239-x0),x1-x0); x=239; }
+        else { y=y0+l2div((y1-y0)*(0-x0),x1-x0); x=0; }
+        if(first){ x0=x; y0=y; o0=L2OC(x0,y0); } else { x1=x; y1=y; o1=L2OC(x1,y1); }
+    }
+    int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(!n){ pix(pg,x0,y0,c); return; }
     s32 fx=x0<<16, fy=y0<<16, sx=(dx<<16)/n, sy=(dy<<16)/n;
-    for(int i=0;i<=n;i++){ dot2(pg,(fx+0x8000)>>16,(fy+0x8000)>>16,c); fx+=sx; fy+=sy; }
+    for(int i=0;i<=n;i++){ int px=(fx+0x8000)>>16, py=(fy+0x8000)>>16; if((unsigned)px<240u && (unsigned)py<128u) pix(pg,px,py,c); fx+=sx; fy+=sy; }
 }
 static void wire(volatile u16 *pg, const s32 *v, int nv, const u8 *e, int ne, int c){
     int sx[16], sy[16]; u8 ok[16];
@@ -623,12 +639,15 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     int danger=space_danger();
     if(!in_lair && !can_land && lr(1500) < 2+danger) spawn_pirates(1);
     // ---- every ship: pick a target, fly at it, shoot. Wingmen fight enemies and form up on you when it's quiet; enemies hunt you and your wingmen
+    int scans=0;                                                                          // (a full look round is slow: only a few a frame, so a big battle does not stall when ships die)
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
-        if(((frames+i)&31)==0 || (p->tgt>=0 && (!pir[p->tgt].alive || pir[p->tgt].team==p->team))){     // re-pick a target now and then
-            s32 bd = p->team ? (s32)(isqrt((u32)(((shx-p->x)>>4)*((shx-p->x)>>4)+((shy-p->y)>>4)*((shy-p->y)>>4)+((shz-p->z)>>4)*((shz-p->z)>>4)))<<4) : 14000;
+        if(scans<6 && (((frames+i)&31)==0 || (p->tgt>=0 && (!pir[p->tgt].alive || pir[p->tgt].team==p->team)))){     // re-pick a target now and then
+            scans++;
+            u32 bd; { s32 ax=(shx-p->x)>>4, ay=(shy-p->y)>>4, az=(shz-p->z)>>4; bd = p->team ? (u32)(ax*ax+ay*ay+az*az) : 765625u; }   // (squared distances in 1/16s: no square roots needed to find the nearest)
             p->tgt = p->team ? -1 : -2;                                                   // -1: you. -2: nobody (wingmen form up)
             for(int j=0;j<NPIR;j++){ Pirate *q=&pir[j]; if(!q->alive || q->team==p->team) continue; s32 ex=q->x-(p->team?p->x:shx), ey=q->y-(p->team?p->y:shy), ez=q->z-(p->team?p->z:shz);   // wingmen go for the enemy nearest YOU
-                s32 dd=isqrt((u32)((ex>>4)*(ex>>4)+(ey>>4)*(ey>>4)+(ez>>4)*(ez>>4)))<<4; if(!p->team){ s32 px_=q->x-shx, pz_=q->z-shz; if((px_<0?-px_:px_)+(pz_<0?-pz_:pz_)>16000) continue; }
+                if(!p->team){ s32 px_=q->x-shx, pz_=q->z-shz; if((px_<0?-px_:px_)+(pz_<0?-pz_:pz_)>16000) continue; }
+                ex>>=4; ey>>=4; ez>>=4; u32 dd=(u32)(ex*ex+ey*ey+ez*ez);
                 if(dd<bd){ bd=dd; p->tgt=j; } } }
         s32 tx,ty,tz;
         if(p->tgt==-1){ tx=shx; ty=shy; tz=shz; }
@@ -650,7 +669,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         if(!p->cool && l<7000 && aim>15500){ p->cool=40+lr(30); p->fire_t=4;
             s32 ex=p->x-shx, ez=p->z-shz; if((ex<0?-ex:ex)+(ez<0?-ez:ez)<6000) sfx(p->team?4:10);
             if(p->tgt==-1){ if(lr(100)<55) ship_hit(4+danger*2,0); }
-            else if(lr(100)<45){ Pirate *q=&pir[p->tgt]; q->hp -= p->team ? 4+danger*2 : 6+laser_lv*4+ship_gun(); boom(q->x,q->y,q->z,3,p->team?53:52);
+            else if(pir[p->tgt].alive && pir[p->tgt].team!=p->team && lr(100)<45){ Pirate *q=&pir[p->tgt]; q->hp -= p->team ? 4+danger*2 : 6+laser_lv*4+ship_gun(); boom(q->x,q->y,q->z,3,p->team?53:52);
                 if(q->hp<=0) ship_dies(q,0); } }
     }
     // canisters: fly into them to scoop the cargo
@@ -701,17 +720,22 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
             v[k*3]=a->x+((x*c-z*s_)>>14); v[k*3+1]=a->y+y; v[k*3+2]=a->z+((x*s_+z*c)>>14); }
         static const u8 ae[]={0,2,0,3,0,4,0,5,1,2,1,3,1,4,1,5,2,4,2,5,3,4,3,5};
         wire(pg,v,6,ae,12,a->flash?49:(a->seed&1)?56:51); }
-    // pirates: little wireframe fighters
+    // pirates: little wireframe fighters. In a crowd the far ones are drawn simpler (fewer lines) or as a mark, and the ones off screen are not drawn at all
+    int crowd=0; for(int i=0;i<NPIR;i++) if(pir[i].alive) crowd++;
+    s32 lod_z = crowd>32 ? 1500 : crowd>16 ? 2200 : 3000, dot_z = crowd>32 ? 4200 : 5500;
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
-        int col = p->team ? 53 : 52;
+        int col = p->team ? 53 : 52, lod=0;
         { int sx,sy; s32 z; if(!sproj(p->x,p->y,p->z,&sx,&sy,&z)) continue;
           if(p->fire_t){ int tx_,ty_; if(p->tgt==-1) line2(pg,sx,sy,120+(frames&7)-4,chase_cam?100:124,col); else if(p->tgt>=0 && sproj(pir[p->tgt].x,pir[p->tgt].y,pir[p->tgt].z,&tx_,&ty_,0)) line2(pg,sx,sy,tx_,ty_,col); }
-          if(z>5500){ dot2(pg,sx,sy,col); dot2(pg,sx-1,sy,col); dot2(pg,sx+1,sy,col); dot2(pg,sx,sy-1,col); continue; } }   // far away: a small mark
+          if(z>dot_z){ dot2(pg,sx,sy,col); dot2(pg,sx-1,sy,col); dot2(pg,sx+1,sy,col); dot2(pg,sx,sy-1,col); continue; }   // far away: a small mark
+          { int rp=(int)(140*FOCS/z)+2; if(sx+rp<0 || sx-rp>239 || sy+rp<0 || sy-rp>127) continue; }                    // the whole ship is off the screen: skip it
+          lod = z>lod_z; }
         s16 R[3]={p->f[2],0,(s16)-p->f[0]}; norm3(R); s16 U[3]={(s16)((p->f[1]*R[2]-p->f[2]*R[1])>>14),(s16)((p->f[2]*R[0]-p->f[0]*R[2])>>14),(s16)((p->f[0]*R[1]-p->f[1]*R[0])>>14)};
         static const s16 mdl[6][3]={{0,0,110},{-110,0,-50},{110,0,-50},{0,35,-50},{0,-18,-50},{0,0,-70}};
         s32 v[6*3]; for(int k=0;k<6;k++){ for(int a=0;a<3;a++) v[k*3+a]=(a==0?p->x:a==1?p->y:p->z)+((mdl[k][0]*R[a]+mdl[k][1]*U[a]+mdl[k][2]*p->f[a])>>14); }
         static const u8 pe[]={0,1,0,2,0,3,0,4,1,3,2,3,1,4,2,4,3,5,4,5,1,5,2,5};
-        wire(pg,v,6,pe,12,col); }
+        static const u8 pel[]={0,1,0,2,1,5,2,5,3,5};                                                                  // (far away: just the outline and the fin)
+        if(lod) wire(pg,v,6,pel,5,col); else wire(pg,v,6,pe,12,col); }
     for(int k=0;k<4;k++) if(cans[k].alive){ int sx,sy; s32 z; if(sproj(cans[k].x,cans[k].y,cans[k].z,&sx,&sy,&z)){ int r=(int)(60*FOCS/z)+1; line2(pg,sx-r,sy,sx,sy-r,50); line2(pg,sx,sy-r,sx+r,sy,50); line2(pg,sx+r,sy,sx,sy+r,50); line2(pg,sx,sy+r,sx-r,sy,50); } }
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; int sx,sy; if(sproj(p->x,p->y,p->z,&sx,&sy,0)){ dot2(pg,sx,sy,p->life>12?49:p->col); dot2(pg,sx+1,sy,p->col); } }
     int lz=laser_t; if(laser_t) laser_t--;
@@ -959,8 +983,11 @@ static int universe_menu(volatile u16 *pg){                             // pick 
             rect(pg,8,68,224,34,0);                                                                       // then only the lines that change
             { int n=uni_dec(dd,to);
               if(n<=10){ uni_name(c,to); scpy(b,"< "); scat(b,c); scat(b," >"); text(pg,120-textlen(b)*4,70,b,C_GOLD,2); }
-              else { char l1[44], l2[44]; int k=0; for(int i=0;i<n && i<39;i++) l1[k++]=dd[i]; l1[k]=0; k=0; for(int i=39;i<n;i++) l2[k++]=dd[i]; l2[k]=0;   // long ones: the digits, 22 to a line
-                  scpy(b,"#"); scat(b,l1); text(pg,120-textlen(b)*4,69,b,C_GOLD,1); if(l2[0]) text(pg,120-textlen(l2)*4,77,l2,C_GOLD,1); } }
+              else { char sg[112], l1[60]; const char *l2=""; int k=0; for(int i=0;i<n;i++){ sg[k++]=dd[i]; if(i<n-1 && (n-1-i)%3==0) sg[k++]=','; } sg[k]=0;   // long ones: every digit, in threes with commas, on one or two lines
+                  scpy(l1,"#");
+                  if(k<=50) scat(l1,sg);
+                  else { int cut=k/2; while(sg[cut]!=',') cut++; for(int i=0;i<=cut;i++) l1[1+i]=sg[i]; l1[cut+2]=0; l2=sg+cut+1; }   // (break after a comma near the middle)
+                  if(l2[0]){ ctext(pg,120,69,l1,C_GOLD); ctext(pg,120,77,l2,C_GOLD); } else ctext(pg,120,73,l1,C_GOLD); } }
             { u32 d[UW], dz=0; uni_sub(d,to,uni_w); for(int i=0;i<UW;i++) dz|=d[i];
               if(!dz) ctext(pg,120,90,"THAT IS WHERE YOU ARE NOW",C_CYAN);
               else { char ds[144]; int n=uni_dec(ds,d); if(n<=10){ scpy(b,"THAT IS "); kcomma(b,d[0]); scat(b, d[0]==1 ? " UNIVERSE AWAY" : " UNIVERSES AWAY"); }
