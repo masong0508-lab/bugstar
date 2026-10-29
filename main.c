@@ -774,7 +774,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(escape_flag){ escape_flag=0; return 3; }
     // ---- spells
     if(cast_flag>=0){ int s=cast_flag; cast_flag=-1;
-        if(!spell_ok(s)) say("YOU HAVEN'T LEARNED THAT SPELL");
+        if(!spell_ok(s)){ if(s<SP_CORE || spell_known[s]){ char m_[32]; scpy(m_,"NEEDS "); ncat(m_,spell_mag[s]); scat(m_," MAGIC"); say(m_); } else say("YOU HAVEN'T LEARNED THAT SPELL"); }
         else { int cost=spell_def[s].cost*xo_v(XO_SPELL)/100; if(mp<cost) say("NOT ENOUGH MANA");
             else if(cast_spell(s,dirx,diry,plx,ply)){ mp-=cost; hud_now(); } } }
     if(wtick) sum_tick();

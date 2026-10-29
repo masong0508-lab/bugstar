@@ -472,7 +472,11 @@ static s64 st_str, st_dex, st_vit, st_mag, stat_pts, mp, maxmp;
 static int fame;
 static s64 d_dmg, d_def; static int d_crit, d_spd, d_regen, d_reflect, d_vamp, d_haste, d_sting, d_fire, d_light, d_venom;
 static u8 spell_known[NSPELL]; static int spell_sel=0;
-static int spell_ok(int i){ return i<SP_CORE ? level>=spell_def[i].lvl : spell_known[i]; }       // core spells: by level. The rest: bought or found
+// Every spell needs MAGIC (the stat) before you can use it. The five core spells used to unlock by player level; they now unlock by magic at four times the old level.
+// The rest are still bought or found, but you can't cast them until your magic is high enough. Order matches spell_def.
+static const u16 spell_mag[NSPELL]={4,12,20,28,40, 8,14,22,26,32,38,45,60,100, 15,18,20,24,30,34,40,80,150, 12,10,16,18,30,50,70,120};
+static int spell_own(int i){ return i<SP_CORE ? st_mag>=spell_mag[i] : spell_known[i]; }         // do you have it? (core: your magic is high enough. Others: bought or found)
+static int spell_ok(int i){ return spell_own(i) && st_mag>=spell_mag[i]; }                       // can you cast it right now?
 static int shake_t=0, bob_ph=0;
 static int speed_t=0, strong_t=0, dizzy_t=0, stun_t=0, sight=0, hunger_t=0, shield_t=0, regen_t=0;
 static int escape_flag=0, call_flag=0, blast_flag=0, cast_flag=-1;
@@ -765,7 +769,7 @@ static void use_index(int i){
     case IT_GEM: { int t=sub&3; scpy(b,gem_name[t]); scat(b,": "); scat(b,gem_use[t]);
         if(t==0) hearts=maxh; else if(t==1) gain_xp(20+depth_no*3); else if(t==2) food=100; else { st_str=sadd(st_str,2); recalc(); }
         say(b); break; }
-    case IT_BOOK: if(sub<SP_CORE){ say("THAT SPELL COMES WITH YOUR LEVEL"); return; } if(spell_ok(sub)){ say("YOU KNOW THAT SPELL"); return; } spell_known[sub]=1; spell_sel=sub; scpy(b,"LEARNED "); scat(b,spell_def[sub].name); say(b); break;
+    case IT_BOOK: if(sub<SP_CORE){ say("THAT SPELL COMES WITH YOUR MAGIC"); return; } if(spell_known[sub]){ say("YOU KNOW THAT SPELL"); return; } spell_known[sub]=1; spell_sel=sub; scpy(b,"LEARNED "); scat(b,spell_def[sub].name); say(b); break;
     case IT_FISH: if(!feed_pet(sub)) return; break;
     case IT_KEY: say("WALK INTO THE LOCKED DOOR TO USE IT"); return;
     }
