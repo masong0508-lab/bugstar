@@ -20,6 +20,7 @@ static u32 gsk(u32 k){ int top=UW-1; while(top>3 && !uni_w[top]) top--; if(!(uni
 static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
 #define TZ (zone+(opt_diff==5?6:0))
 static const u8 dif_dmg[6]={1,6,8,10,14,20}, dif_hun[6]={12,6,5,4,3,2}, dif_gold[6]={0,100,125,150,250,400};   // NORMAL is now what NIGHTMARE used to be (3x damage, 2x hunger, +100 gold); every step above it is harder again   // damage taken (in halves), hunger speed (/12), gold bonus                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
+static u32 ml_total; static u16 ml_n[8];      // the mining log: ore pieces mined in all, and per ore (4..11); saved in a block of its own (ore.inc)
 static int st_kills[11], st_fish, st_barrels, st_mined, st_dodges, st_planets, st_uniq, st_tiers, st_floors;
 static u32 ach_done;                                 // one bit per achievement
 static int pet_xp, pet_lv;
@@ -561,16 +562,17 @@ static const char *fame_rank(void){
     return fame>=1200?"BUG LEGEND": fame>=700?"CHAMPION": fame>=350?"HERO": fame>=150?"BRAVE BUG": fame>=50?"KNOWN BUG":"NOBODY";
 }
 
-#define NACH 13
+#define NACH 16                 // 13 old feats + the three ore tiers (the feats page shows only the tier you are on)
 typedef struct { const char *name, *what; u16 goal, gold, fame; } Ach;
 static const Ach ach[NACH]={
     {"SPIDER SQUASHER","SLAY 50 SPIDERS",50,150,20},{"BEETLE BREAKER","SLAY 25 BEETLES",25,200,25},{"WASP SWATTER","SLAY 25 WASPS",25,200,25},
     {"FRIEND OF BUGS","FREE 10 CAGED BUGS",10,120,60},{"ANGLER","CATCH 10 FISH",10,100,15},{"SMASHER","BREAK 30 BARRELS",30,100,10},
     {"MINER","MINE 40 THINGS ON PLANETS",40,250,20},{"DODGER","DODGE 25 BITES",25,150,20},{"EXPLORER","LAND ON 6 WORLDS",6,200,30},
     {"DEEP DIVER","GO DOWN 30 FLOORS",30,300,40},{"COLLECTOR","FIND 3 UNIQUE ITEMS",3,400,50},{"CHAMPION","CLEAR 3 ZONE TIERS",3,500,80},
-    {"BUG LEGEND","REACH LEVEL 20",20,999,150}};
+    {"BUG LEGEND","REACH LEVEL 20",20,999,150},
+    {"ORE HAULER","MINE 40 ORE FROM VEINS",40,150,15},{"PROSPECTOR","MINE 400 ORE FROM VEINS",400,600,50},{"MOTHERLODE","MINE 4000 ORE FROM VEINS",4000,2500,150}};
 static int ach_have(int i){ switch(i){ case 0: return st_kills[0]; case 1: return st_kills[7]; case 2: return st_kills[8]; case 3: return bugs_freed; case 4: return st_fish;
-    case 5: return st_barrels; case 6: return st_mined; case 7: return st_dodges; case 8: return st_planets; case 9: return st_floors; case 10: return st_uniq; case 11: return st_tiers; default: return clampi(level); } }
+    case 5: return st_barrels; case 6: return st_mined; case 7: return st_dodges; case 8: return st_planets; case 9: return st_floors; case 10: return st_uniq; case 11: return st_tiers; case 12: return clampi(level); case 13: case 14: case 15: return ml_total>30000?30000:(int)ml_total; default: return clampi(level); } }
 static void ach_check(void){
     for(int i=0;i<NACH;i++) if(!(ach_done>>i&1) && ach_have(i)>=ach[i].goal){ ach_done|=1u<<i; gold+=ach[i].gold; fame+=ach[i].fame;
         char b[40]; scpy(b,"FEAT: "); scat(b,ach[i].name); scat(b," +"); ncat(b,ach[i].gold); scat(b,"G"); say(b); sfx(6); hud_now(); }

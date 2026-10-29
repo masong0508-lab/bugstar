@@ -543,7 +543,7 @@ static void planet_frame(void){
                       if(!o->var){ o->var=1; o->hp=(u8)ore_hits(ore); }                              // (the first bite works out how many it needs with your tool)
                       if(--o->hp>0){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                       o->alive=0; ore_mark_mined(ore_id(o->x,o->y)); int tt=ore_tool_eff(), n=1+rndi(2)+(tt>=2)+(cur_moon?1:0)+(hellw()?hell_tier()/4:0)+(cur_rock==4?3 : cur_rock==2?1 : 0); if(pq_type==7){ pq_have++; job_tick(); }
-                      int got=ore_add(ore,n); st_mined+=n; ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
+                      int got=ore_add(ore,n); st_mined+=n; ml_add(ore,got); if(pq_type==10 && ore==pq_ore) pq_have=ore_n[ore]; ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
                       char b[40]; scpy(b,"+"); ncat(b,got); scat(b," "); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); show_msg(b); sfx(7);
                       if(cur_rock==4 && rndi(5)==0){ hurt(2); show_msg("CRACK! SHARDS HIT YOU"); sfx(4); }          // a crystal rock is brittle
                       break; } }
@@ -593,7 +593,7 @@ static void planet_frame(void){
       else if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_ROCK){ int ov=ore_of(po[best].x,po[best].y); if(ov>=0){ scpy(cb,"A: MINE "); scat(cb,ore_def[ov].name); scat(cb," VEIN"); if(ore_tool_eff()<ore_need_tool(ov)){ scat(cb," (NEEDS "); scat(cb,ore_tool_name[ore_need_tool(ov)]); scat(cb,")"); } s=cb; } } if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } else if(pk==O_DOOR && portal_depth>0){ scpy(cb,"A: PORTAL BACK TO B"); ncat(cb,portal_depth); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
       if(kr_mode || FILM){}
       else if(race_on){ char rb[40]; scpy(rb,kart_on?"KART ":"RACE "); ncat(rb,race_t/60); scat(rb,kart_on?"S  GATE ":"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/"); ncat(rb,race_n); if(kart_on){ scat(rb,"  PAR "); ncat(rb,race_par/60); scat(rb,"S"); rect(pg,4,146,50,3,C_DGREY); if(kart_boost>0) rect(pg,4,146,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); } stext(pg,4,151,rb,C_CYAN); }
-      else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4 && pq_type!=8){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
+      else if(pq_type && !pq_done){ char jb[48]; if(pq_type==10) pq_have=ore_n[pq_ore]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4 && pq_type!=8){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }
 #ifdef TEST_GEN
       { char gb[48]; scpy(gb,"GEN "); ncat(gb,(int)(gen_cyc/16780)); scat(gb,"MS OCT "); ncat(gb,(int)(oct_cyc/16780)); scat(gb," COL "); ncat(gb,(int)(col_cyc/16780)); scat(gb," CITY "); ncat(gb,(int)(city_cyc/16780)); stext(pg,4,130,"",C_RED); { char g2[40]; scpy(g2,"NRM "); ncat(g2,(int)(nrm_cyc/16780)); scat(g2," SMO "); ncat(g2,(int)(smo_cyc/16780)); stext(pg,4,40,g2,C_RED); } stext(pg,4,140,gb,C_RED); }
 #endif

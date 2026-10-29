@@ -1186,6 +1186,7 @@ static int galaxy_map(void){     // returns 1 if you jumped
 static int tech_scrap(void){ return 3*(tech_lv+1); }
 static int tech_cost(void){ if(beast_stage<1) return 0; return tech_lv<30 ? 2000*(tech_lv+1)*(tech_lv+1) : 0; }
 static int good_price(int g){ int e=sys[cur_sys].eco; int p=good_base[g]*eco_mul[e][g]/100; int wob=(int)((sys_id(cur_sys)*7+g*13+visits*5)%21); return p*(90+wob)/100+1; }
+static int ore_station_pct(void){ static const u8 m[4]={85,125,110,100}; int wob=(int)((sys_id(cur_sys)*7+visits*5)%21); return m[sys[cur_sys].eco&3]*(90+wob)/100; }      // mining worlds pay most for ore, farming worlds least
 static void station_menu(void){
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));
     int tab=0, sel=0, dirty=1; wait_release(); sfx(5);
@@ -1201,6 +1202,7 @@ static void station_menu(void){
                 text(pg,14,26,"GOODS        PRICE   YOU HAVE",C_GREY,1);
                 for(int i=0;i<8;i++){ if(i==sel) text(pg,6,36+i*10,">",C_CYAN,1); scpy(b,goods[i]); while(textlen(b)<13) scat(b," "); ncat(b,good_price(i)); scat(b,"G"); while(textlen(b)<21) scat(b," "); ncat(b,cargo[i]);
                     text(pg,14,36+i*10,b,i==sel?C_WHITE:C_GREY,1); }
+                { if(sel==8) text(pg,6,116,">",C_CYAN,1); scpy(b,"ALL ORE"); while(textlen(b)<13) scat(b," "); ncat(b,ore_station_pct()); scat(b,"%"); while(textlen(b)<21) scat(b," "); ncat(b,ore_bagn()); scat(b," = "); ncat(b,ore_sellval()*ore_station_pct()/100); scat(b,"G"); text(pg,14,116,b,sel==8?C_WHITE:C_GREY,1); }
                 scpy(b,"HOLD "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); text(pg,14,122,b,C_WHITE,1);
                 ui_lhint(pg,6,148,"A: BUY  B: SELL  L/R: SHIPYARD  START: LEAVE",C_CYAN);
             } else if(tab==2){
@@ -1235,7 +1237,7 @@ static void station_menu(void){
             }
         }
         vsync(); read_keys();
-        int nt = ant_king ? 4 : 3, n = tab==0 ? 8 : tab==2 ? 3 : tab==3 ? 4 : 11;
+        int nt = ant_king ? 4 : 3, n = tab==0 ? 9 : tab==2 ? 3 : tab==3 ? 4 : 11;
         if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; } if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; }
         if(HIT(K_R)){ tab=(tab+1)%nt; sel=0; dirty=1; } if(HIT(K_L)){ tab=(tab+nt-1)%nt; sel=0; dirty=1; }
         if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==10)) break;
@@ -1243,8 +1245,9 @@ static void station_menu(void){
             if(HIT(K_A)){ if(dp_nav_press(pg,sel)) break; dirty=1; }
         } else if(tab==0){
             int held=0; for(int i=0;i<8;i++) held+=cargo[i];
-            if(HIT(K_A)){ int p=good_price(sel); if(gold>=p && held<cargo_cap){ gold-=p; cargo[sel]++; sfx(7); } dirty=1; }
-            if(HIT(K_B) && cargo[sel]){ gold+=good_price(sel); cargo[sel]--; sfx(7); dirty=1; }
+            if(sel<8 && HIT(K_A)){ int p=good_price(sel); if(gold>=p && held<cargo_cap){ gold-=p; cargo[sel]++; sfx(7); } dirty=1; }
+            if(sel<8 && HIT(K_B) && cargo[sel]){ gold+=good_price(sel); cargo[sel]--; sfx(7); dirty=1; }
+            if(sel==8 && (HIT(K_B)||HIT(K_A)) && ore_bagn()){ int v=ore_sellval()*ore_station_pct()/100; gold+=v; for(int i=4;i<NORE;i++) ore_n[i]=0; sfx(7); dirty=1; }
         } else if(HIT(K_A) && sel==6){ int c=300+wing_n*150; if(wing_n>=MAXWING) say("YOU HAVE A FULL WING"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; wing_n++; sfx(6); } dirty=1;
         } else if(HIT(K_A) && sel==7){ battle_req=1; sfx(6); dirty=1;
         } else if(HIT(K_A) && sel==8){ int c=400*(fuel_tank+1); if(fuel_tank>=8) say("THE TANK IS AS BIG AS IT GETS"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; fuel_tank++; fuel+=40; sfx(6); } dirty=1;

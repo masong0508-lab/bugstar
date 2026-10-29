@@ -630,7 +630,8 @@ static void char_screen(volatile u16 *pg){
                 if(sub){ relic_shelf(pg,y); foot="A: SHOW YOUR FEATS"; }
                 else {
                     ui_head(pg,9,y,150,"FEATS",C_GOLD); { int dn=0; for(int i=0;i<NACH;i++) dn+=(ach_done>>i)&1; scpy(b,""); ncat(b,dn); scat(b,"/"); ncat(b,NACH); scat(b," DONE"); rtext(pg,231,y,b,U_SOFT); } y+=9;
-                    for(int i=0;i<NACH;i++){ int done=(ach_done>>i)&1, hv=ach_have(i); if(hv>ach[i].goal) hv=ach[i].goal; int yy=y+i*7;
+                    int ot=13; while(ot<NACH-1 && ((ach_done>>ot)&1)) ot++;                       // of the three ore feats only the one you are on is listed
+                    for(int r=0;r<14;r++){ int i = r<13 ? r : ot; int done=(ach_done>>i)&1, hv=ach_have(i); if(hv>ach[i].goal) hv=ach[i].goal; int yy=y+r*7;
                         if(done){ rect(pg,9,yy+1,3,3,C_GOLD); } else rect(pg,9,yy+1,3,3,U_TROUGH);
                         text(pg,15,yy,ach[i].name,done?C_GOLD:C_WHITE,1); text(pg,80,yy,ach[i].what,done?U_SOFT:C_DGREY,1);
                         if(done) text(pg,190,yy,"DONE",C_GREEN,1); else { hbar(pg,184,yy+1,24,hv,ach[i].goal,C_CYAN); scpy(b,""); ncat(b,hv); scat(b,"/"); ncat(b,ach[i].goal); text(pg,211,yy,b,C_DGREY,1); } }
@@ -905,14 +906,14 @@ static void mn_row(int i, char *b, int *c){
     else if(i==2){ scpy(b,"ORE BAG"); while(textlen(b)<20) scat(b," "); ncat(b,ore_bagn()); scat(b," ORES"); *c=C_WHITE; }
     else { scpy(b,"SMELTER"); while(textlen(b)<20) scat(b," "); if(sm_ready()){ scat(b,"DONE!"); *c=C_GREEN; } else if(sm_job){ ncat(b,sm_left()); scat(b,"S LEFT"); *c=C_GOLD; } else { scat(b,"BARS, PARTS, TOOLS"); *c=C_CYAN; } } }
 static void mn_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY;
-    if(i==0) scpy(b,"SELL EVERY ORE YOU CARRY (TIER 1 GOODS SELL AT STATIONS)");
+    if(i==0) scpy(b,"SELL EVERY ORE YOU CARRY (STATIONS PAY BY WORLD)");
     else if(i==1){ if(ore_tool>=3){ scpy(b,"YOUR LASER CUTTER BREAKS ANY VEIN"); return; } int t=ore_tool+1; scpy(b,"COSTS "); ncat(b,ore_up_gold[t]); scat(b,"G");
         if(ore_up_n1[t]){ scat(b," "); ncat(b,ore_up_n1[t]); scat(b," "); scat(b,ore_def[ore_up_o1[t]].name); } if(ore_up_n2[t]){ scat(b," "); ncat(b,ore_up_n2[t]); scat(b," "); scat(b,ore_def[ore_up_o2[t]].name); }
         *c=ore_can_up()?C_GREEN:C_RED; }
     else if(i==2) scpy(b,"WHAT YOU CARRY, AND WHAT IT IS WORTH");
     else scpy(b,"MELT ORE, MAKE PARTS, BUILD BETTER TOOLS"); }
 static void ob_row(int i, char *b, int *c){ int o=4+i; scpy(b,ore_def[o].name); while(textlen(b)<14) scat(b," "); ncat(b,ore_n[o]); while(textlen(b)<22) scat(b," "); scat(b,"T"); ncat(b,ore_def[o].tier); scat(b,"  "); ncat(b,ore_def[o].price); scat(b,"G EACH"); *c=ore_n[o]?C_WHITE:C_DGREY; }
-static void ob_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY; if(i<0) return; int o=4+i; scpy(b,"NEEDS A "); scat(b,ore_tool_name[ore_need_tool(o)]); scat(b,ore_need_tool(o)<=ore_tool?" (YOU CAN)":" (YOU CAN'T YET)"); *c=ore_need_tool(o)<=ore_tool?C_GREEN:C_RED; }
+static void ob_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY; if(i<0) return; int o=4+i; scpy(b,"MINED "); ncat(b,ml_n[i]); scat(b,"  NEEDS A "); scat(b,ore_tool_name[ore_need_tool(o)]); scat(b,ore_need_tool(o)<=ore_tool?" (YOU CAN)":" (YOU CAN'T YET)"); *c=ore_need_tool(o)<=ore_tool?C_GREEN:C_RED; }
 static void mining_menu(volatile u16 *pg){
     int s0=0, r;
     while(1){ list_desc=mn_desc; r=list_pick(pg,"MINING",4,mn_row,&s0,"A: CHOOSE  B: BACK"); if(r<0) break;

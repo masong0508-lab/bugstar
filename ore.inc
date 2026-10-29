@@ -26,7 +26,7 @@ _Static_assert(ORE_OFF >= 0xB5C, "the ore block must start after the humanoid bl
 // SRAM slot + 0xBA4 .. 0xBCC (audited: the ore block ends at 0xBA4 and the play-time block starts at 0xC00).
 // A save made before this block existed has none here: the smelter then starts empty. The time is play time (the same clock as the PLAYED screen).
 #define NMAT 12
-#define NREC 15
+#define NREC 17
 #define SM_OFF 0xBA4
 #define SM_SECS 15              // play seconds a single smelt takes
 #define SM_MAXB 5               // the most smelts you can queue at once
@@ -36,7 +36,8 @@ typedef struct { u8 kind, out, a, na, b, nb; } Recipe;   // kind 0 smelt (a, b =
 static const Recipe sm_rec[NREC]={
     {0,0, 4,2, 0,0},   {0,1, 5,2, 0,0},   {0,2, 6,2, 0,0},   {0,3, 8,1, 7,1},   {0,4, 9,2, 0,0},   {0,5, 10,2, 0,0},   {0,6, 11,2, 0,0},      // IRON, COPPER, GLASS (ice quartz), BLACK STEEL (obsidian + sulfur), CHALK (calcite), ALLOY (scrap alloy), VOID (voidsteel)
     {1,7, 0,2, 1,1},   {1,8, 0,3, 0,0},   {1,9, 2,2, 1,1},   {1,10, 5,2, 3,1},  {1,11, 4,2, 7,1},                                          // PLATING, DRILL BIT, LENS, ION CELL, BONE PLATE
-    {2,1, 0,3, 1,1},   {2,2, 8,2, 7,1},   {2,3, 9,1, 10,1} };                                                                              // PICKAXE, DRILL (made from iron and copper alone), LASER CUTTER (no voidsteel: voidsteel needs a laser cutter to mine)
+    {2,1, 0,3, 1,1},   {2,2, 8,2, 7,1},   {2,3, 9,1, 10,1},                                                                              // PICKAXE, DRILL, LASER CUTTER
+    {1,10, 6,1, 3,1},  {1,11, 6,1, 4,1} };                                                                                              // void bar shortcuts: ION CELL (void bar + black steel), BONE PLATE (void bar + chalk bar)                                                                              // PICKAXE, DRILL (made from iron and copper alone), LASER CUTTER (no voidsteel: voidsteel needs a laser cutter to mine)
 static u16 sm_n[NMAT]; static u8 sm_job, sm_jn; static u32 sm_done;       // what you hold; the smelt in progress (recipe + 1, how many, play second it finishes)
 typedef struct { u32 magic; u8 ver, job, jn, pad; u32 done; u16 n[NMAT]; u32 sum; } SmSave;     // 40 bytes
 _Static_assert(SM_OFF >= ORE_OFF+sizeof(OreSave), "the smelter block must start after the ore block");
@@ -55,11 +56,23 @@ static int sm_collect(void){ if(!sm_ready()) return 0; int out=sm_rec[sm_job-1].
 static int sm_left(void){ if(!sm_job) return 0; s32 d=(s32)(sm_done-play_secs()); return d>0?d:0; }
 static int sm_value(void){ int g=0; for(int i=0;i<NMAT;i++) g+=sm_n[i]*sm_price[i]; return g; }
 
-static void ore_reset(void){ sm_reset();  for(int i=0;i<NORE;i++) ore_n[i]=0; for(int i=0;i<ORE_RING;i++) ore_ring[i]=0; ore_ring_i=0; ore_tool=0; }
+// ---- the mining log: how much of each ore you have ever mined. SRAM slot + 0xBCC .. 0xBEC (the smelter block ends at 0xBCC, the play-time block starts at 0xC00).
+// A save made before this block existed has none here: the log starts at zero and nothing else changes.
+#define ML_OFF 0xBCC
+typedef struct { u32 magic; u8 ver, pad[3]; u32 total; u16 n[8]; u32 sum; } MlSave;     // 32 bytes
+_Static_assert(ML_OFF >= SM_OFF+sizeof(SmSave), "the log block must start after the smelter block");
+_Static_assert(ML_OFF+sizeof(MlSave) <= META_OFF, "the log block must end before the play-time block");
+static void ml_reset(void){ ml_total=0; for(int i=0;i<8;i++) ml_n[i]=0; }
+static void ml_add(int o, int n){ if(o<4||o>=NORE||n<=0) return; int v=ml_n[o-4]+n; ml_n[o-4]=(u16)(v>65535?65535:v); ml_total+=(u32)n; if(ml_total>999999) ml_total=999999; }
+static void ml_save(void){ MlSave s; memset(&s,0,sizeof s); s.magic=0x314C4D42u; s.ver=1; s.total=ml_total; for(int i=0;i<8;i++) s.n[i]=ml_n[i]; s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+ML_OFF,&s,sizeof s); }
+static void ml_load(void){ MlSave s; ml_reset(); sram_read(slot_base(cur_slot)+ML_OFF,&s,sizeof s);
+    if(s.magic!=0x314C4D42u || s.sum!=fnv(&s,sizeof s-4) || s.ver!=1) return; ml_total=s.total>999999?999999:s.total; for(int i=0;i<8;i++) ml_n[i]=s.n[i]; }
+
+static void ore_reset(void){ sm_reset(); ml_reset();  for(int i=0;i<NORE;i++) ore_n[i]=0; for(int i=0;i<ORE_RING;i++) ore_ring[i]=0; ore_ring_i=0; ore_tool=0; }
 static void ore_save(void){ OreSave s; memset(&s,0,sizeof s); s.magic=0x3145524Fu; s.ver=1; s.tool=ore_tool; s.ring_i=ore_ring_i;
     for(int i=0;i<NORE;i++) s.n[i]=ore_n[i]; for(int i=0;i<ORE_RING;i++) s.ring[i]=ore_ring[i];
-    s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+ORE_OFF,&s,sizeof s); sm_save(); }
-static void ore_load(void){ OreSave s; ore_reset(); sm_load(); sram_read(slot_base(cur_slot)+ORE_OFF,&s,sizeof s);
+    s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+ORE_OFF,&s,sizeof s); sm_save(); ml_save(); }
+static void ore_load(void){ OreSave s; ore_reset(); sm_load(); ml_load(); sram_read(slot_base(cur_slot)+ORE_OFF,&s,sizeof s);
     if(s.magic!=0x3145524Fu || s.sum!=fnv(&s,sizeof s-4) || s.ver!=1) return;           // no block (an old save) or a damaged one: an empty bag
     ore_tool = s.tool<=3 ? s.tool : 0; ore_ring_i = s.ring_i<ORE_RING ? s.ring_i : 0;
     for(int i=0;i<NORE;i++) ore_n[i]=s.n[i]; for(int i=0;i<ORE_RING;i++) ore_ring[i]=s.ring[i]; }

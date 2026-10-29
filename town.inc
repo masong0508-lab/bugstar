@@ -5,7 +5,7 @@ static int city_cx, city_cy, city_r;                        // the city, in cell
 EW static s16 cvx[NPO], cvy[NPO]; EW static u8 ctim[NPO];  // creatures: where each is heading, and for how long
 typedef struct { u8 body, temper, size, pop, maxpop; u16 col; char name[20]; } Species;   // temper 0 timid, 1 curious, 2 hostile
 static Species spc[2];
-static int pq_type=0, pq_need, pq_have, pq_done, pq_gold;   // the job from the bounty office (0 none, 1 slugs, 2 beetles, 3 fossils, 4 race, 5 census, 6 hunt, 7 ore)
+static u8 pq_ore=4; static int pq_type=0, pq_need, pq_have, pq_done, pq_gold;   // the job from the bounty office (0 none, 1 slugs, 2 beetles, 3 fossils, 4 race, 5 census, 6 hunt, 7 ore)
 static int race_on=0, race_t=0, race_next=0, race_par=0, race_best=0; static s32 race_x[8], race_y[8]; static int race_n=5, kart_on=0, kart_won=0, kart_boost=100;   // kart_on: the kart race job (8) is being raced; kart_won: it was beaten under par
 static int weather_t=0;
 static int kr_mode=0, kart_req=0;                         // driving a kart (kart.inc): 1 a race, 2 building a track. kart_req: the ship's menu asked for the kart club
@@ -381,9 +381,9 @@ static void local_talk(PObj *o){
 }
 // ---------------------------------------------------------------- the bounty office: a job per planet
 static void job_text(char *b){
-    static const char *const jt[10]={"","SQUASH ","BEAT ","DIG UP ","WIN THE RACE","TALK TO ","HUNT ","MINE ","KART GRAND PRIX","SEARCH "};
+    static const char *const jt[11]={"","SQUASH ","BEAT ","DIG UP ","WIN THE RACE","TALK TO ","HUNT ","MINE ","KART GRAND PRIX","SEARCH ","BRING "};
     scpy(b,jt[pq_type]); if(pq_type!=4 && pq_type!=8){ ncat(b,pq_need); scat(b," "); }
-    switch(pq_type){ case 1: scat(b,"SLUGS"); break; case 2: scat(b,"BEETLES"); break; case 3: scat(b,"FOSSILS"); break; case 5: scat(b,"LOCALS"); break; case 9: scat(b,"PLANTS"); break; case 6: scat(b,spc[0].name); scat(b,"S"); break; case 7: scat(b,"ORE NODES"); break; }
+    switch(pq_type){ case 1: scat(b,"SLUGS"); break; case 2: scat(b,"BEETLES"); break; case 3: scat(b,"FOSSILS"); break; case 5: scat(b,"LOCALS"); break; case 9: scat(b,"PLANTS"); break; case 6: scat(b,spc[0].name); scat(b,"S"); break; case 7: scat(b,"ORE NODES"); break; case 10: scat(b,ore_def[pq_ore].name); break; }
 }
 static void job_tick(void){                                                           // called when a counter moves: pays out the moment the job is done
     if(!pq_type || pq_done) return;
@@ -392,17 +392,20 @@ static void job_tick(void){                                                     
 }
 static void bounty_office(volatile u16 *pg){
     const char *ln[4]; char j[48], p[40];
+    if(pq_type==10 && !pq_done){ pq_have=ore_n[pq_ore]; if(pq_have>=pq_need){ ore_take(pq_ore,pq_need); pq_have=pq_need; job_tick(); } }       // a delivery job: hand the ore over here
     if(pq_type && !pq_done){ job_text(j); scpy(p,"SO FAR: "); if(pq_type==4||pq_type==8) scat(p, (pq_type==8?kart_won:race_best)?"WON":"NOT YET"); else { ncat(p,pq_have); scat(p,"/"); ncat(p,pq_need); }
         ln[0]="YOUR JOB IS STILL OPEN:"; ln[1]=j; ln[2]=p; card(pg,"BOUNTY OFFICE",ln,3); return; }
     // a new job that this planet can actually offer
-    int tries=0; do { pq_type=1+wr(7); tries++; { int rp=0; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_RACE) rp=1; if(rp && wr(3)==0) pq_type=8; } if(pq_type!=8 && wr(6)==0) pq_type=9;   // a planet with a race post can offer the kart job
+    int tries=0; do { pq_type=1+wr(7); tries++; { int rp=0; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_RACE) rp=1; if(rp && wr(3)==0) pq_type=8; } if(pq_type!=8 && wr(6)==0) pq_type=9; else if(pq_type<8 && wr(5)==0) pq_type=10;   // a planet with a race post can offer the kart job
         if(pq_type==2 && !wd.beetles) pq_type=0; if(pq_type==3 && !wd.fossils) pq_type=0; if(pq_type==5 && !city_r) pq_type=0; if(pq_type==6 && spc[0].temper==0 && wr(2)) pq_type=0;
+        if(pq_type==10){ int cand[NORE], nc=0, hab=ore_habitat(); for(int o=4;o<NORE;o++) if((ore_hab[o]&hab) && ore_need_tool(o)<=ore_tool_eff()) cand[nc++]=o; if(nc){ pq_ore=(u8)cand[wr(nc)]; } else pq_type=0; }      // an ore this world has and your tool can cut
     } while(!pq_type && tries<10);
     if(!pq_type) pq_type=1;
-    static const u8 need[10]={0,3,1,1,1,3,2,3,1,4}; pq_need=need[pq_type]+(pq_type==1||pq_type==5||pq_type==7||pq_type==9 ? wr(3) : 0); pq_have=0;
-    { static const u8 kk[10]={0,O_SLUG,O_BEETLE,O_FOSSIL,0,O_LOCAL,O_CRIT,O_TREE,0,O_PLANT}; int have=0;                    // never ask for more than the planet has
-      if(pq_type!=4 && pq_type!=8) for(int i=0;i<NPO;i++) if(po[i].alive && (po[i].kind==kk[pq_type] || (pq_type==7 && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER)) && (pq_type!=6 || po[i].var==0)) have++;
-      if(pq_type!=4 && pq_type!=8 && pq_need>have) pq_need = have>0 ? have : 1; } pq_done=0; pq_gold=20+dlv()*8+pq_need*6+(pq_type==4?30:pq_type==8?70:0);
+    static const u8 need[11]={0,3,1,1,1,3,2,3,1,4,3}; pq_need=need[pq_type]+(pq_type==1||pq_type==5||pq_type==7||pq_type==9 ? wr(3) : 0); pq_have=0;
+    { static const u8 kk[11]={0,O_SLUG,O_BEETLE,O_FOSSIL,0,O_LOCAL,O_CRIT,O_TREE,0,O_PLANT,0}; int have=0;                    // never ask for more than the planet has
+      if(pq_type!=4 && pq_type!=8 && pq_type!=10) for(int i=0;i<NPO;i++) if(po[i].alive && (po[i].kind==kk[pq_type] || (pq_type==7 && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER)) && (pq_type!=6 || po[i].var==0)) have++;
+      if(pq_type==10) pq_need=3+wr(4)+ore_def[pq_ore].tier/2;
+      if(pq_type!=4 && pq_type!=8 && pq_type!=10 && pq_need>have) pq_need = have>0 ? have : 1; } pq_done=0; pq_gold=20+dlv()*8+pq_need*6+(pq_type==4?30:pq_type==8?70:0); if(pq_type==10) pq_gold=20+dlv()*4+pq_need*ore_def[pq_ore].price*2;       // a delivery pays double the market
     job_text(j); scpy(p,"PAYS "); ncat(p,pq_gold); scat(p,"G AND FAME. WE WIRE IT. BEEP.");
     ln[0]="THE CLERK SLIDES YOU A NOTE:"; ln[1]=j; ln[2]=p; ln[3]= pq_type==8 ? "GO TO THE RACE POST. B = BOOST. BEAT THE PAR" : "(IT IS PAID WHEN IT IS DONE. NO TRIPS BACK)"; card(pg,"BOUNTY OFFICE",ln,4); sfx(2);
 }
