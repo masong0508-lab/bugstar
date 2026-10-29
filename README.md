@@ -87,6 +87,12 @@ Every star's rock belt is now a place you can land. Fly close to a rock (the pro
 Belt rocks are all vein (about 85% of crystal rocks), have a moon-style dungeon, and are not offered in story systems or hive systems.
 Also fixed: voidsteel (the rare tier-6 ore) could never be found on any world; now it turns up in about one deep vein in eight.
 
+## Ship parts, SCAN, spin-matching and the ore map (new)
+- **Ship parts.** At the smelter, SHIP PARTS makes a **hull plate** (up to 5, 3% less damage each), an **engine tune** (more thrust), a **laser lens** (more laser damage) and a **shield cell** (+10 shield); up to 3 of each. Ion cells, lenses and bone plates are the parts they use.
+- **SCAN.** Hold the SCANNER tool, then SELECT + L/R: the arrow has a fourth stop that points at the richest ore vein of the world and names its ore.
+- **Spin-matching.** A fast tumbling belt rock cannot be landed on at speed. Fly beside it and hold R: the retro thrusters match its drift instead of stopping you. The prompt shows your relative speed; land when A: LAND appears.
+- **Ore map.** With MINIMAP on, a small map on the left of the planet view shows nearby ore veins, coloured by ore (iron grey, copper red, ice quartz cyan, sulfur gold, obsidian dark red, calcite white, scrap alloy green, voidsteel purple). The scanned vein blinks.
+
 ## Hell worlds (new)
 Out in the galaxy, 8% of worlds near home (and up to 24% far out) are **hell worlds**, in six flavours: **INFERNO** (lava canyons, volcanoes with lava lakes, falling embers), **BRIMSTONE** (yellow mesas, acid pools, bad air), **OBSIDIAN** (black glass needles with neon cracks, a black sun), **BONE WORLD** (rib dunes under a skull moon), **BLOOD SEA** (red islands in a churning red sea) and **FROZEN HELL** (cracking ice, aurora). Each has its own ground, sea, sky and hazards: lava, acid and the red sea hurt if you wade in, glass cuts, fumes and cold wear you down.
 - **Hell tiers T1-T10** go up 1 for every 4 danger you fly out, just like the zone tiers. The tier is on the landing card and the top bar (H4...). Each tier multiplies the pain: creatures bite x2 (T1-3), x3 (T4-7), x4 (T8-10); the dungeon underneath counts as 2-7 levels deeper, drops more gold (+15% per tier) and mining gives more ore.
