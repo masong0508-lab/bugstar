@@ -335,6 +335,27 @@ static void options_more(volatile u16 *pg){
     }
 }
 
+// ---------------------------------------------------------------- the difficulty details: every number the chosen difficulty changes, read from the same tables the game uses
+static void dif_line(volatile u16 *pg, int y, const char *lab, const char *val, int c){ text(pg,26,y,lab,C_GREY,1); rtext(pg,206,y,val,c); }
+static void dif_pct(char *b, int v){ b[0]=0; ncat(b,v); scat(b,"%"); }
+static void dif_details(volatile u16 *pg){
+    char b[40]; int y=47, d=opt_diff;
+    if(opt_baby){
+        dif_line(pg,y,"DAMAGE YOU TAKE","1 AT MOST",C_GREEN); y+=7; dif_line(pg,y,"HUNGER","NEVER",C_GREEN); y+=7; dif_line(pg,y,"FAINTING","COSTS NOTHING",C_GREEN); y+=7;
+        dif_line(pg,y,"GOLD AND XP","X2",C_GREEN); y+=7; dif_line(pg,y,"BUDDY","HEALS YOUR BOO-BOOS",C_GREEN); return; }
+    static const char *const boss[6]={"NONE","1 PER 2 TIERS","1 PER 2 TIERS","3 PER 4 TIERS","1 PER TIER+","2+ PER TIER"};
+    scpy(b,d==0?"HALF":""); if(d){ b[0]=0; ncat(b,dif_dmg[d]/2); scat(b,"X"); } dif_line(pg,y,"DAMAGE YOU TAKE",b,d==0?C_GREEN:d>=2?C_RED:C_WHITE); y+=7;
+    dif_pct(b,dif_hp[d]); if(d){ scat(b," +"); ncat(b,d*6); scat(b,"% A ZONE"); } dif_line(pg,y,"FOE HEALTH",b,d>=2?C_RED:C_WHITE); y+=7;
+    dif_pct(b,dif_spd[d]); dif_line(pg,y,"FOE SPEED",b,d>=2?C_RED:C_WHITE); y+=7;
+    dif_pct(b,dif_aw[d]); dif_line(pg,y,"HOW FAR FOES SEE YOU",b,d>=2?C_RED:C_WHITE); y+=7;
+    dif_pct(b,200-dif_cd[d]); dif_line(pg,y,"FOES ATTACK AGAIN AT",b,d>=2?C_RED:C_WHITE); y+=7;
+    dif_line(pg,y,"PACKS FLANK YOU",d>=2?"YES":"NO",d>=2?C_RED:C_WHITE); y+=7;
+    if(d){ int t=d*1000/60; b[0]=0; scat(b,"+"); ncat(b,t/10); scat(b,"."); ncat(b,t%10); scat(b,"% A LEVEL DEEP"); } else scpy(b,"NORMAL"); dif_line(pg,y,"FOE BITES GROW",b,d?C_RED:C_WHITE); y+=7;
+    b[0]=0; scat(b,"+"); ncat(b,d>=2?(d-1)*25:0); scat(b,"% / "); ncat(b,8+d*3); scat(b,"% CHAMPS"); dif_line(pg,y,"MORE FOES / CHAMPIONS",b,d>=2?C_RED:C_WHITE); y+=7;
+    dif_line(pg,y,"EXTRA BOSSES",boss[d],d>=3?C_RED:C_WHITE); y+=7;
+    { int hx = d==0 ? 7 : 120/dif_hun[d]; b[0]=0; scat(b,"X"); ncat(b,hx/10); scat(b,"."); ncat(b,hx%10); dif_line(pg,y,"HUNGER",b,d==0?C_GREEN:C_RED); y+=7; }
+    b[0]=0; scat(b,"+"); ncat(b,dif_gold[d]); scat(b,"%"); dif_line(pg,y,"GOLD PAID",b,C_GREEN);
+}
 // ---------------------------------------------------------------- the options screen
 static void options_screen(volatile u16 *pg){
     enum { OP_DIFF, OP_HUNGER, OP_FAINT, OP_XP, OP_GOLD, OP_CAM, OP_MUSIC, OP_SFX, OP_AUTO, OP_SHAKE, OP_MAP, OP_NUMS, OP_HINTS, OP_ARROW, NOPT };
@@ -346,24 +367,19 @@ static void options_screen(volatile u16 *pg){
         if(sel<top) top=sel; if(sel>=top+10) top=sel-9;
         if(dirty){ dirty=0; char b[20];
             panel(pg,12,20,216,136,"OPTIONS");
-            for(int r=0;r<10;r++){ int i=top+r;
+            for(int r=0;r<10;r++){ int i=top+r; if(sel==OP_DIFF && r>0) break;       // (on DIFFICULTY the rows under it give way to its details)
                 int y=37+r*9; int dsel = opt_baby ? 0 : opt_diff+1; int *pv = i==OP_DIFF?&dsel : i==OP_HUNGER?&opt_hunger : i==OP_FAINT?&opt_faintloss : i==OP_XP?&opt_xpm : i==OP_GOLD?&opt_goldm : i==OP_CAM?&opt_cam : i==OP_MUSIC?&opt_music : i==OP_SFX?&opt_sfx : i==OP_AUTO?&opt_autosave : i==OP_SHAKE?&opt_shake : i==OP_MAP?&opt_minimap : i==OP_NUMS?&opt_nums : i==OP_HINTS?&opt_hints : &opt_arrow;
                 int v=*pv; if(i==sel) rect(pg,18,y-2,204,10,6);
                 text(pg,26,y,nm[i],i==sel?C_WHITE:C_GREY,1);
                 scpy(b,"< "); scat(b, i==OP_DIFF?dif[v] : i==OP_CAM?cam[v] : i==OP_MUSIC?mv[v] : (i==OP_XP||i==OP_GOLD)?mx[v] : yn[v]); scat(b," >");
                 rtext(pg,206,y,b, i==sel?C_GOLD : (i==OP_DIFF ? (v<=1?C_GREEN:v>=3?C_RED:C_GREY) : C_GREY));
             }
-            if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<NOPT) text(pg,216,118,"v",C_CYAN,1);
+            if(sel==OP_DIFF) dif_details(pg); else { if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<NOPT) text(pg,216,118,"v",C_CYAN,1); }
             rect(pg,18,128,204,1,C_DGREY);
             { const char *h=hlp[sel]; char hb[112];
-              if(sel==OP_DIFF){      // the tip for the difficulty you are ON, with the real numbers from the tables
-                  if(opt_baby) scpy(hb,"BABY: 1 DAMAGE, NO HUNGER, NOTHING LOST WHEN YOU FAINT, 2X GOLD AND XP");
-                  else { scpy(hb,dif[opt_diff+1]); scat(hb,": ");
-                      if(opt_diff==0) scat(hb,"HALF"); else { ncat(hb,dif_dmg[opt_diff]/2); scat(hb,"X"); }
-                      scat(hb," DAMAGE, FOES "); ncat(hb,dif_hp[opt_diff]); scat(hb,"% HP "); ncat(hb,dif_spd[opt_diff]); scat(hb,"% SPEED, HUNGER X");
-                      { int hx = opt_diff==0 ? 7 : 120/dif_hun[opt_diff]; ncat(hb,hx/10); scat(hb,"."); ncat(hb,hx%10); }      // tenths: EASY is slower than the base rate, the rest are faster
-                      scat(hb,", GOLD +"); ncat(hb,dif_gold[opt_diff]); scat(hb,"%"); }
-                  h=hb; }
+              if(sel==OP_DIFF){      // the tip for the difficulty you are ON
+                  static const char *const tg[6]={"A GENTLE TRIP: HALF DAMAGE AND SLOWER HUNGER","THE INTENDED GAME: FOES HIT HARD AND HUNT YOU DOWN","FOES FLANK YOU IN PACKS AND RECOVER FASTER","TOUGH FAST FOES, MORE CHAMPIONS, MORE BOSSES","ONE MISTAKE IS ENOUGH. BEAT THE ANT KING HERE TO UNLOCK INSANE-SECT","54 TIERS AND A MOB OF BOSSES. GOOD LUCK, BUG"};
+                  h = opt_baby ? "FOR BABIES, REALLY: NOTHING CAN HURT YOU MUCH" : tg[opt_diff]; }
               int L=textlen(h); if(L>52){ char h1[56]; int k=0; while(k<52 && h[k]) k++; while(k>0 && h[k]!=' ') k--; for(int j=0;j<k;j++) h1[j]=h[j]; h1[k]=0; ctext(pg,120,132,h1,C_GREY); ctext(pg,120,140,h+k+1,C_GREY); } else ctext(pg,120,134,h,C_GREY); }
             ui_chint(pg,120,148,"LEFT/RIGHT: CHANGE  SELECT: MORE  B: BACK",C_CYAN);
         }
