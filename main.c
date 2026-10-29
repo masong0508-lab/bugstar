@@ -86,7 +86,8 @@ static int page_back=0;
 // options, save slots and menu requests (see save.inc)
 static volatile int opt_music=2;   // 0 off, 1 low, 2 full
 static volatile int opt_sfx=1;
-static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1, opt_baby=0, opt_hunger=1, opt_faintloss=1, opt_xpm=0, opt_goldm=0;   // easy = (opt_diff==0)
+static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1, opt_baby=0, opt_hunger=1, opt_faintloss=1, opt_xpm=0, opt_goldm=0;
+static const u8 dif_hp[6]={100,100,125,150,190,260}, dif_aw[6]={100,100,115,130,160,200}, dif_spd[6]={100,100,106,112,120,130}, dif_cd[6]={100,100,88,76,62,50};   // monsters by difficulty: health %, how far they notice you %, speed %, how long they wait between attacks %   // easy = (opt_diff==0)
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
@@ -279,7 +280,9 @@ static u8 xo[NXO] __attribute__((section(".ewram")));
 static int xo_i(int o){ int i=xo[o]^XOT[o].def; return i<XOT[o].n ? i : XOT[o].def; }
 static int xo_v(int o){ return XOT[o].val[xo_i(o)]; }
 static u16 xo_snd(void){ int i=xo_i(XO_VOL); if(i>=7) return 0; { int l=7-i; return (u16)(0xFF00|(l<<4)|l); } }   // the sound chip's master volume (and mute)
-static int xo_hp(int h){ long long v=(long long)h*xo_v(XO_EHP)/100; if(v<1) v=1; if(v>32000) v=32000; return (int)v; }   // monster health is a 16-bit number
+static int zone;   // (defined for real in game.inc)
+static int xo_hp(int h){ long long v=(long long)h*xo_v(XO_EHP)/100; v=v*(dif_hp[opt_diff]+opt_diff*zone*6)/100;      // harder difficulties: tougher monsters, and more so the further you go
+    if(v<1) v=1; if(v>32000) v=32000; return (int)v; }   // monster health is a 16-bit number
 #define NBUD 9                                                   // the extra Buddies (LADYBUG BUDDIES): they bite, they never get hurt
 typedef struct { s32 x, y; s16 cool; u8 flash, pad; } Bud;
 static Bud bud[NBUD]; static s32 bud_dd[NBUD];
@@ -368,6 +371,7 @@ static int mon_dmg(DObj *o){
     if(nm_of(o->kind)) b=b*nm_of(o->kind)->dmm/8;
     if(o->champ) b=b*3/2;
     if(fl_ev==FE_CURSED) b=b*3/2;
+    if(opt_diff>=1) b+=b*opt_diff*dlv()/60;                                          // the deeper you are, the harder they bite, and harder still on the high difficulties
     { int sv=xo_v(XO_ESTR); if(sv!=100){ b=(int)((long long)b*sv/100); if(b<1) b=1; } }
     return b;
 }
@@ -802,15 +806,16 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             if(o->stag) o->stag--;
             if(mboss && boss){                                  // the labyrinth boss: it sleeps, then it hunts you down the corridors
                 if(hunt_t){ if(--hunt_t==0){ say("IT HAS YOUR SCENT"); sfx(14); } }
-                else if(!stun_t && !o->stag && !o->wind && td>contact+0x800) hunt_move(o, 0x0580+tier_now()*0x30); }
-            else if(!stun_t && !o->stag && !o->wind && td<0x70000*xo_v(XO_EAWARE)/100){
-                s32 st = nm ? (s32)nm->stp : boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : o->kind==K_SLIME?(o->sub?0x0480:0x0300) : o->kind==K_SCORP?0x0780 : toad?0x0420 : o->kind==K_ANT?0x0660 : o->kind==K_CENTI?0x0800 : o->kind==K_GOLEM?0x0240 : drone?0x0500 : shroom?0x0300 : o->kind==K_CRAB?0x0340 : 0x0600; st=st*xo_v(XO_ESPEED)/100;
+                else if(!stun_t && !o->stag && !o->wind && td>contact+0x800) hunt_move(o, (0x0580+tier_now()*0x30)*dif_spd[opt_diff]/100); }
+            else if(!stun_t && !o->stag && !o->wind && td<0x70000*xo_v(XO_EAWARE)/100*dif_aw[opt_diff]/100){
+                s32 st = nm ? (s32)nm->stp : boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : o->kind==K_SLIME?(o->sub?0x0480:0x0300) : o->kind==K_SCORP?0x0780 : toad?0x0420 : o->kind==K_ANT?0x0660 : o->kind==K_CENTI?0x0800 : o->kind==K_GOLEM?0x0240 : drone?0x0500 : shroom?0x0300 : o->kind==K_CRAB?0x0340 : 0x0600; st=st*xo_v(XO_ESPEED)/100;  st=st*dif_spd[opt_diff]/100;
                 int away = wasp && td<0x18000, keep = wasp && td<0x40000 && td>=0x18000;
                 if(!keep && (td>contact+0x800 || away)){
-                    s32 stx=(tdx>0?st:-st), sty=(tdy>0?st:-st); if(away){ stx=-stx; sty=-sty; }
+                    s32 fx=tdx, fy=tdy; if(opt_diff>=2 && !away && td>0x28000){ int sg=(i&1)?1:-1; fx=tdx-sg*(tdy>>1); fy=tdy+sg*(tdx>>1); }      // in a pack they come at you from different sides instead of in a line
+                    s32 stx=(fx>0?st:-st), sty=(fy>0?st:-st); if(away){ stx=-stx; sty=-sty; }
                     if(!solid(o->x+stx*3,o->y)) o->x+=stx; if(!solid(o->x,o->y+sty*3)) o->y+=sty; }
             }
-            if(o->cool) o->cool--;
+            if(o->cool){ o->cool--; if(opt_diff>=2 && o->cool && (frames%100)>=dif_cd[opt_diff]) o->cool--; }      // they recover faster: bites and shots come more often
             if(wasp && !stun_t && !o->cool && d<0x60000){        // wasps shoot stingers
                 s32 l=isqrt((u32)((dx>>8)*(dx>>8)+(dy>>8)*(dy>>8))); if(l<1) l=1;
                 if(toad) fire_proj(1, o->x, o->y, 0x6000, (dx>>8)*0x0B00/l, (dy>>8)*0x0B00/l, mon_dmg(o)*3/2), o->cool=85+rndi(40);
@@ -834,7 +839,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             }
             else if(!wasp && !stun_t && !o->stag && td<reach && !o->cool){ o->cool=boss?34:46; o->wind = nm?nm->wind : boss?3:o->kind==K_BEETLE?6:o->kind==K_SCORP||o->kind==K_CENTI?3:o->kind==K_SLIME?5:o->kind==K_GOLEM?9 : o->kind==K_CRAB?7 : 4; sfx(14); }
             // beetles charge from a distance: a long wind-up, then they barrel at you. into a wall, and they are stunned
-            else if((o->kind==K_BEETLE||o->kind==K_SCORP||(nm&&(nm->fl&NF_CHARGE))) && !stun_t && !o->stag && !o->cool && td>0x18000 && td<0x50000 && rndi(o->kind==K_SCORP?55:40)==0){ o->cool=70; o->wind=8; o->lunge=1; sfx(14); }
+            else if((o->kind==K_BEETLE||o->kind==K_SCORP||(nm&&(nm->fl&NF_CHARGE))) && !stun_t && !o->stag && !o->cool && td>0x18000 && td<0x50000 && rndi((o->kind==K_SCORP?55:40)*dif_cd[opt_diff]/100+1)==0){ o->cool=70*dif_cd[opt_diff]/100; o->wind=8; o->lunge=1; sfx(14); }
             if(o->lunge && !o->wind){ o->lunge=0; if(td>0x100){ o->kvx=(s32)(((long long)tdx*0x3000)/td); o->kvy=(s32)(((long long)tdy*0x3000)/td); } }
             // the boss calls her brood at half health, and gets angry
             if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1; say("THE QUEEN CALLS HER BROOD!"); sfx(9);

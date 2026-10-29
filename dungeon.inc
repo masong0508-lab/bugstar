@@ -400,11 +400,11 @@ static void make_floor(void){
         { int dm=dlv()+depth_no, ex=dm/5; if(ex>6) ex=6; c+=ex;                           // deeper floors: more monsters in every room
           if(!base_mode && (dlv()>=22 || depth_no>=40)) c=c*2+8;                         // the deepest floors: packed
           if(c>24) c=24; }
-        c=xo_n(c); for(int k=0;k<c && ndo<NDO-28;k++){                                           // (28 slots stay free for chests, loot, bats, lamps and the boss)
+        c=xo_n(c); if(opt_diff>=2) c+=c*(opt_diff-1)/4; for(int k=0;k<c && ndo<NDO-28;k++){                                           // (28 slots stay free for chests, loot, bats, lamps and the boss)
             int kind = pick_kind();
             int hp = kind_hp(kind, base_hp);
             SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0);
-            if(rndi(100)<8){ DObj *o=&dob[ndo-1]; o->champ=1; o->cname=rndi(8); o->hp=o->maxhp=hp*3; }
+            if(rndi(100)<8+opt_diff*3){ DObj *o=&dob[ndo-1]; o->champ=1; o->cname=rndi(8); o->hp=o->maxhp=hp*3; }
             if(kind==K_ANT || kind==K_CENTI || kind==K_MOTH || nm_has(&dob[ndo-1],NF_PACK)){ for(int p=0;p<2 && ndo<NDO-28;p++) SPAWN(kind, room_floor_cell(&rooms[i]), hp, 0); }   // ants and centipedes come in packs of three
         }
         if(rnd()&1) SPAWN(K_CHEST, room_floor_cell(&rooms[i]), 1, 0);
@@ -424,8 +424,8 @@ static void make_floor(void){
     for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), base_hp/2+1, 0);
     for(int k=0;k<nlamps;k++) SPAWN(K_LAMP, lampcell[k], 1, 0);
     if(last && !base_mode){ SPAWN(K_BOSS, bcell, 40+dlv()*30 + tier_now()*40, 0); }       // the boss is always at the bottom: beat it again for the next tier
-    if(last && !base_mode && !endless && !forge_on && (opt_diff>=3 || xo_v(XO_BOSSES))){                      // MULTIBOSS: higher difficulties send more bosses down deep. Insane-sect: 11+ on its deepest tiers
-        int ex = opt_diff==5 ? (tier_now()*10+zone*8)/40 : opt_diff==4 ? (tier_now()+1)/2 : tier_now()/4; if(opt_diff==5 && ex<1) ex=1; if(opt_diff<3) ex=0; ex+=xo_v(XO_BOSSES); if(ex>15) ex=15;
+    if(last && !base_mode && !endless && !forge_on && (opt_diff>=1 || xo_v(XO_BOSSES))){                      // MULTIBOSS: higher difficulties send more bosses down deep. Insane-sect: 11+ on its deepest tiers
+        int ex = opt_diff==5 ? (tier_now()*10+zone*8)/25+1 : opt_diff==4 ? tier_now()+1+zone/3 : opt_diff==3 ? (tier_now()*3+2)/4 : (tier_now()+1)/2; if(opt_diff==5 && ex<2) ex=2; if(opt_diff<1) ex=0; ex+=xo_v(XO_BOSSES); if(ex>15) ex=15;
         for(int k=0;k<ex && ndo<NDO-8;k++){ SPAWN(K_BOSS, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), (40+dlv()*30+tier_now()*40)*6/10+1, 0); if(k%3==2) dob[ndo-1].champ=1; } }
     if(base_mode){                                                                       // an outpost floor: a locked door guards the way on, the keycard is somewhere else
         if(last){ SPAWN(K_CORE, dn, 80+dlv()*25+outposts_done*20, 0); }

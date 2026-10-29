@@ -19,7 +19,7 @@ static u32 gsk(u32 k){ int top=UW-1; while(top>3 && !uni_w[top]) top--; if(!(uni
 // ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
 static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
 #define TZ (zone+(opt_diff==5?6:0))
-static const u8 dif_dmg[6]={1,2,3,4,6,10}, dif_hun[6]={12,12,8,7,6,5}, dif_gold[6]={0,0,25,50,100,200};   // damage taken (in halves), hunger speed (/12), gold bonus                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
+static const u8 dif_dmg[6]={1,6,8,10,14,20}, dif_hun[6]={12,6,5,4,3,2}, dif_gold[6]={0,100,125,150,250,400};   // NORMAL is now what NIGHTMARE used to be (3x damage, 2x hunger, +100 gold); every step above it is harder again   // damage taken (in halves), hunger speed (/12), gold bonus                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
 static int st_kills[11], st_fish, st_barrels, st_mined, st_dodges, st_planets, st_uniq, st_tiers, st_floors;
 static u32 ach_done;                                 // one bit per achievement
 static int pet_xp, pet_lv;
@@ -646,14 +646,14 @@ static void kw_unlock(void); static int kw_unlocked(void); static void kart_worl
 static void hurt(int n){
     if(invuln || (kr_mode && scene==0)) return;                                      // in a kart nothing can bite you
     s64 def = sadd(d_def, shield_t ? sadd(5,sdiv(st_mag,2)) : 0);
-    s64 nn = n - sdiv(def,2); if(nn>=1){ if(opt_easy) nn=(nn+1)>>1; else if(opt_diff>=2) nn=(nn*dif_dmg[opt_diff])>>1; } if(nn<1) nn=1; if(opt_baby) nn=1; { int dv=xo_v(XO_DMGIN); if(dv!=100){ nn=nn*dv/100; if(dv && nn<1) nn=1; } }                                                       // BABY MODE: never more than 1 damage
+    s64 nn = n - sdiv(def,2); if(nn>=1){ if(opt_easy) nn=(nn+1)>>1; else if(opt_diff>=1) nn=(nn*dif_dmg[opt_diff])>>1; } if(nn<1) nn=1; if(opt_baby) nn=1; { int dv=xo_v(XO_DMGIN); if(dv!=100){ nn=nn*dv/100; if(dv && nn<1) nn=1; } }                                                       // BABY MODE: never more than 1 damage
     if(def>=100 || rndi(100) < (int)def){ say("BLOCKED!"); invuln=15; return; }
     hearts-=nn; invuln=xo_v(XO_INVT); shake_t=opt_shake?10:0; sfx(4); hud_now();
 }
 static void hunger_tick(int every){
     if(!opt_hunger || opt_baby) return;                                                  // HUNGER off, or BABY MODE: nobody ever gets hungry
     every=every*100/xo_v(XO_HUNGER); if(every<1) every=1;
-    if(opt_easy) every+=every/2; else if(opt_diff>=2) every=every*dif_hun[opt_diff]/12;
+    if(opt_easy) every+=every/2; else if(opt_diff>=1) every=every*dif_hun[opt_diff]/12;
     if(mark_on(MK_FULL)) every+=every/2; if(mark_on(MK_HUNGRY)) every=every*2/3;
     if(++hunger_t < every) return; hunger_t=0;
     if(food>0){ food--; if(food==20) say("YOU ARE HUNGRY"); if(food%5==0) hud_now(); }
