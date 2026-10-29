@@ -28,7 +28,7 @@ static void ship_default(void){ scpy(ship.name,"MOTH"); ship.hull=HL_DART; ship.
     ship.len=1; ship.wid=1; ship.nose=0; ship.wpos=1; ship.dihed=1; ship.esize=1; ship.pods=0; ship.decal=0; ship.glow=rgb15(110,200,255); shpx.scheme=shpx.finish=shpx.module=shpx.topper=0; }
 // ---- what the parts do
 static int ship_mass(void); static int ship_thrust(void);
-static int ship_armour(void){ static const u8 a[NHULL]={100,90,70,95,130,110,85,80}; int v=a[ship.hull%NHULL]; if(shpx.module==MD_ARMOUR) v-=15; return v; }           // % of damage taken
+static int ship_armour(void){ static const u8 a[NHULL]={100,90,70,95,130,110,85,80}; int v=a[ship.hull%NHULL]; if(shpx.module==MD_ARMOUR) v-=15; v-=hull_plates*3; return v; }           // % of damage taken
 static int ship_top_speed(void){ int t=30+ship_thrust()*110/ship_mass(); if(t>90) t=90; if(t<28) t=28; return t; }
 static int ship_turn(void){ static const u8 w[NWING]={75,100,115,130,120,138,108}; static const s8 z[3]={10,0,-10}; int t=w[ship.wings%NWING]+z[ship.wsize%3]; if(shpx.module==MD_GYRO) t+=18; t = t*14/(8+ship_mass()/3); return t<40?40:t; }   // % turn rate: heavy ships turn slowly
 static int ship_damp(void){ return ship.fins==0 ? 3 : ship.fins==1 ? 4 : 6; }                                  // how fast turning settles

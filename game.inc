@@ -20,6 +20,8 @@ static u32 gsk(u32 k){ int top=UW-1; while(top>3 && !uni_w[top]) top--; if(!(uni
 static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
 #define TZ (zone+(opt_diff==5?6:0))
 static const u8 dif_dmg[6]={1,6,8,10,14,20}, dif_hun[6]={12,6,5,4,3,2}, dif_gold[6]={0,100,125,150,250,400};   // NORMAL is now what NIGHTMARE used to be (3x damage, 2x hunger, +100 gold); every step above it is harder again   // damage taken (in halves), hunger speed (/12), gold bonus                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
+#define HP_MAX 5                 // hull plates you can fit (void bar + 2 plating each, at the smelter): every plate takes 3% off the damage the ship takes
+static u8 hull_plates;           // saved in the smelter block (its spare byte), see ore.inc
 static u32 ml_total; static u16 ml_n[8];      // the mining log: ore pieces mined in all, and per ore (4..11); saved in a block of its own (ore.inc)
 static int st_kills[11], st_fish, st_barrels, st_mined, st_dodges, st_planets, st_uniq, st_tiers, st_floors;
 static u32 ach_done;                                 // one bit per achievement

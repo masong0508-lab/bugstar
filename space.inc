@@ -180,6 +180,17 @@ static u32 rock_h(int i); static u32 ast_sid=0; static int is_belt(void){ return
 static void ast_place(int i){ Ast *a=&ast[i]; int ang=lr(256), rad=5600+lr(1500); a->x=(cosx(ang)*rad)>>14; a->z=(sinx(ang)*rad)>>14; a->y=lr(1200)-600;
     a->vx=lr(7)-3; a->vy=lr(3)-1; a->vz=lr(7)-3; a->r=140+lr(220); a->hp=a->r/12; a->alive=1; a->seed=lr(256); a->flash=0; if(sys[cur_sys].kind==6) a->seed=(u8)(rock_h(i)>>8); }
 static void ast_init(void){ if(ast_sid!=sys_id(cur_sys)){ ast_sid=sys_id(cur_sys); ast_clear=0; ast_rt=0; } nast = is_belt() ? 10+(int)(hmix(sys_id(cur_sys)^0xBE17u)%21u) : 8; for(int i=0;i<NASTMAX;i++){ ast[i].alive=0; } for(int i=0;i<nast;i++){ if(is_belt() && (ast_clear>>i&1)) continue; ast_place(i); } *AST_MAGIC_P=0xA57E01D5u^(u32)cur_sys; }
+// the belt respawn clock, saved: which rocks of this belt you have cleared and how far the next one is from growing back. SRAM slot + 0xBEC .. 0xC00
+// (the mining log ends at 0xBEC, the play-time block starts at 0xC00). A save made before this block existed has none here: the belt starts fresh, as it always did.
+// Only the system you saved in is kept (leaving a belt resets it, as before).
+#define BR_OFF 0xBEC
+typedef struct { u32 magic, sid, clear; u16 rt, pad; u32 sum; } BeltSave;     // 20 bytes
+_Static_assert(BR_OFF >= ML_OFF+sizeof(MlSave), "the belt block must start after the mining log block");
+_Static_assert(BR_OFF+sizeof(BeltSave) <= META_OFF, "the belt block must end before the play-time block");
+static void belt_reset(void){ ast_sid=0; ast_clear=0; ast_rt=0; }
+static void belt_save(void){ BeltSave s; memset(&s,0,sizeof s); s.magic=0x31544C42u; s.sid=ast_sid; s.clear=ast_clear; s.rt=ast_rt; s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+BR_OFF,&s,sizeof s); }
+static void belt_load(void){ BeltSave s; belt_reset(); sram_read(slot_base(cur_slot)+BR_OFF,&s,sizeof s);
+    if(s.magic!=0x31544C42u || s.sum!=fnv(&s,sizeof s-4)) return; ast_sid=s.sid; ast_clear=s.clear; ast_rt= s.rt<1800 ? s.rt : 0; *AST_MAGIC_P=0; }       // (the zero makes the rocks be set up again from this)
 // PHASE 2: every rock in a star's belt is always the same rock (slot i of that system): its kind and its veins come from a hash, nothing is saved
 static u32 rock_h(int i){ return hmix(sys_id(cur_sys)*0x9E3779B1u ^ (u32)(i+1)*0x2545F491u ^ 0x70C4u); }
 static int rock_type_of(u32 h){ int r=(int)(h%100u); return r<32?1 : r<54?2 : r<74?3 : r<90?4 : 5; }     // rocky 32, metallic 22, icy 20, crystal 16, hollow 10 in a hundred
