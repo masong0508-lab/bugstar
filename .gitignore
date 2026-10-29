@@ -4,3 +4,6 @@ bgs/
 storage/
 __pycache__/
 bugstar.gba
+/main
+*.bak
+.opts_backup/

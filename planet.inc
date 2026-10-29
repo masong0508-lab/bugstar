@@ -54,6 +54,8 @@ static void heading_rays(void){
     hcs=cosx(heading>>2)>>6; hsn=sinx(heading>>2)>>6;
     for(int c=0;c<120;c++){ rayvx[c]=(s16)(hsn + ((hcs*raydx[c])>>8)); rayvy[c]=(s16)(hcs - ((hsn*raydx[c])>>8)); }
 }
+#define WP_WIN 6                 // a bite is TIMED if you hit again within this many frames of the last swing ending (the bug is upright again): it takes two bites off
+static u8 mine_gap=99;           // frames since the last swing ended (99: a while ago)
 static int pw_h=0, pw_v=0, pw_step=0, mine_t=0;
 IWRAM_DATA static s8 wob64[64];                            // WOBBLE: how far each spot of the hills is breathing this frame
 static int g_nst=NSTEP, g_wob=0, g_fog=0;                  // FOG: how far the view reaches; WOBBLE on or off
@@ -537,18 +539,20 @@ static void planet_frame(void){
                 o->alive=0; p->pop=crit_count(o->var); eat(12); gain_xp(5+dlv()); char b[40]; scpy(b,"CAUGHT A "); scat(b,p->name); scat(b,". FOOD +12. "); ncat(b,p->pop); scat(b," LEFT"); show_msg(b); sfx(9);
                 if(pq_type==6 && o->var==0){ pq_have++; job_tick(); } break; }
             case O_TREE: case O_ROCK: case O_WEB: case O_FLOWER: {                     // mining: a few bites, then the goods go in your ship's hold
-                PObj *o=&po[best]; int t=o->kind-O_TREE; sfx(o->kind==O_ROCK?12:13); mine_t=8;
+                PObj *o=&po[best]; int t=o->kind-O_TREE; int timed=(mine_t==0 && mine_gap<=WP_WIN); sfx(o->kind==O_ROCK?12:13); mine_t=8;
                 { int ore = o->kind==O_ROCK ? ore_of(o->x,o->y) : -1;                                      // a vein: a harder rock that gives ore, and needs the right tool
                   if(ore>=0){ if(ore_tool_eff()<ore_need_tool(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: NEEDS A "); scat(b,ore_tool_name[ore_need_tool(ore)]); show_msg(b); sfx(4); break; }
-                      if(!o->var){ o->var=1; o->hp=(u8)ore_hits(ore); }                              // (the first bite works out how many it needs with your tool)
-                      if(--o->hp>0){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
+                      if(!o->var){ o->var=1; o->hp=(u8)ore_hits(ore); }
+                      if(timed && o->hp>1) o->hp--;                                                  // a TIMED bite counts double                              // (the first bite works out how many it needs with your tool)
+                      if(--o->hp>0){ char b[40]; scpy(b,timed?"WELL TIMED! ":""); scat(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                       o->alive=0; ore_mark_mined(ore_id(o->x,o->y)); int tt=ore_tool_eff(), n=1+rndi(2)+(tt>=2)+(cur_moon?1:0)+(hellw()?hell_tier()/4:0)+(cur_rock==4?3 : cur_rock==2?1 : 0); if(pq_type==7){ pq_have++; job_tick(); }
                       int got=ore_add(ore,n); st_mined+=n; ml_add(ore,got); if(pq_type==10 && ore==pq_ore) pq_have=ore_n[ore]; ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
                       char b[40]; scpy(b,"+"); ncat(b,got); scat(b," "); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); show_msg(b); sfx(7);
                       if(cur_rock==4 && rndi(5)==0){ hurt(2); show_msg("CRACK! SHARDS HIT YOU"); sfx(4); }          // a crystal rock is brittle
                       break; } }
+                if(timed && o->hp>1) o->hp--;
                 if(holding(TL_PICK)) o->hp=1;                                                    // the pickaxe: one hit
-                if(--o->hp>0){ char b[40]; scpy(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
+                if(--o->hp>0){ char b[40]; scpy(b,timed?"WELL TIMED! ":""); scat(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                 o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0)+(holding(TL_PICK)?1:0)+(cur_moon?1:0)+(hellw()?hell_tier()/3:0)+(cur_rock==4?2:0); if(pq_type==7){ pq_have++; job_tick(); }
                 if(relic_roll(400)){ planet_hud(); p_last=vbl_count; return; }
                 if(cargo_n()>=cargo_cap+ship_hold_bonus()){ show_msg("HOLD FULL! SELL GOODS AT A STATION"); break; }
@@ -621,7 +625,7 @@ sprites:;
       int sy=bug_sy;
       int bob = moved ? ((frames>>3)&1) : 0; if(WL(MW_ZEROG)) bob += 3+WL(MW_ZEROG)/3+(sinx((frames*3)&255)>>11);
       int pvis = !(invuln && (frames&4));
-      if(mine_t) mine_t--;
+      if(mine_t){ if(!--mine_t) mine_gap=0; } else if(mine_gap<99) mine_gap++;
       int lean = moved ? 10 : (mine_t ? 24 : 0), sq = (moved && ((frames>>3)&1)) || mine_t ? 8 : 0;
       int up = tv<0 && !th && form==FORM_BUG;
       int shr=WL(MW_SHRINK)*5+64;   /* 64 = standing at two thirds of the old size */                                                          // SHRINK RAY: you are smaller

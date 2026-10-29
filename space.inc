@@ -194,6 +194,10 @@ static void belt_load(void){ BeltSave s; belt_reset(); sram_read(slot_base(cur_s
 // PHASE 2: every rock in a star's belt is always the same rock (slot i of that system): its kind and its veins come from a hash, nothing is saved
 static u32 rock_h(int i){ return hmix(sys_id(cur_sys)*0x9E3779B1u ^ (u32)(i+1)*0x2545F491u ^ 0x70C4u); }
 static int rock_type_of(u32 h){ int r=(int)(h%100u); return r<32?1 : r<54?2 : r<74?3 : r<90?4 : 5; }     // rocky 32, metallic 22, icy 20, crystal 16, hollow 10 in a hundred
+// pirates follow the riches: a belt full of metallic and crystal rocks draws more of them. 0 (a poor belt) to about 8 (nearly every rock rich) on top of the usual chance; an average belt gets about 3, as the old flat bonus was.
+static int belt_pirates(void){ static u32 sid=0xFFFFFFFFu; static u8 v=3;
+    if(sid!=sys_id(cur_sys)){ sid=sys_id(cur_sys); int n=10+(int)(hmix(sid^0xBE17u)%21u), r=0; for(int i=0;i<n;i++){ int t=rock_type_of(rock_h(i)); if(t==2||t==4) r++; } int b=12*r/n-1; v=(u8)(b<0?0:b); }       // (worked out once per system; n is the rock count ast_init uses)
+    return v; }
 static const u8 rock_col[5]={51,56,54,55,58};          // how each kind looks out in space: orange, steel, white, cyan, dark blue
 static s32 svx_, svy_, svz_; static int yawv=0, pitv=0, roll_=0, sshake=0, crash_cd=0;
 EW static Can cans[4];
@@ -671,7 +675,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(in_lair) beast_update();
     // pirates
     int danger=space_danger();
-    if(!in_lair && !can_land && lr(1500) < 2+danger+(is_belt()?3:0)) spawn_pirates(1);          // a rich belt draws pirates
+    if(!in_lair && !can_land && lr(1500) < 2+danger+(is_belt()?belt_pirates():0)) spawn_pirates(1);          // a rich belt draws pirates
     // ---- every ship: pick a target, fly at it, shoot. Wingmen fight enemies and form up on you when it's quiet; enemies hunt you and your wingmen
     int scans=0;                                                                          // (a full look round is slow: only a few a frame, so a big battle does not stall when ships die)
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
