@@ -1203,7 +1203,7 @@ static void station_menu(void){
                 for(int i=0;i<8;i++){ if(i==sel) text(pg,6,36+i*10,">",C_CYAN,1); scpy(b,goods[i]); while(textlen(b)<13) scat(b," "); ncat(b,good_price(i)); scat(b,"G"); while(textlen(b)<21) scat(b," "); ncat(b,cargo[i]);
                     text(pg,14,36+i*10,b,i==sel?C_WHITE:C_GREY,1); }
                 { if(sel==8) text(pg,6,116,">",C_CYAN,1); scpy(b,"ALL ORE"); while(textlen(b)<13) scat(b," "); ncat(b,ore_station_pct()); scat(b,"%"); while(textlen(b)<21) scat(b," "); ncat(b,ore_bagn()); scat(b," = "); ncat(b,ore_sellval()*ore_station_pct()/100); scat(b,"G"); text(pg,14,116,b,sel==8?C_WHITE:C_GREY,1); }
-                scpy(b,"HOLD "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); text(pg,14,122,b,C_WHITE,1);
+                scpy(b,"HOLD "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); text(pg,14,132,b,C_WHITE,1);
                 ui_lhint(pg,6,148,"A: BUY  B: SELL  L/R: SHIPYARD  START: LEAVE",C_CYAN);
             } else if(tab==2){
                 // three regulars at the bar. what they say moves with the story
