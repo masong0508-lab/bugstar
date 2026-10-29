@@ -349,7 +349,16 @@ static void options_screen(volatile u16 *pg){
             }
             if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<NOPT) text(pg,216,118,"v",C_CYAN,1);
             rect(pg,18,128,204,1,C_DGREY);
-            { const char *h=hlp[sel]; int L=textlen(h); if(L>52){ char h1[56]; int k=0; while(k<52 && h[k]) k++; while(k>0 && h[k]!=' ') k--; for(int j=0;j<k;j++) h1[j]=h[j]; h1[k]=0; ctext(pg,120,132,h1,C_GREY); ctext(pg,120,140,h+k+1,C_GREY); } else ctext(pg,120,134,h,C_GREY); }
+            { const char *h=hlp[sel]; char hb[112];
+              if(sel==OP_DIFF){      // the tip for the difficulty you are ON, with the real numbers from the tables
+                  if(opt_baby) scpy(hb,"BABY: 1 DAMAGE, NO HUNGER, NOTHING LOST WHEN YOU FAINT, 2X GOLD AND XP");
+                  else { scpy(hb,dif[opt_diff+1]); scat(hb,": ");
+                      if(opt_diff==0) scat(hb,"HALF"); else { ncat(hb,dif_dmg[opt_diff]/2); scat(hb,"X"); }
+                      scat(hb," DAMAGE, FOES "); ncat(hb,dif_hp[opt_diff]); scat(hb,"% HP "); ncat(hb,dif_spd[opt_diff]); scat(hb,"% SPEED, HUNGER X");
+                      { int hx = opt_diff==0 ? 7 : 120/dif_hun[opt_diff]; ncat(hb,hx/10); scat(hb,"."); ncat(hb,hx%10); }      // tenths: EASY is slower than the base rate, the rest are faster
+                      scat(hb,", GOLD +"); ncat(hb,dif_gold[opt_diff]); scat(hb,"%"); }
+                  h=hb; }
+              int L=textlen(h); if(L>52){ char h1[56]; int k=0; while(k<52 && h[k]) k++; while(k>0 && h[k]!=' ') k--; for(int j=0;j<k;j++) h1[j]=h[j]; h1[k]=0; ctext(pg,120,132,h1,C_GREY); ctext(pg,120,140,h+k+1,C_GREY); } else ctext(pg,120,134,h,C_GREY); }
             ui_chint(pg,120,148,"LEFT/RIGHT: CHANGE  SELECT: MORE  B: BACK",C_CYAN);
         }
         vsync(); read_keys();
