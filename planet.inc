@@ -204,7 +204,7 @@ static void land_colour(void){                                    // the colours
     if(WL(MW_GLITCH)){ u32 r=wd.tseed; for(int b=0;b<200+WL(MW_GLITCH)*60;b++){ r=hmix(r+b); int x=r&HMASK, y=(r>>8)&HMASK, w=2+((r>>16)&7), h=1+((r>>20)&3), c=40+((r>>24)%48);   // GLITCH: torn blocks of wrong colour
         for(int j=0;j<h;j++) for(int i=0;i<w;i++) cmap[((y+j)&HMASK)*HW+((x+i)&HMASK)]=c; } }
 }
-EW static s16 gen_acc[TW*TW];                            // 32 KB of scratch for building a world (and, between worlds, for the kart races' tables: m7.inc)
+EW static s16 gen_acc[TW*TW] __attribute__((aligned(4)));                            // 32 KB of scratch for building a world (and, between worlds, for the kart races' tables: m7.inc)
 static void gen_terrain(u32 seed){
     wseed=seed;
     s16 *acc=gen_acc; for(int i=0;i<TW*TW;i++) acc[i]=0;

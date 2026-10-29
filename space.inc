@@ -171,8 +171,15 @@ EW static SPart spp[NSPP];
 typedef struct { s32 x,y,z; u8 alive, good; } Can;
 // rocks in a belt around each planet: crash into them and it hurts, shoot them to mine crystals and amber
 typedef struct { s32 x,y,z; s16 vx,vy,vz, r, hp; u8 alive, seed, flash; } Ast;
-#define NAST 8
-EW static Ast ast[NAST];
+#define NASTMAX 30
+#define AST_OFF 0x6000                                                    // byte offset inside gen_acc (the 32 KB world-builder scratch, idle while you fly): up to 30 rocks, then a magic word
+#define ast ((Ast*)(void*)((u8*)(void*)gen_acc+AST_OFF))
+#define AST_MAGIC_P ((u32*)(void*)((u8*)(void*)gen_acc+AST_OFF+NASTMAX*sizeof(Ast)))
+static u8 tract_t=0; static u8 nast=8; static u32 ast_clear=0; static u16 ast_rt=0;               // how many rocks this system has (a belt: 10 to 30 from its seed), which belt rocks are cleared, and the respawn clock
+static u32 rock_h(int i); static u32 ast_sid=0; static int is_belt(void){ return sys[cur_sys].kind==6 && !is_hive(cur_sys); }
+static void ast_place(int i){ Ast *a=&ast[i]; int ang=lr(256), rad=5600+lr(1500); a->x=(cosx(ang)*rad)>>14; a->z=(sinx(ang)*rad)>>14; a->y=lr(1200)-600;
+    a->vx=lr(7)-3; a->vy=lr(3)-1; a->vz=lr(7)-3; a->r=140+lr(220); a->hp=a->r/12; a->alive=1; a->seed=lr(256); a->flash=0; if(sys[cur_sys].kind==6) a->seed=(u8)(rock_h(i)>>8); }
+static void ast_init(void){ if(ast_sid!=sys_id(cur_sys)){ ast_sid=sys_id(cur_sys); ast_clear=0; ast_rt=0; } nast = is_belt() ? 10+(int)(hmix(sys_id(cur_sys)^0xBE17u)%21u) : 8; for(int i=0;i<NASTMAX;i++){ ast[i].alive=0; } for(int i=0;i<nast;i++){ if(is_belt() && (ast_clear>>i&1)) continue; ast_place(i); } *AST_MAGIC_P=0xA57E01D5u^(u32)cur_sys; }
 // PHASE 2: every rock in a star's belt is always the same rock (slot i of that system): its kind and its veins come from a hash, nothing is saved
 static u32 rock_h(int i){ return hmix(sys_id(cur_sys)*0x9E3779B1u ^ (u32)(i+1)*0x2545F491u ^ 0x70C4u); }
 static int rock_type_of(u32 h){ int r=(int)(h%100u); return r<32?1 : r<54?2 : r<74?3 : r<90?4 : 5; }     // rocky 32, metallic 22, icy 20, crystal 16, hollow 10 in a hundred
@@ -335,13 +342,12 @@ static void space_enter(int from_planet){
     for(int i=0;i<60;i++) dust[i]=lr(1600)-800;
     norm3(sun);
     for(int i=0;i<NPIR;i++) pir[i].alive=0; for(int i=0;i<NSPP;i++) spp[i].life=0; for(int i=0;i<4;i++) cans[i].alive=0;
-    for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; int ang=lr(256), rad=5600+lr(1500); a->x=(cosx(ang)*rad)>>14; a->z=(sinx(ang)*rad)>>14; a->y=lr(1200)-600;
-        a->vx=lr(7)-3; a->vy=lr(3)-1; a->vz=lr(7)-3; a->r=140+lr(220); a->hp=a->r/12; a->alive=1; a->seed=lr(256); a->flash=0; if(sys[cur_sys].kind==6) a->seed=(u8)(rock_h(i)>>8); }
     svx_=svy_=svz_=0; yawv=pitv=roll_=0; sshake=0;
     if(sys[cur_sys].kind==6){ world_no=sys_id(cur_sys)^body_salt(); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); }
+    ast_init();
     build_space_palette();
     { u32 sid=sys_id(cur_sys)^body_salt(); pl_tex = (sid&1)<<13; pl_rot=sid*7; }
-    if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("LAUNCHED. B: THRUST  R: BRAKE  L: BURN"); }
+    if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("B: THRUST  R: BRAKE/TRACTOR  L: BURN"); }
     else { shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=20; }
     int danger=sys_dlv(cur_sys);
     in_lair=0;
@@ -392,7 +398,7 @@ static void cockpit(volatile u16 *pg){
     blip(pg,0,0,0,in_lair?53:48); if(!in_lair) blip(pg,stx_,sty_,stz_,55);
     for(int i=0;i<NPIR;i++) if(pir[i].alive) blip(pg,pir[i].x,pir[i].y,pir[i].z,pir[i].team?53:52);
     for(int i=0;i<4;i++) if(cans[i].alive) blip(pg,cans[i].x,cans[i].y,cans[i].z,50);
-    if(!in_lair) for(int i=0;i<NAST;i++) if(ast[i].alive) blip(pg,ast[i].x,ast[i].y,ast[i].z,56);
+    if(!in_lair) for(int i=0;i<nast;i++) if(ast[i].alive) blip(pg,ast[i].x,ast[i].y,ast[i].z,56);
     // bars on the left: shield, hull, fuel; speed on the right
     static const char *const lab[3]={"SHLD","HULL","FUEL"}; int val[3]={shield,hull,fuel}, mx[3]={20+shield_lv*20,100,fuel_max()}, col[3]={55,53,50};
     for(int k=0;k<3;k++){ text(pg,4,131+k*9,lab[k],58,1); rect(pg,24,132+k*9,40,3,56); int w=val[k]*40/mx[k]; if(w<0) w=0; if(w>40) w=40; rect(pg,24,132+k*9,w,3,col[k]); }
@@ -605,11 +611,17 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
           if(l<620){ shx=stx_+dx*620/l; shy=sty_+dy*620/l; shz=stz_+dz*620/l; svx_=dx*speed/l; svy_=dy*speed/l; svz_=dz*speed/l;
               if(speed>14 && !crash_cd){ ship_hit(speed/4,1); space_say("CRASH! SLOW DOWN TO DOCK"); } speed/=3; svx_/=3; svy_/=3; svz_/=3; } } }
     // rocks and pirate hulls
-    for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; if(!a->alive) continue; a->x+=a->vx; a->y+=a->vy; a->z+=a->vz; if(a->flash) a->flash--;
+    if(*AST_MAGIC_P!=(0xA57E01D5u^(u32)cur_sys)) ast_init();                           // the scratch RAM was used for something else (a world was built): put the rocks back
+    if(is_belt() && ast_clear && ++ast_rt>=1800){ ast_rt=0; for(int i=0;i<nast;i++) if(ast_clear>>i&1){ ast_clear&=~(1u<<i); ast_place(i); break; } }      // a cleared belt rock grows back, one every half minute
+    if(HELD(K_R)) for(int k=0;k<4;k++) if(cans[k].alive){ s32 dx=shx-cans[k].x, dy=shy-cans[k].y, dz=shz-cans[k].z;                                  // TRACTOR BEAM: brake near a loose chunk and it is pulled in
+        if(dx>-3200&&dx<3200&&dy>-3200&&dy<3200&&dz>-3200&&dz<3200){ s32 l=isqrt((u32)((dx>>2)*(dx>>2)+(dy>>2)*(dy>>2)+(dz>>2)*(dz>>2)))<<2; if(l<1) l=1; int st=l<90?l:90; cans[k].x+=dx*st/l; cans[k].y+=dy*st/l; cans[k].z+=dz*st/l; tract_t=3; } }
+    if(tract_t) tract_t--;
+    for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue; if(is_belt() && (a->seed&3)==0 && (frames&31)==0){ s16 t=a->vx; a->vx=-a->vz; a->vz=t; }   // a tumbling rock keeps turning its drift
+        a->x+=a->vx; a->y+=a->vy; a->z+=a->vz; if(a->flash) a->flash--;
         if(in_lair) continue; s32 dx=shx-a->x, dy=shy-a->y, dz=shz-a->z, rr=a->r+110;
         if(dx>-rr&&dx<rr&&dy>-rr&&dy<rr&&dz>-rr&&dz<rr){ s32 l=isqrt((u32)(dx*dx+dy*dy+dz*dz)); if(l<1) l=1;
             if(l<rr){ shx=a->x+dx*rr/l; shy=a->y+dy*rr/l; shz=a->z+dz*rr/l; svx_=dx*(speed+6)/l; svy_=dy*(speed+6)/l; svz_=dz*(speed+6)/l;
-                a->vx-=dx*3/l; a->vz-=dz*3/l; if(!crash_cd){ ship_hit(2+speed/5,1); boom(a->x+dx*a->r/l,a->y+dy*a->r/l,a->z+dz*a->r/l,8,56); } speed=speed/2; svx_/=2; svy_/=2; svz_/=2; } } }
+                a->vx-=dx*3/l; a->vz-=dz*3/l; if(!crash_cd){ ship_hit(2+speed/5+((is_belt()&&(a->seed&3)==0)?3:0),1); boom(a->x+dx*a->r/l,a->y+dy*a->r/l,a->z+dz*a->r/l,8,56); } speed=speed/2; svx_/=2; svy_/=2; svz_/=2; } } }
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive || !p->team) continue; s32 dx=shx-p->x, dy=shy-p->y, dz=shz-p->z;
         if(dx>-260&&dx<260&&dy>-260&&dy<260&&dz>-260&&dz<260 && !crash_cd){ ship_hit(6,1); p->hp-=8+speed/3; boom(p->x,p->y,p->z,10,53);
             svx_+=dx/8; svy_+=dy/8; svz_+=dz/8; p->x-=dx/2; p->y-=dy/2; p->z-=dz/2; space_say("RAMMED A PIRATE!");
@@ -618,7 +630,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     int can_land = !in_lair && pd < PR+2200, can_dock = !in_lair && sd < 1100;
     int rock_near=-1;                                                                   // PHASE 2: close to a belt rock: A lands on it
     if(!in_lair && !can_land && !can_dock && sys[cur_sys].kind==6 && !is_hive(cur_sys)){ s32 best=0x7FFFFFF;
-        for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; if(!a->alive) continue; s32 dx=shx-a->x, dy=shy-a->y, dz=shz-a->z, rr=a->r+520;
+        for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue; s32 dx=shx-a->x, dy=shy-a->y, dz=shz-a->z, rr=a->r+520;
             if(dx>-rr&&dx<rr&&dy>-rr&&dy<rr&&dz>-rr&&dz<rr){ s32 d=isqrt((u32)((dx>>3)*(dx>>3)+(dy>>3)*(dy>>3)+(dz>>3)*(dz>>3)))<<3; if(d<rr && d<best){ best=d; rock_near=i; } } } }
     if(++sh_regen>=20){ sh_regen=0; if(shield<20+shield_lv*20) shield++; }
     if(lair_out){ lair_out=0; lair_leave(); return 0; }
@@ -636,10 +648,10 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
             if(sproj(p->x,p->y,p->z,&sx,&sy,&z) && z<bz && sx>104 && sx<136 && sy>VCY-14 && sy<VCY+14){ bz=z; best=i; } }
           if(best>=0){ Pirate *p=&pir[best]; p->hp -= laser_lv*5+2+ship_gun() + (in_lair? tech_lv*12 : 0); boom(p->x,p->y,p->z,4,54); sfx(1);
               if(p->hp<=0){ sfx(9); ship_dies(p,1); } } }
-        if(!in_lair) for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; if(!a->alive) continue; int sx,sy; s32 z;
+        if(!in_lair) for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue; int sx,sy; s32 z;
             if(!sproj(a->x,a->y,a->z,&sx,&sy,&z) || z>9000) continue; int rs=(int)(a->r*FOCS/z)+3;
             if(sx>120-rs && sx<120+rs && sy>VCY-rs && sy<VCY+rs){ a->hp -= laser_lv+1; a->flash=3; boom(shx+((bf[0]*(z-a->r))>>14),shy+((bf[1]*(z-a->r))>>14),shz+((bf[2]*(z-a->r))>>14),3,56); sfx(1);
-                if(a->hp<=0){ a->alive=0; boom(a->x,a->y,a->z,20,56); sfx(13); int nc=1+(a->r>260);
+                if(a->hp<=0){ a->alive=0; if(is_belt()) ast_clear|=1u<<i; boom(a->x,a->y,a->z,20,56); sfx(13); int nc=1+(a->r>260);
                     for(int k=0;k<4 && nc;k++) if(!cans[k].alive){ cans[k].alive=1; int r=lr(10); cans[k].good = r<5?4 : r<9?3 : 7; cans[k].x=a->x+lr(200)-100; cans[k].y=a->y; cans[k].z=a->z+lr(200)-100; nc--; }
                     space_say("ROCK CRACKED! SCOOP THE MINERALS"); }
                 break; } }
@@ -648,7 +660,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(in_lair) beast_update();
     // pirates
     int danger=space_danger();
-    if(!in_lair && !can_land && lr(1500) < 2+danger) spawn_pirates(1);
+    if(!in_lair && !can_land && lr(1500) < 2+danger+(is_belt()?3:0)) spawn_pirates(1);          // a rich belt draws pirates
     // ---- every ship: pick a target, fly at it, shoot. Wingmen fight enemies and form up on you when it's quiet; enemies hunt you and your wingmen
     int scans=0;                                                                          // (a full look round is slow: only a few a frame, so a big battle does not stall when ships die)
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
@@ -724,7 +736,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
       static const u8 ce[]={0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7}; static const u8 se[]={8,9,9,10,10,11,11,8};
       wire(pg,v,12,ce,12,54); wire(pg,v,12,se,4,(frames&16)?55:56); }
     // the asteroid belt: lumpy turning rocks
-    if(!in_lair) for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; if(!a->alive) continue;
+    if(!in_lair) for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue;
         static const s8 oc[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
         s32 v[6*3]; int ang=(frames*2+a->seed*4)&1023; s32 c=cosx(ang>>2), s_=sinx(ang>>2);
         for(int k=0;k<6;k++){ int rr=a->r*(10+((a->seed>>k)&3)*2)/14; s32 x=oc[k][0]*rr, y=oc[k][1]*rr*3/4, z=oc[k][2]*rr;
@@ -763,6 +775,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
               line2(pg,tx,ty,hx,hy,52); line2(pg,tx+1,ty,hx+1,hy,52); line2(pg,(tx+hx)/2,(ty+hy)/2,hx,hy,54); } }
         ship_roll=0; }
     if(hit_t){ hit_t--; if(!FILM) for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
+    if(tract_t) for(int x=100;x<140;x+=4){ dot2(pg,x,118,50); dot2(pg,120+(x-120)/2,100+(x&7),50); }
     cockpit(pg);
     if(sv_yaw!=yaw || sv_pit!=pitch){ yaw=sv_yaw; pitch=sv_pit; }
     static char pb[32]; const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
