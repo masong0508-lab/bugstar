@@ -413,9 +413,49 @@ static const char *const thorn_name[5]={"ROSE THORN","WASP STING","GLASS NEEDLE"
 static const char *const charm_name[4]={"AMBER CHARM","JADE CHARM","BONE CHARM","OPAL CHARM"};
 static const char *const fish_name[8]={"SILVER FISH","FIRE FISH","STONE FISH","KING FISH","GOLD FISH","GLOWFIN","GHOST CARP","DRAGON KOI"};
 static const char *const potion_name[2]={"HEALTH POTION","MANA POTION"};
-enum { SP_FIRE, SP_SPARK, SP_HEAL, SP_SHIELD, SP_PORTAL, NSPELL };
-static const char *const spell_name[NSPELL]={"FIREBALL","SPARK","HEAL","SHIELD","PORTAL"};
-static const u8 spell_cost[NSPELL]={4,6,8,10,12};
+enum { SP_FIRE, SP_SPARK, SP_HEAL, SP_SHIELD, SP_PORTAL, SP_CORE };      // the five core spells come with your level; every spell after them is bought at the SPELL SHOP
+#define NSPELL 31
+enum { CL_ATK, CL_DEF, CL_SUM };
+static const char *const spell_cls_name[3]={"ATTACK","DEFENSE","SUMMON"};
+enum { FX_BALL, FX_ZAP, FX_DRAIN, FX_STUN, FX_NOVA, FX_POISON, FX_HEAL, FX_HEALP, FX_SHIELD, FX_HASTE, FX_MIGHT, FX_MANA, FX_CLEANSE, FX_BARRIER, FX_CALL, FX_BUDDY, FX_PORTAL, FX_SUMMON, FX_GOLEM };
+// cls, mana, level to learn (core five), shop price, effect, a b c d e. Damage = a + b*MAGIC + level.
+// BALL c=balls | ZAP c=targets | DRAIN | STUN b=stun ticks c=targets | NOVA c=range (tiles) | POISON a=poison b=hit c=range
+// HEAL a+b*MAGIC | HEALP a% | SHIELD/HASTE/MIGHT a*10 ticks | MANA a% | CLEANSE a% | BARRIER a=shield b=heal% c=haste
+// SUMMON dmg=a+b*MAGIC+lv/2, c*10 ticks, hits every d ticks, e targets | GOLEM = SUMMON + shield
+typedef struct { const char *name, *desc; u8 cls, cost, lvl; u16 price; u8 fx, a, b, c, d, e; } SpellDef;
+static const SpellDef spell_def[NSPELL]={
+ {"FIREBALL","A BALL OF FIRE FLIES AHEAD",CL_ATK,4,1,0,FX_BALL,6,2,1,0,0},
+ {"SPARK","LIGHTNING HITS THE NEAREST FOE",CL_ATK,6,3,0,FX_ZAP,5,2,1,0,0},
+ {"HEAL","HEALS YOU",CL_DEF,8,5,0,FX_HEAL,10,3,0,0,0},
+ {"SHIELD","HARDER TO HURT FOR A WHILE",CL_DEF,10,7,0,FX_SHIELD,90,0,0,0,0},
+ {"PORTAL","PORTAL HOME. THE DOOR RETURNS",CL_SUM,12,10,0,FX_PORTAL,0,0,0,0,0},
+ {"EMBER","A WEAK BUT CHEAP SPARK",CL_ATK,3,0,40,FX_BALL,3,1,1,0,0},
+ {"THORN SHOT","A HARD HITTING THORN",CL_ATK,5,0,120,FX_BALL,9,3,1,0,0},
+ {"TWIN FIRE","TWO FIREBALLS AT ONCE",CL_ATK,8,0,260,FX_BALL,6,2,2,0,0},
+ {"FROST SHARD","HURTS AND FREEZES TWO FOES",CL_ATK,7,0,320,FX_STUN,4,2,2,40,0},
+ {"CHAIN SPARK","LIGHTNING JUMPS TO 3 FOES",CL_ATK,10,0,480,FX_ZAP,4,2,3,0,0},
+ {"POISON CLOUD","POISONS EVERYTHING NEAR",CL_ATK,9,0,560,FX_POISON,20,1,5,0,0},
+ {"LEECH","STEALS LIFE FROM A FOE",CL_ATK,12,0,700,FX_DRAIN,8,3,0,0,0},
+ {"SHOCK NOVA","BLASTS EVERYTHING AROUND YOU",CL_ATK,16,0,1100,FX_NOVA,10,3,4,0,0},
+ {"METEOR","A HUGE FALLING ROCK OF FIRE",CL_ATK,28,0,2800,FX_BALL,60,8,1,0,0},
+ {"MEND","A SMALL, CHEAP HEAL",CL_DEF,4,0,50,FX_HEAL,5,2,0,0,0},
+ {"BARK SKIN","A TOUGH SHELL FOR A WHILE",CL_DEF,8,0,150,FX_SHIELD,60,0,0,0,0},
+ {"QUICKSTEP","RUN FASTER FOR A WHILE",CL_DEF,6,0,180,FX_HASTE,30,0,0,0,0},
+ {"SHARP FANGS","BITE TWICE AS HARD",CL_DEF,8,0,250,FX_MIGHT,40,0,0,0,0},
+ {"CLEANSE","CURES DIZZY. HEALS A LITTLE",CL_DEF,10,0,300,FX_CLEANSE,15,0,0,0,0},
+ {"FOCUS","GIVES BACK 40% OF YOUR MANA",CL_DEF,5,0,350,FX_MANA,40,0,0,0,0},
+ {"GREATER HEAL","HEALS HALF YOUR HEARTS",CL_DEF,18,0,600,FX_HEALP,50,0,0,0,0},
+ {"AEGIS","SHIELD, HEAL AND SPEED",CL_DEF,22,0,1500,FX_BARRIER,150,30,20,0,0},
+ {"LIFEBLOOM","FULL HEARTS",CL_DEF,32,0,3000,FX_HEALP,100,0,0,0,0},
+ {"BUDDY BOOST","HEALS BUDDY, OR WAKES HIM",CL_SUM,8,0,150,FX_BUDDY,0,0,0,0,0},
+ {"FIREFLY","A TINY FLIER ZAPS FOES",CL_SUM,6,0,80,FX_SUMMON,2,1,30,20,1},
+ {"SPIDERLING","A SPIDER BITES FOR YOU",CL_SUM,9,0,200,FX_SUMMON,4,2,40,18,1},
+ {"CALL BUG","FREES A CAGED BUG ON THE FLOOR",CL_SUM,10,0,260,FX_CALL,0,0,0,0,0},
+ {"MANTIS","A FAST MANTIS SLASHES FOES",CL_SUM,14,0,500,FX_SUMMON,8,3,45,15,1},
+ {"SPIRIT WOLF","A WOLF BITES TWO FOES",CL_SUM,18,0,1200,FX_SUMMON,12,4,50,12,2},
+ {"STONE GOLEM","A GOLEM FIGHTS AND GUARDS YOU",CL_SUM,24,0,2200,FX_GOLEM,20,5,60,14,2},
+ {"HYDRA","THREE HEADS BITE THREE FOES",CL_SUM,40,0,5000,FX_SUMMON,30,8,60,10,3},
+};
 // prefixes and suffixes, like the magic items in Fate
 static const char *const wpre[7]={"","SHARP","CRUEL","FLAMING","VENOM","LUCKY","VAMPIRE"};
 static const char *const apre[7]={"","STURDY","THICK","SPIKY","SWIFT","BLESSED","GLOWING"};
@@ -432,6 +472,7 @@ static s64 st_str, st_dex, st_vit, st_mag, stat_pts, mp, maxmp;
 static int fame;
 static s64 d_dmg, d_def; static int d_crit, d_spd, d_regen, d_reflect, d_vamp, d_haste, d_sting, d_fire, d_light, d_venom;
 static u8 spell_known[NSPELL]; static int spell_sel=0;
+static int spell_ok(int i){ return i<SP_CORE ? level>=spell_def[i].lvl : spell_known[i]; }       // core spells: by level. The rest: bought or found
 static int shake_t=0, bob_ph=0;
 static int speed_t=0, strong_t=0, dizzy_t=0, stun_t=0, sight=0, hunger_t=0, shield_t=0, regen_t=0;
 static int escape_flag=0, call_flag=0, blast_flag=0, cast_flag=-1;
@@ -530,7 +571,7 @@ static void new_game(void){ ore_reset();
     shuffle(berry_map,8); shuffle(seed_map,6);
     for(int i=0;i<8;i++) berry_known[i]=0; for(int i=0;i<6;i++) seed_known[i]=0;
     for(int i=0;i<6;i++) have_bug[i]=0;
-    for(int i=0;i<NSPELL;i++) spell_known[i]=0; spell_known[SP_FIRE]=1; spell_known[SP_PORTAL]=1; spell_sel=0;
+    for(int i=0;i<NSPELL;i++) spell_known[i]=0; spell_sel=0;
     hum.style=0; hum.height=3; hum.build=1; hum.made=0;
     zone=0; zone_cleared=0; level=1; xp=0; food=100; gold=0; bugs_freed=0; bag_n=0; bag_sel=0; fame=0; portal_depth=0;
     endless=0; world_no=0; loot=0; best_depth=0;
@@ -559,7 +600,7 @@ static void gear_name(const Gear *g, char *b){
         case IT_WARP: scpy(b,"WARP CRYSTAL"); break;
         case IT_GEM: scpy(b,gem_name[sub&3]); break;
         case IT_CRUMB: scpy(b,"CRUMB"); break;
-        case IT_BOOK: scpy(b,"BOOK: "); scat(b,spell_name[sub%NSPELL]); break;
+        case IT_BOOK: scpy(b,"BOOK: "); scat(b,spell_def[sub%NSPELL].name); break;
         case IT_FISH: scpy(b,fish_name[sub&7]); break;
         case IT_POTION: scpy(b,potion_name[sub&1]); break;
         case IT_QUEST: scpy(b,"LOST TREASURE"); break;
@@ -593,7 +634,7 @@ static Gear roll_drop(int ilvl, int luck){
     else if(r<66){ g.it=IT_POTION; g.sub=rndi(2); }
     else if(r<76){ g.it=IT_SEED; g.sub=rndi(6); }
     else if(r<84){ g.it=IT_CRUMB; }
-    else if(r<88){ g.it=IT_BOOK; g.sub=rndi(SP_PORTAL); }
+    else if(r<88){ g.it=IT_BOOK; g.sub=SP_CORE+rndi(NSPELL-SP_CORE); }
     else { g.it=IT_GEM; int t=rndi(10)+ilvl/6; g.sub = t<5?0 : t<8?1 : t<11?2 : 3; }
     return g;
 }
@@ -724,7 +765,7 @@ static void use_index(int i){
     case IT_GEM: { int t=sub&3; scpy(b,gem_name[t]); scat(b,": "); scat(b,gem_use[t]);
         if(t==0) hearts=maxh; else if(t==1) gain_xp(20+depth_no*3); else if(t==2) food=100; else { st_str=sadd(st_str,2); recalc(); }
         say(b); break; }
-    case IT_BOOK: if(spell_known[sub]){ say("YOU KNOW THAT SPELL"); return; } spell_known[sub]=1; spell_sel=sub; scpy(b,"LEARNED "); scat(b,spell_name[sub]); say(b); break;
+    case IT_BOOK: if(sub<SP_CORE){ say("THAT SPELL COMES WITH YOUR LEVEL"); return; } if(spell_ok(sub)){ say("YOU KNOW THAT SPELL"); return; } spell_known[sub]=1; spell_sel=sub; scpy(b,"LEARNED "); scat(b,spell_def[sub].name); say(b); break;
     case IT_FISH: if(!feed_pet(sub)) return; break;
     case IT_KEY: say("WALK INTO THE LOCKED DOOR TO USE IT"); return;
     }
@@ -736,8 +777,8 @@ static void bag_input(void){
     if(HELD(K_SEL)){                         // hold SELECT + L/R to pick a spell
         if(HIT(K_SEL)){ sel_held=1; sel_used=0; }
         if(bag_n && (HIT(K_UP)||HIT(K_DOWN))){ sel_used=1; bag_sel=(bag_sel+(HIT(K_DOWN)?1:bag_n-1))%bag_n; hud_now(); }   // SELECT + up/down: pick an item
-        if(scene!=0 && (HIT(K_L)||HIT(K_R))){ sel_used=1; for(int k=0;k<NSPELL;k++){ spell_sel=(spell_sel+(HIT(K_R)?1:NSPELL-1))%NSPELL; if(spell_known[spell_sel]) break; }
-            char b[32]; scpy(b,"SPELL: "); scat(b,spell_name[spell_sel]); say(b); }
+        if(scene!=0 && (HIT(K_L)||HIT(K_R))){ sel_used=1; for(int k=0;k<NSPELL;k++){ spell_sel=(spell_sel+(HIT(K_R)?1:NSPELL-1))%NSPELL; if(spell_ok(spell_sel)) break; }
+            char b[32]; scpy(b,"SPELL: "); scat(b,spell_def[spell_sel].name); say(b); }
         return;
     }
     if(sel_held){ sel_held=0; if(!sel_used) cast_flag=spell_sel; }

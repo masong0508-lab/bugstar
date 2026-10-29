@@ -360,7 +360,7 @@ static void hud3d(volatile u16 *pg){
         if(lab[k][0]) text(pg,x-1,y0+3,lab[k],0,1); else for(int y=y0+4;y<y0+8;y++) pix(pg,x,y,R_CHEST+1); }
     for(int y=y0+1;y<y1;y++) pix(pg,204,y,C_RED);
     // the spell you have ready
-    if(spell_known[spell_sel]){ char b[20]; scpy(b,spell_name[spell_sel]); text(pg,4,21,b, mp>=spell_cost[spell_sel]?C_CYAN:C_DGREY,1); }
+    if(spell_ok(spell_sel)){ char b[20]; scpy(b,spell_def[spell_sel].name); text(pg,4,21,b, mp>=spell_def[spell_sel].cost?C_CYAN:C_DGREY,1); }
 }
 
 // ---------------------------------------------------------------- combat
@@ -666,6 +666,52 @@ static void do_bite(s32 dirx, s32 diry){
         if(finisher){ combo=0; say("CRUNCH!"); sfx(12); } else { combo++; combo_t=50; } }
     else if(finisher) combo=0;
 }
+// ---------------------------------------------------------------- spells: one function for all of them (see spell_def in game.inc)
+typedef struct { s16 t; u8 every, tick, n; s32 dmg; } Summon;
+#define NSUM 3
+static Summon sums[NSUM];
+static int sp_near(s32 maxd, u32 used){ int best=-1; s32 bd=maxd;
+    for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; if(i<32 && ((used>>i)&1)) continue; s32 d=dist8(o->x-px_,o->y-py_); if(d<bd){ bd=d; best=i; } }
+    return best; }
+static void sum_tick(void){
+    for(int k=0;k<NSUM;k++){ Summon *u=&sums[k]; if(u->t<=0) continue; u->t--; if(++u->tick<u->every) continue; u->tick=0; u32 used=0;
+        for(int j=0;j<u->n;j++){ int i=sp_near(0x60000,used); if(i<0) break; if(i<32) used|=1u<<i; DObj *o=&dob[i]; s32 ox=o->x, oy=o->y; hit_mon(o,u->dmg,0); burst(ox,oy,0x6000,5,1); } }
+}
+static void sp_heal(s64 n){ hearts=sadd(hearts,n); if(hearts>maxh) hearts=maxh; burst(px_,py_,0x4000,10,1); sfx(6); }
+static int cast_spell(int s, s32 dirx, s32 diry, s32 plx, s32 ply){
+    const SpellDef *d=&spell_def[s]; int dmg=clampi(sadd(sadd(d->a,smul(st_mag,d->b)),level)); u32 used=0; (void)plx; (void)ply;
+    switch(d->fx){
+    case FX_BALL: { int n=d->c?d->c:1; for(int k=0;k<n;k++){ int sp=2*k-(n-1);
+            fire_proj(0, px_+(dirx>>2)+((-diry*sp)>>3), py_+(diry>>2)+((dirx*sp)>>3), 0x7000, ((dirx*3)>>5)+((-diry*sp)>>6), ((diry*3)>>5)+((dirx*sp)>>6), dmg); } sfx(3); return 1; }
+    case FX_ZAP: { int hit=0; for(int k=0;k<d->c;k++){ int i=sp_near(0x60000,used); if(i<0) break; if(i<32) used|=1u<<i; DObj *o=&dob[i]; s32 ox=o->x, oy=o->y;
+            hit_mon(o,dmg,0); burst(ox,oy,0x8000,8,2); if(!hit){ spark_t=6; s32 det=(s32)((((long long)plx*diry)-((long long)dirx*ply))>>16); s32 sx=ox-px_, sy=oy-py_;
+                s32 tY=det?(s32)((((long long)-ply*sx)+((long long)plx*sy))/det):0, tX=det?(s32)((((long long)diry*sx)-((long long)dirx*sy))/det):0;
+                if(tY>0x2000){ spark_c=60+(s32)(((long long)tX*60)/tY); spark_y=hz; } else { spark_c=60; spark_y=60; } } hit++; }
+        if(!hit){ say("NOTHING TO ZAP"); return 0; } sfx(10); return 1; }
+    case FX_DRAIN: { int i=sp_near(0x60000,0); if(i<0){ say("NOTHING TO DRAIN"); return 0; } DObj *o=&dob[i]; s32 ox=o->x, oy=o->y; hit_mon(o,dmg,0); burst(ox,oy,0x6000,8,1); sp_heal(dmg/2+1); return 1; }
+    case FX_STUN: { int hit=0; for(int k=0;k<d->c;k++){ int i=sp_near(0x50000,used); if(i<0) break; if(i<32) used|=1u<<i; DObj *o=&dob[i]; s32 ox=o->x, oy=o->y;
+            hit_mon(o,dmg,0); burst(ox,oy,0x7000,6,2); if(o->alive){ o->stag=d->d; o->wind=0; } hit++; }
+        if(!hit){ say("NOTHING TO FREEZE"); return 0; } sfx(10); return 1; }
+    case FX_NOVA: case FX_POISON: { s32 rng=(s32)d->c<<16; int n=ndo, hit=0;
+            for(int i=0;i<n;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; if(dist8(o->x-px_,o->y-py_)>rng) continue; s32 ox=o->x, oy=o->y; hit++;
+                if(d->fx==FX_NOVA){ hit_mon(o,dmg,0); burst(ox,oy,0x7000,4,2); } else { hit_mon(o,clampi(sadd(sadd(d->b,sdiv(st_mag,1)),sdiv(level,2))),0); if(o->alive) o->venom=d->a*10; burst(ox,oy,0x4000,4,1); } }
+            burst(px_,py_,0x5000,14,2); sfx(10); if(!hit) say("NOBODY WAS CLOSE ENOUGH"); return 1; }
+    case FX_HEAL: sp_heal(sadd(d->a,smul(st_mag,d->b))); say("HEALED"); return 1;
+    case FX_HEALP: sp_heal(sdiv(smul(maxh,d->a),100)); say("HEALED"); return 1;
+    case FX_SHIELD: if(shield_t<d->a*10) shield_t=d->a*10; say("SHIELD UP"); sfx(6); return 1;
+    case FX_HASTE: speed_t=d->a*10; say("FASTER!"); sfx(6); return 1;
+    case FX_MIGHT: strong_t=d->a*10; say("STRONG BITE!"); sfx(6); return 1;
+    case FX_MANA: mp=sadd(mp,sdiv(smul(maxmp,d->a),100)); if(mp>maxmp) mp=maxmp; say("MANA BACK"); sfx(6); return 1;
+    case FX_CLEANSE: dizzy_t=0; stun_t=0; sp_heal(sdiv(smul(maxh,d->a),100)); say("CLEAN AND CLEAR"); return 1;
+    case FX_BARRIER: if(shield_t<d->a*10) shield_t=d->a*10; speed_t=d->c*10; sp_heal(sdiv(smul(maxh,d->b),100)); say("AEGIS!"); return 1;
+    case FX_CALL: { int cg=0; for(int i=0;i<ndo;i++) if(dob[i].alive && dob[i].kind==K_CAGE) cg=1; if(!cg){ say("NO CAGE ON THIS FLOOR"); return 0; } call_flag=1; say("A BUG ANSWERS"); sfx(6); return 1; }
+    case FX_BUDDY: if(pet_down_t) pet_down_t=1; else pet_hp=pet_maxhp; say("BUDDY FEELS BETTER"); sfx(6); return 1;
+    case FX_PORTAL: escape_flag=1; portal_depth=depth_no; say("A PORTAL OPENS!"); sfx(5); return 1;
+    default: { int k=0; for(int i=0;i<NSUM;i++){ if(sums[i].t<=0){ k=i; break; } if(sums[i].t<sums[k].t) k=i; }
+        Summon *u=&sums[k]; u->t=d->c*10; u->every=d->d; u->tick=0; u->n=d->e; u->dmg=clampi(sadd(sadd(d->a,smul(st_mag,d->b)),sdiv(level,2)));
+        if(d->fx==FX_GOLEM && shield_t<600) shield_t=600; char b[40]; scpy(b,d->name); scat(b," JOINS YOU"); say(b); burst(px_+(dirx>>1),py_+(diry>>1),0x5000,10,1); sfx(6); return 1; }
+    }
+}
 static int dungeon_frame_(void);
 static int dungeon_frame(void){ u32 t=TMR(); int r=dungeon_frame_(); prof[5]=TMR()-t; return r; }
 static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint, 3 when you warp out
@@ -728,23 +774,10 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(escape_flag){ escape_flag=0; return 3; }
     // ---- spells
     if(cast_flag>=0){ int s=cast_flag; cast_flag=-1;
-        if(!spell_known[s]) say("FIND A SPELL BOOK FIRST");
-        else if(mp<spell_cost[s]*xo_v(XO_SPELL)/100){ say("NOT ENOUGH MANA"); }
-        else { mp-=spell_cost[s]*xo_v(XO_SPELL)/100;
-            if(s==SP_FIRE){ fire_proj(0, px_+(dirx>>2), py_+(diry>>2), 0x7000, (dirx*3)>>5, (diry*3)>>5, clampi(sadd(sadd(6,smul(st_mag,2)),level))); sfx(3); }
-            else if(s==SP_SPARK){ int best=-1; s32 bd=0x60000;
-                for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; s32 d=dist8(o->x-px_,o->y-py_); if(d<bd){ bd=d; best=i; } }
-                if(best>=0){ DObj *o=&dob[best]; hit_mon(o, clampi(sadd(sadd(5,smul(st_mag,2)),level)), 0); burst(o->x,o->y,0x8000,8,2); spark_t=6;
-                    s32 det=(s32)((((long long)plx*diry)-((long long)dirx*ply))>>16); s32 sx=o->x-px_, sy=o->y-py_;
-                    s32 tY=(s32)((((long long)-ply*sx)+((long long)plx*sy))/det), tX=(s32)((((long long)diry*sx)-((long long)dirx*sy))/det);
-                    if(tY>0x2000){ spark_c=60+(s32)(((long long)tX*60)/tY); spark_y=hz; } else { spark_c=60; spark_y=60; } }
-                else say("NOTHING TO ZAP");
-                sfx(10); }
-            else if(s==SP_HEAL){ hearts+=10+st_mag*3; if(hearts>maxh) hearts=maxh; burst(px_+(dirx>>1),py_+(diry>>1),0x4000,10,1); sfx(6); say("HEALED"); }
-            else if(s==SP_SHIELD){ shield_t=900; say("SHIELD UP"); sfx(6); }
-            else { escape_flag=1; portal_depth=depth_no; say("A PORTAL OPENS!"); sfx(5); }          // PORTAL: home to the surface; the door brings you back to this floor
-            hud_now(); }
-    }
+        if(!spell_ok(s)) say("YOU HAVEN'T LEARNED THAT SPELL");
+        else { int cost=spell_def[s].cost*xo_v(XO_SPELL)/100; if(mp<cost) say("NOT ENOUGH MANA");
+            else if(cast_spell(s,dirx,diry,plx,ply)){ mp-=cost; hud_now(); } } }
+    if(wtick) sum_tick();
     // ---- Buddy, your pet
     int pet_here = !pet_away_t && !pet_down_t;
     if(wtick && pet_here){
@@ -1140,7 +1173,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     ant_king=1; zones_open=6; cleared_mask=63; fade(0); scene=2; page_back=1; beast_defaults(); beast_stage=2; tech_lv=3; lair_enter(); return;   // (filming: the 1 trillion HP Technobeast)
 #endif
     scene=0; launch_flag=0; enter_dungeon_flag=0; forge_on=0; fish_state=0; msg_timer=0; invuln=0; shake_t=0; page_back=0; loot=0; depth_no=0;
-    speed_t=strong_t=dizzy_t=stun_t=shield_t=0;
+    speed_t=strong_t=dizzy_t=stun_t=shield_t=0; for(int i=0;i<NSUM;i++) sums[i].t=0;
     restock(); arrow_ship = zone_cleared && !endless;
     landing_screen(cont);
     new_planet(); planet_enter(); show_msg(cont ? "WELCOME BACK" : "");

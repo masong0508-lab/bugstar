@@ -362,7 +362,7 @@ static const HelpLine help_pg[18][7]={
   {{"UP DN","WALK FORWARD AND BACK"},{"LT RT","TURN (TAP A LITTLE, HOLD FOR MORE)"},{"L R","STEP SIDEWAYS. TAP TWICE TO DODGE"},{"A","BITE. HOLD IT. THREE IN A ROW = CRUNCH"},{"A","OPEN CAGES, TAKE STAIRS, FISH IN POOLS"},{"SEL","CAST A SPELL. HOLD + L/R PICKS THE SPELL"},{"START","THE MAP OF THIS FLOOR"}},
   {{"!","A RED ! MEANS A MONSTER IS ABOUT TO BITE"},{"","STEP BACK OR DODGE, THEN BITE IT"},{"L R","TAP TWICE TO DASH. DASHING CAN'T BE HURT"},{"A","BITES IN A ROW MAKE A COMBO. 3RD: CRUNCH"},{"","BEETLES CHARGE: SIDESTEP, THEY HIT THE WALL"},{"","BOOM MONSTERS BLOW UP. SPLIT ONES SPLIT"},{"","THE QUEEN CALLS HER BROOD AT HALF HEALTH"}},
   {{"","EACH FLOOR CAN HAVE AN EVENT. READ THE GOAL"},{"","VAULT, NEST, ELITE HUNT, DARK, SPEED RUN..."},{"","SOME FLOORS ARE LABYRINTHS: A REAL MAZE"},{"","OUTPOSTS: FIND THE KEYCARD, OPEN THE DOOR"},{"","BITE CHESTS AND BARRELS. FREE CAGED BUGS"},{"","YOU START ON THE UP STAIRS. STEP OFF FIRST"},{"START","MAP: GOLD = DOWN, BLUE = UP, GREEN = CAGE"}},
-  {{"SEL","TAP: CAST YOUR SPELL (COSTS MP)"},{"SEL","HOLD + L/R: CHANGE SPELL. UP/DN: BAG ITEM"},{"","FIREBALL, SPARK, HEAL, SHIELD: FIND THEIR BOOKS"},{"","PORTAL (12 MP): POP UP TO THE SURFACE"},{"","THE DOOR THEN TAKES YOU BACK TO THAT FLOOR"},{"L R","PICK A BAG ITEM"},{"B","USE IT: POTIONS, BERRIES, SEEDS, CRYSTALS"}},
+  {{"SEL","TAP: CAST YOUR SPELL (COSTS MP)"},{"SEL","HOLD + L/R: CHANGE SPELL. UP/DN: BAG ITEM"},{"","LV 1 FIRE, 3 SPARK, 5 HEAL, 7 SHIELD, 10 PORTAL"},{"","MORE SPELLS: SPELL SHOP AT YOUR SHIP (SHOP TAB)"},{"","THE DOOR THEN TAKES YOU BACK TO THAT FLOOR"},{"L R","PICK A BAG ITEM"},{"B","USE IT: POTIONS, BERRIES, SEEDS, CRYSTALS"}},
   {{"","HEARTS GO DOWN WHEN YOU GET BITTEN"},{"","FOOD GOES DOWN SLOWLY. EAT WHEN IT'S LOW"},{"","CRUMBS, FISH AND BERRIES FILL THE GREEN BAR"},{"","UNKNOWN BERRIES CAN BE BAD. TRY THEM SAFE"},{"","FAINTING: YOU WAKE AT THE SHIP, LOSE SOME STUFF"},{"START","SYSTEM TAB: SAVE ANY TIME ON THE SURFACE"},{"","OPTIONS > DIFFICULTY: BABY IS THE GENTLEST"}},
   {{"","THORNS = BITE. SHELLS = ARMOUR. CHARMS = MAGIC"},{"","WHITE IS PLAIN, BLUE IS MAGIC, GOLD IS RARE"},{"","ORANGE IS UNIQUE: BOSSES AND OVERLORDS DROP IT"},{"","+ OR - TELLS YOU IF IT BEATS WHAT YOU WEAR"},{"","WORKBENCH (YOUR SHIP): UPGRADE GEAR +2 LEVELS"},{"","TROPHY CASE: KEEP LOOT FOREVER FOR POINTS"},{"B","ON THE GEAR PAGE: SCRAP IT FOR TECH SCRAP"}},
   {{"","BUDDY FOLLOWS YOU AND FIGHTS BESIDE YOU"},{"","FEED HIM FISH: FIRE BEETLE, STONE, STAG KING"},{"","HE LEVELS UP FROM THE XP YOU EARN"},{"SEL","ON THE GEAR PAGE: SEND HIM OFF TO SELL GEAR"},{"","FREE CAGED BUGS: MORE FRIENDS TRAIL YOU"},{"","BABY MODE: BUDDY HEALS YOUR BOO-BOOS"},{"","A FAINTED BUDDY COMES BACK AFTER A WHILE"}},
@@ -600,12 +600,13 @@ static void char_screen(volatile u16 *pg){
             } else if(page==2){
                 ui_panel(pg,4,38,232,60); ui_head(pg,9,41,150,"SPELLS",C_UNIQ);
                 scpy(b,"MANA "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); scat(b,"  POWER "); ncat(b,st_mag); rtext(pg,231,41,b,C_CYAN);
-                static const char *const sd[NSPELL]={"A BALL OF FIRE FLIES AHEAD","LIGHTNING HITS THE NEAREST FOE","HEALS YOU","HARDER TO HURT FOR A WHILE","PORTAL HOME. THE DOOR RETURNS"};
-                y=51; for(int i=0;i<NSPELL;i++){ if(cur==i) ui_sel(pg,7,y-1,226,7,HI);
+                { int top=cur-2; if(top>NSPELL-5) top=NSPELL-5; if(top<0) top=0;
+                  y=51; for(int i=top;i<top+5 && i<NSPELL;i++){ int ok=spell_ok(i); if(cur==i) ui_sel(pg,7,y-1,226,7,HI);
                     if(i==spell_sel){ rect(pg,11,y+1,3,3,C_GOLD); }
-                    text(pg,17,y,spell_name[i], spell_known[i] ? (i==spell_sel?C_GOLD:C_WHITE) : C_DGREY,1);
-                    b[0]=0; ncat(b,spell_cost[i]); scat(b," MP"); text(pg,76,y,b,spell_known[i]?C_CYAN:C_DGREY,1);
-                    text(pg,108,y, spell_known[i]?sd[i]:"FIND ITS BOOK",spell_known[i]?U_SOFT:C_DGREY,1); y+=9; }
+                    text(pg,17,y,spell_def[i].name, ok ? (i==spell_sel?C_GOLD:C_WHITE) : C_DGREY,1);
+                    b[0]=0; ncat(b,spell_def[i].cost); scat(b," MP"); text(pg,76,y,b,ok?C_CYAN:C_DGREY,1);
+                    if(ok) scpy(b,spell_def[i].desc); else if(i<SP_CORE){ scpy(b,"LEARNED AT LEVEL "); ncat(b,spell_def[i].lvl); } else { scpy(b,"SPELL SHOP: "); ncat(b,spell_def[i].price); scat(b,"G"); }
+                    b[28]=0; text(pg,108,y,b,ok?U_SOFT:C_DGREY,1); y+=9; } }
                 ui_panel(pg,4,100,232,32); ui_head(pg,9,103,222,"HOW TO CAST",C_CYAN);
                 ui_hints(pg,12,113,"SEL: CAST IT, IN A DUNGEON",C_WHITE,1);
                 ui_hints(pg,12,123,"SEL+L/R: CHANGE SPELL",C_WHITE,1);
@@ -681,7 +682,7 @@ static void char_screen(volatile u16 *pg){
             dirty=1;
             if(page==0 && stat_pts){ s64 *sv[4]={&st_str,&st_dex,&st_vit,&st_mag}; (*sv[cur])=sadd(*sv[cur],1); stat_pts--; s64 oldmax=maxh; recalc(); hearts=sadd(hearts,sadd(maxh,-oldmax)); sfx(2); }
             if(page==1 && bag_n){ use_index(cur); if(cur>=bag_n && cur) cur--; }
-            if(page==2 && spell_known[cur]) spell_sel=cur;
+            if(page==2 && spell_ok(cur)) spell_sel=cur;
             if(page==4){ sub^=1; sfx(2); }
             if(page==7){ int r=fav_add_here(); scpy(menu_msg, r>=0 ? "SAVED TO YOUR FAVOURITES" : r==-2 ? "IT IS ALREADY A FAVOURITE" : r==-3 ? "31 UNIVERSES IN USE" : "FAVOURITES ARE FULL (256)"); if(r>=0) sfx(6); }
             if(page==5){ sys_action(pg,cur); if(sys_req) break; }
@@ -824,13 +825,33 @@ static void workbench(volatile u16 *pg){
 }
 static int make_ship(volatile u16 *pg, int first);
 static int enter_dungeon_flag; static int forge_menu(volatile u16 *pg);
+// ---------------------------------------------------------------- the spell shop: Attack, Defense and Summon spells, from a few gold to a fortune
+static int sp_shop_id[NSPELL];
+static void spshop_row(int i, char *b, int *c){ int id=sp_shop_id[i]; scpy(b,spell_def[id].name); while(textlen(b)<14) scat(b," "); ncat(b,spell_def[id].cost); scat(b," MP"); while(textlen(b)<24) scat(b," ");
+    if(spell_ok(id)){ scat(b,"OWNED"); *c=C_DGREY; } else { ncat(b,spell_def[id].price); scat(b,"G"); *c=gold>=spell_def[id].price?C_GOLD:C_RED; } }
+static void spshop_desc(int i, char *b, int *c){ if(i<0){ b[0]=0; return; } scpy(b,spell_def[sp_shop_id[i]].desc); *c=C_WHITE; }
+static void spcls_row(int i, char *b, int *c){ int own=0, all=0; for(int k=SP_CORE;k<NSPELL;k++) if(spell_def[k].cls==i){ all++; if(spell_ok(k)) own++; }
+    scpy(b,spell_cls_name[i]); while(textlen(b)<16) scat(b," "); ncat(b,own); scat(b,"/"); ncat(b,all); scat(b," OWNED"); *c=C_WHITE; }
+static void spcls_desc(int i, char *b, int *c){ static const char *const d[3]={"FIRE, LIGHTNING, POISON AND STORMS","HEALS, SHIELDS, SPEED AND MANA","FRIENDS AND SPIRITS THAT FIGHT FOR YOU"}; if(i<0){ b[0]=0; return; } scpy(b,d[i]); *c=C_WHITE; }
+static void spell_shop(volatile u16 *pg){
+    int c0=0;
+    while(1){ list_desc=spcls_desc; int r=list_pick(pg,"SPELL SHOP",3,spcls_row,&c0,"A: OPEN  B: BACK"); if(r<0) break;
+        int n=0; for(int k=SP_CORE;k<NSPELL;k++) if(spell_def[k].cls==r) sp_shop_id[n++]=k;
+        int s2=0, q; list_desc=spshop_desc;
+        while((q=list_pick(pg,spell_cls_name[r],n,spshop_row,&s2,"A: BUY  B: BACK"))>=0){
+            int id=sp_shop_id[q]; if(spell_ok(id)){ say("YOU ALREADY KNOW IT"); continue; }
+            if(gold<spell_def[id].price){ say("NOT ENOUGH GOLD"); continue; }
+            gold-=spell_def[id].price; spell_known[id]=1; say("SPELL LEARNED!"); sfx(7); hud_now(); } }
+    list_desc=0;
+}
+
 // ---- the ship menu: four tabs (L/R or LEFT/RIGHT), a few big rows on each, and a line that says what the row does.
 // the ids below are the old row numbers, so every action further down is unchanged. START = take off from any tab.
-static const u8 shop_tab_n[4]={3,4,4,4};
-static const u8 shop_tab_id[4][4]={{0,14,13,0},{1,2,3,4},{5,6,8,7},{9,12,10,11}};
+static const u8 shop_tab_n[4]={3,5,4,4};
+static const u8 shop_tab_id[4][5]={{0,14,13,0,0},{1,15,2,3,4},{5,6,8,7,0},{9,12,10,11,0}};
 static const char *const shop_tab_nm[4]={"GO","SHOP","CARE","YOU"};
-static const char *const shop_nm[15]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY BERRY / SEED","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB"};
-static const char *const shop_ds[15]={"TAKE OFF FOR THE NEXT STAR","CRUMBS, POTIONS, BERRIES, SEEDS AND WARPS","BUY GEAR FOR YOUR BITE, SHELL AND CHARM","SELL WHAT YOU ARE CARRYING FOR GOLD","TAKE A JOB FOR FAME, GOLD AND A PRIZE","FULL HEARTS AND MANA FOR YOU AND BUDDY","LEARN WHAT AN UNKNOWN BERRY OR SEED DOES","KEEP OR SCRAP YOUR BEST FINDS","UPGRADE GEAR WITH GOLD AND MINED GOODS","REMAKE YOUR LOOK","REDESIGN YOUR SHIP IN 3D","HE ALWAYS KNOWS WHAT TO DO NEXT","SWITCH BETWEEN THE SHAPES YOU HAVE BEEN","ENTER THE DUNGEON FORGE","RACE ANY TIME AND BUILD YOUR OWN TRACKS"};
+static const char *const shop_nm[16]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY BERRY / SEED","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB","SPELL SHOP"};
+static const char *const shop_ds[16]={"TAKE OFF FOR THE NEXT STAR","CRUMBS, POTIONS, BERRIES, SEEDS AND WARPS","BUY GEAR FOR YOUR BITE, SHELL AND CHARM","SELL WHAT YOU ARE CARRYING FOR GOLD","TAKE A JOB FOR FAME, GOLD AND A PRIZE","FULL HEARTS AND MANA FOR YOU AND BUDDY","LEARN WHAT AN UNKNOWN BERRY OR SEED DOES","KEEP OR SCRAP YOUR BEST FINDS","UPGRADE GEAR WITH GOLD AND MINED GOODS","REMAKE YOUR LOOK","REDESIGN YOUR SHIP IN 3D","HE ALWAYS KNOWS WHAT TO DO NEXT","SWITCH BETWEEN THE SHAPES YOU HAVE BEEN","ENTER THE DUNGEON FORGE","RACE ANY TIME AND BUILD YOUR OWN TRACKS","BUY ATTACK, DEFENSE AND SUMMON SPELLS"};
 static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
     volatile u16 *pg=VISPG;
     oam_hide_all(); oam_flush();
@@ -847,7 +868,7 @@ static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
                 for(int t=0;t<4;t++){ int x=16+t*52; if(t==tab) ui_sel(pg,x,34,50,11,U_SEL); ctext(pg,x+25,37,shop_tab_nm[t],t==tab?C_WHITE:C_GREY);
                     if(t==1 && q_type!=Q_NONE && q_done) text(pg,x+41,37,"!",C_GREEN,1); }        // a finished quest waits on the SHOP tab
                 rect(pg,14,48,212,1,U_RAISE);
-                for(int i=0;i<shop_tab_n[tab];i++){ int id=shop_tab_id[tab][i], y=52+i*13, c=C_GREY, vc=C_GREY; const char *v=0; char vb[16]; vb[0]=0;
+                for(int i=0;i<shop_tab_n[tab];i++){ int n5=shop_tab_n[tab]>4, id=shop_tab_id[tab][i], y=52+i*(n5?10:13), c=C_GREY, vc=C_GREY; const char *v=0; char vb[16]; vb[0]=0;
                     const char *lab = (id==0 && next_ok) ? nxt : shop_nm[id];
                     switch(id){
                         case 0: if(next_ok) c=C_GREEN; break;
@@ -857,11 +878,12 @@ static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
                         case 6: { int u=0; for(int k=0;k<bag_n;k++) if((bag[k].it==IT_BERRY && !berry_known[bag[k].sub]) || (bag[k].it==IT_SEED && !seed_known[bag[k].sub])) u++;
                                   if(u){ v="30G"; vc=gold>=30?C_GOLD:C_RED; } else { v="NOTHING NEW"; vc=C_DGREY; } } break;
                         case 11: c=C_CYAN; break;
+                        case 15: { int k2=0; for(int k=SP_CORE;k<NSPELL;k++) if(!spell_ok(k)) k2++; if(k2){ ncat(vb,k2); scat(vb," TO BUY"); v=vb; vc=C_CYAN; } else { v="ALL OWNED"; vc=C_DGREY; } } break;
                         case 12: scpy(vb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); v=vb; vc=C_CYAN; break;
                         case 13: if(!ant_king){ v="LOCKED"; vc=C_RED; } break;
                         default: break; }
-                    if(i==row[tab]){ ui_sel(pg,16,y,208,12,U_SEL); if(c==C_GREY) c=C_WHITE; }
-                    text(pg,24,y+3,lab,c,1); if(v) rtext(pg,220,y+3,v,vc); }
+                    if(i==row[tab]){ ui_sel(pg,16,y,208,n5?10:12,U_SEL); if(c==C_GREY) c=C_WHITE; }
+                    text(pg,24,y+(n5?2:3),lab,c,1); if(v) rtext(pg,220,y+(n5?2:3),v,vc); }
                 rect(pg,14,106,212,1,U_RAISE);
                 if(cid==13 && !ant_king) text(pg,20,110,"BEAT THE ANT KING TO OPEN THE FORGE",C_GREY,1);
                 else if(cid==0 && next_ok){ text(pg,20,110,"ZONE CLEARED. TAP A TO GO ON AUTOPILOT",C_GREY,1); text(pg,20,118,"HOLD A TO FLY IT YOURSELF",C_DGREY,1); }
@@ -877,7 +899,7 @@ static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
             if(HIT(K_START)){ sel=0; break; }
             if(HIT(K_A)){ sel=shop_tab_id[tab][row[tab]]; break; }
         }
-        if(sel==15){ in_menu--; wait_release(); return 0; }
+        if(sel==15){ spell_shop(pg); continue; }
         if(sel==14){ kart_req=1; in_menu--; wait_release(); return 0; }
         if(sel==13){ if(!ant_king){ say("BEAT THE ANT KING TO OPEN THE FORGE"); continue; }
             if(forge_menu(pg)){ enter_dungeon_flag=3; in_menu--; wait_release(); return 0; } box(pg,12,20,216,136); continue; }
