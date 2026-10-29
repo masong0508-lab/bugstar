@@ -824,28 +824,58 @@ static void workbench(volatile u16 *pg){
 }
 static int make_ship(volatile u16 *pg, int first);
 static int enter_dungeon_flag; static int forge_menu(volatile u16 *pg);
-static int shop_menu(void){   // returns 1 to fly on
+// ---- the ship menu: four tabs (L/R or LEFT/RIGHT), a few big rows on each, and a line that says what the row does.
+// the ids below are the old row numbers, so every action further down is unchanged. START = take off from any tab.
+static const u8 shop_tab_n[4]={3,4,4,4};
+static const u8 shop_tab_id[4][4]={{0,14,13,0},{1,2,3,4},{5,6,8,7},{9,12,10,11}};
+static const char *const shop_tab_nm[4]={"GO","SHOP","CARE","YOU"};
+static const char *const shop_nm[15]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY BERRY / SEED","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB"};
+static const char *const shop_ds[15]={"TAKE OFF FOR THE NEXT STAR","CRUMBS, POTIONS, BERRIES, SEEDS AND WARPS","BUY GEAR FOR YOUR BITE, SHELL AND CHARM","SELL WHAT YOU ARE CARRYING FOR GOLD","TAKE A JOB FOR FAME, GOLD AND A PRIZE","FULL HEARTS AND MANA FOR YOU AND BUDDY","LEARN WHAT AN UNKNOWN BERRY OR SEED DOES","KEEP OR SCRAP YOUR BEST FINDS","UPGRADE GEAR WITH GOLD AND MINED GOODS","REMAKE YOUR LOOK","REDESIGN YOUR SHIP IN 3D","HE ALWAYS KNOWS WHAT TO DO NEXT","SWITCH BETWEEN THE SHAPES YOU HAVE BEEN","ENTER THE DUNGEON FORGE","RACE ANY TIME AND BUILD YOUR OWN TRACKS"};
+static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
     volatile u16 *pg=VISPG;
     oam_hide_all(); oam_flush();
-    int sel=0; in_menu++; menu_msg[0]=0;
+    int sel=0, tab=0, row[4]={0,0,0,0}; in_menu++; menu_msg[0]=0;
     while(1){
-        const char *main_opt[16]={ "LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL","QUEST BOARD","HEAL YOU AND BUDDY  25G","IDENTIFY BERRY/SEED 30G","TROPHY CASE: KEEP OR SCRAP","WORKBENCH: UPGRADE GEAR","MIRROR: CHANGE YOUR LOOK","HANGAR: REDESIGN YOUR SHIP","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB: RACE AND BUILD TRACKS","LEAVE"};
-#define NSHOP 16
         int can_fly = 1, next_ok = !endless && zone_cleared && zone<5 && cluster_no==0; char nxt[40];
-        if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); main_opt[0]=nxt; }
+        if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); }
         int dirty=1; wait_release();
         while(1){
-            if(dirty){ dirty=0; panel(pg,12,20,216,136,"YOUR SHIP"); { char g[16]=""; ncat(g,gold); scat(g,"G"); int gx=222-textlen(g)*4; rect(pg,gx-9,26,5,5,C_GOLD); rect(pg,gx-8,26,2,1,U_GLGOLD); stext(pg,gx,25,g,C_GOLD); }
-                for(int i=0;i<NSHOP;i++){ int c=(i==0&&!can_fly)?C_DGREY:(i==sel?C_WHITE:(i==0&&next_ok)?C_GREEN:(i==11)?C_CYAN:C_GREY); if(i==sel) ui_sel(pg,16,36+i*6,120,7,U_SEL); text(pg,22,37+i*6,main_opt[i],c,1); if(i==12){ char fb[24]; scpy(fb,"("); scat(fb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); scat(fb,")"); text(pg,82,37+i*6,fb,C_CYAN,1); } }
-                if(next_ok) rtext(pg,224,47,"HOLD A: FLY YOURSELF",C_DGREY);
-                { char hb[40]; scpy(hb,ship.name); scat(hb,"  HOLD "); ncat(hb,cargo_n()); scat(hb,"/"); ncat(hb,cargo_cap+ship_hold_bonus()); rtext(pg,224,38,hb,C_CYAN); }
-                if(q_type!=Q_NONE && q_done) text(pg,130,70,"! QUEST DONE",C_GREEN,1);
+            int cid=shop_tab_id[tab][row[tab]];
+            if(dirty){ dirty=0; char b[48];
+                panel(pg,12,20,216,136,"YOUR SHIP");
+                { char g[16]=""; ncat(g,gold); scat(g,"G"); int gx=222-textlen(g)*4; rect(pg,gx-9,26,5,5,C_GOLD); rect(pg,gx-8,26,2,1,U_GLGOLD); stext(pg,gx,25,g,C_GOLD); }
+                for(int t=0;t<4;t++){ int x=16+t*52; if(t==tab) ui_sel(pg,x,34,50,11,U_SEL); ctext(pg,x+25,37,shop_tab_nm[t],t==tab?C_WHITE:C_GREY);
+                    if(t==1 && q_type!=Q_NONE && q_done) text(pg,x+41,37,"!",C_GREEN,1); }        // a finished quest waits on the SHOP tab
+                rect(pg,14,48,212,1,U_RAISE);
+                for(int i=0;i<shop_tab_n[tab];i++){ int id=shop_tab_id[tab][i], y=52+i*13, c=C_GREY, vc=C_GREY; const char *v=0; char vb[16]; vb[0]=0;
+                    const char *lab = (id==0 && next_ok) ? nxt : shop_nm[id];
+                    switch(id){
+                        case 0: if(next_ok) c=C_GREEN; break;
+                        case 3: if(bag_n){ ncat(vb,bag_n); scat(vb," ITEMS"); v=vb; } else { v="EMPTY"; vc=C_DGREY; } break;
+                        case 4: if(q_type!=Q_NONE && q_done){ v="! DONE"; vc=C_GREEN; } else if(q_type>0){ v="ACTIVE"; vc=C_GOLD; } else { v="NEW"; vc=C_CYAN; } break;
+                        case 5: if(hearts>=maxh && mp>=maxmp && pet_hp>=pet_maxhp){ v="FULL"; vc=C_DGREY; } else { v="25G"; vc=gold>=25?C_GOLD:C_RED; } break;
+                        case 6: { int u=0; for(int k=0;k<bag_n;k++) if((bag[k].it==IT_BERRY && !berry_known[bag[k].sub]) || (bag[k].it==IT_SEED && !seed_known[bag[k].sub])) u++;
+                                  if(u){ v="30G"; vc=gold>=30?C_GOLD:C_RED; } else { v="NOTHING NEW"; vc=C_DGREY; } } break;
+                        case 11: c=C_CYAN; break;
+                        case 12: scpy(vb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); v=vb; vc=C_CYAN; break;
+                        case 13: if(!ant_king){ v="LOCKED"; vc=C_RED; } break;
+                        default: break; }
+                    if(i==row[tab]){ ui_sel(pg,16,y,208,12,U_SEL); if(c==C_GREY) c=C_WHITE; }
+                    text(pg,24,y+3,lab,c,1); if(v) rtext(pg,220,y+3,v,vc); }
+                rect(pg,14,106,212,1,U_RAISE);
+                if(cid==13 && !ant_king) text(pg,20,110,"BEAT THE ANT KING TO OPEN THE FORGE",C_GREY,1);
+                else if(cid==0 && next_ok){ text(pg,20,110,"ZONE CLEARED. TAP A TO GO ON AUTOPILOT",C_GREY,1); text(pg,20,118,"HOLD A TO FLY IT YOURSELF",C_DGREY,1); }
+                else text(pg,20,110,shop_ds[cid],C_GREY,1);
+                scpy(b,ship.name); scat(b,"   HOLD "); ncat(b,cargo_n()); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); text(pg,20,126,b,C_CYAN,1);
                 if(menu_msg[0]) text(pg,20,134,menu_msg,C_GREEN,1);
-                rect(pg,14,141,212,1,U_RAISE); ui_hints(pg,20,145,"A: CHOOSE  B: LEAVE",U_SOFT,1); }
+                rect(pg,14,141,212,1,U_RAISE); ui_lhint(pg,20,145,"A: CHOOSE  L/R: TAB  START: LAUNCH  B: LEAVE",U_SOFT); }
             vsync(); read_keys(); if(keys!=keys_old) dirty=1;
-            if(HIT(K_UP)){ sel=(sel+NSHOP-1)%NSHOP; menu_msg[0]=0; } if(HIT(K_DOWN)){ sel=(sel+1)%NSHOP; menu_msg[0]=0; }
+            int n=shop_tab_n[tab];
+            if(HIT(K_UP)){ row[tab]=(row[tab]+n-1)%n; menu_msg[0]=0; } if(HIT(K_DOWN)){ row[tab]=(row[tab]+1)%n; menu_msg[0]=0; }
+            if(HIT(K_R)||HIT(K_RIGHT)){ tab=(tab+1)&3; menu_msg[0]=0; sfx(7); dirty=1; } if(HIT(K_L)||HIT(K_LEFT)){ tab=(tab+3)&3; menu_msg[0]=0; sfx(7); dirty=1; }
             if(HIT(K_B)){ in_menu--; wait_release(); return 0; }
-            if(HIT(K_A)) break;
+            if(HIT(K_START)){ sel=0; break; }
+            if(HIT(K_A)){ sel=shop_tab_id[tab][row[tab]]; break; }
         }
         if(sel==15){ in_menu--; wait_release(); return 0; }
         if(sel==14){ kart_req=1; in_menu--; wait_release(); return 0; }

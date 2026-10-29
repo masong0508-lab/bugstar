@@ -30,6 +30,7 @@ Every outpost core you smash gives Bolt a memory back. The last one is his real 
 - **Station lounge** (a third tab at any station): three regulars - an old moth pilot, a trader bee, and an ant who ran away - with rumours, trade tips and where the drones are digging.
 
 ## Your ship (new)
+**The ship menu** has four tabs (L/R or LEFT/RIGHT): **GO** (launch or autopilot, kart club, dungeon forge), **SHOP** (supplies, gear, sell, quest board), **CARE** (heal, identify, workbench, trophy case) and **YOU** (mirror, shape, hangar, Bolt). A line under the list says what the highlighted row does, rows show their price or state (FULL, LOCKED, NEW, ! DONE), and **START takes off** from any tab.
 **Build your ship** after making your bug, or any time at your ship: **HANGAR**. It is a real 3D wireframe that turns in the preview (L/R spin it), and it is parked on every planet in 3D.
 - **Hull:** dart, saucer, cargo box, wedge or needle - sets your armour and hold size.
 - **Wings:** none, straight, swept, delta or X-wings, in three sizes - sets how fast you turn.
