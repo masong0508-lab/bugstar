@@ -678,11 +678,40 @@ static void sum_tick(void){
         for(int j=0;j<u->n;j++){ int i=sp_near(0x60000,used); if(i<0) break; if(i<32) used|=1u<<i; DObj *o=&dob[i]; s32 ox=o->x, oy=o->y; hit_mon(o,u->dmg,0); burst(ox,oy,0x6000,5,1); } }
 }
 static void sp_heal(s64 n){ hearts=sadd(hearts,n); if(hearts>maxh) hearts=maxh; burst(px_,py_,0x4000,10,1); sfx(6); }
+// ---- the bolt spells: homing, explosions, piercing and the falling meteor (see the projectile loop in dungeon_frame_)
+#define SPI_EMBER 5
+#define SPI_THORN 6
+#define SPI_TWIN 7
+#define SPI_METEOR 13
+static int proj_boom(Proj *p, int units, int dmg, int skip){        // an explosion: hurts every monster near it (except `skip`, which already took the hit), shoves them back and throws sparks
+    s32 rad=(s32)units<<13; int hit=0; if(rad<0x8000) rad=0x8000;
+    for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(k==skip||!o->alive||!(is_mon(o->kind)||o->kind==K_BARREL)) continue;
+        s32 dx=o->x-p->x, dy=o->y-p->y, d=dist8(dx,dy); if(d>rad) continue; int pct=100-(int)(((long long)d*50)/rad), dm=dmg*pct/100; if(dm<1) dm=1; hit++;
+        o->kvx+=(dx>>8)*0x1400/((d>>8)+1); o->kvy+=(dy>>8)*0x1400/((d>>8)+1);
+        if(o->kind==K_BARREL) barrel_break(o); else hit_mon(o,dm,0); }
+    burst(p->x,p->y,p->h,8+units/2,0); burst(p->x,p->y,0x5000,6,2); if(units>=14){ if(opt_shake) shake_t=4; sfx(5); } if(hit && hitstop<3) hitstop=3; return hit; }
+static void proj_home(Proj *p, int self){                            // steer a bolt toward the nearest foe in front of it that it can see
+    int bi=-1; s32 bd=0x50000; (void)self;
+    for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(!o->alive||!is_mon(o->kind)) continue; s32 dx=o->x-p->x, dy=o->y-p->y, d=dist8(dx,dy); if(d>=bd) continue;
+        if((dx>>8)*(p->vx>>4)+(dy>>8)*(p->vy>>4)<=0) continue;                                         // only foes ahead
+        int seen=1; for(int s=1;s<6 && seen;s++) if(solid(p->x+dx/6*s,p->y+dy/6*s)) seen=0; if(!seen) continue; bd=d; bi=k; }
+    if(bi>=0){ s32 dx=dob[bi].x-p->x, dy=dob[bi].y-p->y, spd=dist8(p->vx,p->vy), l=(dist8(dx,dy)>>8)+1, tvx=(dx>>8)*spd/l, tvy=(dy>>8)*spd/l; p->vx+=(tvx-p->vx)*p->aux/8; p->vy+=(tvy-p->vy)*p->aux/8; } }
 static int cast_spell(int s, s32 dirx, s32 diry, s32 plx, s32 ply){
     const SpellDef *d=&spell_def[s]; int dmg=clampi(sadd(sadd(d->a,smul(st_mag,d->b)),level)); u32 used=0; (void)plx; (void)ply;
     switch(d->fx){
-    case FX_BALL: { int n=d->c?d->c:1; for(int k=0;k<n;k++){ int sp=2*k-(n-1);
-            fire_proj(0, px_+(dirx>>2)+((-diry*sp)>>3), py_+(diry>>2)+((dirx*sp)>>3), 0x7000, ((dirx*3)>>5)+((-diry*sp)>>6), ((diry*3)>>5)+((dirx*sp)>>6), dmg); } sfx(3); return 1; }
+    case FX_BALL: { int n=d->c?d->c:1, mag=(int)(st_mag>300?300:st_mag);
+        if(s==SPI_METEOR){ s32 tx=px_+dirx*4, ty=py_+diry*4; s32 bd=0x60000;                                                          // it lands on the nearest foe ahead, or four tiles in front of you
+            for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(!o->alive||!is_mon(o->kind)) continue; s32 dx=o->x-px_, dy=o->y-py_, dd=dist8(dx,dy); if(dd>=bd||(dx>>8)*(dirx>>8)+(dy>>8)*(diry>>8)<=0) continue; bd=dd; tx=o->x; ty=o->y; }
+            fire_projx(3,px_,py_,0x1A000,(tx-px_)/28,(ty-py_)/28,dmg,28,0,26+mag/30); if(opt_shake) shake_t=3; burst(px_,py_,0x6000,8,0); sfx(5); return 1; }
+        int kind=0, life=90, aux=1+mag/25, aux2=8+mag/12, spd=3;
+        if(aux>7) aux=7; if(aux2>20) aux2=20;
+        if(s==SPI_THORN){ kind=2; life=60; aux=0; aux2=2+mag/60; spd=5; }                                                           // fast, flies straight, goes through several foes
+        else if(s==SPI_EMBER){ aux=2; aux2=0; }                                                                                     // small and cheap: homes, but no blast
+        else if(s==SPI_TWIN){ aux2=6+mag/20; }
+        else if(s==SP_FIRE){ if(mag>=60) n++; if(mag>=140) n++; }                                                                   // the fireball grows with your magic: a second and a third bolt
+        for(int k=0;k<n;k++){ int sp=2*k-(n-1);
+            fire_projx(kind, px_+(dirx>>2)+((-diry*sp)>>3), py_+(diry>>2)+((dirx*sp)>>3), 0x7000, ((dirx*spd)>>5)+((-diry*sp)>>6), ((diry*spd)>>5)+((dirx*sp)>>6), dmg, life, aux, aux2); }
+        burst(px_+(dirx>>2),py_+(diry>>2),0x7000,6,kind==2?2:0); sfx(3); return 1; }
     case FX_ZAP: { int hit=0; for(int k=0;k<d->c;k++){ int i=sp_near(0x60000,used); if(i<0) break; if(i<32) used|=1u<<i; DObj *o=&dob[i]; s32 ox=o->x, oy=o->y;
             hit_mon(o,dmg,0); burst(ox,oy,0x8000,8,2); if(!hit){ spark_t=6; s32 det=(s32)((((long long)plx*diry)-((long long)dirx*ply))>>16); s32 sx=ox-px_, sy=oy-py_;
                 s32 tY=det?(s32)((((long long)-ply*sx)+((long long)plx*sy))/det):0, tX=det?(s32)((((long long)diry*sx)-((long long)dirx*sy))/det):0;
@@ -889,11 +918,20 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(call_flag){ call_flag=0; for(int i=0;i<ndo;i++) if(dob[i].alive && dob[i].kind==K_CAGE){ dob[i].alive=0; free_bug(dob[i].sub); break; } }
     // ---- fireballs and stingers
     for(int i=0;wtick && i<NPROJ;i++){ Proj *p=&proj[i]; if(!p->alive) continue;
-        p->x+=p->vx; p->y+=p->vy; if(--p->life<=0 || solid(p->x,p->y)){ p->alive=0; burst(p->x-p->vx,p->y-p->vy,p->h,p->kind?4:10,0); continue; }
-        if(p->kind==0){ if(frames&1) burst(p->x,p->y,p->h,1,0);
+        if(p->kind==0 && p->aux && !((frames+i)&1)) proj_home(p,i);                                    // fireballs steer toward foes
+        p->x+=p->vx; p->y+=p->vy;
+        if(p->kind==3){ p->h-=0xC00; if(p->h<0x3000) p->h=0x3000;                                      // the meteor falls, and bursts where it lands (or on a wall)
+            if(--p->life<=0 || solid(p->x,p->y)){ p->alive=0; proj_boom(p,p->aux2,p->dmg,-1); continue; }
+            burst(p->x,p->y,p->h,1,0); if(frames&1) burst(p->x-p->vx,p->y-p->vy,p->h+0x2000,1,0); continue; }
+        if(--p->life<=0 || solid(p->x,p->y)){ p->alive=0; burst(p->x-p->vx,p->y-p->vy,p->h,p->kind?4:10,0); if(p->kind==0 && p->aux2) proj_boom(p,p->aux2,p->dmg*6/10,-1); continue; }
+        if(p->kind==0||p->kind==2){ burst(p->x,p->y,p->h,1,p->kind==2?2:0);
             for(int k=0;k<ndo;k++){ DObj *o=&dob[k]; if(!o->alive||!(is_mon(o->kind)||o->kind==K_BARREL)) continue;
-                if(dist8(o->x-p->x,o->y-p->y)<0x9000){ o->kvx+=p->vx; o->kvy+=p->vy; p->alive=0; burst(p->x,p->y,p->h,12,0); hitstop=2;
-                    if(o->kind==K_BARREL) barrel_break(o); else hit_mon(o,p->dmg,0); break; } } }
+                if(p->kind==2 && k+1==p->aux) continue;                                                // (a thorn doesn't hit the same foe twice running)
+                if(dist8(o->x-p->x,o->y-p->y)<(p->kind==2?0x8000:0x9000)){ o->kvx+=p->vx; o->kvy+=p->vy; burst(p->x,p->y,p->h,p->kind==2?5:12,p->kind==2?2:0); hitstop=2;
+                    if(o->kind==K_BARREL) barrel_break(o); else hit_mon(o,p->dmg,0);
+                    if(p->kind==2){ if(p->aux2>0){ p->aux2--; p->aux=k+1; p->dmg=p->dmg*3/4+1; } else p->alive=0; }          // thorns lose a little power for each foe they go through
+                    else { p->alive=0; if(p->aux2) proj_boom(p,p->aux2,p->dmg*6/10,k); }
+                    break; } } }
         else if(dist8(px_-p->x,py_-p->y)<0x7000){ p->alive=0; s64 before=hearts; hurt(p->dmg); if(hearts<before){ hurt_flash=8; kick_t=4; pknock_t=6; pvx+=p->vx>>1; pvy+=p->vy>>1; } }
     }
     // ---- A: open a cage, take the stairs, fish, or bite
@@ -946,7 +984,9 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     for(int i=0;i<n;i++){ int t=ord[i]; if(t>NDO){ static DObj bo; Bud *b=&bud[t-NDO-1]; bo=petobj; bo.kind=K_PET; bo.alive=1; bo.x=b->x; bo.y=b->y; bo.flash=0; draw_sprite(pg,&bo,dirx,diry,plx,ply); }
         else draw_sprite(pg, t==NDO ? &petobj : &dob[t], dirx,diry,plx,ply); }
     for(int i=0;i<NPROJ;i++){ Proj *p=&proj[i]; if(!p->alive) continue;
-        if(p->kind==0) draw_glow(pg,p->x,p->y,p->h,0x2400 + (sinI[(frames*40)&255]>>6),R_FLAME+7,R_FLAME+4,dirx,diry,plx,ply);
+        if(p->kind==0){ int pr=sinI[(frames*40)&255]>>6, big=p->aux2?1:0; draw_glow(pg,p->x,p->y,p->h,(big?0x3800:0x2600)+pr,R_FLAME+3,R_FLAME+1,dirx,diry,plx,ply); draw_glow(pg,p->x,p->y,p->h,(big?0x2400:0x1600)+(pr>>1),R_FLAME+7,R_FLAME+5,dirx,diry,plx,ply); }
+        else if(p->kind==2){ draw_glow(pg,p->x-(p->vx>>1),p->y-(p->vy>>1),p->h,0x1000,R_CRYSTAL+4,R_CRYSTAL+2,dirx,diry,plx,ply); draw_glow(pg,p->x,p->y,p->h,0x1800,R_CRYSTAL+7,R_CRYSTAL+5,dirx,diry,plx,ply); }
+        else if(p->kind==3){ int pr=sinI[(frames*30)&255]>>6; draw_glow(pg,p->x,p->y,p->h+0x3000,0x2800,R_FLAME+3,R_FLAME+1,dirx,diry,plx,ply); draw_glow(pg,p->x,p->y,p->h,0x6000+pr,R_FLAME+5,R_FLAME+2,dirx,diry,plx,ply); draw_glow(pg,p->x,p->y,p->h,0x3C00+(pr>>1),R_FLAME+7,R_FLAME+5,dirx,diry,plx,ply); }
         else draw_glow(pg,p->x,p->y,p->h,0x0C00,R_CHEST+7,R_CHEST+5,dirx,diry,plx,ply); }
     PPT(0); parts_draw(pg,dirx,diry,plx,ply); PPT(1);
     if(!FILM) draw_fnums(pg,dirx,diry,plx,ply);

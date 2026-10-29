@@ -863,12 +863,13 @@ static void parts_draw(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
 }
 
 // ---------------------------------------------------------------- fireballs and stingers
-typedef struct { s32 x,y,h,vx,vy; s16 life, dmg; u8 kind, alive; } Proj;     // kind 0 fireball (yours), 1 stinger (theirs)
+typedef struct { s32 x,y,h,vx,vy; s16 life, dmg; u8 kind, alive, aux, aux2; } Proj;     // kind 0 fireball (yours), 1 stinger (theirs), 2 thorn shot (pierces), 3 meteor (falls). aux: how hard it homes (thorn: last foe it went through). aux2: blast size (thorn: foes left to pierce)
 #define NPROJ 10
 EW static Proj proj[NPROJ];
-static void fire_proj(int kind, s32 x, s32 y, s32 h, s32 vx, s32 vy, int dmg){
-    for(int i=0;i<NPROJ;i++) if(!proj[i].alive){ Proj *p=&proj[i]; p->kind=kind; p->x=x; p->y=y; p->h=h; p->vx=vx; p->vy=vy; p->dmg=dmg; p->life=90; p->alive=1; return; }
+static void fire_projx(int kind, s32 x, s32 y, s32 h, s32 vx, s32 vy, int dmg, int life, int aux, int aux2){
+    for(int i=0;i<NPROJ;i++) if(!proj[i].alive){ Proj *p=&proj[i]; p->kind=kind; p->x=x; p->y=y; p->h=h; p->vx=vx; p->vy=vy; p->dmg=dmg; p->life=life; p->aux=aux; p->aux2=aux2; p->alive=1; return; }
 }
+static void fire_proj(int kind, s32 x, s32 y, s32 h, s32 vx, s32 vy, int dmg){ fire_projx(kind,x,y,h,vx,vy,dmg,90,0,0); }
 static void debris(s32 x, s32 y, s32 h, int n, int kind, s32 dx, s32 dy){      // chunks that fly, fall and bounce
     for(int i=0;i<NPART && n;i++) if(part[i].life<=0 || part[i].kind==1){ Part *p=&part[i]; p->kind=kind; p->x=x; p->y=y; p->h=h;
         p->vx=((rndi(17)-8)<<7)+(dx>>5); p->vy=((rndi(17)-8)<<7)+(dy>>5); p->vh=0x500+rndi(0x600); p->life=14+rndi(10); n--; }
