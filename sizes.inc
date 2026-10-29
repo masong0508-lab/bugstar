@@ -198,8 +198,8 @@ static int sz_wrap(const char *s, char ln[3][32]){               // break a line
 #define SZ_Y0 36                                                 // the scrolling rows show in lines 36 to 147
 #define SZ_Y1 148
 static void sz_fill(volatile u16 *pg, int y, int lines){ static u32 zero; zero = y==SZ_Y0 ? U_INK*0x01010101u : 0; *(volatile u32*)0x040000D4=(u32)&zero; *(volatile u32*)0x040000D8=(u32)(pg+y*120); *(volatile u32*)0x040000DC=(u32)(lines*60)|(2<<23)|(1<<26)|(1u<<31); }   // a DMA fill: black
-IWRAM static void clip_text(volatile u16 *pg, int x, int y, const char *s, int c, int sc, int y0, int y1){   // text cut off outside lines y0..y1-1 (big text needs an even x).
-    u16 cc=(u16)(c|(c<<8)); int whole = y>=y0 && y+5*sc<=y1;                                               // ARM code in IWRAM: long numbers scroll at full speed
+static void clip_text(volatile u16 *pg, int x, int y, const char *s, int c, int sc, int y0, int y1){   // text cut off outside lines y0..y1-1 (big text needs an even x).
+    u16 cc=(u16)(c|(c<<8)); int whole = y>=y0 && y+5*sc<=y1;                                               // (in ROM now: it used to sit in IWRAM, 640 bytes of the fast RAM; the big-number scroll is a little slower)
     for(;*s;s++, x+=4*sc){ u32 g=font[(u8)*s & 127]; if(!g) continue;
         if(sc==2){ volatile u16 *p=pg+y*120+(x>>1);
             for(int r=0;r<5;r++, p+=240){ u32 bits=(g>>(12-r*3))&7; if(!bits) continue; int ly=y+2*r;
