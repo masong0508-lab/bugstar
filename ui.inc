@@ -824,7 +824,7 @@ static void workbench(volatile u16 *pg){
     wait_release();
 }
 static int make_ship(volatile u16 *pg, int first);
-static int enter_dungeon_flag; static int forge_menu(volatile u16 *pg);
+static int enter_dungeon_flag; static int forge_menu(volatile u16 *pg); static int fuel_max(void);
 // ---------------------------------------------------------------- the spell shop: Attack, Defense and Summon spells, from a few gold to a fortune
 static int sp_shop_id[NSPELL];
 static void spshop_row(int i, char *b, int *c){ int id=sp_shop_id[i]; scpy(b,spell_def[id].name); while(textlen(b)<14) scat(b," "); ncat(b,spell_def[id].cost); scat(b," MP"); while(textlen(b)<24) scat(b," ");
@@ -845,53 +845,76 @@ static void spell_shop(volatile u16 *pg){
     list_desc=0;
 }
 
+static int wrap_text(volatile u16 *pg, int x, int y, int maxc, const char *s, int col, int maxl){       // words wrapped to maxc letters a line; returns how many lines it drew
+    char ln[48]; int l=0; if(maxc>46) maxc=46; while(*s==' ') s++;
+    while(*s && l<maxl){ int n=0; while(s[n] && n<maxc) n++;
+        if(s[n]){ int k=n; while(k>0 && s[k]!=' ') k--; if(k>0) n=k; }                                  // more text follows: break at the last space that fits
+        for(int i=0;i<n;i++) ln[i]=s[i]; ln[n]=0; while(n>0 && ln[n-1]==' ') ln[--n]=0;
+        text(pg,x,y+l*8,ln,col,1); l++; s+=n; while(*s==' ') s++; }
+    return l; }
+#define SK_X 150            // the ship card on the right of the ship menu: a little spinning 3D copy of your ship, its name and four gauges
+#define SK_Y 52
+#define SK_W 74
+#define SK_H 44
+static void shop_prev_copy(volatile u16 *pg, volatile u16 *bp){ for(int y=SK_Y;y<SK_Y+SK_H;y++){ volatile u16 *src=bp+y*120+SK_X/2, *dst=pg+y*120+SK_X/2; for(int x=0;x<SK_W/2;x++) dst[x]=src[x]; } }
 // ---- the ship menu: four tabs (L/R or LEFT/RIGHT), a few big rows on each, and a line that says what the row does.
 // the ids below are the old row numbers, so every action further down is unchanged. START = take off from any tab.
 static const u8 shop_tab_n[4]={3,5,4,4};
 static const u8 shop_tab_id[4][5]={{0,14,13,0,0},{1,15,2,3,4},{5,6,8,7,0},{9,12,10,11,0}};
 static const char *const shop_tab_nm[4]={"GO","SHOP","CARE","YOU"};
-static const char *const shop_nm[16]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY BERRY / SEED","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB","SPELL SHOP"};
+static const char *const shop_nm[16]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB","SPELL SHOP"};
 static const char *const shop_ds[16]={"TAKE OFF FOR THE NEXT STAR","CRUMBS, POTIONS, BERRIES, SEEDS AND WARPS","BUY GEAR FOR YOUR BITE, SHELL AND CHARM","SELL WHAT YOU ARE CARRYING FOR GOLD","TAKE A JOB FOR FAME, GOLD AND A PRIZE","FULL HEARTS AND MANA FOR YOU AND BUDDY","LEARN WHAT AN UNKNOWN BERRY OR SEED DOES","KEEP OR SCRAP YOUR BEST FINDS","UPGRADE GEAR WITH GOLD AND MINED GOODS","REMAKE YOUR LOOK","REDESIGN YOUR SHIP IN 3D","HE ALWAYS KNOWS WHAT TO DO NEXT","SWITCH BETWEEN THE SHAPES YOU HAVE BEEN","ENTER THE DUNGEON FORGE","RACE ANY TIME AND BUILD YOUR OWN TRACKS","BUY ATTACK, DEFENSE AND SUMMON SPELLS"};
 static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
     volatile u16 *pg=VISPG;
     oam_hide_all(); oam_flush();
-    int sel=0, tab=0, row[4]={0,0,0,0}; in_menu++; menu_msg[0]=0;
+    int sel=0, tab=0, row[4]={0,0,0,0}, mspin=0, mt=0; in_menu++; menu_msg[0]=0; ship_build_model();
     while(1){
         int can_fly = 1, next_ok = !endless && zone_cleared && zone<5 && cluster_no==0; char nxt[40];
         if(next_ok){ scpy(nxt,"AUTOPILOT TO "); scat(nxt,tint_name[zone+1]); }
         int dirty=1; wait_release();
         while(1){
             int cid=shop_tab_id[tab][row[tab]];
-            if(dirty){ dirty=0; char b[48];
+            if(dirty){ dirty=0; char b[48]; int lowf = fuel*4<fuel_max(), low = lowf || hull<40;
                 panel(pg,12,20,216,136,"YOUR SHIP");
                 { char g[16]=""; ncat(g,gold); scat(g,"G"); int gx=222-textlen(g)*4; rect(pg,gx-9,26,5,5,C_GOLD); rect(pg,gx-8,26,2,1,U_GLGOLD); stext(pg,gx,25,g,C_GOLD); }
                 for(int t=0;t<4;t++){ int x=16+t*52; if(t==tab) ui_sel(pg,x,34,50,11,U_SEL); ctext(pg,x+25,37,shop_tab_nm[t],t==tab?C_WHITE:C_GREY);
-                    if(t==1 && q_type!=Q_NONE && q_done) text(pg,x+41,37,"!",C_GREEN,1); }        // a finished quest waits on the SHOP tab
+                    if(t==1 && q_type!=Q_NONE && q_done) text(pg,x+41,37,"!",C_GREEN,1);                     // a finished quest waits on the SHOP tab
+                    if(t==0 && low) text(pg,x+41,37,"!",C_RED,1); }                                          // low fuel or a damaged hull: look at the ship card
                 rect(pg,14,48,212,1,U_RAISE);
                 for(int i=0;i<shop_tab_n[tab];i++){ int n5=shop_tab_n[tab]>4, id=shop_tab_id[tab][i], y=52+i*(n5?10:13), c=C_GREY, vc=C_GREY; const char *v=0; char vb[16]; vb[0]=0;
                     const char *lab = (id==0 && next_ok) ? nxt : shop_nm[id];
                     switch(id){
-                        case 0: if(next_ok) c=C_GREEN; break;
+                        case 0: if(next_ok) c=C_GREEN; else if(lowf){ v="LOW FUEL"; vc=C_RED; } else if(hull<40){ v="DAMAGED"; vc=C_RED; } break;
                         case 3: if(bag_n){ ncat(vb,bag_n); scat(vb," ITEMS"); v=vb; } else { v="EMPTY"; vc=C_DGREY; } break;
                         case 4: if(q_type!=Q_NONE && q_done){ v="! DONE"; vc=C_GREEN; } else if(q_type>0){ v="ACTIVE"; vc=C_GOLD; } else { v="NEW"; vc=C_CYAN; } break;
                         case 5: if(hearts>=maxh && mp>=maxmp && pet_hp>=pet_maxhp){ v="FULL"; vc=C_DGREY; } else { v="25G"; vc=gold>=25?C_GOLD:C_RED; } break;
                         case 6: { int u=0; for(int k=0;k<bag_n;k++) if((bag[k].it==IT_BERRY && !berry_known[bag[k].sub]) || (bag[k].it==IT_SEED && !seed_known[bag[k].sub])) u++;
                                   if(u){ v="30G"; vc=gold>=30?C_GOLD:C_RED; } else { v="NOTHING NEW"; vc=C_DGREY; } } break;
+                        case 10: scpy(vb,hull_name[ship.hull]); v=vb; vc=C_CYAN; break;
                         case 11: c=C_CYAN; break;
                         case 15: { int k2=0; for(int k=SP_CORE;k<NSPELL;k++) if(!spell_ok(k)) k2++; if(k2){ ncat(vb,k2); scat(vb," TO BUY"); v=vb; vc=C_CYAN; } else { v="ALL OWNED"; vc=C_DGREY; } } break;
                         case 12: scpy(vb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); v=vb; vc=C_CYAN; break;
                         case 13: if(!ant_king){ v="LOCKED"; vc=C_RED; } break;
                         default: break; }
-                    if(i==row[tab]){ ui_sel(pg,16,y,208,n5?10:12,U_SEL); if(c==C_GREY) c=C_WHITE; }
-                    text(pg,24,y+(n5?2:3),lab,c,1); if(v) rtext(pg,220,y+(n5?2:3),v,vc); }
-                rect(pg,14,106,212,1,U_RAISE);
-                if(cid==13 && !ant_king) text(pg,20,110,"BEAT THE ANT KING TO OPEN THE FORGE",C_GREY,1);
-                else if(cid==0 && next_ok){ text(pg,20,110,"ZONE CLEARED. TAP A TO GO ON AUTOPILOT",C_GREY,1); text(pg,20,118,"HOLD A TO FLY IT YOURSELF",C_DGREY,1); }
-                else text(pg,20,110,shop_ds[cid],C_GREY,1);
-                scpy(b,ship.name); scat(b,"   HOLD "); ncat(b,cargo_n()); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); text(pg,20,126,b,C_CYAN,1);
-                if(menu_msg[0]) text(pg,20,134,menu_msg,C_GREEN,1);
-                rect(pg,14,141,212,1,U_RAISE); ui_lhint(pg,20,145,"A: CHOOSE  L/R: TAB  START: LAUNCH  B: LEAVE",U_SOFT); }
-            vsync(); read_keys(); if(keys!=keys_old) dirty=1;
+                    if(i==row[tab]){ ui_sel(pg,16,y,130,n5?10:12,U_SEL); if(c==C_GREY) c=C_WHITE; }
+                    text(pg,24,y+(n5?2:3),lab,c,1); if(v) rtext(pg,142,y+(n5?2:3),v,vc); }
+                rect(pg,14,106,134,1,U_RAISE);
+                if(cid==13 && !ant_king) wrap_text(pg,20,108,31,"BEAT THE ANT KING TO OPEN THE FORGE",C_GREY,2);
+                else if(cid==0 && next_ok) wrap_text(pg,20,108,31,"ZONE CLEARED! TAP A FOR AUTOPILOT, OR HOLD A TO FLY IT YOURSELF",C_GREY,2);
+                else wrap_text(pg,20,108,31,shop_ds[cid],C_GREY,2);
+                if(menu_msg[0]) wrap_text(pg,20,126,31,menu_msg,C_GREEN,2);
+                ui_well(pg,SK_X,SK_Y,SK_W,SK_H); ctext(pg,SK_X+SK_W/2,98,ship.name,C_GOLD);
+                vbar(pg,171,107,53,fuel,fuel_max(),lowf?C_RED:C_CYAN,"FUEL");
+                vbar(pg,171,115,53,hull,100,hull<40?C_RED:hull<70?C_GOLD:C_GREEN,"HULL");
+                vbar(pg,171,123,53,shield,20+shield_lv*20,C_CYAN,"SHLD");
+                vbar(pg,171,131,53,cargo_n(),cargo_cap+ship_hold_bonus(),C_GOLD,"HOLD");
+                rect(pg,14,141,212,1,U_RAISE); ui_lhint(pg,20,145,"A: CHOOSE  L/R: TAB  START: LAUNCH  B: LEAVE",U_SOFT);
+                if(mt) shop_prev_copy(pg,(volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0:0xA000))); }         // keep the last picture of the ship while the menu repaints
+            { volatile u16 *bp=(volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0:0xA000));                          // the little ship is drawn on the hidden page, then copied over after the vertical blank
+              ui_well(bp,SK_X,SK_Y,SK_W,SK_H); for(int k=0;k<8;k++) pix(bp,SK_X+3+((k*29+mt/5)%68),SK_Y+3+((k*17)%38),(k&3)?U_RAISE:U_SOFT);
+              { int hs=27*256/sh_rad; if(hs<50) hs=50; if(hs>110) hs=110; frames++; mt++; mspin+=3; mspin&=1023; sh_flame=1; ship_draw(bp,SK_X+SK_W/2,SK_Y+SK_H/2+3,hs,mspin,10+(sinx((mt*2)&255)>>11),0,0,SK_X+1,SK_Y+1,SK_X+SK_W-1,SK_Y+SK_H-1); sh_flame=0; }
+              vsync(); shop_prev_copy(pg,bp); }
+            read_keys(); if(keys!=keys_old) dirty=1;
             int n=shop_tab_n[tab];
             if(HIT(K_UP)){ row[tab]=(row[tab]+n-1)%n; menu_msg[0]=0; } if(HIT(K_DOWN)){ row[tab]=(row[tab]+1)%n; menu_msg[0]=0; }
             if(HIT(K_R)||HIT(K_RIGHT)){ tab=(tab+1)&3; menu_msg[0]=0; sfx(7); dirty=1; } if(HIT(K_L)||HIT(K_LEFT)){ tab=(tab+3)&3; menu_msg[0]=0; sfx(7); dirty=1; }
