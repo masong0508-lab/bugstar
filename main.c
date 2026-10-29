@@ -1307,7 +1307,7 @@ static void arrive_on_planet(void){      // after landing (or the autopilot): se
     land_on_current(); st_planets++; ach_check(); portal_depth=0; scene=0; msg_timer=0;
     landing_screen(0);
     new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game(); fade(1);
-    char b[40]; scpy(b,world_name()); if(!endless && !zone_cleared) scat(b,": FIND THE DOOR"); show_msg(b); oam_hide_all(); oam_flush(); music(0);
+    char b[40]; scpy(b,world_name()); if(!endless && !zone_cleared) scat(b,": FIND THE DOOR"); if(cur_rock){ scpy(b,rock_nm[cur_rock-1]); scat(b," ROCK: "); scat(b,rock_tip[cur_rock-1]); } show_msg(b); oam_hide_all(); oam_flush(); music(0);
     { REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0); planet_card(VISPG); p_last=vbl_count; }
     if(hum_req){ hum_req=0; human_creator(VISPG,1); planet_hud(); save_game(); p_last=vbl_count; }       // a weird world just made you a humanoid: look in the mirror
 }

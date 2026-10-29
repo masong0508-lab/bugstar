@@ -77,6 +77,16 @@ Difficulty (easy / normal / hard: hard does more damage to you but pays +25% gol
 ## How to play (redone)
 Five pages with colour-coded button badges: planet, dungeon, space, staying alive, and your quest. Your bug trots along the bottom.
 
+## Landable asteroids (Phase 2, first step)
+Every star's rock belt is now a place you can land. Fly close to a rock (the prompt reads **A: LAND ON <KIND>**) and press A. A rock is a tiny, almost zero-gravity world with its own veins; take off and you are back in space. Slot i of a star's belt is always the same rock, so a rock keeps its kind and its veins every visit.
+- **ROCKY** (orange): iron and copper veins, the easy start.
+- **METALLIC** (steel): dense. Iron, copper, scrap alloy and rare voidsteel; every vein needs one tool tier more and takes half again as many hits; a little more ore.
+- **ICY** (white): ice quartz and calcite. The ice **melts**: about two and a half minutes after you land it lifts you off by itself (warnings before).
+- **CRYSTAL** (cyan): ice quartz, sulfur, obsidian, calcite, voidsteel; far more ore per vein, but it **cracks** and hurts about one vein in five.
+- **HOLLOW** (dark blue): rock and ice ore with a dungeon door; the mine inside comes with Phase 3.
+Belt rocks are all vein (about 85% of crystal rocks), have a moon-style dungeon, and are not offered in story systems or hive systems.
+Also fixed: voidsteel (the rare tier-6 ore) could never be found on any world; now it turns up in about one deep vein in eight.
+
 ## Hell worlds (new)
 Out in the galaxy, 8% of worlds near home (and up to 24% far out) are **hell worlds**, in six flavours: **INFERNO** (lava canyons, volcanoes with lava lakes, falling embers), **BRIMSTONE** (yellow mesas, acid pools, bad air), **OBSIDIAN** (black glass needles with neon cracks, a black sun), **BONE WORLD** (rib dunes under a skull moon), **BLOOD SEA** (red islands in a churning red sea) and **FROZEN HELL** (cracking ice, aurora). Each has its own ground, sea, sky and hazards: lava, acid and the red sea hurt if you wade in, glass cuts, fumes and cold wear you down.
 - **Hell tiers T1-T10** go up 1 for every 4 danger you fly out, just like the zone tiers. The tier is on the landing card and the top bar (H4...). Each tier multiplies the pain: creatures bite x2 (T1-3), x3 (T4-7), x4 (T8-10); the dungeon underneath counts as 2-7 levels deeper, drops more gold (+15% per tier) and mining gives more ore.

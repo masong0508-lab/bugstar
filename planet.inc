@@ -444,6 +444,9 @@ static void hell_frame(int n){                                                  
     }
 }
 #include "m7.inc"
+static void rock_frame(void){                                     // an icy rock melts while you are on it
+    if(cur_rock!=3 || !rock_t) return; rock_t--;
+    if(rock_t==6000) show_msg("THE ICE IS SOFTENING"); else if(rock_t==2400) show_msg("THE ICE IS MELTING! FINISH UP"); else if(rock_t==0){ show_msg("IT MELTED AWAY! LIFTING OFF"); launch_flag=1; } }
 static void planet_frame(void){
     u32 t_f0=TMR();
 #ifdef TEST_FPS
@@ -539,12 +542,14 @@ static void planet_frame(void){
                   if(ore>=0){ if(ore_tool_eff()<ore_need_tool(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: NEEDS A "); scat(b,ore_tool_name[ore_need_tool(ore)]); show_msg(b); sfx(4); break; }
                       if(!o->var){ o->var=1; o->hp=(u8)ore_hits(ore); }                              // (the first bite works out how many it needs with your tool)
                       if(--o->hp>0){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
-                      o->alive=0; ore_mark_mined(ore_id(o->x,o->y)); int tt=ore_tool_eff(), n=1+rndi(2)+(tt>=2)+(cur_moon?1:0)+(hellw()?hell_tier()/4:0); if(pq_type==7){ pq_have++; job_tick(); }
+                      o->alive=0; ore_mark_mined(ore_id(o->x,o->y)); int tt=ore_tool_eff(), n=1+rndi(2)+(tt>=2)+(cur_moon?1:0)+(hellw()?hell_tier()/4:0)+(cur_rock==4?3 : cur_rock==2?1 : 0); if(pq_type==7){ pq_have++; job_tick(); }
                       int got=ore_add(ore,n); st_mined+=n; ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
-                      char b[40]; scpy(b,"+"); ncat(b,got); scat(b," "); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); show_msg(b); sfx(7); break; } }
+                      char b[40]; scpy(b,"+"); ncat(b,got); scat(b," "); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); show_msg(b); sfx(7);
+                      if(cur_rock==4 && rndi(5)==0){ hurt(2); show_msg("CRACK! SHARDS HIT YOU"); sfx(4); }          // a crystal rock is brittle
+                      break; } }
                 if(holding(TL_PICK)) o->hp=1;                                                    // the pickaxe: one hit
                 if(--o->hp>0){ char b[40]; scpy(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
-                o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0)+(holding(TL_PICK)?1:0)+(cur_moon?1:0)+(hellw()?hell_tier()/3:0); if(pq_type==7){ pq_have++; job_tick(); }
+                o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0)+(holding(TL_PICK)?1:0)+(cur_moon?1:0)+(hellw()?hell_tier()/3:0)+(cur_rock==4?2:0); if(pq_type==7){ pq_have++; job_tick(); }
                 if(relic_roll(400)){ planet_hud(); p_last=vbl_count; return; }
                 if(cargo_n()>=cargo_cap+ship_hold_bonus()){ show_msg("HOLD FULL! SELL GOODS AT A STATION"); break; }
                 int room=cargo_cap+ship_hold_bonus()-cargo_n(); if(n>room) n=room; cargo[g]+=n; st_mined+=n; ach_check(); gain_xp(2+dlv());
@@ -568,7 +573,7 @@ static void planet_frame(void){
     if(frames%30==0 && hud_sig()!=phud_sig) planet_hud();
     if(opt_autosave && frames%6000==5999){ save_game(); show_msg("GAME SAVED"); }          // a quiet save every few minutes on the surface
     // ---- draw the world
-    weird_frame(n); hell_frame(n);
+    weird_frame(n); hell_frame(n); rock_frame();
     if(m7_on) m7_sky_now();                                                             // (a race: the sky, loops and HUD of the frame on show, once the beam is past them)
     u32 t_r0=TMR(); if(m7_on) m7_frame(); else render_planet(pg); u32 t_r1=TMR();
 #ifdef TEST_FPS

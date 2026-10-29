@@ -310,16 +310,20 @@ static void story_dna(int z){                                                   
     if(dbg_hour>=0) wd.hour=dbg_hour; if(dbg_weather>=0) wd.weather=dbg_weather;
 }
 static u32 sys_id(int i); static u32 amix(u32 k, int star);
+static u8 cur_rock=0; static u32 rock_key=0;                    // PHASE 2: you are on a belt rock (0 = no; 1 rocky, 2 metallic, 3 icy, 4 crystal, 5 hollow). It is a moon-like body: cur_moon is 5 then (a star has 4 moons at most)
+static const char *const rock_nm[5]={"ROCKY","METALLIC","ICY","CRYSTAL","HOLLOW"};
+static const char *const rock_tip[5]={"IRON AND COPPER VEINS","HARD VEINS. USE A DRILL","IT MELTS. WORK FAST","HUGE GEMS. IT CRACKS","HOLLOW. SOMETHING INSIDE"};
+static int rock_t=0;                                                                  // the ice on an icy rock melts: frames left
 static int cur_pl=0, cur_moon=0;                              // which body of this star you are on: planet cur_pl (0 = the first), cur_moon 0 = the planet itself, 1.. = its moons
 static u32 hmix(u32 h);
-static u32 body_salt(void){ int b=cur_pl*8+cur_moon; return b ? hmix((u32)b*0x9E3779B1u+0x5EEDu) : 0; }   // 0 for the first planet, so every old world stays exactly as it was
+static u32 body_salt(void){ int b=cur_pl*8+cur_moon; u32 s = b ? hmix((u32)b*0x9E3779B1u+0x5EEDu) : 0; if(cur_rock) s^=hmix(rock_key+0x70C4u); return s; }   // 0 for the first planet, so every old world stays exactly as it was
 static void make_world(void){                                   // three independent 32-bit seeds from the full address: 96 bits, so every planet is its own
     int gal = sys[cur_sys].kind==6; u32 base = gal ? sys_id(cur_sys) : (u32)world_no;
-    u32 bsalt = gal ? body_salt() : 0; name_of(base^bsalt,w_name); if(gal && cur_moon) scat(w_name," MOON");
+    u32 bsalt = gal ? body_salt() : 0; name_of(base^bsalt,w_name); if(gal && cur_moon) scat(w_name, cur_rock ? " ROCK" : " MOON");
     u32 A = gal ? amix(gsk(102)^0xA1u^bsalt,cur_sys) : base*0x9E3779B1u, B = gal ? amix(gsk(103)^0xB2u^bsalt,cur_sys) : base*0x85EBCA6Bu+7, C = gal ? amix(gsk(104)^0xC3u^bsalt,cur_sys) : base*0xC2B2AE35u+3;
     wseed = A ^ 0x7F4A7C15u; wr(2);
     int r=40+wr(216), g=40+wr(216), b=40+wr(216); int k=wr(3); if(k==0) r=230; else if(k==1) g=230; else b=230;
-    { int c=wr(100); wd.cls = c<20?PC_TEMPERATE : c<32?PC_MOUNTAIN : c<42?PC_MEADOW : c<54?PC_OCEAN : c<64?PC_DESERT : c<72?PC_ICE : c<82?PC_JUNGLE : c<89?PC_DEATH : c<92?PC_ECUMENOPOLIS : PC_PARADISE; if(gal && cur_moon){ static const u8 mc[3]={PC_MOUNTAIN,PC_DESERT,PC_ICE}; wd.cls=mc[c%3]; } }   // a moon is bare rock, dust or ice
+    { int c=wr(100); wd.cls = c<20?PC_TEMPERATE : c<32?PC_MOUNTAIN : c<42?PC_MEADOW : c<54?PC_OCEAN : c<64?PC_DESERT : c<72?PC_ICE : c<82?PC_JUNGLE : c<89?PC_DEATH : c<92?PC_ECUMENOPOLIS : PC_PARADISE; if(gal && cur_moon){ static const u8 mc[3]={PC_MOUNTAIN,PC_DESERT,PC_ICE}; wd.cls=mc[c%3]; if(cur_rock){ static const u8 rc[5]={PC_MOUNTAIN,PC_ECUMENOPOLIS,PC_ICE,PC_PARADISE,PC_DESERT}; wd.cls=rc[cur_rock-1]; } } }   // a moon is bare rock, dust or ice; a belt rock is its own kind
 
     if((gal && !cur_moon && !is_hive(cur_sys)) || (mw_force&2)){ u32 hh = gal ? amix(gsk(105)^0xE1F0u^bsalt,cur_sys) : hmix(base*0x51ED27u+0xE1F0u); int hp=8+(w_dlv>32?32:w_dlv)/2; if((mw_force&2) || (int)(hh%100u)<hp) wd.cls=PC_INFERNO+(int)((hh>>8)%6u); }   // (Kart World can ask for a hell world)   // HELL WORLDS: 8% of worlds near home, up to 24% far out
 #ifdef TEST_CLASS
@@ -343,7 +347,7 @@ static void make_world(void){                                   // three indepen
     wd.bld=rgb15(60+wr(160),60+wr(160),60+wr(160)); wd.sky=rgb15(40+wr(200),60+wr(180),100+wr(156)); wd.road=rgb15(30+wr(60),30+wr(60),30+wr(60));
     for(int i=0;i<4;i++) wd.flora[i]=wr(8);
     wd.tseed = B; wd.cseed = C;
-    { u32 q=hmix(B^0x5A17E5u)%100u; wd.psz = q<8?0 : q<28?1 : q<66?2 : q<86?3 : q<96?4 : 5; if(gal && cur_moon) wd.psz = q<50?0:1; }   // planet size: moons are small
+    { u32 q=hmix(B^0x5A17E5u)%100u; wd.psz = q<8?0 : q<28?1 : q<66?2 : q<86?3 : q<96?4 : 5; if(gal && cur_moon) wd.psz = q<50?0:1; if(cur_rock) wd.psz=0; }   // planet size: moons are small
     // the class bends the rest of the DNA so the world hangs together
     wd.snowl=200; wd.hs=3; { int m=wr(10); wd.mood = m<3 ? MOOD_LOVE : m<8 ? MOOD_MEH : MOOD_HATE; }
     switch(wd.cls){
@@ -382,6 +386,7 @@ static void make_world(void){                                   // three indepen
       if(WL(MW_GLITCH)){ static const char gl[8]={'#','%','&','@','?','!','*','$'}; for(int i=0;w_name[i];i++) if(w_name[i]!=' ' && (i%3)==1) w_name[i]=gl[(F>>i)&7]; }   // GLITCH: even its name is broken
       if(WL(MW_SPIKES)){ wd.style=6; wd.rough=3; } if(WL(MW_VOID)){ wd.hour=2; wd.weather=0; } if(WL(MW_GIANTS)) wd.city=0;
       if(WL(MW_FROST)){ wd.snow=1; if(WL(MW_FROST)>12) wd.weather=2; } if(WL(MW_HEAT)>15) wd.weather=3; }
+    if(cur_rock){ wlv[MW_ZEROG]=6; wd.hour=2; }                                    // a belt rock is tiny (the horizon drops away fast), has almost no gravity, and sits in the dark of space
     if(dbg_hour>=0) wd.hour=dbg_hour; if(dbg_weather>=0) wd.weather=dbg_weather;
 }
 static const char *world_name(void){ return endless ? w_name : tint_name[zone]; }

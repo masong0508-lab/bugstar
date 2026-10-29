@@ -144,6 +144,7 @@ static void body_at(int i, int k, int *pp, int *pm){ int np=sys_nplan(i); for(in
 
 // where you are when you land: the planet of the current system
 static void land_on_current(void){
+    if(cur_rock){ endless=1; world_no=sys_id(cur_sys)^body_salt(); w_dlv=sys_dlv(cur_sys); make_world(); zone_cleared=0; rock_t = cur_rock==3 ? 9000 : 0; return; }      // a belt rock
     if(sys[cur_sys].kind<6 || cur_pl>=sys_nplan(cur_sys) || cur_moon>sys_nmoon(cur_sys,cur_pl)) cur_pl=cur_moon=0;    // a stale body after a load or a jump: the first planet
     if(sys[cur_sys].kind<6){ endless=0; zone=sys[cur_sys].kind; zone_cleared=(cleared_mask>>zone)&1; story_dna(zone); }
     else { endless=1; world_no=sys_id(cur_sys)^body_salt(); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); zone_cleared=0; }
@@ -172,6 +173,10 @@ typedef struct { s32 x,y,z; u8 alive, good; } Can;
 typedef struct { s32 x,y,z; s16 vx,vy,vz, r, hp; u8 alive, seed, flash; } Ast;
 #define NAST 8
 EW static Ast ast[NAST];
+// PHASE 2: every rock in a star's belt is always the same rock (slot i of that system): its kind and its veins come from a hash, nothing is saved
+static u32 rock_h(int i){ return hmix(sys_id(cur_sys)*0x9E3779B1u ^ (u32)(i+1)*0x2545F491u ^ 0x70C4u); }
+static int rock_type_of(u32 h){ int r=(int)(h%100u); return r<32?1 : r<54?2 : r<74?3 : r<90?4 : 5; }     // rocky 32, metallic 22, icy 20, crystal 16, hollow 10 in a hundred
+static const u8 rock_col[5]={51,56,54,55,58};          // how each kind looks out in space: orange, steel, white, cyan, dark blue
 static s32 svx_, svy_, svz_; static int yawv=0, pitv=0, roll_=0, sshake=0, crash_cd=0;
 EW static Can cans[4];
 static char smsg[40];
@@ -324,13 +329,14 @@ static void ship_dies(Pirate *p, int by_you){
     if(lr(3)==0) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].good=255; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; }
 }
 static void space_enter(int from_planet){
+    if(cur_rock){ cur_rock=0; cur_moon=0; rock_t=0; }                          // lifting off a rock: the planet is the body again
     lseed = gsk(113) ^ 0x1234567 ^ frames;
     for(int i=0;i<96;i++){ s16 *d=&star_dir[i*3]; d[0]=lr(32768)-16384; d[1]=lr(32768)-16384; d[2]=lr(32768)-16384; norm3(d); }
     for(int i=0;i<60;i++) dust[i]=lr(1600)-800;
     norm3(sun);
     for(int i=0;i<NPIR;i++) pir[i].alive=0; for(int i=0;i<NSPP;i++) spp[i].life=0; for(int i=0;i<4;i++) cans[i].alive=0;
     for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; int ang=lr(256), rad=5600+lr(1500); a->x=(cosx(ang)*rad)>>14; a->z=(sinx(ang)*rad)>>14; a->y=lr(1200)-600;
-        a->vx=lr(7)-3; a->vy=lr(3)-1; a->vz=lr(7)-3; a->r=140+lr(220); a->hp=a->r/12; a->alive=1; a->seed=lr(256); a->flash=0; }
+        a->vx=lr(7)-3; a->vy=lr(3)-1; a->vz=lr(7)-3; a->r=140+lr(220); a->hp=a->r/12; a->alive=1; a->seed=lr(256); a->flash=0; if(sys[cur_sys].kind==6) a->seed=(u8)(rock_h(i)>>8); }
     svx_=svy_=svz_=0; yawv=pitv=roll_=0; sshake=0;
     if(sys[cur_sys].kind==6){ world_no=sys_id(cur_sys)^body_salt(); w_dlv=sys_dlv(cur_sys); make_world(); if(is_hive(cur_sys)) scpy(w_name,hive_nm[hive_done]); }
     build_space_palette();
@@ -610,6 +616,10 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
             if(p->hp<=0) ship_dies(p,1); } }
     s32 sdx=shx-stx_, sdy=shy-sty_, sdz=shz-stz_; s32 sd=isqrt((u32)((sdx>>4)*(sdx>>4)+(sdy>>4)*(sdy>>4)+(sdz>>4)*(sdz>>4)))<<4;
     int can_land = !in_lair && pd < PR+2200, can_dock = !in_lair && sd < 1100;
+    int rock_near=-1;                                                                   // PHASE 2: close to a belt rock: A lands on it
+    if(!in_lair && !can_land && !can_dock && sys[cur_sys].kind==6 && !is_hive(cur_sys)){ s32 best=0x7FFFFFF;
+        for(int i=0;i<NAST;i++){ Ast *a=&ast[i]; if(!a->alive) continue; s32 dx=shx-a->x, dy=shy-a->y, dz=shz-a->z, rr=a->r+520;
+            if(dx>-rr&&dx<rr&&dy>-rr&&dy<rr&&dz>-rr&&dz<rr){ s32 d=isqrt((u32)((dx>>3)*(dx>>3)+(dy>>3)*(dy>>3)+(dz>>3)*(dz>>3)))<<3; if(d<rr && d<best){ best=d; rock_near=i; } } } }
     if(++sh_regen>=20){ sh_regen=0; if(shield<20+shield_lv*20) shield++; }
     if(lair_out){ lair_out=0; lair_leave(); return 0; }
     if(ambush_t && !in_lair && --ambush_t==0){ hyperspace(); lair_enter(); return 0; }
@@ -618,8 +628,9 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     // A: land, dock, or fire
     if(laser_cool) laser_cool--;
     if(HIT(K_A) && can_land){ if(body_menu()) return 1; return 0; }
+    if(HIT(K_A) && rock_near>=0){ u32 h=rock_h(rock_near); rock_key=h; cur_rock=(u8)rock_type_of(h); cur_moon=5; speed=0; space_say("LANDING ON THE ROCK"); wait_release(); return 1; }
     if(HIT(K_A) && can_dock){ speed=0; return 3; }
-    if(HELD(K_A) && !laser_cool && !can_land && !can_dock){
+    if(HELD(K_A) && !laser_cool && !can_land && !can_dock && rock_near<0){
         laser_cool=10-laser_lv; laser_t=4; sfx(10);
         { int best=-1; s32 bz=9000; for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive || !p->team) continue; int sx,sy; s32 z;
             if(sproj(p->x,p->y,p->z,&sx,&sy,&z) && z<bz && sx>104 && sx<136 && sy>VCY-14 && sy<VCY+14){ bz=z; best=i; } }
@@ -719,7 +730,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         for(int k=0;k<6;k++){ int rr=a->r*(10+((a->seed>>k)&3)*2)/14; s32 x=oc[k][0]*rr, y=oc[k][1]*rr*3/4, z=oc[k][2]*rr;
             v[k*3]=a->x+((x*c-z*s_)>>14); v[k*3+1]=a->y+y; v[k*3+2]=a->z+((x*s_+z*c)>>14); }
         static const u8 ae[]={0,2,0,3,0,4,0,5,1,2,1,3,1,4,1,5,2,4,2,5,3,4,3,5};
-        wire(pg,v,6,ae,12,a->flash?49:(a->seed&1)?56:51); }
+        wire(pg,v,6,ae,12,a->flash?49 : sys[cur_sys].kind==6 ? rock_col[rock_type_of(rock_h(i))-1] : (a->seed&1)?56:51); }
     // pirates: little wireframe fighters. In a crowd the far ones are drawn simpler (fewer lines) or as a mark, and the ones off screen are not drawn at all
     int crowd=0; for(int i=0;i<NPIR;i++) if(pir[i].alive) crowd++;
     s32 lod_z = crowd>32 ? 1500 : crowd>16 ? 2200 : 3000, dot_z = crowd>32 ? 4200 : 5500;
@@ -754,7 +765,8 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(hit_t){ hit_t--; if(!FILM) for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
     cockpit(pg);
     if(sv_yaw!=yaw || sv_pit!=pitch){ yaw=sv_yaw; pitch=sv_pit; }
-    static char pb[24]; const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
+    static char pb[32]; const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
+    if(rock_near>=0){ scpy(pb,"A: LAND ON "); scat(pb,rock_nm[rock_type_of(rock_h(rock_near))-1]); pr=pb; }
     if(can_land){ int bc=body_count(cur_sys); if(bc>1){ scpy(pb,"A: LAND ("); ncat(pb,bc); scat(pb," WORLDS)"); pr=pb; } }
     if(FILM){ if(space_msg_t) space_msg_t--; return 0; }                    // (filming: nothing over the view)
     if(space_msg_t){ space_msg_t--; text(pg,120-textlen(smsg)*2,in_lair?28:4,smsg,54,1); }
@@ -1250,7 +1262,7 @@ static void save_ext(void){
     { u32 a[NCW0+10]; a[0]=0x36444441u; a[1]=galaxy_no; for(int w=0;w<NCW0;w++) a[2+w]=clus[w]; a[NCW0+2]=relic_bits; a[NCW0+3]=(u32)weird_seen; a[NCW0+4]=(u32)relic_gold; a[NCW0+5]=mark_perm; a[NCW0+6]=(u32)wing_n|((u32)fuel_tank<<8)|((u32)warp_lv<<12); a[NCW0+7]=(u32)form|((u32)forms_open<<4)|((u32)tool_held<<8)|((u32)form_body<<12)|(tools_owned<<16); a[NCW0+8]=form_col|((u32)(form_t>0?1:0)<<16);
       u32 h=2166136261u; for(int i=0;i<NCW0+9;i++){ h^=a[i]; h*=16777619u; } a[NCW0+9]=h; sram_write(slot_base(cur_slot)+0x900,a,sizeof a); }
     { u32 g[NGH+2]; g[0]=0x324C4147u; for(int i=0;i<NGH;i++) g[1+i]=galaxy_hi[i]; u32 h=2166136261u; for(int i=0;i<NGH+1;i++){ h^=g[i]; h*=16777619u; } g[NGH+1]=h; sram_write(slot_base(cur_slot)+0x9C0,g,sizeof g); }   // the upper galaxy words: their own block (ends at 0x9EC), so older saves still load
-    { u32 g[3]; g[0]=0x59444F42u; g[1]=(u32)(cur_pl*8+cur_moon); g[2]=(2166136261u^g[0])*16777619u; g[2]=(g[2]^g[1])*16777619u; sram_write(slot_base(cur_slot)+0x9EC,g,sizeof g); }   // which planet or moon you are on
+    { u32 g[3]; g[0]=0x59444F42u; g[1]=(u32)(cur_pl*8+(cur_rock?0:cur_moon)); g[2]=(2166136261u^g[0])*16777619u; g[2]=(g[2]^g[1])*16777619u; sram_write(slot_base(cur_slot)+0x9EC,g,sizeof g); }   // which planet or moon you are on
     // (the spare memory past the slots holds the favourites now; old far-off addresses are folded into the compact universe, see u_settle)
     hum_save(); kart_save(); tv_save(); dp_save();
 }

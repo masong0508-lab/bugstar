@@ -40,12 +40,13 @@ static void ore_mark_mined(u16 id){ if(!id) id=1; ore_ring[ore_ring_i]=id; ore_r
 static const char *const ore_tool_name[4]={"JAWS","PICKAXE","DRILL","LASER CUTTER"};
 static const u8 ore_hab[NORE]={0,0,0,0, 1,1, 2, 4,4,8, 16, 32};                  // where each ore is found: 1 rock and dry, 2 ice, 4 hell, 8 bone and death, 16 city, 32 anywhere (rare)
 static int ore_tool_eff(void){ int t=ore_tool; if(holding(TL_PICK) && t<1) t=1; return t; }          // your best mining tool right now
-static int ore_need_tool(int o){ return ore_def[o].tier/2; }                                     // tier 2-3 need a pickaxe, 4-5 a drill, 6 a laser cutter
-static int ore_hits(int o){ int p=1<<ore_tool_eff(); return (ore_def[o].hard+p-1)/p; }          // bites it takes with the tool you hold: a tier doubles your power
-static int ore_habitat(void){ int h=1; if(wd.cls==PC_ICE||wd.cls==PC_COCYTUS||cur_moon==2) h|=2; if(hellw()) h|=4; if(wd.cls==PC_DEATH||wd.cls==PC_BONE) h|=8; if(wd.cls==PC_ECUMENOPOLIS) h|=16; return h; }
+static int ore_need_tool(int o){ int t=ore_def[o].tier/2; if(cur_rock==2 && t<3) t++; return t; }      // (a metallic rock is dense: one tool tier more)                                     // tier 2-3 need a pickaxe, 4-5 a drill, 6 a laser cutter
+static int ore_hits(int o){ int p=1<<ore_tool_eff(); int h=(ore_def[o].hard+p-1)/p; if(cur_rock==2) h+=(h+1)/2; return h; }          // bites it takes with the tool you hold: a tier doubles your power
+static const u8 rock_hab[5]={1, 1|16|32, 2|8, 2|4|8|32, 1|2};                    // what each kind of belt rock holds (the same bits as ore_hab)
+static int ore_habitat(void){ if(cur_rock) return rock_hab[cur_rock-1]; int h=1; if(wd.cls==PC_ICE||wd.cls==PC_COCYTUS||cur_moon==2) h|=2; if(hellw()) h|=4; if(wd.cls==PC_DEATH||wd.cls==PC_BONE) h|=8; if(wd.cls==PC_ECUMENOPOLIS) h|=16; return h|32; }       // (bit 32, the rare ore, was never set before: voidsteel could not be found)
 static u16 ore_id(s32 ox, s32 oy){ return (u16)(hmix(wd.tseed ^ ((u32)(ox>>10)*0x9E3779B1u) ^ ((u32)(oy>>10)*0x85EBCA6Bu)) & 0xFFFF); }     // which vein it is (a hash of the world and the spot)
 static int ore_of(s32 ox, s32 oy){      // -1: a plain crystal rock (goods, as before). Otherwise the ore this rock is a vein of
-    u32 h=ore_id(ox,oy)*2654435761u+wd.tseed; if((int)((h>>16)%100)<35) return -1;
-    int maxt=2+dlv()/6+(cur_moon?1:0)+(hellw()?2:0); if(maxt>6) maxt=6; int hab=ore_habitat(), cand[NORE], n=0;
+    u32 h=ore_id(ox,oy)*2654435761u+wd.tseed; if((int)((h>>16)%100)<(cur_rock ? 15 : 35)) return -1;      // (a belt rock is mostly vein)
+    int maxt=2+dlv()/6+(cur_moon?1:0)+(hellw()?2:0)+(cur_rock==2?2:0); if(maxt>6) maxt=6; int hab=ore_habitat(), cand[NORE], n=0;
     for(int i=4;i<NORE;i++) if((ore_hab[i]&hab) && ore_def[i].tier<=maxt && (ore_hab[i]!=32 || (h&7)==0)) cand[n++]=i;       // (the rare one turns up in one vein in eight)
     return n ? cand[(h>>8)%n] : 4; }
