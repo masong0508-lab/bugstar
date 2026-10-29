@@ -28,6 +28,7 @@ static int ship_fuel_bonus(void){ return ship.pods==3 ? 30 : 0; }               
 static int ship_accel16(void){ int a=ship_thrust()*24/ship_mass(); if(a<4) a=4; if(a>96) a=96; return a; }        // per-frame push, in 1/16
 // ---- the model: vertices in 1/100 of a cell, x right, y up, z forward. faces are flat-shaded polygons (3-8 corners), edges are drawn dark on top
 #define SV_MAX 128
+static s16 sh_eng[4][4]; static int sh_en=0, sh_rad=80, sh_flame=0;     // engine rear centres (x, y, z, radius) for the flames; the model's radius; flame level 0 (off) to 3
 #define SE_MAX 200
 #define SF_MAX 110
 EW static s16 shv[SV_MAX*3]; EW static u8 she[SE_MAX*3]; static int snv, sne, snf;
@@ -52,7 +53,7 @@ static void fan(int tip,int r,int n,int grp,int rev){ for(int k=0;k<n;k++){ int 
 static int LX(int v){ static const u8 f[3]={80,100,125}; return v*f[ship.len]/100; }     // the hull stretches with its length
 static int WX(int v){ static const u8 f[3]={75,100,130}; return v*f[ship.wid]/100; }     // ...and widens
 static void ship_build_model(void){
-    snv=0; sne=0; snf=0; int hw=WX(22), hh=12, tail=LX(-55), nose=LX(70);
+    snv=0; sne=0; snf=0; sh_en=0; int hw=WX(22), hh=12, tail=LX(-55), nose=LX(70);
     switch(ship.hull){
         case HL_DART: { int r1=ring4(WX(22),12,LX(20)), r2=ring4(WX(18),10,LX(-40)), r3=ring4(WX(8),6,LX(-60)); join(r1,r2,4,0); join(r2,r3,4,0);
             if(ship.nose==0){ int n=sv_add(0,0,nose); for(int k=0;k<4;k++) se_add(n,r1+k,0); fan(n,r1,4,0,0); }
@@ -84,19 +85,20 @@ static void ship_build_model(void){
     if(ship.pods==3){ for(int sx=-1;sx<=1;sx+=2){ int r=ring4(7,7,10), r2=ring4(7,7,-40); for(int i=0;i<8;i++) if(r+i<snv) shv[(r+i)*3]+=sx*(hw+8); join(r,r2,4,1); tube(r,r2,4,1); sf_add(1,0,4,r,r+1,r+2,r+3,0,0,0,0); sf_add(1,0,4,r2+3,r2+2,r2+1,r2,0,0,0,0); } }
     { static const u8 er[3]={5,7,10}; int R=er[ship.esize];
       for(int k=0;k<=ship.engines;k++){ int n=ship.engines+1; int ex = n==1?0 : n==2 ? (k?hw*3/4:-hw*3/4) : n==3 ? (k==0?-hw:k==1?0:hw) : (k==0?-hw:k==1?-hw/3:k==2?hw/3:hw); int ey = (n==3 && k==1) ? hh/2 : 0;
+        if(k<4){ sh_eng[k][0]=(s16)ex; sh_eng[k][1]=(s16)ey; sh_eng[k][2]=(s16)(tail-10-R); sh_eng[k][3]=(s16)R; sh_en=k+1; }
         int r=ring8(R,tail,1), r2=ring8(R*5/7,tail-10-R,1); join(r,r2,8,1); for(int i=0;i<16;i++){ if(r+i<snv){ shv[(r+i)*3]+=ex; shv[(r+i)*3+1]+=ey; } }
         tube(r,r2,8,1); sf_add(2,0,8,r2+7,r2+6,r2+5,r2+4,r2+3,r2+2,r2+1,r2); } }
     if(ship.fins==1){ int a=sv_add(0,hh,LX(-15)), b=sv_add(0,hh+26,LX(-45)), c=sv_add(0,hh,LX(-48)); se_add(a,b,1); se_add(b,c,1); TRI(1,1,a,b,c); }
     else if(ship.fins==2){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*hw*3/4,hh/2,LX(-15)), b=sv_add(sx*hw,hh/2+22,LX(-45)), c=sv_add(sx*hw*3/4,hh/2,LX(-48)); se_add(a,b,1); se_add(b,c,1); TRI(1,1,a,b,c); } }
     sh_mzn=2; sh_mz[0][0]=(s16)(-hw/2); sh_mz[1][0]=(s16)(hw/2); sh_mz[0][1]=sh_mz[1][1]=0; sh_mz[0][2]=sh_mz[1][2]=(s16)nose;       // no cannon: a pair of bolts from the nose
-    if(ship.cannon==1){ int a=sv_add(0,-hh/2,nose-10), b=sv_add(0,-hh/2,nose+22); se_add(a,b,1); sh_mzn=1; sh_mz[0][0]=0; sh_mz[0][1]=(s16)(-hh/2); sh_mz[0][2]=(s16)(nose+22); }
-    else if(ship.cannon==2){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*(hw+s/2),dy-4,wz-20), b=sv_add(sx*(hw+s/2),dy-4,wz+30); se_add(a,b,1); sh_mz[sx>0][0]=(s16)(sx*(hw+s/2)); sh_mz[sx>0][1]=(s16)(dy-4); sh_mz[sx>0][2]=(s16)(wz+30); } }
+    if(ship.cannon==1){ int a=sv_add(0,-hh/2,nose-10), b=sv_add(0,-hh/2,nose+22); se_add(a,b,5); sh_mzn=1; sh_mz[0][0]=0; sh_mz[0][1]=(s16)(-hh/2); sh_mz[0][2]=(s16)(nose+22); }
+    else if(ship.cannon==2){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*(hw+s/2),dy-4,wz-20), b=sv_add(sx*(hw+s/2),dy-4,wz+30); se_add(a,b,5); sh_mz[sx>0][0]=(s16)(sx*(hw+s/2)); sh_mz[sx>0][1]=(s16)(dy-4); sh_mz[sx>0][2]=(s16)(wz+30); } }
     else if(ship.cannon==3){ sh_mz[0][0]=-6; sh_mz[1][0]=6; sh_mz[0][1]=sh_mz[1][1]=(s16)(-hh-4); sh_mz[0][2]=sh_mz[1][2]=(s16)(nose+10); int a=sv_add(-6,-hh-4,-20), b=sv_add(-6,-hh-4,nose+10), c=sv_add(6,-hh-4,-20), d=sv_add(6,-hh-4,nose+10); se_add(a,b,1); se_add(c,d,1); se_add(b,d,1); se_add(a,c,1); QUAD(1,1,a,b,d,c); }
-    if(ship.cockpit==0){ int a=sv_add(0,hh,LX(20)), b=sv_add(0,hh+9,LX(10)), c=sv_add(0,hh,0); se_add(a,b,2); se_add(b,c,2); TRI(2,1,a,b,c); }
-    else { int a=sv_add(-hw/2,hh-1,LX(20)), b=sv_add(hw/2,hh-1,LX(20)); se_add(a,b,2); }
-    if(ship.decal==1){ int a=sv_add(0,hh+1,nose-8), b=sv_add(0,hh+1,tail+4); se_add(a,b,1); int c=sv_add(-4,hh+1,nose-12), d=sv_add(-4,hh+1,tail+4); se_add(c,d,1); }
-    else if(ship.decal==2){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*hw,2,nose-15), b=sv_add(sx*hw,2,tail+6); se_add(a,b,2); } }
-    else if(ship.decal==3){ for(int k=0;k<3;k++){ int z=tail+20+k*LX(22); int a=sv_add(0,hh,z), b=sv_add(0,hh+10,z-6); se_add(a,b,1); } }
+    if(ship.cockpit==0){ int a=sv_add(0,hh,LX(20)), b=sv_add(0,hh+9,LX(10)), c=sv_add(0,hh,0); se_add(a,b,2); se_add(b,c,2); TRI(3,1,a,b,c); }
+    else { int a=sv_add(-hw/2,hh-1,LX(20)), b=sv_add(hw/2,hh-1,LX(20)); se_add(a,b,6); }
+    if(ship.decal==1){ int a=sv_add(0,hh+1,nose-8), b=sv_add(0,hh+1,tail+4); se_add(a,b,5); int c=sv_add(-4,hh+1,nose-12), d=sv_add(-4,hh+1,tail+4); se_add(c,d,5); }
+    else if(ship.decal==2){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*hw,2,nose-15), b=sv_add(sx*hw,2,tail+6); se_add(a,b,6); } }
+    else if(ship.decal==3){ for(int k=0;k<3;k++){ int z=tail+20+k*LX(22); int a=sv_add(0,hh,z), b=sv_add(0,hh+10,z-6); se_add(a,b,5); } }
     for(int f=0;f<snf;f++){                                                       // each face's unit normal (256 = 1.0), worked out once here instead of every frame
         const Face *F=&shf[f]; const s16 *A=&shv[F->v[0]*3], *B=&shv[F->v[1]*3], *C=&shv[F->v[2]*3];
         s32 ux=B[0]-A[0], uy=B[1]-A[1], uz=B[2]-A[2], vx=C[0]-A[0], vy=C[1]-A[1], vz=C[2]-A[2];
@@ -104,14 +106,16 @@ static void ship_build_model(void){
         s32 len=isqrt((u32)((nx>>4)*(nx>>4)+(ny>>4)*(ny>>4)+(nz>>4)*(nz>>4)))<<4;
         if(len<1){ shn[f*3]=shn[f*3+1]=shn[f*3+2]=0; } else { shn[f*3]=(s16)(nx*256/len); shn[f*3+1]=(s16)(ny*256/len); shn[f*3+2]=(s16)(nz*256/len); }
     }
+    { s32 m=1; for(int i=0;i<snv;i++){ s32 x=shv[i*3], y=shv[i*3+1], z=shv[i*3+2], d2=x*x+y*y+z*z; if(d2>m) m=d2; } sh_rad=isqrt((u32)m); if(sh_rad<20) sh_rad=20; }     // how big it is: the hangar zooms to fit
     sh_ord_n=-1;                                                                  // the face order is rebuilt on the next draw
 }
 // ---- drawing it: solid, lit, with dark outlines. paint shades live in BG palette 200..207, trim in 208..215
 #define SHP_PAINT 200
 #define SHP_TRIM 208
 #define SHP_GLOW 216
-static void ship_ramps(void){ for(int k=0;k<8;k++){ BG_PAL[SHP_PAINT+k] = k<4 ? shade15(ship.paint,6+k*3) : lift15(ship.paint,(k-4)*4); BG_PAL[SHP_TRIM+k] = k<4 ? shade15(ship.trim,6+k*3) : lift15(ship.trim,(k-4)*4); BG_PAL[SHP_GLOW+k] = k<3 ? shade15(ship.glow,10+k*2) : lift15(ship.glow,(k-3)*3); } }
-static const u8 *sh_occ=0;                                                     // on a planet: the terrain's top row per column (every 8th byte), so hills and canyon walls hide what is behind them. 0 = nothing hides it
+static u16 sh_mix(u16 c, int r2, int g2, int b2, int w){ int r=c&31, g=(c>>5)&31, b=(c>>10)&31; r+=(r2-r)*w/16; g+=(g2-g)*w/16; b+=(b2-b)*w/16; return (u16)(r|(g<<5)|(b<<10)); }
+static u16 sh_tone(u16 c, int k){ if(k<4) return sh_mix(shade15(c,5+k*3),3,4,10,(4-k)*3/2); if(k==4) return c; return sh_mix(c,31,30,26,k==5?5:k==6?10:14); }   // 0 deep cool shadow ... 4 the colour itself ... 7 warm glint
+static void ship_ramps(void){ for(int k=0;k<8;k++){ BG_PAL[SHP_PAINT+k] = sh_tone(ship.paint,k); BG_PAL[SHP_TRIM+k] = sh_tone(ship.trim,k); BG_PAL[SHP_GLOW+k] = k<3 ? shade15(ship.glow,10+k*2) : lift15(ship.glow,(k-3)*3); } }static const u8 *sh_occ=0;                                                     // on a planet: the terrain's top row per column (every 8th byte), so hills and canyon walls hide what is behind them. 0 = nothing hides it
 static void linep(volatile u16 *pg, int x0, int y0, int x1, int y1, int c, int cx0, int cy0, int cx1, int cy1){
     int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(n>300) return;
     if(m7_on){ s32 fx=(x0<<16)+0x8000, fy=(y0<<16)+0x8000, sx=n?(dx<<16)/n:0, sy=n?(dy<<16)/n:0;         // (a kart race: each pixel finds its own way to the screen)
@@ -125,12 +129,14 @@ static void linep(volatile u16 *pg, int x0, int y0, int x1, int y1, int c, int c
         return; }
     for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; if(x>=cx0&&x<cx1&&y>=cy0&&y<cy1){ volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|hi; else *p=(*p&0xFF00)|lo; } fx+=sx; fy+=sy; }
 }
+static int sh_df=0;                                                               // ship faces: 0..3 = how far from palette entry c towards c+1 (a 2x2 ordered dither). 0 for everything else
 static void hspan(volatile u16 *pg, int y, int x0, int x1, int c){                 // a row of pixels, x0..x1 inclusive, written two at a time
-    if(m7_on){ m7_span(y,x0,x1,c); return; }
-    volatile u16 *row=pg+y*120;
-    if(x0&1){ volatile u16 *p=row+(x0>>1); *p=(*p&0x00FF)|(c<<8); x0++; }
-    if(x1>=x0 && !(x1&1)){ volatile u16 *p=row+(x1>>1); *p=(*p&0xFF00)|c; x1--; }
-    u16 cc=(u16)(c|(c<<8)); for(int k=x0>>1, e=x1>>1; k<=e && x0<=x1; k++) row[k]=cc;
+    if(m7_on){ m7_span(y,x0,x1,c+(sh_df>>1)); return; }
+    volatile u16 *row=pg+y*120; u16 cc;
+    if(!sh_df) cc=(u16)(c|(c<<8)); else { int f=sh_df, t0=(y&1)?3:0, t1=(y&1)?1:2; cc=(u16)((c+(f>t0)) | ((c+(f>t1))<<8)); }
+    if(x0&1){ volatile u16 *p=row+(x0>>1); *p=(*p&0x00FF)|(cc&0xFF00); x0++; }
+    if(x1>=x0 && !(x1&1)){ volatile u16 *p=row+(x1>>1); *p=(*p&0xFF00)|(cc&0x00FF); x1--; }
+    for(int k=x0>>1, e=x1>>1; k<=e && x0<=x1; k++) row[k]=cc;
 }
 #ifdef TEST_FPS
 static u32 dbg_pc=0, dbg_rows=0, dbg_px=0, dbg_pt=0, dbg_kt=0, dbg_kn=0;
@@ -165,10 +171,31 @@ static void polyfill_(volatile u16 *pg, const int *px, const int *py, int n, int
         hspan(pg,y,xl,xr,c); }
 }
 static int ship_roll=0;                                                        // extra bank applied on screen (the chase camera)
+static s32 shp_c[10];                                                       // this draw's turn: yaw cos/sin, pitch cos/sin, roll cos/sin, rolled?, centre x, scale, centre y
+static void sh_pt(int x, int y, int z, int *X, int *Y, int *Z){                // one model point to the screen (the same maths as the vertex loop in ship_draw)
+    s32 rx=(x*shp_c[0] + z*shp_c[1])>>14, rz=(-x*shp_c[1] + z*shp_c[0])>>14; s32 ry=(y*shp_c[2] - rz*shp_c[3])>>14; rz=(y*shp_c[3] + rz*shp_c[2])>>14;
+    s32 d=400+rz; if(d<60) d=60; s32 f=(shp_c[8]*25600)/d, xx=(rx*f)>>14, yy=-((ry*f)>>14);
+    if(shp_c[6]){ s32 x2=(xx*shp_c[4]-yy*shp_c[5])>>14, y2=(xx*shp_c[5]+yy*shp_c[4])>>14; xx=x2; yy=y2; }
+    xx+=shp_c[7]; yy+=shp_c[9]; if(xx<-2000) xx=-2000; if(xx>2000) xx=2000; if(yy<-2000) yy=-2000; if(yy>2000) yy=2000; *X=xx; *Y=yy; *Z=rz;
+}
+static void sh_flames(volatile u16 *pg, int early, int cx0, int cy0, int cx1, int cy1){      // a hot flame out of every engine: a crossed pair of cones, white-hot in the middle
+    for(int e=0;e<sh_en;e++){ int ex=sh_eng[e][0], ey=sh_eng[e][1], bz=sh_eng[e][2]+2, R=sh_eng[e][3];
+        int len=(16+R*4)*(3+sh_flame)/4; len=len*(10+((frames*3+e)&3))/12;
+        int bX,bY,bZ,tX,tY,tZ,aX,aY,aZ,cX,cY,cZ,dX,dY,dZ,fX,fY,fZ;
+        sh_pt(ex,ey,bz,&bX,&bY,&bZ); sh_pt(ex,ey,bz-len,&tX,&tY,&tZ);
+        if((tZ>=bZ)!=early) continue;                                           // the tip is farther than the nozzle: the hull hides it, so it goes under the faces
+        sh_pt(ex+R,ey,bz,&aX,&aY,&aZ); sh_pt(ex-R,ey,bz,&cX,&cY,&cZ); sh_pt(ex,ey+R,bz,&dX,&dY,&dZ); sh_pt(ex,ey-R,bz,&fX,&fY,&fZ);
+        int px[3], py[3], oc=SHP_GLOW+4+((frames+e)&1), mX=bX+(tX-bX)*3/5, mY=bY+(tY-bY)*3/5; sh_df=0;
+        px[0]=aX; py[0]=aY; px[1]=cX; py[1]=cY; px[2]=tX; py[2]=tY; polyfill(pg,px,py,3,oc,cx0,cy0,cx1,cy1);
+        px[0]=dX; py[0]=dY; px[1]=fX; py[1]=fY; polyfill(pg,px,py,3,oc,cx0,cy0,cx1,cy1);
+        px[0]=bX+(aX-bX)/2; py[0]=bY+(aY-bY)/2; px[1]=bX+(cX-bX)/2; py[1]=bY+(cY-bY)/2; px[2]=mX; py[2]=mY; polyfill(pg,px,py,3,SHP_GLOW+7,cx0,cy0,cx1,cy1);
+        px[0]=bX+(dX-bX)/2; py[0]=bY+(dY-bY)/2; px[1]=bX+(fX-bX)/2; py[1]=bY+(fY-bY)/2; polyfill(pg,px,py,3,SHP_GLOW+7,cx0,cy0,cx1,cy1); }
+}
 static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pitch_, int cpaint, int ctrim, int cx0,int cy0,int cx1,int cy1){
     EW static s16 px[SV_MAX], py[SV_MAX], rz_[SV_MAX]; EW static s16 fz[SF_MAX];
     (void)cpaint; (void)ctrim; if(!sh_rt_ok) sh_rt_init(); ship_ramps(); s32 rc=cosx(ship_roll>>2), rs=sinx(ship_roll>>2); int rolled = !(rs==0 && rc>0);
     s32 cy_=cosx(yaw_>>2), sy_=sinx(yaw_>>2), cp=cosx(pitch_>>2), sp=sinx(pitch_>>2);
+    shp_c[0]=cy_; shp_c[1]=sy_; shp_c[2]=cp; shp_c[3]=sp; shp_c[4]=rc; shp_c[5]=rs; shp_c[6]=rolled; shp_c[7]=cx; shp_c[8]=sc; shp_c[9]=cy;
     for(int i=0;i<snv;i++){ s32 x=shv[i*3], y=shv[i*3+1], z=shv[i*3+2];
         s32 rx=(x*cy_ + z*sy_)>>14, rz=(-x*sy_ + z*cy_)>>14;
         s32 ry=(y*cp - rz*sp)>>14; rz=(y*sp + rz*cp)>>14;
@@ -178,10 +205,11 @@ static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pi
         s32 X=(rx*f)>>14, Y=-((ry*f)>>14);
         if(rolled){ s32 X2=(X*rc - Y*rs)>>14, Y2=(X*rs + Y*rc)>>14; X=X2; Y=Y2; }
         X+=cx; Y+=cy; if(X<-2000) X=-2000; if(X>2000) X=2000; if(Y<-2000) Y=-2000; if(Y>2000) Y=2000; px[i]=(s16)X; py[i]=(s16)Y; }
+    if(sh_flame) sh_flames(pg,1,cx0,cy0,cx1,cy1);                               // flames pointing away from you go under the hull
     if(sh_ord_n!=snf){ for(int i=0;i<snf;i++) sh_ord[i]=(u8)i; sh_ord_n=snf; }       // last frame's order is the starting point: almost always a few swaps
     { static const u8 rn[9]={0,0,0,85,64,51,43,37,32};                          // 256/n
       for(int f=0;f<snf;f++){ const Face *F=&shf[f]; int z=0; for(int k=0;k<F->n;k++) z+=rz_[F->v[k]]; fz[f]=(s16)((z*rn[F->n])>>8); } }
-    for(int i=1;i<snf;i++){ u8 t=sh_ord[i]; int zt=fz[t], j=i; while(j>0 && fz[sh_ord[j-1]]>zt){ sh_ord[j]=sh_ord[j-1]; j--; } sh_ord[j]=t; }
+    for(int i=1;i<snf;i++){ u8 t=sh_ord[i]; int zt=fz[t], j=i; while(j>0 && fz[sh_ord[j-1]]<zt){ sh_ord[j]=sh_ord[j-1]; j--; } sh_ord[j]=t; }      // far first (a bigger z is farther away), so near faces cover far ones
     for(int o=0;o<snf;o++){ int fi=sh_ord[o]; const Face *F=&shf[fi]; int a=F->v[0], b=F->v[1], c=F->v[2];
         int area=(px[b]-px[a])*(py[c]-py[a]) - (px[c]-px[a])*(py[b]-py[a]);        // facing: screen-space winding
         s32 mx=shn[fi*3], my=shn[fi*3+1], mz=shn[fi*3+2];                          // the stored normal, turned the same way as the ship
@@ -189,11 +217,20 @@ static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pi
         s32 ny=(my*cp - nz0*sp)>>14, nz=(my*sp + nz0*cp)>>14;
         s32 dot=(-nx*5 + ny*11 - nz*8)>>8;                                         // light from (-0.35, 0.75, -0.55), scaled by 16
         if(area>=0) dot=-dot;
-        int sh = 3 + ((dot*273)>>10); if(sh<0) sh=0; if(sh>7) sh=7;
         int X[8], Y[8]; for(int k=0;k<F->n;k++){ X[k]=px[F->v[k]]; Y[k]=py[F->v[k]]; }
-        int base = F->grp==2 ? SHP_GLOW : F->grp ? SHP_TRIM : SHP_PAINT; if(F->grp==2) sh = 5+((frames>>2)&1)*2;      // engines glow and flicker
-        polyfill(pg,X,Y,F->n,base+sh,cx0,cy0,cx1,cy1); }
-    for(int i=0;i<sne;i++){ int a=she[i*3], b=she[i*3+1], g=she[i*3+2]; linep(pg,px[a],py[a],px[b],py[b], g==2?SHP_GLOW+6 : g?SHP_TRIM:SHP_PAINT, cx0,cy0,cx1,cy1); }
+        int base, L;                                                               // L: 0..28 = the 8 palette shades with 4 dither steps between each
+        if(F->grp==2){ base=SHP_GLOW; L=20+((frames>>2)&1)*8; }                    // engine glow flickers
+        else { L=11+dot+(dot>>3); if(dot>9) L+=(dot-9)*2;                          // ambient + light, and a glint where a face points at the light
+            L-=fz[fi]>>5;                                                          // far parts a little darker, near parts a little brighter
+            if(F->grp==3){ base=SHP_GLOW; L+=6; } else base = F->grp ? SHP_TRIM : SHP_PAINT;      // the canopy is glass: lit, never flickering
+            if(L<0) L=0; if(L>28) L=28; }
+        int lv=(L+1)>>1, sh=lv>>1; sh_df=(lv&1)?2:0; if(sh>=7){ sh=7; sh_df=0; }          // rounded to 15 steps: a flat shade, or a 50% checkerboard between two
+        polyfill(pg,X,Y,F->n,base+sh,cx0,cy0,cx1,cy1); sh_df=0;
+        { int ink = F->grp>=2 ? SHP_GLOW+1 : base;                                 // each face is outlined as it is drawn, so a line never shows through the hull
+          for(int k=0;k<F->n;k++){ int k2=k+1==F->n?0:k+1; linep(pg,X[k],Y[k],X[k2],Y[k2],ink,cx0,cy0,cx1,cy1); } } }
+    for(int i=0;i<sne;i++){ int g=she[i*3+2]; if(!(g&4)) continue; int a=she[i*3], b=she[i*3+1]; if(rz_[a]+rz_[b]>16) continue;      // loose lines (stripes, barrels, slit): only on the side facing you
+        g&=3; linep(pg,px[a],py[a],px[b],py[b], g==2?SHP_GLOW+6 : g?SHP_TRIM+5:SHP_PAINT+1, cx0,cy0,cx1,cy1); }
+    if(sh_flame) sh_flames(pg,0,cx0,cy0,cx1,cy1);                               // flames pointing at you go over it
 }
 static void ship_proj(int mx, int my, int mz, int cx, int cy, int sc, int yaw_, int pitch_, int *ox, int *oy){   // where a point of the model lands on the screen (the same maths as ship_draw)
     s32 rc=cosx(ship_roll>>2), rs=sinx(ship_roll>>2), cy_=cosx(yaw_>>2), sy_=sinx(yaw_>>2), cp=cosx(pitch_>>2), sp=sinx(pitch_>>2);

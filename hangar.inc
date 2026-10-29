@@ -30,7 +30,7 @@ static int make_ship(volatile u16 *pg, int first){
         { volatile u16 *bp=(volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0:0xA000));
           rect(bp,124,36,108,88,1); frame1(bp,124,36,108,88,C_DGREY);
           for(int k=0;k<16;k++){ int x=126+((k*37+t/4)%104), yy=38+((k*53)%84); pix(bp,x,yy, (k&3)?2:4); }
-          ship_draw(bp,178,80,105,spin,150+(sinx((t*2)&255)>>10),0,0,125,37,231,123);
+          { int hs=34*256/sh_rad; if(hs<70) hs=70; if(hs>150) hs=150; sh_flame=1; ship_draw(bp,178,80,hs,spin,150+(sinx((t*2)&255)>>10),0,0,125,37,231,123); sh_flame=0; }
           vsync();
           for(int y=36;y<124;y++){ volatile u16 *src=bp+y*120+62, *dst=pg+y*120+62; for(int x=0;x<54;x++) dst[x]=src[x]; } }
         read_keys(); if(editing && (t&15)==0) dirty=1;

@@ -180,9 +180,9 @@ static void fl_ship(volatile u16 *pg){
         V3 n = vadd(vmul(fl_rt,(float)shn[fi*3]), vadd(vmul(fl_up,(float)shn[fi*3+1]), vmul(fl_fwd,(float)shn[fi*3+2]))); n=vmul(n,1.0f/256.0f);
         V3 c=fl_world(F->v[0]); if(vdot(n,c)>0) n=vmul(n,-1.0f);                           // turn it to face the camera (both-sided parts)
         float d=vdot(n,L); int sh=3+(int)(d*4.6f); if(sh<0) sh=0; if(sh>7) sh=7;
-        int base = F->grp==2 ? SHP_GLOW : F->grp ? SHP_TRIM : SHP_PAINT; if(F->grp==2) sh=6+((frames>>1)&1);
+        int base = F->grp>=2 ? SHP_GLOW : F->grp ? SHP_TRIM : SHP_PAINT; if(F->grp==2) sh=6+((frames>>1)&1);
         int X[8], Y[8]; for(int k=0;k<F->n;k++){ X[k]=px[F->v[k]]; Y[k]=py[F->v[k]]; } polyfill(pg,X,Y,F->n,base+sh,0,0,240,160); }
-    for(int i=0;i<sne;i++){ int a=she[i*3], b=she[i*3+1], g=she[i*3+2]; if(!ok[a]||!ok[b]) continue; int dx=px[b]-px[a], dy=py[b]-py[a]; if(dx>290||dx<-290||dy>290||dy<-290) continue;
+    for(int i=0;i<sne;i++){ int a=she[i*3], b=she[i*3+1], g=she[i*3+2]&3; if(!ok[a]||!ok[b]) continue; int dx=px[b]-px[a], dy=py[b]-py[a]; if(dx>290||dx<-290||dy>290||dy<-290) continue;
         linep(pg,px[a],py[a],px[b],py[b], g==2?SHP_GLOW+6 : g?SHP_TRIM+1:SHP_PAINT+1, 0,0,240,160); }
 }
 // ---- the flight: keyframes on screen (x, y) and in depth, from the launch pad up past the sun and into the lens

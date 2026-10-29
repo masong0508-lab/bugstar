@@ -745,12 +745,11 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     // the chase camera: your own ship, seen from behind, banking into turns and nosing up and down
     if(chase_cam){ ship_roll=(-roll_*2)&1023; int bob=(sinx((frames*3)&255)>>12);
         { int scx=120 + (yawv>>2), scy=100 + bob + (pitv>>2), scs=52 + speed/6, syw=(-(yawv*2))&1023, spt=(40 - pitv)&1023;
-          ship_draw(pg, scx, scy, scs, syw, spt, 0,0, 0,0,240,128);
+          sh_flame = 1 + (HELD(K_B)?1:0) + ((HELD(K_B)&&HELD(K_L)&&fuel>0)?1:0); ship_draw(pg, scx, scy, scs, syw, spt, 0,0, 0,0,240,128); sh_flame=0;
           if(lz) for(int m=0;m<sh_mzn;m++){ int mx_,my_; ship_proj(sh_mz[m][0],sh_mz[m][1],sh_mz[m][2],scx,scy,scs,syw,spt,&mx_,&my_);          // the bolts leave the ship's own guns and run to where you are aiming
               int uh=(5-lz)*7, ut=uh-7; if(ut<0) ut=0;                                                       // a bolt flies out along the line to the crosshair, a few frames
               int hx=mx_+(120-mx_)*uh/20, hy=my_+(VCY-my_)*uh/20, tx=mx_+(120-mx_)*ut/20, ty=my_+(VCY-my_)*ut/20;
               line2(pg,tx,ty,hx,hy,52); line2(pg,tx+1,ty,hx+1,hy,52); line2(pg,(tx+hx)/2,(ty+hy)/2,hx,hy,54); } }
-        if(HELD(K_B)){ int fl = 3 + (frames&3); for(int k=-1;k<=1;k++) line2(pg,120+k*4+(yawv>>2),106+bob,120+k*6+(yawv>>2),106+bob+fl+(HELD(K_L)&&fuel>0?6:0),SHP_GLOW+6); }   // engine flame
         ship_roll=0; }
     if(hit_t){ hit_t--; if(!FILM) for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
     cockpit(pg);
