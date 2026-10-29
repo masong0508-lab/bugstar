@@ -26,7 +26,7 @@ _Static_assert(ORE_OFF >= 0xB5C, "the ore block must start after the humanoid bl
 // SRAM slot + 0xBA4 .. 0xBCC (audited: the ore block ends at 0xBA4 and the play-time block starts at 0xC00).
 // A save made before this block existed has none here: the smelter then starts empty. The time is play time (the same clock as the PLAYED screen).
 #define NMAT 12
-#define NREC 18
+#define NREC 21
 #define SM_OFF 0xBA4
 #define SM_SECS 15              // play seconds a single smelt takes
 #define SM_MAXB 5               // the most smelts you can queue at once
@@ -38,12 +38,19 @@ static const Recipe sm_rec[NREC]={
     {1,7, 0,2, 1,1},   {1,8, 0,3, 0,0},   {1,9, 2,2, 1,1},   {1,10, 5,2, 3,1},  {1,11, 4,2, 7,1},                                          // PLATING, DRILL BIT, LENS, ION CELL, BONE PLATE
     {2,1, 0,3, 1,1},   {2,2, 8,2, 7,1},   {2,3, 9,1, 10,1},                                                                              // PICKAXE, DRILL, LASER CUTTER
     {1,10, 6,1, 3,1},  {1,11, 6,1, 4,1},
-    {3,0, 6,1, 7,2} };      // kind 3: a HULL PLATE for the ship (void bar + 2 plating). It is not stocked: it is fitted at once, up to HP_MAX                                                                                              // void bar shortcuts: ION CELL (void bar + black steel), BONE PLATE (void bar + chalk bar)                                                                              // PICKAXE, DRILL (made from iron and copper alone), LASER CUTTER (no voidsteel: voidsteel needs a laser cutter to mine)
+    {3,0, 6,1, 7,2},
+    {4,0, 10,2, 3,2}, {5,0, 9,2, 6,1}, {6,0, 11,2, 5,1} };   // kinds 4..6: ship parts like the plate: ENGINE TUNE (2 ion cell + 2 black steel), LASER LENS (2 lens + void bar), SHIELD CELL (2 bone plate + alloy bar). Up to SP_MAX each
+          // kind 3: a HULL PLATE for the ship (void bar + 2 plating). It is not stocked: it is fitted at once, up to HP_MAX                                                                                              // void bar shortcuts: ION CELL (void bar + black steel), BONE PLATE (void bar + chalk bar)                                                                              // PICKAXE, DRILL (made from iron and copper alone), LASER CUTTER (no voidsteel: voidsteel needs a laser cutter to mine)
 static u16 sm_n[NMAT]; static u8 sm_job, sm_jn; static u32 sm_done;       // what you hold; the smelt in progress (recipe + 1, how many, play second it finishes)
 typedef struct { u32 magic; u8 ver, job, jn, pad; u32 done; u16 n[NMAT]; u32 sum; } SmSave;     // 40 bytes
 _Static_assert(SM_OFF >= ORE_OFF+sizeof(OreSave), "the smelter block must start after the ore block");
 _Static_assert(SM_OFF+sizeof(SmSave) <= META_OFF, "the smelter block must end before the play-time block");
-static void sm_reset(void){ hull_plates=0; for(int i=0;i<NMAT;i++) sm_n[i]=0; sm_job=0; sm_jn=0; sm_done=0; }
+static const char *const sp_name[4]={"HULL PLATE","ENGINE TUNE","LASER LENS","SHIELD CELL"};
+static const char *const sp_what[4]={"3% LESS DAMAGE TAKEN EACH","MORE ENGINE THRUST EACH","MORE LASER DAMAGE EACH","+10 SHIELD EACH"};
+static int sp_have(int k){ return k==3 ? hull_plates : sp_n[k-4]; }          // k is the recipe kind, 3..6
+static int sp_cap(int k){ return k==3 ? HP_MAX : SP_MAX; }
+static void sp_add(int k){ if(k==3) hull_plates++; else sp_n[k-4]++; }
+static void sm_reset(void){ hull_plates=0; sp_n[0]=sp_n[1]=sp_n[2]=0; for(int i=0;i<NMAT;i++) sm_n[i]=0; sm_job=0; sm_jn=0; sm_done=0; }
 static void sm_save(void){ SmSave s; memset(&s,0,sizeof s); s.magic=0x31544C4Du; s.ver=1; s.job=sm_job; s.jn=sm_jn; s.done=sm_done; s.pad=hull_plates; for(int i=0;i<NMAT;i++) s.n[i]=sm_n[i];
     s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+SM_OFF,&s,sizeof s); }
 static void sm_load(void){ SmSave s; sm_reset(); sram_read(slot_base(cur_slot)+SM_OFF,&s,sizeof s);
@@ -60,14 +67,14 @@ static int sm_value(void){ int g=0; for(int i=0;i<NMAT;i++) g+=sm_n[i]*sm_price[
 // ---- the mining log: how much of each ore you have ever mined. SRAM slot + 0xBCC .. 0xBEC (the smelter block ends at 0xBCC, the play-time block starts at 0xC00).
 // A save made before this block existed has none here: the log starts at zero and nothing else changes.
 #define ML_OFF 0xBCC
-typedef struct { u32 magic; u8 ver, pad[3]; u32 total; u16 n[8]; u32 sum; } MlSave;     // 32 bytes
+typedef struct { u32 magic; u8 ver, pad[3]; u32 total;   /* pad[0..2]: engine tunes, laser lenses, shield cells */ u16 n[8]; u32 sum; } MlSave;     // 32 bytes
 _Static_assert(ML_OFF >= SM_OFF+sizeof(SmSave), "the log block must start after the smelter block");
 _Static_assert(ML_OFF+sizeof(MlSave) <= META_OFF, "the log block must end before the play-time block");
 static void ml_reset(void){ ml_total=0; for(int i=0;i<8;i++) ml_n[i]=0; }
 static void ml_add(int o, int n){ if(o<4||o>=NORE||n<=0) return; int v=ml_n[o-4]+n; ml_n[o-4]=(u16)(v>65535?65535:v); ml_total+=(u32)n; if(ml_total>999999) ml_total=999999; }
-static void ml_save(void){ MlSave s; memset(&s,0,sizeof s); s.magic=0x314C4D42u; s.ver=1; s.total=ml_total; for(int i=0;i<8;i++) s.n[i]=ml_n[i]; s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+ML_OFF,&s,sizeof s); }
+static void ml_save(void){ MlSave s; memset(&s,0,sizeof s); s.magic=0x314C4D42u; s.ver=1; s.pad[0]=sp_n[0]; s.pad[1]=sp_n[1]; s.pad[2]=sp_n[2]; s.total=ml_total; for(int i=0;i<8;i++) s.n[i]=ml_n[i]; s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+ML_OFF,&s,sizeof s); }
 static void ml_load(void){ MlSave s; ml_reset(); sram_read(slot_base(cur_slot)+ML_OFF,&s,sizeof s);
-    if(s.magic!=0x314C4D42u || s.sum!=fnv(&s,sizeof s-4) || s.ver!=1) return; ml_total=s.total>999999?999999:s.total; for(int i=0;i<8;i++) ml_n[i]=s.n[i]; }
+    if(s.magic!=0x314C4D42u || s.sum!=fnv(&s,sizeof s-4) || s.ver!=1) return; for(int i=0;i<3;i++) sp_n[i]= s.pad[i]>SP_MAX ? SP_MAX : s.pad[i]; ml_total=s.total>999999?999999:s.total; for(int i=0;i<8;i++) ml_n[i]=s.n[i]; }
 
 static void belt_reset(void); static void belt_save(void); static void belt_load(void);       // the belt respawn clock (space.inc)
 static void ore_reset(void){ sm_reset(); ml_reset(); belt_reset();  for(int i=0;i<NORE;i++) ore_n[i]=0; for(int i=0;i<ORE_RING;i++) ore_ring[i]=0; ore_ring_i=0; ore_tool=0; }

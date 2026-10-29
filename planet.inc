@@ -449,6 +449,32 @@ static void hell_frame(int n){                                                  
 static void rock_frame(void){                                     // an icy rock melts while you are on it
     if(cur_rock!=3 || !rock_t) return; rock_t--;
     if(rock_t==6000) show_msg("THE ICE IS SOFTENING"); else if(rock_t==2400) show_msg("THE ICE IS MELTING! FINISH UP"); else if(rock_t==0){ show_msg("IT MELTED AWAY! LIFTING OFF"); launch_flag=1; } }
+// ---- SCAN: with the SCANNER in hand, the guide arrow (SELECT + L/R) has a fourth stop that points at the richest ore vein of the world
+static int scan_i=-1;                                      // the vein the scan found (an index into po[]), -1 for none
+static int scan_vein(void){                                // the highest tier vein still in the ground; the nearest one wins a tie. One pass over the objects, nothing per screen column
+    int best=-1, bt=0; s32 bd=0x7FFFFFFF;
+    for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_ROCK){ int o=ore_of(po[i].x,po[i].y); if(o<0) continue; int t=ore_def[o].tier;
+        s32 ddx=wrapd(po[i].x-ppx), ddy=wrapd(po[i].y-ppy); s32 d=(ddx<0?-ddx:ddx)+(ddy<0?-ddy:ddy); if(t>bt || (t==bt && d<bd)){ bt=t; bd=d; best=i; } }
+    scan_i=best; return best; }
+// ---- the ore map: a small round-the-bug map of the ore veins, in the corner of the planet view (the MINIMAP option). Veins are coloured by their ore.
+// It costs nothing per screen column: the veins near you are listed once every half second, and each frame draws a 30x30 panel and at most OM_N dots.
+#define OM_N 40
+static u8 om_i[OM_N]; static u8 om_n; static int om_t=-999;
+static const u8 om_col[NORE]={0,0,0,0, C_GREY,C_RED,C_CYAN,C_GOLD,C_DRED,C_WHITE,C_GREEN,C_UNIQ};      // iron grey, copper red, ice quartz cyan, sulfur gold, obsidian dark red, calcite white, scrap green, voidsteel purple
+static void oremap_list(void){ om_n=0; om_t=frames;
+    for(int i=0;i<NPO && om_n<OM_N;i++) if(po[i].alive && po[i].kind==O_ROCK){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); if(dx>(20<<16)||dx<-(20<<16)||dy>(20<<16)||dy<-(20<<16)) continue; if(ore_of(po[i].x,po[i].y)>=0) om_i[om_n++]=(u8)i; } }
+static void planet_oremap(volatile u16 *pg){
+    const int ox=19, oy=59, R=15;                           // the middle of the panel
+    if(frames-om_t>=30 || frames<om_t) oremap_list();
+    rect(pg,ox-R-1,oy-R-1,2*R+2,2*R+2,C_DGREY); rect(pg,ox-R,oy-R,2*R,2*R,1);
+    for(int k=0;k<om_n;k++){ PObj *o=&po[om_i[k]]; if(!o->alive || o->kind!=O_ROCK) continue;
+        s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); int sx=(int)((((dx>>8)*hcs - (dy>>8)*hsn))>>16), sy=-(int)((((dx>>8)*hsn + (dy>>8)*hcs))>>16);
+        if(sx<-R+1||sx>R-2||sy<-R+1||sy>R-2) continue;
+        int ov=ore_of(o->x,o->y); if(ov<0) continue; int c=om_col[ov], x=ox+sx, y=oy+sy;
+        if(om_i[k]==scan_i && holding(TL_SCANNER) && (frames&8)) c=C_WHITE;                        // the scanned rich vein blinks
+        pix(pg,x,y,c); pix(pg,x+1,y,c); pix(pg,x,y+1,c); pix(pg,x+1,y+1,c); }
+    pix(pg,ox,oy,C_WHITE); pix(pg,ox,oy-1,C_WHITE); pix(pg,ox-1,oy,C_WHITE); pix(pg,ox+1,oy,C_WHITE); pix(pg,ox,oy+1,C_WHITE);      // you, in the middle
+    pix(pg,ox,oy-R,C_GOLD); }                               // north of the view, the way you face
 static void planet_frame(void){
     u32 t_f0=TMR();
 #ifdef TEST_FPS
@@ -464,7 +490,9 @@ static void planet_frame(void){
         if(!tools_owned) show_msg("NO TOOLS YET. BUY THEM AT A CITY MARKET");
         else { int d=HIT(K_UP)?NTOOL-1:1; do tool_held=(tool_held+d)%NTOOL; while(!((tools_owned>>tool_held)&1)); recalc(); char b[48]; scpy(b,"HOLDING: "); scat(b,tool_name[tool_held]); scat(b," ("); scat(b,tool_what[tool_held]); scat(b,")"); show_msg(b); sfx(2); } }
     if(HELD(K_SEL) && !kr_mode){ if(!cam_fp){ int tr = HELD(K_LEFT) ? -16 : HELD(K_RIGHT) ? 16 : 0; if(tr){ sel_used=1; heading=(heading+tr*n*5/8)&1023; heading_rays(); } }    // third person: hold SELECT + LEFT/RIGHT to turn the camera
-        th=tv=0; if(HIT(K_L)||HIT(K_R)){ sel_used=1; arrow_ship=(arrow_ship+1)%3; show_msg(arrow_ship==1?"ARROW: TO YOUR SHIP":arrow_ship==2?"ARROW: TO THE NEAREST RESOURCE":"ARROW: TO THE DOOR"); sfx(7); } }
+        th=tv=0; if(HIT(K_L)||HIT(K_R)){ sel_used=1; arrow_ship=(arrow_ship+1)%(holding(TL_SCANNER)?4:3); scan_i=-1;
+            if(arrow_ship==3){ int v=scan_vein(); if(v<0){ arrow_ship=0; show_msg("SCAN: NO VEIN ON THIS WORLD"); } else { char b[44]; scpy(b,"SCAN: RICH VEIN: "); scat(b,ore_def[ore_of(po[v].x,po[v].y)].name); show_msg(b); } }
+            else show_msg(arrow_ship==1?"ARROW: TO YOUR SHIP":arrow_ship==2?"ARROW: TO THE NEAREST RESOURCE":"ARROW: TO THE DOOR"); sfx(7); } }
     if(kr_mode){}
     else if(cam_fp){                                                                    // first person: left/right turn, L/R step sideways
         int turn = th; th = HELD(K_SEL) ? 0 : HELD(K_R) ? 16 : HELD(K_L) ? -16 : 0;
@@ -585,6 +613,7 @@ static void planet_frame(void){
 #endif
     if(m7_on) goto sprites;                                                            // (a race: the loops, messages and HUD are drawn after the blank, by m7_strip)
     if(kr_mode==1){ kloop_draw(pg,18,160); kbridge_draw(pg,18,160); }                    // loop-de-loops stand on the road (kart.inc)
+    if(opt_minimap && !FILM && !kr_mode) planet_oremap(pg);
     if(msg_timer && !FILM){ int L=textlen(msg); if(kr_mode) stext(pg,120-L*2,50,msg,C_WHITE);                                                            // in a kart: under the HUD
                    else if(L<=29) text(pg,120-L*4,24,msg,C_WHITE,2); else stext(pg,120-L*2,26,msg,C_WHITE); }
 #ifdef TEST_FPS
@@ -653,6 +682,7 @@ sprites:;
     // the guide arrow: it circles the bug (or sits at the top of the view) and points the short way to the door or the ship
     if(!kr_mode){ PObj *t=&po[arrow_ship==1?0:1];
       if(race_on){ for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_BEACON){ t=&po[i]; break; } }
+      else if(arrow_ship==3 && holding(TL_SCANNER)){ if(scan_i<0 || !po[scan_i].alive || (frames&63)==0) scan_vein(); if(scan_i>=0) t=&po[scan_i]; }
       else if(arrow_ship==2){ s32 bd2=0x7FFFFFFF; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER){ s32 ddx=wrapd(po[i].x-ppx), ddy=wrapd(po[i].y-ppy); s32 d=(ddx<0?-ddx:ddx)+(ddy<0?-ddy:ddy); if(d<bd2){ bd2=d; t=&po[i]; } } }
       s32 dx=wrapd(t->x-ppx), dy=wrapd(t->y-ppy);
       if(opt_arrow && (dx<0?-dx:dx)+(dy<0?-dy:dy) > 0x30000){

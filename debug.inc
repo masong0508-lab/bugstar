@@ -72,11 +72,11 @@ static void dbg_overlay(void){                                 // INFO > OVERLAY
     rect(pg,0,150,textlen(b)*4+4,9,0); text(pg,2,152,b,dbg_ncheats()?C_GOLD:C_WHITE,1);
 }
 static void dbg_tick(void){                                    // every frame of the game (run_game)
-    if(dbg_god || xo_i(XO_GOD)){ hearts=maxh; food=100; mp=maxmp; hull=100; shield=20+shield_lv*20; pet_hp=pet_maxhp; }
+    if(dbg_god || xo_i(XO_GOD)){ hearts=maxh; food=100; mp=maxmp; hull=100; shield=shield_max(); pet_hp=pet_maxhp; }
     if(dbg_mp) mp=maxmp;
     if(dbg_food) food=100;
     if(dbg_gold && gold<DBG_GOLD_FLOOR) gold=DBG_GOLD_FLOOR;
-    if(dbg_fuel){ fuel=fuel_max(); hull=100; shield=20+shield_lv*20; }
+    if(dbg_fuel){ fuel=fuel_max(); hull=100; shield=shield_max(); }
     dbg_overlay();
 }
 static void dbg_all_off(void){ dbg_god=dbg_mp=dbg_food=dbg_gold=dbg_fuel=dbg_ohk=dbg_noclip=dbg_spd=0; dbg.spdi=0; dbg_info=0; }
@@ -267,7 +267,7 @@ static void dm_change(int id, int dd, int mul){
     case DR_WLV: if(dbg_weird>=0){ int k=dbg_weird%NMW, lv=(dbg_weird/NMW+dd+25)%25; dbg_weird=lv*NMW+k; } break;
     case DR_FTANK: fuel_tank=dm_wrap(fuel_tank,dd,0,8); if(fuel>fuel_max()) fuel=fuel_max(); break;
     case DR_WARP: warp_lv=dm_wrap(warp_lv,dd,0,8); break;   case DR_FOLD: fold_lv=dm_wrap(fold_lv,dd,0,6); break;   case DR_MAPC: map_lv=dm_wrap(map_lv,dd,0,5); break;
-    case DR_LASER: laser_lv=dm_wrap(laser_lv,dd,1,4); break;   case DR_SHIELD: shield_lv=dm_wrap(shield_lv,dd,1,8); if(shield>20+shield_lv*20) shield=20+shield_lv*20; break;
+    case DR_LASER: laser_lv=dm_wrap(laser_lv,dd,1,4); break;   case DR_SHIELD: shield_lv=dm_wrap(shield_lv,dd,1,8); if(shield>shield_max()) shield=shield_max(); break;
     case DR_HOLD: { int k=0; for(int i=0;i<5;i++) if(dbg_hold_v[i]<=cargo_cap) k=i; cargo_cap=dbg_hold_v[(k+dd+5)%5]; } break;
     case DR_WING: wing_n=dm_wrap(wing_n,dd,0,MAXWING); break;   case DR_TECH: tech_lv=dm_wrap(tech_lv,dd,0,3); break;
     case DR_ZONE: dbg.zone=(dbg.zone+dd+6)%6; break;   case DR_FLOOR: dbg.floor=dm_wrap(dbg.floor,dd*mul,1,30); break;
@@ -309,7 +309,7 @@ static int dm_act(volatile u16 *vis, int id, int live, char *note){
     case DR_REVEAL: for(int i=0;i<MW*MW;i++) seen[i]=1; for(int i=0;i<10;i++) room_seen[i]=1; scpy(note,"THE WHOLE FLOOR IS ON YOUR MAP"); break;
     case DR_STAIRS: px_=tgt_x; py_=tgt_y; scpy(note,"YOU ARE ON THE STAIRS. CLOSE THIS AND PRESS A"); break;
     case DR_FUEL: fuel=fuel_max(); scpy(note,"FUEL FULL"); break;
-    case DR_REPAIR: hull=100; shield=20+shield_lv*20; scpy(note,"THE SHIP IS LIKE NEW"); break;
+    case DR_REPAIR: hull=100; shield=shield_max(); scpy(note,"THE SHIP IS LIKE NEW"); break;
     case DR_GOPLANET: go=DG_PLANET; break;   case DR_GOFLEET: go=DG_FLEET; break;   case DR_GOBEAST: go=DG_BEAST; break;
     case DR_GOFAR: go=DG_FAR; break;   case DR_GOMAP: go=DG_MAP; break;   case DR_GOKART: go=DG_KART; break;   case DR_GARAGE: go=DG_GARAGE; break;   case DR_CREDITS: go=DG_CREDITS; break;
     case DR_GOFLOOR: case DR_GOBOSS: case DR_GOSPACE:

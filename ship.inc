@@ -32,10 +32,10 @@ static int ship_armour(void){ static const u8 a[NHULL]={100,90,70,95,130,110,85,
 static int ship_top_speed(void){ int t=30+ship_thrust()*110/ship_mass(); if(t>90) t=90; if(t<28) t=28; return t; }
 static int ship_turn(void){ static const u8 w[NWING]={75,100,115,130,120,138,108}; static const s8 z[3]={10,0,-10}; int t=w[ship.wings%NWING]+z[ship.wsize%3]; if(shpx.module==MD_GYRO) t+=18; t = t*14/(8+ship_mass()/3); return t<40?40:t; }   // % turn rate: heavy ships turn slowly
 static int ship_damp(void){ return ship.fins==0 ? 3 : ship.fins==1 ? 4 : 6; }                                  // how fast turning settles
-static int ship_gun(void){ static const u8 g[NCANNON]={0,2,4,8,5,3,9}; return g[ship.cannon%NCANNON] + (shpx.module==MD_DISH ? 3 : 0); }                           // extra laser damage
+static int ship_gun(void){ static const u8 g[NCANNON]={0,2,4,8,5,3,9}; return g[ship.cannon%NCANNON] + (shpx.module==MD_DISH ? 3 : 0) + sp_n[1]*2; }                           // extra laser damage
 static int ship_hold_bonus(void){ static const u8 h[NHULL]={0,4,8,0,0,2,10,6}; return h[ship.hull%NHULL] + ship.len*2 + ship.wid*2 + (shpx.module==MD_RACK ? 10 : 0); }
 static int ship_mass(void){ static const u8 hm[NHULL]={10,11,16,9,7,8,15,13}, cm[NCANNON]={0,1,2,3,2,2,5}, mm[NMODULE]={0,4,2,3,1,3}; return hm[ship.hull%NHULL] + ship.len*2 + ship.wid*2 + (ship.wings?1+ship.wsize:0) + (ship.engines+1)*(1+ship.esize) + cm[ship.cannon%NCANNON] + (ship.pods?2:0) + mm[shpx.module%NMODULE]; }
-static int ship_thrust(void){ static const u8 es[3]={7,10,14}; return (ship.engines+1)*es[ship.esize] + (shpx.module==MD_BOOST ? 8 : 0); }
+static int ship_thrust(void){ static const u8 es[3]={7,10,14}; return (ship.engines+1)*es[ship.esize] + (shpx.module==MD_BOOST ? 8 : 0) + sp_n[0]*4; }
 static int ship_fuel_bonus(void){ return (ship.pods==3 ? 30 : 0) + (ship.hull==HL_CAPSULE ? 20 : 0); }                         // fuel tanks and the capsule's big belly: a bigger tank
 static int ship_accel16(void){ int a=ship_thrust()*24/ship_mass(); if(a<4) a=4; if(a>96) a=96; return a; }        // per-frame push, in 1/16
 // ---- the model: vertices in 1/100 of a cell, x right, y up, z forward. faces are flat-shaded polygons (3-8 corners), edges are drawn dark on top

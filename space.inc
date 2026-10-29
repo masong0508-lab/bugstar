@@ -200,6 +200,10 @@ static int belt_pirates(void){ static u32 sid=0xFFFFFFFFu; static u8 v=3;
     return v; }
 static const u8 rock_col[5]={51,56,54,55,58};          // how each kind looks out in space: orange, steel, white, cyan, dark blue
 static s32 svx_, svy_, svz_; static int yawv=0, pitv=0, roll_=0, sshake=0, crash_cd=0;
+// ---- spin-matching: a FAST belt rock (a tumbling one whose drift is quick) can only be landed on when you move with it. Hold R beside it: the retro thrusters then match its drift instead of stopping you.
+static s8 spin_rock=-1;                                   // the fast rock you are close to (set every frame), -1 for none
+static int rock_fast(const Ast *a){ int vx=a->vx<0?-a->vx:a->vx, vz=a->vz<0?-a->vz:a->vz; return (a->seed&3)==0 && vx+vz>=3; }
+static int rock_rel(const Ast *a){ s32 dx=svx_-a->vx, dy=svy_-a->vy, dz=svz_-a->vz; return (int)isqrt((u32)(dx*dx+dy*dy+dz*dz)); }       // how fast you move against it
 EW static Can cans[4];
 static char smsg[40];
 static void space_say(const char *t){ int n=0; while(t[n]&&n<39){ smsg[n]=t[n]; n++; } smsg[n]=0; space_msg_t=90; }
@@ -370,7 +374,7 @@ static void space_enter(int from_planet){
     if(battle_req){ battle_req=0; start_battle(12+lr(10)+danger*2+cluster_no*3); }
     else if(!from_planet && ant_king && lr(100) < 10+danger) start_battle(10+lr(10+danger*3)+cluster_no*2);   // past the Ant King, whole fleets roam
     else if(!from_planet && lr(100) < 25+danger*6) spawn_pirates(1+lr(1+danger/3>3?3:1+danger/3));
-    shield = 20+shield_lv*20; if(hull<1) hull=100;
+    shield = shield_max(); if(hull<1) hull=100;
     ambush_t=0;
     if(!no_ambush && ((beast_stage==0 && (cleared_mask&1)) || (beast_stage==1 && (cleared_mask&4)) || (beast_stage==2 && ant_king))){ ambush_t=160; space_say("WARNING: SOMETHING IS COMING..."); }
     if(hive_card && !no_ambush) show_hive_card();
@@ -415,7 +419,7 @@ static void cockpit(volatile u16 *pg){
     for(int i=0;i<4;i++) if(cans[i].alive) blip(pg,cans[i].x,cans[i].y,cans[i].z,50);
     if(!in_lair) for(int i=0;i<nast;i++) if(ast[i].alive) blip(pg,ast[i].x,ast[i].y,ast[i].z,56);
     // bars on the left: shield, hull, fuel; speed on the right
-    static const char *const lab[3]={"SHLD","HULL","FUEL"}; int val[3]={shield,hull,fuel}, mx[3]={20+shield_lv*20,100,fuel_max()}, col[3]={55,53,50};
+    static const char *const lab[3]={"SHLD","HULL","FUEL"}; int val[3]={shield,hull,fuel}, mx[3]={shield_max(),100,fuel_max()}, col[3]={55,53,50};
     for(int k=0;k<3;k++){ text(pg,4,131+k*9,lab[k],58,1); rect(pg,24,132+k*9,40,3,56); int w=val[k]*40/mx[k]; if(w<0) w=0; if(w>40) w=40; rect(pg,24,132+k*9,w,3,col[k]); }
     text(pg,180,131,HELD(K_L)&&fuel>0?"BURN!":"SPEED",HELD(K_L)&&fuel>0?53:58,1); rect(pg,180,140,52,3,56); { int w=speed*52/ship_top_speed(); if(w>52) w=52; rect(pg,180,140,w,3,52); }
     char b[24]; sys_name(cur_sys,b); b[12]=0; text(pg,180,148,b,54,1);
@@ -601,7 +605,9 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     int in_air = !in_lair && pd < PR*5/2;                                          // close to the planet there is air
     { int a16=ship_accel16(); int burn = HELD(K_L) && fuel>0;
       if(HELD(K_B)){ int a=a16*(burn?2:1); svx_ += (bf[0]*a)>>18; svy_ += (bf[1]*a)>>18; svz_ += (bf[2]*a)>>18; if(burn && (frames&15)==0) fuel-=xo_fuel(1); }
-      if(HELD(K_R)){ int k=6+ship.fins*2; svx_ -= svx_*k/64; svy_ -= svy_*k/64; svz_ -= svz_*k/64; }           // retro thrusters
+      if(HELD(K_R)){ int k=6+ship.fins*2;
+          if(spin_rock>=0 && ast[spin_rock].alive){ const Ast *ra=&ast[spin_rock]; svx_ += ((s32)ra->vx-svx_)*k/32; svy_ += ((s32)ra->vy-svy_)*k/32; svz_ += ((s32)ra->vz-svz_)*k/32; }      // beside a fast rock: match its drift
+          else { svx_ -= svx_*k/64; svy_ -= svy_*k/64; svz_ -= svz_*k/64; } }           // retro thrusters
       // drag: a whisper in space, a hand in the air. in the air the wings pull the ship round to where the nose points
       if(in_air){ int g = 10 + ship.wsize*6 + (ship.wings?6:0); s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
           svx_ += ((((bf[0]*sp3)>>14) - svx_)*g)>>7; svy_ += ((((bf[1]*sp3)>>14) - svy_)*g)>>7; svz_ += ((((bf[2]*sp3)>>14) - svz_)*g)>>7;
@@ -647,7 +653,9 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(!in_lair && !can_land && !can_dock && sys[cur_sys].kind==6 && !is_hive(cur_sys)){ s32 best=0x7FFFFFF;
         for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue; s32 dx=shx-a->x, dy=shy-a->y, dz=shz-a->z, rr=a->r+520;
             if(dx>-rr&&dx<rr&&dy>-rr&&dy<rr&&dz>-rr&&dz<rr){ s32 d=isqrt((u32)((dx>>3)*(dx>>3)+(dy>>3)*(dy>>3)+(dz>>3)*(dz>>3)))<<3; if(d<rr && d<best){ best=d; rock_near=i; } } } }
-    if(++sh_regen>=20){ sh_regen=0; if(shield<20+shield_lv*20) shield++; }
+    spin_rock = (rock_near>=0 && rock_fast(&ast[rock_near])) ? (s8)rock_near : (s8)-1;
+    int spin_ok = spin_rock<0 || rock_rel(&ast[spin_rock])<=2;                       // you move with it (or it is not a fast one)
+    if(++sh_regen>=20){ sh_regen=0; if(shield<shield_max()) shield++; }
     if(lair_out){ lair_out=0; lair_leave(); return 0; }
     if(ambush_t && !in_lair && --ambush_t==0){ hyperspace(); lair_enter(); return 0; }
     if(HIT(K_SEL)){ if(in_lair){ lair_leave(); return 0; } return 2; }
@@ -655,7 +663,8 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     // A: land, dock, or fire
     if(laser_cool) laser_cool--;
     if(HIT(K_A) && can_land){ if(body_menu()) return 1; return 0; }
-    if(HIT(K_A) && rock_near>=0){ u32 h=rock_h(rock_near); rock_key=h; cur_rock=(u8)rock_type_of(h); cur_moon=5; speed=0; space_say("LANDING ON THE ROCK"); wait_release(); return 1; }
+    if(HIT(K_A) && rock_near>=0 && !spin_ok) space_say("TOO FAST! HOLD R TO MATCH ITS SPIN");
+    else if(HIT(K_A) && rock_near>=0){ u32 h=rock_h(rock_near); rock_key=h; cur_rock=(u8)rock_type_of(h); cur_moon=5; speed=0; space_say("LANDING ON THE ROCK"); wait_release(); return 1; }
     if(HIT(K_A) && can_dock){ speed=0; return 3; }
     if(HELD(K_A) && !laser_cool && !can_land && !can_dock && rock_near<0){
         laser_cool=10-laser_lv; laser_t=4; sfx(10);
@@ -794,7 +803,8 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     cockpit(pg);
     if(sv_yaw!=yaw || sv_pit!=pitch){ yaw=sv_yaw; pitch=sv_pit; }
     static char pb[32]; const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
-    if(rock_near>=0){ scpy(pb,"A: LAND ON "); scat(pb,rock_nm[rock_type_of(rock_h(rock_near))-1]); pr=pb; }
+    if(rock_near>=0 && !spin_ok){ scpy(pb,"R: MATCH SPIN  "); ncat(pb,rock_rel(&ast[rock_near])); pr=pb; }
+    else if(rock_near>=0){ scpy(pb,"A: LAND ON "); scat(pb,rock_nm[rock_type_of(rock_h(rock_near))-1]); pr=pb; }
     if(can_land){ int bc=body_count(cur_sys); if(bc>1){ scpy(pb,"A: LAND ("); ncat(pb,bc); scat(pb," WORLDS)"); pr=pb; } }
     if(FILM){ if(space_msg_t) space_msg_t--; return 0; }                    // (filming: nothing over the view)
     if(space_msg_t){ space_msg_t--; text(pg,120-textlen(smsg)*2,in_lair?28:4,smsg,54,1); }
@@ -1271,7 +1281,7 @@ static void station_menu(void){
             int cost[6]={ (fuel_max()-fuel)*2, (100-hull)*3, laser_lv<4?laser_lv*900:0, shield_lv<8?shield_lv*1000:0, cargo_cap<2000?cargo_cap*10:0, tech_cost() };
             if(sel==5 && cost[5] && scrap<tech_scrap()){ say("NEED MORE TECH SCRAP. SCRAP GEAR AT YOUR SHIP"); }
             else if(cost[sel] && gold>=cost[sel]){ gold-=cost[sel]; if(sel==5) scrap-=tech_scrap(); sfx(6);
-                if(sel==0) fuel=fuel_max(); else if(sel==1) hull=100; else if(sel==2) laser_lv++; else if(sel==3){ shield_lv++; shield=20+shield_lv*20; } else if(sel==4){ cargo_cap+=50; if(cargo_cap>2000) cargo_cap=2000; } else tech_lv++; }
+                if(sel==0) fuel=fuel_max(); else if(sel==1) hull=100; else if(sel==2) laser_lv++; else if(sel==3){ shield_lv++; shield=shield_max(); } else if(sel==4){ cargo_cap+=50; if(cargo_cap>2000) cargo_cap=2000; } else tech_lv++; }
             dirty=1;
         }
     }
