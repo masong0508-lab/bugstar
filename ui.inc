@@ -845,6 +845,34 @@ static void spell_shop(volatile u16 *pg){
     list_desc=0;
 }
 
+// ---------------------------------------------------------------- MINING (the ship menu): sell ore, upgrade your tool, look in the ore bag
+static const u16 ore_up_gold[4]={0,100,350,1200}; static const u8 ore_up_o1[4]={0,0,4,10}, ore_up_n1[4]={0,0,12,10}, ore_up_o2[4]={0,0,5,11}, ore_up_n2[4]={0,0,8,4};     // what the next tool costs: gold, and two kinds of ore
+static int ore_bagn(void){ int n=0; for(int i=4;i<NORE;i++) n+=ore_n[i]; return n; }
+static int ore_sellval(void){ int g=0; for(int i=4;i<NORE;i++) g+=ore_n[i]*ore_def[i].price; return g; }
+static int ore_can_up(void){ int t=ore_tool+1; if(t>3) return 0; return gold>=ore_up_gold[t] && ore_n[ore_up_o1[t]]>=ore_up_n1[t] && ore_n[ore_up_o2[t]]>=ore_up_n2[t]; }
+static void mn_row(int i, char *b, int *c){
+    if(i==0){ scpy(b,"SELL ALL ORE"); while(textlen(b)<20) scat(b," "); ncat(b,ore_sellval()); scat(b,"G"); *c=ore_bagn()?C_GOLD:C_DGREY; }
+    else if(i==1){ scpy(b,"UPGRADE YOUR TOOL"); while(textlen(b)<20) scat(b," "); if(ore_tool<3){ scat(b,ore_tool_name[ore_tool+1]); *c=ore_can_up()?C_CYAN:C_WHITE; } else { scat(b,"MAXED"); *c=C_DGREY; } }
+    else { scpy(b,"ORE BAG"); while(textlen(b)<20) scat(b," "); ncat(b,ore_bagn()); scat(b," ORES"); *c=C_WHITE; } }
+static void mn_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY;
+    if(i==0) scpy(b,"SELL EVERY ORE YOU CARRY (TIER 1 GOODS SELL AT STATIONS)");
+    else if(i==1){ if(ore_tool>=3){ scpy(b,"YOUR LASER CUTTER BREAKS ANY VEIN"); return; } int t=ore_tool+1; scpy(b,"COSTS "); ncat(b,ore_up_gold[t]); scat(b,"G");
+        if(ore_up_n1[t]){ scat(b," "); ncat(b,ore_up_n1[t]); scat(b," "); scat(b,ore_def[ore_up_o1[t]].name); } if(ore_up_n2[t]){ scat(b," "); ncat(b,ore_up_n2[t]); scat(b," "); scat(b,ore_def[ore_up_o2[t]].name); }
+        *c=ore_can_up()?C_GREEN:C_RED; }
+    else scpy(b,"WHAT YOU CARRY, AND WHAT IT IS WORTH"); }
+static void ob_row(int i, char *b, int *c){ int o=4+i; scpy(b,ore_def[o].name); while(textlen(b)<14) scat(b," "); ncat(b,ore_n[o]); while(textlen(b)<22) scat(b," "); scat(b,"T"); ncat(b,ore_def[o].tier); scat(b,"  "); ncat(b,ore_def[o].price); scat(b,"G EACH"); *c=ore_n[o]?C_WHITE:C_DGREY; }
+static void ob_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY; if(i<0) return; int o=4+i; scpy(b,"NEEDS A "); scat(b,ore_tool_name[ore_need_tool(o)]); scat(b,ore_need_tool(o)<=ore_tool?" (YOU CAN)":" (YOU CAN'T YET)"); *c=ore_need_tool(o)<=ore_tool?C_GREEN:C_RED; }
+static void mining_menu(volatile u16 *pg){
+    int s0=0, r;
+    while(1){ list_desc=mn_desc; r=list_pick(pg,"MINING",3,mn_row,&s0,"A: CHOOSE  B: BACK"); if(r<0) break;
+        if(r==0){ int v=ore_sellval(); if(!v){ say("NO ORE TO SELL"); continue; } s64 g0=gold; earn(v); for(int i=4;i<NORE;i++) ore_n[i]=0; char b[40]; scpy(b,"SOLD ORE: +"); ncat(b,(int)(gold-g0)); scat(b,"G"); say(b); sfx(7); hud_now(); }
+        else if(r==1){ if(ore_tool>=3){ say("YOU HAVE THE BEST TOOL"); continue; } if(!ore_can_up()){ say("NOT ENOUGH GOLD OR ORE"); continue; }
+            int t=ore_tool+1; gold-=ore_up_gold[t]; ore_take(ore_up_o1[t],ore_up_n1[t]); ore_take(ore_up_o2[t],ore_up_n2[t]); ore_tool=(u8)t;
+            char b[40]; scpy(b,"NOW YOU MINE WITH: "); scat(b,ore_tool_name[t]); say(b); sfx(6); hud_now(); }
+        else { int s1=0; list_desc=ob_desc; while(list_pick(pg,"ORE BAG",NORE-4,ob_row,&s1,"B: BACK")>=0){} } }
+    list_desc=0;
+}
+
 static int wrap_text(volatile u16 *pg, int x, int y, int maxc, const char *s, int col, int maxl){       // words wrapped to maxc letters a line; returns how many lines it drew
     char ln[48]; int l=0; if(maxc>46) maxc=46; while(*s==' ') s++;
     while(*s && l<maxl){ int n=0; while(s[n] && n<maxc) n++;
@@ -859,11 +887,11 @@ static int wrap_text(volatile u16 *pg, int x, int y, int maxc, const char *s, in
 static void shop_prev_copy(volatile u16 *pg, volatile u16 *bp){ for(int y=SK_Y;y<SK_Y+SK_H;y++){ volatile u16 *src=bp+y*120+SK_X/2, *dst=pg+y*120+SK_X/2; for(int x=0;x<SK_W/2;x++) dst[x]=src[x]; } }
 // ---- the ship menu: four tabs (L/R or LEFT/RIGHT), a few big rows on each, and a line that says what the row does.
 // the ids below are the old row numbers, so every action further down is unchanged. START = take off from any tab.
-static const u8 shop_tab_n[4]={3,5,4,4};
-static const u8 shop_tab_id[4][5]={{0,14,13,0,0},{1,15,2,3,4},{5,6,8,7,0},{9,12,10,11,0}};
+static const u8 shop_tab_n[4]={3,5,5,4};
+static const u8 shop_tab_id[4][5]={{0,14,13,0,0},{1,15,2,3,4},{5,6,8,7,16},{9,12,10,11,0}};
 static const char *const shop_tab_nm[4]={"GO","SHOP","CARE","YOU"};
-static const char *const shop_nm[16]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB","SPELL SHOP"};
-static const char *const shop_ds[16]={"TAKE OFF FOR THE NEXT STAR","CRUMBS, POTIONS, BERRIES, SEEDS AND WARPS","BUY GEAR FOR YOUR BITE, SHELL AND CHARM","SELL WHAT YOU ARE CARRYING FOR GOLD","TAKE A JOB FOR FAME, GOLD AND A PRIZE","FULL HEARTS AND MANA FOR YOU AND BUDDY","LEARN WHAT AN UNKNOWN BERRY OR SEED DOES","KEEP OR SCRAP YOUR BEST FINDS","UPGRADE GEAR WITH GOLD AND MINED GOODS","REMAKE YOUR LOOK","REDESIGN YOUR SHIP IN 3D","HE ALWAYS KNOWS WHAT TO DO NEXT","SWITCH BETWEEN THE SHAPES YOU HAVE BEEN","ENTER THE DUNGEON FORGE","RACE ANY TIME AND BUILD YOUR OWN TRACKS","BUY ATTACK, DEFENSE AND SUMMON SPELLS"};
+static const char *const shop_nm[17]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB","SPELL SHOP","MINING"};
+static const char *const shop_ds[17]={"TAKE OFF FOR THE NEXT STAR","CRUMBS, POTIONS, BERRIES, SEEDS AND WARPS","BUY GEAR FOR YOUR BITE, SHELL AND CHARM","SELL WHAT YOU ARE CARRYING FOR GOLD","TAKE A JOB FOR FAME, GOLD AND A PRIZE","FULL HEARTS AND MANA FOR YOU AND BUDDY","LEARN WHAT AN UNKNOWN BERRY OR SEED DOES","KEEP OR SCRAP YOUR BEST FINDS","UPGRADE GEAR WITH GOLD AND MINED GOODS","REMAKE YOUR LOOK","REDESIGN YOUR SHIP IN 3D","HE ALWAYS KNOWS WHAT TO DO NEXT","SWITCH BETWEEN THE SHAPES YOU HAVE BEEN","ENTER THE DUNGEON FORGE","RACE ANY TIME AND BUILD YOUR OWN TRACKS","BUY ATTACK, DEFENSE AND SUMMON SPELLS","SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG"};
 static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
     volatile u16 *pg=VISPG;
     oam_hide_all(); oam_flush();
@@ -893,6 +921,7 @@ static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
                         case 10: scpy(vb,hull_name[ship.hull]); v=vb; vc=C_CYAN; break;
                         case 11: c=C_CYAN; break;
                         case 15: { int k2=0; for(int k=SP_CORE;k<NSPELL;k++) if(!spell_known[k]) k2++; if(k2){ ncat(vb,k2); scat(vb," TO BUY"); v=vb; vc=C_CYAN; } else { v="ALL OWNED"; vc=C_DGREY; } } break;
+                        case 16: if(ore_bagn()){ ncat(vb,ore_bagn()); scat(vb," ORE"); v=vb; vc=C_CYAN; } else { v="EMPTY"; vc=C_DGREY; } break;
                         case 12: scpy(vb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); v=vb; vc=C_CYAN; break;
                         case 13: if(!ant_king){ v="LOCKED"; vc=C_RED; } break;
                         default: break; }
@@ -923,6 +952,7 @@ static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
             if(HIT(K_A)){ sel=shop_tab_id[tab][row[tab]]; break; }
         }
         if(sel==15){ spell_shop(pg); continue; }
+        if(sel==16){ mining_menu(pg); continue; }
         if(sel==14){ kart_req=1; in_menu--; wait_release(); return 0; }
         if(sel==13){ if(!ant_king){ say("BEAT THE ANT KING TO OPEN THE FORGE"); continue; }
             if(forge_menu(pg)){ enter_dungeon_flag=3; in_menu--; wait_release(); return 0; } box(pg,12,20,216,136); continue; }

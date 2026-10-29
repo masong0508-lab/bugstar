@@ -300,6 +300,7 @@ static void new_planet(void){
     city_people(&k); planet_life(&k); pq_type=0; pq_done=0; race_on=0; kart_on=0; kart_won=0; race_best=0; kart_reset();
     while(k<NPO){ place(&po[k],(k&1)?O_PEBBLE:O_TUFT,3,64); k++; }
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind!=O_SHIP && (po[i].kind<O_MARKET || (po[i].kind>=O_FOSSIL && po[i].kind<=O_CRIT)) && hm_at(po[i].x,po[i].y)<water_lv){ po[i].x+=1<<16; if(hm_at(po[i].x,po[i].y)<water_lv) po[i].alive = po[i].kind<=O_CAGE ? 1 : 0; }
+    for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_ROCK && ore_of(po[i].x,po[i].y)>=0 && ore_mined_recently(ore_id(po[i].x,po[i].y))) po[i].alive=0;      // veins you mined lately are still empty (the list holds the last 16, so they regrow as you mine others)
     ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;
 #ifdef TEST_CITY
     { static const u8 tk[11]={0,O_MARKET,O_CANTINA,O_OFFICE,O_RACE,O_LOCAL,O_RUIN,O_FOSSIL,O_CRIT,O_BEETLE,O_SHRINE}; int want=tk[TEST_CITY%11];
@@ -534,6 +535,13 @@ static void planet_frame(void){
                 if(pq_type==6 && o->var==0){ pq_have++; job_tick(); } break; }
             case O_TREE: case O_ROCK: case O_WEB: case O_FLOWER: {                     // mining: a few bites, then the goods go in your ship's hold
                 PObj *o=&po[best]; int t=o->kind-O_TREE; sfx(o->kind==O_ROCK?12:13); mine_t=8;
+                { int ore = o->kind==O_ROCK ? ore_of(o->x,o->y) : -1;                                      // a vein: a harder rock that gives ore, and needs the right tool
+                  if(ore>=0){ if(ore_tool_eff()<ore_need_tool(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: NEEDS A "); scat(b,ore_tool_name[ore_need_tool(ore)]); show_msg(b); sfx(4); break; }
+                      if(!o->var){ o->var=1; o->hp=(u8)ore_hits(ore); }                              // (the first bite works out how many it needs with your tool)
+                      if(--o->hp>0){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
+                      o->alive=0; ore_mark_mined(ore_id(o->x,o->y)); int tt=ore_tool_eff(), n=1+rndi(2)+(tt>=2)+(cur_moon?1:0)+(hellw()?hell_tier()/4:0); if(pq_type==7){ pq_have++; job_tick(); }
+                      int got=ore_add(ore,n); st_mined+=n; ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
+                      char b[40]; scpy(b,"+"); ncat(b,got); scat(b," "); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); show_msg(b); sfx(7); break; } }
                 if(holding(TL_PICK)) o->hp=1;                                                    // the pickaxe: one hit
                 if(--o->hp>0){ char b[40]; scpy(b,node_name[t]); scat(b,": "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                 o->alive=0; int g=node_good[t], n=1+rndi(2)+(rndi(4)==0)+(holding(TL_PICK)?1:0)+(cur_moon?1:0)+(hellw()?hell_tier()/3:0); if(pq_type==7){ pq_have++; job_tick(); }
@@ -577,7 +585,7 @@ static void planet_frame(void){
       static const char *const pt[21]={"A: GO DOWN THE DOOR","A: YOUR SHIP","A: OPEN THE CAGE","A: SQUASH THE SLUG","A: SEARCH THE PLANT","A: TAP THE AMBER TREE","A: MINE THE CRYSTAL","A: GATHER THE SILK","A: SIP THE NECTAR","A: ENTER THE DRONE OUTPOST",
           "A: THE MARKET","A: THE CANTINA","A: THE BOUNTY OFFICE","A: THE RACE POST","A: KNOCK","A: TALK","A: DIG THE FOSSIL","A: THE RUIN","A: BITE THE BEETLE","A: CATCH IT","A: THE RELIC SHRINE!"};
       if(kr_mode) kart_hud(pg);
-      else if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } else if(pk==O_DOOR && portal_depth>0){ scpy(cb,"A: PORTAL BACK TO B"); ncat(cb,portal_depth); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
+      else if(pk>=0 && opt_hints){ char cb[40]; const char *s=pt[pk]; if(pk==O_ROCK){ int ov=ore_of(po[best].x,po[best].y); if(ov>=0){ scpy(cb,"A: MINE "); scat(cb,ore_def[ov].name); scat(cb," VEIN"); if(ore_tool_eff()<ore_need_tool(ov)){ scat(cb," (NEEDS "); scat(cb,ore_tool_name[ore_need_tool(ov)]); scat(cb,")"); } s=cb; } } if(pk==O_CRIT){ scpy(cb,"A: CATCH THE "); scat(cb,spc[po[best].var].name); s=cb; } else if(pk==O_DOOR && portal_depth>0){ scpy(cb,"A: PORTAL BACK TO B"); ncat(cb,portal_depth); s=cb; } stext(pg,120-textlen(s)*2,msg_timer?38:26,s,C_GOLD); }
       if(kr_mode || FILM){}
       else if(race_on){ char rb[40]; scpy(rb,kart_on?"KART ":"RACE "); ncat(rb,race_t/60); scat(rb,kart_on?"S  GATE ":"S  FLAG "); ncat(rb,race_next+1); scat(rb,"/"); ncat(rb,race_n); if(kart_on){ scat(rb,"  PAR "); ncat(rb,race_par/60); scat(rb,"S"); rect(pg,4,146,50,3,C_DGREY); if(kart_boost>0) rect(pg,4,146,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); } stext(pg,4,151,rb,C_CYAN); }
       else if(pq_type && !pq_done){ char jb[48]; scpy(jb,"JOB: "); { char t2[40]; job_text(t2); scat(jb,t2); } if(pq_type!=4 && pq_type!=8){ scat(jb," "); ncat(jb,pq_have); scat(jb,"/"); ncat(jb,pq_need); } stext(pg,4,151,jb,C_GOLD); }

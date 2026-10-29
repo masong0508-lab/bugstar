@@ -34,3 +34,18 @@ static int ore_take(int o, int n){ if(o<0||o>=NORE||n<0||ore_n[o]<n) return 0; o
 static int ore_value(void){ int g=0; for(int i=0;i<NORE;i++) g+=ore_n[i]*ore_def[i].price; return g; }
 static int ore_mined_recently(u16 id){ if(!id) id=1; for(int i=0;i<ORE_RING;i++) if(ore_ring[i]==id) return 1; return 0; }
 static void ore_mark_mined(u16 id){ if(!id) id=1; ore_ring[ore_ring_i]=id; ore_ring_i=(u8)((ore_ring_i+1)%ORE_RING); }
+
+// ---- phase 1: veins, tool tiers and what each world holds
+// Tier-1 ores (0..3) are the four goods every world already grows: they stay goods in the ship's hold. Ores 4..11 are new and live in the ore bag.
+static const char *const ore_tool_name[4]={"JAWS","PICKAXE","DRILL","LASER CUTTER"};
+static const u8 ore_hab[NORE]={0,0,0,0, 1,1, 2, 4,4,8, 16, 32};                  // where each ore is found: 1 rock and dry, 2 ice, 4 hell, 8 bone and death, 16 city, 32 anywhere (rare)
+static int ore_tool_eff(void){ int t=ore_tool; if(holding(TL_PICK) && t<1) t=1; return t; }          // your best mining tool right now
+static int ore_need_tool(int o){ return ore_def[o].tier/2; }                                     // tier 2-3 need a pickaxe, 4-5 a drill, 6 a laser cutter
+static int ore_hits(int o){ int p=1<<ore_tool_eff(); return (ore_def[o].hard+p-1)/p; }          // bites it takes with the tool you hold: a tier doubles your power
+static int ore_habitat(void){ int h=1; if(wd.cls==PC_ICE||wd.cls==PC_COCYTUS||cur_moon==2) h|=2; if(hellw()) h|=4; if(wd.cls==PC_DEATH||wd.cls==PC_BONE) h|=8; if(wd.cls==PC_ECUMENOPOLIS) h|=16; return h; }
+static u16 ore_id(s32 ox, s32 oy){ return (u16)(hmix(wd.tseed ^ ((u32)(ox>>10)*0x9E3779B1u) ^ ((u32)(oy>>10)*0x85EBCA6Bu)) & 0xFFFF); }     // which vein it is (a hash of the world and the spot)
+static int ore_of(s32 ox, s32 oy){      // -1: a plain crystal rock (goods, as before). Otherwise the ore this rock is a vein of
+    u32 h=ore_id(ox,oy)*2654435761u+wd.tseed; if((int)((h>>16)%100)<35) return -1;
+    int maxt=2+dlv()/6+(cur_moon?1:0)+(hellw()?2:0); if(maxt>6) maxt=6; int hab=ore_habitat(), cand[NORE], n=0;
+    for(int i=4;i<NORE;i++) if((ore_hab[i]&hab) && ore_def[i].tier<=maxt && (ore_hab[i]!=32 || (h&7)==0)) cand[n++]=i;       // (the rare one turns up in one vein in eight)
+    return n ? cand[(h>>8)%n] : 4; }
