@@ -504,7 +504,7 @@ static void planet_frame(void){
     for(int k=0;k<n;k++){
         if(kr_mode){ kart_step(); continue; }                                           // in a kart (kart.inc)
         { int ph0=pw_h, pv0=pw_v, ik = WL(MW_ICE) ? 2+WL(MW_ICE)/3 : 0;                 // ICE: you keep sliding
-          pw_h += th ? (th-pw_h)/4 + (th>pw_h?1:th<pw_h?-1:0) : -pw_h/3; pw_v += tv ? (tv-pw_v)/4 + (tv>pw_v?1:tv<pw_v?-1:0) : -pw_v/3;
+          pw_h += th ? (th-pw_h)/4 + (th>pw_h?1:th<pw_h?-1:0) : (pw_h>-3&&pw_h<3) ? -pw_h : -pw_h/3; pw_v += tv ? (tv-pw_v)/4 + (tv>pw_v?1:tv<pw_v?-1:0) : (pw_v>-3&&pw_v<3) ? -pw_v : -pw_v/3;   // (no stick held: settle to a dead stop; /3 stalled at +-2 and the bug crept)
           if(ik && (frames+k)%ik){ if(!th) pw_h=ph0; else pw_h=ph0+(pw_h-ph0)/2; if(!tv) pw_v=pv0; else pw_v=pv0+(pw_v-pv0)/2; } }
         s32 sp = 0x1600 + (wd.grav-1)*0x200; if(WL(MW_ZEROG)) sp=sp*(14+WL(MW_ZEROG))/10;   // ZERO-G: you bounce along
         if(WL(MW_STICKY)) sp=sp*10/(12+WL(MW_STICKY)); if(d_spd||dbg_spd) sp=sp*(100+d_spd+dbg_spd)/100;      // STICKY GROUND; your marks and gear                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
