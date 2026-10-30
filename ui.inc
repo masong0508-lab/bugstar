@@ -259,7 +259,7 @@ static int cc_run(volatile u16 *pg, int human, int first){
     #define CR(a,b,c,d,e,f,g,h) R[nr++]=(CRow){a,b,c,d,e,f,g,h,0}
     CR("NAME",0,0,0,0,0,0,0); CR("LOOKS",0,1,0,0,0,0,0);
     if(human){
-        CR("BODY",0,2,2,&hum.style,body_n,0,0); CR("HEIGHT",0,2,5,&hum.height,ht_n,0,0); CR("BUILD",0,2,3,&hum.build,bd_n,0,0);
+        CR("CALLING",0,4,0,0,0,0,0); CR("BODY",0,2,2,&hum.style,body_n,0,0); CR("HEIGHT",0,2,5,&hum.height,ht_n,0,0); CR("BUILD",0,2,3,&hum.build,bd_n,0,0);
         CR("HAIR","EARS",2,10,&humx.hair,hair_n,0,0); R[nr-1].opt2=ears_n; CR("FACE",0,2,8,&humx.face,face_n,0,0); CR("MOUTH",0,2,6,&humx.beard,beard_n,0,0);
         CR("TOP",0,2,10,&humx.top,top_n,0,0); CR("BOTTOM",0,2,6,&humx.bot,bot_n,0,0); CR("SHOES","FEET",2,5,&humx.shoes,shoe_n,0,0); CR("HAT",0,2,12,&humx.hat,hhat_n,0,0); CR("BACK",0,2,6,&humx.back,back_n,0,0);
         CR("SKIN","FUR",3,0,0,0,&hum.col[HC_SKIN],0); CR("HAIR","EARS+TAIL",3,0,0,0,&hum.col[HC_HAIR],0); CR("SHOES","MUZZLE",3,0,0,0,&hum.col[HC_ACC],0);
@@ -280,8 +280,8 @@ static int cc_run(volatile u16 *pg, int human, int first){
     #define PUSH() do{ cc_take(&hist[hp]); scpy(hnm[hp],nm); hp=(hp+1)&7; if(hn<8) hn++; }while(0)
     #define APPLY() do{ if(human){ hum_palette(); hum_build(); } else bug_build(); }while(0)
     int tn[5]; u8 tr[5][8];                                                  // the five sections of the creator, and which rows sit on each
-    { static const u8 tb_h[22]={0,0,0,0,0, 1,1,1, 2,2,2, 1,2, 3,3,3, 4,4,4, 3, 4,4}, tb_b[25]={0,0,0,0,0,0, 1,1,1, 2,2, 1, 2,2, 1, 3,3,3,3, 4,4,4,4,4, 3};
-      for(int k=0;k<5;k++) tn[k]=0; for(int i=0;i<nr;i++){ int k = i<(human?22:25) ? (human?tb_h[i]:tb_b[i]) : 4; if(tn[k]<8) tr[k][tn[k]++]=(u8)i; } }
+    { static const u8 tb_h[23]={0,0,0,0,0,0, 1,1,1, 2,2,2, 1,2, 3,3,3, 4,4,4, 3, 4,4}, tb_b[25]={0,0,0,0,0,0, 1,1,1, 2,2, 1, 2,2, 1, 3,3,3,3, 4,4,4,4,4, 3};
+      for(int k=0;k<5;k++) tn[k]=0; for(int i=0;i<nr;i++){ int k = i<(human?23:25) ? (human?tb_h[i]:tb_b[i]) : 4; if(tn[k]<8) tr[k][tn[k]++]=(u8)i; } }
     static const char *const tab_h[5]={"BODY","HEAD","DRESS","SKIN","DYES"}, *const tab_b[5]={"BODY","FACE","LIMBS","PAINT","TRIM"};
     const char *const *tabs = human ? tab_h : tab_b;
     int tab=0, trow[5]={0,0,0,0,0}, sel=0, dirty=1, t=0, pi=-1, sch=-1, rep=0, note_t=0, selp=0, selused=0; u32 lock=0; char note[48]; note[0]=0;
@@ -300,6 +300,7 @@ static int cc_run(volatile u16 *pg, int human, int first){
                 if(r->kind==0) text(pg,58,y,nm,vc,1);
                 else if(r->kind==1){ scpy(b,"<"); scat(b, pi>=0 ? (human?cc_hp[pi].nm:cc_bp[pi].nm) : "READY-MADE"); scat(b,">"); b[15]=0; text(pg,58,y,b,vc,1); }
                 else if(r->kind==2){ scpy(b,"<"); scat(b,(human&&hum.style&&r->opt2)?r->opt2[*r->v%r->n]:r->opt[*r->v%r->n]); scat(b,">"); b[15]=0; text(pg,58,y,b,ron?vc:C_DGREY,1); }
+                else if(r->kind==4){ scpy(b,"<"); scat(b,cal_name[hum_calling()]); scat(b,">"); text(pg,58,y,b,vc,1); }
                 else if(ron){ BG_PAL[224+j]=*r->c; rect(pg,58,y-1,24,8,224+j); frame1(pg,58,y-1,24,8,sl?C_WHITE:C_DGREY); int pc=cc_pidx(*r->c); text(pg,86,y,pc>=0?preset_name[pc]:"CUSTOM",sl?C_WHITE:C_GREY,1); }
                 else text(pg,58,y,"(OFF)",C_DGREY,1);
                 if((lock>>i)&1) rect(pg,112,y+1,5,5,C_GOLD); }
@@ -309,12 +310,14 @@ static int cc_run(volatile u16 *pg, int human, int first){
             if(selp) text(pg,128,39,"A: LOCK  B: MATCH",C_CYAN,1); else text(pg,128,39,"HOLD SEL: MORE",U_RAISE,1);
             ctext(pg,178,103,nm,C_GOLD);
             { int nc=0; for(int i=0;i<nr;i++) if(R[i].kind==3 && (!R[i].dep || *R[i].dep) && nc<10){ BG_PAL[232+nc]=*R[i].c; rect(pg,127+nc*10,113,9,5,232+nc); nc++; } }     // every colour at a glance
-            { int nl=0; for(int i=0;i<nr;i++) nl+=(lock>>i)&1; if(nl){ scpy(b,""); ncat(b,nl); scat(b," LOCKED"); ctext(pg,178,122,b,C_GOLD); } else if(first) ctext(pg,178,122,"CHANGE IT AT YOUR MIRROR",C_DGREY); }
+            if(human){ int cl=hum_calling(); scpy(b,cal_name[cl]); scat(b,": "); scat(b,cal_fx[cl]); ctext(pg,178,122,b,cl==CAL_NONE?C_DGREY:C_GOLD); }
+            else { int nl=0; for(int i=0;i<nr;i++) nl+=(lock>>i)&1; if(nl){ scpy(b,""); ncat(b,nl); scat(b," LOCKED"); ctext(pg,178,122,b,C_GOLD); } else if(first) ctext(pg,178,122,"CHANGE IT AT YOUR MIRROR",C_DGREY); }
             if(hn){ scpy(b,"B: UNDO ("); ncat(b,hn); scat(b,")"); } else scpy(b, first ? "B: CANCEL" : "B: BACK");
             ui_lhint(pg,127,131,b,C_GREY);
             { char ds[44]; const char *dn=(human&&hum.style&&cr->nm2)?cr->nm2:cr->nm;
               if(note_t) wrap_text(pg,10,129,28,note,C_GOLD,2);
               else { if(cr->kind==0) scpy(ds,"A: TYPE A NAME. UP TO 8 LETTERS"); else if(cr->kind==1) scpy(ds,"LEFT/RIGHT: TRY A READY-MADE LOOK");
+                  else if(cr->kind==4) scpy(ds,"LEFT/RIGHT: DRESS FOR A CALLING. IT GIVES PERKS");
                   else if(cr->kind==2){ scpy(ds,"LEFT/RIGHT: CHANGE THE "); scat(ds,dn); }
                   else if(on) scpy(ds,"LEFT/RIGHT: BROWSE. A: MIX YOUR OWN"); else scpy(ds,"TURN ITS PART ON FIRST");
                   wrap_text(pg,10,129,28,ds,C_GREY,2); } }
@@ -343,10 +346,14 @@ static int cc_run(volatile u16 *pg, int human, int first){
         { int c=tn[tab]; if(HIT(K_UP)){ trow[tab]=(trow[tab]+c-1)%c; dirty=1; sfx(7); } if(HIT(K_DOWN)){ trow[tab]=(trow[tab]+1)%c; dirty=1; sfx(7); } }
         sel=tr[tab][trow[tab]]; cr=&R[sel]; on=!cr->dep || *cr->dep;
         int d=0, fresh=0; if(HELD(K_LEFT)||HELD(K_RIGHT)){ rep++; fresh=(rep==1); if(fresh || (rep>14 && !(rep&3) && (cr->kind==3||cr->kind==1))) d=HELD(K_RIGHT)?1:-1; } else rep=0;
-        if(HIT(K_A) && cr->kind==2) d=1, fresh=1;
+        if(HIT(K_A) && (cr->kind==2||cr->kind==4)) d=1, fresh=1;
         if(d){
             if(cr->kind==2){ PUSH(); *cr->v=(u8)((*cr->v+d+cr->n)%cr->n); pi=-1; APPLY(); dirty=1; sfx(2); }
             else if(cr->kind==3 && on){ if(fresh) PUSH(); int p=cc_pidx(*cr->c); p = p<0 ? (d>0?0:NPRESET-1) : (p+d+NPRESET)%NPRESET; *cr->c=preset_col[p]; pi=-1; APPLY(); dirty=1; sfx(7); }
+            else if(cr->kind==4){ PUSH(); int cu=hum_calling(), nx = cu==CAL_NONE ? (d>0?0:NCAL-1) : (cu+d+NCAL)%NCAL; const u8 *o=cal_set[nx];     // dress for the next calling
+                if(o[0]!=255) cc_set8(R,nr,lock,&humx.top,o[0]); if(o[1]!=255) cc_set8(R,nr,lock,&humx.hat,o[1]); if(o[2]!=255) cc_set8(R,nr,lock,&humx.back,o[2]); if(o[3]!=255) cc_set8(R,nr,lock,&humx.shoes,o[3]);
+                if(o[4]!=255) cc_set8(R,nr,lock,&humx.face,o[4]); if(o[5]!=255) cc_set8(R,nr,lock,&humx.beard,o[5]); if(o[6]!=255) cc_set8(R,nr,lock,&hum.build,o[6]);
+                pi=-1; APPLY(); dirty=1; sfx(6); }
             else if(cr->kind==1){ if(fresh) PUSH(); pi = pi<0 ? (d>0?0:np-1) : (pi+d+np)%np;
                 if(human){ const CHumP *p=&cc_hp[pi]; cc_set8(R,nr,lock,&hum.style,p->style); cc_set8(R,nr,lock,&hum.height,p->height); cc_set8(R,nr,lock,&hum.build,p->build);
                     cc_set8(R,nr,lock,&humx.hair,p->hair); cc_set8(R,nr,lock,&humx.face,p->face); cc_set8(R,nr,lock,&humx.beard,p->beard); cc_set8(R,nr,lock,&humx.top,p->top); cc_set8(R,nr,lock,&humx.bot,p->bot); cc_set8(R,nr,lock,&humx.shoes,p->shoes); cc_set8(R,nr,lock,&humx.hat,p->hat);
@@ -366,7 +373,7 @@ static int cc_run(volatile u16 *pg, int human, int first){
             else { cc_put(&before); scpy(nm,bnm); if(human){ hum_palette(); hum_build(); form_palette(); } else bug_build(); wait_release(); oam_hide_all(); oam_flush(); return 0; } }
     }
     scpy(look.name,nm);
-    if(human){ hum.made=1; hum_save(); form_palette(); }
+    if(human){ hum.made=1; hum_save(); form_palette(); if(form==FORM_HUMAN) recalc(); }
     sfx(6); wait_release(); oam_hide_all(); oam_flush(); return 1;
 }
 static int human_creator(volatile u16 *pg, int first){ return cc_run(pg,1,first); }
@@ -575,7 +582,7 @@ static void char_screen(volatile u16 *pg){
                 ui_panel(pg,128,38,108,48); ui_well(pg,132,42,100,40);
                 for(int yy=66;yy<81;yy++) rect(pg,133,yy,98,1, yy<70?U_INK:yy<74?U_BG0:U_BG1);
                 for(int k=0;k<5;k++){ int w=34-k*6; rect(pg,182-w/2,79+(k>>1),w,1,U_EDGE); }
-                { const char *fn = form==FORM_CREATURE ? body_name[form_body] : form_name[form]; text(pg,136,45,fn,U_GLOW,1); }
+                { char fb[28]; scpy(fb, form==FORM_CREATURE ? body_name[form_body] : form_name[form]); if(form==FORM_HUMAN){ scat(fb," - "); scat(fb,cal_name[hum_calling()]); } text(pg,136,45,fb,U_GLOW,1); }
                 // stats
                 ui_panel(pg,4,88,122,40); ui_head(pg,9,91,112,"STATS",C_GREEN);
                 s64 *sv[4]={&st_str,&st_dex,&st_vit,&st_mag};

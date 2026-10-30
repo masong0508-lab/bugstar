@@ -280,6 +280,22 @@ typedef struct { u8 style, height, build, made; u16 col[NHC]; } Hum;            
 static Hum hum={0,3,1,0}; static int hum_req=0;
 typedef struct { u8 hair, face, beard, top, bot, shoes, hat, back; u16 c_hat, c_back; } HumX;   // the humanoid's newer parts (saved in the look block)
 static HumX humx;
+// ---- CALLINGS: what your humanoid's look says about you. Nothing is saved: it is worked out from the parts you picked (hat, top, back, shoes, face, beard, build),
+// so every outfit is a build. Each calling needs 3 points of its signature parts; the best one wins, and with none you are a WANDERER.
+enum { CAL_KNIGHT, CAL_WIZARD, CAL_RANGER, CAL_ROGUE, CAL_EXPLORER, CAL_ANGEL, CAL_ROYAL, NCAL, CAL_NONE=NCAL };
+static const char *const cal_name[NCAL+1]={"KNIGHT","WIZARD","RANGER","ROGUE","EXPLORER","ANGEL","ROYAL","WANDERER"};
+static const char *const cal_fx[NCAL+1]={"+3 DEF +8 HP -SPD","+8 MANA +1 DMG","+15 SPD +6 CRIT","+12 CRIT +15 GOLD","+8 SPD +1 LIGHT","+1 REGEN +4 HP","+35 GOLD +1 DMG","NO BONUS"};
+static const u8 cal_set[NCAL][7]={{8,7,255,1,4,255,2},{6,3,1,255,5,3,255},{5,6,1,1,255,255,255},{5,5,4,255,6,255,0},{255,1,5,2,5,255,255},{255,10,2,255,255,255,255},{4,4,1,255,255,2,255}};   // the outfit each calling asks for: top, hat, back, shoes, face, beard, build (255 = leave it)
+static int hum_calling(void){
+    int p[NCAL]={0,0,0,0,0,0,0}, h=humx.hat%12, t=humx.top%10, b=humx.back%6, s=humx.shoes%5, f=humx.face%8, bd=humx.beard%6;
+    if(t==8) p[0]+=3; if(h==7) p[0]+=2; if(s==1) p[0]+=1; if(hum.build==2) p[0]+=1; if(f==4) p[0]+=1;
+    if(h==3) p[1]+=3; if(t==6) p[1]+=2; if(b==1) p[1]+=1; if(f==5) p[1]+=1; if(bd==3) p[1]+=1;
+    if(t==5||t==3||t==4) p[2]+=2; if(h==6||h==1) p[2]+=2; if(s==1) p[2]+=1; if(b==1) p[2]+=1;
+    if(f==6||f==7) p[3]+=2; if(t==5) p[3]+=1; if(b==4) p[3]+=2; if(hum.build==0) p[3]+=1; if(h==5) p[3]+=1;
+    if(b==5||b==3) p[4]+=3; if(h==1) p[4]+=1; if(s==2) p[4]+=1; if(f==5) p[4]+=1;
+    if(b==2) p[5]+=3; if(h==10) p[5]+=3;
+    if(h==4||h==2) p[6]+=3; if(b==1) p[6]+=1; if(bd==2) p[6]+=1; if(t==7||t==4) p[6]+=1;
+    int best=-1, bi=CAL_NONE; for(int i=0;i<NCAL;i++) if(p[i]>best){ best=p[i]; bi=i; } return best>=3 ? bi : CAL_NONE; }
 static void humx_default(void){ memset(&humx,0,sizeof humx); humx.c_hat=C15(200,60,60); humx.c_back=C15(60,80,200); }
 static const u16 hum_wd[3]={164,140,128};                                          // sprite width (affine, 128 = the 2x drawing size)
 static const u16 hum_ht[5]={200,176,158,142,128};                                  // sprite height: tiny 41px .. towering 64px
@@ -541,7 +557,12 @@ static void recalc(void){
     if(form==FORM_CREATURE){ if(form_body==0) d_spd+=25; else if(form_body==1){ maxh+=15; d_spd-=10; d_def+=2; } else { d_spd+=35; maxh-=5; } d_dmg-=1; }   // a creature: hoppers are quick, grazers tough, flyers fastest
     if(form==FORM_HUMAN){ d_dmg+=2;                                                                                 // a humanoid: what you hold matters
         if(holding(TL_SWORD)) d_dmg+=6; if(holding(TL_BLASTER)){ d_dmg+=4; d_crit+=10; } if(holding(TL_LANTERN)) d_light+=1;
-        if(holding(TL_JETPACK)) d_spd+=30; if(holding(TL_SHIELD)) d_def+=4; if(holding(TL_GLOVE)) gold_find+=20; }
+        if(holding(TL_JETPACK)) d_spd+=30; if(holding(TL_SHIELD)) d_def+=4; if(holding(TL_GLOVE)) gold_find+=20;
+        { int cl=hum_calling();                                                                                      // and so does how you dress: your calling
+          if(cl==CAL_KNIGHT){ d_def+=3; maxh+=8; d_spd-=5; } else if(cl==CAL_WIZARD){ maxmp+=8; d_dmg+=1; } else if(cl==CAL_RANGER){ d_spd+=15; d_crit+=6; }
+          else if(cl==CAL_ROGUE){ d_crit+=12; gold_find+=15; } else if(cl==CAL_EXPLORER){ d_spd+=8; d_light+=1; } else if(cl==CAL_ANGEL){ d_regen+=1; maxh+=4; } else if(cl==CAL_ROYAL){ gold_find+=35; d_dmg+=1; }
+          if(hum.height==0){ d_spd+=10; maxh-=3; } else if(hum.height==4){ maxh+=6; d_dmg+=1; d_spd-=8; }                  // tiny is quick and frail, towering is tough and slow
+          if(hum.build==0) d_spd+=5; else if(hum.build==2) d_def+=1; } }
     d_haste += clampi(sdiv(st_dex,6));
     d_sting += have_bug[BUG_BEE]*2;
     if(eqa.it==IT_SHELL && eqa.sub==3 && eqa.rar!=R_UNIQUE) d_spd -= 15;        // the sticky shell slows you
