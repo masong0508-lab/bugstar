@@ -87,7 +87,7 @@ static int page_back=0;
 static volatile int opt_music=2;   // 0 off, 1 low, 2 full
 static volatile int opt_sfx=1;
 static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1, opt_baby=0, opt_hunger=1, opt_faintloss=1, opt_xpm=0, opt_goldm=0;
-static const u8 dif_hp[6]={100,100,125,150,190,260}, dif_aw[6]={100,100,115,130,160,200}, dif_spd[6]={100,100,106,112,120,130}, dif_cd[6]={100,100,88,76,62,50};   // monsters by difficulty: health %, how far they notice you %, speed %, how long they wait between attacks %   // easy = (opt_diff==0)
+static const u16 dif_hp[6]={100,100,125,150,190,260}, dif_aw[6]={100,100,115,130,160,200}, dif_spd[6]={100,100,106,112,120,130}, dif_cd[6]={100,100,88,76,62,50};   // monsters by difficulty: health %, how far they notice you %, speed %, how long they wait between attacks %   // easy = (opt_diff==0)
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)

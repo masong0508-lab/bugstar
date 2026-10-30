@@ -19,7 +19,7 @@ static u32 gsk(u32 k){ int top=UW-1; while(top>3 && !uni_w[top]) top--; if(!(uni
 // ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
 static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
 #define TZ (zone+(opt_diff==5?6:0))
-static const u8 dif_dmg[6]={1,6,8,10,14,20}, dif_hun[6]={12,6,5,4,3,2}, dif_gold[6]={0,100,125,150,250,400};   // NORMAL is now what NIGHTMARE used to be (3x damage, 2x hunger, +100 gold); every step above it is harder again   // damage taken (in halves), hunger speed (/12), gold bonus                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
+static const u8 dif_dmg[6]={1,6,8,10,14,20}, dif_hun[6]={12,6,5,4,3,2}; static const u16 dif_gold[6]={0,100,125,150,250,400};   // NORMAL is now what NIGHTMARE used to be (3x damage, 2x hunger, +100 gold); every step above it is harder again   // damage taken (in halves), hunger speed (/12), gold bonus                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
 #define HP_MAX 5                 // hull plates you can fit (void bar + 2 plating each, at the smelter): every plate takes 3% off the damage the ship takes
 static u8 hull_plates;           // saved in the smelter block (its spare byte), see ore.inc
 #define SP_MAX 3                 // engine tunes, laser lenses and shield cells you can fit (smelter, SHIP PARTS): each is one step
