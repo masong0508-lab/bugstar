@@ -777,7 +777,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
           if(z>dot_z){ dot2(pg,sx,sy,col); dot2(pg,sx-1,sy,col); dot2(pg,sx+1,sy,col); dot2(pg,sx,sy-1,col); continue; }   // far away: a small mark
           { int rp=(int)(140*FOCS/z)+2; if(sx+rp<0 || sx-rp>239 || sy+rp<0 || sy-rp>127) continue; }                    // the whole ship is off the screen: skip it
           lod = z>lod_z; }
-        s16 R[3]={p->f[2],0,(s16)-p->f[0]}; norm3(R); s16 U[3]={(s16)((p->f[1]*R[2]-p->f[2]*R[1])>>14),(s16)((p->f[2]*R[0]-p->f[0]*R[2])>>14),(s16)((p->f[0]*R[1]-p->f[1]*R[0])>>14)};
+        s16 R[3]={p->f[2],0,(s16)-p->f[0]}; norm3(R); s16 U[3]; if(lod){ U[0]=0; U[1]=16384; U[2]=0; } else { U[0]=(s16)((p->f[1]*R[2]-p->f[2]*R[1])>>14); U[1]=(s16)((p->f[2]*R[0]-p->f[0]*R[2])>>14); U[2]=(s16)((p->f[0]*R[1]-p->f[1]*R[0])>>14); }   // (far away: the fin just points up, so no cross product)
         static const s16 mdl[6][3]={{0,0,110},{-110,0,-50},{110,0,-50},{0,35,-50},{0,-18,-50},{0,0,-70}};
         s32 v[6*3]; for(int k=0;k<6;k++){ for(int a=0;a<3;a++) v[k*3+a]=(a==0?p->x:a==1?p->y:p->z)+((mdl[k][0]*R[a]+mdl[k][1]*U[a]+mdl[k][2]*p->f[a])>>14); }
         static const u8 pe[]={0,1,0,2,0,3,0,4,1,3,2,3,1,4,2,4,3,5,4,5,1,5,2,5};
