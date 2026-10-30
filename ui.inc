@@ -849,7 +849,7 @@ static void spell_shop(volatile u16 *pg){
 // ---------------------------------------------------------------- MINING (the ship menu): sell ore, upgrade your tool, look in the ore bag
 static const u16 ore_up_gold[4]={0,100,350,1200}; static const u8 ore_up_o1[4]={0,0,4,10}, ore_up_n1[4]={0,0,12,10}, ore_up_o2[4]={0,0,5,8}, ore_up_n2[4]={0,0,8,8};     // what the next tool costs: gold, and two kinds of ore
 static int ore_bagn(void){ int n=0; for(int i=4;i<NORE;i++) n+=ore_n[i]; return n; }
-static int ore_sellval(void){ int g=0; for(int i=4;i<NORE;i++) g+=ore_n[i]*ore_def[i].price; return g; }
+static int ore_sellval(void){ int g=0; for(int i=4;i<NORE;i++) g+=ore_n[i]*ore_px(i); return g; }
 static int ore_can_up(void){ int t=ore_tool+1; if(t>3) return 0; return gold>=ore_up_gold[t] && ore_n[ore_up_o1[t]]>=ore_up_n1[t] && ore_n[ore_up_o2[t]]>=ore_up_n2[t]; }
 // ---- the smelter (Phase 4, basic): ore -> bars (takes play time) -> parts -> tools. Opened from the MINING menu.
 static int sm_base, sm_sbase;                         // which recipes / stock the open list shows (first item number)
@@ -884,7 +884,7 @@ static void sm_make(int r){
     if(q->kind==1){ if(sm_n[q->out]<9999) sm_n[q->out]++; scpy(b,"MADE 1 "); scat(b,sm_name[q->out]); say(b); sfx(6); }
     else if(q->kind>=3){ sp_add(q->kind); scpy(b,sp_name[q->kind-3]); scat(b," FITTED: "); ncat(b,sp_have(q->kind)); scat(b,"/"); ncat(b,sp_cap(q->kind)); say(b); sfx(6); }
     else { ore_tool=q->out; scpy(b,"NOW YOU MINE WITH: "); scat(b,ore_tool_name[q->out]); say(b); sfx(6); hud_now(); } }
-static void sm_srow(int i, char *b, int *c){ int m=sm_sbase+i; scpy(b,sm_name[m]); while(textlen(b)<14) scat(b," "); ncat(b,sm_n[m]); while(textlen(b)<22) scat(b," "); ncat(b,sm_price[m]); scat(b,"G EACH"); *c=sm_n[m]?C_WHITE:C_DGREY; }
+static void sm_srow(int i, char *b, int *c){ int m=sm_sbase+i; scpy(b,sm_name[m]); while(textlen(b)<14) scat(b," "); ncat(b,sm_n[m]); while(textlen(b)<22) scat(b," "); ncat(b,sm_px(m)); scat(b,"G EACH"); *c=sm_n[m]?C_WHITE:C_DGREY; }
 static void smelter_row(int i, char *b, int *c){ *c=C_WHITE;
     if(i==0){ scpy(b,"SMELT ORE"); while(textlen(b)<20) scat(b," "); if(sm_ready()){ scat(b,"DONE!"); *c=C_GREEN; } else if(sm_job){ ncat(b,sm_left()); scat(b,"S LEFT"); *c=C_GOLD; } }
     else if(i==1) scpy(b,"MAKE PARTS AND TOOLS");
@@ -917,7 +917,7 @@ static void mn_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY;
         *c=ore_can_up()?C_GREEN:C_RED; }
     else if(i==2) scpy(b,"WHAT YOU CARRY, AND WHAT IT IS WORTH");
     else scpy(b,"MELT ORE, MAKE PARTS, BUILD BETTER TOOLS"); }
-static void ob_row(int i, char *b, int *c){ int o=4+i; scpy(b,ore_def[o].name); while(textlen(b)<14) scat(b," "); ncat(b,ore_n[o]); while(textlen(b)<22) scat(b," "); scat(b,"T"); ncat(b,ore_def[o].tier); scat(b,"  "); ncat(b,ore_def[o].price); scat(b,"G EACH"); *c=ore_n[o]?C_WHITE:C_DGREY; }
+static void ob_row(int i, char *b, int *c){ int o=4+i; scpy(b,ore_def[o].name); while(textlen(b)<14) scat(b," "); ncat(b,ore_n[o]); while(textlen(b)<22) scat(b," "); scat(b,"T"); ncat(b,ore_def[o].tier); scat(b,"  "); ncat(b,ore_px(o)); scat(b,"G EACH"); *c=ore_n[o]?C_WHITE:C_DGREY; }
 static void ob_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY; if(i<0) return; int o=4+i; scpy(b,"MINED "); ncat(b,ml_n[i]); scat(b,"  NEEDS A "); scat(b,ore_tool_name[ore_need_tool(o)]); scat(b,ore_need_tool(o)<=ore_tool?" (YOU CAN)":" (YOU CAN'T YET)"); *c=ore_need_tool(o)<=ore_tool?C_GREEN:C_RED; }
 static void mining_menu(volatile u16 *pg){
     int s0=0, r;

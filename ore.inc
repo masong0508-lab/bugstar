@@ -62,7 +62,11 @@ static int sm_batches(int r){ const Recipe *q=&sm_rec[r]; int k=q->kind?1:0; int
 static int sm_ready(void){ return sm_job && (s32)(play_secs()-sm_done)>=0; }           // a smelt has finished
 static int sm_collect(void){ if(!sm_ready()) return 0; int out=sm_rec[sm_job-1].out, got=sm_jn; int v=sm_n[out]+got; sm_n[out]= v>9999?9999:(u16)v; sm_job=0; sm_jn=0; return got; }
 static int sm_left(void){ if(!sm_job) return 0; s32 d=(s32)(sm_done-play_secs()); return d>0?d:0; }
-static int sm_value(void){ int g=0; for(int i=0;i<NMAT;i++) g+=sm_n[i]*sm_price[i]; return g; }
+// ---- price drift: every 5 play-minutes each ore and bar moves its price by up to 20% either way (a hash of the time slot, so nothing needs saving)
+static int px_drift(int id, int base){ u32 h=hmix((u32)(play_secs()/300)*2654435761u ^ (u32)id*0x9E3779B1u); int pc=80+(int)((h>>8)%41); int v=base*pc/100; return v<1?1:v; }
+static int ore_px(int o){ return px_drift(o,ore_def[o].price); }
+static int sm_px(int m){ return px_drift(100+m,sm_price[m]); }
+static int sm_value(void){ int g=0; for(int i=0;i<NMAT;i++) g+=sm_n[i]*sm_px(i); return g; }
 
 // ---- the mining log: how much of each ore you have ever mined. SRAM slot + 0xBCC .. 0xBEC (the smelter block ends at 0xBCC, the play-time block starts at 0xC00).
 // A save made before this block existed has none here: the log starts at zero and nothing else changes.
@@ -87,7 +91,7 @@ static void ore_load(void){ OreSave s; ore_reset(); sm_load(); ml_load(); belt_l
     for(int i=0;i<NORE;i++) ore_n[i]=s.n[i]; for(int i=0;i<ORE_RING;i++) ore_ring[i]=s.ring[i]; }
 static int ore_add(int o, int n){ if(o<0||o>=NORE||n<=0) return 0; int v=ore_n[o]+n; if(v>9999) v=9999; int got=v-ore_n[o]; ore_n[o]=(u16)v; return got; }   // returns how many fit
 static int ore_take(int o, int n){ if(o<0||o>=NORE||n<0||ore_n[o]<n) return 0; ore_n[o]-=(u16)n; return 1; }
-static int ore_value(void){ int g=0; for(int i=0;i<NORE;i++) g+=ore_n[i]*ore_def[i].price; return g; }
+static int ore_value(void){ int g=0; for(int i=0;i<NORE;i++) g+=ore_n[i]*ore_px(i); return g; }
 static int ore_mined_recently(u16 id){ if(!id) id=1; for(int i=0;i<ORE_RING;i++) if(ore_ring[i]==id) return 1; return 0; }
 static void ore_mark_mined(u16 id){ if(!id) id=1; ore_ring[ore_ring_i]=id; ore_ring_i=(u8)((ore_ring_i+1)%ORE_RING); }
 
