@@ -454,10 +454,11 @@ static void make_floor(void){
 #ifdef TEST_FE
     if(1){
 #else
-    if(!last && !base_mode && !mboss && !(zone==0 && !endless && depth_no==1 && !zone_cleared) && (rndi(100)<65 || (ddna.on && ddna.haz))){
+    if(!last && !base_mode && !mboss && !(zone==0 && !endless && depth_no==1 && !zone_cleared) && (rndi(100)<65 || cur_rock==5 || (ddna.on && ddna.haz))){
 #endif
         fl_ev=1+rndi(NFE-1);
         if(ddna.on && ddna.haz && rndi(100)<70){ static const u8 he[5]={0,FE_DARK,FE_CURSED,FE_NEST,FE_AMBUSH}; fl_ev=he[ddna.haz%5]; }   // the dungeon's hazard
+        if(cur_rock==5 && !base_mode && !forge_on){ if(rndi(100)<50) fl_ev = rndi(2) ? FE_GAS : FE_CAVE; if(depth_no%5==4) fl_ev=FE_ELITE; }      // a MINE: gas pockets and cave-ins, and every 5th floor an elite hunt (the shaft elites)
 #ifdef TEST_FE
         fl_ev=TEST_FE;
 #endif
@@ -1033,5 +1034,5 @@ static void fl_draw(volatile u16 *pg){                                          
     if(!fl_ev || fl_done) return; char b[40]; scpy(b,fe_name[fl_ev]);
     if(fl_ev==FE_ELITE){ scat(b," "); ncat(b,fl_have); scat(b,"/"); ncat(b,fl_need); }
     else if(fl_ev==FE_SPEED){ s32 left=(s32)(fl_end-vbl_count)/60; if(left<0){ left=0; } scat(b," "); ncat(b,left); scat(b,"S"); if(left==0) scpy(b,"SPEED RUN: TOO SLOW"); }
-    text(pg,4,30,b, fl_ev==FE_CURSED||fl_ev==FE_AMBUSH ? C_RED : fl_ev==FE_SPEED ? C_GOLD : C_CYAN, 1);
+    text(pg,4,30,b, fl_ev==FE_CURSED||fl_ev==FE_AMBUSH||fl_ev==FE_GAS||fl_ev==FE_CAVE ? C_RED : fl_ev==FE_SPEED ? C_GOLD : C_CYAN, 1);
 }

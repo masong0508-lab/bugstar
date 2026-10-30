@@ -139,6 +139,7 @@ static u16 ore_id(s32 ox, s32 oy){ return (u16)(hmix(wd.tseed ^ ((u32)(ox>>10)*0
 // ---- ore quality: each vein is POOR, plain, RICH or PRISTINE (set by the vein's own hash, so nothing is stored). It changes how much a vein gives.
 static const char *const oq_name[4]={"POOR ","","RICH ","PRISTINE "};
 static int ore_quality(s32 ox, s32 oy){ int r=(int)((hmix(ore_id(ox,oy)*0x2545F491u+wd.tseed)>>12)%100); return r<25?0 : r<80?1 : r<95?2 : 3; }
+static int ore_mega(s32 ox, s32 oy){ return (int)((hmix(ore_id(ox,oy)*0x7FEB352Du+wd.tseed*3+77)>>9)%40)==0; }      // about 1 vein in 40 is a MEGADEPOSIT: three times the ore, never poor
 static int ore_qn(int n, int q){ if(q==0) return n>1?n-1:1; if(q==2) return n+1; if(q==3) return n*2; return n; }
 static int ore_of(s32 ox, s32 oy){      // -1: a plain crystal rock (goods, as before). Otherwise the ore this rock is a vein of
     u32 h=ore_id(ox,oy)*2654435761u+wd.tseed; if((int)((h>>16)%100)<(cur_rock ? 15 : 35)) return -1;      // (a belt rock is mostly vein)

@@ -573,9 +573,9 @@ static void planet_frame(void){
                       if(!o->var){ o->var=1; o->hp=(u8)ore_hits(ore); }
                       if(timed && o->hp>1) o->hp--;                                                  // a TIMED bite counts double                              // (the first bite works out how many it needs with your tool)
                       if(--o->hp>0){ char b[40]; scpy(b,timed?"WELL TIMED! ":""); scat(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
-                      o->alive=0; ore_mark_mined(ore_id(o->x,o->y)); int tt=ore_tool_eff(), n=1+rndi(2)+(tt>=2)+(cur_moon?1:0)+(hellw()?hell_tier()/4:0)+(cur_rock==4?3 : cur_rock==2?1 : 0); n+=dlv()/10; int oq=ore_quality(o->x,o->y); n=ore_qn(n,oq); if(pq_type==7){ pq_have++; job_tick(); }
+                      o->alive=0; ore_mark_mined(ore_id(o->x,o->y)); int tt=ore_tool_eff(), n=1+rndi(2)+(tt>=2)+(cur_moon?1:0)+(hellw()?hell_tier()/4:0)+(cur_rock==4?3 : cur_rock==2?1 : 0); n+=dlv()/10; int oq=ore_quality(o->x,o->y); n=ore_qn(n,oq); int mg=ore_mega(o->x,o->y); if(mg){ n=n*3+2; if(oq<2) oq=2; } if(pq_type==7){ pq_have++; job_tick(); }
                       int got=ore_add_q(ore,n,oq); st_mined+=n; ml_add(ore,got); if(pq_type==10 && ore==pq_ore) pq_have=ore_n[ore]; ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
-                      char b[44]; scpy(b,"+"); ncat(b,got); scat(b," "); scat(b,oq_name[oq]); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); show_msg(b); sfx(7);
+                      char b[44]; scpy(b,mg?"MEGA! +":"+"); ncat(b,got); scat(b," "); scat(b,oq_name[oq]); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); show_msg(b); sfx(7);
                       if(cur_rock==4 && rndi(5)==0){ hurt(2); show_msg("CRACK! SHARDS HIT YOU"); sfx(4); }          // a crystal rock is brittle
                       break; } }
                 if(timed && o->hp>1) o->hp--;

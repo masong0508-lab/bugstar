@@ -659,9 +659,9 @@ static void mine_bite(s32 dirx, s32 diry){
         if(mine_cell!=c){ mine_cell=c; mine_n=0; }
         sfx(12); if(++mine_n<ore_hits(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,ore_hits(ore)-mine_n); scat(b," MORE"); say(b); burst((tx<<16)+0x8000,(ty<<16)+0x8000,0x4000,3,2); return; }
         dmap[c]=D_FLOOR; fmat[c]=FL_DIRT; rid[c]=255; fcode[c]=3; mine_cell=-1; mine_n=0;
-        int n=1+rndi(2)+(ore_tool_eff()>=2)+dlv()/10+depth_no/3; int oq=ore_quality((s32)(tx*977),(s32)(ty*613)); n=ore_qn(n,oq);
+        int n=1+rndi(2)+(ore_tool_eff()>=2)+dlv()/10+depth_no/3; int oq=ore_quality((s32)(tx*977),(s32)(ty*613)); n=ore_qn(n,oq); int mg=ore_mega((s32)(tx*977+depth_no*131),(s32)(ty*613)); if(mg){ n=n*3+2; if(oq<2) oq=2; }
         int got=ore_add_q(ore,n,oq); st_mined+=n; ml_add(ore,got); ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
-        char b[44]; scpy(b,"+"); ncat(b,got); scat(b," "); scat(b,oq_name[oq]); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); say(b); sfx(7); build_light(); return; }
+        char b[44]; scpy(b,mg?"MEGA! +":"+"); ncat(b,got); scat(b," "); scat(b,oq_name[oq]); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); say(b); sfx(7); build_light(); return; }
 }
 static void do_bite(s32 dirx, s32 diry){
     atk_len=(14-d_haste)*2/3; if(atk_len<4) atk_len=4; atk_len=atk_len*100/xo_v(XO_BITESPD); if(atk_len<2) atk_len=2; atk_t=atk_len;        // was 14 (min 6): a bite every 0.9 s was slow
@@ -759,11 +759,21 @@ static int cast_spell(int s, s32 dirx, s32 diry, s32 plx, s32 ply){
         if(d->fx==FX_GOLEM && shield_t<600) shield_t=600; char b[40]; scpy(b,d->name); scat(b," JOINS YOU"); say(b); burst(px_+(dirx>>1),py_+(diry>>1),0x5000,10,1); sfx(6); return 1; }
     }
 }
+static void mine_hazard(void){                                                   // mines: toxic gas hurts on a timer (a shield keeps it out); the roof drops rocks (keep moving and they miss)
+    if(fl_ev!=FE_GAS && fl_ev!=FE_CAVE){ mh_t=0; return; }
+    mh_t++;
+    if(fl_ev==FE_CAVE && mh_t==330){ say("THE ROOF RUMBLES! KEEP MOVING"); sfx(12); if(opt_shake) shake_t=20; }
+    if(mh_t<(fl_ev==FE_GAS?240:420)) return;
+    mh_t=0;
+    int dmg=1+dlv()/6+depth_no/4;
+    if(fl_ev==FE_GAS){ if(shield_t){ say("YOUR SHIELD KEEPS THE GAS OUT"); } else { say("TOXIC GAS!"); hurt(dmg); } }
+    else { if(HELD(K_UP|K_DOWN|K_LEFT|K_RIGHT)){ say("A ROCK CRASHES BEHIND YOU"); sfx(11); } else { say("CAVE-IN! A ROCK FALLS ON YOU"); hurt(dmg*2); } }
+}
 static int dungeon_frame_(void);
 static int dungeon_frame(void){ u32 t=TMR(); int r=dungeon_frame_(); prof[5]=TMR()-t; return r; }
 static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint, 3 when you warp out
     int freeze = hitstop>0; if(freeze){ hitstop--; wtick=0; }      // a blink of stillness when a hit lands
-    if(wtick){ tick_timers(); hunger_tick(40); regen_tick(45); map_reveal(); }
+    if(wtick){ tick_timers(); hunger_tick(40); regen_tick(45); map_reveal(); mine_hazard(); }
     bag_input();
     if(!skip_draw){ int f=frames; if((f&127)==0) dungeon_palette(); int fl=(sin_tab[(f*29)&255]+sin_tab[(f*47+80)&255])>>12;
       for(int i=0;i<8;i++){ int k=i+(fl>2?1:fl<-2?-1:0); if(k<0)k=0; if(k>7)k=7; BG_PAL[R_FLAME+i]=bg_pal[R_FLAME+k]; }

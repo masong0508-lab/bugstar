@@ -13,6 +13,8 @@ Replaces the PDF of 28 Oct. Hard limits are unchanged: IWRAM and EWRAM are full 
 - **Hollow-rock mine (Phase 3, first step):** a hollow rock's dungeon is a mine: labyrinth shafts, earth walls, and crystal-looking ore veins in the walls that you bite out in place (bites needed and tool tier as on the surface, richer deeper). Tested in an emulator: the vein counts down, opens into a shaft, ore lands in the bag.
 - **Dungeon walls:** the painted door sprites are removed (the keycard door stays).
 
+- **Mine hazards, shaft elites, megadeposits:** toxic gas and cave-in floors in mines, an elite hunt on every 5th mine floor, and rare MEGADEPOSIT veins (3x ore). No new RAM or save data. Not played yet.
+
 ## Left, in the order I would take them
 1. **Hollow-rock mine (Phase 3 start).** A mine entrance on hollow rocks, with ore veins in the walls bitten out in place. Built from the dungeon code, no new RAM. Medium risk: needs a quick look in play.
 2. **Link check with the real runtime library.** CI uses devkitARM; a local Ubuntu gcc 13.2 build reads 2696 bytes of stack headroom (want over 1500). CI prints its own number; compare the two after each patch.
