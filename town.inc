@@ -99,7 +99,8 @@ static void hum_draw(void){
     for(int y=10;y<20;y++){
         for(int x=4;x<12;x++) HP(x,y, x==4?2 : x==11?4 : 3);
         int arm = (tp==2||tp==3) ? 7 : (tp==1||tp==7) && y>=13 ? 7 : 3; if(y>=18) arm=7;          // sleeves: long, short or none; hands
-        for(int x=2;x<4;x++){ HP(x,y,arm); HP(x+10,y,arm); } }
+        for(int x=2;x<4;x++){ HP(x,y,arm); HP(x+10,y,arm); }
+        HP(3,y,arm==7?6:2); HP(12,y,arm==7?6:2); }                                                    // a darker inner edge, so the arms read as arms and not as part of the body
     if(tp==2) for(int y=10;y<19;y++){ HP(4,y,7); HP(11,y,7); }                                                                         // tank top
     if(tp==3) for(int y=10;y<19;y++) for(int x=6;x<=9;x++) HP(x,y,12);                                                                  // a vest over a shirt
     if(tp==4){ for(int y=11;y<19;y++){ HP(7,y,12); HP(8,y,12); } HP(6,10,4); HP(9,10,4); }                                             // a jacket
@@ -115,6 +116,7 @@ static void hum_draw(void){
         if(y>=27){ c = (sh==3||sh==4) ? 7 : 13; if(sh==4 && (y==27||y==29)) c=13; if(sh==2 && y==28 && (x==6||x==9)) c=9; }   // shoes, bare feet, sandals, trainers
         if(sh==1 && y>=24) c = y==24 ? 14 : 13;                                                  // boots
         HP(x,y,c); }
+    for(int y=23;y<=29;y++) HP(7,y,1);                                                                                                   // a dark line between the legs
     if(bt==2) for(int y=20;y<25;y++){ int w=(y-20)/2; for(int x=4-w;x<=11+w;x++) HP(x,y,11); }                                       // a skirt
     if(bt==3) for(int y=20;y<27;y++){ HP(4,y,11); HP(11,y,11); }                                                                       // baggy trousers
     if(skirt) for(int y=20;y<skirt;y++){ int w = tp==7 ? (y-19)/2 : 0; for(int x=4-w;x<=11+w;x++) HP(x,y, x==4-w?2 : x==11+w?4 : 3); }   // robe, dress
@@ -144,7 +146,8 @@ static void hum_draw(void){
 static void hum_build(void){ hum_draw(); px_tiles(32,64,T_HUMAN); }
 // draws the humanoid (and its tail, and the tool in its hand) into shadow_oam from slot on; z=2 is the planet's 2x drawing, z=1 is half that (the creator preview)
 static int hum_oam(int slot, int cx, int feet, int z, int facing, int lean, int sq, int shr, int sw, int tool){
-    int k=3-z, pa=hum_wd[hum.build%3]*k+shr, pd=hum_ht[hum.height%5]*k+shr, h=32*256/pd, wpx=16*256/pa;
+    int k=3-z, pa=hum_wd[hum.build%3]*k+shr, pd=hum_ht[hum.height%5]*k+shr; if(z==2){ pa=pa*4/3; pd=pd*4/3; }       // on the planet and in karts it is three quarters of its old size (the creator preview, z=1, is unchanged)
+    int h=32*256/pd, wpx=16*256/pa;
     set_affine(31, facing?-pa:pa, facing?lean:-lean, 0, pd+sq);
     shadow_oam[slot].a0 = ((feet-h-64)&255) | (1<<8)|(1<<9) | (2<<14);              // 32x64, drawn at run time (hum_draw): the body is its bottom half
     shadow_oam[slot].a1 = ((cx-32)&511) | (31<<9) | (3<<14); shadow_oam[slot].a2 = T_HUMAN | (6<<12); slot++;
