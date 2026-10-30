@@ -165,7 +165,7 @@ static void hum_palette(void); static int hum_oam(int slot, int cx, int feet, in
 // B steps back through your last 8 changes. START is done. Ready-made LOOKS give you a place to start.
 typedef struct { const char *nm, *nm2; u8 kind, n; u8 *v; const char *const *opt; u16 *c; u8 *dep; const char *const *opt2; } CRow;     // kind 0 name, 1 looks, 2 choice, 3 colour. opt2: a furry's names
 typedef struct { const char *nm; u8 style, height, build, hair, face, beard, top, bot, shoes, hat, back; u16 col[9]; } CHumP;   // skin, hair, shoes, shirt, pants, belt, eyes, hat, back
-typedef struct { const char *nm; u8 shell, shape, fin, pat, eye, mouth, ant, legs, legst, horn, wings, tail, hat; u16 col[10]; } CBugP;   // shell, head, eye, antenna, legs, marks, horn, wings, hat, outline
+typedef struct { const char *nm; u8 shell, shape, fin, pat, eye, mouth, ant, legs, legst, horn, wings, tail, hat; u16 col[10]; u8 orn; } CBugP;   // shell, head, eye, antenna, legs, marks, horn, wings, hat, outline
 #define NCHP 16
 static const CHumP cc_hp[NCHP]={
  {"EXPLORER",0,3,1, 0,0,0,4,0,1,6,3, {C15(224,172,130),C15(90,56,30),C15(100,70,40),C15(80,130,70),C15(120,100,70),C15(170,130,50),C15(60,120,60),C15(140,90,40),C15(90,120,60)}},
@@ -184,7 +184,7 @@ static const CHumP cc_hp[NCHP]={
  {"CAT",1,1,0, 4,1,0,1,1,3,0,0, {C15(60,60,70),C15(60,60,70),C15(250,190,200),C15(240,200,60),C15(60,90,160),C15(240,240,240),C15(120,230,90),C15(240,200,60),C15(60,90,160)}},
  {"BEAR",1,4,2, 7,0,0,3,5,3,0,0, {C15(130,90,50),C15(110,70,40),C15(70,50,30),C15(200,60,60),C15(110,70,40),C15(240,200,80),C15(30,20,10),C15(200,60,60),C15(200,60,60)}},
  {"ANGEL",0,2,0, 9,2,1,6,0,4,10,2, {C15(250,225,200),C15(250,230,140),C15(230,200,150),C15(250,250,255),C15(240,240,250),C15(250,220,100),C15(100,160,240),C15(250,230,120),C15(250,250,255)}}};
-#define NCBP 18
+#define NCBP 21
 static const CBugP cc_bp[NCBP]={
  {"CLASSIC",1,0,0,0,0,0,0,1,0,0,0,0,0, {C15(92,108,148),C15(70,84,120),C15(240,240,250),C15(14,16,28),C15(60,70,100),C15(200,200,215),C15(220,170,40),C15(190,225,255),C15(210,60,70),C15(14,16,28)}},
  {"LADYBUG",0,1,0,2,1,1,0,1,0,0,2,0,0, {C15(210,40,50),C15(20,20,28),C15(240,240,250),C15(20,20,28),C15(30,30,40),C15(20,20,28),C15(220,170,40),C15(230,235,255),C15(210,60,70),C15(14,14,20)}},
@@ -203,7 +203,10 @@ static const CBugP cc_bp[NCBP]={
  {"DEMON",2,3,2,8,4,4,6,2,2,2,4,1,0, {C15(40,20,30),C15(200,40,40),C15(250,220,60),C15(200,40,40),C15(40,20,30),C15(200,40,40),C15(240,230,210),C15(120,30,40),C15(200,40,40),C15(10,4,8)}},
  {"GHOST",1,1,1,0,6,0,7,0,0,0,5,0,7, {C15(220,225,240),C15(245,245,255),C15(90,100,200),C15(245,245,255),C15(200,200,220),C15(245,245,255),C15(220,170,40),C15(220,235,255),C15(250,230,120),C15(120,130,170)}},
  {"ROBOT",1,2,2,4,7,2,4,2,1,0,0,0,10, {C15(150,160,170),C15(110,120,130),C15(80,240,250),C15(80,240,250),C15(90,95,105),C15(80,240,250),C15(220,170,40),C15(190,225,255),C15(170,175,185),C15(30,34,40)}},
- {"VIKING",2,4,0,3,4,0,1,2,3,0,0,0,11, {C15(150,90,50),C15(240,200,120),C15(70,120,200),C15(120,80,40),C15(100,70,40),C15(220,200,120),C15(240,230,210),C15(190,225,255),C15(170,175,195),C15(40,24,10)}}};
+ {"VIKING",2,4,0,3,4,0,1,2,3,0,0,0,11, {C15(150,90,50),C15(240,200,120),C15(70,120,200),C15(120,80,40),C15(100,70,40),C15(220,200,120),C15(240,230,210),C15(190,225,255),C15(170,175,195),C15(40,24,10)}},
+ {"DRAGON",2,3,2,0,4,4,5,2,2,7,6,6,0, {C15(50,140,70),C15(40,110,60),C15(250,220,60),C15(40,110,60),C15(30,90,50),C15(230,120,40),C15(230,210,150),C15(220,90,50),C15(210,60,70),C15(14,30,16)}, 0},
+ {"ANGEL",1,1,3,0,3,1,3,1,0,0,7,0,15, {C15(245,245,255),C15(255,235,215),C15(110,150,230),C15(255,255,255),C15(230,230,245),C15(250,220,120),C15(250,220,120),C15(255,255,255),C15(250,210,70),C15(150,150,180)}, 1},
+ {"WIZARD",1,0,1,6,1,1,1,1,0,0,0,5,12, {C15(90,70,170),C15(240,200,160),C15(250,250,250),C15(230,230,240),C15(60,40,110),C15(250,220,60),C15(250,220,60),C15(190,225,255),C15(110,60,190),C15(30,20,60)}, 4}};
 static void cc_hsv(u16 c, int *h, int *s, int *v){
     int r=(c&31)<<3, g=((c>>5)&31)<<3, b=((c>>10)&31)<<3, mx=r>g?r:g, mn=r<g?r:g; if(b>mx) mx=b; if(b<mn) mn=b;
     int d=mx-mn, hh=0; *v=mx; *s=mx?d*255/mx:0;
@@ -253,8 +256,9 @@ static int cc_run(volatile u16 *pg, int human, int first){
         *const pat_n[12]={"PLAIN","STRIPED","SPOTTED","BANDED","CHECKED","ZIGZAG","DOTTED","DIAMONDS","TIGER","HALVES","SPECKLED","RINGS"},
         *const eye_n[8]={"SMALL","BIG","GOOGLY","SLEEPY","ANGRY","STARRY","ONE BIG EYE","SHADES"}, *const mouth_n[6]={"NONE","SMILE","JAWS","PINCERS","FANGS","TONGUE"},
         *const ant_n[8]={"CURLED","STRAIGHT","DROOPY","FEATHERY","CLUBBED","ZIGZAG","LONG WHIPS","NONE"}, *const legs_n[3]={"FOUR","SIX","EIGHT"}, *const legst_n[4]={"THIN","CHUNKY","HAIRY","BOOTS"},
-        *const horn_n[6]={"NONE","HORN","TWIN HORNS","RHINO","UNICORN","ANTLERS"}, *const wing_n[6]={"NONE","LITTLE","BEETLE","BUTTERFLY","BAT","FAIRY"}, *const tail_n[5]={"NONE","STINGER","SPIKES","CURLY","LONG"},
-        *const hat_n[12]={"NONE","CAP","TOP HAT","BOW","CROWN","PARTY HAT","FLOWER","HALO","BEANIE","CHEF","HELMET","VIKING"};
+        *const horn_n[10]={"NONE","HORN","TWIN HORNS","RHINO","UNICORN","ANTLERS","BULL","BLADE","TRIDENT","CURLED"}, *const wing_n[9]={"NONE","LITTLE","BEETLE","BUTTERFLY","BAT","FAIRY","DRAGON","ANGEL","DRAGONFLY"}, *const tail_n[8]={"NONE","STINGER","SPIKES","CURLY","LONG","FLUFFY","FAN","CLUB"},
+        *const hat_n[16]={"NONE","CAP","TOP HAT","BOW","CROWN","PARTY HAT","FLOWER","HALO","BEANIE","CHEF","HELMET","VIKING","WIZARD","COWBOY","PIRATE","TIARA"},
+        *const orn_n[8]={"NONE","GEM","SAIL","FLAG","MUSHROOM","CANDLE","FLOWERS","SPROUT"};
     CRow R[40]; int nr=0;
     #define CR(a,b,c,d,e,f,g,h) R[nr++]=(CRow){a,b,c,d,e,f,g,h,0}
     CR("NAME",0,0,0,0,0,0,0); CR("LOOKS",0,1,0,0,0,0,0);
@@ -268,7 +272,7 @@ static int cc_run(volatile u16 *pg, int human, int first){
     } else {
         CR("LENGTH",0,2,3,&look.shell,shell_n,0,0); CR("SHAPE",0,2,5,&bugx.shape,shape_n,0,0); CR("FINISH",0,2,4,&bugx.finish,fin_n,0,0); CR("PATTERN",0,2,12,&look.pat,pat_n,0,0);
         CR("EYES",0,2,8,&look.eye,eye_n,0,0); CR("MOUTH",0,2,6,&bugx.mouth,mouth_n,0,0); CR("ANTENNAE",0,2,8,&look.ant,ant_n,0,0); CR("LEGS",0,2,3,&look.legs,legs_n,0,0); CR("LEG STYLE",0,2,4,&bugx.legst,legst_n,0,0);
-        CR("HORN",0,2,6,&look.horn,horn_n,0,0); CR("WINGS",0,2,6,&bugx.wings,wing_n,0,0); CR("TAIL",0,2,5,&bugx.tail,tail_n,0,0); CR("HAT",0,2,12,&bugx.hat,hat_n,0,0);
+        CR("HORN",0,2,10,&look.horn,horn_n,0,0); CR("WINGS",0,2,9,&bugx.wings,wing_n,0,0); CR("TAIL",0,2,8,&bugx.tail,tail_n,0,0); CR("HAT",0,2,16,&bugx.hat,hat_n,0,0); CR("ORNAMENT",0,2,8,&bugx.x0,orn_n,0,0);
         CR("SHELL",0,3,0,0,0,&look.col[LC_SHELL],0); CR("MARKINGS",0,3,0,0,0,&look.col[LC_MARK],&look.pat); CR("HEAD",0,3,0,0,0,&look.col[LC_HEAD],0);
         CR("EYE COL",0,3,0,0,0,&look.col[LC_EYE],0); CR("ANT COL",0,3,0,0,0,&look.col[LC_ANT],0); CR("LEG COL",0,3,0,0,0,&look.col[LC_LEGS],0); CR("HORN COL",0,3,0,0,0,&look.col[LC_HORN],0);
         CR("WING COL",0,3,0,0,0,&look.col[LC_WING],&bugx.wings); CR("HAT COL",0,3,0,0,0,&bugx.c_hat,0); CR("OUTLINE",0,3,0,0,0,&bugx.c_line,0);
@@ -280,8 +284,8 @@ static int cc_run(volatile u16 *pg, int human, int first){
     #define PUSH() do{ cc_take(&hist[hp]); scpy(hnm[hp],nm); hp=(hp+1)&7; if(hn<8) hn++; }while(0)
     #define APPLY() do{ if(human){ hum_palette(); hum_build(); } else bug_build(); }while(0)
     int tn[5]; u8 tr[5][8];                                                  // the five sections of the creator, and which rows sit on each
-    { static const u8 tb_h[23]={0,0,0,0,0,0, 1,1,1, 2,2,2, 1,2, 3,3,3, 4,4,4, 3, 4,4}, tb_b[25]={0,0,0,0,0,0, 1,1,1, 2,2, 1, 2,2, 1, 3,3,3,3, 4,4,4,4,4, 3};
-      for(int k=0;k<5;k++) tn[k]=0; for(int i=0;i<nr;i++){ int k = i<(human?23:25) ? (human?tb_h[i]:tb_b[i]) : 4; if(tn[k]<8) tr[k][tn[k]++]=(u8)i; } }
+    { static const u8 tb_h[23]={0,0,0,0,0,0, 1,1,1, 2,2,2, 1,2, 3,3,3, 4,4,4, 3, 4,4}, tb_b[26]={0,0,0,0,0,0, 1,1,1, 2,2, 1, 2,2, 1,1, 3,3,3,3, 4,4,4,4,4, 3};
+      for(int k=0;k<5;k++) tn[k]=0; for(int i=0;i<nr;i++){ int k = i<(human?23:26) ? (human?tb_h[i]:tb_b[i]) : 4; if(tn[k]<8) tr[k][tn[k]++]=(u8)i; } }
     static const char *const tab_h[5]={"BODY","HEAD","DRESS","SKIN","DYES"}, *const tab_b[5]={"BODY","FACE","LIMBS","PAINT","TRIM"};
     const char *const *tabs = human ? tab_h : tab_b;
     int tab=0, trow[5]={0,0,0,0,0}, sel=0, dirty=1, t=0, pi=-1, sch=-1, rep=0, note_t=0, selp=0, selused=0; u32 lock=0; char note[48]; note[0]=0;
@@ -360,7 +364,7 @@ static int cc_run(volatile u16 *pg, int human, int first){
                     for(int k=0;k<7;k++) cc_set16(R,nr,lock,&hum.col[k],p->col[k]); cc_set16(R,nr,lock,&humx.c_hat,p->col[7]); cc_set16(R,nr,lock,&humx.c_back,p->col[8]); }
                 else { const CBugP *p=&cc_bp[pi]; cc_set8(R,nr,lock,&look.shell,p->shell); cc_set8(R,nr,lock,&bugx.shape,p->shape); cc_set8(R,nr,lock,&bugx.finish,p->fin); cc_set8(R,nr,lock,&look.pat,p->pat);
                     cc_set8(R,nr,lock,&look.eye,p->eye); cc_set8(R,nr,lock,&bugx.mouth,p->mouth); cc_set8(R,nr,lock,&look.ant,p->ant); cc_set8(R,nr,lock,&look.legs,p->legs); cc_set8(R,nr,lock,&bugx.legst,p->legst);
-                    cc_set8(R,nr,lock,&look.horn,p->horn); cc_set8(R,nr,lock,&bugx.wings,p->wings); cc_set8(R,nr,lock,&bugx.tail,p->tail); cc_set8(R,nr,lock,&bugx.hat,p->hat);
+                    cc_set8(R,nr,lock,&look.horn,p->horn); cc_set8(R,nr,lock,&bugx.wings,p->wings); cc_set8(R,nr,lock,&bugx.tail,p->tail); cc_set8(R,nr,lock,&bugx.hat,p->hat); cc_set8(R,nr,lock,&bugx.x0,p->orn);
                     for(int k=0;k<8;k++) cc_set16(R,nr,lock,&look.col[k],p->col[k]); cc_set16(R,nr,lock,&bugx.c_hat,p->col[8]); cc_set16(R,nr,lock,&bugx.c_line,p->col[9]); }
                 APPLY(); dirty=1; sfx(6); }
         }
