@@ -283,6 +283,9 @@ make            # or: make TC=/path/to/arm-none-eabi-
 ```
 Files: `main.c` (planet, dungeon loop, title, main), `dungeon.inc` (level builder, light baking, 3D renderer), `game.inc` (stats, gear, pet, quests), `ui.inc` (screens, shop, SYSTEM tab), `save.inc` (save slots, options, slot picker and menu widgets), `sound.inc` (music and effects), `planet.inc` (the 3D planet), `town.inc` (cities, creatures, jobs, races, ruins), `ship.inc` + `hangar.inc` (your ship), `space.inc`, `kart.inc` + `kart2.inc` + `kart3.inc` (kart racing, the track maker, Kart World), `sizes.inc` (HOW BIG IS IT?), `logo.c` (the DIPPINN PRODUCTIONS boot logo, shared with BORE), `gen.py` + `texgen.py` + `kartgen.py` + `bignums.py` (make `assets.h`: palettes, textures, sprites, the 3D-rendered karts, tables, and the giant numbers for HOW BIG IS IT?, every digit), `crt0.s` + `gba.ld`.
 
+## Dungeon walls
+The painted door sprites on dungeon walls are gone (they looked like doors and meant nothing). Niches, plaques, runes and panels stay. The locked keycard door in outposts is a real door and still looks like one.
+
 ## Space (new)
 At your ship, pick **LAUNCH INTO SPACE**.
 - D-pad: steer. B: thrust. R: brake. A: shoot pirates.
