@@ -849,7 +849,7 @@ static void spell_shop(volatile u16 *pg){
 // ---------------------------------------------------------------- MINING (the ship menu): sell ore, upgrade your tool, look in the ore bag
 static const u16 ore_up_gold[4]={0,100,350,1200}; static const u8 ore_up_o1[4]={0,0,4,10}, ore_up_n1[4]={0,0,12,10}, ore_up_o2[4]={0,0,5,8}, ore_up_n2[4]={0,0,8,8};     // what the next tool costs: gold, and two kinds of ore
 static int ore_bagn(void){ int n=0; for(int i=4;i<NORE;i++) n+=ore_n[i]; return n; }
-static int ore_sellval(void){ int g=0; for(int i=4;i<NORE;i++) g+=ore_n[i]*ore_px(i); return g; }
+static int ore_sellval(void){ int g=0; for(int i=4;i<NORE;i++){ int p=ore_px(i); g+=ore_n[i]*p+ore_rich[i]*p/2+ore_prist[i]*p*2; } return g; }          // rich ore pays +50%, pristine 3x
 static int ore_can_up(void){ int t=ore_tool+1; if(t>3) return 0; return gold>=ore_up_gold[t] && ore_n[ore_up_o1[t]]>=ore_up_n1[t] && ore_n[ore_up_o2[t]]>=ore_up_n2[t]; }
 // ---- the smelter (Phase 4, basic): ore -> bars (takes play time) -> parts -> tools. Opened from the MINING menu.
 #define SM_PS 9                                        // rows per page: with more than that, the last row turns the page
@@ -926,12 +926,12 @@ static void mn_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY;
         *c=ore_can_up()?C_GREEN:C_RED; }
     else if(i==2) scpy(b,"WHAT YOU CARRY, AND WHAT IT IS WORTH");
     else scpy(b,"MELT ORE, MAKE PARTS, BUILD BETTER TOOLS"); }
-static void ob_row(int i, char *b, int *c){ int o=4+i; scpy(b,ore_def[o].name); while(textlen(b)<14) scat(b," "); ncat(b,ore_n[o]); while(textlen(b)<22) scat(b," "); scat(b,"T"); ncat(b,ore_def[o].tier); scat(b,"  "); ncat(b,ore_px(o)); scat(b,"G EACH"); *c=ore_n[o]?C_WHITE:C_DGREY; }
+static void ob_row(int i, char *b, int *c){ int o=4+i; scpy(b,ore_def[o].name); while(textlen(b)<14) scat(b," "); ncat(b,ore_n[o]); while(textlen(b)<19) scat(b," "); if(ore_rich[o]||ore_prist[o]){ scat(b,"R"); ncat(b,ore_rich[o]); scat(b," P"); ncat(b,ore_prist[o]); } else { scat(b,"T"); ncat(b,ore_def[o].tier); } while(textlen(b)<26) scat(b," "); ncat(b,ore_px(o)); scat(b,"G EACH"); *c=ore_n[o]?C_WHITE:C_DGREY; }
 static void ob_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY; if(i<0) return; int o=4+i; scpy(b,"MINED "); ncat(b,ml_n[i]); scat(b,"  NEEDS A "); scat(b,ore_tool_name[ore_need_tool(o)]); scat(b,ore_need_tool(o)<=ore_tool?" (YOU CAN)":" (YOU CAN'T YET)"); *c=ore_need_tool(o)<=ore_tool?C_GREEN:C_RED; }
 static void mining_menu(volatile u16 *pg){
     int s0=0, r;
     while(1){ list_desc=mn_desc; r=list_pick(pg,"MINING",4,mn_row,&s0,"A: CHOOSE  B: BACK"); if(r<0) break;
-        if(r==0){ int v=ore_sellval(); if(!v){ say("NO ORE TO SELL"); continue; } s64 g0=gold; earn(v); for(int i=4;i<NORE;i++) ore_n[i]=0; char b[40]; scpy(b,"SOLD ORE: +"); ncat(b,(int)(gold-g0)); scat(b,"G"); say(b); sfx(7); hud_now(); }
+        if(r==0){ int v=ore_sellval(); if(!v){ say("NO ORE TO SELL"); continue; } s64 g0=gold; earn(v); ore_clear_sold(); char b[40]; scpy(b,"SOLD ORE: +"); ncat(b,(int)(gold-g0)); scat(b,"G"); say(b); sfx(7); hud_now(); }
         else if(r==1){ if(ore_tool>=3){ say("YOU HAVE THE BEST TOOL"); continue; } if(!ore_can_up()){ say("NOT ENOUGH GOLD OR ORE"); continue; }
             int t=ore_tool+1; gold-=ore_up_gold[t]; ore_take(ore_up_o1[t],ore_up_n1[t]); ore_take(ore_up_o2[t],ore_up_n2[t]); ore_tool=(u8)t;
             char b[40]; scpy(b,"NOW YOU MINE WITH: "); scat(b,ore_tool_name[t]); say(b); sfx(6); hud_now(); }

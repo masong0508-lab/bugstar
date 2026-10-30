@@ -1273,7 +1273,7 @@ static void station_menu(void){
             int held=0; for(int i=0;i<8;i++) held+=cargo[i];
             if(sel<8 && HIT(K_A)){ int p=good_price(sel); if(gold>=p && held<cargo_cap){ gold-=p; cargo[sel]++; sfx(7); } dirty=1; }
             if(sel<8 && HIT(K_B) && cargo[sel]){ gold+=good_price(sel); cargo[sel]--; sfx(7); dirty=1; }
-            if(sel==8 && (HIT(K_B)||HIT(K_A)) && ore_bagn()){ int v=ore_sellval()*ore_station_pct()/100; gold+=v; for(int i=4;i<NORE;i++) ore_n[i]=0; sfx(7); dirty=1; }
+            if(sel==8 && (HIT(K_B)||HIT(K_A)) && ore_bagn()){ int v=ore_sellval()*ore_station_pct()/100; gold+=v; ore_clear_sold(); sfx(7); dirty=1; }
         } else if(HIT(K_A) && sel==6){ int c=300+wing_n*150; if(wing_n>=MAXWING) say("YOU HAVE A FULL WING"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; wing_n++; sfx(6); } dirty=1;
         } else if(HIT(K_A) && sel==7){ battle_req=1; sfx(6); dirty=1;
         } else if(HIT(K_A) && sel==8){ int c=400*(fuel_tank+1); if(fuel_tank>=8) say("THE TANK IS AS BIG AS IT GETS"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; fuel_tank++; fuel+=40; sfx(6); } dirty=1;

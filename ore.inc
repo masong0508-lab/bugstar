@@ -100,16 +100,28 @@ static void ml_load(void){ MlSave s; ml_reset(); sram_read(slot_base(cur_slot)+M
     if(s.magic!=0x314C4D42u || s.sum!=fnv(&s,sizeof s-4) || s.ver!=1) return; for(int i=0;i<3;i++) sp_n[i]= s.pad[i]>SP_MAX ? SP_MAX : s.pad[i]; ml_total=s.total>999999?999999:s.total; for(int i=0;i<8;i++) ml_n[i]=s.n[i]; }
 
 static void belt_reset(void); static void belt_save(void); static void belt_load(void);       // the belt respawn clock (space.inc)
-static void ore_reset(void){ sm_reset(); ml_reset(); belt_reset();  for(int i=0;i<NORE;i++) ore_n[i]=0; for(int i=0;i<ORE_RING;i++) ore_ring[i]=0; ore_ring_i=0; ore_tool=0; }
-static void ore_save(void){ OreSave s; memset(&s,0,sizeof s); s.magic=0x3145524Fu; s.ver=1; s.tool=ore_tool; s.ring_i=ore_ring_i;
+// ---- grade stacks: of the ore you carry, how many are RICH or PRISTINE (a part of ore_n, never more). They sell for more (rich +50%, pristine 3x).
+// Using ore takes the plain ore first, then rich, then pristine, so your best ore is kept longest. Saved in a block of its own: SRAM slot + 0x868 .. 0x894 (audited free).
+#define GR_OFF 0x868
+static u16 ore_rich[NORE], ore_prist[NORE];
+typedef struct { u32 magic; u8 ver, pad[3]; u16 rich[8], prist[8]; u32 sum; } GrSave;                  // 44 bytes (ores 4..11). An old save has none: no ore is graded
+_Static_assert(GR_OFF >= EXT_OFF+sizeof(SmExt) && GR_OFF+sizeof(GrSave) <= 0x900, "the grade block must sit after the extra smelter block and before the address block");
+static void ore_fix(int o){ int t=ore_n[o]; if(ore_prist[o]>t) ore_prist[o]=(u16)t; if(ore_rich[o]>t-ore_prist[o]) ore_rich[o]=(u16)(t-ore_prist[o]); }       // keep the graded part inside the total (the rich go first)
+static void gr_save(void){ GrSave g; memset(&g,0,sizeof g); g.magic=0x31524747u; g.ver=1; for(int i=0;i<8;i++){ g.rich[i]=ore_rich[4+i]; g.prist[i]=ore_prist[4+i]; } g.sum=fnv(&g,sizeof g-4); sram_write(slot_base(cur_slot)+GR_OFF,&g,sizeof g); }
+static void gr_load(void){ GrSave g; sram_read(slot_base(cur_slot)+GR_OFF,&g,sizeof g); if(g.magic!=0x31524747u || g.ver!=1 || g.sum!=fnv(&g,sizeof g-4)) return;
+    for(int i=0;i<8;i++){ ore_rich[4+i]=g.rich[i]; ore_prist[4+i]=g.prist[i]; ore_fix(4+i); } }
+static void ore_reset(void){ for(int i=0;i<NORE;i++){ ore_rich[i]=0; ore_prist[i]=0; } sm_reset(); ml_reset(); belt_reset();  for(int i=0;i<NORE;i++) ore_n[i]=0; for(int i=0;i<ORE_RING;i++) ore_ring[i]=0; ore_ring_i=0; ore_tool=0; }
+static void ore_save(void){ gr_save(); OreSave s; memset(&s,0,sizeof s); s.magic=0x3145524Fu; s.ver=1; s.tool=ore_tool; s.ring_i=ore_ring_i;
     for(int i=0;i<NORE;i++) s.n[i]=ore_n[i]; for(int i=0;i<ORE_RING;i++) s.ring[i]=ore_ring[i];
     s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+ORE_OFF,&s,sizeof s); sm_save(); ml_save(); belt_save(); }
-static void ore_load(void){ OreSave s; ore_reset(); sm_load(); ml_load(); belt_load(); sram_read(slot_base(cur_slot)+ORE_OFF,&s,sizeof s);
+static void ore_load(void){ OreSave s; ore_reset(); sm_load(); gr_load(); ml_load(); belt_load(); sram_read(slot_base(cur_slot)+ORE_OFF,&s,sizeof s);
     if(s.magic!=0x3145524Fu || s.sum!=fnv(&s,sizeof s-4) || s.ver!=1) return;           // no block (an old save) or a damaged one: an empty bag
     ore_tool = s.tool<=3 ? s.tool : 0; ore_ring_i = s.ring_i<ORE_RING ? s.ring_i : 0;
     for(int i=0;i<NORE;i++) ore_n[i]=s.n[i]; for(int i=0;i<ORE_RING;i++) ore_ring[i]=s.ring[i]; }
 static int ore_add(int o, int n){ if(o<0||o>=NORE||n<=0) return 0; int v=ore_n[o]+n; if(v>9999) v=9999; int got=v-ore_n[o]; ore_n[o]=(u16)v; return got; }   // returns how many fit
-static int ore_take(int o, int n){ if(o<0||o>=NORE||n<0||ore_n[o]<n) return 0; ore_n[o]-=(u16)n; return 1; }
+static int ore_add_q(int o, int n, int q){ int got=ore_add(o,n); if(got>0 && o>=4){ if(q==2) ore_rich[o]+=(u16)got; else if(q==3) ore_prist[o]+=(u16)got; ore_fix(o); } return got; }      // q: the vein's grade (0 poor, 1 plain, 2 rich, 3 pristine)
+static void ore_clear_sold(void){ for(int i=4;i<NORE;i++){ ore_n[i]=0; ore_rich[i]=0; ore_prist[i]=0; } }
+static int ore_take(int o, int n){ if(o<0||o>=NORE||n<0||ore_n[o]<n) return 0; ore_n[o]-=(u16)n; ore_fix(o); return 1; }
 static int ore_value(void){ int g=0; for(int i=0;i<NORE;i++) g+=ore_n[i]*ore_px(i); return g; }
 static int ore_mined_recently(u16 id){ if(!id) id=1; for(int i=0;i<ORE_RING;i++) if(ore_ring[i]==id) return 1; return 0; }
 static void ore_mark_mined(u16 id){ if(!id) id=1; ore_ring[ore_ring_i]=id; ore_ring_i=(u8)((ore_ring_i+1)%ORE_RING); }
