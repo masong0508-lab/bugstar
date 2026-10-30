@@ -769,7 +769,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         wire(pg,v,6,ae,12,a->flash?49 : sys[cur_sys].kind==6 ? rock_col[rock_type_of(rock_h(i))-1] : (a->seed&1)?56:51); }
     // pirates: little wireframe fighters. In a crowd the far ones are drawn simpler (fewer lines) or as a mark, and the ones off screen are not drawn at all
     int crowd=0; for(int i=0;i<NPIR;i++) if(pir[i].alive) crowd++;
-    s32 lod_z = crowd>32 ? 1500 : crowd>16 ? 2200 : 3000, dot_z = crowd>32 ? 4200 : 5500;
+    s32 lod_z = crowd>44 ? 1000 : crowd>32 ? 1500 : crowd>16 ? 2200 : 3000, dot_z = crowd>44 ? 3000 : crowd>32 ? 4200 : 5500;   // (a very big crowd: simpler shapes sooner, so fifty ships stay smooth)
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
         int col = p->team ? 53 : 52, lod=0;
         { int sx,sy; s32 z; if(!sproj(p->x,p->y,p->z,&sx,&sy,&z)) continue;

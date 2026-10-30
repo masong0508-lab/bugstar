@@ -105,6 +105,10 @@ static int ore_hits(int o){ int p=1<<ore_tool_eff(); int h=(ore_def[o].hard+p-1)
 static const u8 rock_hab[5]={1, 1|16|32, 2|8, 2|4|8|32, 1|2};                    // what each kind of belt rock holds (the same bits as ore_hab)
 static int ore_habitat(void){ if(cur_rock) return rock_hab[cur_rock-1]; int h=1; if(wd.cls==PC_ICE||wd.cls==PC_COCYTUS||cur_moon==2) h|=2; if(hellw()) h|=4; if(wd.cls==PC_DEATH||wd.cls==PC_BONE) h|=8; if(wd.cls==PC_ECUMENOPOLIS) h|=16; return h|32; }       // (bit 32, the rare ore, was never set before: voidsteel could not be found)
 static u16 ore_id(s32 ox, s32 oy){ return (u16)(hmix(wd.tseed ^ ((u32)(ox>>10)*0x9E3779B1u) ^ ((u32)(oy>>10)*0x85EBCA6Bu)) & 0xFFFF); }     // which vein it is (a hash of the world and the spot)
+// ---- ore quality: each vein is POOR, plain, RICH or PRISTINE (set by the vein's own hash, so nothing is stored). It changes how much a vein gives.
+static const char *const oq_name[4]={"POOR ","","RICH ","PRISTINE "};
+static int ore_quality(s32 ox, s32 oy){ int r=(int)((hmix(ore_id(ox,oy)*0x2545F491u+wd.tseed)>>12)%100); return r<25?0 : r<80?1 : r<95?2 : 3; }
+static int ore_qn(int n, int q){ if(q==0) return n>1?n-1:1; if(q==2) return n+1; if(q==3) return n*2; return n; }
 static int ore_of(s32 ox, s32 oy){      // -1: a plain crystal rock (goods, as before). Otherwise the ore this rock is a vein of
     u32 h=ore_id(ox,oy)*2654435761u+wd.tseed; if((int)((h>>16)%100)<(cur_rock ? 15 : 35)) return -1;      // (a belt rock is mostly vein)
     int maxt=2+dlv()/6+(cur_moon?1:0)+(hellw()?2:0)+(cur_rock==2?2:0); if(maxt>6) maxt=6; int hab=ore_habitat(), cand[NORE], n=0;
