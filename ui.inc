@@ -83,17 +83,31 @@ static void bolt_story(volatile u16 *pg, int beat){                            /
     case 10: { static const char *const t[6]={"THE MOUTH FALLS APART.","INSIDE IT, A SHIP. OLD. WHOLE. SINGING.","BOLT'S VOICE COMES FROM EVERYWHERE AT ONCE.","\"I REMEMBER ALL OF IT.","THANK YOU FOR CARRYING ME.","NOW LET ME CARRY YOU. ALL OF YOU. HOME.\""}; bolt_card(pg,t,6); break; }
     }
 }
-// what Bolt says when you talk to him at the ship: the next thing to do, and what he remembers
+// what Bolt says when you talk to him at the ship: what worries him, the next thing to do, what he remembers, and a remark
+static int fuel_max(void);
+EW static u8 bolt_chat;                                                                      // how many times you have talked to him (not saved): rotates his idle remarks
+static const char *const bolt_idle[16]={"\"I COUNTED MY WHEELS. STILL TWO.\"","\"DO YOU THINK SHIPS DREAM?\"","\"I POLISHED THE DASHBOARD. WITH ME.\"","\"I HAVE A FEELING ABOUT THE NEXT WORLD.\"",
+    "\"IF I HAD HANDS I WOULD HOLD YOURS.\"","\"I AM TIN. YOU ARE SOFT. WE ARE A TEAM.\"","\"SOMETHING HUMS IN MY CHEST. IT IS NICE.\"","\"I TRIED TO WHISTLE. IT WAS A FAN.\"",
+    "\"WHEN IN DOUBT, GO DOWN THE DOOR.\"","\"A GOOD BUG KNOWS WHEN TO EAT.\"","\"THE SOUP IN TOWN IS SAFE. MOSTLY.\"","\"TALK TO THE LOCALS. THEY KNOW THINGS.\"",
+    "\"THE CANTINA GOSSIP IS FREE. LISTEN.\"","\"I WONDER WHAT MY NAME TASTES LIKE.\"","\"KEEP SOME GOLD BACK. SHOPS WAIT FOR NO BUG.\"","\"I AM PROUD OF YOU. THAT IS ALL.\""};
 static void bolt_talk(volatile u16 *pg){
-    const char *t[6]; int n=0; static char l1[48], l2[48];
+    const char *t[7]; int n=0; static char l1[48], l2[48]; EW static char c1[40], c2[48];      // (the two new ones in EWRAM: IWRAM is nearly full)
+    // what worries him first (at most two things, the most urgent ones)
+    { int w=0;
+      if(hearts*2<maxh && w<2){ t[n++]="\"YOU ARE HURT. THE CARE TAB WILL HEAL YOU.\""; w++; }
+      if(food<30 && w<2){ t[n++]= food<10 ? "\"YOU ARE STARVING. EAT. SUPPLIES. NOW.\"" : "\"YOUR BELLY IS GROWLING. BUY SUPPLIES.\""; w++; }
+      if(fuel*4<fuel_max() && w<2){ scpy(c1,"\"FUEL IS AT "); ncat(c1,fuel*100/fuel_max()); scat(c1," PERCENT. CAREFUL.\""); t[n++]=c1; w++; }
+      if(hull<40 && w<2){ scpy(c2,"\"THE HULL IS AT "); ncat(c2,hull); scat(c2," PERCENT. I AM WORRIED.\""); t[n++]=c2; w++; }
+      if(cargo_n()>=cargo_cap+ship_hold_bonus() && w<2){ t[n++]="\"THE HOLD IS FULL. SELL LOOT.\""; w++; } }
     if(!endless && !zone_cleared){ t[n++]="\"THE DOOR IS THE WAY DOWN.\""; t[n++]="\"THE ARROW KNOWS. FOLLOW IT.\""; t[n++]="\"THE BOSS SITS AT THE BOTTOM.\""; }
     else if(!endless && zone<5){ scpy(l1,"\"THIS WORLD IS FREE. NEXT IS "); scat(l1,tint_name[zone+1]); scat(l1,".\""); t[n++]=l1; t[n++]="\"PICK AUTOPILOT AND I'LL FLY US.\""; if(zone>=1) t[n++]="\"OR GO DOWN AGAIN. IT'S HARDER. IT PAYS.\""; }
     else if(!ant_king){ t[n++]="\"THE ANT KING WAITS BELOW.\""; t[n++]="\"YOUR FRIENDS ARE THERE. ALL OF THEM.\""; t[n++]="\"I'M SCARED. LET'S GO ANYWAY.\""; }
     else if(beast_stage>=3 && data_cores<8){ scpy(l1,"\"THE OUTPOSTS HOLD MY MEMORY. "); ncat(l1,data_cores); scat(l1," OF 8.\""); t[n++]=l1; t[n++]="\"RED MARKS ON THE MAP. HATCHES ON THE GROUND.\""; t[n++]="\"BRING ME BACK TO MYSELF.\""; }
     else if(beast_stage>=3){ t[n++]="\"I KNOW MY NAME. THE DAWN.\""; t[n++]="\"FLY INTO THE BEAST. SHOOT ITS CORE.\""; t[n++]="\"I WILL DO THE REST.\""; }
     else { t[n++]="\"THE GALAXY IS OPEN. GO ANYWHERE.\""; t[n++]="\"THE BEAST IS OUT THERE. SO ARE ITS OUTPOSTS.\""; }
-    if(data_cores>0){ int k=data_cores-1; if(k>7) k=7; scpy(l2,"\"I REMEMBER: "); scat(l2,bolt_mem[k][0]); scat(l2,"\""); t[n++]=l2; }
-    if(base_mode==0 && n<6) t[n++]="";
+    if(data_cores>0 && n<7){ int k=data_cores-1; if(k>7) k=7; scpy(l2,"\"I REMEMBER: "); scat(l2,bolt_mem[k][0]); scat(l2,"\""); t[n++]=l2; }
+    if(n<7) t[n++]=bolt_idle[(bolt_chat*5+(data_cores+zone))&15];                            // a different remark each time you come back
+    bolt_chat++;
     bolt_card(pg,t,n);
 }
 // ---------------------------------------------------------------- story cards: a few short lines, then A

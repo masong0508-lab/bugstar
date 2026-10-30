@@ -348,7 +348,16 @@ static void planet_card(volatile u16 *pg){                                      
         "BOLT: BRR. MY BOLTS ARE CLICKING.","BOLT: THE PLANTS ARE TALLER THAN THE SHIP.","BOLT: THIS IS A DEATH PLANET. I WOULD LIKE TO LEAVE.","BOLT: A WHOLE PLANET OF CITY. WHERE DO THEY PARK?","BOLT: IT IS SO NICE HERE. I AM SUSPICIOUS.",
         "BOLT: THE SEA IS LAVA. I AM NOT A BOAT.","BOLT: THE AIR TASTES LIKE EGGS. I HAVE NO MOUTH.","BOLT: THE GROUND IS GLASS. I LOOKED DOWN. DO NOT.","BOLT: THE HILLS ARE RIBS. WHOSE RIBS?","BOLT: THE SEA IS RED. LET US NOT ASK WHY.","BOLT: COLD ENOUGH TO HURT. EVEN HELL GAVE UP."};
 
-    ln[0]=cm; ln[1]=l1; ln[2]=l2; ln[3]=sc; ln[4]=l3; ln[5]= (endless && wd.cls) ? pq[wd.cls] : bolt_quip[q];
+    static const char *const bolt_alt[12]={"BOLT: I PACKED A SPARE TOWEL. IT IS ME.","BOLT: HILLS. I HAVE LOOKED. THEY ARE HILLS.","BOLT: CITY. KEEP YOUR HANDS WHERE THEY ARE.","BOLT: DARK OUT. I WILL BE THE NIGHT LIGHT.",
+        "BOLT: RAIN. I AM RUSTING WITH PURPOSE.","BOLT: SNOW. I AM A TIN SNOWMAN NOW.","BOLT: SAND AGAIN. I AM A BEACH NOW.","BOLT: THE LOCALS ARE STARING. WAVE. NICELY.",
+        "BOLT: I SMELL NOTHING. IT SMELLS LIKE SOUP.","BOLT: MY WHEELS FEEL HEAVY. OR LIGHT. OR MINE.","BOLT: THE WILDLIFE HAS PLANS FOR US.","BOLT: THIS FEELS LIKE HOME. I WILL NOT SAY WHY."};
+    static const char *const bolt_mood[2][3]={{"BOLT: THEY LOVE US. I AM ALARMED.","BOLT: A WARM WELCOME. CHECK YOUR POCKETS.","BOLT: SO MANY SMILES. SO FEW KNIVES."},
+        {"BOLT: THEY HATE US. I UNDERSTAND THEM.","BOLT: NOBODY HERE LIKES TIN. OR YOU.","BOLT: LET US BE QUICK. AND QUIET."}};
+    const char *bq = bolt_quip[q];
+    if(wd.mood==MOOD_LOVE) bq = (wd.tseed%3)==0 ? bolt_mood[0][(wd.tseed>>3)%3] : (wd.tseed&4) ? bolt_alt[q] : bq;     // a place that loves or hates you gets a remark of its own
+    else if(wd.mood==MOOD_HATE) bq = (wd.tseed%3)==0 ? bolt_mood[1][(wd.tseed>>3)%3] : (wd.tseed&4) ? bolt_alt[q] : bq;
+    else if(wd.tseed&4) bq = bolt_alt[q];
+    ln[0]=cm; ln[1]=l1; ln[2]=l2; ln[3]=sc; ln[4]=l3; ln[5]= (endless && wd.cls) ? pq[wd.cls] : bq;
     int nl=6; static char ht[56]; if(hellw()){ scpy(ht,"HELL TIER "); ncat(ht,hell_tier()); scat(ht,": BITES X"); ncat(ht,deadly_mul()); scat(ht,", GOLD +"); ncat(ht,hell_tier()*15); scat(ht,"%"); ln[nl++]=ht; }
     card(pg,world_name(),ln,nl);
 }
@@ -434,16 +443,59 @@ static void market(volatile u16 *pg){
             else { gold-=cost; cargo[g]++; say("BOUGHT. SELL IT WHERE IT IS RARE"); sfx(7); } }
     }
 }
-static const char *const gossip[16]={"THEY SAY THE FOSSILS ARE SOUTH OF TOWN. OR NORTH.","A PIRATE DOCKED LAST WEEK. HE TIPPED WELL.","THE RUINS OPEN FOR A RIDDLE. MOST GET IT WRONG.","RELICS SELL BEST AT TECH STATIONS.",
-    "THE BEETLES HATE SIDESTEPS. JUST SAYING.","THE OFFICE WIRES GOLD THE SECOND A JOB IS DONE.","CURIOUS CREATURES WALK UP TO YOU. TIMID ONES RUN.","HOSTILE ONES BITE. BITE THEM BACK.",
-    "DRONE OUTPOSTS HOLD THE DROID'S MEMORY.","THE RACE PAR IS BEATABLE. BARELY.","HIVES FEED THE BEAST. SMASH THEM.","THE BARTENDER IS A BEETLE. ARM WRESTLE HIM.",
-    "SELL SILK TO FARMERS. SELL FOOD TO MINERS.","THE NEXT CLUSTER IS A JUMP AWAY, WHEN THE KING FALLS.","SOMEONE SAW A SHIP IN THE SKY. IT WAS YOURS.","THERE IS SOUP. THERE IS ALWAYS SOUP."};
+#define NGOS 32
+static const char *const gossip[NGOS]={"THE BEETLES HATE SIDESTEPS. JUST SAYING.","A PIRATE DOCKED LAST WEEK. HE TIPPED WELL.","THE RUINS OPEN FOR A RIDDLE. MOST GET IT WRONG.","RELICS SELL BEST AT TECH STATIONS.",
+    "THE OFFICE WIRES GOLD THE SECOND A JOB IS DONE.","CURIOUS CREATURES WALK UP TO YOU. TIMID ONES RUN.","HOSTILE ONES BITE. BITE THEM BACK.","DRONE OUTPOSTS HOLD THE DROID'S MEMORY.",
+    "THE RACE PAR IS BEATABLE. BARELY.","HIVES FEED THE BEAST. SMASH THEM.","THE BARTENDER IS A BEETLE. ARM WRESTLE HIM.","SELL SILK TO FARMERS. SELL FOOD TO MINERS.",
+    "THE NEXT CLUSTER IS A JUMP AWAY, ONCE THE KING FALLS.","SOMEONE SAW A SHIP IN THE SKY. IT WAS YOURS.","THERE IS SOUP. THERE IS ALWAYS SOUP.","A GOOD ROUND BUYS YOU FAME. FAME BUYS PERKS.",
+    "LOCALS GIVE GIFTS WHEN THEY LIKE YOU. NOT TOO MANY.","IF THE LOCALS HATE YOU, THEY HIDE THEIR GOODS.","THE KART CLUB PAYS FOR WINS, NOT FOR EFFORT.","A SCANNER FINDS THE RICH VEINS. THEY BLINK.",
+    "WEIRD WORLDS CAN CHANGE YOU. SOMETIMES FOR GOOD.","THE SHRINE IN A WEIRD WORLD HIDES A RELIC.","FOSSILS TAKE A FEW DIGS. KEEP SWINGING.","PRICES SWING FROM TOWN TO TOWN. BUY LOW.",
+    "DO NOT SELL THE LAST BERRY. YOU WILL WANT IT.","THE DROID KNOWS WHAT TO DO NEXT. ASK HIM.","THE BEAST GROWS WHEN YOU IGNORE ITS HIVES.","THE ANT QUEEN KEPT A MAP. SO THEY SAY.",
+    "A FULL HOLD EARNS NOTHING. SELL IT OFF.","THE SCAN SHOWS GRAVITY AND HEAT. READ IT.","FAME GIVES PERKS. START: FEATS AND EXTRAS.","A WARM CANTINA IS A FINE PLACE TO BE. STAY A WHILE."};
+EW static u32 gossip_seen;                                                                // the rumours you have already heard (not saved); when you have heard them all, they start again
+static const char *gossip_dir(s32 dx, s32 dy){                                           // which way from here: north is up the map (+y), east is +x
+    s32 ax=dx<0?-dx:dx, ay=dy<0?-dy:dy; int n = ay*5 >= ax*2, e = ax*5 >= ay*2;           // a diagonal when both axes pull
+    if(n&&e) return dy>0 ? (dx>0?"NORTHEAST":"NORTHWEST") : (dx>0?"SOUTHEAST":"SOUTHWEST");
+    if(n) return dy>0 ? "NORTH" : "SOUTH";
+    return dx>0 ? "EAST" : "WEST";
+}
+static int gossip_tip(char *b){                                                          // a true tip: the nearest thing of a kind that is worth finding, how far and which way
+    static const u8 kk[6]={O_RUIN,O_FOSSIL,O_SHRINE,O_OFFICE,O_RACE,O_MARKET};
+    static const char *const nm[6]={"RUINS","FOSSILS","A RELIC SHRINE","THE BOUNTY OFFICE","THE RACE POST","THE MARKET"};
+    int st=wr(6);
+    for(int t=0;t<6;t++){ int k=(st+t)%6, bi=-1; s32 bd=0x7fffffff;
+        for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive || o->kind!=kk[k]) continue; if(k==0 && !o->hp) continue;       // a ruin that went quiet is not worth a tip
+            s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy), d=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(d<bd){ bd=d; bi=i; } }
+        if(bi<0 || (bd>>16)<5) continue;                                                  // none here, or it is right next to you
+        scpy(b,nm[k]); scat(b,": "); ncat(b,(int)(bd>>16)); scat(b," STEPS "); scat(b,gossip_dir(wrapd(po[bi].x-ppx),wrapd(po[bi].y-ppy))); return 1; }
+    return 0;
+}
+static int gossip_need(char *b){                                                         // what you could use right now (the rumour that happens to be useful)
+    if(hearts*2<maxh){ scpy(b,"YOU LOOK HURT. THE SHIP CAN HEAL YOU."); return 1; }
+    if(food<30){ scpy(b,"YOU LOOK HUNGRY. THE SOUP IS 8G."); return 1; }
+    if(cargo_n()>=cargo_cap+ship_hold_bonus()){ scpy(b,"YOUR HOLD IS FULL. THE MARKET BUYS."); return 1; }
+    if(beast_stage>=3 && data_cores<8){ scpy(b,"OUTPOSTS DONE: "); ncat(b,data_cores); scat(b," OF 8. RED MARKS."); return 1; }
+    if(zone_cleared && zone<5 && !endless){ scpy(b,"THIS WORLD IS FREE. TAKE THE AUTOPILOT."); return 1; }
+    if(gold>=200 && fame<10){ scpy(b,"BUY A ROUND. A RICH BUG NEEDS FRIENDS."); return 1; }
+    return 0;
+}
+static void gossip_talk(volatile u16 *pg){
+    const char *ln[3]; EW static char tip[40], need[40]; int n=0;
+    if(gossip_seen==0xFFFFFFFFu) gossip_seen=0;
+    int un=0; for(int i=0;i<NGOS;i++) if(!((gossip_seen>>i)&1)) un++;
+    int pick=wr(un), k=0; for(int i=0;i<NGOS;i++) if(!((gossip_seen>>i)&1)){ if(pick--==0){ k=i; break; } }
+    gossip_seen|=1u<<k; ln[n++]=gossip[k];
+    if(gossip_need(need)) ln[n++]=need;                                                   // something you could use right now
+    if(wr(100)<70 && gossip_tip(tip)){ ln[n++]=tip; }                                       // and, most times, where to find something
+    if(n==1) ln[n++]="THAT IS ALL I HEARD. SOUP?";
+    card(pg,"THE GOSSIP",ln,n);
+}
 static void cant_row(int i, char *b, int *c){ static const char *const r[4]={"A BOWL OF SOUP  8G  (FOOD +40)","HEAR THE GOSSIP  (FREE)","BUY A ROUND  20G  (+FAME)","ARM WRESTLE THE BARTENDER  10G"}; scpy(b,r[i]); }
 static void cantina(volatile u16 *pg){
     int sel=0, r; list_desc=0;
     while((r=list_pick(pg,"THE CANTINA",4,cant_row,&sel,"A: PICK  B: LEAVE"))>=0){
         if(r==0){ if(gold<8) say("NOT ENOUGH GOLD"); else { gold-=8; eat(40); say("SLURP. DO NOT ASK WHAT WAS IN IT"); sfx(11); } }
-        if(r==1){ say(gossip[wr(16)]); }
+        if(r==1){ gossip_talk(pg); }
         if(r==2){ if(gold<20) say("NOT ENOUGH GOLD"); else { gold-=20; fame+=6; say("CHEERS! EVERYONE LIKES YOU NOW. +FAME"); sfx(6); } }
         if(r==3){ if(gold<10) say("NOT ENOUGH GOLD"); else { gold-=10; int win = rndi(100) < 35+clampi(st_str>100?100:st_str)*3; if(win){ gold+=30; say("SLAM! HE CRIES A LITTLE. +30G"); sfx(6); } else say("HE WINS. HE ALWAYS WINS. HE IS A BEETLE"); } }
     }
