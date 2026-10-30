@@ -318,7 +318,7 @@ static void story_dna(int z){                                                   
 static u32 sys_id(int i); static u32 amix(u32 k, int star);
 static u8 cur_rock=0; static u32 rock_key=0;                    // PHASE 2: you are on a belt rock (0 = no; 1 rocky, 2 metallic, 3 icy, 4 crystal, 5 hollow). It is a moon-like body: cur_moon is 5 then (a star has 4 moons at most)
 static const char *const rock_nm[5]={"ROCKY","METALLIC","ICY","CRYSTAL","HOLLOW"};
-static const char *const rock_tip[5]={"IRON AND COPPER VEINS","HARD VEINS. USE A DRILL","IT MELTS. WORK FAST","HUGE GEMS. IT CRACKS","HOLLOW. SOMETHING INSIDE"};
+static const char *const rock_tip[5]={"IRON AND COPPER VEINS","HARD VEINS. USE A DRILL","IT MELTS. WORK FAST","HUGE GEMS. IT CRACKS","A MINE INSIDE. BITE VEINS"};
 static int rock_t=0;                                                                  // the ice on an icy rock melts: frames left
 static int cur_pl=0, cur_moon=0;                              // which body of this star you are on: planet cur_pl (0 = the first), cur_moon 0 = the planet itself, 1.. = its moons
 static u32 hmix(u32 h);

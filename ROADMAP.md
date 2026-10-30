@@ -10,6 +10,7 @@ Replaces the PDF of 28 Oct. Hard limits are unchanged: IWRAM and EWRAM are full 
 - **Depth scaling:** deeper worlds give harder veins (up to +3 bites) and richer ore, with no new saved data.
 - **Space speed:** far ships skip the orientation maths and are drawn every other frame.
 - **Step 4, Phase 2 (first step):** landable belt rocks, five kinds (rocky, metallic, icy, crystal, hollow). Slot i of a star's belt is always the same rock. Nothing is saved for a rock. Icy rocks melt (about 2.5 minutes), crystal rocks crack, metallic rocks need a better tool. Voidsteel (tier 6) can now be found.
+- **Hollow-rock mine (Phase 3, first step):** a hollow rock's dungeon is a mine: labyrinth shafts, earth walls, and crystal-looking ore veins in the walls that you bite out in place (bites needed and tool tier as on the surface, richer deeper). Tested in an emulator: the vein counts down, opens into a shaft, ore lands in the bag.
 - **Dungeon walls:** the painted door sprites are removed (the keycard door stays).
 
 ## Left, in the order I would take them

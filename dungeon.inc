@@ -276,7 +276,7 @@ static void make_floor(void){
     mboss=0; hunt_t=0; flow_cell=-1;
     if(bossfl){ if(forge_on) mboss = ddna.boss==1 || (ddna.boss==0 && rndi(100)<8);
                 else if(endless || zone>0 || tier_now()) mboss = rndi(100) < 10+tier_now()*4; }      // RARE: a boss floor that is a labyrinth, and the boss hunts you through it
-    int maze = mboss || (ddna.on && ddna.layout==LY_MAZE) || (!base_mode && !mz_last && depth_no>=2 && (rndi(100)<22 || (!endless && depth_no==zone_floors()-1 && (zone&1)==0)));   // a labyrinth floor, here and there
+    int maze = mboss || (cur_rock==5 && !base_mode && !forge_on && !bossfl) || (ddna.on && ddna.layout==LY_MAZE) || (!base_mode && !mz_last && depth_no>=2 && (rndi(100)<22 || (!endless && depth_no==zone_floors()-1 && (zone&1)==0)));   // a labyrinth floor, here and there
     terr_on = terr_roll(bossfl,mz_last,mboss); if(terr_on) maze=0;           // a very rare two-level terraced cavern
     for(int i=0;i<MW*MW;i++) seen[i]=0; for(int i=0;i<10;i++) room_seen[i]=0;
     int dd=depth_no<12?depth_no:12, maxr=7-dd/3, vm=7-dd/3; if(maxr<4) maxr=4; if(vm<4) vm=4; if(base_mode) maxr=6;
@@ -359,6 +359,8 @@ static void make_floor(void){
         else if(st==ST_CRYSTAL && hsh==3) add_light(f%MW,f/MW,34);
         if((st==ST_HALL||st==ST_CRYPT||st<0) && !(wmat[i]&0x30) && ((x*13+y*7)%vm)==0) wmat[i]=M_MOSS;      // vines and moss, thicker the deeper you go
     }
+    if(cur_rock==5 && !base_mode && !forge_on){                                  // PHASE 3: a hollow rock is a MINE. Long shafts with earth walls, and some wall faces are ore veins (crystal walls): bite them out
+        for(int y=1;y<MW-1;y++) for(int x=1;x<MW-1;x++){ int i=y*MW+x; if(dmap[i]!=D_WALL) continue; wmat[i]=(wmat[i]&0x30)|M_EARTH; } }
     if(ddna.on){ int ow = ddna.wall<6 ? ddna.wall : lay_wall[ddna.layout]; if(ow<6) for(int i=0;i<MW*MW;i++) if(dmap[i]==D_WALL) wmat[i]=(wmat[i]&0x30)|ow; }   // the DNA's wall material
     for(int i=0;i<nrooms && nlamps<12;i++) if(rooms[i].style==ST_HALL||rooms[i].style==ST_CRYPT){
         int c=1+(rooms[i].w*rooms[i].h>50);
@@ -540,6 +542,7 @@ static void build_light(void){
 }
 static void build_walls(void){
     for(int i=0;i<MW*MW;i++){
+        if(cur_rock==5 && dmap[i]==D_WALL && (wmat[i]&15)==M_EARTH && i>MW && i<MW*MW-MW && floorish(i-1)+floorish(i+1)+floorish(i-MW)+floorish(i+MW)>0 && (((i%MW)*37+(i/MW)*53+depth_no*11)%7)==0) wmat[i]=(wmat[i]&0x30)|M_CRYSTAL;   // PHASE 3: the shafts are carved now, so some wall faces are ore veins
         int t=dmap[i], m=wmat[i]&15, fl=wmat[i]&0x30, dc=wdec[i], st=(m==M_STONE), w=WT_BRICK;
         if(t==D_LOCK) w = WT_STONE_NICHE+1;                                             // the locked door looks like a door
         else if(t==D_PILLAR) w = m==M_STONE?WT_STONE_PILLAR : m==M_CRYSTAL?WT_CRYSTAL_PILLAR : WT_MARBLE;

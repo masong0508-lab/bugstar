@@ -647,6 +647,22 @@ static int foe_ahead(s32 dirx, s32 diry){
         if(fwd>0 && fwd<rng_ && side<0xE000) return 1; }
     return 0;
 }
+static int mine_cell=-1, mine_n=0;                                             // the vein you are biting in a mine, and how many bites it has taken
+static void mine_bite(s32 dirx, s32 diry){
+    for(int k=0;k<2;k++){ s32 r = k ? 0x10000 : 0xA000;
+        int tx=(int)((px_+(s32)(((long long)dirx*r)>>16))>>16), ty=(int)((py_+(s32)(((long long)diry*r)>>16))>>16);
+        if(tx<1||ty<1||tx>=MW-1||ty>=MW-1) return; int c=ty*MW+tx;
+        if(dmap[c]!=D_WALL) continue;
+        if((wmat[c]&15)!=M_CRYSTAL){ if(HIT(K_A)){ say("SOLID ROCK. LOOK FOR THE SHINY WALLS"); sfx(12); } return; }
+        int ore=-1; for(int t=0;t<4 && ore<0;t++) ore=ore_of((s32)(tx*977+t*131+depth_no*7919),(s32)(ty*613+t*53)); if(ore<0) ore=4;
+        if(ore_tool_eff()<ore_need_tool(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: NEEDS A "); scat(b,ore_tool_name[ore_need_tool(ore)]); say(b); sfx(4); return; }
+        if(mine_cell!=c){ mine_cell=c; mine_n=0; }
+        sfx(12); if(++mine_n<ore_hits(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,ore_hits(ore)-mine_n); scat(b," MORE"); say(b); burst((tx<<16)+0x8000,(ty<<16)+0x8000,0x4000,3,2); return; }
+        dmap[c]=D_FLOOR; fmat[c]=FL_DIRT; rid[c]=255; fcode[c]=3; mine_cell=-1; mine_n=0;
+        int n=1+rndi(2)+(ore_tool_eff()>=2)+dlv()/10+depth_no/3; int oq=ore_quality((s32)(tx*977),(s32)(ty*613)); n=ore_qn(n,oq);
+        int got=ore_add_q(ore,n,oq); st_mined+=n; ml_add(ore,got); ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
+        char b[44]; scpy(b,"+"); ncat(b,got); scat(b," "); scat(b,oq_name[oq]); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); say(b); sfx(7); build_light(); return; }
+}
 static void do_bite(s32 dirx, s32 diry){
     atk_len=(14-d_haste)*2/3; if(atk_len<4) atk_len=4; atk_len=atk_len*100/xo_v(XO_BITESPD); if(atk_len<2) atk_len=2; atk_t=atk_len;        // was 14 (min 6): a bite every 0.9 s was slow
     int crit; int pw=bite_power(&crit); sfx(0);
@@ -666,6 +682,7 @@ static void do_bite(s32 dirx, s32 diry){
     if(landed){ hitstop = (finisher ? 8 : killed ? 7 : crit ? 6 : 3)*xo_v(XO_HITSTOP)/100; if((crit||finisher) && opt_shake) shake_t=2;
         if(finisher){ combo=0; say("CRUNCH!"); sfx(12); } else { combo++; combo_t=50; } }
     else if(finisher) combo=0;
+    if(!landed && cur_rock==5) mine_bite(dirx,diry);                                  // in a mine, a bite that hits no foe bites the wall
 }
 // ---------------------------------------------------------------- spells: one function for all of them (see spell_def in game.inc)
 typedef struct { s16 t; u8 every, tick, n; s32 dmg; } Summon;
@@ -967,6 +984,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(fish_used){ }
     else if(lock_ahead && HIT(K_A)){ }
     else if(HELD(K_A) && foe){ if(!atk_t) do_bite(dirx,diry); }          // something in front always gets bitten, and holding A keeps biting
+    else if(HELD(K_A) && cur_rock==5 && !atk_t){ do_bite(dirx,diry); }     // a mine: holding A keeps biting the wall
     else if(HIT(K_A)){
         if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
         else if(here==D_UP && stair_ok) return 1;

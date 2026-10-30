@@ -326,3 +326,6 @@ The Technobeast feeds from **5 Tech Hives**. While a hive lives, the beast heals
 - The Techno Shard doubles your damage on the Technobeast.
 
 - **Difficulty:** EASY, NORMAL, HARD, BRUTAL, NIGHTMARE. Beat the Ant King on NIGHTMARE to unlock **INSANE-SECT** in OPTIONS: every story dungeon has 54x the floors and its own 54 tiers to fight down through (tier 54 is the last).
+
+## The hollow-rock mine (Phase 3, first step)
+A HOLLOW rock's dungeon is now a mine: long labyrinth shafts with earth walls, and some wall faces are ore veins (they look like crystal). Walk up to one and bite it (hold A): it shows how many bites are left, needs the same tool tier as a vein on the surface, and breaks into floor and ore in your bag (richer the deeper you go). Plain rock just says SOLID ROCK. Boss floors stay normal. Not yet: cave-ins, gas, a shaft boss, or the Forge dial.
