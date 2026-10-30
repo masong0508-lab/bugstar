@@ -337,3 +337,6 @@ Your humanoid's outfit now gives it a **calling**, worked out from the parts you
 `rumble.inc` drives the motor of a rumble cartridge (Drill Dozer style GPIO, pin 3 at 0x080000C4). Plain ROM ignores the writes, so it is harmless without a motor.
 Options > SELECT (MORE OPTIONS) > EXTRAS: RUMBLE (off, low, medium, high, max, extreme), RUMBLE EVENTS (all, fights and big, big only) and RUMBLE HUM (steady rumble from ship engines, kart boosts and drifts).
 Every sound effect maps to a pattern (strength, length, shape, class); extra patterns: cave quakes, ship crashes and rare catches. The motor is pulsed as a duty cycle from the vblank interrupt, so a long load never leaves it stuck on.
+
+<!-- RUMBLE-GAMECODE -->
+**Rumble in emulators:** the ROM's game code is `V49E` (the Drill Dozer code) because mGBA only enables its rumble motor for game codes in its built-in list. Plain ROM and real carts ignore the code.
