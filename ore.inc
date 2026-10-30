@@ -25,13 +25,15 @@ _Static_assert(ORE_OFF >= 0xB5C, "the ore block must start after the humanoid bl
 // Recipes are ROM data (15 of them). The stock (7 bars, 5 parts) and one smelt in progress are saved in a block of their own,
 // SRAM slot + 0xBA4 .. 0xBCC (audited: the ore block ends at 0xBA4 and the play-time block starts at 0xC00).
 // A save made before this block existed has none here: the smelter then starts empty. The time is play time (the same clock as the PLAYED screen).
-#define NMAT 12
-#define NREC 21
+#define NMAT 34
+#define NREC 56
 #define SM_OFF 0xBA4
 #define SM_SECS 15              // play seconds a single smelt takes
 #define SM_MAXB 5               // the most smelts you can queue at once
-static const char *const sm_name[NMAT]={"IRON BAR","COPPER BAR","GLASS BAR","BLACK STEEL","CHALK BAR","ALLOY BAR","VOID BAR", "PLATING","DRILL BIT","LENS","ION CELL","BONE PLATE"};
-static const u16 sm_price[NMAT]={24,28,50,95,85,160,380, 90,150,160,520,260};        // gold each (bars 0..6, parts 7..11); VOID BAR is for later phases, it sells high
+static const char *const sm_name[NMAT]={"IRON BAR","COPPER BAR","GLASS BAR","BLACK STEEL","CHALK BAR","ALLOY BAR","VOID BAR", "PLATING","DRILL BIT","LENS","ION CELL","BONE PLATE",
+    "SULFUR CAKE","OBSID GLASS","BRONZE BAR","STEEL BAR","WIRE","GEAR","SPRING","BATTERY","CIRCUIT","LAMP","SENSOR","LASER DIODE","ARMOR PLATE","TURBINE","PISTON","MOTOR","PROCESSOR","POWER CORE","SHIELD GRID","DRIVE COIL","VOID CORE","STAR HEART"};
+static const u16 sm_price[NMAT]={24,28,50,95,85,160,380, 90,150,160,520,260,
+    70,90,60,80,56,130,110,190,210,330,380,460,420,400,240,460,640,800,900,1000,1300,2200};        // gold each (bars 0..6, parts 7..11); VOID BAR is for later phases, it sells high
 typedef struct { u8 kind, out, a, na, b, nb; } Recipe;   // kind 0 smelt (a, b = ores), 1 make a part, 2 make a tool (out = the tool tier); for kinds 1 and 2, a and b are stock items (0..11). nb = 0: one input only
 static const Recipe sm_rec[NREC]={
     {0,0, 4,2, 0,0},   {0,1, 5,2, 0,0},   {0,2, 6,2, 0,0},   {0,3, 8,1, 7,1},   {0,4, 9,2, 0,0},   {0,5, 10,2, 0,0},   {0,6, 11,2, 0,0},      // IRON, COPPER, GLASS (ice quartz), BLACK STEEL (obsidian + sulfur), CHALK (calcite), ALLOY (scrap alloy), VOID (voidsteel)
@@ -39,24 +41,41 @@ static const Recipe sm_rec[NREC]={
     {2,1, 0,3, 1,1},   {2,2, 8,2, 7,1},   {2,3, 9,1, 10,1},                                                                              // PICKAXE, DRILL, LASER CUTTER
     {1,10, 6,1, 3,1},  {1,11, 6,1, 4,1},
     {3,0, 6,1, 7,2},
-    {4,0, 10,2, 3,2}, {5,0, 9,2, 6,1}, {6,0, 11,2, 5,1} };   // kinds 4..6: ship parts like the plate: ENGINE TUNE (2 ion cell + 2 black steel), LASER LENS (2 lens + void bar), SHIELD CELL (2 bone plate + alloy bar). Up to SP_MAX each
+    {4,0, 10,2, 3,2}, {5,0, 9,2, 6,1}, {6,0, 11,2, 5,1},
+    // ---- more recipes (items 12..33). Two more smelts, then 20 new parts built from bars and from each other, then second routes to old parts and ship parts
+    {0,12, 7,2, 0,0},  {0,13, 8,2, 0,0},                                                                    // SULFUR CAKE (2 sulfur), OBSIDIAN GLASS (2 obsidian)
+    {1,14, 1,2, 0,1},  {1,15, 0,2, 12,1}, {1,16, 1,2, 0,0},  {1,17, 14,2, 0,0}, {1,18, 15,1, 14,1},         // BRONZE, STEEL, WIRE, GEAR, SPRING
+    {1,19, 16,2, 12,1},{1,20, 16,2, 2,1}, {1,21, 9,1, 19,1}, {1,22, 20,1, 13,1},{1,23, 9,1, 20,1},         // BATTERY, CIRCUIT, LAMP, SENSOR, LASER DIODE
+    {1,24, 15,2, 11,1},{1,25, 17,2, 15,1},{1,26, 15,1, 18,1},{1,27, 26,1, 19,1},{1,28, 20,2, 5,1},          // ARMOR PLATE, TURBINE, PISTON, MOTOR, PROCESSOR
+    {1,29, 10,1, 19,1},{1,30, 22,1, 24,1},{1,31, 27,1, 25,1},{1,32, 6,1, 29,1}, {1,33, 32,1, 28,1},         // POWER CORE, SHIELD GRID, DRIVE COIL, VOID CORE, STAR HEART
+    {1,7, 15,2, 0,0},  {1,8, 15,1, 17,1}, {1,9, 13,2, 1,1},  {1,10, 20,1, 19,1},{1,11, 4,2, 15,1},          // second routes: PLATING, DRILL BIT, LENS, ION CELL, BONE PLATE
+    {3,0, 24,1, 15,1}, {4,0, 25,1, 17,1}, {5,0, 23,1, 9,1},  {6,0, 19,1, 22,1},                              // second routes to the four ship parts
+    {3,0, 24,2, 0,0},  {4,0, 31,1, 0,0},  {5,0, 28,1, 23,1}, {6,0, 30,1, 0,0} };                            // top-tier routes: 2 armor plates, a drive coil, processor + laser diode, a shield grid
+   // kinds 4..6: ship parts like the plate: ENGINE TUNE (2 ion cell + 2 black steel), LASER LENS (2 lens + void bar), SHIELD CELL (2 bone plate + alloy bar). Up to SP_MAX each
           // kind 3: a HULL PLATE for the ship (void bar + 2 plating). It is not stocked: it is fitted at once, up to HP_MAX                                                                                              // void bar shortcuts: ION CELL (void bar + black steel), BONE PLATE (void bar + chalk bar)                                                                              // PICKAXE, DRILL (made from iron and copper alone), LASER CUTTER (no voidsteel: voidsteel needs a laser cutter to mine)
 static u16 sm_n[NMAT]; static u8 sm_job, sm_jn; static u32 sm_done;       // what you hold; the smelt in progress (recipe + 1, how many, play second it finishes)
-typedef struct { u32 magic; u8 ver, job, jn, pad; u32 done; u16 n[NMAT]; u32 sum; } SmSave;     // 40 bytes
+typedef struct { u32 magic; u8 ver, job, jn, pad; u32 done; u16 n[12]; u32 sum; } SmSave;     // 40 bytes: the first 12 stock items, the smelt in progress, hull plates (unchanged since the first smelter patch)
+#define EXT_OFF 0x830                                                                          // the other 22 stock items (the newer parts) live in a block of their own, in the gap after the ship block (audited free: 0x830 to 0x8FF)
+#define NEXT (NMAT-12)
+typedef struct { u32 magic; u8 ver, pad[3]; u16 n[NEXT]; u32 sum; } SmExt;                      // 56 bytes. An old save has none: those items start at zero
 _Static_assert(SM_OFF >= ORE_OFF+sizeof(OreSave), "the smelter block must start after the ore block");
-_Static_assert(SM_OFF+sizeof(SmSave) <= META_OFF, "the smelter block must end before the play-time block");
+_Static_assert(SM_OFF+sizeof(SmSave) <= 0xBCC, "the smelter block must end where the mining log block starts");
+_Static_assert(EXT_OFF >= 0x800+48 && EXT_OFF+sizeof(SmExt) <= 0x900, "the extra smelter block must sit between the ship block and the address block");
 static const char *const sp_name[4]={"HULL PLATE","ENGINE TUNE","LASER LENS","SHIELD CELL"};
 static const char *const sp_what[4]={"3% LESS DAMAGE TAKEN EACH","MORE ENGINE THRUST EACH","MORE LASER DAMAGE EACH","+10 SHIELD EACH"};
 static int sp_have(int k){ return k==3 ? hull_plates : sp_n[k-4]; }          // k is the recipe kind, 3..6
 static int sp_cap(int k){ return k==3 ? HP_MAX : SP_MAX; }
 static void sp_add(int k){ if(k==3) hull_plates++; else sp_n[k-4]++; }
 static void sm_reset(void){ hull_plates=0; sp_n[0]=sp_n[1]=sp_n[2]=0; for(int i=0;i<NMAT;i++) sm_n[i]=0; sm_job=0; sm_jn=0; sm_done=0; }
-static void sm_save(void){ SmSave s; memset(&s,0,sizeof s); s.magic=0x31544C4Du; s.ver=1; s.job=sm_job; s.jn=sm_jn; s.done=sm_done; s.pad=hull_plates; for(int i=0;i<NMAT;i++) s.n[i]=sm_n[i];
-    s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+SM_OFF,&s,sizeof s); }
-static void sm_load(void){ SmSave s; sm_reset(); sram_read(slot_base(cur_slot)+SM_OFF,&s,sizeof s);
+static void sm_save(void){ SmSave s; memset(&s,0,sizeof s); s.magic=0x31544C4Du; s.ver=1; s.job=sm_job; s.jn=sm_jn; s.done=sm_done; s.pad=hull_plates; for(int i=0;i<12;i++) s.n[i]=sm_n[i];
+    s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+SM_OFF,&s,sizeof s);
+    SmExt x; memset(&x,0,sizeof x); x.magic=0x32544C4Du; x.ver=1; for(int i=0;i<NEXT;i++) x.n[i]=sm_n[12+i]; x.sum=fnv(&x,sizeof x-4); sram_write(slot_base(cur_slot)+EXT_OFF,&x,sizeof x); }
+static void sm_load(void){ SmSave s; SmExt x; sm_reset(); sram_read(slot_base(cur_slot)+SM_OFF,&s,sizeof s);
     if(s.magic!=0x31544C4Du || s.sum!=fnv(&s,sizeof s-4) || s.ver!=1) return;          // no block (an old save) or a damaged one: an empty smelter
-    for(int i=0;i<NMAT;i++) sm_n[i]= s.n[i]>9999 ? 9999 : s.n[i]; hull_plates = s.pad>HP_MAX ? HP_MAX : s.pad;       // (the spare byte: an old save has 0 there)
-    if(s.job>=1 && s.job<=NREC && sm_rec[s.job-1].kind==0 && s.jn>=1 && s.jn<=SM_MAXB){ sm_job=s.job; sm_jn=s.jn; sm_done=s.done; } }
+    for(int i=0;i<12;i++) sm_n[i]= s.n[i]>9999 ? 9999 : s.n[i]; hull_plates = s.pad>HP_MAX ? HP_MAX : s.pad;       // (the spare byte: an old save has 0 there)
+    if(s.job>=1 && s.job<=NREC && sm_rec[s.job-1].kind==0 && s.jn>=1 && s.jn<=SM_MAXB){ sm_job=s.job; sm_jn=s.jn; sm_done=s.done; }
+    sram_read(slot_base(cur_slot)+EXT_OFF,&x,sizeof x);
+    if(x.magic==0x32544C4Du && x.ver==1 && x.sum==fnv(&x,sizeof x-4)) for(int i=0;i<NEXT;i++) sm_n[12+i]= x.n[i]>9999 ? 9999 : x.n[i]; }
 static int sm_have(int kind, int i){ return kind==0 ? ore_n[i] : sm_n[i]; }           // kind 0 reads the ore bag, the rest read the stock
 static int sm_batches(int r){ const Recipe *q=&sm_rec[r]; int k=q->kind?1:0; int m=sm_have(k,q->a)/q->na; if(q->nb){ int m2=sm_have(k,q->b)/q->nb; if(m2<m) m=m2; } return m; }   // how many times you could make it now
 static int sm_ready(void){ return sm_job && (s32)(play_secs()-sm_done)>=0; }           // a smelt has finished
@@ -101,7 +120,7 @@ static const char *const ore_tool_name[4]={"JAWS","PICKAXE","DRILL","LASER CUTTE
 static const u8 ore_hab[NORE]={0,0,0,0, 1,1, 2, 4,4,8, 16, 32};                  // where each ore is found: 1 rock and dry, 2 ice, 4 hell, 8 bone and death, 16 city, 32 anywhere (rare)
 static int ore_tool_eff(void){ int t=ore_tool; if(holding(TL_PICK) && t<1) t=1; return t; }          // your best mining tool right now
 static int ore_need_tool(int o){ int t=ore_def[o].tier/2; if(cur_rock==2 && t<3) t++; return t; }      // (a metallic rock is dense: one tool tier more)                                     // tier 2-3 need a pickaxe, 4-5 a drill, 6 a laser cutter
-static int ore_hits(int o){ int p=1<<ore_tool_eff(); int h=(ore_def[o].hard+p-1)/p; if(cur_rock==2) h+=(h+1)/2; return h; }          // bites it takes with the tool you hold: a tier doubles your power
+static int ore_hits(int o){ int p=1<<ore_tool_eff(); int h=(ore_def[o].hard+p-1)/p; if(cur_rock==2) h+=(h+1)/2; h+=dlv()/8; return h; }          // (deeper worlds: a harder vein, up to +3 bites)          // bites it takes with the tool you hold: a tier doubles your power
 static const u8 rock_hab[5]={1, 1|16|32, 2|8, 2|4|8|32, 1|2};                    // what each kind of belt rock holds (the same bits as ore_hab)
 static int ore_habitat(void){ if(cur_rock) return rock_hab[cur_rock-1]; int h=1; if(wd.cls==PC_ICE||wd.cls==PC_COCYTUS||cur_moon==2) h|=2; if(hellw()) h|=4; if(wd.cls==PC_DEATH||wd.cls==PC_BONE) h|=8; if(wd.cls==PC_ECUMENOPOLIS) h|=16; return h|32; }       // (bit 32, the rare ore, was never set before: voidsteel could not be found)
 static u16 ore_id(s32 ox, s32 oy){ return (u16)(hmix(wd.tseed ^ ((u32)(ox>>10)*0x9E3779B1u) ^ ((u32)(oy>>10)*0x85EBCA6Bu)) & 0xFFFF); }     // which vein it is (a hash of the world and the spot)

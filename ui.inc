@@ -852,18 +852,25 @@ static int ore_bagn(void){ int n=0; for(int i=4;i<NORE;i++) n+=ore_n[i]; return 
 static int ore_sellval(void){ int g=0; for(int i=4;i<NORE;i++) g+=ore_n[i]*ore_px(i); return g; }
 static int ore_can_up(void){ int t=ore_tool+1; if(t>3) return 0; return gold>=ore_up_gold[t] && ore_n[ore_up_o1[t]]>=ore_up_n1[t] && ore_n[ore_up_o2[t]]>=ore_up_n2[t]; }
 // ---- the smelter (Phase 4, basic): ore -> bars (takes play time) -> parts -> tools. Opened from the MINING menu.
-static int sm_base, sm_sbase;                         // which recipes / stock the open list shows (first item number)
+#define SM_PS 9                                        // rows per page: with more than that, the last row turns the page
+static u8 sm_view[NREC]; static int sm_nv, sm_pg, sm_sbase, sm_sn;      // the recipes the open list shows (kind 0 / kinds 1-2 / kinds 3+), its page; the stock list's first item and length
+static void sm_build(int g){ sm_nv=0; sm_pg=0; for(int r=0;r<NREC;r++){ int k=sm_rec[r].kind; if((g==0&&k==0)||(g==1&&(k==1||k==2))||(g==2&&k>=3)) sm_view[sm_nv++]=(u8)r; } }
+static int sm_pages(int n){ return n<=SM_PS+1 ? 1 : (n+SM_PS-1)/SM_PS; }
+static int sm_cnt(int n, int pg){ if(sm_pages(n)==1) return n; int c=n-pg*SM_PS; return c>SM_PS?SM_PS:c; }    // items on this page
+static int sm_rows(int n, int pg){ return sm_cnt(n,pg) + (sm_pages(n)>1 ? 1 : 0); }                          // plus the "next page" row
+static void sm_next(char *b, int *c, int n, int pg){ scpy(b,"NEXT PAGE  "); ncat(b,pg+1); scat(b,"/"); ncat(b,sm_pages(n)); *c=C_CYAN; }
 static const char *sm_outname(int r){ const Recipe *q=&sm_rec[r]; return q->kind>=3 ? sp_name[q->kind-3] : q->kind==2 ? ore_tool_name[q->out] : sm_name[q->out]; }
 static void sm_cost(int r, char *b){ const Recipe *q=&sm_rec[r]; int k=q->kind?1:0;
     ncat(b,q->na); scat(b," "); scat(b,k?sm_name[q->a]:ore_def[q->a].name);
     if(q->nb){ scat(b," + "); ncat(b,q->nb); scat(b," "); scat(b,k?sm_name[q->b]:ore_def[q->b].name); } }
-static void sm_row(int i, char *b, int *c){ int r=sm_base+i; const Recipe *q=&sm_rec[r]; scpy(b,sm_outname(r)); while(textlen(b)<13) scat(b," "); sm_cost(r,b);
+static void sm_row(int i, char *b, int *c){ if(i>=sm_cnt(sm_nv,sm_pg)){ sm_next(b,c,sm_nv,sm_pg); return; } int r=sm_view[sm_pg*SM_PS+i]; const Recipe *q=&sm_rec[r]; scpy(b,sm_outname(r)); while(textlen(b)<13) scat(b," "); sm_cost(r,b);
     *c = ((q->kind==2 && ore_tool>=q->out) || (q->kind>=3 && sp_have(q->kind)>=sp_cap(q->kind))) ? C_DGREY : sm_batches(r)>0 ? C_GREEN : C_WHITE; }
 static void sm_job_line(char *b, int *c){ b[0]=0; if(!sm_job) return;
     if(sm_ready()){ scpy(b,"SMELT DONE! A: COLLECT"); *c=C_GREEN; return; }
     scpy(b,"SMELTING "); ncat(b,sm_jn); scat(b," "); scat(b,sm_name[sm_rec[sm_job-1].out]); scat(b,": "); ncat(b,sm_left()); scat(b,"S LEFT"); *c=C_GOLD; }
 static void sm_rdesc(int i, char *b, int *c){ b[0]=0; *c=C_GREY; if(i<0){ sm_job_line(b,c); return; }
-    int r=sm_base+i; const Recipe *q=&sm_rec[r];
+    if(i>=sm_cnt(sm_nv,sm_pg)){ scpy(b,"A: SHOW THE NEXT PAGE"); return; }
+    int r=sm_view[sm_pg*SM_PS+i]; const Recipe *q=&sm_rec[r];
     if(q->kind==0){ scpy(b,"MAKES 1 PER "); ncat(b,q->na); scat(b," "); scat(b,ore_def[q->a].name); scat(b,". "); ncat(b,SM_SECS); scat(b,"S EACH"); }
     else if(q->kind==1){ scpy(b,"YOU HAVE "); ncat(b,sm_n[q->out]); scat(b,"  YOU CAN MAKE "); ncat(b,sm_batches(r)); }
     else if(q->kind>=3){ if(sp_have(q->kind)>=sp_cap(q->kind)) scpy(b,"FULLY FITTED"); else { scpy(b,"FITTED "); ncat(b,sp_have(q->kind)); scat(b,"/"); ncat(b,sp_cap(q->kind)); scat(b,". "); scat(b,sp_what[q->kind-3]); } }
@@ -884,7 +891,7 @@ static void sm_make(int r){
     if(q->kind==1){ if(sm_n[q->out]<9999) sm_n[q->out]++; scpy(b,"MADE 1 "); scat(b,sm_name[q->out]); say(b); sfx(6); }
     else if(q->kind>=3){ sp_add(q->kind); scpy(b,sp_name[q->kind-3]); scat(b," FITTED: "); ncat(b,sp_have(q->kind)); scat(b,"/"); ncat(b,sp_cap(q->kind)); say(b); sfx(6); }
     else { ore_tool=q->out; scpy(b,"NOW YOU MINE WITH: "); scat(b,ore_tool_name[q->out]); say(b); sfx(6); hud_now(); } }
-static void sm_srow(int i, char *b, int *c){ int m=sm_sbase+i; scpy(b,sm_name[m]); while(textlen(b)<14) scat(b," "); ncat(b,sm_n[m]); while(textlen(b)<22) scat(b," "); ncat(b,sm_px(m)); scat(b,"G EACH"); *c=sm_n[m]?C_WHITE:C_DGREY; }
+static void sm_srow(int i, char *b, int *c){ if(i>=sm_cnt(sm_sn,sm_pg)){ sm_next(b,c,sm_sn,sm_pg); return; } int m=sm_sbase+sm_pg*SM_PS+i; scpy(b,sm_name[m]); while(textlen(b)<14) scat(b," "); ncat(b,sm_n[m]); while(textlen(b)<22) scat(b," "); ncat(b,sm_px(m)); scat(b,"G EACH"); *c=sm_n[m]?C_WHITE:C_DGREY; }
 static void smelter_row(int i, char *b, int *c){ *c=C_WHITE;
     if(i==0){ scpy(b,"SMELT ORE"); while(textlen(b)<20) scat(b," "); if(sm_ready()){ scat(b,"DONE!"); *c=C_GREEN; } else if(sm_job){ ncat(b,sm_left()); scat(b,"S LEFT"); *c=C_GOLD; } }
     else if(i==1) scpy(b,"MAKE PARTS AND TOOLS");
@@ -899,9 +906,11 @@ static void smelter_menu(volatile u16 *pg){
     int s0=0, r;
     { int o=sm_job?sm_rec[sm_job-1].out:0, n=sm_collect(); if(n){ char b[40]; scpy(b,"SMELT DONE: +"); ncat(b,n); scat(b," "); scat(b,sm_name[o]); say(b); sfx(7); } }
     while(1){ list_desc=smelter_desc; r=list_pick(pg,"SMELTER",6,smelter_row,&s0,"A: CHOOSE  B: BACK"); if(r<0) break;
-        if(r==0||r==1){ int s1=0, q; sm_base = r==0 ? 0 : 7; list_desc=sm_rdesc; while((q=list_pick(pg, r==0?"SMELT ORE":"PARTS AND TOOLS", r==0?7:10, sm_row, &s1, r==0?"A: SMELT  B: BACK":"A: MAKE  B: BACK"))>=0) sm_make(sm_base+q); }
-        else if(r==4){ int s1=0, q; sm_base=17; list_desc=sm_rdesc; while((q=list_pick(pg,"SHIP PARTS",NREC-17,sm_row,&s1,"A: FIT  B: BACK"))>=0) sm_make(sm_base+q); }
-        else if(r==2||r==3){ int s1=0; sm_sbase = r==2 ? 0 : 7; list_desc=0; while(list_pick(pg, r==2?"BARS":"PARTS", r==2?7:NMAT-7, sm_srow, &s1, "B: BACK")>=0){} }
+        if(r==0||r==1||r==4){ int s1=0, q; sm_build(r==0?0:r==1?1:2); list_desc=sm_rdesc;
+            while((q=list_pick(pg, r==0?"SMELT ORE":r==1?"PARTS AND TOOLS":"SHIP PARTS", sm_rows(sm_nv,sm_pg), sm_row, &s1, r==0?"A: SMELT  B: BACK":r==1?"A: MAKE  B: BACK":"A: FIT  B: BACK"))>=0){
+                if(q>=sm_cnt(sm_nv,sm_pg)){ sm_pg=(sm_pg+1)%sm_pages(sm_nv); s1=0; } else sm_make(sm_view[sm_pg*SM_PS+q]); } }
+        else if(r==2||r==3){ int s1=0; sm_sbase = r==2 ? 0 : 7; sm_sn = r==2 ? 7 : NMAT-7; sm_pg=0; list_desc=0;
+            while(list_pick(pg, r==2?"BARS":"PARTS", sm_rows(sm_sn,sm_pg), sm_srow, &s1, "A: NEXT PAGE  B: BACK")>=0){ if(sm_pages(sm_sn)>1){ sm_pg=(sm_pg+1)%sm_pages(sm_sn); s1=0; } } }
         else { int v=sm_value(); if(!v){ say("NOTHING TO SELL"); continue; } s64 g0=gold; earn(v); for(int i=0;i<NMAT;i++) sm_n[i]=0; char b[40]; scpy(b,"SOLD: +"); ncat(b,(int)(gold-g0)); scat(b,"G"); say(b); sfx(7); hud_now(); } }
     list_desc=0;
 }
