@@ -472,9 +472,10 @@ static void help_screen(volatile u16 *pg){
             rect(pg,14,121,212,1,C_DGREY); for(int k=0;k<6;k++) ico_draw(pg,22+k*33,124-((((t/10)+k)&1)<<1),help_ico[p][k]);
             for(int k=0;k<HELP_N;k++) rect(pg,120-HELP_N*3+k*6,142,4,3, k==p?C_GOLD:C_DGREY);
             text(pg,14,141,"< >: PAGE",C_CYAN,1); rtext(pg,226,141,"B: BACK",C_CYAN); }
-        t++; if(t%10==0) dirty=1; int wf=(t>>3)&1; int bx=((t>>1)%300)-40;                    // the bug trots along the bottom
+        t++; int wf=(t>>3)&1; int bx=((t>>1)%300)-40;                    // the bug trots along the bottom
         if(crawl){ set_affine(31, -128, 0, 0, 128); bug_obj(0,bx,150-16-wf,31,128); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK; }
         vsync(); oam_flush(); read_keys(); twinkle(pg,t);
+        if(!dirty && t%10==0){ rect(pg,10,122,220,19,U_PANEL); for(int k=0;k<6;k++) ico_draw(pg,22+k*33,124-((((t/10)+k)&1)<<1),help_ico[p][k]); }   // the icons bob: repaint just their strip, never the whole card (that made it flash)
         if(HIT(K_RIGHT)||HIT(K_R)||HIT(K_A)){ if(p<HELP_N-1){ p++; dirty=1; sfx(7); } else if(HIT(K_A)) break; }
         if(HIT(K_LEFT)||HIT(K_L)){ if(p>0){ p--; dirty=1; sfx(7); } }
         if(HIT(K_B)||HIT(K_START)) break;
@@ -986,6 +987,109 @@ static const u8 shop_tab_id[4][5]={{0,14,13,0,0},{1,15,2,3,4},{5,6,8,7,16},{9,12
 static const char *const shop_tab_nm[4]={"GO","SHOP","CARE","YOU"};
 static const char *const shop_nm[17]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB","SPELL SHOP","MINING"};
 static const char *const shop_ds[17]={"TAKE OFF FOR THE NEXT STAR","CRUMBS, POTIONS, BERRIES, SEEDS AND WARPS","BUY GEAR FOR YOUR BITE, SHELL AND CHARM","SELL WHAT YOU ARE CARRYING FOR GOLD","TAKE A JOB FOR FAME, GOLD AND A PRIZE","FULL HEARTS AND MANA FOR YOU AND BUDDY","LEARN WHAT AN UNKNOWN BERRY OR SEED DOES","KEEP OR SCRAP YOUR BEST FINDS","UPGRADE GEAR WITH GOLD AND MINED GOODS","REMAKE YOUR LOOK","REDESIGN YOUR SHIP IN 3D","HE ALWAYS KNOWS WHAT TO DO NEXT","SWITCH BETWEEN THE SHAPES YOU HAVE BEEN","ENTER THE DUNGEON FORGE","RACE ANY TIME AND BUILD YOUR OWN TRACKS","BUY ATTACK, DEFENSE AND SUMMON SPELLS","SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG"};
+// ---------------------------------------------------------------- THE MARKET: supplies, gear, selling and buyback in one stall
+// Four tabs (L/R). Every row has a picture card (icon, name, rarity, what it does, how it compares to what you wear, what your gold will be).
+// Safety nets: nothing valuable sells without a YES, big buys ask first, a mistake can be bought back, and a new stock of gear costs gold.
+static Gear bz_bb[6]; static int bz_bbn=0;                                  // the last things you sold (buyback)
+static const char *const bz_rar[4]={"COMMON","MAGIC","RARE","UNIQUE"};
+static const u8 bz_sico[6]={IC_HEART,IC_POTION,IC_POTION,IC_PLANT,IC_PLANT,IC_PLANET};
+static int bz_icon(const Gear *g){ switch(g->it){ case IT_THORN: return IC_SWORD; case IT_SHELL: return IC_SHELL; case IT_CHARM: return IC_STAR; case IT_POTION: return IC_POTION; case IT_BERRY: case IT_SEED: return IC_PLANT; case IT_CRUMB: return IC_HEART; case IT_WARP: return IC_PLANET; case IT_GEM: return IC_GEM; case IT_BOOK: return IC_BOOK; case IT_FISH: return IC_FISH; case IT_KEY: return IC_KEY; default: return IC_CHEST; } }
+static Gear bz_sup(int r){ Gear g={0,0,0,0,0,0}; if(r==0) g.it=IT_CRUMB; else if(r<3){ g.it=IT_POTION; g.sub=r-1; } else if(r==3){ g.it=IT_BERRY; g.sub=rndi(8); } else if(r==4){ g.it=IT_SEED; g.sub=rndi(6); } else g.it=IT_WARP; return g; }
+static int bz_have(int r){ int n=0; for(int k=0;k<bag_n;k++){ int it=bag[k].it, sb=bag[k].sub; if((r==0&&it==IT_CRUMB)||(r==1&&it==IT_POTION&&sb==0)||(r==2&&it==IT_POTION&&sb==1)||(r==3&&it==IT_BERRY)||(r==4&&it==IT_SEED)||(r==5&&it==IT_WARP)) n++; } return n; }
+static void bz_push(const Gear *g){ if(bz_bbn>=6){ for(int k=0;k<5;k++) bz_bb[k]=bz_bb[k+1]; bz_bbn=5; } bz_bb[bz_bbn++]=*g; }
+static int bz_back_cost(const Gear *g){ int v=item_value(g); return v+v/2+1; }       // buying back always costs more than you were paid: no gold from selling and buying again
+static const char *bz_risky(const Gear *g){                                          // why this sale needs a second look (0 = no reason)
+    if(is_gear(g) && g->rar>=R_RARE) return g->rar==R_UNIQUE ? "A UNIQUE ITEM!" : "A RARE ITEM!";
+    if(is_gear(g)){ char t[48]; if(delta_text(g,t)>0) return "BETTER THAN YOUR GEAR!"; }
+    if(q_type==Q_BRING && !q_done && g->it==bring_it[q_floor&3]) return "YOUR QUEST NEEDS THIS!";
+    if(g->it==IT_FISH && g->sub>=5) return "A RARE FISH!";
+    return 0; }
+static int bz_sell(volatile u16 *pg, int s){                                         // returns 1 if sold
+    Gear g=bag[s]; int v=item_value(&g); char nm[40], l2[40]; gear_name(&g,nm); nm[24]=0;
+    const char *why=bz_risky(&g);
+    if(why){ scpy(l2,"SELL "); scat(l2,nm); l2[30]=0; if(!confirm(pg,why,l2)) return 0; }
+    bz_push(&g); gold+=v; drop_at(s); hud_now(); sfx(7);
+    scpy(l2,"SOLD FOR "); ncat(l2,v); scat(l2,"G"); say(l2); return 1; }
+static void bazaar(volatile u16 *pg, int tab){
+    static const char *const tn[4]={"SUPPLY","GEAR","SELL","BUYBACK"};
+    static const char *const sd[6]={"FOOD +40","HEALTH BACK","MANA BACK","A RANDOM BERRY. TRY IT TO LEARN IT","A RANDOM SEED. TRY IT TO LEARN IT","A PORTAL HOME FROM ANY DUNGEON FLOOR"};
+    int sel[4]={0,0,0,0}, top[4]={0,0,0,0}, dirty=1;
+    menu_msg[0]=0; wait_release();
+    while(1){
+        int n = tab<2 ? 6 : tab==2 ? bag_n : bz_bbn, rr=30+dlv()*10;
+        if(sel[tab]>=n) sel[tab]=n?n-1:0;
+        if(sel[tab]<top[tab]) top[tab]=sel[tab];
+        if(sel[tab]>=top[tab]+6) top[tab]=sel[tab]-5;
+        if(top[tab]<0) top[tab]=0;
+        int s=sel[tab];
+        if(dirty){ dirty=0; char b[64]; int c;
+            panel(pg,12,20,216,136,"MARKET");
+            { char g[16]=""; ncat(g,gold); scat(g,"G"); int gx=222-textlen(g)*4; rect(pg,gx-9,26,5,5,C_GOLD); rect(pg,gx-8,26,2,1,U_GLGOLD); stext(pg,gx,25,g,C_GOLD); }
+            for(int t=0;t<4;t++){ int x=16+t*52; if(t==tab) ui_sel(pg,x,34,50,11,U_SEL); ctext(pg,x+25,37,tn[t],t==tab?C_WHITE:C_GREY); }
+            rect(pg,14,47,212,1,U_RAISE);
+            ui_well(pg,14,49,112,58);
+            for(int i=0;i<6 && top[tab]+i<n;i++){ int idx=top[tab]+i, y=51+i*9, price=0, pc=C_GOLD; c=C_WHITE;
+                if(tab==0){ scpy(b,sup_name[idx]); price=sup_cost[idx]; }
+                else if(tab==1){ if(!stock[idx].it){ scpy(b,"SOLD OUT"); c=C_DGREY; price=0; } else { gear_name(&stock[idx],b); c=rar_color(&stock[idx]); price=item_value(&stock[idx])*2; } }
+                else if(tab==2){ gear_name(&bag[idx],b); c=rar_color(&bag[idx]); price=item_value(&bag[idx]); }
+                else { gear_name(&bz_bb[idx],b); c=rar_color(&bz_bb[idx]); price=bz_back_cost(&bz_bb[idx]); }
+                b[19]=0; if(tab!=2 && price>gold) pc=C_RED;
+                if(idx==s){ ui_sel(pg,15,y-1,108,9,U_SEL); }
+                text(pg,19,y,b,c,1);
+                if(price){ char pb[12]; pb[0]=0; ncat(pb,price); scat(pb,"G"); rtext(pg,118,y,pb,pc); } }
+            if(!n) text(pg,20,53,tab==2?"YOUR BAG IS EMPTY":"NOTHING SOLD YET",C_DGREY,1);
+            if(top[tab]>0){ rect(pg,122,50,1,1,C_GREY); rect(pg,121,51,3,1,C_GREY); }
+            if(top[tab]+6<n){ rect(pg,121,102,3,1,C_GREY); rect(pg,122,103,1,1,C_GREY); }
+            ui_well(pg,128,49,98,58);
+            if(n){ Gear tg={0,0,0,0,0,0}; const Gear *cg=0; int ico, pc2=C_WHITE; char desc[56];
+                if(tab==0){ ico=bz_sico[s]; scpy(b,sup_name[s]); scpy(desc,sd[s]); }
+                else { cg = tab==1 ? &stock[s] : tab==2 ? &bag[s] : &bz_bb[s]; if(!cg->it) cg=&tg; ico=bz_icon(cg); gear_name(cg,b); pc2=rar_color(cg); describe(cg,desc); }
+                ico_draw(pg,132,53,ico); wrap_text(pg,152,53,18,b,tab==0?C_WHITE:pc2,2);
+                if(tab==0){ scpy(b,"IN BAG "); ncat(b,bz_have(s)); }
+                else if(cg && cg->it){ scpy(b,bz_rar[cg->rar&3]); if(is_gear(cg)){ scat(b,"  LV "); ncat(b,cg->lvl); } } else b[0]=0;
+                text(pg,152,71,b,U_SOFT,1);
+                if(desc[0]) wrap_text(pg,132,81,23,desc,C_WHITE,3);
+                if(cg && cg->it && is_gear(cg)){ char dt[48]; int sc=delta_text(cg,dt); text(pg,16,110,"VS NOW:",U_SOFT,1); text(pg,60,110,dt,sc>0?C_GREEN:sc<0?C_RED:C_GREY,1); }
+                int price = tab==0 ? sup_cost[s] : tab==1 ? (stock[s].it?item_value(&stock[s])*2:0) : tab==2 ? item_value(&bag[s]) : bz_back_cost(&bz_bb[s]);
+                if(price){ char pb[32]; pb[0]=0;
+                    if(tab==2){ scpy(pb,"SELL FOR "); ncat(pb,price); scat(pb,"G"); text(pg,16,120,pb,C_GOLD,1); scpy(pb,"YOU WILL HAVE "); ncat(pb,gold+price); scat(pb,"G"); rtext(pg,224,120,pb,C_GREY); }
+                    else { scpy(pb,"PRICE "); ncat(pb,price); scat(pb,"G"); text(pg,16,120,pb,price>gold?C_RED:C_GOLD,1);
+                        if(price>gold){ scpy(pb,"NEED "); ncat(pb,price-gold); scat(pb," MORE"); rtext(pg,224,120,pb,C_RED); } else { scpy(pb,"LEFT "); ncat(pb,gold-price); scat(pb,"G"); rtext(pg,224,120,pb,C_GREY); } } } }
+            if(menu_msg[0]) text(pg,16,130,menu_msg,C_GREEN,1);
+            else if(tab==1){ scpy(b,"NEW STOCK COSTS "); ncat(b,rr); scat(b,"G"); text(pg,16,130,b,C_GREY,1); }
+            else if(tab==2 && n) text(pg,16,130,"SEL SELLS ALL COMMON GEAR",C_GREY,1);
+            rect(pg,14,141,212,1,U_RAISE);
+            ui_lhint(pg,20,145, tab==0||tab==3 ? "A: BUY  L/R: TAB  B: LEAVE" : tab==1 ? "A: BUY  SEL: NEW  L/R: TAB  B: LEAVE" : "A: SELL  SEL: COMMON  L/R: TAB  B: BACK", U_SOFT); }
+        vsync(); read_keys(); if(keys!=keys_old) dirty=1;
+        if(n){ if(HIT(K_UP)){ sel[tab]=(sel[tab]+n-1)%n; menu_msg[0]=0; } if(HIT(K_DOWN)){ sel[tab]=(sel[tab]+1)%n; menu_msg[0]=0; } }
+        if(HIT(K_R)||HIT(K_RIGHT)){ tab=(tab+1)&3; menu_msg[0]=0; sfx(7); dirty=1; }
+        if(HIT(K_L)||HIT(K_LEFT)){ tab=(tab+3)&3; menu_msg[0]=0; sfx(7); dirty=1; }
+        if(HIT(K_B)){ menu_msg[0]=0; wait_release(); return; }
+        if(HIT(K_SEL) && tab==1){                                                // a new stock, for gold
+            if(gold<rr) say("NOT ENOUGH GOLD"); else if(confirm(pg,"BUY A NEW STOCK OF GEAR?","THE OLD STOCK IS GONE")){ gold-=rr; restock(); sfx(6); say("THE STALL HAS NEW GEAR"); hud_now(); }
+            dirty=1; }
+        if(HIT(K_SEL) && tab==2){                                                // every common piece of gear at once
+            int cnt=0, tot=0; for(int k=0;k<bag_n;k++) if(is_gear(&bag[k]) && bag[k].rar==R_NORMAL){ cnt++; tot+=item_value(&bag[k]); }
+            if(!cnt) say("NO COMMON GEAR TO SELL");
+            else { char l1[40], l2[40]; scpy(l1,"SELL "); ncat(l1,cnt); scat(l1," COMMON ITEMS?"); scpy(l2,"FOR "); ncat(l2,tot); scat(l2,"G");
+                if(confirm(pg,l1,l2)){ for(int k=0;k<bag_n;){ if(is_gear(&bag[k]) && bag[k].rar==R_NORMAL){ Gear g=bag[k]; bz_push(&g); drop_at(k); } else k++; } gold+=tot; hud_now(); sfx(7); scpy(l1,"SOLD FOR "); ncat(l1,tot); scat(l1,"G"); say(l1); } }
+            dirty=1; }
+        if(HIT(K_A) && n){
+            if(tab==0){ int cost=sup_cost[s];
+                if(gold<cost) say("NOT ENOUGH GOLD");
+                else if(cost>=60 && cost*2>gold && !confirm(pg,"THAT IS MOST OF YOUR GOLD",sup_name[s])) { }
+                else { Gear g=bz_sup(s); if(add_gear(g)){ gold-=cost; hud_now(); sfx(7); } } }
+            else if(tab==1){ if(!stock[s].it) say("SOLD OUT"); else { int cost=item_value(&stock[s])*2; char nm[40]; gear_name(&stock[s],nm); nm[28]=0;
+                if(gold<cost) say("NOT ENOUGH GOLD");
+                else if(cost>=60 && cost*2>gold && !confirm(pg,"THAT IS MOST OF YOUR GOLD",nm)) { }
+                else if(add_gear(stock[s])){ gold-=cost; stock[s].it=0; hud_now(); sfx(7); } } }
+            else if(tab==2){ bz_sell(pg,s); }
+            else { Gear g=bz_bb[s]; int cost=bz_back_cost(&g);
+                if(gold<cost) say("NOT ENOUGH GOLD");
+                else if(add_gear(g)){ gold-=cost; for(int k=s;k<bz_bbn-1;k++) bz_bb[k]=bz_bb[k+1]; bz_bbn--; hud_now(); sfx(7); } }
+            dirty=1; }
+    }
+}
 static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
     volatile u16 *pg=VISPG;
     oam_hide_all(); oam_flush();
@@ -1058,16 +1162,7 @@ static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
         if(sel==8){ workbench(pg); continue; }
         if(sel==7){ trophy_case(pg); continue; }
         if(sel==0){ if(can_fly){ in_menu--; int held=0; for(int t=0;t<20 && HELD(K_A);t++){ vsync(); read_keys(); held=t; } wait_release(); return (next_ok && held<19) ? 2 : 1; } continue; }
-        if(sel==1){ int s2=0; int r; list_desc=sup_desc; while((r=list_pick(pg,"SUPPLIES",6,sup_row,&s2,"A: BUY  B: BACK"))>=0){
-                if(gold<sup_cost[r]){ say("NOT ENOUGH GOLD"); continue; }
-                Gear gg={0,0,0,0,0,0};
-                if(r==0) gg.it=IT_CRUMB; else if(r<3){ gg.it=IT_POTION; gg.sub=r-1; } else if(r==3){ gg.it=IT_BERRY; gg.sub=rndi(8); } else if(r==4){ gg.it=IT_SEED; gg.sub=rndi(6); } else gg.it=IT_WARP;
-                if(add_gear(gg)){ gold-=sup_cost[r]; hud_now(); sfx(7); } } }
-        if(sel==2){ int s2=0; int r; list_desc=stock_desc; while((r=list_pick(pg,"GEAR SHOP",6,stock_row,&s2,"A: BUY  B: BACK"))>=0){
-                if(!stock[r].it) continue; int cost=item_value(&stock[r])*2; if(gold<cost){ say("NOT ENOUGH GOLD"); continue; }
-                if(add_gear(stock[r])){ gold-=cost; stock[r].it=0; hud_now(); sfx(7); } } }
-        if(sel==3){ int s2=0; int r; list_desc=sell_desc; while(bag_n && (r=list_pick(pg,"SELL",bag_n,sell_row,&s2,"A: SELL  B: BACK"))>=0){
-                gold+=item_value(&bag[r]); drop_at(r); if(s2>=bag_n && s2) s2--; hud_now(); sfx(7); } }
+        if(sel>=1 && sel<=3){ list_desc=0; bazaar(pg,sel-1); box(pg,12,20,216,136); continue; }
         list_desc=0;
         if(sel==4){
             char b[48]; int dirty2=1; wait_release();
