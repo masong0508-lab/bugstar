@@ -66,11 +66,14 @@ static const char *const bolt_mem[8][4]={
     {"EVERY SHIP IT EATS, IT GROWS.","IT IS EATING MY MEMORY TOO.","THAT IS WHY I FORGET.","THAT IS WHY I AM SMALL."},
     {"THERE IS A WORD THAT OPENS MY HEART.","THE KING NEVER FOUND IT.","IT IS MY NAME.","MY REAL NAME."},
     {"I KNOW MY NAME NOW.","TAKE ME TO THE BEAST.","I WILL SAY IT. ITS HEART WILL OPEN.","I AM NOT AFRAID. I HAVE YOU."}};
-static void bolt_card(volatile u16 *pg, const char *const *ln, int n){        // a card with Bolt's little face
-    oam_hide_all(); set_affine(31,128,0,0,128);
-    shadow_oam[0].a0=((40)&255)|(1<<8)|(1<<9); shadow_oam[0].a1=((20)&511)|(31<<9)|(1<<14); shadow_oam[0].a2=T_BOLT;
+static void bolt_card_x(volatile u16 *pg, const char *const *ln, int n, int small){        // a card with Bolt's little face (small: the face sits in the title band, for cards with long lines)
+    oam_hide_all();
+    if(small){ int y0=88-(34+n*11+14)/2; set_affine(31,384,0,0,384); shadow_oam[0].a0=((y0-8)&255)|(1<<8)|(1<<9); shadow_oam[0].a1=((12)&511)|(31<<9)|(1<<14); }
+    else { set_affine(31,128,0,0,128); shadow_oam[0].a0=((40)&255)|(1<<8)|(1<<9); shadow_oam[0].a1=((20)&511)|(31<<9)|(1<<14); }
+    shadow_oam[0].a2=T_BOLT;
     oam_flush(); card(pg,"BOLT",ln,n); oam_hide_all(); oam_flush();
 }
+static void bolt_card(volatile u16 *pg, const char *const *ln, int n){ bolt_card_x(pg,ln,n,0); }
 static void bolt_story(volatile u16 *pg, int beat){                            // beats: 0 the start, 1..6 after each zone's boss, 10 the beast dies
     switch(beat){
     case 0: { static const char *const t[6]={"A TIN CAN ROLLS UP BEHIND YOU.","IT BLINKS. IT RATTLES. IT SPEAKS.","","\"I DON'T KNOW WHAT I AM.","I KNOW THAT I AM YOURS.","THE ANTS TOOK YOUR FRIENDS. DOWN. GO DOWN.\""}; bolt_card(pg,t,6); break; }
@@ -86,12 +89,67 @@ static void bolt_story(volatile u16 *pg, int beat){                            /
 // what Bolt says when you talk to him at the ship: what worries him, the next thing to do, what he remembers, and a remark
 static int fuel_max(void);
 EW static u8 bolt_chat;                                                                      // how many times you have talked to him (not saved): rotates his idle remarks
-static const char *const bolt_idle[16]={"\"I COUNTED MY WHEELS. STILL TWO.\"","\"DO YOU THINK SHIPS DREAM?\"","\"I POLISHED THE DASHBOARD. WITH ME.\"","\"I HAVE A FEELING ABOUT THE NEXT WORLD.\"",
-    "\"IF I HAD HANDS I WOULD HOLD YOURS.\"","\"I AM TIN. YOU ARE SOFT. WE ARE A TEAM.\"","\"SOMETHING HUMS IN MY CHEST. IT IS NICE.\"","\"I TRIED TO WHISTLE. IT WAS A FAN.\"",
-    "\"WHEN IN DOUBT, GO DOWN THE DOOR.\"","\"A GOOD BUG KNOWS WHEN TO EAT.\"","\"THE SOUP IN TOWN IS SAFE. MOSTLY.\"","\"TALK TO THE LOCALS. THEY KNOW THINGS.\"",
-    "\"THE CANTINA GOSSIP IS FREE. LISTEN.\"","\"I WONDER WHAT MY NAME TASTES LIKE.\"","\"KEEP SOME GOLD BACK. SHOPS WAIT FOR NO BUG.\"","\"I AM PROUD OF YOU. THAT IS ALL.\""};
+// Bolt: 64 idle remarks, then remarks for where you are: the six story worlds, the 16 planet classes and the 40 weird traits (weather, hour, gravity and size are in bolt_talk)
+static const char *const bolt_idle[64]={"\"I COUNTED MY WHEELS. STILL TWO.\"","\"DO YOU THINK SHIPS DREAM?\"","\"I POLISHED THE DASHBOARD. WITH ME.\"",
+    "\"I HAVE A FEELING ABOUT THE NEXT WORLD.\"","\"IF I HAD HANDS I WOULD HOLD YOURS.\"","\"I AM TIN. YOU ARE SOFT. WE ARE A TEAM.\"",
+    "\"SOMETHING HUMS IN MY CHEST. IT IS NICE.\"","\"I TRIED TO WHISTLE. IT WAS A FAN.\"","\"WHEN IN DOUBT, GO DOWN THE DOOR.\"",
+    "\"A GOOD BUG KNOWS WHEN TO EAT.\"","\"THE SOUP IN TOWN IS SAFE. MOSTLY.\"","\"TALK TO THE LOCALS. THEY KNOW THINGS.\"",
+    "\"THE CANTINA GOSSIP IS FREE. LISTEN.\"","\"I WONDER WHAT MY NAME TASTES LIKE.\"","\"KEEP SOME GOLD BACK. SHOPS WAIT FOR NO BUG.\"",
+    "\"I AM PROUD OF YOU. THAT IS ALL.\"","\"I RAN A SELF TEST. I PASSED. I THINK.\"","\"WHAT IF WE JUST STAYED HERE FOR A BIT?\"",
+    "\"I SAVED A PEBBLE. DO NOT ASK.\"","\"THE STARS LOOK LIKE SPILLED SALT.\"","\"I AM LEARNING TO BLINK ON PURPOSE.\"",
+    "\"SOME DAY I WANT TO SEE THE WHOLE GALAXY.\"","\"YOU HUM WHEN YOU WALK. I LIKE IT.\"","\"I FOUND A COIN IN MY CHASSIS. IT IS YOURS.\"",
+    "\"BEETLES ARE ROCKS WITH OPINIONS. I AGREE.\"","\"DO NOT TRUST AN ANT THAT SMILES.\"","\"I WAS NEVER TOLD WHAT BUTTONS DO. I PRESS ALL.\"",
+    "\"HOLD ON. I WAS THINKING. IT PASSED.\"","\"MY BEST FEATURE IS MY SHINY LID.\"","\"THE SHIP SMELLS LIKE HOME. I CANNOT SMELL.\"",
+    "\"IF WE GET LOST, I WILL FOLLOW YOUR LEGS.\"","\"I WROTE YOU A SONG. IT IS ONE BEEP.\"","\"IS A SLUG JUST A SNAIL WHO GAVE UP?\"",
+    "\"I WILL CARRY THE BAGS. I HAVE NO ARMS.\"","\"REMEMBER TO EAT. REMEMBER TO REST.\"","\"SAVE OFTEN. THE START MENU KNOWS HOW.\"",
+    "\"START HAS FEATS AND EXTRAS. I LOVE FEATS.\"","\"A HARDER DOOR PAYS MORE. I READ IT SOMEWHERE.\"","\"YOUR BUDDY LOOKS HAPPY. I AM JEALOUS.\"",
+    "\"IF YOU FALL, I WILL SAY SOMETHING NICE.\"","\"I HAVE NEVER LOST A STARING CONTEST.\"","\"THE LOCALS GIVE GIFTS. BE NICE TO THEM.\"",
+    "\"WATCH THE FUEL. EMPTY IS A LONG WAY HOME.\"","\"KEEP SOME GOLD BACK FOR SOUP.\"","\"I TALK TO MYSELF. I AM GOOD COMPANY.\"",
+    "\"DID YOU HEAR THAT? NO. NEITHER DID I.\"","\"ONE DAY I WILL KNOW WHAT I AM FOR.\"","\"THIS SEAT IS WARM. SOMEONE WAS HERE.\"",
+    "\"I LOVE THE SOUND OF THE ENGINES.\"","\"I TOLD A JOKE TO THE AUTOPILOT. NOTHING.\"","\"THE HOLD IS TIDY. I TIDIED IT.\"",
+    "\"TINY BUGS, BIG WORLDS. YOUR KIND OF MATH.\"","\"HOME IS WHERE THE SHIP IS PARKED.\"","\"MY GEARS ARE TICKLISH. DO NOT TEST.\"",
+    "\"I WOULD DIE FOR YOU. I AM TIN. I WOULD DENT.\"","\"SUN, MOON, SHIP. I AM HAPPY WITH THIS.\"","\"THE BIG QUESTIONS ARE SMALL IN SPACE.\"",
+    "\"BEWARE OF SLIME. IT HAS A LONG MEMORY.\"","\"GOOD GEAR BEATS GOOD LUCK. USUALLY.\"","\"I PRACTICED SAYING YOUR NAME. IT IS BUG.\"",
+    "\"ASK ME ANYTHING. I MAY ANSWER.\"","\"PLAN: GO. FIGHT. LOOT. NAP. REPEAT.\"","\"I DREAM OF A BIGGER SHIP. NO OFFENSE.\"",
+    "\"THAT WAS A GOOD DAY. I WROTE IT DOWN.\""};
+static const char *const bolt_zone[6][2]={{"\"THE GARDEN IS WHERE I WOKE UP. IT FEELS KIND.\"","\"BEE HUM AND WET GRASS. I COULD STAY.\""},
+    {"\"THE POND IS CALM. I DO NOT TRUST CALM.\"","\"DEEP WATER. I AM ONLY WATERPROOF IN SPIRIT.\""},
+    {"\"SOMEONE LEFT A PICNIC. ALL OF IT. ODD.\"","\"THE ANTS LIKE THIS PLACE. I WONDER WHY.\""},
+    {"\"THE NIGHT LAWN GLOWS. THE GLOWFLIES WATCH US.\"","\"I DO NOT LIKE THE WRAITHS. THEY KNOW ME.\""},
+    {"\"THE BEES SING. I KNOW THE TUNE. HELP.\"","\"DUST AND HONEY. MY SENSORS ARE CONFUSED.\""},
+    {"\"THE ANTHILL. THE DAWN FELL HERE. SO DID I.\"","\"THE KING WAITS. LET US NOT KEEP HIM.\""}};
+static const char *const bolt_cls[16][2]={{"\"A PLAIN GOOD WORLD. I WILL TAKE IT.\"","\"NOTHING HERE WANTS US DEAD. SUSPICIOUS.\""},
+    {"\"MORE HILLS THAN A SHIP SHOULD LAND ON.\"","\"I ROLL UP. I ROLL DOWN. I ROLL UP AGAIN.\""},
+    {"\"GRASS AS FAR AS MY SENSORS GO.\"","\"A FLAT WORLD. MY KIND OF WORLD.\""},
+    {"\"IF I SINK, TELL THE FISH I WAS NICE.\"","\"STAY ON THE SAND. THE SEA HAS OPINIONS.\""},
+    {"\"THE SAND GETS IN MY WHEELS. AND MY MIND.\"","\"DUNES. MORE DUNES. A DUNE WITH A HAT.\""},
+    {"\"COLD. MY BOLTS RATTLE LIKE TEETH.\"","\"THE SNOW IS KIND. THE WIND IS NOT.\""},
+    {"\"THE VINES LOOK AT ME. I LOOK BACK.\"","\"SOMETHING HERE IS SINGING. IT IS BUGS.\""},
+    {"\"EVERYTHING HERE HITS DOUBLE. WE DO NOT.\"","\"DEATH PLANET. I WILL GUARD THE SHIP. INSIDE.\""},
+    {"\"A CITY WITH NO ENDS. FIND THE MARKET.\"","\"SO MANY DOORS. SO MANY LOCALS.\""},
+    {"\"IT IS TOO NICE. KEEP YOUR EYES OPEN.\"","\"I WOULD LIKE TO RETIRE HERE.\""},
+    {"\"MY PAINT IS BLISTERING. THIS IS INFERNO.\"","\"KEEP MOVING. THE FLOOR IS ANGRY.\""},
+    {"\"YELLOW POOLS EAT BOOTS. I HAVE NO BOOTS.\"","\"HOLD YOUR BREATH. I WILL HOLD A FAN.\""},
+    {"\"THE GLASS GROUND SHOWS ME TWICE. RUDE.\"","\"STEP SOFTLY. THE GLASS BITES.\""},
+    {"\"A WORLD OF RIBS. DO NOT COUNT THEM.\"","\"MORE BONES. THE DIGGING SHOULD BE GOOD.\""},
+    {"\"RED TIDES. LET US KEEP OUR FEET DRY.\"","\"NO SWIMMING. I MEAN IT.\""},
+    {"\"THIS COLD IS A PERSON. IT HATES US.\"","\"EVEN MY SHADOW SHIVERS.\""}};
+static const char *const bolt_trait[40]={"\"THE WORLD STUTTERS. SO DO I. SOLIDARITY.\"","\"EVERY COLOUR AT ONCE. MY EYES ARE FULL.\"","\"THIS PLANET IS SMALL. I CAN SEE MY BACK.\"",
+    "\"SPIKES. WATCH YOUR FEET. I HAVE WHEELS.\"","\"THE GIANTS LOOK DOWN. BE POLITE.\"","\"NO GRAVITY. I AM FLOATING. HELP. OR DO NOT.\"",
+    "\"A METAL FLOOR. IT SINGS TO ME. COUSINS.\"","\"THE VOID LOOKS BACK. LET US NOT STARE.\"","\"ROCKS FALL FROM THE SKY. I AM NOT A HELMET.\"",
+    "\"THE SKY IS A MIRROR. I LOOK GOOD UP THERE.\"","\"DISCO. I CANNOT DANCE. I CAN ROLL.\"","\"THE GROUND WOBBLES. SO DO MY WHEELS.\"",
+    "\"SOMETHING IS SHRINKING US. I FEEL FINE. SMALL.\"","\"THE JUNGLE GROWS FAST HERE. WATCH THE LEAVES.\"","\"THE LIFE HERE IS SHY. DO NOT STARE.\"",
+    "\"THE LIFE HERE IS ANGRY. DO NOT STARE.\"","\"STICKY GROUND. MY WHEELS HAVE REGRETS.\"","\"ICE UNDERFOOT. I AM A TIN SKATER.\"",
+    "\"THE ROCKS SING. THEY ARE OFF KEY. BEAUTIFUL.\"","\"SO MANY SUNS. WHERE IS MY SHADE.\"","\"RINGS IN THE SKY. SOMEONE PUT A RING ON IT.\"",
+    "\"STRIPES. THE WHOLE WORLD IS A DESIGN.\"","\"A CHECKERED WORLD. I AM THE PIECE.\"","\"FOG. I CAN HEAR YOU. I CANNOT SEE YOU.\"",
+    "\"GHOSTS HERE. I AM NOT SCARED. I AM TIN.\"","\"SLUGS. SO MANY SLUGS. WATCH YOUR STEP.\"","\"THE HEAT IS UP. MY LID IS WARM.\"",
+    "\"FROST ON MY LID. I LOOK DISTINGUISHED.\"","\"FLOODED. I WILL RUST WITH STYLE.\"","\"DRY AS DUST. I MISS THE POND.\"",
+    "\"THE COLOURS ARE BACKWARDS. SO IS MY BRAIN.\"","\"BROWN AND SOFT. LIKE A MEMORY.\"","\"MOONS EVERYWHERE. I PICKED ONE FOR YOU.\"",
+    "\"THE SKY IS DANCING. I FORGOT TO BLINK.\"","\"LUCKY AIR. FIND SOMETHING SHINY. GO ON.\"","\"THE AIR FEELS HEALING. BREATHE FOR ME.\"",
+    "\"THE AIR IS BAD. KEEP IT SHORT.\"","\"MAGNETS. MY WHEELS WANT TO GO SIDEWAYS.\"","\"THE ORE HIDES. COAX IT OUT. SHH.\"",
+    "\"STEPS ON STEPS. A GIANT STAIRCASE OUTDOORS.\""};
 static void bolt_talk(volatile u16 *pg){
-    const char *t[7]; int n=0; static char l1[48], l2[48]; EW static char c1[40], c2[48];      // (the two new ones in EWRAM: IWRAM is nearly full)
+    const char *t[8]; int n=0; static char l1[48], l2[48]; EW static char c1[40], c2[48];      // (the two new ones in EWRAM: IWRAM is nearly full)
     // what worries him first (at most two things, the most urgent ones)
     { int w=0;
       if(hearts*2<maxh && w<2){ t[n++]="\"YOU ARE HURT. THE CARE TAB WILL HEAL YOU.\""; w++; }
@@ -105,10 +163,26 @@ static void bolt_talk(volatile u16 *pg){
     else if(beast_stage>=3 && data_cores<8){ scpy(l1,"\"THE OUTPOSTS HOLD MY MEMORY. "); ncat(l1,data_cores); scat(l1," OF 8.\""); t[n++]=l1; t[n++]="\"RED MARKS ON THE MAP. HATCHES ON THE GROUND.\""; t[n++]="\"BRING ME BACK TO MYSELF.\""; }
     else if(beast_stage>=3){ t[n++]="\"I KNOW MY NAME. THE DAWN.\""; t[n++]="\"FLY INTO THE BEAST. SHOOT ITS CORE.\""; t[n++]="\"I WILL DO THE REST.\""; }
     else { t[n++]="\"THE GALAXY IS OPEN. GO ANYWHERE.\""; t[n++]="\"THE BEAST IS OUT THERE. SO ARE ITS OUTPOSTS.\""; }
-    if(data_cores>0 && n<7){ int k=data_cores-1; if(k>7) k=7; scpy(l2,"\"I REMEMBER: "); scat(l2,bolt_mem[k][0]); scat(l2,"\""); t[n++]=l2; }
-    if(n<7) t[n++]=bolt_idle[(bolt_chat*5+(data_cores+zone))&15];                            // a different remark each time you come back
+    if(data_cores>0 && n<8){ int k=data_cores-1; if(k>7) k=7; scpy(l2,"\"I REMEMBER: "); scat(l2,bolt_mem[k][0]); scat(l2,"\""); t[n++]=l2; }
+    if(n<8){                                                                                    // a remark about where you are: the world, its traits, its weather and hour, its gravity and size
+        const char *c[20]; int nc=0;
+        if(!endless){ c[nc++]=bolt_zone[zone%6][0]; c[nc++]=bolt_zone[zone%6][1]; }
+        else if(wd.cls<NPC){ c[nc++]=bolt_cls[wd.cls][0]; c[nc++]=bolt_cls[wd.cls][1]; }
+        if(wd.weird){ c[nc++]="\"A WEIRD WORLD. KEEP YOUR EYES OPEN.\""; for(int k=0;k<wd.ntr && k<4;k++) c[nc++]=bolt_trait[wd.tr[k]%NMW]; }
+        if(wd.hour==2) c[nc++]="\"IT IS DARK. STICK CLOSE. I HAVE A GLOW.\""; else if(wd.hour==1) c[nc++]="\"DUSK. THE SKY IS GOING PINK. NICE.\"";
+        if(wd.weather==1) c[nc++]="\"THE RAIN IS TAPPING ON ME. I AM A DRUM.\""; else if(wd.weather==2) c[nc++]="\"SNOW ON MY LID. I AM A HAT RACK NOW.\"";
+        else if(wd.weather==3) c[nc++]="\"DUST AGAIN. I WILL BE A COUCH SOON.\""; else if(wd.weather>=4) c[nc++]="\"EMBERS IN THE AIR. KEEP BEHIND ME.\"";
+        if(wd.city) c[nc++]="\"A CITY! THE MARKET AND CANTINA AWAIT.\"";
+        if(wd.sand) c[nc++]="\"SAND UNDERFOOT. WHEELS HATE IT.\""; else if(wd.snow) c[nc++]="\"SNOWY GROUND. MY TRACKS LOOK LIKE ART.\"";
+        if(wd.grav>=3) c[nc++]="\"THE GRAVITY IS HEAVY. I FEEL IT IN MY AXLES.\""; else if(wd.grav==0) c[nc++]="\"LIGHT GRAVITY. I AM A BOUNCY TIN.\"";
+        if(wd.psz<=1) c[nc++]="\"A SMALL WORLD. A LONG WALK IS A SHORT WALK.\""; else if(wd.psz>=4) c[nc++]="\"A HUGE WORLD. DO NOT WANDER OFF. OR DO.\"";
+        if(wd.mood==MOOD_LOVE) c[nc++]="\"THE LOCALS LIKE US. SMILE BACK.\""; else if(wd.mood==MOOD_HATE) c[nc++]="\"THE LOCALS DO NOT LIKE US. SMILE ANYWAY.\"";
+        if(wd.ruins) c[nc++]="\"THERE ARE RUINS HERE. THEY WANT A RIDDLE.\"";
+        if(wd.fossils>=3) c[nc++]="\"BONES IN THE GROUND. DIG THEM UP. GOOD LOOT.\"";
+        if(nc) t[n++]=c[(bolt_chat+(int)(wd.tseed&7))%nc]; }                                      // a different one each time you come back
+    if(n<8) t[n++]=bolt_idle[(bolt_chat*13+data_cores*5+zone*3+(int)(wd.tseed&63))&63];        // and one of the 64 idle remarks (13 is odd: it visits all 64)
     bolt_chat++;
-    bolt_card(pg,t,n);
+    bolt_card_x(pg,t,n,1);                                                                      // (his lines are long now: the face goes up in the title band)
 }
 // ---------------------------------------------------------------- story cards: a few short lines, then A
 static void card(volatile u16 *pg, const char *title, const char *const *ln, int n){
