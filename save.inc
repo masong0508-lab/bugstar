@@ -329,7 +329,7 @@ static void options_more(volatile u16 *pg){
         if(HIT(K_R)){ int g=XOT[sel].grp; while(sel<NXOPT && XOT[sel].grp==g) sel++; if(sel>=NXOPT) sel=0; sfx(7); dirty=1; }
         if(HIT(K_L)){ int g=XOT[sel].grp; while(sel>0 && XOT[sel].grp==g) sel--; g=XOT[sel].grp; while(sel>0 && XOT[sel-1].grp==g) sel--; sfx(7); dirty=1; }
         int d = HIT(K_RIGHT)||HIT(K_A) ? 1 : HIT(K_LEFT) ? -1 : 0;
-        if(d){ int n=XOT[sel].n; xo[sel]=(u8)(((xo_i(sel)+d+n)%n)^XOT[sel].def); xo_apply(); sfx(2); dirty=1; }
+        if(d){ int n=XOT[sel].n; xo[sel]=(u8)(((xo_i(sel)+d+n)%n)^XOT[sel].def); xo_apply(); sfx(2); if(sel==XO_RUMBLE||sel==XO_RUMEV||sel==XO_RUMHUM) rumble(RP_TEST); dirty=1; }   // (a test buzz when you change a rumble setting)
         if(HIT(K_SEL)){ if(confirm(pg,"RESET MORE OPTIONS?","BACK TO THE NORMAL SETTINGS")){ for(int i=0;i<NXO;i++) xo[i]=0; xo_apply(); sfx(4); } dirty=1; }
         if(HIT(K_B)||HIT(K_START)){ settings_save(); wait_release(); return; }
     }

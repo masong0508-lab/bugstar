@@ -198,7 +198,7 @@ enum { XO_DMGIN, XO_DMGOUT, XO_CRIT, XO_BITESPD, XO_BITERNG, XO_KNOCK, XO_HITSTO
        XO_HUNGER, XO_REGEN, XO_HEAL, XO_MANA, XO_MAXH, XO_FUEL,
        XO_MOVE, XO_DODGEI, XO_DODGED, XO_FLOORS,
        XO_XP, XO_GOLD, XO_DROPS, XO_UNIQUE, XO_XPNEED,
-       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, XO_GFX, NXOPT };
+       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, XO_GFX, XO_RUMBLE, XO_RUMEV, XO_RUMHUM, NXOPT };
 XL(xl_dmgin,"NONE","1/4","1/2","NORMAL","X2","X4","X10")           XV(xl_dmgin,0,25,50,100,200,400,1000)
 XL(xl_dmgout,"1/4","1/2","NORMAL","X2","X5","X10","X100","X1000")  XV(xl_dmgout,25,50,100,200,500,1000,10000,100000)
 XL(xl_crit,"NORMAL","+10%","+25%","+50%","ALWAYS")                   XV(xl_crit,0,10,25,50,100)
@@ -211,6 +211,8 @@ XL(xl_vamp,"OFF","1","2","5","10","50")                             XV(xl_vamp,0
 XL(xl_spell,"FREE","1/4","1/2","NORMAL")                            XV(xl_spell,0,25,50,100)
 XL(xl_invt,"SHORT","NORMAL","LONG","2 SEC","5 SEC")                 XV(xl_invt,15,30,60,120,300)
 XL(xl_gfx,"FAST","BALANCED","SMOOTH")                               XV(xl_gfx,0,1,2)
+XL(xl_rum,"OFF","LOW","MEDIUM","HIGH","MAX","EXTREME")                  XV(xl_rum,0,1,2,3,4,5)
+XL(xl_rumev,"ALL EVENTS","FIGHTS AND BIG","BIG ONLY")                  XV(xl_rumev,0,1,2)
 XL(xl_yn,"OFF","ON")                                                XV(xl_yn,0,1)
 XL(xl_espd,"FROZEN","1/2","3/4","NORMAL","X1.5","X2","X3")          XV(xl_espd,0,50,75,100,150,200,300)
 XL(xl_bud,"1","2","3","5","10")                                   XV(xl_bud,1,2,3,5,10)
@@ -273,6 +275,9 @@ static const XOpt XOT[NXOPT]={
   [XO_VOL]    =XR("MASTER VOLUME","HOW LOUD EVERYTHING IS. MUTE TURNS ALL SOUND OFF",xl_vol,0,XG_EXTRA),
   [XO_GFX]    =XR("DUNGEON LOOK","FAST IS CHUNKIER BUT RUNS MUCH SMOOTHER",xl_gfx,1,XG_EXTRA),
   [XO_FPS]    =XR("FPS COUNTER","SHOWS FRAMES PER SECOND IN THE CORNER",xl_yn,0,XG_EXTRA),
+  [XO_RUMBLE] =XR("RUMBLE","STRENGTH OF THE RUMBLE CARTRIDGE MOTOR. DOES NOTHING WITHOUT ONE",xl_rum,2,XG_EXTRA),
+  [XO_RUMEV]  =XR("RUMBLE EVENTS","ALL: PICKUPS AND STEPS TOO. FIGHTS: HITS, KILLS, HURT. BIG: ONLY HURT, CRASHES, QUAKES",xl_rumev,1,XG_EXTRA),
+  [XO_RUMHUM] =XR("RUMBLE HUM","A STEADY RUMBLE FROM SHIP ENGINES, KART BOOSTS AND DRIFTS",xl_yn,1,XG_EXTRA),
   [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),
 };
 _Static_assert(NXOPT<=NXO, "the extra options must fit the NXO bytes");
@@ -294,6 +299,7 @@ static int nbud(void){
 static int xo_n(int c){ int v=xo_v(XO_ECOUNT); if(v==100) return c; c=c*v/100; if(v && c<1) c=1; return c; }
 static int xo_fuel(int n){ return (n*xo_v(XO_FUEL)+99)/100; }
 
+#include "rumble.inc"
 #include "sound.inc"
 static void ore_reset(void); static void ore_save(void); static void ore_load(void);   // (ore.inc, after save.inc)
 #include "game.inc"
@@ -555,7 +561,7 @@ static void fish_catch(void){
     st_fish++; fish_streak++; if(pool_left[fish_pool]>0 && pool_left[fish_pool]!=255) pool_left[fish_pool]--;
     ach_check(); sfx(f>=5?6:2); fish_state=0; fish_rc=8;
     char b[40];
-    if(f>=5){ scpy(b, f==7?"LEGENDARY! ":"RARE CATCH! "); scat(b,fish_name[f]); scat(b,"!"); say(b); msg_timer=80; if(opt_shake) shake_t=6; }
+    if(f>=5){ rumble(RP_CATCH); scpy(b, f==7?"LEGENDARY! ":"RARE CATCH! "); scat(b,fish_name[f]); scat(b,"!"); say(b); msg_timer=80; if(opt_shake) shake_t=6; }
     else if(angler()>rk){ scpy(b,"ANGLER RANK: "); scat(b,rank_nm[angler()]); scat(b,"!"); say(b); msg_timer=70; sfx(6); }
     else if(fish_streak>=3 && !(fish_streak%3)){ int gv=6+dlv()*4+depth_no*2+fish_streak*2; earn(gv); scpy(b,"CATCH STREAK X"); ncat(b,fish_streak); scat(b," +"); ncat(b,gv); scat(b,"G"); say(b); sfx(7); }
     if(rndi(100)<5){ int gv=10+dlv()*6+depth_no*3; earn(gv); scpy(b,"A POUCH ON THE LINE! +"); ncat(b,gv); scat(b,"G"); say(b); sfx(7); }
@@ -762,7 +768,7 @@ static int cast_spell(int s, s32 dirx, s32 diry, s32 plx, s32 ply){
 static void mine_hazard(void){                                                   // mines: toxic gas hurts on a timer (a shield keeps it out); the roof drops rocks (keep moving and they miss)
     if(fl_ev!=FE_GAS && fl_ev!=FE_CAVE){ mh_t=0; return; }
     mh_t++;
-    if(fl_ev==FE_CAVE && mh_t==330){ say("THE ROOF RUMBLES! KEEP MOVING"); sfx(12); if(opt_shake) shake_t=20; }
+    if(fl_ev==FE_CAVE && mh_t==330){ say("THE ROOF RUMBLES! KEEP MOVING"); sfx(12); rumble(RP_QUAKE); if(opt_shake) shake_t=20; }
     if(mh_t<(fl_ev==FE_GAS?240:420)) return;
     mh_t=0;
     int dmg=1+dlv()/6+depth_no/4;

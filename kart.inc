@@ -746,7 +746,7 @@ static void kart_step(void){
     if(kr_mode==1 && water && !kair && kgap_at(rc[0].pi)){ if(++kwet>20){ kart_splash(); return; } } else kwet=0;   // you dropped into a jump's water
     { int want = kboost_t ? 40 : kv>K_VBASE ? (int)((kv-K_VBASE)>>10) : 0; if(want>24 && !kboost_t) want=24; kfov_add += (want-kfov_add)/6 + (want>kfov_add) - (want<kfov_add); }   // speed: the view widens
     int boosting=0; if(HELD(K_B) && kart_boost>0 && !rc[0].spin){ boosting=1; if((frames&1) || kstat(&kl,KST_BST)<7) kart_boost--; } else if(!HELD(K_B) && kart_boost<100 && (frames%3)==0) kart_boost++;
-    if(kboost_t){ kboost_t--; boosting=1; }
+    if(kboost_t){ kboost_t--; boosting=1; rum_hum(95); }
     if(boosting) vcap = onroad ? vmax*160/100 : vmax*120/100;
     if(rc[0].cloud) vcap=vcap*3/4;
     vcap=vcap*(100+kstar)/100;                                                                 // every star bit: a little more top speed
@@ -761,7 +761,7 @@ static void kart_step(void){
         s32 spd=kv<0?-kv:kv; int fa=(int)((spd*768)/(vmax?vmax:1)); if(fa>256) fa=256; tr=(tr*fa)>>8;
         if(HELD(K_R) && s && kv>vmax/2){ if(!kdrift){ kdrift=s; sfx(11); } if(s==kdrift){ tr=tr*3/2; if(kcharge<200) kcharge += 1 + (kcharge<110 && (frames&1)); } else tr=tr*3/4; }
         if(kdrift && !(HELD(K_R) && s==kdrift)){ if(kcharge>170){ kboost_t=72; show_msg("ULTRA MINI-TURBO!"); sfx(10); } else if(kcharge>110){ kboost_t=50; show_msg("SUPER MINI-TURBO!"); sfx(10); } else if(kcharge>50){ kboost_t=28; sfx(10); } kdrift=0; kcharge=0; }
-        khd=(khd+s*tr)&1023; kturn=s; kdrift_t = kdrift ? kdrift_t+1 : 0;
+        khd=(khd+s*tr)&1023; kturn=s; kdrift_t = kdrift ? kdrift_t+1 : 0; if(kdrift) rum_hum(kcharge>170?110:kcharge>110?80:kcharge>50?55:35);
         int acc=(int)(vmax/(110-kstat(&kl,KST_ACC)*7)); if(acc<16) acc=16;
         if(kstall){ kstall--; up=0; }
         if(up) kv+=acc; else if(dn){ if(kv>0) kv-=vmax/30; else if(kv>-vmax/3) kv-=acc/2; } else kv-=kv/40;

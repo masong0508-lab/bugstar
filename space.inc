@@ -554,7 +554,7 @@ static void lair_leave(void){ int f=beast_fight; in_lair=0; music(3); { u32 t10[
 static void ship_hit(int dm, int crash){            // shields first, then the hull; the cockpit shakes
     dm=dm*ship_armour()/100; if(dm<1) dm=1;
     if(shield>=dm) shield-=dm; else { hull-=dm-shield; shield=0; }
-    hit_t=6; sshake = crash ? 14 : 8; if(crash){ crash_cd=30; sfx(12); } else sfx(4);
+    hit_t=6; sshake = crash ? 14 : 8; if(crash){ crash_cd=30; sfx(12); rumble(RP_CRASH); } else sfx(4);
 }
 // ---------------------------------------------------------------- one frame of flying
 // ---- choose which world of the system to land on (only asked when the star has more than one)
@@ -604,7 +604,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
     int in_air = !in_lair && pd < PR*5/2;                                          // close to the planet there is air
     { int a16=ship_accel16(); int burn = HELD(K_L) && fuel>0;
-      if(HELD(K_B)){ int a=a16*(burn?2:1); svx_ += (bf[0]*a)>>18; svy_ += (bf[1]*a)>>18; svz_ += (bf[2]*a)>>18; if(burn && (frames&15)==0) fuel-=xo_fuel(1); }
+      if(HELD(K_B)){ rum_hum(burn?110:45); int a=a16*(burn?2:1); svx_ += (bf[0]*a)>>18; svy_ += (bf[1]*a)>>18; svz_ += (bf[2]*a)>>18; if(burn && (frames&15)==0) fuel-=xo_fuel(1); }
       if(HELD(K_R)){ int k=6+ship.fins*2;
           if(spin_rock>=0 && ast[spin_rock].alive){ const Ast *ra=&ast[spin_rock]; svx_ += ((s32)ra->vx-svx_)*k/32; svy_ += ((s32)ra->vy-svy_)*k/32; svz_ += ((s32)ra->vz-svz_)*k/32; }      // beside a fast rock: match its drift
           else { svx_ -= svx_*k/64; svy_ -= svy_*k/64; svz_ -= svz_*k/64; } }           // retro thrusters

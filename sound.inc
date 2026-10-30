@@ -64,7 +64,7 @@ IWRAM static void music_tick(void){
 }
 IWRAM static void irq_handler(void){
     u16 f=REG_IF;
-    if(f&1){ music_tick(); m7_irq(); }
+    if(f&1){ music_tick(); m7_irq(); rumble_tick(); }
     REG_IF=f; *(volatile u16*)0x03007FF8 |= f;
 }
 static void music(int n){ if(mus_track==n) return; mus_track=n; mus_step=0; mus_t=1; if(n<0){ SND(0x08)=0; SND(0x12)=0; } }
@@ -83,6 +83,7 @@ static void sound_init(void){
 // little noises: 0 bite, 1 hit, 2 pick up, 3 fireball, 4 hurt, 5 stairs, 6 fanfare, 7 coin, 8 splash, 9 monster dies, 10 spark,
 // 11 footstep, 12 thud (walls, slams, crashes), 13 crunch (wood breaking)
 static void sfx(int n){
+    rumble_sfx(n);                      // (the motor does not care whether the sound is on)
     if(!opt_sfx) return;
     switch(n){
         case 0: SND(0x18)=(0xA<<12)|(1<<8); SND(0x1C)=0x8000|(3<<4)|1; break;

@@ -332,3 +332,8 @@ A HOLLOW rock's dungeon is now a mine: long labyrinth shafts with earth walls, a
 
 ## Humanoid callings
 Your humanoid's outfit now gives it a **calling**, worked out from the parts you picked (nothing extra is saved). KNIGHT (armour, helmet, boots): +3 DEF, +8 HP, a bit slower. WIZARD (wizard hat, robe, glasses): +8 MANA, +1 DMG. RANGER (hoodie or jacket, cowboy hat or cap, boots): +15 SPD, +6 CRIT. ROGUE (shades or eyepatch, scarf, slim): +12 CRIT, +15 GOLD. EXPLORER (jetpack or backpack): +8 SPD, +1 LIGHT. ANGEL (wings, halo): +1 REGEN, +4 HP. ROYAL (crown or top hat): +35 GOLD, +1 DMG. Dress for none of them and you are a WANDERER with no bonus. Height and build count too: TINY is quick and frail, TOWERING tough and slow, SLIM quick, BROAD sturdy. In the mirror the new CALLING row dresses you for one, and the perks show live under the preview.
+
+## Rumble
+`rumble.inc` drives the motor of a rumble cartridge (Drill Dozer style GPIO, pin 3 at 0x080000C4). Plain ROM ignores the writes, so it is harmless without a motor.
+Options > SELECT (MORE OPTIONS) > EXTRAS: RUMBLE (off, low, medium, high, max, extreme), RUMBLE EVENTS (all, fights and big, big only) and RUMBLE HUM (steady rumble from ship engines, kart boosts and drifts).
+Every sound effect maps to a pattern (strength, length, shape, class); extra patterns: cave quakes, ship crashes and rare catches. The motor is pulsed as a duty cycle from the vblank interrupt, so a long load never leaves it stuck on.
