@@ -14,6 +14,8 @@ $CC sim_test.c sim_core.c god.c lv.c -o out/sim_test
 ./out/sim_test
 $CC env_test.c sim_core.c god.c lv.c -o out/env_test
 ./out/env_test
+$CC social_test.c sim_core.c god.c lv.c -o out/social_test
+./out/social_test
 # against Python's own big integers: random and edge numbers, all operations, including saturation at 64^256
 python3 - <<'PY' > out/lv_cases.txt
 import random

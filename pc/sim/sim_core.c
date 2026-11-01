@@ -20,7 +20,7 @@ uint32_t sim_rngn(uint64_t seed, uint32_t id, uint32_t purpose, uint64_t tick, u
 }
 
 // purposes (any distinct numbers)
-enum { RP_NAME = 1, RP_JOB, RP_SHIFT, RP_NEED, RP_LAND, RP_WEATHER, RP_CHAT, RP_SPECIES, RP_CAST, RP_NEWFOLK, RP_IDEA, RP_HOME };
+enum { RP_NAME = 1, RP_JOB, RP_SHIFT, RP_NEED, RP_LAND, RP_WEATHER, RP_CHAT, RP_SPECIES, RP_CAST, RP_NEWFOLK, RP_IDEA, RP_HOME, RP_FRIEND };
 
 // ---------------------------------------------------------------- names
 static const char *const ON[] = { "P","M","T","B","K","L","N","R","S","V","W","Z","D","G","F","H","J","CH","SH","TH","BR","TR","FL","GR","SN","PL" };
@@ -107,6 +107,8 @@ int sim_event_text(const Sim *s, const SimEvent *e, char *o, size_t n){
     case SIME_SPECIES: sim_species_name(((uint32_t)e->a << 16) | e->b, sp); at = cat(o, n, at, "THE "); at = cat(o, n, at, sp); at = cat(o, n, at, " APPEARED"); break;
     case SIME_LEGEND: at = cat(o, n, at, "A LEGEND WAS BORN"); break;
     case SIME_IDEA:   at = cat(o, n, at, nm); at = cat(o, n, at, " HAD A GOOD IDEA"); break;
+    case SIME_FRIEND: at = cat(o, n, at, nm); at = cat(o, n, at, e->a >= 100 ? " IS YOUR BEST FRIEND" : e->a >= 50 ? " IS YOUR FRIEND" : " KNOWS YOU NOW"); break;
+    case SIME_LETTER: { char t[48]; sim_letter_text(s, e->who, e->a, t, sizeof t); at = cat(o, n, at, "LETTER FROM "); at = cat(o, n, at, nm); at = cat(o, n, at, ": "); at = cat(o, n, at, t); } break;
     case SIME_SANDBOX: at = cat(o, n, at, e->a ? "SANDBOX: ALL GOD POWERS ARE OPEN" : "SANDBOX IS OFF"); break;
     default: at = cat(o, n, at, "..."); break;
     }
@@ -329,6 +331,7 @@ uint64_t sim_hash(const Sim *s){
     hb(&x, s->hills); hb(&x, s->birds); hb(&x, s->ideas); hb(&x, s->legends); hb(&x, s->nspecies); hb(&x, s->ore); hb(&x, s->weather); h16(&x, s->weather_left);
     h32(&x, s->larder); h16(&x, s->spirit); for(int k = 0; k < SIM_MAXSPECIES; k++) h32(&x, s->species_seed[k]);
     uint8_t gb[GOD_STATE_BYTES]; god_state_to_bytes(&s->god, gb); for(int k = 0; k < GOD_STATE_BYTES; k++) hb(&x, gb[k]);
+    { int fs = 0; for(int k = 0; k < s->nfolk; k++) fs += s->friend[k]; if(fs){ for(int k = 0; k < s->nfolk; k++){ hb(&x, s->friend[k]); h32(&x, s->talked[k]); } } }
     if(s->env_on){ hb(&x, 1); hb(&x, s->locked); h16(&x, (uint16_t)s->temp_c); }
     h32(&x, s->day_seen); h32(&x, s->log_n); uint32_t cnt = sim_log_count(s);
     for(uint32_t b = 0; b < cnt; b++){ const SimEvent *e = sim_log_at(s, b); h32(&x, e->tick); h16(&x, e->kind); h16(&x, e->who); h16(&x, e->a); h16(&x, e->b); h32(&x, e->seed32); }
@@ -350,6 +353,34 @@ size_t sim_dump(const Sim *s, char *o, size_t n){
 
 // ---------------------------------------------------------------- the side file
 uint32_t sim_fnv(const void *p, size_t n){ const uint8_t *b = p; uint32_t h = 2166136261u; while(n--){ h ^= *b++; h *= 16777619u; } return h; }
+int sim_talk_to(Sim *s, int k){
+    if(k < 0 || k >= s->nfolk) return -1;
+    uint32_t today = (uint32_t)sim_day(s) + 1; if(s->talked[k] == today) return -1;
+    s->talked[k] = today; int v = s->friend[k] + 8 + (int)sim_rngn(s->seed, (uint32_t)k, RP_FRIEND, today, 5); if(v > 100) v = 100;
+    int before = s->friend[k]; s->friend[k] = (uint8_t)v;
+    if(!before) sim_log(s, SIME_FRIEND, k, 0, 0);
+    for(int st = 1; st <= 4; st++) if(before < st * 25 && v >= st * 25){ sim_log(s, SIME_LETTER, k, st, 0); if(st >= 2) sim_log(s, SIME_FRIEND, k, st * 25, 0); }
+    return v;
+}
+int sim_letter_text(const Sim *s, int who, int step, char *out, size_t n){
+    static const char *const L[4][3] = { { "I AM GLAD YOU STOPPED BY", "COME BACK ANY DAY", "THE TOWN LIKES SEEING YOU" },
+        { "THERE IS A SEAT FOR YOU AT MY TABLE", "I SAVED YOU THE BEST FRUIT", "YOU MAKE THE DAYS BRIGHTER" },
+        { "I TELL EVERYONE ABOUT YOU", "MY HOME IS YOUR HOME", "I WOULD WALK FAR FOR YOU" },
+        { "YOU ARE MY DEAREST FRIEND", "NOTHING WILL EVER BREAK THIS", "THANK YOU FOR EVERYTHING" } };
+    if(step < 1) step = 1; if(step > 4) step = 4; (void)n;
+    const char *t = L[step - 1][sim_rngn(s->seed, (uint32_t)who, RP_FRIEND, 1000u + (uint32_t)step, 3)];
+    size_t i = 0; while(t[i] && i + 1 < n){ out[i] = t[i]; i++; } out[i] = 0; return (int)i;
+}
+void sim_save_friends(const Sim *s, SimSlot *sl){
+    uint32_t town = (uint32_t)sim_mix64(s->seed ^ 0xF00DF00Du);
+    int m = 0; for(int i = 0; i < sl->nfr; i++) if(sl->fr[i].town != town){ if(m != i) sl->fr[m] = sl->fr[i]; m++; }
+    for(int k = 0; k < s->nfolk && m < SIM_FRMAX; k++) if(s->friend[k]){ sl->fr[m].town = town; sl->fr[m].who = (uint8_t)k; sl->fr[m].val = s->friend[k]; m++; }
+    sl->nfr = (uint8_t)m;
+}
+void sim_load_friends(Sim *s, const SimSlot *sl){
+    uint32_t town = (uint32_t)sim_mix64(s->seed ^ 0xF00DF00Du);
+    for(int i = 0; i < sl->nfr; i++) if(sl->fr[i].town == town && sl->fr[i].who < s->nfolk) s->friend[sl->fr[i].who] = sl->fr[i].val > 100 ? 100 : sl->fr[i].val;
+}
 void sim_save_tail(const Sim *s, SimSlot *sl){
     uint32_t cnt = sim_log_count(s); if(cnt > SIM_TAILN) cnt = SIM_TAILN;
     sl->ntail = (uint16_t)cnt;
@@ -384,6 +415,7 @@ size_t simfile_write(const SimFile *f, uint8_t *buf, size_t cap){
         p64(d, sl->cal_ticks); PUT("CLCK", s, 1, 8);
         god_state_to_bytes(&sl->god, d); p16(d + GOD_STATE_BYTES, sl->spirit); PUT("GODS", s, 1, GOD_STATE_BYTES + 2);
         if(sl->has_lv){ d[0] = 1; lv_to_bytes(&sl->lv_true, d + 1); lv_to_bytes(&sl->lv_xp, d + 1 + LV_BYTES); PUT("LEVL", s, 1, 1 + 2 * LV_BYTES); }
+        if(sl->nfr){ d[0] = sl->nfr; for(int i = 0; i < sl->nfr; i++){ p32(d + 1 + i * 6, sl->fr[i].town); d[5 + i * 6] = sl->fr[i].who; d[6 + i * 6] = sl->fr[i].val; } PUT("FRND", s, 1, 1 + (size_t)sl->nfr * 6); }
         p16(d, sl->ntail); for(int i = 0; i < sl->ntail; i++){ const SimEvent *e = &sl->tail[i]; uint8_t *q = d + 2 + i * 16; p32(q, e->tick); p16(q + 4, e->kind); p16(q + 6, e->who); p16(q + 8, e->a); p16(q + 10, e->b); p32(q + 12, e->seed32); }
         PUT("TAIL", s, 1, 2 + (size_t)sl->ntail * 16);
     }
@@ -406,6 +438,8 @@ int simfile_read(SimFile *f, const uint8_t *buf, size_t n){
         if(!memcmp(h, "CLCK", 4) && len == 8){ sl->used = 1; sl->cal_ticks = g64(d); }
         else if(!memcmp(h, "GODS", 4) && len == GOD_STATE_BYTES + 2){ sl->used = 1; god_state_from_bytes(&sl->god, d); sl->spirit = g16(d + GOD_STATE_BYTES); if(sl->spirit > SIM_SPIRIT_MAX) sl->spirit = SIM_SPIRIT_MAX; }
         else if(!memcmp(h, "LEVL", 4) && len == 1 + 2 * LV_BYTES && d[0]){ sl->used = 1; sl->has_lv = 1; lv_from_bytes(&sl->lv_true, d + 1); lv_from_bytes(&sl->lv_xp, d + 1 + LV_BYTES); }
+        else if(!memcmp(h, "FRND", 4) && len >= 1){ int c = d[0]; if(c > SIM_FRMAX || len != 1u + (uint32_t)c * 6) { f->bad_chunks++; continue; }
+            sl->used = 1; sl->nfr = (uint8_t)c; for(int i = 0; i < c; i++){ sl->fr[i].town = g32(d + 1 + i * 6); sl->fr[i].who = d[5 + i * 6]; sl->fr[i].val = d[6 + i * 6] > 100 ? 100 : d[6 + i * 6]; } }
         else if(!memcmp(h, "TAIL", 4) && len >= 2){ uint16_t c = g16(d); if(c > SIM_TAILN || len != 2u + (uint32_t)c * 16) { f->bad_chunks++; continue; }
             sl->used = 1; sl->ntail = c; for(int i = 0; i < c; i++){ const uint8_t *q = d + 2 + i * 16; SimEvent *e = &sl->tail[i]; e->tick = g32(q); e->kind = g16(q + 4); e->who = g16(q + 6); e->a = g16(q + 8); e->b = g16(q + 10); e->seed32 = g32(q + 12); } }
     }

@@ -73,7 +73,7 @@ static u64 sim_world_seed(void){
 static void sim_store_slot(void){                       // memory only: what the slot has learned so far
     SimSlot *sl=&sim_f.slot[cur_slot%SIM_SLOTS];
     sl->used=1; sl->cal_ticks=sim_cal;
-    if(sim_have_w){ sl->god=sim_w.god; sl->spirit=sim_w.spirit; sim_save_tail(&sim_w,sl); }
+    if(sim_have_w){ sim_save_friends(&sim_w,sl); sl->god=sim_w.god; sl->spirit=sim_w.spirit; sim_save_tail(&sim_w,sl); }
     if(sim_big_act && level>=LEVEL_CAP){ sl->has_lv=1; sl->lv_true=sim_big_lv; sl->lv_xp=sim_big_bank; } else sl->has_lv=0;
 }
 static void sim_save(void){
@@ -112,7 +112,7 @@ static void sim_bind(void){
     SimSlot *sl=&sim_f.slot[cur_slot%SIM_SLOTS];
     sim_init(&sim_w, sim_world_seed(), nl, (uint32_t)mask, sim_cal);
     if(pc_applied){ u32 cx[5], cy[5]; int dh, tc; for(int i=0;i<5;i++){ cx[i]=clus[i]; cy[i]=clus[UAX+i]; } pcx_env(uni_w,cx,cy,cur_sys,cur_pl,cur_moon,&dh,&tc); sim_set_env(&sim_w,dh,tc); }   // endless-galaxy planets: their own day and climate
-    if(sl->used){ sim_w.spirit=sl->spirit; sim_w.god=sl->god; sim_load_tail(&sim_w,sl); }
+    if(sl->used){ sim_w.spirit=sl->spirit; sim_w.god=sl->god; sim_load_tail(&sim_w,sl); sim_load_friends(&sim_w,sl); }
     sim_w.god.sandbox=sim_f.sandbox;
     sim_have_w=1; sim_seen_log=sim_w.log_n; sim_dump_at=sim_w.tick+600; sim_a_up=0;
     s32 px = city_r ? city_cx<<16 : 64<<16, py = city_r ? city_cy<<16 : 64<<16;
@@ -160,6 +160,7 @@ static void sim_unlock_msgs(void){
     Lv l; sim_level_lv(&l); sim_check_unlocks(&sim_w,&l);
     int c=0, last=0;
     for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_UNLOCK){ c++; last=e->a; } }
+    for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_LETTER){ char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); break; } }
     sim_seen_log=sim_w.log_n;
     if(c>3){ char b[40]; b[0]=0; ncat(b,c); scat(b," NEW GOD POWERS ARE OPEN"); say(b); sfx(6); }
     else if(c>0){ char b[40]; scpy(b,"NEW POWER "); ncat(b,last); scat(b,": "); scat(b,god_power(last)->name); say(b); sfx(6); }

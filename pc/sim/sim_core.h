@@ -15,6 +15,7 @@
 #define SIM_TICK_VBL   6            // one tick is 6 vblanks of the 60 Hz screen
 #define SIM_DAY_TICKS  4800         // Phase 1: a day is 8 minutes. (Phase 2 makes it depend on the planet.)
 #define SIM_SEASON_DAYS 7           // Phase 2: 7 days to a season, 4 seasons
+#define SIM_FRMAX 64
 #define SIM_MAXFOLK    16
 #define SIM_LOGN       4096         // event ring
 #define SIM_TAILN      256          // events kept in the save file
@@ -33,7 +34,7 @@ enum { SIMN_HUNGER, SIMN_REST, SIMN_SOCIAL, SIMN_FUN, SIMN_N };                 
 enum { SIMW_CLEAR, SIMW_CLOUD, SIMW_RAIN, SIMW_STORM, SIMW_SNOW, SIMW_N };                                           // weather
 
 enum { SIME_NONE, SIME_WAKE, SIME_SLEEP, SIME_WORK, SIME_EAT, SIME_CHAT, SIME_HUNGRY, SIME_TIRED, SIME_WEATHER, SIME_DAWN, SIME_CAST,
-       SIME_UNLOCK, SIME_EMPTY, SIME_HARVEST, SIME_NEWFOLK, SIME_SPECIES, SIME_LEGEND, SIME_IDEA, SIME_SANDBOX, SIME_N };
+       SIME_UNLOCK, SIME_EMPTY, SIME_HARVEST, SIME_NEWFOLK, SIME_SPECIES, SIME_LEGEND, SIME_IDEA, SIME_SANDBOX, SIME_FRIEND, SIME_LETTER, SIME_N };
 
 typedef struct { uint32_t tick; uint16_t kind, who, a, b; uint32_t seed32; } SimEvent;     // 16 bytes
 
@@ -61,6 +62,8 @@ typedef struct {
     GodState god;
     uint32_t log_n, log_head;                   // total events ever, ring head
     SimEvent log[SIM_LOGN];
+    uint8_t friend[SIM_MAXFOLK];                // Phase 3: how much each townsperson likes you, 0..100
+    uint32_t talked[SIM_MAXFOLK];               // the day (+1) you last talked to each
     uint8_t env_on, locked; int16_t temp_c;      // Phase 2: set by sim_set_env (the planet's day length and warmth)
     uint32_t day_seen;                          // the day new_day last ran for
     uint32_t steps_done;                        // for tests
@@ -89,6 +92,10 @@ void sim_species_name(uint32_t seed, char *out);
 int  sim_mood(const SimFolk *f);                // 0..255, the average of the needs
 void sim_status_text(const SimFolk *f, char *out, size_t n);  // "TIRED. HUNGRY." or "FINE."
 
+// Phase 3: friends and letters. Talking to somebody (once a day each) makes them like you more; at 25, 50, 75 and 100 they write you a letter.
+// Returns the new friendship (0..100), or -1 when you already talked today / no such person.
+int  sim_talk_to(Sim *s, int k);
+int  sim_letter_text(const Sim *s, int who, int step, char *out, size_t n);
 void sim_log(Sim *s, int kind, int who, int a, int b);
 int  sim_event_text(const Sim *s, const SimEvent *e, char *out, size_t n);   // returns length
 const SimEvent *sim_log_at(const Sim *s, uint32_t back);     // 0 = newest. Null past the end.
@@ -111,6 +118,7 @@ typedef struct {
     GodState god; uint16_t spirit;
     Lv       lv_true, lv_xp;                    // the big level (see pc/sim/BIGLEVEL in README.md): used only above the s64 range
     uint8_t  has_lv;
+    uint8_t nfr; struct { uint32_t town; uint8_t who, val; } fr[SIM_FRMAX];   // Phase 3: friendships, by town (seed hash) and townsperson
     uint16_t ntail; SimEvent tail[SIM_TAILN];   // the newest events, oldest first
 } SimSlot;
 typedef struct { uint8_t side_on; uint8_t sandbox; SimSlot slot[SIM_SLOTS]; int bad_chunks; } SimFile;
@@ -119,6 +127,8 @@ size_t simfile_write(const SimFile *f, uint8_t *buf, size_t cap);     // bytes w
 int    simfile_read(SimFile *f, const uint8_t *buf, size_t n);        // 0 ok, -1 not a .sim file (f stays empty). Bad chunks are counted in f->bad_chunks.
 #define SIMFILE_MAX (64 * 1024)
 uint32_t sim_fnv(const void *p, size_t n);
+void   sim_save_friends(const Sim *s, SimSlot *sl);
+void   sim_load_friends(Sim *s, const SimSlot *sl);
 void   sim_save_tail(const Sim *s, SimSlot *sl);
 void   sim_load_tail(Sim *s, const SimSlot *sl);
 
