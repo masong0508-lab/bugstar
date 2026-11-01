@@ -73,7 +73,7 @@ static void cw_prefix(int v, char *o){                          // the Latin for
     if(t) scat(o,te[t]); if(h) scat(o,hu[h]); }
 static const char *illion(int g){                               // the name of a thousand to the power g (1 THOUSAND, 2 MILLION...), any size at all
     if(g<22) return big_nm[g<0?0:g];
-    static char b[100]; int n=g-1, gs[4], ng=0; b[0]=0;          // the n-th -illion: its number in groups of three, each group's Latin, joined with ILLI
+    EW static char b[100]; int n=g-1, gs[4], ng=0; b[0]=0;          // the n-th -illion: its number in groups of three, each group's Latin, joined with ILLI
     do { gs[ng++]=n%1000; n/=1000; } while(n && ng<4);
     for(int k=ng-1;k>=0;k--){ char p[40]; cw_prefix(gs[k],p); int L=textlen(p); if(L && (p[L-1]=='I'||p[L-1]=='A')) p[L-1]=0; scat(b,p); scat(b, k ? "ILLI" : "ILLION"); }
     return b; }
@@ -874,8 +874,8 @@ static void hyperspace(void){
 // ---------------------------------------------------------------- the voyage: every jump takes time, and the light years count up as you go
 // Nothing is a teleport: the drive spools up, the stars stream past, the distance and the ship's clock count up, and the star
 // you are heading for swells up ahead before you drop out beside it. Warps across the universe pass whole galaxies on the way.
-static u32 tv_ly[LYW], tv_best[LYW], tv_trips=0, tv_hours=0;       // your travel log: tenths of a light year in all, the longest trip, how many trips, hours between the stars
-static u32 vy_ufrom[UW], vy_uto[UW];                                    // a jump between universes: from which, to which (for the voyage's count of universes passed)
+EW static u32 tv_ly[LYW], tv_best[LYW]; static u32 tv_trips=0, tv_hours=0;       // your travel log: tenths of a light year in all, the longest trip, how many trips, hours between the stars
+EW static u32 vy_ufrom[UW], vy_uto[UW];                                    // a jump between universes: from which, to which (for the voyage's count of universes passed)
 static u32 kw_num_edit(volatile u16 *pg, const char *title, u32 v, int nd, u32 lo, u32 hi); static void kcomma(char *b, u32 v); static void digits_named(char *out, const char *d, int k);   // (in kart3.inc)
 static int big_cmp(const u32 *a, const u32 *b){ for(int i=LYW-1;i>=0;i--) if(a[i]!=b[i]) return a[i]<b[i]?-1:1; return 0; }
 static int big_small(const u32 *b, u32 lim){ for(int i=1;i<LYW;i++) if(b[i]) return 0; return b[0]<lim; }
@@ -1107,7 +1107,7 @@ static int fav_go(const Fav *f){                                              //
     if(!warp_by(dx,sx,dy,sy,0,0)) return 0;
     { char b[48], d2[40]; here_ly(d2,f->cx,f->cy); scpy(b,"PART WAY. "); scat(b,d2); scat(b," TO GO"); b[46]=0; space_say(b); } return 1; }
 static int fav_screen(volatile u16 *pg){                                      // the list: A flies there, SELECT removes, the top row saves where you are
-    fav_init(); int sel=0, top=0, dirty=1, n=0, arm=-1; static u8 idx[NFAV]; char note[48]; note[0]=0;
+    fav_init(); int sel=0, top=0, dirty=1, n=0, arm=-1; EW static u8 idx[NFAV]; char note[48]; note[0]=0;
     #define FAV_REBUILD() do{ Fav q_; n=0; for(int i_=0;i_<NFAV;i_++) if(fav_get(i_,&q_)) idx[n++]=(u8)i_; }while(0)
     FAV_REBUILD(); wait_release();
     while(1){
@@ -1273,7 +1273,7 @@ static void station_menu(void){
             } else if(tab==2){
                 // three regulars at the bar. what they say moves with the story
                 static const char *const who[3]={"VESPER, OLD MOTH PILOT","HUM, A TRADER BEE","NIB, AN ANT WHO RAN AWAY"};
-                const char *say1[3], *say2[3]; static char rb[48];
+                const char *say1[3], *say2[3]; EW static char rb[48];
                 say1[0] = beast_stage>=3 ? "I SAW IT EAT A FREIGHTER WHOLE. IT HUMMED A TUNE." : ant_king ? "SOMETHING WOKE UP OUT THERE. THE SKY WENT QUIET." : "THERE'S A SONG THE BEES SING. ABOUT A FALLEN STAR.";
                 say2[0] = data_cores>=8 ? "YOUR TIN FRIEND. HE'S NOT A DROID, IS HE." : "STAY FAST. FAST THINGS DON'T GET EATEN.";
                 { int e=sys[cur_sys].eco; say1[1] = e==1 ? "MINING WORLDS BUY FOOD AND NECTAR HIGH." : e==2 ? "TECH WORLDS PAY FOR AMBER AND CRYSTALS." : e==3 ? "HIVE WORLDS WANT MACHINES. BRING ANY YOU FIND." : "FARMING WORLDS BUY MACHINES AND MEDICINE."; }

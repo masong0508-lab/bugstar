@@ -267,7 +267,7 @@ static void kart_records(volatile u16 *pg){
     scpy(c,"TIME TRIAL GOLDS "); ncat(c,kst_tt); scat(c,"   TRACKS BUILT "); ncat(c,kst_built); ln[2]=c;
     { int n=0; KRec r; for(int i=0;i<NKREC;i++) if(krec_get(i,&r)) n++; scpy(d,"TRACKS SAVED "); ncat(d,n); scat(d,"/50 (ALL SLOTS SHARE THEM)"); ln[3]=d; }
     scpy(e,"THIS PLANET: "); ncat(e,kt_count()); scat(e," TRACKS. "); scat(e,kpsize_name[wd.psz]); scat(e," WORLD"); ln[4]=e;
-    ln[5]="CLASSES OPEN: "; { static char f[48]; scpy(f,"CLASSES OPEN: "); for(int i=0;i<kcls_open;i++){ if(i) scat(f,", "); scat(f,kcls_name[i]); } ln[5]=f; }
+    ln[5]="CLASSES OPEN: "; { EW static char f[48]; scpy(f,"CLASSES OPEN: "); for(int i=0;i<kcls_open;i++){ if(i) scat(f,", "); scat(f,kcls_name[i]); } ln[5]=f; }
     card(pg,"YOUR KART RECORD",ln,6); }
 
 // ---------------------------------------------------------------- the kart garage: a ludicrous amount of kart

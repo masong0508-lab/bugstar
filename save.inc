@@ -168,7 +168,7 @@ static void slot_copy(int from, int to){ for(int k=0;k<SLOT_STRIDE;k++) SRAM[slo
 
 // ---------------------------------------------------------------- a peek at each slot, for the cards
 typedef struct { u8 ok; s16 zone, endless, world_no; s64 level, gold, xp; s32 fame; u32 secs; } SlotInfo;
-static SlotInfo sinf[NSLOT];
+EW static SlotInfo sinf[NSLOT];
 static void slots_refresh(void){
     for(int i=0;i<NSLOT;i++){
         SlotInfo *o=&sinf[i]; memset(o,0,sizeof(SlotInfo));

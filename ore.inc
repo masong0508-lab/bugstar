@@ -53,7 +53,7 @@ static const Recipe sm_rec[NREC]={
     {3,0, 24,2, 0,0},  {4,0, 31,1, 0,0},  {5,0, 28,1, 23,1}, {6,0, 30,1, 0,0} };                            // top-tier routes: 2 armor plates, a drive coil, processor + laser diode, a shield grid
    // kinds 4..6: ship parts like the plate: ENGINE TUNE (2 ion cell + 2 black steel), LASER LENS (2 lens + void bar), SHIELD CELL (2 bone plate + alloy bar). Up to SP_MAX each
           // kind 3: a HULL PLATE for the ship (void bar + 2 plating). It is not stocked: it is fitted at once, up to HP_MAX                                                                                              // void bar shortcuts: ION CELL (void bar + black steel), BONE PLATE (void bar + chalk bar)                                                                              // PICKAXE, DRILL (made from iron and copper alone), LASER CUTTER (no voidsteel: voidsteel needs a laser cutter to mine)
-static u16 sm_n[NMAT]; static u8 sm_job, sm_jn; static u32 sm_done;       // what you hold; the smelt in progress (recipe + 1, how many, play second it finishes)
+EW static u16 sm_n[NMAT]; static u8 sm_job, sm_jn; static u32 sm_done;       // what you hold; the smelt in progress (recipe + 1, how many, play second it finishes)
 typedef struct { u32 magic; u8 ver, job, jn, pad; u32 done; u16 n[12]; u32 sum; } SmSave;     // 40 bytes: the first 12 stock items, the smelt in progress, hull plates (unchanged since the first smelter patch)
 #define EXT_OFF 0x830                                                                          // the other 22 stock items (the newer parts) live in a block of their own, in the gap after the ship block (audited free: 0x830 to 0x8FF)
 #define NEXT (NMAT-12)

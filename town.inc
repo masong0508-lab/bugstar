@@ -397,17 +397,17 @@ static void planet_card(volatile u16 *pg){                                      
     int q = wd.weather==1 ? 4 : wd.weather==2 ? 5 : wd.weather==3 ? 6 : wd.hour==2 ? 3 : wd.city ? 2 : wd.grav!=1 ? 9 : (wd.tseed%3)==0 ? 0 : (wd.tseed%3)==1 ? 1 : 10;
     if(!endless && zone==0) q=11;
     if(wd.weird){
-        static char ta[56], tb[56], mk[56], q2[48], tl[32]; char nb[28]; ta[0]=tb[0]=0;
+        EW static char ta[56], tb[56], mk[56], q2[48], tl[32]; char nb[28]; ta[0]=tb[0]=0;
         for(int k=0;k<wd.ntr;k++){ trait_name(wd.tr[k],nb); char *d = k<2 ? ta : tb; if(d[0]) scat(d," + "); scat(d,nb); }
         weird_seen++; give_marks(mk);
         scpy(tl,"??? "); scat(tl,world_name()); scat(tl," ???");
         scpy(q2,"BOLT: "); scat(q2,mw_quip[wd.tr[0]%NMW]);
-        static char cm2[56]; scpy(cm2,pc_name[wd.cls]); if(hellw()){ scat(cm2," T"); ncat(cm2,hell_tier()); } scat(cm2,". "); scat(cm2,mood_name[wd.mood]);
+        EW static char cm2[56]; scpy(cm2,pc_name[wd.cls]); if(hellw()){ scat(cm2," T"); ncat(cm2,hell_tier()); } scat(cm2,". "); scat(cm2,mood_name[wd.mood]);
         int n=0; ln[n++]=ta; if(tb[0]) ln[n++]=tb; ln[n++]=cm2; ln[n++]=sc;
-        static char mk2[60]; if(mk[0]){ scpy(mk2,"IT CHANGED YOU: "); scat(mk2,mk); mk2[52]=0; ln[n++]=mk2; }
+        EW static char mk2[60]; if(mk[0]){ scpy(mk2,"IT CHANGED YOU: "); scat(mk2,mk); mk2[52]=0; ln[n++]=mk2; }
         ln[n++]="A RELIC SHRINE IS HIDDEN HERE. FIND IT!"; ln[n++]=q2;
         sfx(6); card(pg,tl,ln,n); return; }
-    static char cm[56]; scpy(cm,pc_name[wd.cls]); if(hellw()){ scat(cm," T"); ncat(cm,hell_tier()); } scat(cm,". "); scat(cm,mood_name[wd.mood]);
+    EW static char cm[56]; scpy(cm,pc_name[wd.cls]); if(hellw()){ scat(cm," T"); ncat(cm,hell_tier()); } scat(cm,". "); scat(cm,mood_name[wd.mood]);
     static const char *const pq[NPC]={0,"BOLT: MOUNTAINS. I DO NOT HAVE KNEES.","BOLT: SO FLAT. SO NICE. I COULD ROLL FOREVER.","BOLT: WATER EVERYWHERE. I RUST. HURRY.","BOLT: SAND IN MY GEARS. AGAIN.",
         "BOLT: BRR. MY BOLTS ARE CLICKING.","BOLT: THE PLANTS ARE TALLER THAN THE SHIP.","BOLT: THIS IS A DEATH PLANET. I WOULD LIKE TO LEAVE.","BOLT: A WHOLE PLANET OF CITY. WHERE DO THEY PARK?","BOLT: IT IS SO NICE HERE. I AM SUSPICIOUS.",
         "BOLT: THE SEA IS LAVA. I AM NOT A BOAT.","BOLT: THE AIR TASTES LIKE EGGS. I HAVE NO MOUTH.","BOLT: THE GROUND IS GLASS. I LOOKED DOWN. DO NOT.","BOLT: THE HILLS ARE RIBS. WHOSE RIBS?","BOLT: THE SEA IS RED. LET US NOT ASK WHY.","BOLT: COLD ENOUGH TO HURT. EVEN HELL GAVE UP."};
@@ -422,7 +422,7 @@ static void planet_card(volatile u16 *pg){                                      
     else if(wd.mood==MOOD_HATE) bq = (wd.tseed%3)==0 ? bolt_mood[1][(wd.tseed>>3)%3] : (wd.tseed&4) ? bolt_alt[q] : bq;
     else if(wd.tseed&4) bq = bolt_alt[q];
     ln[0]=cm; ln[1]=l1; ln[2]=l2; ln[3]=sc; ln[4]=l3; ln[5]= (endless && wd.cls) ? pq[wd.cls] : bq;
-    int nl=6; static char ht[56]; if(hellw()){ scpy(ht,"HELL TIER "); ncat(ht,hell_tier()); scat(ht,": BITES X"); ncat(ht,deadly_mul()); scat(ht,", GOLD +"); ncat(ht,hell_tier()*15); scat(ht,"%"); ln[nl++]=ht; }
+    int nl=6; EW static char ht[56]; if(hellw()){ scpy(ht,"HELL TIER "); ncat(ht,hell_tier()); scat(ht,": BITES X"); ncat(ht,deadly_mul()); scat(ht,", GOLD +"); ncat(ht,hell_tier()*15); scat(ht,"%"); ln[nl++]=ht; }
     card(pg,world_name(),ln,nl);
 }
 // gift limits: a local hands out at most GIFT_MAX gifts, then goes quiet for 30 minutes of play time (not saved: a restart clears it)

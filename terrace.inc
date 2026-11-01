@@ -6,9 +6,10 @@
 static void terr_cell(int x,int y,int h,int fm){ int i=y*MW+x; dmap[i]=D_FLOOR; trh[i]=h; trb[i]=0; fmat[i]=fm; }
 static void terr_rail(int x,int y,int h,int top){ int i=y*MW+x; dmap[i]=D_PILLAR; wmat[i]=M_STONE; trh[i]=h; trb[i]=top; }
 static void tmap(int m,int x,int y,int *ox,int *oy){ int nx=x, ny=y; if(m&1){ nx=y; ny=x; } if(m&2){ if(m&1) nx=MW-1-nx; else ny=MW-1-ny; } *ox=nx; *oy=ny; }
-static void terr_xform(u8 *a,int m){ EW static u8 tmp[MW*MW]; for(int y=0;y<MW;y++) for(int x=0;x<MW;x++){ int nx,ny; tmap(m,x,y,&nx,&ny); tmp[ny*MW+nx]=a[y*MW+x]; } for(int i=0;i<MW*MW;i++) a[i]=tmp[i]; }
+static void terr_xform(u8 *a,int m){ u8 *tmp=GA_BYTE(0x2D80); for(int y=0;y<MW;y++) for(int x=0;x<MW;x++){ int nx,ny; tmap(m,x,y,&nx,&ny); tmp[ny*MW+nx]=a[y*MW+x]; } for(int i=0;i<MW*MW;i++) a[i]=tmp[i]; }
 static void terr_build(void){
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_STONE; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; trh[i]=0; trb[i]=TR_CEIL; }
+    for(int i=0;i<120*80;i++) zpix[i]=255;
     nlights=0; nlamps=0; ntorch=0;
     for(int y=1;y<=9;y++) for(int x=1;x<=30;x++){ terr_cell(x,y,8,FL_TILE); rid[y*MW+x]=0; }           // the upper terrace
     for(int y=11;y<=30;y++) for(int x=1;x<=30;x++){ int moss=((x*7+y*3)%11)==0; terr_cell(x,y,0,moss?FL_MOSS:((x*5+y)%7==0?FL_DIRT:FL_FLAG)); rid[y*MW+x]=(y>=13)?1:255; }   // the cavern floor
@@ -35,6 +36,9 @@ static void terr_build(void){
 static int terr_roll(int bossfl,int mz_last,int mboss){            // about 1 floor in 33, from the second floor on, never a boss or outpost floor
     if(base_mode||forge_on||mz_last||bossfl||mboss||depth_no<2) return 0;
     if(endless && hive_boss_floor()) return 0;
+#ifdef TEST_TERR
+    return 1;
+#endif
     return (hmix(rng_s^0x7E44ACE5u^((u32)depth_no*0x9E3779B1u)) % 100) < 3;
 }
 static inline void zset(int y,int c,s32 t){ int z=t>>13; zpix[(y>>1)*120+c]= z>255?255:z; }     // depth per row pair, 1/8 cell steps

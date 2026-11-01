@@ -142,6 +142,12 @@ Dungeons are now carved-stone ruins rather than red brick: **fewer, much bigger 
 ## Labyrinths (new)
 Every so often (about one dungeon floor in four, never a boss floor) you land in a **labyrinth**: a real maze of one-wide, torch-lit passages with dead ends, a few loops, five open chambers (one in each corner and a monument in the middle) and chests and wanderers hiding in the corridors. The stairs are in opposite corners. The message says "A LABYRINTH!" when you arrive, and the map (START) shows where you have been.
 
+## Stairs, shortcuts and remembered floors
+- **Floors are remembered for the whole trip.** Go up or down and the same floor comes back: same rooms, same stairs, the monsters you killed still dead, the loot you left still on the floor, the map you drew, the holes you mined. (Monsters that are alive heal and stand where they started.) It needs no save space: a floor is just its seed plus a few small changes, kept in scratch memory that was idle anyway. A trip ends when you leave the dungeon, and loading a save starts a new one.
+- **Shortcut stairs** (about 1 floor in 3, from B2 on): a second way down that drops you two floors. It is a **gold square** with three down-arrows on the floor, and gold on the map.
+- **The second stair up** is the pair of a shortcut: when you go down a shortcut you step out of a **green square** with three up-arrows, and that stair climbs two floors back to the shortcut you came from. Some floors have one on their own too (about 1 in 12).
+- Coming back up by the ordinary stairs puts you on that floor's stairs down. The stairs up on B2 and deeper open a picker: any floor you have been to.
+
 ## Kart racing (big update)
 - Press A at a **RACE POST** in a town, or pick **KART CLUB** on your ship.
 - Every planet has its own **4 to 9 tracks**, sized to the planet. Tiny worlds get little tracks. Giant worlds get huge ones.

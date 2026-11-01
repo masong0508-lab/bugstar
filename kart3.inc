@@ -186,7 +186,7 @@ static void kw_records(volatile u16 *pg){
     scpy(c2,"ENDLESS RUN BEST: "); ncat(c2,kw.endless_best); scat(c2," PLANETS"); ln[2]=c2;
     scpy(d2,"ELIMINATION WINS "); ncat(d2,kw.elim_wins); scat(d2,"   TIME ATTACK GOLDS "); ncat(d2,kw.tt_gold); ln[3]=d2;
     { int n=0; for(int i=0;i<16;i++) if(kw.best[i].key) n++; scpy(e2,"TRACK RECORDS KEPT "); ncat(e2,n); scat(e2,"   COINS "); ncat(e2,kw.coins); ln[4]=e2; }
-    ln[5]="CLASSES: "; { static char f[48]; scpy(f,"CLASSES: "); for(int i=0;i<kw.cls_open;i++){ if(i) scat(f,", "); scat(f,kcls_name[i]); } ln[5]=f; }
+    ln[5]="CLASSES: "; { EW static char f[48]; scpy(f,"CLASSES: "); for(int i=0;i<kw.cls_open;i++){ if(i) scat(f,", "); scat(f,kcls_name[i]); } ln[5]=f; }
     card(pg,"KART WORLD RECORDS",ln,6); }
 
 // ---------------------------------------------------------------- the Kart World menu

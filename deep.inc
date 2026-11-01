@@ -72,7 +72,7 @@ static Ex ex_scale(Ex x, int q){                                           // th
 
 // ---- the rules: what a fold costs, who can go where
 static u32 dp_seen=0;                                                     // bit n: you have been to landmark n
-static u32 dp_rc[2*UAX], dp_ru[UW]; static int dp_ret_ok=0, dp_rsys=0;   // where you were before the first fold (so you can fold back)
+EW static u32 dp_rc[2*UAX], dp_ru[UW]; static int dp_ret_ok=0, dp_rsys=0;   // where you were before the first fold (so you can fold back)
 static int dp_cost(int ix){ return ix ? 60+8*ix : 40; }                   // fuel (tenths of a light year)
 static u32 dp_bonus(int ix){ return 400u*(u32)ix*(u32)ix; }               // gold for the first visit
 static u32 dp_hours(int ix){ return (u32)(20+ix*40)*24; }

@@ -149,7 +149,7 @@ static const char *const bolt_trait[40]={"\"THE WORLD STUTTERS. SO DO I. SOLIDAR
     "\"THE AIR IS BAD. KEEP IT SHORT.\"","\"MAGNETS. MY WHEELS WANT TO GO SIDEWAYS.\"","\"THE ORE HIDES. COAX IT OUT. SHH.\"",
     "\"STEPS ON STEPS. A GIANT STAIRCASE OUTDOORS.\""};
 static void bolt_talk(volatile u16 *pg){
-    const char *t[8]; int n=0; static char l1[48], l2[48]; EW static char c1[40], c2[48];      // (the two new ones in EWRAM: IWRAM is nearly full)
+    const char *t[8]; int n=0; EW static char l1[48], l2[48], c1[40], c2[48];      // (the two new ones in EWRAM: IWRAM is nearly full)
     // what worries him first (at most two things, the most urgent ones)
     { int w=0;
       if(hearts*2<maxh && w<2){ t[n++]="\"YOU ARE HURT. THE CARE TAB WILL HEAL YOU.\""; w++; }
@@ -975,7 +975,7 @@ static void workbench(volatile u16 *pg){
 static int make_ship(volatile u16 *pg, int first);
 static int enter_dungeon_flag; static int forge_menu(volatile u16 *pg); static int fuel_max(void);
 // ---------------------------------------------------------------- the spell shop: Attack, Defense and Summon spells, from a few gold to a fortune
-static int sp_shop_id[NSPELL];
+EW static int sp_shop_id[NSPELL];
 static void spshop_row(int i, char *b, int *c){ int id=sp_shop_id[i]; scpy(b,spell_def[id].name); while(textlen(b)<14) scat(b," "); ncat(b,spell_def[id].cost); scat(b," MP"); while(textlen(b)<24) scat(b," ");
     if(spell_known[id]){ scat(b,"OWNED"); *c=C_DGREY; } else { ncat(b,spell_def[id].price); scat(b,"G"); *c=gold>=spell_def[id].price?C_GOLD:C_RED; } }
 static void spshop_desc(int i, char *b, int *c){ if(i<0){ b[0]=0; return; } int id=sp_shop_id[i]; scpy(b,"MAGIC "); ncat(b,spell_mag[id]); scat(b,": "); scat(b,spell_def[id].desc); *c = st_mag>=spell_mag[id] ? C_GREEN : C_RED; }      // green when your magic is high enough to cast it
@@ -1001,7 +1001,7 @@ static int ore_sellval(void){ int g=0; for(int i=4;i<NORE;i++){ int p=ore_px(i);
 static int ore_can_up(void){ int t=ore_tool+1; if(t>3) return 0; return gold>=ore_up_gold[t] && ore_n[ore_up_o1[t]]>=ore_up_n1[t] && ore_n[ore_up_o2[t]]>=ore_up_n2[t]; }
 // ---- the smelter (Phase 4, basic): ore -> bars (takes play time) -> parts -> tools. Opened from the MINING menu.
 #define SM_PS 9                                        // rows per page: with more than that, the last row turns the page
-static u8 sm_view[NREC]; static int sm_nv, sm_pg, sm_sbase, sm_sn;      // the recipes the open list shows (kind 0 / kinds 1-2 / kinds 3+), its page; the stock list's first item and length
+EW static u8 sm_view[NREC]; static int sm_nv, sm_pg, sm_sbase, sm_sn;      // the recipes the open list shows (kind 0 / kinds 1-2 / kinds 3+), its page; the stock list's first item and length
 static void sm_build(int g){ sm_nv=0; sm_pg=0; for(int r=0;r<NREC;r++){ int k=sm_rec[r].kind; if((g==0&&k==0)||(g==1&&(k==1||k==2))||(g==2&&k>=3)) sm_view[sm_nv++]=(u8)r; } }
 static int sm_pages(int n){ return n<=SM_PS+1 ? 1 : (n+SM_PS-1)/SM_PS; }
 static int sm_cnt(int n, int pg){ if(sm_pages(n)==1) return n; int c=n-pg*SM_PS; return c>SM_PS?SM_PS:c; }    // items on this page

@@ -378,6 +378,28 @@ def stairs(R, up, seed):
                     t.sel[y, x] = 2; t.b[y, x] = max(0, 2 + (d - 6) * 1.5)
     return t
 
+def skip_stairs(R, up, seed):
+    """the shortcut stairs: a square gold frame (down) or green frame (up) with three chevrons, so they never look like the
+    round ordinary stairs. Only ramps that already exist are used (the palette is full)."""
+    t = flag(R, 'FLOORA', seed)
+    t.ramps = [R['FLOORA'], R['MOSS' if up else 'CHEST'] | E, R['UP' if up else 'DOWN']]
+    for y in range(32):
+        for x in range(32):
+            ax, ay = abs(x - 15.5), abs(y - 15.5); m = max(ax, ay)
+            if 10 <= m < 13:                                   # the square frame, with the corners cut off
+                if ax > 9.5 and ay > 9.5 and ax + ay < 24: continue
+                t.sel[y, x] = 1; t.b[y, x] = 29 - (m - 10) * 3
+            elif m < 10:
+                t.sel[y, x] = 2; t.b[y, x] = 3 + m * .4        # a dark well inside
+    for k in range(3):                                          # chevrons: the point faces down for the way down, up for the way up
+        y0 = 8 + k * 6
+        for yy in range(5):
+            y = y0 + (4 - yy if up else yy)
+            for x in range(32):
+                if abs(abs(x - 15.5) - (5 - yy)) <= .75:
+                    t.sel[y, x] = 1; t.b[y, x] = 28 - k * 3
+    return t
+
 def ceil_stone(R, seed=30):
     t = Tex(32, 32, [R['CEIL']], seed)
     ids = -np.ones((32, 32), int)
@@ -403,7 +425,7 @@ def ceil_earth(R, seed=31):
 WALLS = ['BRICK', 'STONE', 'EARTH', 'MOSS', 'CRYSTAL', 'MARBLE', 'EARTH_BEAM', 'BRICK_TORCH', 'STONE_TORCH',
          'BRICK_NICHE', 'BRICK_DOOR', 'BRICK_RUNE', 'BRICK_PLAQUE', 'STONE_NICHE', 'STONE_DOOR', 'STONE_RUNE',
          'STONE_PLAQUE', 'STONE_PANEL', 'STONE_PILLAR', 'CRYSTAL_PILLAR']
-FLOORS = ['FLAG_A', 'FLAG_B', 'TILE', 'DIRT', 'MOSS', 'WATER', 'PLANK', 'UP', 'DOWN', 'SHALLOW']
+FLOORS = ['FLAG_A', 'FLAG_B', 'TILE', 'DIRT', 'MOSS', 'WATER', 'PLANK', 'UP', 'DOWN', 'SHALLOW', 'SKIP_DN', 'SKIP_UP']
 CEILS = ['CEIL_STONE', 'CEIL_EARTH']
 
 def make_all(R):
@@ -423,7 +445,8 @@ def make_all(R):
     def floor(name):
         return {'FLAG_A': lambda: flag(R, 'FLOORA', 10), 'FLAG_B': lambda: flag(R, 'FLOORB', 11), 'TILE': lambda: tile(R),
                 'DIRT': lambda: dirt(R), 'MOSS': lambda: mossfloor(R), 'WATER': lambda: water(R), 'PLANK': lambda: plank(R),
-                'UP': lambda: stairs(R, True, 12), 'DOWN': lambda: stairs(R, False, 13), 'SHALLOW': lambda: shallow(R)}[name]()
+                'UP': lambda: stairs(R, True, 12), 'DOWN': lambda: stairs(R, False, 13), 'SHALLOW': lambda: shallow(R),
+                'SKIP_DN': lambda: skip_stairs(R, False, 14), 'SKIP_UP': lambda: skip_stairs(R, True, 15)}[name]()
     out = {}
     for group, names, fn, colmajor in (('wall', WALLS, wall, True), ('floor', FLOORS, floor, False), ('ceil', CEILS, lambda n: ceil_stone(R) if n == 'CEIL_STONE' else ceil_earth(R), False)):
         texels, ramps = [], []

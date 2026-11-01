@@ -57,6 +57,9 @@ void *memcpy(void *d, const void *s, unsigned n){ u8 *p=d; const u8 *q=s; while(
 
 static u32 keys, keys_old;
 static u32 rng_s = 0x1234567;
+#ifdef TEST_HASH
+static char th_str[28];
+#endif
 static u32 rnd(void){ rng_s ^= rng_s<<13; rng_s ^= rng_s>>17; rng_s ^= rng_s<<5; return rng_s; }
 static int rndi(int n){ return (int)(rnd()%(u32)n); }
 static void read_keys(void){ keys_old=keys; keys = ~REG_KEYINPUT & 0x3FF; }
@@ -670,7 +673,7 @@ static void mine_bite(s32 dirx, s32 diry){
         if(ore_tool_eff()<ore_need_tool(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: NEEDS A "); scat(b,ore_tool_name[ore_need_tool(ore)]); say(b); sfx(4); return; }
         if(mine_cell!=c){ mine_cell=c; mine_n=0; }
         sfx(12); if(++mine_n<ore_hits(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,ore_hits(ore)-mine_n); scat(b," MORE"); say(b); burst((tx<<16)+0x8000,(ty<<16)+0x8000,0x4000,3,2); return; }
-        dmap[c]=D_FLOOR; fmat[c]=FL_DIRT; rid[c]=255; fcode[c]=3; mine_cell=-1; mine_n=0;
+        dmap[c]=D_FLOOR; fmat[c]=FL_DIRT; rid[c]=255; fcode[c]=3; mine_cell=-1; mine_n=0; fm_dug(c);
         int n=1+rndi(2)+(ore_tool_eff()>=2)+dlv()/10+depth_no/3; int oq=ore_quality((s32)(tx*977),(s32)(ty*613)); n=ore_qn(n,oq); int mg=ore_mega((s32)(tx*977+depth_no*131),(s32)(ty*613)); if(mg){ n=n*3+2; if(oq<2) oq=2; }
         int got=ore_add_q(ore,n,oq); st_mined+=n; ml_add(ore,got); ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
         char b[44]; scpy(b,mg?"MEGA! +":"+"); ncat(b,got); scat(b," "); scat(b,oq_name[oq]); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); say(b); sfx(7); build_light(); return; }
@@ -1010,12 +1013,15 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     else if(HELD(K_A) && cur_rock==5 && !atk_t){ do_bite(dirx,diry); }     // a mine: holding A keeps biting the wall
     else if(HIT(K_A)){
         if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
+        else if(here==D_UP && stair_ok && ((py_>>16)*MW+(px_>>16))==up2_cell){                       // the second stair up: two floors at once
+            arrive_dn=2; depth_no-=3; wacc=WDIV-1; fade(1); dungeon_enter(); dungeon_checkpoint(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0;
+            if(!fl_ev){ say("SHORTCUT UP! TWO FLOORS"); msg_timer=60; } fade(0); return 0; }
         else if(here==D_UP && stair_ok){
             if(!(!endless && !forge_on && !base_mode && depth_no>=2)) return 1;                       // the way out
             oam_hide_all(); oam_flush(); int to=stair_panel(VISPG); dungeon_hud_both();
             if(to==0) return 1;
             if(to>0){ arrive_dn = to<depth_no; depth_no=to-1; wacc=WDIV-1; fade(1); dungeon_enter(); dungeon_checkpoint(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; } }
-        else if(here==D_DOWN && dn_ok){ int sk = ((py_>>16)*MW+(px_>>16))==skip_cell; fl_leave(); if(sk){ depth_no++; if(skip_taken<99) skip_taken++; } wacc=WDIV-1; fade(1); dungeon_enter(); dungeon_checkpoint(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0;
+        else if(here==D_DOWN && dn_ok){ int sk = ((py_>>16)*MW+(px_>>16))==skip_cell; fl_leave(); if(sk){ depth_no++; if(skip_taken<99) skip_taken++; arrive_sk=1; } wacc=WDIV-1; fade(1); dungeon_enter(); dungeon_checkpoint(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0;
             if(sk && !fl_ev){ say("SHORTCUT! YOU SKIPPED A FLOOR"); msg_timer=60; } fade(0); return 0; }
         else if(!atk_t) do_bite(dirx,diry);
     }
@@ -1080,11 +1086,16 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(FILM){} else { hud3d(pg); fl_draw(pg);
     if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
+#ifdef TEST_MEM
+    { char tb[56]; int al=0,sn=0, hc=(py_>>16)*MW+(px_>>16); for(int i=0;i<ndo;i++) if(dob[i].alive && is_mon(dob[i].kind)) al++; for(int i=0;i<MW*MW;i++) sn+=seen[i];
+      scpy(tb,"B"); ncat(tb,depth_no); scat(tb," MON"); ncat(tb,al); scat(tb," SEEN"); ncat(tb,sn); scat(tb," ID"); ncat(tb,FMH->sigL&0xFFF); scat(tb,up2_cell>=0?" U2":" -"); scat(tb,skip_cell>=0?" SK":" -");
+      scat(tb, hc==skip_cell?" ON SHORT-DN" : hc==up2_cell?" ON SHORT-UP" : dmap[hc]==D_DOWN?" ON DOWN" : dmap[hc]==D_UP?" ON UP" : " WALKING"); text(pg,2,70,tb,C_GOLD,1); }
+#endif
     if(msg_timer){ text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
     else if(!opt_hints){}
     else if(lock_ahead) text(pg,120-14*4,24,"A: USE KEYCARD",C_GOLD,2);
     else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);
-    else if((here==D_UP && stair_ok)||(here==D_DOWN && dn_ok)){ const char *m2 = here==D_UP? ((!endless&&!forge_on&&!base_mode&&depth_no>=2)?"A: STAIRS" : "A: CLIMB UP") : (((py_>>16)*MW+(px_>>16))==skip_cell ? "A: SHORTCUT!" : "A: GO DEEPER"); text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
+    else if((here==D_UP && stair_ok)||(here==D_DOWN && dn_ok)){ const char *m2 = here==D_UP? (((py_>>16)*MW+(px_>>16))==up2_cell ? "A: SHORTCUT UP!" : (!endless&&!forge_on&&!base_mode&&depth_no>=2)?"A: STAIRS" : "A: CLIMB UP") : (((py_>>16)*MW+(px_>>16))==skip_cell ? "A: SHORTCUT!" : "A: GO DEEPER"); text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
     else if(fish_state==1) text(pg,120-8*4,24,"WAITING...",C_CYAN,2);
     else if(fish_state==2) text(pg,120-6*4,24,"PRESS A!",(frames&2)?C_RED:C_WHITE,2);
     else if(fish_state==3) text(pg,120-8*4,24,"HOLD A TO REEL",C_CYAN,2);
@@ -1209,6 +1220,12 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     if(!(cont && load_game(1))){ cont=0; new_game(); story_dna(0); cam_fp=opt_cam; planet_tables(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
 #ifdef TEST_WORLD
     endless=1; world_no=TEST_WORLD; make_world();
+#endif
+#ifdef TEST_HASH
+    {   // (a test) make five fixed worlds and fingerprint every byte of their ground, colours and numbers: the same on any build that did not change worlds
+        u32 h[5]; endless=1; for(int k=0;k<5;k++){ world_no=100+k*37; make_world(); u32 a=fnv(hmap,sizeof hmap); a^=fnv(cmap,sizeof cmap)*3u; a^=fnv(hfine,sizeof hfine)*7u; a^=fnv(&wd,sizeof wd)*11u; h[k]=a; }
+        int n=0; for(int k=0;k<5;k++){ u32 x=h[k]^(h[k]>>16); for(int s=12;s>=0;s-=4){ int v=(x>>s)&15; th_str[n++]=(char)(v<10?'0'+v:'A'+v-10); } th_str[n++]=(k<4)?' ':'\0'; }
+    }
 #endif
 #ifdef TEST_KW
     kw_unlock(); kart_world();
@@ -1399,11 +1416,14 @@ static void run_game(void){
             if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }
             if(enter_dungeon_flag){ int fgs=(enter_dungeon_flag==3); if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; save_game(); fade(1); oam_hide_all(); oam_flush();
                 if(fgs) forge_begin();
-                depth_no=0; fl_max=0; skip_taken=0; arrive_dn=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
+                fm_reset(); depth_no=0; fl_max=0; skip_taken=0; arrive_dn=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
                 tier_lock = (!endless && zone_cleared) ? tiers[TZ]+1 : 0;
                 scene=1; dungeon_enter();
 #ifdef TEST_SKIP
                 if(skip_cell>=0){ px_=((skip_cell%MW)<<16)+0x8000; py_=((skip_cell/MW)<<16)+0x8000; dn_ok=1; } else { px_=up_x; py_=up_y; stair_ok=1; }
+#ifdef TEST_MEM
+                if(skip_cell>=0) test_view(skip_cell,4);
+#endif
 #ifdef TEST_UPS
                 px_=up_x; py_=up_y; stair_ok=1; fl_max=7;
 #endif

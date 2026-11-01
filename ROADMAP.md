@@ -19,7 +19,7 @@ Replaces the PDF of 28 Oct. Hard limits are unchanged: IWRAM and EWRAM are full 
 1. **Hollow-rock mine (Phase 3 start).** A mine entrance on hollow rocks, with ore veins in the walls bitten out in place. Built from the dungeon code, no new RAM. Medium risk: needs a quick look in play.
 2. **Link check with the real runtime library.** CI uses devkitARM; a local Ubuntu gcc 13.2 build reads 2696 bytes of stack headroom (want over 1500). CI prints its own number; compare the two after each patch.
 3. **Ore grade stacks, gem sockets and trophy slot.** These need RAM, so they wait for item 4 or 5.
-4. **Overlap the dungeon and planet buffers** (frees about 38 KB of EWRAM). Medium risk: it could garble terrain. Test: dungeon, back up, town, karts.
+4. **Overlap the dungeon and planet buffers** (frees about 38 KB of EWRAM). Medium risk: it could garble terrain. Test: dungeon, back up, town, karts. *Part done:* the dungeon's terrace, boss-hunt and floor-memory buffers now live in the world builder's scratch (gen_acc), which freed 16.7 KB of EWRAM and 1.7 KB of IWRAM (stack headroom 2080 to 3728). The big planet maps (hfine, cmap, hmap) are still separate.
 5. **Cut ground resolution to 128** (frees about 96 KB of EWRAM). High risk: land, town and kart race all need a look. Take item 4 before this one.
 6. Later phases: tractor beam and belt hazards (Phase 2 rest), mine hazards, shaft boss and Forge ore dial (Phase 3), claims, contracts, megadeposits and prestige (Phase 5).
 
