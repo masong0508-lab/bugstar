@@ -97,7 +97,7 @@ echo '#include "../creator/creator_ui.inc"' >> main.c
 echo '#include "../pc_giant.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 echo '#include "../coil_test.inc"' >> main.c
-echo '#include "../tests/kart_fuzz.inc"' >> main.c
+case "$PC_CFLAGS" in *TEST_KFUZZ*) echo '#include "../tests/kart_fuzz.inc"' >> main.c;; esac   # only the fuzz test build (-DTEST_KFUZZ=n) includes the driver
 # --- compile -----------------------------------------------------------------------------------------------------------
 # -funsigned-char: the GBA compiler's char is unsigned. -fwrapv: ARM integers wrap. -no-pie: all addresses stay below 4 GB.
 # SDL: with the window front end (default) the game links the system SDL2 (libSDL2-2.0.so.0); PC_SDL=0 builds the headless-only program.

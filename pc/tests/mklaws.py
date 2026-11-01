@@ -24,7 +24,7 @@ rep('U',9); key('r',16); rep('D',2); key('r',16); rep('U',7); key('r',16); shot(
 key('B',30); key('B',40); shot('hub2')
 key('D'); key('A',40); shot('how1')
 for i in range(8): key('R',16); shot('how%d'%(i+2))
-key('B',40); key('D'); key('A',40); shot('cheats_off')
+key('B',40); key('D'); key('D'); key('A',40); shot('cheats_off')   # (the GIANT NUMBERS row sits before CHEATS)
 key('D',16); key('A',40); shot('ask')                         # tries SET ANY LAW (greyed) while off
 key('U',16); key('A',40); shot('confirm'); key('A',40); shot('cheats_on')
 rep('D',2); rep('r',2); key('A',30); shot('size'); rep('D',1); rep('r',3); shot('speed')
