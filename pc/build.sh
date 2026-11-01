@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")"; PCD=$(pwd); ROOT=$(dirname "$PCD")
 # assets.h and facts.bin come from the same generators as the GBA build, run in a scratch copy (pc/genroot, not committed) with BUGSTAR_PC=1:
 # that adds the PC version's own HOW BIG IS IT? pages (pc/facts/*.py). The repo root's assets.h and facts.bin are never touched.
-rm -rf genroot; mkdir -p genroot/pc; cp "$ROOT"/*.py genroot/; cp -r facts genroot/pc/facts; rm -rf genroot/pc/facts/__pycache__
+rm -rf genroot; mkdir -p genroot/pc; cp "$ROOT"/*.py genroot/; cp -r facts genroot/pc/facts; rm -rf genroot/pc/facts/__pycache__; mkdir -p genroot/pc/laws; cp laws/laws_def.h laws/laws.c genroot/pc/laws/     # (the laws pages read the law table)
 ( cd genroot && BUGSTAR_PC=1 python3 gen.py >/dev/null )
 mkdir -p gen; rm -f gen/*.inc gen/*.c gen/*.h
 cp "$ROOT"/*.inc "$ROOT"/main.c "$ROOT"/logo.h gen/; cp genroot/assets.h genroot/facts.bin gen/

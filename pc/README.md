@@ -196,7 +196,7 @@ Everything is made on demand from a seed or an id by word lists (parts x parts);
   `pc/content/sampler.c` prints sample worlds: `pc/content/test.sh 5` builds it and prints five.
 
 **How the game uses it (PC build only; `build.sh` adds `pc_info.inc` and three small `sed` patches to the copies in `pc/gen`):**
-- **PC WORLD FILE**: pause (START), go to the WORLD page, press **B**. Six pages, L and R turn them, B closes: THIS PLACE (the universe's two themes and what they do, the planet's numbers),
+- **PC WORLD FILE**: pause (START), go to the WORLD page, press **B** (the PC LAB, see UNIVERSE LAWS below), then **A** on PLANET FILE. Six pages, L and R turn them, B closes: THIS PLACE (the universe's two themes and what they do, the planet's numbers),
   TRAITS (3 to 6 of the 1,040), STATS (the 112 as a table, zones down and families across), PEOPLE AND CITY, CREATURES (the native kinds), FAMOUS CREATURE (one individual with name, gift, mutation, stats).
   Test: `pc/tests/worldfile.sh` (plays the game to a planet, opens the file, turns all pages).
 - **The traits change the planet** on the endless galaxy's worlds (after the story; not moons, not the hell worlds): gravity (0.35 / 0.70 / 1.05 / 1.40 g from the planet's gravity percent),
@@ -206,3 +206,43 @@ Everything is made on demand from a seed or an id by word lists (parts x parts);
   Bits above the game's own 256 / 155 are handed to `pcx_hi_set()` and folded into the game's words, so the top digit changes the world too (tested in `seeds.sh`).
   In normal play the address only reaches the game's own 256 / 155 bits (that is all the game's navigation and save format hold), so the high words are zero there.
 - Next: wire danger, loot, prices, life, the themes, the native creatures, peoples and cities into the game's rules (monsters, loot, quests, towns).
+
+
+## UNIVERSE LAWS: tiny and giant planets, 146 laws, HOW THIS WORKS, CHEATS (PC port only)
+
+**What it is.** A table of **146 named laws** (`pc/laws/laws_def.h`): UNIVERSE 17, GALAXY 29, STARS 27, PLANETS 37, LIFE 21, TIME 15. Each has a plain name, a one-line meaning, a unit, a sensible range, a wide
+(cheat) range, a default, and a small and a big step. They really drive the game: the model (`pc/laws/lawmodel.c`, plain C, no libm, only `+ - * /` and compares, so every machine gives the same answer) turns a law set and a
+place (universe, galaxy, star, planet, and the planet's own DNA from the game) into about 100 physical numbers (age, light, star mass and heat, orbit, year, day, gravity, air, temperature, water, radiation, life...) and
+into changes the game applies. **Default-is-identity:** every number is worked out under the default laws (the reference) and under the current laws, and the game applies only the difference. So default laws change nothing:
+`seeds.golden` and `determinism.sh` are the same as before. UNIVERSE VARIETY bends the laws a little from universe to universe, so different universe numbers give different universes under the same law set.
+
+**Try it.** `./pc/build.sh`, play, pause (START), go to the WORLD page (R four times), press **B**: the PC LAB with PLANET FILE, UNIVERSE LAWS, HOW THIS WORKS, CHEATS.
+- **UNIVERSE LAWS** (the editor): tabs PRESETS, UNIVERSE, GALAXY, STARS, PLANETS, LIFE, TIME (go UP from the first row to reach the tabs, LEFT/RIGHT to change tab, or L and R). PRESETS come first, in plain words:
+  NORMAL, TINY WORLDS, PEBBLE WORLDS, GIANT WORLDS, HIGH GRAVITY, LOW GRAVITY, DEAD UNIVERSE, STAR NURSERY, CROWDED GALAXIES, LONELY SPACE, SLOW LIGHT, FAST LIGHT, HOT UNIVERSE, ICY UNIVERSE, WATER WORLDS, SPIRALS ONLY,
+  GALAXY CRASH, STRANGE LIFE, FAST CLOCKS, SLOW CLOCKS (20). A picks one. In a tab: UP/DOWN pick a row, **LEFT/RIGHT change it** (hold to repeat; a long hold or a shoulder button gives big steps; a step lands on NORMAL),
+  **A puts one back to normal**, the last row puts everything back (it asks first). Edited rows have a star and are gold; a value outside the sensible range is red. Under the list: what the law means (plain words) and
+  **the live effect** (the numbers of this planet it moves most, with the normal value in brackets). **START** opens the menu: ADVANCED NUMBERS (off: values are words like NORMAL, X2, OFF; on: real numbers with units, and the
+  86 expert laws), UNDO (24 deep), SEARCH BY WORD (also SELECT: UP/DOWN pick a letter, RIGHT adds it, LEFT deletes, A done), MAKE THIS PLANET AGAIN NOW (saves and rebuilds it with the new laws), RESET EVERYTHING, HOW THIS WORKS. B goes back.
+  The simple list has 60 laws; sensible limits keep a new player inside a game that still works.
+- **HOW THIS WORKS** (9 pages, L and R turn them): THE UNIVERSE, THE GALAXY, THE STAR, HOW BIG IS THIS PLANET, THE SURFACE, THE AIR, DAY YEAR AND SEASONS, LIFE, TRIPS AND DISTANCES. Plain explanations (what makes the sun
+  hot, why galaxies spin, how stars are born and die, why the horizon bends, where seasons come from, why light speed sets trip times) with the real current numbers of the place you stand in filled in.
+- **CHEATS** (red, off by default). Nothing there changes the game until the switch is turned on (it asks first). Turning it on **marks the world as cheated** (`cheated=1` in its laws file; the mark stays). Then: SET ANY LAW (the wide
+  ranges), JUMP TO A PLANET SIZE (a pebble, a house, an asteroid, a moon, Earth, Jupiter, the Sun, a giant star, a solar system, a light year, the biggest), GAME SPEED (5 to 3,200 percent; the window paces the game by it, 10 to 2,000), YOUR LEVEL,
+  GIVE GOLD, FILL HEALTH FOOD AND FUEL, TELEPORT BY ADDRESS (east and north cluster numbers in base 16, 155 bits each, and a star; endless galaxy only), MAKE THIS PLANET AGAIN. Level and gold are the game's own 64-bit numbers.
+- **Saved per world.** Laws are kept next to the save, one file per slot: `<save name>.laws0`, `.laws1`, `.laws2` (text: `KEY=VALUE` for every edited law, and `cheated=0|1`). Loading a slot loads its laws; a new game starts at the defaults;
+  erasing or copying a slot deletes or copies its file. Normal play never touches the `.sav`: the laws are in their own file.
+
+**Planet sizes from a pebble to bigger than a star.** The size law (PLANET SIZE, in quarter steps of doubling, 2^-32 to 2^44 times the game's size class) works through radius, gravity (from size and density; the game's four
+gravity steps, a walking-speed penalty above 1.4 g, ZERO-G below 0.2 g), escape speed, air, temperature, water, day, year, the horizon and the numbers on the HOW THIS WORKS pages. **Horizon:** the game's own horizon bend is
+now in sixteenths and rescaled by radius, so a small world curves away fast (never more than the game's strongest TINY PLANET) and a huge one is flat. **Pebbles:** when a world is fewer than 128 steps round (a step is 5 cm), the walkable world
+repeats every 64, 32, 16 or 8 cells: the ground is cross-faded into a seamless tile, the wrap mask is a run-time number (`pc_tw`), objects are wrapped and thinned (one per cell, almost nothing that bites), and no town fits. On a huge world the 128 cell walking world stays the same (the land just gets flatter).
+**Limits:** Kart racing is not made for pebble worlds; the six story worlds follow only size and gravity; the PC window paces the game speed, the sound runs at the game's rate.
+
+**What the laws change in play.** Planets and moons per star (and CROWDED galaxies), hell and weird world odds, light years per cluster and the galaxy block size, the hours of a voyage (speed of light), the fuel of a warp
+(expansion and dark energy), danger (radiation, angry life), hunger, the planet's class, hour, weather, snow, sand, water level, mountains and roughness, creatures, beetles, cities and ruins, mood, AURORA, METEORS and BAD AIR levels,
+resource nodes, the speed the sky turns (day length), and the game speed. `build.sh` patches only the generated copies; the root game sources are never edited.
+
+**Tests.** `pc/laws/test.sh` (table integrity and clamps, every law walks from minimum to maximum, text and file round trips, the cheat flag, search, defaults change nothing over 20,000 places, every law moves at least one number,
+100,000 random law sets and places with no non-finite number and valid game changes, a size sweep from a 1.5 mm pebble to a 1e20 m world, text fits the screen). `pc/tests/laws.sh` (the lab in the real game, 26 screenshots, two runs
+equal, the laws file holds the preset, the size and the cheat mark, a continued save loads its laws, 8 planets under laws equal `tests/laws.golden`). The seed viewer takes `--law KEY=VALUE`, `--laws FILE`, `--preset N`.
+If the model changes on purpose, make the golden again with `pc/tests/laws.sh --make-golden`. 49 HOW BIG pages about the laws and the real numbers behind them are in `pc/facts/11_laws.py`.
