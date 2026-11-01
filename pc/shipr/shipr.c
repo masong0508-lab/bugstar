@@ -27,6 +27,9 @@ static Boom *Bo; static int nBo, capBo;
 static MeshI Mi[64]; static int nM;
 static int mode; static float E[3], R[3], U[3], F[3], FOC, CX, CY, VB, SUN[3];
 static double last_ms;
+static void (*PAR)(int, int, void (*)(void*, int, int), void*); static int NTH = 1;
+void sr_set_par(void (*par)(int, int, void (*)(void*, int, int), void*), int nthreads){ PAR = par; NTH = nthreads < 1 ? 1 : nthreads; }
+static __thread int YL, YH;                       // this thread's band of rows
 // the lists being built (sr_begin .. sr_commit) and the lists on show (what sr_render draws): the game draws the next frame while the last one is shown
 typedef struct { SrShip *S; int nS, capS; Beam *Bm; int nB, capB; Boom *Bo; int nBo, capBo; MeshI Mi[64]; int nM; int mode, tag; float E[3], R[3], U[3], F[3], FOC, CX, CY, VB, SUN[3]; } Set;
 static Set shownv[2]; static int have_v[2], sel_tag; 
@@ -79,7 +82,7 @@ void sr_armada(int n, uint32_t seed, long frame, float dist){
         int heavy = (s & 31) == 0; q.kind = heavy ? SR_HEAVY : team ? SR_FIGHTER : SR_WING; q.team = (uint8_t)team; q.size = heavy ? 320 : 110;
         q.col = team ? 0xD84A3A : 0x4A9AF0; q.thrust = 0.7f; q.far = 1; q.firing = ((frame + i) % 47) < 3;
         sr_ship(&q);
-        if(q.firing && i + 2 < n && (s & 3) == 0){ float tg[3]; for(int k = 0; k < 3; k++) tg[k] = q.p[k] + q.f[k] * 900 + R[k] * side * -400; beam_far = 1; sr_beam(q.p, tg, team ? 0xFF6040 : 0x60C0FF, 1.0f); beam_far = 0; }
+        if(q.firing && i + 2 < n && (s & 15) == 0){ float tg[3]; for(int k = 0; k < 3; k++) tg[k] = q.p[k] + q.f[k] * 900 + R[k] * side * -400; beam_far = 1; sr_beam(q.p, tg, team ? 0xFF6040 : 0x60C0FF, 1.0f); beam_far = 0; }
     }
 }
 
@@ -125,12 +128,12 @@ static int VBp;                                                                 
 static int bgonly;                                                                                                           // drawing a far (scenery) ship: only over empty sky
 static inline int ok_px(int x, int y){ if(!MK) return 1; int gx = (int)(x * GX), gy = (int)(y * GY); int m = MK[gy * 240 + gx]; return bgonly ? m == 2 : m != 0; }
 static inline void add_px(int x, int y, uint32_t c, float a){         // additive light
-    if(x < 0 || y < 0 || x >= W || y >= VBp || !ok_px(x, y)) return; uint32_t *p = &O[y * W + x];
+    if(x < 0 || y < YL || x >= W || y >= YH || !ok_px(x, y)) return; uint32_t *p = &O[y * W + x];
     int r = (*p >> 16 & 255) + (int)((c >> 16 & 255) * a), g = (*p >> 8 & 255) + (int)((c >> 8 & 255) * a), b = (*p & 255) + (int)((c & 255) * a);
     *p = (uint32_t)(r > 255 ? 255 : r) << 16 | (uint32_t)(g > 255 ? 255 : g) << 8 | (uint32_t)(b > 255 ? 255 : b);
 }
 static inline void put_z(int x, int y, float z, uint32_t c){
-    if(x < 0 || y < 0 || x >= W || y >= VBp) return; size_t i = (size_t)y * W + x; if(z >= Z[i] || !ok_px(x, y)) return; Z[i] = z; O[i] = c;
+    if(x < 0 || y < YL || x >= W || y >= YH) return; size_t i = (size_t)y * W + x; if(z >= Z[i] || !ok_px(x, y)) return; Z[i] = z; O[i] = c;
 }
 static int proj(const float w[3], float *sx, float *sy, float *cz){   // world -> output pixels; 0 = behind
     float d[3] = { w[0] - E[0], w[1] - E[1], w[2] - E[2] };
@@ -141,7 +144,7 @@ static uint32_t shade(uint32_t c, float k){ int r = (int)((c >> 16 & 255) * k), 
 static void tri(float x0, float y0, float z0, float x1, float y1, float z1, float x2, float y2, float z2, uint32_t c){
     float A = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0); if(fabsf(A) < 1e-6f) return;
     int bx0 = (int)floorf(fminf(x0, fminf(x1, x2))), bx1 = (int)ceilf(fmaxf(x0, fmaxf(x1, x2))), by0 = (int)floorf(fminf(y0, fminf(y1, y2))), by1 = (int)ceilf(fmaxf(y0, fmaxf(y1, y2)));
-    if(bx0 < 0) bx0 = 0; if(by0 < 0) by0 = 0; if(bx1 > W - 1) bx1 = W - 1; if(by1 > VBp - 1) by1 = VBp - 1; if(bx0 > bx1 || by0 > by1) return;
+    if(bx0 < 0) bx0 = 0; if(by0 < YL) by0 = YL; if(bx1 > W - 1) bx1 = W - 1; if(by1 > YH - 1) by1 = YH - 1; if(bx0 > bx1 || by0 > by1) return;
     float iA = 1.0f / A;
     for(int y = by0; y <= by1; y++){ float py = y + 0.5f;
         for(int x = bx0; x <= bx1; x++){ float px = x + 0.5f;
@@ -150,7 +153,7 @@ static void tri(float x0, float y0, float z0, float x1, float y1, float z1, floa
 }
 static void glow(float x, float y, float rad, uint32_t c, float a){   // a soft round light, added
     if(rad < 0.7f){ add_px((int)x, (int)y, c, a); return; }
-    int r = (int)ceilf(rad * 2); float i2 = 1.0f / (rad * rad);
+    int r = (int)ceilf(rad * 2); if(y + r < YL || y - r >= YH) return; float i2 = 1.0f / (rad * rad);
     for(int dy = -r; dy <= r; dy++) for(int dx = -r; dx <= r; dx++){ float d2 = (dx*dx + dy*dy) * i2; if(d2 > 4) continue; float k = a / (1 + d2 * 3) - a * 0.077f; if(k > 0) add_px((int)x + dx, (int)y + dy, c, k); }
 }
 static void lineadd(float x0, float y0, float x1, float y1, uint32_t col, float w, float a){   // a glowing line: one pass over its box, light falls off with the distance to the segment
@@ -160,7 +163,7 @@ static void lineadd(float x0, float y0, float x1, float y1, uint32_t col, float 
         return; }
     float r = w; float ext = r * 2 + 1;
     int bx0 = (int)floorf(fminf(x0, x1) - ext), bx1 = (int)ceilf(fmaxf(x0, x1) + ext), by0 = (int)floorf(fminf(y0, y1) - ext), by1 = (int)ceilf(fmaxf(y0, y1) + ext);
-    if(bx0 < 0) bx0 = 0; if(by0 < 0) by0 = 0; if(bx1 > W - 1) bx1 = W - 1; if(by1 > VBp - 1) by1 = VBp - 1; if(bx0 > bx1 || by0 > by1) return;
+    if(bx0 < 0) bx0 = 0; if(by0 < YL) by0 = YL; if(bx1 > W - 1) bx1 = W - 1; if(by1 > YH - 1) by1 = YH - 1; if(bx0 > bx1 || by0 > by1) return;
     float dx = x1 - x0, dy = y1 - y0, L2 = dx*dx + dy*dy + 1e-6f, i2 = 1.0f / (r * r); int xm = fabsf(dx) >= fabsf(dy);
     int o0 = xm ? bx0 : by0, o1 = xm ? bx1 : by1;
     for(int o = o0; o <= o1; o++){                                       // walk along the long axis; across it only the band near the line
@@ -184,7 +187,7 @@ static int render_classic(void){
     memset(cgs, 0, sizeof cgs); int drawn = 0;
     static const float mdl[6][3] = {{0,0,110},{-110,0,-50},{110,0,-50},{0,35,-50},{0,-18,-50},{0,0,-70}};
     static const uint8_t pe[] = {0,1,0,2,0,3,0,4,1,3,2,3,1,4,2,4,3,5,4,5,1,5,2,5}, pel[] = {0,1,0,2,1,5,2,5,3,5};
-    for(int i = 0; i < nB; i++){ int ax, ay, bx, by; float z; if(gproj(Bm[i].a, &ax, &ay, &z) && gproj(Bm[i].b, &bx, &by, &z)) cline(ax, ay, bx, by, Bm[i].col); }
+    for(int i = 0; i < nB; i++){ int ax, ay, bx, by; float z; cfar = Bm[i].far; if(gproj(Bm[i].a, &ax, &ay, &z) && gproj(Bm[i].b, &bx, &by, &z)) cline(ax, ay, bx, by, Bm[i].col); }
     for(int i = 0; i < nS; i++){ const SrShip *s = &S[i]; int sx, sy; float z; cfar = s->far; if(!gproj(s->p, &sx, &sy, &z)) continue;
         float rp = s->size * 1.3f * FOC / z; if(sx + rp < 0 || sx - rp > 239 || sy + rp < 0 || sy - rp > VB) continue; drawn++;
         if(rp < 3.5f){ cpx(sx, sy, s->col); if(nS < 600 || rp > 2){ cpx(sx - 1, sy, s->col); cpx(sx + 1, sy, s->col); cpx(sx, sy - 1, s->col); } continue; }   // the game's far mark (a crowd: one pixel)   // the game's far mark
@@ -200,21 +203,8 @@ static int render_classic(void){
     return drawn;
 }
 
-static int sr_render_(uint32_t *out, int w, int h, const uint8_t *mask, int fade);
-int sr_render(uint32_t *out, int w, int h, const uint8_t *mask, int fade){
-    if(!have_shown) return 0;
-    SrShip *s0 = S; int n0 = nS, c0 = capS; Beam *b0 = Bm; int nb0 = nB, cb0 = capB; Boom *o0 = Bo; int no0 = nBo, co0 = capBo; static MeshI mi0[64]; memcpy(mi0, Mi, sizeof Mi); int nm0 = nM, md0 = mode;
-    float e0[3], r0[3], u0[3], f0[3], sn0[3], fo = FOC, cx = CX, cy = CY, vb = VB; memcpy(e0, E, 12); memcpy(r0, R, 12); memcpy(u0, U, 12); memcpy(f0, F, 12); memcpy(sn0, SUN, 12);
-    use_shown(); int d = sr_render_(out, w, h, mask, fade);
-    S = s0; nS = n0; capS = c0; Bm = b0; nB = nb0; capB = cb0; Bo = o0; nBo = no0; capBo = co0; memcpy(Mi, mi0, sizeof Mi); nM = nm0; mode = md0;
-    memcpy(E, e0, 12); memcpy(R, r0, 12); memcpy(U, u0, 12); memcpy(F, f0, 12); memcpy(SUN, sn0, 12); FOC = fo; CX = cx; CY = cy; VB = vb; return d; }
-static int sr_render_(uint32_t *out, int w, int h, const uint8_t *mask, int fade){
-    double t0 = now_ms();
-    O = out; W = w; H = h; MK = mask; GX = 240.0f / w; GY = 160.0f / h; VBp = (int)(VB / GY); if(VBp > H) VBp = H;
-    if(!mesh_ok) build_meshes();
-    int drawn = 0;
-    if(mode == SR_CLASSIC){ drawn = render_classic(); goto done; }
-    { size_t need = (size_t)W * H; if(need > zcap){ free(Z); Z = (float*)malloc(need * sizeof(float)); zcap = need; } for(size_t i = 0; i < (size_t)W * VBp; i++) Z[i] = 1e30f; }
+static void sr_band(void *vd, int lo, int hi){
+    YL = lo; YH = hi; int drawn = 0; for(int y = lo; y < hi; y++) for(int x = 0; x < W; x++) Z[(size_t)y * W + x] = 1e30f;
     int ultra = mode == SR_ULTRA; float px_per = 1.0f / GX;
     float dotR = nS > 3000 ? 3.2f : nS > 800 ? 2.4f : 1.6f, arrR = nS > 3000 ? 11 : nS > 800 ? 9 : 7;   // a crowd: simpler shapes sooner (the far ones are tiny anyway)
     // big hulls first (they fill the depth buffer)
@@ -227,7 +217,7 @@ static int sr_render_(uint32_t *out, int w, int h, const uint8_t *mask, int fade
             tri(sx[0], sy[0], sz[0], sx[1], sy[1], sz[1], sx[2], sy[2], sz[2], shade(c, 0.35f + 0.85f * d)); } }
     // ships
     for(int i = 0; i < nS; i++){ const SrShip *s = &S[i]; float sx, sy, cz; bgonly = s->far; if(!proj(s->p, &sx, &sy, &cz)) continue;
-        float rp = s->size * FOC / cz / GX; if(sx + rp * 1.5f < 0 || sx - rp * 1.5f > W || sy + rp * 1.5f < 0 || sy - rp * 1.5f > VBp) continue; drawn++;
+        float rp = s->size * FOC / cz / GX; if(sx + rp * 1.5f < 0 || sx - rp * 1.5f > W || sy + rp * 1.5f < YL || sy - rp * 1.5f >= YH) continue; if((int)sy >= lo && (int)sy < hi) drawn++;
         int teamc = s->team ? 0xFF7050 : 0x70C8FF;
         if(rp < dotR){                                                      // a dot: two tones, brighter in the middle
             float a = rp < 0.6f ? 0.55f : 0.9f; add_px((int)sx, (int)sy, s->col, a + 0.3f); if(rp > 1.8f){ add_px((int)sx - 1, (int)sy, s->col, a * 0.6f); add_px((int)sx + 1, (int)sy, s->col, a * 0.6f); } if(ultra && rp > 0.9f){ add_px((int)sx + 1, (int)sy, s->col, a * 0.4f); add_px((int)sx, (int)sy + 1, s->col, a * 0.4f); }
@@ -274,6 +264,26 @@ static int sr_render_(uint32_t *out, int w, int h, const uint8_t *mask, int fade
         for(int j = 0; j < nd; j++){ float an = frnd(&sd) * 6.2832f, sp = 0.6f + frnd(&sd) * 1.6f, d = rp * sp * 2.5f * t;
             float dx = sx + cosf(an) * d, dy = sy + sinf(an) * d * .8f + t * t * rp * .3f; uint32_t c = t < .5f ? 0xFFD080 : 0x806050;
             if(ultra){ float d0 = rp * sp * 2.5f * (t - .06f > 0 ? t - .06f : 0); lineadd(sx + cosf(an) * d0, sy + sinf(an) * d0 * .8f, dx, dy, c, 1, .5f * a); } else add_px((int)dx, (int)dy, c, a); } }
+    __atomic_add_fetch((int*)vd, drawn, __ATOMIC_RELAXED);
+}
+static int sr_render_(uint32_t *out, int w, int h, const uint8_t *mask, int fade);
+int sr_render(uint32_t *out, int w, int h, const uint8_t *mask, int fade){
+    if(!have_shown) return 0;
+    SrShip *s0 = S; int n0 = nS, c0 = capS; Beam *b0 = Bm; int nb0 = nB, cb0 = capB; Boom *o0 = Bo; int no0 = nBo, co0 = capBo; static MeshI mi0[64]; memcpy(mi0, Mi, sizeof Mi); int nm0 = nM, md0 = mode;
+    float e0[3], r0[3], u0[3], f0[3], sn0[3], fo = FOC, cx = CX, cy = CY, vb = VB; memcpy(e0, E, 12); memcpy(r0, R, 12); memcpy(u0, U, 12); memcpy(f0, F, 12); memcpy(sn0, SUN, 12);
+    use_shown(); int d = sr_render_(out, w, h, mask, fade);
+    S = s0; nS = n0; capS = c0; Bm = b0; nB = nb0; capB = cb0; Bo = o0; nBo = no0; capBo = co0; memcpy(Mi, mi0, sizeof Mi); nM = nm0; mode = md0;
+    memcpy(E, e0, 12); memcpy(R, r0, 12); memcpy(U, u0, 12); memcpy(F, f0, 12); memcpy(SUN, sn0, 12); FOC = fo; CX = cx; CY = cy; VB = vb; return d; }
+static int sr_render_(uint32_t *out, int w, int h, const uint8_t *mask, int fade){
+    double t0 = now_ms();
+    O = out; W = w; H = h; MK = mask; GX = 240.0f / w; GY = 160.0f / h; VBp = (int)(VB / GY); if(VBp > H) VBp = H;
+    if(!mesh_ok) build_meshes();
+    int drawn = 0;
+    YL = 0; YH = VBp;
+    if(mode == SR_CLASSIC){ drawn = render_classic(); goto done; }
+    { size_t need = (size_t)W * H; if(need > zcap){ free(Z); Z = (float*)malloc(need * sizeof(float)); zcap = need; } }
+    if(PAR && NTH > 1 && W * VBp > 200000){ int ch = (VBp + NTH - 1) / NTH; PAR(VBp, ch, sr_band, &drawn); }
+    else sr_band(&drawn, 0, VBp);
 done:
     if(fade){ /* the screen fade also covers the ships (the compositor applies it to the whole picture already: nothing here) */ }
     last_ms = now_ms() - t0;

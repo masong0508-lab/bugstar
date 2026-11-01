@@ -118,7 +118,7 @@ OPT=${PC_OPT:--O2}
 SDLF=""; SDLL=""
 CC=${PC_CC:-gcc}; ARCH=${PC_ARCH:--m64 -no-pie}; OUT=${PC_OUT:-bugstar_pc}
 if [ -n "$PC_WIN" ]; then   # Windows 32-bit cross build (llvm-mingw): 32-bit pointers make the game's "address in a u32" code just work
-  SDLF="-DPC_SDL -D_WIN32_CROSS -I../platform/sdl2/include"; SDLL="-L$PC_WIN/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -Wl,--disable-dynamicbase -Wl,--nxcompat -static-libgcc"
+  SDLF="-DPC_SDL -D_WIN32_CROSS -I../platform/sdl2/include"; SDLL="-L$PC_WIN/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -Wl,--disable-dynamicbase -Wl,--nxcompat -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
 elif [ "${PC_SDL:-1}" != "0" ]; then
   SDLF="-DPC_SDL -I../platform/sdl2/include -Wl,-rpath,\$ORIGIN/lib -Wl,-rpath,\$ORIGIN"
   if [ -n "$SDL_LIB" ]; then SDLL="$SDL_LIB"; else SDLL=$(ldconfig -p 2>/dev/null | awk '/libSDL2-2.0.so.0 /{print $NF; exit}'); fi
@@ -132,5 +132,5 @@ STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fu
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
 for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../giant/giant.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
-$CC $ARCH $OBJS $SDLL -lm -o ../$OUT
+$CC $ARCH $OBJS $SDLL -lm -lpthread -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"

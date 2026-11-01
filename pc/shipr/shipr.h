@@ -38,5 +38,6 @@ void sr_run_hooks(void);
 // draw it all into a W x H picture (0x00RRGGBB). mask: 240x160 bytes, 1 = the game's own picture may be covered here (NULL = everywhere).
 // fade: the screen fade (-16 darker .. +16 brighter). Returns the number of ships drawn.
 int  sr_render(uint32_t *out, int W, int H, const uint8_t *mask, int fade);
-double sr_last_ms(void);                                                   // how long the last sr_render took
+double sr_last_ms(void);
+void sr_set_par(void (*par)(int total, int chunk, void (*fn)(void*, int, int), void *ctx), int nthreads);   // optional: a parallel-for, so bands of rows draw at the same time                                                   // how long the last sr_render took
 #endif

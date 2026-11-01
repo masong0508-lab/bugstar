@@ -5,6 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <pthread.h>
+typedef struct { void (*fn)(void*, int, int); void *ctx; int lo, hi; } Job;
+static void *runj(void *u){ Job *j = u; j->fn(j->ctx, j->lo, j->hi); return 0; }
+static void par(int total, int chunk, void (*fn)(void*, int, int), void *ctx){       // a plain parallel-for for the bench: one thread per chunk
+    pthread_t th[64]; Job jb[64]; int n = 0; for(int a = 0; a < total && n < 64; a += chunk, n++){ jb[n].fn = fn; jb[n].ctx = ctx; jb[n].lo = a; jb[n].hi = a + chunk > total ? total : a + chunk; pthread_create(&th[n], 0, runj, &jb[n]); }
+    for(int i = 0; i < n; i++) pthread_join(th[i], 0); }
 static void backdrop(uint32_t *o, int W, int H){ for(int y = 0; y < H; y++) for(int x = 0; x < W; x++){ uint32_t h = (uint32_t)(x * 7919 + y * 104729); h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15;
     int b = 10 + y * 20 / H; o[y * W + x] = (h % 900 == 0) ? 0xC0C8FF : (uint32_t)(b / 2) << 16 | (uint32_t)(b / 2) << 8 | (uint32_t)b; } }
 static void scene(int mode, int n, long frame){
@@ -22,6 +28,7 @@ static void scene(int mode, int n, long frame){
 }
 int main(int argc, char **argv){
     int W = argc > 1 ? atoi(argv[1]) : 1280, H = argc > 2 ? atoi(argv[2]) : 720; const char *pre = argc > 3 ? argv[3] : "sr";
+    int nt = argc > 4 ? atoi(argv[4]) : 1; if(nt > 1) sr_set_par(par, nt);
     uint32_t *o = malloc((size_t)W * H * 4), *bg = malloc((size_t)W * H * 4); backdrop(bg, W, H);
     static const char *mn[3] = {"CLASSIC", "NATIVE", "ULTRA"}; int ns[4] = {100, 1000, 10000, 100000};
     for(int m = 0; m < 3; m++) for(int k = 0; k < 4; k++){ double sum = 0, mx = 0; int drawn = 0, reps = 12;

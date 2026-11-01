@@ -283,3 +283,37 @@ SELECT rolls the dice for the tab, START undoes. The planet and the footprint pa
 PC LAB (pause, WORLD page, B) then GIANT NUMBERS: a viewer for 2^(2^32) (1,292,913,987 digits), the counting number 1..123,456,790 (1,000,000,008 digits),
 the complete name of BUGSTARILLION v3 (6,376,476,945,538,615,314 letters), a namer for any typed number, and a scale ladder. Details, definitions, the record research
 and the tests: `pc/giant/README.md`. The 646 MB digit file is built once by `pc/giant/mkpow.py` and is not in git (`pc/giant/cache/`); the counting number needs no file.
+
+## SHIPS: the PC ship renderer (pc/shipr) and the far battle
+**What it is.** In space and in fleet battles the window build draws the ships itself, at the window's own resolution, instead of the game's
+240x160 wireframes: `pc/shipr/shipr.c` (plain C, about 30 KB of source, no image files: every ship, glow and explosion is made from a few numbers).
+The game's simulation is untouched (the ships, their fights and the save are the game's; the same keys give the same game in every mode).
+`pc/pc_ships.inc` reads the game's ships each frame (`pir[]`, the camera `br/bu/bf`, `cam_o`) and hands them over; build.sh puts two hooks into
+`space.inc` (before the pirates: `pc_sr_space`, the game's own drawing is skipped; after them: `pc_sr_mark`, a copy of the page so the cockpit,
+HUD and sparks the game draws later stay on top).
+
+**Options** (Esc > VIDEO): **SHIPS** = CLASSIC (the GBA look: wireframes and 2x2 marks on the game's own grid, any number of ships), NATIVE
+(lit solid ships, engine glows, beams, shields, explosions with debris) or ULTRA (more parts per ship, highlights, engine trails, shock rings,
+glowing beams). **FAR BATTLE** = OFF, 500, 2,000 or 10,000 ships: during a fleet battle a distant battle is drawn around yours (only drawn,
+from the system's seed and the frame number; it never covers planets, the station or the HUD). Headless tests: `PC_SHIPS=0|1|2`, `PC_ARMADA=N`.
+
+**How it stays smooth.** Each ship's centre is projected once (the same projection as the game's `sproj`), whatever is behind or off screen is
+dropped, and the size on screen picks the detail: a dot under about 1.6 px (sooner in a crowd), a lit arrow under 7 to 11 px, a lit mesh above
+(6 to 14 triangles, a depth buffer, no sorting). Beams are glowing lines, explosions are a fireball, a ring and debris from a seed. The picture is
+cut into bands of rows that draw on all CPU cores at once (the same picture as one core, tested byte for byte).
+
+**Measured** (`gcc -O2 -o out/srbench shipr/bench.c shipr/shipr.c -lm -lpthread && out/srbench 1280 720 out/sr/b [threads]`; a 1280x720 frame,
+a close dogfight of 40 plus a middle cloud plus a far armada; one core of a busy 2-core build machine, so a desktop is faster):
+
+| ships | CLASSIC | NATIVE | ULTRA |
+|---|---|---|---|
+| 100 | 2.5 ms | 4.3 ms | 7.1 ms |
+| 1,000 | 1.2 ms | 5.5 ms | 8.8 ms |
+| 10,000 | 2.3 ms | 11.7 ms | 15.8 ms |
+| 100,000 | 4.1 ms | 42.8 ms | 57.6 ms |
+
+**Hooks for more ships (warships, armadas).** Other PC code can draw through the same renderer, in the same frame and the same depth buffer:
+`sr_on_frame(fn)` registers a function that is called every space frame after the game's ships went in; inside it call
+`sr_ship()` / `sr_ships()` for any number of ships (`SrShip`: position, forward and up, half length, colour, kind, team, firing, shield hit,
+thrust, `far`), `sr_mesh()` for a big hull (`SrMesh`: vertices, triangles, optional colour per triangle; up to 64 hulls a frame, lit by the sun),
+`sr_beam()`, `sr_boom()` and `sr_armada()`. The colossal warships (`pc/warship`) can register their draw this way. See `pc/shipr/shipr.h`.
