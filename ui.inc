@@ -671,11 +671,18 @@ static const u8 tab_icon[9][8]={
 static void icon8(volatile u16 *pg, int x, int y, const u8 *ic, int col){ for(int r=0;r<8;r++) for(int c=0;c<8;c++) if(ic[r]&(0x80>>c)) pix(pg,x+c,y+r,col); }
 #define HI 255                                                 // the selection bar's colour: it gently pulses while the pause screen is open
 static int pause_last[2]={0,6};                                // the page you were on last time, on the surface and down in a dungeon
+static void st_spend(int i, int step, int dir, s64 *add){       // the BUG page: spend (dir 1) or take back (dir -1, only what this visit spent) a step of stat points on stat i
+    s64 *sv[4]={&st_str,&st_dex,&st_vit,&st_mag};
+    s64 n = dir>0 ? pt_amount(step,stat_pts,S64_MAX) : pt_amount(step,add[i],add[i]);
+    if(n<=0){ sfx(4); scpy(menu_msg, dir>0 ? "NO POINTS LEFT: LEVEL UP FOR MORE" : "ONLY THIS VISIT'S POINTS COME BACK"); return; }
+    s64 oldmax=maxh; *sv[i]=sadd(*sv[i],dir*n); stat_pts=sadd(stat_pts,-dir*n); add[i]=sadd(add[i],dir*n); menu_msg[0]=0;
+    recalc(); hearts=sadd(hearts,sadd(maxh,-oldmax)); if(hearts<1) hearts=1; if(hearts>maxh) hearts=maxh; if(mp>maxmp) mp=maxmp; sfx(dir>0?2:4); }
 static void char_screen(volatile u16 *pg){
     static const u8 ord[9]={0,1,2,3,7,4,8,6,5};                // page numbers in tab order (7 = WORLD, 8 = EXTRAS; pause_last keeps page numbers, so older orders still work)
     static const char *const tabn[9]={"BUG","GEAR","MAGIC","QUEST","WORLD","FEATS","EXTRAS","MAP","SYSTEM"};
     static const u8 tabc[9]={C_GREEN,C_CYAN,C_UNIQ,C_GOLD,C_CYAN,C_GOLD,C_UNIQ,C_GREEN,C_WHITE};
     int ti=0; { int want=pause_last[scene==1]; for(int i=0;i<9;i++) if(ord[i]==want) ti=i; }
+    static int pt_step=4; s64 st_add[4]={0,0,0,0};                // BUG page: the step for spending points (MAX/100/50/5/1, kept), and what this visit spent (LEFT and B give it back)
     int page=ord[ti], cur=0, dirty=1, sub=0, tick=0, extop=0; sys_msg[0]=0; in_menu++; menu_msg[0]=0;
     static const char *const stn[4]={"STRENGTH","DEXTERITY","VITALITY","MAGIC"};
     static const char *const std[4]={"BITE DAMAGE","CRITS, FASTER BITES","HEALTH, DEFENCE","MANA, SPELL POWER"};
@@ -724,7 +731,8 @@ static void char_screen(volatile u16 *pg){
                 if(pet_away_t) rtext(pg,232,133,"AWAY SELLING",U_SOFT); else if(pet_down_t) rtext(pg,232,133,"RESTING",U_SOFT); else { int pm=pet_maxhp*(pet_form==2?2:1); ui_bar(pg,150,133,82,5,pet_hp,pm,C_GREEN); }
                 { int any=0, x=10; for(int t=0;t<6;t++) if(have_bug[t]){ any=1; scpy(b,friend_name[t]); scat(b," X"); ncat(b,have_bug[t]); if(x+textlen(b)*4>232) break; text(pg,x,141,b,C_WHITE,1); x+=textlen(b)*4+8; }
                   if(!any) text(pg,10,141,"NO BUG FRIENDS YET. OPEN CAGES TO FREE THEM",C_DGREY,1); }
-                if(stat_pts){ static char ft[32]; scpy(ft,"A: ADD A POINT ("); ncat(ft,stat_pts); scat(ft," LEFT)"); foot=ft; }
+                if(stat_pts || st_add[0]|st_add[1]|st_add[2]|st_add[3]){ foot="A/>: +  <: -  SEL: STEP  B: UNDO";
+                    scpy(b,""); ncat(b,stat_pts); scat(b," PTS  STEP "); scat(b,pt_step_nm[pt_step]); rtext(pg,122,91,b,C_GOLD); }
             } else if(page==1){
                 const Gear *eq[3]={&eqw,&eqa,&eqc}; static const char *const lab[3]={"BITE","WEAR","CHARM"}; static const u8 lc[3]={C_RED,C_CYAN,C_UNIQ};
                 for(int i=0;i<3;i++){ int x=4+i*78; ui_panel(pg,x,38,76,22); rect(pg,x+5,42,2,5,lc[i]); text(pg,x+10,42,lab[i],U_SOFT,1);
@@ -829,7 +837,7 @@ static void char_screen(volatile u16 *pg){
             if(page==1){ if(HIT(K_RIGHT) && cur+6<nmax){ cur+=6; dirty=1; } if(HIT(K_LEFT) && cur>=6){ cur-=6; dirty=1; } } }
         if(HIT(K_A)){
             dirty=1;
-            if(page==0 && stat_pts){ s64 *sv[4]={&st_str,&st_dex,&st_vit,&st_mag}; (*sv[cur])=sadd(*sv[cur],1); stat_pts--; s64 oldmax=maxh; recalc(); hearts=sadd(hearts,sadd(maxh,-oldmax)); sfx(2); }
+            if(page==0) st_spend(cur,pt_step,1,st_add);
             if(page==1 && bag_n){ use_index(cur); if(cur>=bag_n && cur) cur--; }
             if(page==2 && spell_ok(cur)) spell_sel=cur;
             if(page==4){ sub^=1; sfx(2); }
@@ -841,6 +849,11 @@ static void char_screen(volatile u16 *pg){
             if(is_gear(&bag[cur])){ int n=scrap_of(bag[cur].rar); scrap+=n; char m[32]; scpy(m,"SCRAPPED: +"); ncat(m,n); scat(m," TECH SCRAP"); drop_at(cur); say(m); sfx(13); }
             else drop_at(cur);
             if(cur>=bag_n && cur) cur--; dirty=1; }
+        if(page==0){                                                    // BUG page: RIGHT spends a step like A, LEFT takes back this visit's points, SELECT picks the step, B undoes them all
+            if(HIT(K_RIGHT)){ st_spend(cur,pt_step,1,st_add); dirty=1; }
+            if(HIT(K_LEFT)){ st_spend(cur,pt_step,-1,st_add); dirty=1; }
+            if(HIT(K_SEL)){ pt_step=(pt_step+1)%5; sfx(7); dirty=1; }
+            if(HIT(K_B)){ for(int i=0;i<4;i++) if(st_add[i]){ s64 a=st_add[i]; st_spend(i,0,-1,st_add); (void)a; } dirty=1; } }
         if(HIT(K_SEL) && page==1){ send_pet_to_sell(); dirty=1; }
         if(HIT(K_SEL) && page==7){ if(big_unlocked()){ oam_hide_all(); oam_flush(); size_screen(pg,0); hud_now(); } else scpy(menu_msg,"LOCKED: BEAT THE ANT KING FIRST"); dirty=1; }
         if(HIT(K_UP)||HIT(K_DOWN)||HIT(K_L)||HIT(K_R)) menu_msg[0]=0;

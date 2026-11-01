@@ -110,11 +110,19 @@ static void ore_fix(int o){ int t=ore_n[o]; if(ore_prist[o]>t) ore_prist[o]=(u16
 static void gr_save(void){ GrSave g; memset(&g,0,sizeof g); g.magic=0x31524747u; g.ver=1; for(int i=0;i<8;i++){ g.rich[i]=ore_rich[4+i]; g.prist[i]=ore_prist[4+i]; } g.sum=fnv(&g,sizeof g-4); sram_write(slot_base(cur_slot)+GR_OFF,&g,sizeof g); }
 static void gr_load(void){ GrSave g; sram_read(slot_base(cur_slot)+GR_OFF,&g,sizeof g); if(g.magic!=0x31524747u || g.ver!=1 || g.sum!=fnv(&g,sizeof g-4)) return;
     for(int i=0;i<8;i++){ ore_rich[4+i]=g.rich[i]; ore_prist[4+i]=g.prist[i]; ore_fix(4+i); } }
-static void ore_reset(void){ for(int i=0;i<NORE;i++){ ore_rich[i]=0; ore_prist[i]=0; } sm_reset(); ml_reset(); belt_reset();  for(int i=0;i<NORE;i++) ore_n[i]=0; for(int i=0;i<ORE_RING;i++) ore_ring[i]=0; ore_ring_i=0; ore_tool=0; }
-static void ore_save(void){ gr_save(); OreSave s; memset(&s,0,sizeof s); s.magic=0x3145524Fu; s.ver=1; s.tool=ore_tool; s.ring_i=ore_ring_i;
+// ---- SHIP POINTS and the ship's ranks (game.inc): a block of their own in the gap after the grade block (SRAM slot + 0x8A0 .. 0x8C0, audited free:
+// the grade block ends at 0x894, the address block starts at 0x900). An old save has none: no points, no ranks.
+#define SR_OFF 0x8A0
+typedef struct { u32 magic; u8 ver, pad[3]; u32 pts; u16 rk[8]; u32 sum; } SrSave;                  // 32 bytes
+_Static_assert(SR_OFF >= GR_OFF+sizeof(GrSave) && SR_OFF+sizeof(SrSave) <= 0x900 && NSK<=8, "the ship points block must sit after the grade block and before the address block");
+static void sr_save(void){ SrSave s; memset(&s,0,sizeof s); s.magic=0x31505253u; s.ver=1; s.pts=ship_pts; for(int i=0;i<NSK;i++) s.rk[i]=ship_rk[i]; s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+SR_OFF,&s,sizeof s); }
+static void sr_load(void){ SrSave s; sram_read(slot_base(cur_slot)+SR_OFF,&s,sizeof s); if(s.magic!=0x31505253u || s.ver!=1 || s.sum!=fnv(&s,sizeof s-4)) return;
+    ship_pts = s.pts>4000000000u ? 4000000000u : s.pts; for(int i=0;i<NSK;i++) ship_rk[i] = s.rk[i]>ship_rk_cap[i] ? ship_rk_cap[i] : s.rk[i]; }
+static void ore_reset(void){ ship_pts=0; for(int i=0;i<NSK;i++) ship_rk[i]=0; for(int i=0;i<NORE;i++){ ore_rich[i]=0; ore_prist[i]=0; } sm_reset(); ml_reset(); belt_reset();  for(int i=0;i<NORE;i++) ore_n[i]=0; for(int i=0;i<ORE_RING;i++) ore_ring[i]=0; ore_ring_i=0; ore_tool=0; }
+static void ore_save(void){ gr_save(); sr_save(); OreSave s; memset(&s,0,sizeof s); s.magic=0x3145524Fu; s.ver=1; s.tool=ore_tool; s.ring_i=ore_ring_i;
     for(int i=0;i<NORE;i++) s.n[i]=ore_n[i]; for(int i=0;i<ORE_RING;i++) s.ring[i]=ore_ring[i];
     s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+ORE_OFF,&s,sizeof s); sm_save(); ml_save(); belt_save(); }
-static void ore_load(void){ OreSave s; ore_reset(); sm_load(); gr_load(); ml_load(); belt_load(); sram_read(slot_base(cur_slot)+ORE_OFF,&s,sizeof s);
+static void ore_load(void){ OreSave s; ore_reset(); sm_load(); gr_load(); sr_load(); ml_load(); belt_load(); sram_read(slot_base(cur_slot)+ORE_OFF,&s,sizeof s);
     if(s.magic!=0x3145524Fu || s.sum!=fnv(&s,sizeof s-4) || s.ver!=1) return;           // no block (an old save) or a damaged one: an empty bag
     ore_tool = s.tool<=3 ? s.tool : 0; ore_ring_i = s.ring_i<ORE_RING ? s.ring_i : 0;
     for(int i=0;i<NORE;i++) ore_n[i]=s.n[i]; for(int i=0;i<ORE_RING;i++) ore_ring[i]=s.ring[i]; }

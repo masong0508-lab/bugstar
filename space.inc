@@ -359,9 +359,10 @@ static void ship_dies(Pirate *p, int by_you){
     if(p->team==0){ if(wing_n>0) wing_n--; space_say("WINGMAN DOWN! HIRE MORE AT A STATION"); sfx(4); return; }
     int g = by_you ? 30+space_danger()*15 : 10+space_danger()*5; gold+=g; if(by_you) gain_xp(10+space_danger()*3); else gain_xp(3+space_danger());
     if(by_you && battle_on) coil_try_drop();
+    if(by_you) ship_pts_add(1);                                                    // SHIP POINTS (game.inc): 1 a ship you shoot down, 10 a fleet battle won
     if(battle_on) battle_kills++;
-    if(battle_on && team_count(1)==0){ battle_on=0; coil_win(); int bonus=100+battle_kills*(20+space_danger()*4); gold+=bonus; fame+=10+battle_kills; char b[40]; scpy(b,"BATTLE WON! BONUS +"); ncat(b,bonus); scat(b,"G"); space_say(b); sfx(6); return; }
-    if(by_you){ char b[32]; scpy(b,"ENEMY DOWN! +"); ncat(b,g); scat(b,"G"); space_say(b); }
+    if(battle_on && team_count(1)==0){ battle_on=0; coil_win(); ship_pts_add(10); int bonus=100+battle_kills*(20+space_danger()*4); gold+=bonus; fame+=10+battle_kills; char b[40]; scpy(b,"BATTLE WON! BONUS +"); ncat(b,bonus); scat(b,"G"); space_say(b); sfx(6); return; }
+    if(by_you){ char b[40]; scpy(b,"ENEMY DOWN! +"); ncat(b,g); scat(b,"G +1 SHIP PT"); space_say(b); }
     else if(lr(2)==0){ static const char *const wq[6]={"WINGMAN: GOT ONE!","WINGMAN: SPLASH ONE!","WINGMAN: THAT ONE WAS RUDE.","WINGMAN: FOR THE BUG!","WINGMAN: TOO EASY.","WINGMAN: DID YOU SEE THAT?"}; space_say(wq[lr(6)]); }
     if(lr(3)==0) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].good=255; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; }
 }
