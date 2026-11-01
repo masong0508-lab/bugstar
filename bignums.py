@@ -3,7 +3,7 @@
 # NZ is how many of its groups of three digits are not 000: the BY NAME view says only those, the way you would read it out loud.
 import sys
 if hasattr(sys, 'set_int_max_str_digits'): sys.set_int_max_str_digits(0)
-STARS = 2**32 * (2**155)**2 * 32            # every star in every universe: 4,294,967,296 universes x 2^155 x 2^155 clusters x 32 stars = 2^347
+STARS = 2**256 * (2**155)**2 * 32           # every star in every universe: 2^256 universes x 2^155 x 2^155 clusters x 32 stars = 2^571 (a universe number is 256 bits: see SZ_UNIS)
 import math
 GIANTS = [
     ("giant_order", math.factorial(256)),   # every order to visit a full list of 256 favourites
