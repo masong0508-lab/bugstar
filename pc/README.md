@@ -1,0 +1,101 @@
+# BUGSTAR PC (step 1 and 2 of PC_PORT_PLAN.md)
+
+What this is: the GBA game's **own C code**, built for a PC (Linux, 64-bit), running on a **fake GBA** instead of the real chip.
+It is headless for now: it reads a key script, writes pictures (PPM) and a save file. No window yet (see "Not done").
+
+```
+./pc/build.sh                     # builds pc/bugstar_pc  (needs gcc, python3; no SDL, no 32-bit libs)
+./pc/tests/determinism.sh         # same key script twice -> same pictures, same save
+./pc/tests/seeds.sh               # 6 addresses (near and far) -> same worlds twice, and same as tests/seeds.golden
+./pc/seedview.sh --star 7         # the seed viewer: one PNG with 4 views + facts
+./pc/bugstar_pc --script tests/play.txt --out out/p --sav out/p.sav --frames 4501   # play from a key script
+```
+
+## How it works (one page)
+
+- `build.sh` copies the game's sources into `pc/gen/` (not committed) and patches them with `sed`. **Nothing in the repo root is edited.**
+  The patches: drop the GBA-only `section(".iwram"/".ewram")`, `long_call`, `target("arm")`; use the PC `memset/memcpy`; read the beam line
+  through `pc_vcount()`; hook the interrupt handler pointer; turn the DMA-3 start write into `pc_dma3()`; replace the 4 stack-pointer
+  asm probes; rename `main` to `bugstar_main`; append `pc_view.inc` (the seed viewer).
+- Compile flags that matter: `-funsigned-char` (the GBA compiler's `char` is unsigned), `-fwrapv` (ARM integers wrap), `-no-pie` and a
+  stack below 4 GB (the game keeps addresses in 32-bit numbers for DMA).
+- `pc_hw.c` is the fake GBA: the real memory map (EWRAM, IWRAM, I/O, palette, VRAM, OAM, cartridge GPIO, SRAM) is mapped at the **real
+  addresses**, so the game's own `*(volatile u16*)0x06000000` code runs unchanged.
+  - Time is a counter: every read of VCOUNT moves the beam one line; 228 reads = 1 frame; at line 160 the vblank interrupt runs, the next
+    frame's keys are set and screenshots are taken. So the game runs on a perfect, endless-speed machine at exactly 60 frames a second.
+  - The picture: mode 3/4/5 bitmap layer (with the affine registers), page flip, sprites (normal and rotating, 4/8-bit, 1D/2D), sprite
+    priority, the fade/brighten/darken/alpha blend unit, forced blank.
+  - The save: the 32 KB SRAM is read from / written to a `.sav` file. It is the **same layout as the GBA's**: a save from the emulator
+    loads here (title shows CONTINUE, SLOT 1) and a save made by the same key script here matches the emulator's save except 12 bytes (at 0x7A-0x86 and 0x3B0-0x3B3; I did not look into what they are, most likely counters that follow timing).
+- Key script format = the GBA test harness: `<from-frame> <to-frame> <keys>` and `shot <frame>`. Keys: A B s(select) S(start) U D l r R L.
+
+## What was checked (honest numbers)
+
+- Boots to the title, the bug creator, the ship builder, the planet surface; saves; loads a real GBA save.
+- **Against the real GBA code in an emulator** (same sources built for ARM, same key script): title screen and bug creator are
+  **pixel-identical** (0 differing pixels at frames 700 and 1100). Animated screens differ a little (1 px to 3 % of the picture): the
+  emulator ran the game at ARM speed and the PC at perfect speed, so sprites are a frame or two apart.
+- Determinism: two runs of the same script give the same hashes of 8 pictures and the same save (`tests/determinism.sh`).
+- Seeds: 6 addresses, including a 256-bit universe number and 155-bit cluster numbers, give the same worlds on every run
+  (`tests/seeds.sh`). The golden file was made by this build, so it guards against change; it is not a comparison with real hardware.
+
+## Not done (the limits)
+
+- **No window, sound or controller yet.** SDL is not installed here and the network is closed, so the front end could not be built or
+  tested. `pc_render()` already gives a 240x160 RGB frame; an SDL window is a small step on top. Sound registers are written to
+  memory and the music code runs, but nothing is played.
+- **Kart races: the ground is wrong or missing.** It uses a DMA per scanline (HBlank DMA). `pc_dma3` only does "start now" copies.
+- Not drawn: windows, mosaic, tile backgrounds, object-window sprites. A search of the game's code finds no use of them (only the boot
+  logo uses tile layers, and the PC build skips the logo).
+- The dungeon, space and kart screens were not played through by me on this build. They compile and link, nothing crashed in the
+  title / creators / planet scene, but I have no evidence for the rest yet.
+- The native 3D "POLY" look is **not started** (see below). The seed viewer shows the CLASSIC look only.
+- This is 64-bit. The saved layout matches the GBA's (see above), so the saved structs held up; other 64-bit surprises are possible
+  (the build hides compiler warnings with `-w`; I did not review them).
+
+## The universe the game already has (names for the code that does it)
+
+The game already has a huge address space. A place is:
+
+| part | where | size |
+|---|---|---|
+| universe | `uni_w[UW]` (UW=8), `gsk(k)` mixes all 256 bits into a per-use key | 2^256 universes (about 1.2e77) |
+| cluster east / north of home | `clus[0..4]` and `clus[5..9]` (`UAX`=5 words per axis, top word masked by `UTOP`) | 155 bits per axis; 2^310 clusters per universe |
+| galaxy | `gal_hash()`: the cluster number shifted down by `GAL_SHIFT`=20 (a block of 2^20 x 2^20 clusters, 26 million ly) | 0 = "THE BUG WAY" (home) |
+| star | index `0..NSYS-1` (32) in `sys[]` made by `gen_cluster()`; its id is `sys_id(i)` = `amix(gsk(107), i)` (home cluster: `i+1`) | 32 stars per cluster |
+| planet / moon | `cur_pl`, `cur_moon`; `body_salt()` (0 for the first planet, so old worlds never changed); counts from `sys_nplan()` / `sys_nmoon()` | 1 to 16 planets (6 to 16 in a CROWDED galaxy, `galaxy_dense()`) |
+
+How an address becomes a world, in order: `u_settle()` folds an old/huge address into this universe and sets how deep in space you are
+(`u_far`) -> `gen_cluster()` -> `land_on_current()` -> `make_world()` (three 32-bit seeds A, B, C from `amix(gsk(102..104) ^ ..., star)`;
+from them the whole DNA: class, colours, weather, size, city, life; `wd.tseed` = terrain seed, `wd.cseed` = city seed) -> `new_planet()` ->
+`gen_terrain(wd.tseed)` and the planet tables (`planet_tables()`, `planet_palette()`). Nothing is stored; leave and it is gone.
+`amix()` hashes **every** word of the address, so two addresses never share a world by accident. Distances: `ly_between()` =
+(bigger + 0.414 x smaller) x 25 ly, written by `ly_text()`.
+
+## The trip-length rule (written down, not in the game yet)
+
+From PC_PORT_PLAN.md: `trip_length = base_distance * U_count^2`, with `base_distance` = the width of one universe =
+`25 ly x 2^155` = about 1.14e48 ly. The game today has 2^256 universes, so the factor is about 1.3e154 if every number is used; the plan
+starts smaller and grows:
+
+| universes in play | U^2 | one trip between neighbours |
+|---|---|---|
+| 64 | 4,096 | 4.7e51 ly |
+| 4,096 | 16,777,216 | 1.9e55 ly |
+| 65,536 | 4,294,967,296 | 4.9e57 ly |
+
+Nobody flies that by hand: it is paid for with the travel types in the plan (cruise, warp, fold, rift). The rule belongs in a PC-only travel
+layer (`warp_cost()`, `fuel_max()` and `universe_go()` are the places it plugs into). It is **not wired in yet**.
+
+## POLY look (stub, not built)
+
+The same game state drives both looks; only the drawing changes. Plan for the hook: the game's drawing calls write 8-bit pixels and sprites
+into the fake GBA memory (`pc_hw.c`). CLASSIC = `pc_render()` scaled with sharp pixels. POLY = a second renderer that reads the *state*
+(terrain seed `wd.tseed`, the planet tables, the object list `po[]`, the dungeon map and lights) and draws meshes: cube-sphere planets from the
+same noise as the tables, wall/floor meshes with the dungeon's own torches as lights, sprites as billboards first. Both need a window and
+OpenGL/SDL, which this container does not have, so POLY starts after the window does.
+
+## Files
+
+`build.sh` build · `pc_hw.c/.h` fake GBA · `pc_main.c` program + 32-bit stack · `pc_view.inc` seed viewer · `seedview.sh` viewer to PNG ·
+`tests/` scripts, key scripts and `seeds.golden` · `gen/`, `out/`, `bugstar_pc` are build output (ignored).

@@ -1,0 +1,4 @@
+shot 450
+shot 700
+shot 1000
+shot 1500

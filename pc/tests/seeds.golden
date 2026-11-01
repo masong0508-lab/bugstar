@@ -1,0 +1,90 @@
+SEEDVIEW universe=1 cluster_x=0 cluster_y=0 star=7 planet=0 moon=0
+galaxy: THE BUG WAY
+star: LIMMI II (id 00000008)
+world: LIMMI II
+class: MEADOW WORLD  mood: THE LOCALS ADORE YOU.
+size: 4  gravity: 0  water: 43%  hour: DAY  weather: CLEAR SKIES
+land: PLAINS  city: 0  snow: 0  ruins: 0  weird: 0
+planets at this star: 1  moons of this planet: 3  danger level: 8
+from home: 0 LY
+terrain seed: 3E7A24AC  city seed: C4C52C8E
+view0 screen=ba5f3a96c4f17205
+view1 screen=2b977c2fd8c21f01
+view2 screen=1e8f860ab90a55bc
+view3 screen=3ace6134a6f7bd55
+
+SEEDVIEW universe=1 cluster_x=0 cluster_y=0 star=12 planet=0 moon=1
+galaxy: THE BUG WAY
+star: RANCROKOR X (id 0000000D)
+world: NUJIBGLO MOON
+class: ICE WORLD  mood: THE LOCALS DO NOT CARE.
+size: 0  gravity: 0  water: 50%  hour: DAY  weather: CLEAR SKIES
+land: ROLLING HILLS  city: 0  snow: 1  ruins: 0  weird: 0
+planets at this star: 1  moons of this planet: 3  danger level: 6
+from home: 0 LY
+terrain seed: 8366E5F0  city seed: 0A6210D6
+view0 screen=587e8f1a75ed1de6
+view1 screen=c4ddce31f5d643c5
+view2 screen=286303261c78e143
+view3 screen=b52619c1ad713589
+
+SEEDVIEW universe=1 cluster_x=123456789ABCDEF cluster_y=FEDCBA987654321 star=9 planet=0 moon=0
+galaxy: ULMSNUYAR IX GALAXY
+star: VOFENRAN (id 734E58CD)
+world: VOFENRAN
+class: DESERT WORLD  mood: THE LOCALS DO NOT CARE.
+size: 2  gravity: 3  water: 0%  hour: DAY  weather: CLEAR SKIES
+land: DUNES  city: 1  snow: 0  ruins: 0  weird: 0
+planets at this star: 1  moons of this planet: 2  danger level: 25
+from home: 29.5 QUINTILLION LY
+terrain seed: 5275F210  city seed: F17A2B13
+view0 screen=7a1c4c1ac0495492
+view1 screen=00e3351389eb0025
+view2 screen=6bdc6d163105ccfe
+view3 screen=22a1baabbcd07876
+
+SEEDVIEW universe=2A cluster_x=100000000000000000000000000 cluster_y=3 star=20 planet=1 moon=0
+galaxy: HUDIZ MINOR GALAXY
+star: WOBTANTIK PRIME (id 6F05D090)
+world: CROBRAOB MINOR
+class: BLOOD SEA  mood: THE LOCALS HATE YOU.
+size: 4  gravity: 1  water: 85%  hour: NIGHT  weather: CLEAR SKIES
+land: ISLANDS  city: 0  snow: 0  ruins: 0  weird: 0
+planets at this star: 2  moons of this planet: 0  danger level: 33
+from home: 507 NONILLION LY
+terrain seed: FC68BECC  city seed: A8AD71F7
+view0 screen=deea1b44610e3c06
+view1 screen=23d5e5c8336f0ef9
+view2 screen=5a523d9bbe83fad4
+view3 screen=d121a8311a4c0e18
+
+SEEDVIEW universe=7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF cluster_x=7FFFFFF00000000FFFFFFFFABCDEF cluster_y=5A5A5A5A5A5A star=31 planet=0 moon=0
+galaxy: KORZANU MINOR GALAXY
+star: GLOTELPO X (id 7822E7CA)
+world: GLOTELPO X
+class: BONE WORLD  mood: THE LOCALS HATE YOU.
+size: 3  gravity: 1  water: 0%  hour: DUSK  weather: ASHFALL
+land: DUNES  city: 0  snow: 0  ruins: 0  weird: 0
+planets at this star: 1  moons of this planet: 1  danger level: 36
+from home: 1.0 UNDECILLION LY
+terrain seed: 83C77440  city seed: 0A85946E
+view0 screen=4a93f14237e6566a
+view1 screen=5da0bc6cacb0ed92
+view2 screen=d2c1a492a628fd8d
+view3 screen=a312f9133f8dbb78
+
+SEEDVIEW universe=DEADBEEF00000000CAFEBABE cluster_x=1 cluster_y=1 star=6 planet=0 moon=0
+galaxy: THE BUG WAY
+star: CROVAX X (id ACAD6DE7)
+world: CROVAX X
+class: PARADISE  mood: THE LOCALS ADORE YOU.
+size: 2  gravity: 0  water: 81%  hour: DAY  weather: CLEAR SKIES
+land: ISLANDS  city: 1  snow: 1  ruins: 0  weird: 0
+planets at this star: 2  moons of this planet: 0  danger level: 8
+from home: 25 LY
+terrain seed: ACE6BB83  city seed: 96F4C0D8
+view0 screen=066c7e8123e23d8a
+view1 screen=db58929ae4b79f11
+view2 screen=32af6e41d977d6f3
+view3 screen=d18b84607f259b60
+

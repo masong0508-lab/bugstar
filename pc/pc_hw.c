@@ -1,0 +1,204 @@
+// pc_hw.c: a fake GBA for the PC build.
+//  * the memory map is real: EWRAM/IWRAM/IO/PAL/VRAM/OAM/GPIO/SRAM are mapped at their GBA addresses, so the game's own
+//    "*(volatile u16*)0x06000000" code runs untouched.
+//  * time is a counter, not a clock: each read of VCOUNT moves the beam one line on. 228 reads = 1 frame. On line 160 the
+//    vblank "happens": keys for the next frame are set, the game's interrupt handler runs, shots are taken.
+//  * the picture: a software copy of the GBA's mode 3/4/5 bitmap layer + sprites (regular and rotating) + the fade/blend unit.
+// What is NOT here (see README): per-scanline DMA tricks (the kart's ground), windows, mosaic, tile backgrounds, sound output.
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include "pc_hw.h"
+
+void (*pc_irq_fn)(void);
+
+#define EWRAM 0x02000000u
+#define IWRAM 0x03000000u
+#define IOREG 0x04000000u
+#define PALRAM 0x05000000u
+#define VRAMB 0x06000000u
+#define OAMB  0x07000000u
+#define GPIOB 0x08000000u
+#define SRAMB 0x0E000000u
+#define R16(a) (*(volatile uint16_t*)(uintptr_t)(a))
+#define R32(a) (*(volatile uint32_t*)(uintptr_t)(a))
+
+static const char *g_sav;
+static long g_frame, g_max_frames=-1;
+static int g_line;
+
+static int map_at(uint32_t a, size_t n){
+    void *p = mmap((void*)(uintptr_t)a, n, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE, -1, 0);
+    if(p==MAP_FAILED || (uintptr_t)p!=a){ fprintf(stderr,"pc_hw: cannot map %08x (%zu bytes)\n",a,n); return 0; }
+    return 1;
+}
+int pc_hw_init(const char *sav_path){
+    g_sav = sav_path;
+    if(!map_at(EWRAM,0x40000) || !map_at(IWRAM,0x8000) || !map_at(IOREG,0x1000) || !map_at(PALRAM,0x1000) ||
+       !map_at(VRAMB,0x20000) || !map_at(OAMB,0x1000) || !map_at(GPIOB,0x10000) || !map_at(SRAMB,0x10000)) return 0;
+    R16(IOREG+0x130)=0x03FF;                                  // no key pressed
+    R16(IOREG+0x20)=0x100; R16(IOREG+0x26)=0x100;             // BG2 starts unscaled (the same start the emulator the game was tested on gives it)
+    memset((void*)(uintptr_t)SRAMB,0xFF,0x8000);              // blank SRAM reads 0xFF, like a fresh cartridge
+    if(sav_path){ FILE *f=fopen(sav_path,"rb"); if(f){ size_t n=fread((void*)(uintptr_t)SRAMB,1,0x8000,f); (void)n; fclose(f); } }
+    return 1;
+}
+void pc_hw_finish(void){
+    if(!g_sav) return;
+    FILE *f=fopen(g_sav,"wb"); if(!f) return;
+    fwrite((void*)(uintptr_t)SRAMB,1,0x8000,f); fclose(f);
+}
+
+// ---------------------------------------------------------------- DMA channel 3 (immediate copies and fills)
+void pc_dma3(uint32_t v){
+    uint32_t sad=R32(IOREG+0xD4), dad=R32(IOREG+0xD8), cnt=v&0xFFFF, ctl=v>>16;
+    if(!(ctl&0x8000)) return;
+    if(((ctl>>12)&3)!=0) return;                              // only "start now"; the timed kinds (HBlank/VBlank) are not done here
+    if(!cnt) cnt=0x10000;
+    if(sad<0x1000 || dad<0x1000){ fprintf(stderr,"pc_hw: DMA with bad address %08x -> %08x\n",sad,dad); return; }
+    int word=(ctl>>10)&1, dc=(ctl>>5)&3, sc=(ctl>>7)&3, st=word?4:2;
+    for(uint32_t i=0;i<cnt;i++){
+        if(word) *(volatile uint32_t*)(uintptr_t)dad = *(volatile uint32_t*)(uintptr_t)sad;
+        else     *(volatile uint16_t*)(uintptr_t)dad = *(volatile uint16_t*)(uintptr_t)sad;
+        sad += sc==0||sc==3 ? st : sc==1 ? -st : 0;
+        dad += dc==0||dc==3 ? st : dc==1 ? -st : 0;
+    }
+}
+
+// ---------------------------------------------------------------- the picture
+static uint16_t rgbpix(uint16_t c){ return c&0x7FFF; }
+static uint16_t bright(uint16_t c, int ev, int up){
+    int r=c&31, g=(c>>5)&31, b=(c>>10)&31;
+    if(up){ r+=(31-r)*ev/16; g+=(31-g)*ev/16; b+=(31-b)*ev/16; } else { r-=r*ev/16; g-=g*ev/16; b-=b*ev/16; }
+    return (uint16_t)(r|(g<<5)|(b<<10));
+}
+static uint16_t alpha(uint16_t a, uint16_t b, int ea, int eb){
+    int r=((a&31)*ea+(b&31)*eb)>>4, g=(((a>>5)&31)*ea+((b>>5)&31)*eb)>>4, bl=(((a>>10)&31)*ea+((b>>10)&31)*eb)>>4;
+    if(r>31)r=31; if(g>31)g=31; if(bl>31)bl=31; return (uint16_t)(r|(g<<5)|(bl<<10));
+}
+static uint16_t objc[160][240]; static uint8_t objp[160][240];   // sprite pixel colour; priority (4 = none); bit 4 set = semi-transparent
+static void draw_sprites(int one_d){
+    static const uint8_t dim[3][4][2]={{{8,8},{16,16},{32,32},{64,64}},{{16,8},{32,8},{32,16},{64,32}},{{8,16},{8,32},{16,32},{32,64}}};
+    memset(objp,4,sizeof objp);
+    for(int i=127;i>=0;i--){
+        uint32_t o=OAMB+i*8; uint16_t a0=R16(o), a1=R16(o+2), a2=R16(o+4);
+        int am=(a0>>8)&3; if(am==2) continue;
+        int gm=(a0>>10)&3; if(gm==2) continue;                    // (object window sprites are not drawn)
+        int shape=(a0>>14)&3, size=(a1>>14)&3; if(shape==3) continue;
+        int w=dim[shape][size][0], h=dim[shape][size][1];
+        int aff=am&1, dbl=am==3; int bw=dbl?w*2:w, bh=dbl?h*2:h;
+        int y0=a0&255; if(y0>=160) y0-=256; int x0=a1&511; if(x0>=240) x0-=512;
+        int is8=(a0>>13)&1, prio=(a2>>10)&3, pal=(a2>>12)&15, tile=a2&1023;
+        int pa=0x100,pb=0,pc=0,pd=0x100;
+        if(aff){ int g=(a1>>9)&31; uint32_t p=OAMB+g*32; pa=(int16_t)R16(p+6); pb=(int16_t)R16(p+14); pc=(int16_t)R16(p+22); pd=(int16_t)R16(p+30); }
+        int hf=!aff&&((a1>>12)&1), vf=!aff&&((a1>>13)&1);
+        for(int sy=0;sy<bh;sy++){ int py=y0+sy; if(py<0||py>=160) continue;
+            for(int sx=0;sx<bw;sx++){ int px=x0+sx; if(px<0||px>=240) continue;
+                int tx,ty;
+                if(aff){ int dx=sx-bw/2, dy=sy-bh/2; tx=((pa*dx+pb*dy)>>8)+w/2; ty=((pc*dx+pd*dy)>>8)+h/2; if(tx<0||ty<0||tx>=w||ty>=h) continue; }
+                else { tx=hf?w-1-sx:sx; ty=vf?h-1-sy:sy; }
+                int units=is8?2:1; int t=tile + (ty>>3)*(one_d ? (w>>3)*units : 32) + (tx>>3)*units;
+                uint32_t addr=VRAMB+0x10000+(uint32_t)t*32 + (ty&7)*(is8?8:4) + ((tx&7)>>(is8?0:1));
+                if(addr>=VRAMB+0x18000) continue;
+                int idx=*(volatile uint8_t*)(uintptr_t)addr; if(!is8){ idx = (tx&1) ? idx>>4 : idx&15; } if(!idx) continue;
+                if((objp[py][px]&7)<4 && (objp[py][px]&3)<=prio) continue;      // a lower-numbered sprite of equal or better priority is there
+                uint16_t c = R16(PALRAM+0x200 + 2*(is8? idx : pal*16+idx));
+                objc[py][px]=rgbpix(c); objp[py][px]=(uint8_t)(prio | (gm==1?16:0));
+            } }
+    }
+}
+static uint16_t screen[160][240];
+static void compose(void){
+    uint16_t dc=R16(IOREG), mode=dc&7; int one_d=(dc>>6)&1;
+    uint16_t bd=rgbpix(R16(PALRAM));
+    if(dc&0x80){ for(int y=0;y<160;y++) for(int x=0;x<240;x++) screen[y][x]=0x7FFF; return; }      // forced blank = white
+    int obj_on=(dc>>12)&1, bg2_on=(dc>>10)&1;
+    if(obj_on) draw_sprites(one_d); else memset(objp,4,sizeof objp);
+    uint16_t bldcnt=R16(IOREG+0x50), bldalpha=R16(IOREG+0x52); int ev=R16(IOREG+0x54)&31; if(ev>16) ev=16;
+    int bmode=(bldcnt>>6)&3; int ea=bldalpha&31, eb=(bldalpha>>8)&31; if(ea>16)ea=16; if(eb>16)eb=16;
+    int bgprio=R16(IOREG+0x0C)&3;
+    int16_t pa=(int16_t)R16(IOREG+0x20), pb=(int16_t)R16(IOREG+0x22), pc=(int16_t)R16(IOREG+0x24), pd=(int16_t)R16(IOREG+0x26);
+    int32_t rx=(int32_t)(R32(IOREG+0x28)<<4)>>4, ry=(int32_t)(R32(IOREG+0x2C)<<4)>>4;
+    uint32_t base = VRAMB + ((dc&0x10) ? 0xA000 : 0);
+    for(int y=0;y<160;y++) for(int x=0;x<240;x++){
+        int have=0; uint16_t bc=bd;
+        if(bg2_on && mode>=3 && mode<=5){
+            int tx=(int)((rx + pa*x + pb*y)>>8), ty=(int)((ry + pc*x + pd*y)>>8);
+            int bw = mode==5?160:240, bh = mode==5?128:160;
+            if(tx>=0&&ty>=0&&tx<bw&&ty<bh){
+                if(mode==4){ int idx=*(volatile uint8_t*)(uintptr_t)(base+ty*240+tx); if(idx){ bc=rgbpix(R16(PALRAM+idx*2)); have=1; } else { bc=bd; } }
+                else { bc=rgbpix(R16(VRAMB + (mode==5&&(dc&0x10)?0xA000:0) + (ty*bw+tx)*2)); have=1; }
+            }
+        }
+        // layers: 0 = BG2, 1 = sprite, 2 = backdrop
+        uint16_t top=bd, second=bd; int tl=2, sl=2; int o=(objp[y][x]&7)<4;
+        int oprio = o ? (objp[y][x]&3) : 9; int semi = o && (objp[y][x]&16);
+        if(o && have){ if(oprio<=bgprio){ top=objc[y][x]; tl=1; second=bc; sl=0; } else { top=bc; tl=0; second=objc[y][x]; sl=1; } }
+        else if(o){ top=objc[y][x]; tl=1; second=bd; sl=2; }
+        else if(have){ top=bc; tl=0; second=bd; sl=2; }
+        static const int bit[3]={2,4,5};
+        int t1=(bldcnt>>bit[tl])&1, t2=(bldcnt>>(8+bit[sl]))&1;
+        uint16_t out=top;
+        if(semi && tl==1 && t2) out=alpha(top,second,ea,eb);
+        else if(bmode==1 && t1 && t2) out=alpha(top,second,ea,eb);
+        else if(bmode==2 && t1) out=bright(top,ev,1);
+        else if(bmode==3 && t1) out=bright(top,ev,0);
+        screen[y][x]=out;
+    }
+}
+void pc_render(uint8_t *rgb){
+    compose();
+    for(int y=0;y<160;y++) for(int x=0;x<240;x++){ uint16_t c=screen[y][x]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; uint8_t *p=rgb+(y*240+x)*3;
+        p[0]=(uint8_t)(r<<3|r>>2); p[1]=(uint8_t)(g<<3|g>>2); p[2]=(uint8_t)(b<<3|b>>2); }
+}
+int pc_write_ppm(const char *path, int scale){
+    static uint8_t rgb[240*160*3]; pc_render(rgb);
+    FILE *f=fopen(path,"wb"); if(!f) return 0;
+    fprintf(f,"P6 %d %d 255\n",240*scale,160*scale);
+    for(int y=0;y<160*scale;y++) for(int x=0;x<240*scale;x++) fwrite(rgb+((y/scale)*240+(x/scale))*3,1,3,f);
+    fclose(f); return 1;
+}
+static uint64_t fnv(const void *d, size_t n, uint64_t h){ const uint8_t *p=d; while(n--){ h^=*p++; h*=1099511628211ull; } return h; }
+uint64_t pc_hash_screen(void){ compose(); return fnv(screen,sizeof screen,1469598103934665603ull); }
+uint64_t pc_hash_sram(void){ return fnv((void*)(uintptr_t)SRAMB,0x8000,1469598103934665603ull); }
+
+// ---------------------------------------------------------------- the key script (same format as tools/harness: "<from> <to> keys", "shot <frame>")
+typedef struct { long a,b; uint16_t k; } Ev;
+static Ev ev[8192]; static int nev; static long shots[8192]; static int nshot; static char outpre[512]="pc_out";
+static uint16_t keybits(const char *s){ uint16_t k=0; for(;*s;s++) switch(*s){
+    case 'A':k|=1;break; case 'B':k|=2;break; case 's':k|=4;break; case 'S':k|=8;break; case 'r':k|=16;break; case 'l':k|=32;break;
+    case 'U':k|=64;break; case 'D':k|=128;break; case 'R':k|=256;break; case 'L':k|=512;break; } return k; }
+void pc_script(const char *path, const char *outprefix, long max_frames){
+    if(outprefix) snprintf(outpre,sizeof outpre,"%s",outprefix);
+    g_max_frames=max_frames;
+    if(!path) return;
+    FILE *f=fopen(path,"r"); if(!f){ fprintf(stderr,"pc_hw: no script %s\n",path); return; }
+    char line[256]; long last=0;
+    while(fgets(line,sizeof line,f)){
+        long a,b; char ks[64];
+        if(sscanf(line,"shot %ld",&a)==1){ if(nshot<8192) shots[nshot++]=a; if(a>last) last=a; continue; }
+        if(sscanf(line,"%ld %ld %63s",&a,&b,ks)==3 && nev<8192){ ev[nev].a=a; ev[nev].b=b; ev[nev].k=keybits(ks); nev++; if(b>last) last=b; }
+    }
+    fclose(f);
+    if(g_max_frames<0) g_max_frames=last+1;
+}
+long pc_frames(void){ return g_frame; }
+static void vblank(void){
+    g_frame++;
+    for(int i=0;i<nshot;i++) if(shots[i]==g_frame){ char n[600]; snprintf(n,sizeof n,"%s_%06ld.ppm",outpre,g_frame); pc_write_ppm(n,1);
+        printf("shot %ld screen=%016llx\n",g_frame,(unsigned long long)pc_hash_screen()); }
+    if(g_max_frames>=0 && g_frame>=g_max_frames){
+        if(getenv("PC_DEBUG")){ int nz0=0,nz1=0; for(int i=0;i<0x9600;i++){ nz0+=*(volatile uint8_t*)(uintptr_t)(VRAMB+i)!=0; nz1+=*(volatile uint8_t*)(uintptr_t)(VRAMB+0xA000+i)!=0; }
+            printf("dbg DISPCNT=%04x BLDCNT=%04x BLDALPHA=%04x BLDY=%04x BG2CNT=%04x PA=%04x PD=%04x nz0=%d nz1=%d pal1=%04x IE=%04x IME=%04x\n",R16(IOREG),R16(IOREG+0x50),R16(IOREG+0x52),R16(IOREG+0x54),R16(IOREG+0xC),R16(IOREG+0x20),R16(IOREG+0x26),nz0,nz1,R16(PALRAM+2),R16(IOREG+0x200),R16(IOREG+0x208)); } printf("end frame=%ld screen=%016llx sram=%016llx\n",g_frame,(unsigned long long)pc_hash_screen(),(unsigned long long)pc_hash_sram()); pc_hw_finish(); fflush(stdout); exit(0); }
+    uint16_t down=0; for(int i=0;i<nev;i++) if(g_frame>=ev[i].a && g_frame<=ev[i].b) down|=ev[i].k;
+    R16(IOREG+0x130)=(uint16_t)(~down & 0x3FF);
+    if((R16(IOREG+0x200)&1) && R16(IOREG+0x208)&1 && pc_irq_fn){ R16(IOREG+0x202)|=1; pc_irq_fn(); R16(IOREG+0x202)&=~1; }
+}
+uint16_t pc_vcount(void){
+    if(++g_line>=228) g_line=0;
+    uint16_t ds=R16(IOREG+4); ds=(uint16_t)((ds&~7)|((g_line>=160&&g_line<227)?1:0)); R16(IOREG+4)=ds;
+    R16(IOREG+6)=(uint16_t)g_line;
+    if(g_line==160) vblank();
+    return (uint16_t)g_line;
+}
