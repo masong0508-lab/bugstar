@@ -107,6 +107,7 @@ int sim_event_text(const Sim *s, const SimEvent *e, char *o, size_t n){
     case SIME_SPECIES: sim_species_name(((uint32_t)e->a << 16) | e->b, sp); at = cat(o, n, at, "THE "); at = cat(o, n, at, sp); at = cat(o, n, at, " APPEARED"); break;
     case SIME_LEGEND: at = cat(o, n, at, "A LEGEND WAS BORN"); break;
     case SIME_IDEA:   at = cat(o, n, at, nm); at = cat(o, n, at, " HAD A GOOD IDEA"); break;
+    case SIME_COLONY: { ColEvent ce = { (uint8_t)e->a, e->b, e->seed32, e->tick }; char t[52]; col_event_text(&ce, t, sizeof t); at = cat(o, n, at, t); } break;
     case SIME_FRIEND: at = cat(o, n, at, nm); at = cat(o, n, at, e->a >= 100 ? " IS YOUR BEST FRIEND" : e->a >= 50 ? " IS YOUR FRIEND" : " KNOWS YOU NOW"); break;
     case SIME_LETTER: { char t[48]; sim_letter_text(s, e->who, e->a, t, sizeof t); at = cat(o, n, at, "LETTER FROM "); at = cat(o, n, at, nm); at = cat(o, n, at, ": "); at = cat(o, n, at, t); } break;
     case SIME_SANDBOX: at = cat(o, n, at, e->a ? "SANDBOX: ALL GOD POWERS ARE OPEN" : "SANDBOX IS OFF"); break;
@@ -390,7 +391,7 @@ void sim_load_tail(Sim *s, const SimSlot *sl){
     for(uint16_t i = 0; i < sl->ntail && i < SIM_TAILN; i++){ s->log[s->log_head] = sl->tail[i]; s->log_head = (s->log_head + 1) % SIM_LOGN; s->log_n++; }
 }
 void simfile_init(SimFile *f){
-    memset(f, 0, sizeof *f); f->side_on = 1;
+    memset(f, 0, sizeof *f); f->side_on = 1; f->difficulty = COLD_NORMAL;
     for(int i = 0; i < SIM_SLOTS; i++){ god_state_init(&f->slot[i].god); lv_zero(&f->slot[i].lv_true); lv_zero(&f->slot[i].lv_xp); }
 }
 static void p16(uint8_t *b, uint16_t v){ b[0] = (uint8_t)v; b[1] = (uint8_t)(v >> 8); }
@@ -410,7 +411,7 @@ size_t simfile_write(const SimFile *f, uint8_t *buf, size_t cap){
     if(cap < 8) return 0;
     memcpy(buf, "BSIM", 4); p32(buf + 4, 1); at = 8;
 #define PUT(tag, slot, ver, len) do{ at = put_chunk(buf, cap, at, tag, slot, ver, d, len); if(at == (size_t)-1) return 0; }while(0)
-    d[0] = f->side_on; d[1] = f->sandbox; PUT("META", 0xFF, 1, 2);
+    d[0] = f->side_on; d[1] = f->sandbox; d[2] = f->difficulty; PUT("META", 0xFF, 1, 3);
     for(int s = 0; s < SIM_SLOTS; s++){ const SimSlot *sl = &f->slot[s]; if(!sl->used) continue;
         p64(d, sl->cal_ticks); PUT("CLCK", s, 1, 8);
         god_state_to_bytes(&sl->god, d); p16(d + GOD_STATE_BYTES, sl->spirit); PUT("GODS", s, 1, GOD_STATE_BYTES + 2);
@@ -433,7 +434,7 @@ int simfile_read(SimFile *f, const uint8_t *buf, size_t n){
         const uint8_t *d = h + CH_HDR; at += CH_HDR + len;
         if(sim_fnv(d, len) != g32(h + 10)){ f->bad_chunks++; continue; }
         if(ver != 1) continue;
-        if(!memcmp(h, "META", 4)){ if(len >= 2){ f->side_on = d[0] ? 1 : 0; f->sandbox = d[1] ? 1 : 0; } continue; }
+        if(!memcmp(h, "META", 4)){ if(len >= 2){ f->side_on = d[0] ? 1 : 0; f->sandbox = d[1] ? 1 : 0; } if(len >= 3) f->difficulty = d[2] > COLD_HARSH ? COLD_NORMAL : d[2]; continue; }
         if(slot >= SIM_SLOTS) continue;
         SimSlot *sl = &f->slot[slot];
         if(!memcmp(h, "CLCK", 4) && len == 8){ sl->used = 1; sl->cal_ticks = g64(d); }

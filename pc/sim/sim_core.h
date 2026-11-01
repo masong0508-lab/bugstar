@@ -35,7 +35,7 @@ enum { SIMN_HUNGER, SIMN_REST, SIMN_SOCIAL, SIMN_FUN, SIMN_N };                 
 enum { SIMW_CLEAR, SIMW_CLOUD, SIMW_RAIN, SIMW_STORM, SIMW_SNOW, SIMW_N };                                           // weather
 
 enum { SIME_NONE, SIME_WAKE, SIME_SLEEP, SIME_WORK, SIME_EAT, SIME_CHAT, SIME_HUNGRY, SIME_TIRED, SIME_WEATHER, SIME_DAWN, SIME_CAST,
-       SIME_UNLOCK, SIME_EMPTY, SIME_HARVEST, SIME_NEWFOLK, SIME_SPECIES, SIME_LEGEND, SIME_IDEA, SIME_SANDBOX, SIME_FRIEND, SIME_LETTER, SIME_N };
+       SIME_UNLOCK, SIME_EMPTY, SIME_HARVEST, SIME_NEWFOLK, SIME_SPECIES, SIME_LEGEND, SIME_IDEA, SIME_SANDBOX, SIME_FRIEND, SIME_LETTER, SIME_COLONY, SIME_N };   // SIME_COLONY: a = colony event kind, b = its first number, seed32 = its second
 
 typedef struct { uint32_t tick; uint16_t kind, who, a, b; uint32_t seed32; } SimEvent;     // 16 bytes
 
@@ -123,7 +123,7 @@ typedef struct {
     ColList  cols;                              // Phase 4: the colonies of this slot (chunk COLN)
     uint16_t ntail; SimEvent tail[SIM_TAILN];   // the newest events, oldest first
 } SimSlot;
-typedef struct { uint8_t side_on; uint8_t sandbox; SimSlot slot[SIM_SLOTS]; int bad_chunks; } SimFile;
+typedef struct { uint8_t side_on; uint8_t sandbox; uint8_t difficulty; SimSlot slot[SIM_SLOTS]; int bad_chunks; } SimFile;
 void   simfile_init(SimFile *f);
 size_t simfile_write(const SimFile *f, uint8_t *buf, size_t cap);     // bytes written (0 if buf too small)
 int    simfile_read(SimFile *f, const uint8_t *buf, size_t n);        // 0 ok, -1 not a .sim file (f stays empty). Bad chunks are counted in f->bad_chunks.

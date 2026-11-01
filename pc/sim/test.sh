@@ -1,7 +1,7 @@
 #!/bin/bash
 # Tests for the PC sim layer's pure C code (no game needed): Lv, god powers, the sim core. Builds into pc/sim/out (not committed).
 cd "$(dirname "$0")"; mkdir -p out
-CC="gcc -std=gnu11 -O1 -Wall -Wextra -Wno-unused-parameter -Wno-misleading-indentation -fwrapv"
+CC="gcc -std=gnu11 -O1 -Wall -Wextra -Wno-unused-parameter -Wno-misleading-indentation -Wno-format-truncation -fwrapv"
 set -e
 $CC lv_test.c lv.c -o out/lv_test
 ./out/lv_test
