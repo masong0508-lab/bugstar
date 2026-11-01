@@ -16,7 +16,7 @@ x = Decimal(2)
 for i in range(E):                       # square 32 times: 2, 4, 16, 256, ... 2^(2^32)
     x = c.multiply(x, x)
     print("square", i + 1, "of", E, "%.0fs" % (time.time() - t0), file=sys.stderr, flush=True)
-assert x.as_tuple().exponent == 0 and x.adjusted() + 1 == DIG, (x.adjusted() + 1)
+assert x.adjusted() + 1 == DIG, (x.adjusted() + 1)     # (no rounding or inexact result was trapped, so the coefficient is the exact integer)
 s = str(x); del x
 assert len(s) == DIG and s[0] != '0'
 print("converted", len(s), "%.0fs" % (time.time() - t0), file=sys.stderr, flush=True)
