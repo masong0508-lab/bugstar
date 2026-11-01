@@ -22,7 +22,7 @@ static void cu_commit(void){ cr_fix(&cu_r); cr_hist_push(&cu_h, &cu_r); cr_bio(&
 static int cu_cyc(int v, int d, int n){ return ((v + d) % n + n) % n; }
 static int cu_rows(int tab, int *ids){
     int n = 0;
-    static const u8 w[] = {UR_CLASS,UR_SIZE,UR_XSIZE,UR_SEA,UR_LAND,UR_ROUGH,UR_HOUR,UR_WEATHER,UR_SKY,UR_GROUND,UR_CLIMATE,UR_SALT,UR_NAMEDICE,UR_DICE};
+    static const u8 w[] = {UR_NAMEDICE,UR_CLASS,UR_SIZE,UR_XSIZE,UR_SEA,UR_LAND,UR_ROUGH,UR_HOUR,UR_WEATHER,UR_SKY,UR_GROUND,UR_CLIMATE,UR_SALT,UR_DICE};
     static const u8 p[] = {UR_STOCK,UR_BODY,UR_LIMBS,UR_HEIGHT,UR_COL0,UR_COL1,UR_COL2,UR_GIFT0,UR_GIFT1,UR_GIFT2,UR_CALLING,UR_FORM,UR_CHAR,UR_DIET,UR_TEMPER,UR_TECH,UR_POP,UR_DICE};
     static const u8 f[] = {UR_UNDO,UR_REDO,UR_SAVE,UR_LOAD,UR_CODE,UR_IMPORT,UR_EX,UR_LANDON,UR_DICE,UR_LEAVE};
     if(tab == TB_WORLD) for(unsigned i = 0; i < sizeof w; i++) ids[n++] = w[i];
@@ -60,7 +60,7 @@ static const char *cu_help(int id){
     case UR_GROUND: return "THE COLOUR OF THE GROUND. CLASS USES THE COLOUR OF THE WORLD'S CLASS.";
     case UR_CLIMATE: return "WARMER OR COLDER, FIVE DEGREES A STEP. CHANGES ICE, PLANTS AND LIFE.";
     case UR_SALT: return "A DIFFERENT LAND FROM THE SAME RECIPE. ROLL IT UNTIL YOU LIKE THE SHAPE.";
-    case UR_NAMEDICE: return "A NEW NAME FOR YOUR PLANET (A OR SELECT).";
+    case UR_NAMEDICE: return "A: TYPE A NAME FOR YOUR PLANET WITH THE LETTER GRID. SELECT OR LEFT RIGHT: A RANDOM NAME.";
     case UR_TH0: case UR_TH1: return "UNIVERSE THEMES: RULE CHANGES FOR THE WHOLE UNIVERSE OF YOUR PLANET.";
     case UR_STOCK: return "WHICH STOCK YOUR PEOPLE COME FROM. WITH THE CALLING IT MAKES ONE OF 512 KINDS OF PEOPLE.";
     case UR_BODY: return "THE SHAPE OF THEIR BODY."; case UR_LIMBS: return "HOW MANY ARMS AND LEGS."; case UR_HEIGHT: return "HOW TALL THEY ARE. TALL FOLK NEED MORE FOOD.";
@@ -382,6 +382,27 @@ static int cu_plants(volatile u16 *pg, int pin){
         if(HIT(K_B)){ wait_release(); return 0; }
     }
 }
+// the name: a grid of letters (A types, B deletes, START is done)
+static int cu_name_edit(volatile u16 *pg){
+    static const char chs[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -.'"; char nm[CR_NAME + 1]; snprintf(nm, sizeof nm, "%s", cu_r.name); int cx = 0, cy = 0, dirty = 1, hh[4] = {0, 0, 0, 0}; wait_release();
+    while(1){
+        if(dirty){ dirty = 0; ui_bg(pg, 0, 160); ui_panel(pg, 6, 6, 228, 140); ui_head(pg, 12, 10, 216, "NAME YOUR PLANET", C_GOLD);
+            ui_well(pg, 14, 22, 212, 14); int L = (int)strlen(nm); text(pg, 20, 26, nm, C_WHITE, 1); if((cu_clock / 20) & 1) rect(pg, 20 + L * 4, 26, 3, 5, C_GOLD);
+            char c2[8]; snprintf(c2, sizeof c2, "%d/%d", L, CR_NAME); rtext(pg, 222, 26, c2, U_SOFT);
+            for(int i = 0; i < 44; i++){ int gx = i % 11, gy = i / 11, x = 14 + gx * 19, y = 42 + gy * 14, on = gx == cx && gy == cy; if(on) ui_sel(pg, x, y - 1, 18, 12, U_SEL); else rect(pg, x, y - 1, 18, 12, U_RAISE);
+                char t[8] = {0}; const char *tx = t; if(i < 40) t[0] = chs[i]; else tx = i == 40 ? "DEL" : i == 41 ? "OK" : i == 42 ? "DICE" : "ESC"; if(i == 32) tx = "SP"; text(pg, x + 9 - textlen(tx) * 2, y + 2, tx, on ? C_GOLD : C_WHITE, 1); }
+            ui_foot(pg, "A: TYPE  B: DELETE", "START: DONE  SEL: DICE"); }
+        vsync(); read_keys(); cu_clock++; if((cu_clock % 20) == 0) dirty = 1;
+        if(pc_lw_rep(K_RIGHT, &hh[0])){ cx = (cx + 1) % 11; dirty = 1; sfx(7); } if(pc_lw_rep(K_LEFT, &hh[1])){ cx = (cx + 10) % 11; dirty = 1; sfx(7); }
+        if(pc_lw_rep(K_DOWN, &hh[2])){ cy = (cy + 1) % 4; dirty = 1; sfx(7); } if(pc_lw_rep(K_UP, &hh[3])){ cy = (cy + 3) % 4; dirty = 1; sfx(7); }
+        int L = (int)strlen(nm), i = cy * 11 + cx;
+        if(HIT(K_A)){ sfx(2); dirty = 1; if(i < 40){ if(L < CR_NAME){ nm[L] = chs[i]; nm[L + 1] = 0; } } else if(i == 40){ if(L) nm[L - 1] = 0; } else if(i == 41){ snprintf(cu_r.name, sizeof cu_r.name, "%s", nm); wait_release(); return 1; }
+            else if(i == 42){ CrRecipe t = cu_r; cr_randomize(&t, CRS_NAME, &cu_rng); snprintf(nm, sizeof nm, "%s", t.name); } else { wait_release(); return 0; } }
+        if(HIT(K_B) && L){ nm[L - 1] = 0; dirty = 1; sfx(4); }
+        if(HIT(K_SEL)){ CrRecipe t = cu_r; cr_randomize(&t, CRS_NAME, &cu_rng); snprintf(nm, sizeof nm, "%s", t.name); dirty = 1; sfx(6); }
+        if(HIT(K_START)){ snprintf(cu_r.name, sizeof cu_r.name, "%s", nm); wait_release(); return 1; }
+    }
+}
 // ================================================================= actions, landing, the screen
 static int cu_land(void){
     if(!cu_from_game || !endless || scene != 0){ cu_say(cu_from_game ? "LAND FROM A PLANET OF THE ENDLESS GALAXY" : "OPEN THIS FROM THE PC LAB WHILE YOU PLAY"); return 0; }
@@ -416,7 +437,7 @@ static int cu_open(volatile u16 *pg, int id, int *leave){
     case UR_EX: ch = cu_change(id, 1, 0); break;
     case UR_LANDON: if(cu_land()) *leave = 2; break;
     case UR_LEAVE: *leave = 1; break;
-    case UR_NAMEDICE: cu_name_dice(); ch = 1; break;
+    case UR_NAMEDICE: ch = cu_name_edit(pg); break;
     default: ch = cu_change(id, 1, 0); }
     return ch;
 }
@@ -442,6 +463,7 @@ static void pc_creator_screen(volatile u16 *pg, int from_game){
             if(HIT(K_A)){ int lv = 0; changed = cu_open(pg, id, &lv); if(lv) leave = lv; dirty = 1; sfx(2); wait_release(); }
             if(HIT(K_SEL)){ if((id >= UR_CRE0 && id < UR_CRE0 + CR_MAXCRE)){ int s = id - UR_CRE0; for(int i = s; i < cu_r.ncre - 1; i++) cu_r.cre[i] = cu_r.cre[i + 1]; cu_r.ncre--; changed = 1; }
                 else if(id >= UR_PIN0 && id < UR_PIN0 + CR_MAXPIN){ int s = id - UR_PIN0; for(int i = s; i < cu_r.npin - 1; i++) cu_r.pin[i] = cu_r.pin[i + 1]; cu_r.npin--; changed = 1; }
+                else if(id == UR_NAMEDICE){ cu_name_dice(); changed = 1; sfx(6); }
                 else if(cu_tab != TB_FILE && cu_tab != TB_FLORA){ cu_dice(); changed = 1; sfx(6); cu_say("DICE ROLLED. START TAKES IT BACK."); } dirty = 1; }
         }
         if(HIT(K_START)){ if(cr_hist_undo(&cu_h, &cu_r)){ cr_bio(&cu_r, &cu_b); cu_say("UNDONE (FILE TAB: REDO)"); } else cu_say("NOTHING TO UNDO"); dirty = 1; sfx(4); }

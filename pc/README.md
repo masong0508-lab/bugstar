@@ -264,3 +264,16 @@ Everything the PC game can be made of lines up in one system: 1,040 planet trait
 - **MEANS lines** (`mn_means`) and the WHAT IT MEANS, SYNERGIES, CLASHES AND LOOKS and EACH TRAIT MEANS pages (pages 7 to 10 of the PC WORLD FILE).
 - **In play** (`pc_mn_dna` in pc_info.inc, endless-galaxy planets only, story worlds untouched): FOOD slows or speeds hunger, DANGER changes the number of animals and beetles, TRADE and LUCK scale gold from kills, ORE/GROWTH/CRAFT/FOOD add resource nodes, SPEED changes walking speed, LIGHT sets dusk or night, WEATHER sets the weather, TINT/GLOW/MOOD/BEAUTY tint the sky and buildings. Switch it off with the environment variable `BUGSTAR_MEANING=0` (the core game is then exactly as before).
 - Tests: `pc/meaning/test.sh` (roles, role mix, every channel reachable, every item in a family, 112 stats read or cosmetic, 1,000,000 combinations, coverage: DEAD PARAMETERS 0), `pc/content/test.sh`.
+
+## The PLANET CREATOR (pc/creator, Spore-like)
+
+Open it from the title menu (PLANET CREATOR, the last item) or from the PC LAB (pause, WORLD page, B, PLANET CREATOR). Tabs (L and R): WORLD (name, class, size, extreme size from a pebble to
+x1,000 bigger, seas, land shape, roughness, light, weather, sky and ground colour, climate), TRAITS (9 kinds of the 1,040 traits and 2 universe themes), PEOPLE (stock and calling = one of
+512 peoples, body, limbs, height, colours, three gifts, city form and mood = one of 256 cities, diet, temper, tech, how many), LIFE (plant cover and kinds, up to 10 animal groups built from
+12,672 kinds), FLORA (the plant book of your planet, up to 8 plants pinned from 536,870,912 named plants), BIO (the BIOFOOTPRINT: health A to F, food web, energy, your people's footprint,
+120 years ahead, collapse warnings) and FILE (undo, redo, save recipe, share code, import code, examples, dice, LAND ON IT). UP and DOWN pick a row, LEFT and RIGHT change it, A opens a list,
+SELECT rolls the dice for the tab, START undoes. The planet and the footprint panel update live.
+- A recipe makes a planet seed (`cr_seed`) and an address (`cr_uni4`: a created universe, star 6). LAND ON IT (FILE tab, from the PC LAB while in the endless galaxy) saves the recipe next
+  to the .sav (`<sav>.<NAME>.crp`, `<sav>.seed_<HEX>.crp`) and lands there; `make_world` calls `pc_cr_apply` for that address. The share code is `PL2-...`; `<sav>.code` is read by IMPORT CODE.
+- Tests: `pc/creator/test.sh` (recipe to seed, share code round trip, files, undo, footprint, flora names unique) and `pc/tests/creator.sh` (the screen in the real game, landing through
+  `bugstar_pc --view --crcode CODE`).
