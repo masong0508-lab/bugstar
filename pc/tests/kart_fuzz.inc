@@ -42,7 +42,7 @@ static void kfz_run(void){
             frames++; if(invuln) invuln--; rng_s+=keys; planet_frame(); vsync();
             if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?(1<<4):0); page_back^=1; oam_flush(); }
             if(kr_mode!=1 || nrc<1) continue;
-            if(ks_state==KS_COUNT){ for(int r=0;r<NRC;r++){ lastlap[r]=0; lastpi[r]=rc[r].pi; lastchg[r]=nrace; stuckrep[r]=0; } }
+            if(ks_state==KS_COUNT){ laps=kt.laps; np=knp; for(int r=0;r<NRC;r++){ lastlap[r]=0; lastpi[r]=rc[r].pi; lastchg[r]=nrace; stuckrep[r]=0; } }
             if(ks_state==KS_RACE) nrace++;
             for(int r=0;r<nrc;r++){ Racer *k=&rc[r];
                 if(k->pi<0 || k->pi>=knp){ KFZ_BAD("racer %d path point %d outside 0..%d at frame %d",r,k->pi,knp-1,f); k->pi=0; }

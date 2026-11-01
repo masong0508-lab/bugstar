@@ -105,7 +105,7 @@ static void m7_frame(void){
     }
     m7_horizon=ytop;
     int strip = ytop>M7_HUD ? ytop : M7_HUD; if(strip>160) strip=160; m7_nstrip=strip;
-    for(int b=0;b<8;b++){ s32 Z=stp_z[8*b+7]; int yy=160; for(int r=0;r<160;r++) if(m7_rowz[r]>0 && m7_rowz[r]<=Z){ yy=r; break; }   // (sprites behind hills: the same profile for every column)
+    for(int b=0;b<8;b++){ s32 Z=stp_z[8*b+7<NSTEP?8*b+7:NSTEP-1]; int yy=160; for(int r=0;r<160;r++) if(m7_rowz[r]>0 && m7_rowz[r]<=Z){ yy=r; break; }   // (sprites behind hills: the same profile for every column)
         for(int c=0;c<120;c++) ybin[c*8+b]=(u8)yy; }
     u16 base=4|(1<<10)|(1<<12)|(1<<6);
     for(int y=0;y<160;y++){ M7Line *L=&tab[y];

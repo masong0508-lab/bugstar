@@ -89,8 +89,8 @@ static int kpick_class(volatile u16 *pg){ int sel=k_cls<kcls_open?k_cls:0; list_
 static int k_par(void){ return kt_len*kt.laps*6*100/kcls_pct[k_cls]; }
 static void kart_cup_next(void); static void kw_after_race(int me); static void kw_endless_next(int me); static void kw_tt_gold(void); static void kw_tour_race(int i); static void kw_tour_done(int me);
 static void kres_order(u8 *ord){                                    // finishers first, in order; then the rest by how far they got
-    int n=0; for(int p=1;p<=NRC;p++) for(int r=0;r<nrc;r++) if(rc[r].fin && rc[r].place==p) ord[n++]=(u8)r;
-    while(n<nrc){ int best=-1, bs=-1; for(int r=0;r<nrc;r++){ int in=0; for(int j=0;j<n;j++) if(ord[j]==r) in=1; if(in) continue; int s=kscore(r); if(s>bs){ bs=s; best=r; } } ord[n++]=(u8)best; } }
+    int n=0; for(int p=1;p<=NRC+1;p++) for(int r=0;r<nrc;r++) if(rc[r].fin && rc[r].place==p && n<nrc) ord[n++]=(u8)r;
+    while(n<nrc){ int best=-1, bs=-0x7FFFFFFF; for(int r=0;r<nrc;r++){ int in=0; for(int j=0;j<n;j++) if(ord[j]==r) in=1; if(in) continue; int s=kscore(r); if(s>bs){ bs=s; best=r; } } ord[n++]=(u8)best; } }
 static void kart_results(void){
     volatile u16 *pg=VISPG; u8 ord[NRC]; kres_order(ord); int me=0; for(int i=0;i<nrc;i++){ rc[ord[i]].place=(u8)(i+1); if(ord[i]==0) me=i+1; }
     oam_hide_all(); oam_flush(); in_menu++;

@@ -455,7 +455,7 @@ static void kpath_track(int r){                                    // the path p
     if(r && best<k->pi-knp/2) k->lap++;                                                       // a rival came round past the line
     k->pi=(s16)best; }
 static void kfinish(int r){
-    Racer *k=&rc[r]; if(k->fin) return; k->fin=1; k->place=(u8)(++k_finished); k->ftime=(u16)(k_clock>65000?65000:k_clock);
+    Racer *k=&rc[r]; if(k->fin) return; k->fin=1; { int pl=1; for(int j=0;j<nrc;j++) if(j!=r && rc[j].fin) pl++; k_finished=pl; k->place=(u8)pl; }   // (the place is counted from who has really finished: never two the same) k->ftime=(u16)(k_clock>65000?65000:k_clock);
     if(r==0){ ks_state=KS_DONE; k_end_t=0; char b[40]; scpy(b,k->place==1?"YOU WIN! ":"FINISHED "); if(k->place>1) scat(b,kplace_s(k->place)); else { char t[12]; kfmt_time(t,k_clock); scat(b,t); }
         show_msg(b); sfx(6); music(5); } }
 
@@ -488,7 +488,9 @@ static void kart_go(int riders, int grid_me, int keep, int repaint){   // paint 
     kv=0; kdrift=kcharge=kboost_t=kturn=kstall=0; kart_boost=100; k_rocket=0; k_wrong=0; k_lapmsg=0; kair=0; ktrick=0; kwet=0; kalt=ground_h(ppx,ppy); k_lap_t0=0; k_best_lap=0;
     kr_mode=1; ks_state=KS_COUNT; k_count=250; k_clock=0; k_finished=0; k_end_t=0; race_on=0; kart_on=1; k_elim_t=0; k_elim_out=0;
     music(6); msg_timer=0; p_last=vbl_count; }
+static void m7_end(void);
 static void kart_stop(void){                                       // back to walking, where you were (in Kart World: back to its menu)
+    if(m7_on) m7_end();                                            // (the hardware ground stops at the next blank: no road left over under the menus and the landing card)
     kloop_on=0; kloop_ph=0; kla=0;
     if(kw_mode){ kgive_back(); kr_mode=0; kart_on=0; ks_state=0; nrc=1; kw_quit=1; cam_fp=0; g_phz=66; planet_tables(); return; }
     kgive_back(); kt_unpaint(); kr_mode=0; kart_on=0; ks_state=0; nrc=1; cam_fp=kfp_keep; g_phz=66; planet_tables();
@@ -874,8 +876,8 @@ static void kart_tick(int n){
     kitems_tick(n); kbump(); kplaces(); kw_elim_tick(n);
     for(int r=1;r<nrc;r++) if(rc[r].po!=255){ po[rc[r].po].x=rc[r].x; po[rc[r].po].y=rc[r].y; }
     if(HIT(K_L)){ khorn(kl.part[KP_HORN]); for(int r=1;r<nrc;r++){ s32 dx=wrapd(rc[r].x-ppx), dy=wrapd(rc[r].y-ppy); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<(4<<16)) rc[r].lane=-rc[r].lane; } }
-    if(!rc[0].fin && nrc>1 && k_clock>36000 && k_end_t==0) k_finished=nrc-1;                    // (no race may last over ten minutes: after that the others count as done and the HURRY timer runs)
-    if(!rc[0].fin && k_finished>=nrc-1 && nrc>1){ if(k_end_t==0) show_msg("HURRY! THE OTHERS ARE DONE"); k_end_t+=n; if(k_end_t>900){ rc[0].place=(u8)nrc; kfinish(0); rc[0].place=(u8)nrc; ks_state=KS_DONE; k_end_t=150; } }
+    if(!rc[0].fin && (k_finished>=nrc-1 || k_clock>36000) && nrc>1){          // (no race may last over ten minutes: then the HURRY timer runs whatever the others are doing)
+         if(k_end_t==0) show_msg("HURRY! THE OTHERS ARE DONE"); k_end_t+=n; if(k_end_t>900){ rc[0].place=(u8)nrc; kfinish(0); rc[0].place=(u8)nrc; ks_state=KS_DONE; k_end_t=150; } }
     if(ks_state==KS_DONE && k_end_t>=150) kart_results();
 }
 
