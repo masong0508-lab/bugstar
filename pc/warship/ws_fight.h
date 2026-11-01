@@ -13,7 +13,7 @@ typedef struct {                         // your ship as you bring it into the f
     int ammo[WW_N];                      // shots of each weapon (laser and railgun: -1 = no limit; 0 = not fitted)
 } WsShip;
 
-typedef struct { int fire, weapon, boost, retreat, kit, target; } WsInput;   // target: -1 the hull section, -2 fighters, 0.. a subsystem
+typedef struct { int fire, weapon, boost, retreat, kit, target, nofuel; } WsInput;   // target: -1 the hull section, -2 fighters, 0.. a subsystem
 
 enum { WF_ON, WF_WON, WF_LOST, WF_FLED };
 typedef struct {
@@ -29,10 +29,13 @@ typedef struct {
     unsigned shots, hits, intercepted, waves, repairs;
     char msg[48]; int msg_t;             // the last thing worth saying ("SHIELD LAYER 2 DOWN")
     uint32_t rng;
+    int ext;                             // 1: the game flies the ship (its hull, shield, fuel and its own pirates are the fighters); the rules only say
+    double dmg_out; int spawn_req;       //    how much the craft hit you this tick (before your armour) and how many fighters to launch
 } WsFight;
 
 void wf_start(WsFight *f, const WsCraft *c, const WsShip *s);
 void wf_tick(WsFight *f, const WsInput *in, double dt);
+int  wf_fire(WsFight *f, int weapon, int target);    // one shot now (the game's trigger): 0 not ready / no ammo / overheated, 1 fired and missed or stopped, 2 hit
 int  wf_alive(const WsFight *f, int kind);           // subsystems of a kind still working
 void wf_sabotage(WsFight *f, int sub, int precise);  // a subsystem blown up from the inside (boarding)
 void wf_away(WsFight *f, double seconds);            // you left: the crews repair. Short trips keep destroyed sections; long ones lose everything

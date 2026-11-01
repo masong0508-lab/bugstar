@@ -192,8 +192,10 @@ static void build_lines(void){
     #undef I32
 }
 static uint16_t screen[160][240];
+void (*pc_ovl_fn)(uint32_t *out, int w, int h);      // a PC-made 3D view under the game's picture (the warship interiors): shown wherever the game draws nothing
+static uint32_t ovl240[240*160]; static uint32_t *nv_ovl;
 static void compose(void){
-    build_lines();
+    build_lines(); if(pc_ovl_fn) pc_ovl_fn(ovl240,240,160);
     uint16_t dc=R16(IOREG), mode=dc&7; int one_d=(dc>>6)&1;
     uint16_t bd=rgbpix(R16(PALRAM));
     if(dc&0x80){ for(int y=0;y<160;y++) for(int x=0;x<240;x++) screen[y][x]=0x7FFF; return; }      // forced blank = white
@@ -227,6 +229,7 @@ static void compose(void){
         else if(bmode==1 && t1 && t2) out=alpha(top,second,ea,eb);
         else if(bmode==2 && t1) out=bright(top,ev,1);
         else if(bmode==3 && t1) out=bright(top,ev,0);
+        if(pc_ovl_fn && tl==2 && !semi){ uint32_t c=ovl240[y*240+x]; out=(uint16_t)((c>>19&31)|((c>>11&31)<<5)|((c>>3&31)<<10)); }
         screen[y][x]=out;
     } }
 }
@@ -413,7 +416,7 @@ static void nv_rows(void *vc, int lo, int hi){
                 else if(bmode==2 && t1) res=bright(top,ev,1);
                 else if(bmode==3 && t1) res=bright(top,ev,0);
             }
-            out[q]= (sm && tl==0 && !semi) ? bc888 : XRGB(res);
+            out[q]= (sm && tl==0 && !semi) ? bc888 : (nv_ovl && tl==2 && !semi) ? nv_ovl[q] : XRGB(res);
         }
     }
 }
@@ -475,6 +478,7 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     uint8_t lut5[32]; for(int i=0;i<32;i++) lut5[i]=(uint8_t)(i<<3|i>>2);
     #define XRGB(c) ((uint32_t)lut5[(c)&31]<<16 | (uint32_t)lut5[((c)>>5)&31]<<8 | lut5[((c)>>10)&31])
     if(dc&0x80){ for(size_t i=0;i<need;i++) out[i]=0xFFFFFF; return; }
+    { static uint32_t *ovl; static size_t ovl_cap; nv_ovl=0; if(pc_ovl_fn){ if(need>ovl_cap){ free(ovl); ovl=malloc(need*4); ovl_cap=need; } pc_ovl_fn(ovl,W,H); nv_ovl=ovl; } }
     const double sx=240.0/W, sy=160.0/H;                       // game pixels per output pixel
     struct timespec T0,T1,T2,T3,T4; clock_gettime(CLOCK_MONOTONIC,&T0);
     // ---- sprites

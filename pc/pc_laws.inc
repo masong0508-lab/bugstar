@@ -344,12 +344,12 @@ static void pc_ch_tp(volatile u16 *pg, int *go){
     wait_release();
 }
 
-static void pc_giant_hub(volatile u16 *pg);
+static void pc_giant_hub(volatile u16 *pg); static void pc_ws_lab(volatile u16 *pg);
 // ---- THE LAB: the hub on the WORLD page
 static void pc_lab_screen(volatile u16 *pg){
-    enum { LB_FILE, LB_LAWS, LB_HOW, LB_GIANT, LB_CHEAT, LB_CREATE, LB_SIDE, LB_N };
-    static const char *const nm[LB_N] = { "PLANET FILE", "UNIVERSE LAWS", "HOW THIS WORKS", "GIANT NUMBERS", "CHEATS", "PLANET CREATOR", "SIDE GAME" };
-    static const char *const ds[LB_N] = { "EVERYTHING THE GAME KNOWS ABOUT THIS PLANET: ITS TRAITS, STATS, PEOPLES, CITY AND CREATURES.", "CHANGE THE NUMBERS THAT RUN THE UNIVERSE: GRAVITY, STARS, PLANET SIZES FROM PEBBLES TO GIANTS, LIFE, TIME.", "WHY THIS UNIVERSE, GALAXY, STAR AND PLANET ARE THE WAY THEY ARE, WITH THEIR REAL NUMBERS.", "A NUMBER WITH OVER A BILLION DIGITS TO READ IN FULL, THE 6-QUINTILLION-LETTER NAME OF BUGSTARILLION V3, A NAMER AND A SCALE LADDER.", "WIDE-OPEN POWERS: ANY LAW, ANY SIZE, TIME SPEED, LEVEL, GOLD, TELEPORT. MARKS THE WORLD AS CHEATED.", "MAKE YOUR OWN PLANET AND PEOPLE, SEE ITS BIOFOOTPRINT LIVE, AND LAND ON IT.", "THE TOWN'S JOURNAL AND PEOPLE, THE GOD POWERS (ONE OPENS EVERY 1,000 LEVELS), SANDBOX AND YOUR BIG LEVEL." };
+    enum { LB_FILE, LB_LAWS, LB_HOW, LB_GIANT, LB_CHEAT, LB_CREATE, LB_SIDE, LB_WAR, LB_N };
+    static const char *const nm[LB_N] = { "PLANET FILE", "UNIVERSE LAWS", "HOW THIS WORKS", "GIANT NUMBERS", "CHEATS", "PLANET CREATOR", "SIDE GAME", "WARSHIPS" };
+    static const char *const ds[LB_N] = { "EVERYTHING THE GAME KNOWS ABOUT THIS PLANET: ITS TRAITS, STATS, PEOPLES, CITY AND CREATURES.", "CHANGE THE NUMBERS THAT RUN THE UNIVERSE: GRAVITY, STARS, PLANET SIZES FROM PEBBLES TO GIANTS, LIFE, TIME.", "WHY THIS UNIVERSE, GALAXY, STAR AND PLANET ARE THE WAY THEY ARE, WITH THEIR REAL NUMBERS.", "A NUMBER WITH OVER A BILLION DIGITS TO READ IN FULL, THE 6-QUINTILLION-LETTER NAME OF BUGSTARILLION V3, A NAMER AND A SCALE LADDER.", "WIDE-OPEN POWERS: ANY LAW, ANY SIZE, TIME SPEED, LEVEL, GOLD, TELEPORT. MARKS THE WORLD AS CHEATED.", "MAKE YOUR OWN PLANET AND PEOPLE, SEE ITS BIOFOOTPRINT LIVE, AND LAND ON IT.", "THE TOWN'S JOURNAL AND PEOPLE, THE GOD POWERS (ONE OPENS EVERY 1,000 LEVELS), SANDBOX AND YOUR BIG LEVEL.", "COLOSSAL CRAFT FROM NANO SWARMS TO UNIVERSE HULKS: THEIR THREAT, COST AND PAY, THE ARMOURY. ENGAGE ONE, THEN TAKE OFF." };
     int sel = 0, dirty = 1; wait_release();
     while(1){
         if(dirty){ dirty = 0; oam_hide_all(); oam_flush(); char b[40]; ui_bg(pg, 0, 160); ui_panel(pg, 24, 14, 192, 126);
@@ -368,6 +368,7 @@ static void pc_lab_screen(volatile u16 *pg){
             else if(sel == LB_CREATE){ pc_creator_screen(pg, 1); if(sys_req) rg = 1; }
             else if(sel == LB_GIANT) pc_giant_hub(pg);
             else if(sel == LB_SIDE) sim_lab(pg);
+            else if(sel == LB_WAR) pc_ws_lab(pg);
             else rg = pc_cheats_screen(pg);
             dirty = 1; if(rg){ if(!sys_req){ do_save(); sys_req = 1; } break; } wait_release(); }
     }

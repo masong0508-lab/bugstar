@@ -70,33 +70,35 @@ void wf_away(WsFight *f, double secs){
         f->sec=0; f->layers_up=f->c.layers; f->lay_hp=f->c.hp_shield; memset(&f->kill,0,sizeof f->kill); f->kill.attack=f->ship.attack; f->out_total=wn(0); f->nsab=0; }
     f->fighters=0; f->repairs++; f->phase=0; set_phase(f); f->state=WF_ON; f->since_my_hit=0;
 }
+int wf_fire(WsFight *f, int w, int target){
+    if(f->state!=WF_ON) return 0; if(w<0||w>=WW_N) w=0;
+    if(f->overheat || f->fire_cd>0 || f->ammo[w]==0) return 0;
+    f->fire_cd=1.0/rate_[w]; f->heat+=heat_[w]; if(f->heat>=HEAT_MAX){ f->heat=HEAT_MAX; f->overheat=1; say(f,"OVERHEAT! LET THE GUNS COOL"); }
+    if(f->ammo[w]>0) f->ammo[w]--; f->shots++;
+    if(w==WW_MISSILE||w==WW_TORPEDO){ double pd=0.5*(f->turrets0?(double)wf_alive(f,WSS_TURRET)/f->turrets0:0); if(fr01(f)<pd){ f->intercepted++; say(f,"POINT DEFENCE SHOT IT DOWN"); return 1; } }
+    if(!f->ext && fr01(f)>=0.9) return 1;
+    f->hits++; f->since_my_hit=0;
+    if(target==-2 && f->fighters>0){ f->fighters--; return 2; }
+    WN d=wn(ws_shot(f->ship.attack,w));
+    if(f->layers_up>0){ WN pass=wn(0); if(w==WW_TORPEDO){ pass=wn_muld(d,0.5); d=wn_muld(d,0.5); }
+        f->since_hit=0; if(wn_cmp(d,f->lay_hp)>=0){ f->layers_up--; f->lay_hp = f->layers_up ? f->c.hp_shield : wn(0); char b[40]; snprintf(b,sizeof b,"SHIELD LAYER DOWN: %d LEFT",f->layers_up); say(f,b); set_phase(f); f->sh_back_t=0; }
+        else f->lay_hp=wn_sub(f->lay_hp,d);
+        if(!wn_is_zero(pass)) hull_damage(f,pass,target,0,w); }
+    else hull_damage(f,d,target,0,w);
+    return 2;
+}
 void wf_tick(WsFight *f, const WsInput *in, double dt){
     if(f->state!=WF_ON) return;
     f->t+=dt; f->since_hit+=dt; f->since_my_hit+=dt; if(f->msg_t) f->msg_t--;
     if(in->retreat){ f->state=WF_FLED; say(f,"YOU PULL BACK. THE CREWS START REPAIRS"); return; }
     // ---- fuel: life support always, more when you fly hard. No fuel: you drift and every shot finds you
-    f->fuel -= dt*(in->boost ? 1.2 : 0.15); if(f->fuel<0) f->fuel=0;
+    if(!f->ext){ f->fuel -= dt*(in->boost ? 1.2 : 0.15); if(f->fuel<0) f->fuel=0; }
     // ---- heat
     f->heat -= COOL*dt; if(f->heat<0) f->heat=0; if(f->overheat && f->heat<=0) f->overheat=0;
     if(f->kit_cd>0) f->kit_cd-=dt; if(f->fire_cd>0) f->fire_cd-=dt;
-    if(in->kit && f->kits>0 && f->kit_cd<=0 && f->hull<f->ship.hull_max){ f->kits--; f->hull+=40; if(f->hull>f->ship.hull_max) f->hull=f->ship.hull_max; f->kit_cd=5; }
+    if(!f->ext && in->kit && f->kits>0 && f->kit_cd<=0 && f->hull<f->ship.hull_max){ f->kits--; f->hull+=40; if(f->hull>f->ship.hull_max) f->hull=f->ship.hull_max; f->kit_cd=5; }
     // ---- you shoot
-    int w=in->weapon; if(w<0||w>=WW_N) w=0;
-    if(in->fire && !f->overheat && f->fire_cd<=0 && f->ammo[w]!=0){
-        f->fire_cd=1.0/rate_[w]; f->heat+=heat_[w]; if(f->heat>=HEAT_MAX){ f->heat=HEAT_MAX; f->overheat=1; say(f,"OVERHEAT! LET THE GUNS COOL"); }
-        if(f->ammo[w]>0) f->ammo[w]--; f->shots++;
-        int pd_hit=0; if(w==WW_MISSILE||w==WW_TORPEDO){ double pd=0.5*(f->turrets0?(double)wf_alive(f,WSS_TURRET)/f->turrets0:0); if(fr01(f)<pd){ pd_hit=1; f->intercepted++; } }
-        if(!pd_hit && fr01(f)<0.9){
-            f->hits++; f->since_my_hit=0;
-            if(in->target==-2 && f->fighters>0){ f->fighters--; }
-            else { WN d=wn(ws_shot(f->ship.attack,w));
-                if(f->layers_up>0){ WN pass=wn(0); if(w==WW_TORPEDO){ pass=wn_muld(d,0.5); d=wn_muld(d,0.5); }
-                    f->since_hit=0; if(wn_cmp(d,f->lay_hp)>=0){ f->layers_up--; f->lay_hp = f->layers_up ? f->c.hp_shield : wn(0); char b[40]; snprintf(b,sizeof b,"SHIELD LAYER DOWN: %d LEFT",f->layers_up); say(f,b); set_phase(f); f->sh_back_t=0; }
-                    else f->lay_hp=wn_sub(f->lay_hp,d);
-                    if(!wn_is_zero(pass)) hull_damage(f,pass,in->target,0,w); }
-                else hull_damage(f,d,in->target,0,w); }
-        }
-    }
+    if(in->fire && f->fire_cd<=0) wf_fire(f,in->weapon,in->target);
     if(f->state!=WF_ON) return;
     // ---- the craft heals: shields (while a generator lives), and repair crews on the section you stopped cutting
     int gens=wf_alive(f,WSS_GEN), gens_ok = f->gens0==0 || gens>0;
@@ -109,13 +111,14 @@ void wf_tick(WsFight *f, const WsInput *in, double dt){
     // ---- fighter waves from the hangars that still work
     int hang=wf_alive(f,WSS_HANGAR); f->fighter_t-=dt;
     if(f->fighter_t<=0){ double per = !wf_alive(f,WSS_BRIDGE) ? 45 : f->phase==4 ? 18 : 30; f->fighter_t=per;
-        if(hang>0){ int n=(f->c.wave*hang+f->hangars0-1)/(f->hangars0?f->hangars0:1); f->fighters+=n; if(f->fighters>40) f->fighters=40; f->waves++; say(f,"FIGHTERS LAUNCHING!"); } }
+        if(hang>0){ int n=(f->c.wave*hang+f->hangars0-1)/(f->hangars0?f->hangars0:1); if(f->ext){ f->spawn_req+=n; n=0; } f->fighters+=n; if(f->fighters>40) f->fighters=40; f->waves++; say(f,"FIGHTERS LAUNCHING!"); } }
     if(f->fighters>0 && f->wing>0){ double k=0.25*f->wing*dt; if(fr01(f)<k) f->fighters--; }
     // ---- it shoots: turrets (fewer as you break them), reactors feed them, the enraged core doubles it, fighters add theirs
     double tur = f->turrets0 ? 0.4+0.6*wf_alive(f,WSS_TURRET)/(double)f->turrets0 : 1.0, rea = f->reacs0 ? 0.7+0.3*wf_alive(f,WSS_REACTOR)/(double)f->reacs0 : 1.0;
     double dps = f->c.dps*tur*rea*(f->phase==4 && wf_alive(f,WSS_BRIDGE) ? 2.2 : 1.0) + f->fighters*0.18;
-    double dodge = in->boost && f->fuel>0 ? 0.6 : f->fuel<=0 ? 1.5 : 1.0;
+    double dodge = f->ext ? (in->nofuel ? 1.5 : in->boost ? 0.6 : 1.0) : (in->boost && f->fuel>0 ? 0.6 : f->fuel<=0 ? 1.5 : 1.0);
     double dmg = dps*dodge*dt;
+    if(f->ext){ f->dmg_out+=dmg; return; }
     if(f->wing>0){ double share = dmg*f->wing/(f->wing+2.0)*0.5; dmg-=share; int k=(int)(fr(f)%(unsigned)f->wing); f->wing_hp[k]-=share*f->wing;
         if(f->wing_hp[k]<=0){ for(int j=k;j<f->wing-1;j++) f->wing_hp[j]=f->wing_hp[j+1]; f->wing--; say(f,"WINGMAN DOWN!"); } }
     dmg = dmg*f->ship.armour/100.0;

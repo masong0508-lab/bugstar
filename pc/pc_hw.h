@@ -18,4 +18,5 @@ extern int pc_vid3d;                 // 3D views: 0 AUTO, 1 NATIVE (smooth, made
 extern int pc_time_pct;              // game speed in percent (100 = normal)
 const char *pc_sav_path(void);       // the save file path, or NULL
 extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;   // the mouse in the 240x160 picture (x = -1 when it is outside), buttons bit0 left bit1 right, wheel steps (the creator clears it)
+extern void (*pc_ovl_fn)(uint32_t *out, int w, int h);   // set: a PC-made 3D view shows wherever the game's picture is empty (backdrop)
 #endif

@@ -109,6 +109,23 @@ echo '#include "../sim/sim_glue.inc"' >> main.c
 echo '#include "../pc_info.inc"' >> main.c
 echo '#include "../creator/creator_ui.inc"' >> main.c
 echo '#include "../pc_giant.inc"' >> main.c
+# --- COLOSSAL WARSHIPS (pc/warship, pc/pc_warship.inc): the fight uses the lair code path (in_lair = 1, pc_ws_on = 1); every hook is a no-op when no warship fight is on
+sed -i '1i static int pc_ws_on; static int pc_ws_lim(int d), pc_ws_danger(void), pc_ws_sel(void), pc_ws_scan(void); static void pc_ws_shot(void), pc_ws_update(void), pc_ws_lost(void), pc_ws_space_enter(void), pcw_draw(volatile unsigned short *pg), pcw_hud(volatile unsigned short *pg), pc_ws_autotest(void), pc_ws_slot_load(int s), pc_ws_slot_save(int s), pc_ws_slot_new(int s);' main.c
+H space.inc '        if(in_lair) beast_shot();' '        if(in_lair){ if(pc_ws_on) pc_ws_shot(); else beast_shot(); }'
+H space.inc '    if(in_lair) beast_update();' '    if(in_lair){ if(pc_ws_on) pc_ws_update(); else beast_update(); }'
+H space.inc '    if(in_lair) beast_draw(pg);' '    if(in_lair){ if(pc_ws_on) pcw_draw(pg); else beast_draw(pg); }'
+H space.inc '    if(in_lair) beast_hud(pg);' '    if(in_lair){ if(pc_ws_on) pcw_hud(pg); else beast_hud(pg); }'
+H space.inc 'if(HIT(K_SEL) && !coil_sel_eaten){ if(in_lair){ lair_leave(); return 0; } return 2; }' 'if(HIT(K_SEL) && !coil_sel_eaten){ if(pc_ws_sel()) return 0; if(HELD(K_R) && pc_ws_scan()) return 0; if(in_lair){ lair_leave(); return 0; } return 2; }'
+H space.inc 's32 lim = in_lair ? 2400 : PR+300;' 's32 lim = in_lair ? pc_ws_lim(2400) : PR+300;'
+H space.inc 'if(hull<=0){ if(in_lair){ in_lair=0;' 'if(hull<=0){ pc_ws_lost(); if(in_lair){ in_lair=0;'
+H space.inc 'static int space_danger(void){ return in_lair ?' 'static int space_danger(void){ if(pc_ws_on) return pc_ws_danger(); return in_lair ?'
+H space.inc '    if(hive_card && !no_ambush) show_hive_card();' ' pc_ws_space_enter();' after
+H space.inc 'space_say(in_lair?"YOU RAMMED THE BEAST!":' 'space_say(in_lair?(pc_ws_on?"YOU RAMMED ITS HULL!":"YOU RAMMED THE BEAST!"):'
+H main.c '        rng_s += keys;' ' pc_ws_autotest();' after
+H save.inc 'pc_laws_slot_load(cur_slot);' ' pc_ws_slot_load(cur_slot);' after
+H save.inc 'sram_write(slot_base(cur_slot), s, sizeof(Save)); pc_laws_slot_save(cur_slot);' ' pc_ws_slot_save(cur_slot);' after
+H main.c 'pc_laws_slot_new(s2);' ' pc_ws_slot_new(s2);' after
+echo '#include "../pc_warship.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 echo '#include "../coil_test.inc"' >> main.c
 case "$PC_CFLAGS" in *TEST_KFUZZ*) echo '#include "../tests/kart_fuzz.inc"' >> main.c;; esac   # only the fuzz test build (-DTEST_KFUZZ=n) includes the driver
@@ -129,9 +146,9 @@ fi
 CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../shipr/shipr.h ../pc_giant.inc ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
-for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../giant/giant.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH $OBJS $SDLL -lm -lpthread -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"
