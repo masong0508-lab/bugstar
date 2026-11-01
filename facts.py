@@ -234,25 +234,60 @@ def make(arr, out):
         data += bytes.fromhex(s + ("0" if n % 2 else ""))
         if t == BIGN_SRC: big = (len(F) and [x[1] for x in F].index(t), s)
     open("facts.bin", "wb").write(bytes(data))
-    # the Bugstarillion: S, then 3 x P zeros. Group j of S (from the top) is said with the name of the (P + g-2-j)th -illion
-    bi, bs = big; n = len(bs); lead = n - 3 * ((n - 1) // 3)
-    groups = [int(bs[:lead])] + [int(bs[i:i + 3]) for i in range(lead, n, 3)]; g = len(groups); nz = sum(1 for v in groups if v)
-    P = planck_volumes(); pc = []; x = P - 1                     # (the game adds g-1-j to P-1)
-    while x: pc.append(x % 1000); x //= 1000
-    pc.reverse()
-    H = 0
-    for off in list(range(0, 3000)) + list(range(g - 3000, g)) + list(range(0, g, 997)): H = max(H, len(big_lines(P - 1 + off)))
-    L0 = big_lines(P - 1 + g - 1)
-    letters = sum(len(l) for l in L0)
-    words = nz * (1 + len(pc))                                    # each name: its value, then one word for every group of P
+    # the Bugstarillion (see sizes.inc): BIG_N parts, each a group of three digits (100..999, by a hash of its number) at its own place.
+    # The lowest BIG_N0 parts sit side by side (places 0, 1, 2...). Above them come BIG_L blocks of 65,536 parts: block lam has the places whose
+    # -illion number is the first lam+1 digits of P (the Planck volumes of the universe) and then a 5-digit counter. So the names grow, a
+    # little more with every block, from THOUSAND up to the full-length ones of the top block, and each block's parts are side by side.
+    P = planck_volumes(); PD = str(P); N0 = 100000; M = 65536; NL = len(PD) - 5; N = N0 + NL * M
+    def h32(q):
+        h = (q * 2654435761) & 0xFFFFFFFF; h ^= h >> 15; h = (h * 2246822519) & 0xFFFFFFFF; h ^= h >> 13; return h
+    def val(q): return 100 + h32(q) % 900
+    def tok(c, last=False):                                      # one chunk's piece of a name (as the game cuts them at ILLI)
+        p_ = cw(c)
+        if p_ and p_[-1] in "IA": p_ = p_[:-1]
+        return p_ + ("ILLION" if last else "ILLI")
+    def toks(chs): return [tok(c, k == len(chs) - 1) for k, c in enumerate(chs)]
+    def chunks_hi(ds):                                           # a digit string as chunks of three, most significant first
+        out_ = []; e = len(ds)
+        while e > 0: out_.append(int(ds[max(0, e - 3):e])); e -= 3
+        return out_[::-1]
+    def wrap_state(ts):                                          # (lines, length of the last line) after these pieces
+        ln, Ln = 1, 0
+        for t_ in ts:
+            if Ln and Ln + len(t_) > 48: ln += 1; Ln = 0
+            Ln += len(t_)
+        return ln, Ln
+    hl = []; maxlet = 0; words = 1 + 2 * 21                      # (the lowest place has no name: 1 word; the next 21 are dictionary names: 2 words each)
+    for lam in range(NL):                                        # the longest name (in lines, and in letters) of each block: only the two low chunks change
+        pre = PD[:lam + 1]; T = lam + 6
+        upper = [tok(c) for c in chunks_hi(pre + "00000")[:-2]]  # (the chunks above the two low ones never change)
+        st = wrap_state(upper); ul = sum(len(t_) for t_ in upper); mx = 0; ml = 0
+        for a in range(66):                                      # the counter's first two digits; its last three are the lowest chunk
+            t1 = tok(int((pre + "%05d" % (a * 1000))[-6:-3])); bmax = 999 if a < 65 else 535
+            l0 = max(len(tok(b, True)) for b in range(bmax + 1))
+            ln, Ln = st
+            if Ln and Ln + len(t1) > 48: ln += 1; Ln = 0
+            Ln += len(t1)
+            if Ln and Ln + l0 > 48: ln += 1
+            mx = max(mx, ln); ml = max(ml, ul + len(t1) + l0)
+        hl.append(mx); maxlet = max(maxlet, ml); words += M * (1 + (T + 2) // 3)
+    top_to_bottom = hl[::-1]                                     # block b counted from the top
+    dense_h = 1
+    for q in range(22, N0):                                      # the lowest block: one or two chunks each
+        n_ = q - 1; ts_ = toks([n_ // 1000, n_ % 1000] if n_ >= 1000 else [n_])
+        dense_h = max(dense_h, wrap_state(ts_)[0]); words += 1 + len(ts_)
+    cum = [0]
+    for h_ in top_to_bottom: cum.append(cum[-1] + M * (h_ * 7 + 8))
+    total_h = cum[-1] + N0 * (dense_h * 7 + 8); assert total_h < 2 ** 31 - 100000, (dense_h, total_h)
+    n_top = int(PD[:NL] + "%05d" % (M - 1)); D = 3 * (n_top + 1) + 3; ds = str(D)   # the number has 3 digits for the top part, then 3 for each place below
     secs = words // 2; yrs = secs // 31557600; days = (secs % 31557600) // 86400
-    D = n + 3 * P; ds = str(D)
     out.append("#define NSOLD %d" % len(OLD)); out.append("#define NFACT %d" % len(F))
-    out.append("#define BIGN_SRC %d\n#define BIGS_G %d\n#define BIGS_NZ %d\n#define BIG_H %d\n#define BIGP_N %d\n#define BIG_WORDS %du\n#define BIG_YEARS %d\n#define BIG_DAYS %d\n#define BIG_LETTERS %d"
-               % (bi, g, nz, H, len(pc), words, yrs, days, letters))
-    out.append('#define BIG_DIGITS "%s.%s"\n#define BIG_DEXP %d\n#define BIG_PLANCK "%s.%s"\n#define BIG_PEXP %d' % (ds[0], ds[1:3], len(ds) - 1, str(P)[0], str(P)[1:3], len(str(P)) - 1))
-    out.append('#define BIG_E "%s"\n#define BIG_SIG %d' % (str(D - 1), int(bs[:3])))      # the Bugstarillion as a distance: BIG_SIG/100 x 10^BIG_E light years
-    arr("bigp", "unsigned short", pc)
+    out.append("#define BIG_N %d\n#define BIG_N0 %d\n#define BIG_L %d\n#define BIG_DENSE_H %d\n#define BIGP_N %d\n#define BIG_H %d\n#define BIG_TOTALH %d\n#define BIG_WORDS %du\n#define BIG_YEARS %d\n#define BIG_DAYS %d\n#define BIG_LETTERS %d"
+               % (N, N0, NL, dense_h, (len(PD) + 2) // 3, max(hl), total_h, words, yrs, days, maxlet))
+    out.append('#define BIG_PD "%s"' % PD)
+    out.append('#define BIG_DIGITS "%s.%s"\n#define BIG_DEXP %d\n#define BIG_PLANCK "%s.%s"\n#define BIG_PEXP %d' % (ds[0], ds[1:3], len(ds) - 1, PD[0], PD[1:3], len(PD) - 1))
+    out.append('#define BIG_E "%s"\n#define BIG_SIG %d' % (str(D - 1), val(N - 1)))      # the Bugstarillion as a distance: BIG_SIG/100 x 10^BIG_E light years
+    arr("big_hl", "unsigned char", top_to_bottom); arr("big_cum", "unsigned int", cum)
     arr("fact_off", "unsigned int", offs); arr("fact_nd", "unsigned int", nds); arr("fact_nz", "unsigned int", nzs)
     arr("fact_ab", "unsigned char", abs_); arr("fact_lead", "unsigned int", leads)
     q = lambda s_: "0" if s_ is None else '"' + s_ + '"'
