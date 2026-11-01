@@ -188,6 +188,10 @@ static void sim_colflags(ColFlags *f){
     f->friends=0; for(int k=0;k<sim_w.nfolk;k++) if(sim_w.friend[k]>=25) f->friends++;
     f->level = level>=10 ? 10 : (int)level;
 }
+static void sim_burn_world(void){                       // a warship burnt this planet: the colony is dead (RUINS, so it can be resettled later); story worlds are never ended for good
+    if(!sim_is_on()) return;
+    u64 ws=sim_world_seed(); if(!sim_have_w || ws!=sim_w.seed) sim_bind();
+    SimColony *co=sim_colony(); co->nset=0; co->state=COLS_RUINS; co->raid_eta=0; }
 static void sim_colony_tick(void){
     ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony(); u32 today=(u32)sim_day(&sim_w), yd=col_year_days(SIM_SEASON_DAYS);
     co->world_ok = pc_applied ? 1 : 0;                                  // only endless-galaxy planets can ever be destroyed; story worlds never

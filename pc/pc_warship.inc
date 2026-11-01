@@ -169,7 +169,7 @@ static void pc_ws_update(void){
     if(pcw_f.state==WF_WON) pcw_victory();
 }
 static int pc_ws_scan(void);
-static void pc_ws_autotest(void); static void pcm_tick(void);
+static void pc_ws_autotest(void); static void pcm_tick(void); static void pcm_test_hell(void);
 
 // ================================================================= THE INTERIOR
 EW static WdDeck pcw_deck;
@@ -405,6 +405,8 @@ static void pc_ws_autotest(void){
     char mode[16]={0}; int z=WS_ZREF; unsigned seed=0; sscanf(e,"%15[a-z],%d,%u",mode,&z,&seed);
     if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)0x06000000); return; }
     if(!strcmp(mode,"missions")){ pc_ms_board((volatile u16*)0x06000000,MP_STATION); return; }
+    if(!strcmp(mode,"hell")){ pcm_enc_mode=3; pcm_test_hell(); return; }               // (aftermath test) the surface burns now
+    if(!strcmp(mode,"dun")){ pcm_enc_mode=3; enter_dungeon_flag=1; return; }                            // (aftermath test) go through the door; BUGSTAR_AFT_DUN=seal|inv|board says what happens down there
     if(!strcmp(mode,"encounter")){ pcm_enc_mode=3; pcm_clk=3599; pcm_enc_force=1; return; }
     if(!strcmp(mode,"save")){ pc_ws_slot_save(cur_slot); return; }
     { const char *lv=getenv("BUGSTAR_WS_LEVEL"); if(lv) level=atoll(lv); }
