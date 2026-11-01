@@ -1515,7 +1515,14 @@ int main(void){
 #ifdef TEST_KW
     kw_defaults(1); kw.coins=50000; kw_store(); new_game(); bug_look_default(); humx_default();
 #ifdef TEST_KWRACE
-    kw_load(); kw_mode=1; kw.unlocked=1; kw.seed=TEST_KWRACE; kw.track=TEST_KWTRK; kw.stunts=1; kw.laps=2; k_cls=1; kw_start_planet_race(kw.seed,kw.track,NRC,0); kw_run();      // (straight into a race on a chosen planet and track)
+    kw_load(); kw_mode=1; kw.unlocked=1; kw.seed=TEST_KWRACE; kw.track=TEST_KWTRK; kw.stunts=1; kw.laps=2; k_cls=1;
+#ifdef TEST_KFORM
+    form=TEST_KFORM;
+#endif
+#ifdef TEST_KDRV
+    kw.driver=TEST_KDRV;
+#endif
+    kw_start_planet_race(kw.seed,kw.track,NRC,0); kw_run();      // (straight into a race on a chosen planet and track)
 #endif
 #ifdef TEST_KSWEEP
     {   // the crash hunt: race after race on different planets, tracks, classes, mirrored or backwards, with every stunt on, the test driver at the wheel

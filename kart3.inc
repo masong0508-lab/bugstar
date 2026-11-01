@@ -38,6 +38,10 @@ static int kw_draw_driver(int slot, int cx, int feet, int inv, int flip){   // a
     set_affine(31, flip?-inv:inv, 0, 0, inv); int dh=h*256/inv;
     shadow_oam[slot].a0=((feet-dh/2-h)&255)|(1<<8)|(1<<9)|(shp<<14); shadow_oam[slot].a1=((cx-w)&511)|(31<<9)|(siz<<14); shadow_oam[slot].a2=tl|(pb<<12); return slot+1; }
 
+static int kw_draw_driver_rot(int slot, int cx, int cy, int qa, int qb, int qc, int qd){   // the same, turned (in a loop-de-loop); cx,cy is the middle of the picture
+    int d=kw.driver; if(!d) return -1; int shp,siz,w,h,pb, tl=kwd_tile(d,&shp,&siz,&w,&h,&pb);
+    set_affine(31,qa,qb,qc,qd); shadow_oam[slot].a0=((cy-h)&255)|(1<<8)|(1<<9)|(shp<<14); shadow_oam[slot].a1=((cx-w)&511)|(31<<9)|(siz<<14); shadow_oam[slot].a2=tl|(pb<<12); return slot+1; }
+
 // ---------------------------------------------------------------- planets by number
 static const char *const kw_type_name[NPC+1]={"ANY","TEMPERATE","MOUNTAIN","MEADOW","OCEAN","DESERT","ICE","JUNGLE","DEATH PLANET","CITY PLANET","PARADISE","INFERNO","BRIMSTONE","OBSIDIAN","BONE WORLD","BLOOD SEA","FROZEN HELL"};
 static void kw_dna(u32 seed, int force){ gen_cluster(); cur_sys=0; cur_pl=cur_moon=0; endless=1; world_no=(int)seed; w_dlv=8; mw_force=force; make_world(); mw_force=0; }

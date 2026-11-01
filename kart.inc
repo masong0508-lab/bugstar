@@ -10,7 +10,7 @@
 #define NRC 12                                     // karts in a race: you and 11 rivals
 #define KT(r) ((r)<8 ? (r) : 1+((r)-8)%7)            // whose kart tiles and colours racer r uses (sprite memory holds 8 karts: the last 4 rivals drive copies)
 #define NKREC 50                                   // your tracks kept on the cartridge
-static void thump(int big); static int kw_quit; static int kw_driver_on(void); static int kw_draw_driver(int slot, int cx, int feet, int inv, int flip);
+static void thump(int big); static int kw_quit; static int kw_driver_on(void); static int kw_draw_driver(int slot, int cx, int feet, int inv, int flip); static int kw_draw_driver_rot(int slot, int cx, int cy, int qa, int qb, int qc, int qd);
 enum { KRC_A=96, KRC_B, KRC_KR, KRC_KW, KRC_LINE, KRC_CK0, KRC_CK1, KRC_PAD, KRC_GLOW, KRC_RAMP, KRC_RAMP2 };   // BG palette: the road, your underglow, the ramps
 static int kroad(int c){ return (c>=KRC_A && c<=KRC_PAD) || c==KRC_RAMP || c==KRC_RAMP2; }
 _Static_assert(T_KDYN+8*16 <= 1024, "the karts built at run time must fit in sprite memory");
@@ -556,7 +556,7 @@ static void kloop_one(volatile u16 *pg, int j, int cy0, int cy1){               
     for(int i=0;i<=KLSEG;i++){ int a=i*256/KLSEG; s32 sa=sinx(a&255), ca=cosx(a&255), fw=(R*sa)>>14, up=R-((R*ca)>>14), lat=KLSH*(2*i-KLSEG)/KLSEG;   // 8.8 cells along, up and across
         s32 cxp=ex+fx*fw+rx*lat, cyp=ey+fy*fw+ry*lat; ok[i]=1; zz[i]=0;
         for(int e=0;e<2;e++){ s32 w = e ? 290 : -290; s32 x=cxp+rx*w, y=cyp+ry*w; s32 z; int qx,qy; if(!kproj(x,y,g+up,&qx,&qy,&z)) ok[i]=0; else { zz[i]+=z; px[i][e]=(s16)qx; py[i][e]=(s16)qy; } } }
-    int lim=KLSEG; if(kloop_hide==j+1 && !kloop_on){ int dd=(rc[0].pi-pi+knp)%knp; if(dd>24 && dd<knp/2) kloop_hide=0; else lim=0; }   // the half you just came down is behind and above you: leave it out
+    int lim=KLSEG; if(kloop_hide==j+1 && !kloop_on){ int dd=(rc[0].pi-pi+knp)%knp; if(dd>24 && dd<knp/2) kloop_hide=0; else { lim=0; for(int r=1;r<nrc;r++) if(rc[r].la && rc[r].pi==pi) lim=KLSEG; } }   // (but while a rival is still going round, the ring stays, or they ride thin air)   // the half you just came down is behind and above you: leave it out
     u8 ord[KLSEG]; int n=0; for(int i=0;i<lim;i++) if(ok[i] && ok[i+1]) ord[n++]=(u8)i;
     for(int a=1;a<n;a++){ u8 t=ord[a]; int b=a; s32 zt=zz[t]+zz[t+1]; while(b>0 && zz[ord[b-1]]+zz[ord[b-1]+1]<zt){ ord[b]=ord[b-1]; b--; } ord[b]=t; }
     if(!sh_rt_ok) sh_rt_init();
@@ -720,7 +720,13 @@ static int kloop_draw_me(int slot){                                 // you, goin
     set_affine(29,(s16)pa,(s16)pb,(s16)pc,(s16)pd);
     shadow_oam[slot].a0=((y-16)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((x-32)&511)|(29<<9)|(2<<14); shadow_oam[slot].a2=(T_KDYN+8)|(7<<12); slot++;   // the side view
     int b=kl.part[KP_BODY], off=(kb_seat[b]-1)*256/inv;
-    if(form==FORM_BUG && !(kw_mode && kw_driver_on())){ int bi=inv*3/2; s32 qa=-pa*bi/inv, qb=-pb*bi/inv, qc=pc*bi/inv, qd=pd*bi/inv; set_affine(31,(s16)qa,(s16)qb,(s16)qc,(s16)qd);   // your bug in the seat, from the side
+    if(kw_mode && kw_driver_on()){ int bi=150*inv/190; s32 qa=bi*uy/256, qb=-bi*ux/256, qc=-bi*ux/256, qd=-bi*uy/256; if(kloop_sd<=0){ qa=-qa; qb=-qb; }   // a Kart World driver: turned with the loop too
+        int s2=kw_draw_driver_rot(slot,x+(int)(ux*(off+(16*128/bi))/256),y+(int)(uy*(off+(16*128/bi))/256),(int)qa,(int)qb,(int)qc,(int)qd); if(s2>=0) slot=s2; }
+    else if(form==FORM_HUMAN && slot<120){ int sx=(hum_wd[hum.build%3]+40)*4/3*inv/190, sy=(hum_ht[hum.height%5]+40)*4/3*inv/190; if(sx<64) sx=64; if(sy<64) sy=64;   // your humanoid, sitting in the seat, turned with the kart
+        s32 qa=sx*uy/256, qb=-sx*ux/256, qc=-sy*ux/256, qd=-sy*uy/256; if(kloop_sd<=0){ qa=-qa; qb=-qb; }
+        int hh=32*256/sy, cxh=x+(int)(ux*(off+hh)/256), cyh=y+(int)(uy*(off+hh)/256); hum_set(0); set_affine(31,(s16)qa,(s16)qb,(s16)qc,(s16)qd);
+        shadow_oam[slot].a0=((cyh-64)&255)|(1<<8)|(1<<9)|(2<<14); shadow_oam[slot].a1=((cxh-32)&511)|(31<<9)|(3<<14); shadow_oam[slot].a2=T_HUMAN|(6<<12); slot++; }
+    else if(form==FORM_BUG){ int bi=inv*3/2; s32 qa=-pa*bi/inv, qb=-pb*bi/inv, qc=pc*bi/inv, qd=pd*bi/inv; set_affine(31,(s16)qa,(s16)qb,(s16)qc,(s16)qd);   // your bug in the seat, from the side
         int dx=(int)(ux*off/256)+(int)(ux*8/bi), dy=(int)(uy*off/256)+(int)(uy*8/bi); shadow_oam[slot].a0=((y+dy-32)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((x+dx-32)&511)|(31<<9)|(2<<14); shadow_oam[slot].a2=bug_tile(0)|BUG_BANK; slot++; }
     else if(form==FORM_CREATURE && form_body!=2){ int bi=inv*200/150; s32 qa=-pa*bi/inv, qb=-pb*bi/inv, qc=pc*bi/inv, qd=pd*bi/inv; set_affine(31,(s16)qa,(s16)qb,(s16)qc,(s16)qd);
         int dx=(int)(ux*off/256), dy=(int)(uy*off/256); shadow_oam[slot].a0=((y+dy-16)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((x+dx-16)&511)|(31<<9)|(1<<14); shadow_oam[slot].a2=(form_body==0?T_HOPPER:T_GRAZER)|(6<<12); slot++; }

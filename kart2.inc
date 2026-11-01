@@ -119,7 +119,11 @@ static void kart_results(void){
         else ctext(pg,120,112,"FIRST PLACE! THE CROWD GOES WILD. MOSTLY BUGS.",C_GREEN); }
     else { static const char *const md[4]={"NO MEDAL. KEEP AT IT","BRONZE MEDAL","SILVER MEDAL","GOLD MEDAL!"}; char t[12]; kfmt_time(t,k_par()); scpy(l1,md[medal]); scat(l1,"   GOLD TIME: "); scat(l1,t); ctext(pg,120,112,l1,medal==3?C_GOLD:C_WHITE); }
     l2[0]=0; if(prize){ scpy(l2,"PRIZE: +"); ncat(l2,prize); scat(l2,kw_mode?" COINS   ":"G   "); } if(k_best_lap){ char t[12]; kfmt_time(t,k_best_lap); scat(l2,"YOUR BEST LAP "); scat(l2,t); } if(l2[0]) ctext(pg,120,122,l2,C_GOLD);
-    wait_release(); for(int t=0;;t++){ vsync(); read_keys(); if(HIT(K_A)||HIT(K_START)) break; ctext(pg,120,140,"A: GO ON",(t&32)?C_CYAN:C_DGREY); }
+    wait_release(); for(int t=0;;t++){ vsync(); read_keys();
+#ifdef TEST_KSWEEP
+        if(t>20) break;
+#endif
+        if(HIT(K_A)||HIT(K_START)) break; ctext(pg,120,140,"A: GO ON",(t&32)?C_CYAN:C_DGREY); }
     sfx(2); wait_release(); in_menu--;
     if(kw_mode){ if(nrc==1 && medal==3) kw_tt_gold(); kw_after_race(me); } else { kart_save(); save_game(); }
     if(k_type==1){ kart_cup_next(); return; }
@@ -158,7 +162,11 @@ static void kart_cup_next(void){
         if(prize){ scpy(t,"PRIZE: +"); ncat(t,prize); scat(t,"G"); ctext(pg,120,122,t,C_GOLD); }
         if(me==1 && k_cls<3 && kcls_open==k_cls+2) ctext(pg,120,131,k_cls==1?"NEW CLASS OPEN: IMAGO":k_cls==2?"NEW CLASS OPEN: STARBUG":"",C_CYAN);
         else if(me==1) ctext(pg,120,131,k_cls==3?"YOU WON THE SAUCER AND THE CROWN!":"YOU WON THE CROWN TOPPER!",C_CYAN); }
-    in_menu--; wait_release(); for(int t=0;;t++){ vsync(); read_keys(); if(HIT(K_A)||HIT(K_START)) break; ctext(pg,120,142,"A: GO ON",(t&32)?C_CYAN:C_DGREY); }
+    in_menu--; wait_release(); for(int t=0;;t++){ vsync(); read_keys();
+#ifdef TEST_KSWEEP
+        if(t>20) break;
+#endif
+        if(HIT(K_A)||HIT(K_START)) break; ctext(pg,120,142,"A: GO ON",(t&32)?C_CYAN:C_DGREY); }
     sfx(2); wait_release(); kart_save();
     if(k_cup_i>=3){ if(kw_mode) kw_tour_done(me); kart_stop(); return; }
     k_cup_i++; if(kw_mode) kw_tour_race(k_cup_i); else { k_trk=kcup_trk[k_cup_i]; kt_official(k_trk,&kt); }
