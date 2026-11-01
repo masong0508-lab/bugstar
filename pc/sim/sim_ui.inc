@@ -119,20 +119,43 @@ static void sim_qm_foot(int i, char *b, int *c){
 static void sim_level_full(void);
 // ---- COLONY (Phase 4): the unlock ladder and the settlers
 static SimColony *sim_colony(void);
+#define SIM_CO_ACT 5
 static void sim_co_row(int i, char *b, int *c){
     SimColony *co=sim_colony(); int r=i+1;
-    if(r<COLR_N){ int open=(co->mask>>r)&1; scpy(b,open?"+ ":"- "); scat(b,col_rung_name(r)); while(textlen(b)<16) scat(b," "); scat(b,open?"OPEN":col_rung_how(r)); *c=open?C_GREEN:C_DGREY; return; }
-    int k=r-COLR_N; char nm[16]; int j; col_settler(co,k,nm,&j); scpy(b,"  "); scat(b,nm); while(textlen(b)<14) scat(b," "); scat(b,col_job_name(j)); *c=C_WHITE;
+    if(r<COLR_N){ int open=(co->mask>>r)&1; scpy(b,open?"+ ":"- "); scat(b,col_rung_name(r)); while(textlen(b)<16) scat(b," "); scat(b,open?"OPEN":col_rung_how(r)); if(!open){ scat(b," "); scat(b,col_rung_goal(r)); } *c=open?C_GREEN:C_DGREY; return; }
+    int k=i-(COLR_N-1);
+    if(k<SIM_CO_ACT){ static const char *const dn[3]={"CALM","NORMAL","HARSH"};
+        *c=C_GOLD;
+        if(k==0){ scpy(b,"> DIFFICULTY: "); scat(b,dn[sim_f.difficulty%3]); }
+        else if(k==1){ scpy(b,"> BUILD NEXT: "); scat(b,col_bld_name(co->plan)); }
+        else if(k==2){ scpy(b,"> CARRY WOOD AND BUILD"); }
+        else if(k==3){ scpy(b,"> BRING 10 FOOD FROM MY BAG"); }
+        else { scpy(b,"> STAND GUARD 3 DAYS"); }
+        return; }
+    k-=SIM_CO_ACT; char nm[16]; int j; col_settler(co,k,nm,&j); scpy(b,"  "); scat(b,nm); while(textlen(b)<14) scat(b," "); scat(b,col_job_name(j)); *c=C_WHITE;
 }
 static void sim_co_foot(int i, char *b, int *c){
     SimColony *co=sim_colony(); *c=C_GREY;
     if(i>=0){ scpy(b,"FOOD "); ncat(b,co->food); scat(b,"  WOOD "); ncat(b,co->wood); scat(b,"  ORE "); ncat(b,co->ore); scat(b,"  GOODS "); ncat(b,co->goods); *c=C_WHITE; }
     else if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; }
-    else { scpy(b,"SETTLERS "); ncat(b,co->nset); scat(b,"/"); ncat(b,col_cap(co->mask)); scat(b,"  BUILDINGS "); ncat(b,co->built); scat(b,"/"); ncat(b,col_buildings(co->mask)); }
+    else if(co->state==COLS_RUINS){ scpy(b,"RUINS. A: SETTLE AGAIN"); *c=C_RED; }
+    else if(co->raid_eta){ scpy(b,"RAID OF "); ncat(b,co->raid_size); scat(b," IN "); ncat(b,co->raid_eta); scat(b," DAYS. DEFENCE "); ncat(b,col_defence(co)); *c=C_RED; }
+    else { scpy(b,"SETTLERS "); ncat(b,co->nset); scat(b,"/"); ncat(b,col_cap(co->mask)); scat(b,"  BUILDINGS "); ncat(b,col_built_total(co)); scat(b,"/"); ncat(b,col_buildings(co->mask)); }
 }
 // Phase 5: A in the colony takes what it made: food for your hunger bar, goods and ore sold for gold, a nap at your bug home (HOUSES)
 static int sim_co_act(int i){
-    SimColony *co=sim_colony(); ColGift g; menu_msg[0]=0;
+    SimColony *co=sim_colony(); ColGift g; menu_msg[0]=0; int k=i-(COLR_N-1);
+    if(i>=COLR_N-1){
+        if(k>=SIM_CO_ACT){ int s=k-SIM_CO_ACT; int j=co->job[s]==0xFF ? -1 : co->job[s]; j++; if(j>=COLJ_N) j=-1; col_set_job(co,s,j); scpy(menu_msg,"JOB SET"); sfx(2); return 0; }
+        int ok=0;
+        if(k==0){ sim_f.difficulty=(u8)((sim_f.difficulty+1)%3); ok=1; }
+        else if(k==1){ int b=co->plan; for(int t=0;t<COLB_N;t++){ b=(b+1)%COLB_N; if(col_set_plan(co,b,-1)){ ok=1; break; } } }
+        else if(k==2) ok=col_help_build(co);
+        else if(k==3){ if(food>=20){ food-=10; ok=col_carry_food(co,10); } else scpy(menu_msg,"YOUR BAG HAS TOO LITTLE FOOD"); }
+        else ok=col_help_guard(co);
+        if(co->state==COLS_RUINS) ok=col_resettle(co,(u32)sim_day(&sim_w));
+        if(ok){ sfx(2); if(!menu_msg[0]) scpy(menu_msg,"DONE"); } else { sfx(4); if(!menu_msg[0]) scpy(menu_msg,"NOT NOW"); }
+        return 0; }
     if(!col_collect(co,100-food,&g)){ scpy(menu_msg,"NOTHING TO TAKE YET. COME BACK LATER"); sfx(4); return 0; }
     if(g.food_pts) eat(g.food_pts); if(g.gold) gold=sadd(gold,(s64)g.gold); if(g.heal){ hearts=maxh; mp=maxmp; }
     scpy(menu_msg,"TAKEN:"); if(g.food_pts){ scat(menu_msg," FOOD +"); ncat(menu_msg,g.food_pts); } if(g.gold){ scat(menu_msg," GOLD +"); ncat(menu_msg,g.gold); } if(g.heal) scat(menu_msg," A NAP");
@@ -143,7 +166,7 @@ static void sim_colony_screen(volatile u16 *pg){
     if(!(co->mask&(1u<<COLR_TENT))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_TENT)); const char *ln[3]={l1,"THE COLONY GROWS AS YOU PLAY.","EACH BIG WIN OPENS A NEW PART."}; card(pg,"COLONY",ln,3); return; }
     if(sim_away_new && sim_away_n){ const char *ln[6]; for(int i=0;i<sim_away_n;i++) ln[i]=sim_away[i]; card(pg,"WHILE YOU WERE AWAY",ln,sim_away_n); sim_away_new=0; }
     int sel=0; char t[32]; scpy(t,"COLONY  "); ncat(t,co->nset); scat(t," SETTLERS");
-    menu_msg[0]=0; in_menu++; sim_rows(pg,t,COLR_N-1+co->nset,sim_co_row,sim_co_foot,"A: TAKE WHAT IT MADE  B: BACK",&sel,sim_co_act); in_menu--; menu_msg[0]=0;
+    menu_msg[0]=0; in_menu++; sim_rows(pg,t,COLR_N-1+SIM_CO_ACT+co->nset,sim_co_row,sim_co_foot,"A: TAKE/DO  B: BACK",&sel,sim_co_act); in_menu--; menu_msg[0]=0;
 }
 static int sim_qm_act(int i){
     if(i==0) sim_journal(VISPG); else if(i==1) sim_people(VISPG); else if(i==2) sim_gods(VISPG);

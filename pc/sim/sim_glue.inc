@@ -185,13 +185,19 @@ static SimColony *sim_colony(void){ return col_find(&sim_f.slot[cur_slot%SIM_SLO
 static void sim_colflags(ColFlags *f){
     f->bugs_freed=bugs_freed; f->zone_cleared=zone_cleared; f->best_depth=best_depth; f->bosses=__builtin_popcount((unsigned)cleared_mask);
     f->outposts=outposts_done; f->ore_tool=ore_tool; f->hives=hive_done; f->ant_king=ant_king; f->relics=relic_bits!=0;
+    f->friends=0; for(int k=0;k<sim_w.nfolk;k++) if(sim_w.friend[k]>=25) f->friends++;
+    f->level = level>=10 ? 10 : (int)level;
 }
 static void sim_colony_tick(void){
-    ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony();
-    u16 nw=col_update(co,col_mask(&fl));
-    { ColAway aw; int nd=col_catchup_ex(co,(u32)sim_day(&sim_w),col_year_days(SIM_SEASON_DAYS),&aw);
+    ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony(); u32 today=(u32)sim_day(&sim_w), yd=col_year_days(SIM_SEASON_DAYS);
+    co->world_ok = pc_applied ? 1 : 0;                                  // only endless-galaxy planets can ever be destroyed; story worlds never
+    if(!co->danger || co->danger==2) co->danger = (u8)(1 + (sim_town32()>>9)%6);
+    u16 nw=col_update(co,(u16)(col_mask(&fl)|col_goal_mask(co,&fl,today,yd)));
+    { ColAway aw; int nd=col_catchup_d(co,today,yd,sim_f.difficulty,&aw);
       if(nd>=2 && (co->mask&(1u<<COLR_TENT))){ sim_away_n=col_away_text(&aw,co,sim_away,6); sim_away_new=1;     // read on the COLONY screen; one line now
-          char b[40]; scpy(b,"COLONY: "); if(aw.years){ ncat(b,aw.years); scat(b," YEARS PASSED"); } else { ncat(b,aw.days); scat(b," DAYS PASSED"); } if(!nw){ say(b); } } }
+          char b[40]; scpy(b,"COLONY: "); if(aw.years){ ncat(b,aw.years); scat(b," YEARS PASSED"); } else { ncat(b,aw.days); scat(b," DAYS PASSED"); } if(!nw){ say(b); } }
+      for(int i=aw.nev-1;i>=0;i--){ int k=aw.ev[i].kind;                  // warnings in advance, and bad news, as they come
+          if(k==COLE_RAIDWARN||k==COLE_FOODWARN||k==COLE_RAIDLOST||k==COLE_RUINS||k==COLE_WORLDEND||k==COLE_SICK){ char t[52]; col_event_text(&aw.ev[i],t,sizeof t); say(t); sfx(4); break; } } }
     if(nw){ int top=0; for(int r=1;r<COLR_N;r++) if(nw&(1u<<r)) top=r; say(col_rung_card(top)); sfx(6); sim_col_cards++; }
 }
 static int sim_open_gods(void){ if(!sim_is_on()) return 0; Lv l; sim_level_lv(&l); return god_unlocked_count(&l,sim_f.sandbox); }
