@@ -7,3 +7,4 @@ bugstar.gba
 /main
 *.bak
 .opts_backup/
+pc/meaning/out/

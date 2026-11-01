@@ -38,6 +38,8 @@ int  trait_variant(int id);                        // 0..15 (0 = plain)
 const char *trait_name(int id);                    // built on demand into one of 16 rotating buffers: copy it if you keep it. Use trait_name_to for your own buffer
 void trait_name_to(int id, char *out, int n);
 int  trait_cat(int id);
+void trait_num(int id, int *val, int *dt, int *dg, int *lt, int *pr, int *lf, int *light, int *cboost6);   // the numbers behind a trait
+int  trait_look_only(int id);                      // 1 when the trait changes no number (COSMETIC in the meaning layer)
 const char *cat_name(int c);
 int  traits_conflict(int a, int b);                // 1 when two traits cannot be on one planet (same category, same classic trait, or a forbidden pair)
 void planet_make(uint64_t seed, PlanetInfo *p);

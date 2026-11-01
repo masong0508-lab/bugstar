@@ -33,13 +33,13 @@ typedef struct { uint8_t cat; const char *name; int16_t val, dt; int8_t dg, lt, 
 static const Trait tr[] = {
  {G,"FEATHER GRAVITY",40,0,-1,0,0,0},{G,"LIGHT GRAVITY",70,0,0,0,0,0},{G,"EARTHLIKE GRAVITY",100,0,0,0,0,0},{G,"HEAVY GRAVITY",160,0,1,0,0,0},{G,"CRUSHING GRAVITY",280,0,2,1,0,-1},
  {D,"TIDALLY LOCKED",0,0,1,0,0,0},{D,"FAST SPIN",6,0,0,0,0,0},{D,"EVEN DAYS",24,0,0,0,0,1},{D,"SLOW SPIN",300,0,0,0,0,0},{D,"LONG NIGHT",2000,-25,1,1,0,-1},
- {A,"THIN AIR",0,-10,0,0,0,-1},{A,"THICK AIR",0,10,0,0,0,0},{A,"AMBER HAZE",0,0,0,0,0,0},{A,"GLOW AURORA",0,0,0,1,0,0},{A,"ACID CLOUDS",0,5,1,0,0,-1},{A,"FRESH BREEZE",0,0,-1,0,0,1},{A,"DUST VEIL",0,5,0,0,0,0},
+ {A,"THIN AIR",0,-10,0,0,0,-1},{A,"THICK AIR",0,10,0,0,0,0},{A,"AMBER HAZE",0,0,0,0,0,0},{A,"GLOW AURORA",0,0,0,1,0,0},{A,"ACID CLOUDS",0,5,1,0,0,-1},{A,"FRESH BREEZE",0,0,-1,0,0,1},{A,"DUST VEIL",0,0,0,0,0,0},
  {W,"CLEAR SKIES",0,0,0,0,0,0},{W,"STORMY",0,0,1,0,0,0},{W,"ASH FALL",0,10,1,0,0,-1},{W,"METEOR SHOWERS",0,0,1,2,0,0},{W,"ACID RAIN",0,0,1,0,0,-1},{W,"SNOWFALL",-20,0,0,0,0,0},{W,"SANDSTORMS",5,1,0,0,0,0},{W,"ENDLESS FOG",0,0,0,0,0,0},
  {S,"OCEAN WORLD",0,-5,0,0,0,1},{S,"ARCHIPELAGO",0,0,0,0,0,1},{S,"GLASS DUNES",0,15,0,1,0,0},{S,"CRYSTAL FIELDS",0,0,0,2,1,0},{S,"FUNGUS FORESTS",0,0,0,0,0,2},{S,"LAVA SEAS",0,60,2,1,0,-1},
  {S,"ICE SHEET",0,-50,0,0,0,-1},{S,"CANYON LANDS",0,0,0,1,0,0},{S,"FLOATING ISLES",0,0,0,1,0,0},{S,"SALT FLATS",0,10,0,0,0,-1},{S,"GIANT TREES",0,0,0,0,0,2},{S,"BONE DESERT",0,10,1,1,0,0},
- {K,"RINGS",0,0,0,0,0,0},{K,"MANY MOONS",0,0,0,0,0,0},{K,"TWIN SUNS",0,15,0,0,0,0},{K,"RED GIANT SKY",0,25,1,0,0,0},{K,"DEAD SUN",0,-80,1,1,0,-2},{K,"COMET TRAIL",0,0,0,1,0,0},{K,"NEARBY NEBULA",0,0,0,1,0,0},
+ {K,"RINGS",0,0,0,0,0,0},{K,"MANY MOONS",0,0,0,0,0,0},{K,"TWIN SUNS",0,15,0,0,0,0},{K,"RED GIANT SKY",0,25,1,0,0,0},{K,"DEAD SUN",0,-80,1,1,0,-2},{K,"COMET TRAIL",0,0,0,0,0,0},{K,"NEARBY NEBULA",0,0,0,0,0,0},
  {L,"HIVE WORLD",0,0,2,0,0,2},{L,"GHOST WORLD",0,0,0,1,0,-3},{L,"BUG GARDEN",0,0,-1,0,0,2},{L,"GIANT BUGS",0,0,2,1,0,0},{L,"TINY BUGS",0,0,0,0,0,1},{L,"PREDATOR WORLD",0,0,3,1,0,0},{L,"PEACEFUL WORLD",0,0,-2,0,0,1},{L,"MIGRATING HERDS",0,0,0,0,0,2},
- {N,"RUINS",0,0,0,2,0,0},{N,"ANCIENT MACHINES",0,0,1,3,0,0},{N,"BURIED SHIP",0,0,0,2,1,0},{N,"SINGING STONES",0,0,0,1,0,0},{N,"MONUMENTS",0,0,0,1,1,0},{N,"NOTHING OLD",0,0,0,0,0,0},
+ {N,"RUINS",0,0,0,2,0,0},{N,"ANCIENT MACHINES",0,0,1,3,0,0},{N,"BURIED SHIP",0,0,0,2,1,0},{N,"SINGING STONES",0,0,0,0,0,0},{N,"MONUMENTS",0,0,0,1,1,0},{N,"NOTHING OLD",0,0,0,0,0,0},
  {P,"LEY LINES",0,0,0,1,0,0},{P,"SPELL STORMS",0,0,2,1,0,0},{P,"DEAD MAGIC",0,0,-1,0,0,0},{P,"VOLCANIC",0,20,1,1,0,0},{P,"GEYSERS",0,5,0,0,0,0},{P,"MAGNETIC STORMS",0,0,1,0,0,0},{P,"QUIET GROUND",0,0,0,0,0,0},
 };
 #undef G
@@ -99,13 +99,13 @@ static const char *const bad[][2] = {
 // what each classic trait does to the chances of a kind of native creature (class 0 beasts, 1 fliers, 2 swimmers, 3 crawlers, 4 spirits, 5 monsters) and to the daylight
 static const struct { const char *n; uint8_t cls; int8_t w; } boost[] = {
  {"OCEAN WORLD",2,4},{"ARCHIPELAGO",2,3},{"ICE SHEET",2,1},{"BUG GARDEN",3,4},{"HIVE WORLD",3,4},{"GIANT BUGS",3,3},{"TINY BUGS",3,3},{"FUNGUS FORESTS",3,2},
- {"FLOATING ISLES",1,4},{"FRESH BREEZE",1,2},{"GLOW AURORA",1,1},{"THIN AIR",1,1},{"GHOST WORLD",4,5},{"RUINS",4,1},{"SINGING STONES",4,2},{"SPELL STORMS",4,2},{"LEY LINES",4,2},{"NEARBY NEBULA",4,1},
+ {"FLOATING ISLES",1,4},{"FRESH BREEZE",1,2},{"GLOW AURORA",1,1},{"THIN AIR",1,1},{"GHOST WORLD",4,5},{"RUINS",4,1},{"SPELL STORMS",4,2},{"LEY LINES",4,2},
  {"PREDATOR WORLD",5,4},{"VOLCANIC",5,2},{"LAVA SEAS",5,2},{"ANCIENT MACHINES",5,2},{"CRUSHING GRAVITY",5,1},{"METEOR SHOWERS",5,1},{"DEAD SUN",4,2},
  {"MIGRATING HERDS",0,4},{"PEACEFUL WORLD",0,2},{"GIANT TREES",0,2},{"EVEN DAYS",0,1},{"CANYON LANDS",0,1},{"SALT FLATS",0,1},
 };
 static const struct { const char *n; int8_t d; } lightmod[] = {
- {"LONG NIGHT",-35},{"DEAD SUN",-45},{"TWIN SUNS",25},{"RED GIANT SKY",15},{"AMBER HAZE",-10},{"DUST VEIL",-10},{"ENDLESS FOG",-15},{"STORMY",-10},{"GLOW AURORA",5},
- {"NEARBY NEBULA",5},{"CLEAR SKIES",10},{"ASH FALL",-15},{"SNOWFALL",-5},{"ACID CLOUDS",-10},{"THICK AIR",-5},{"THIN AIR",5},{"RINGS",-3},{"LAVA SEAS",8},
+ {"LONG NIGHT",-35},{"DEAD SUN",-45},{"TWIN SUNS",25},{"RED GIANT SKY",15},{"ENDLESS FOG",-15},{"STORMY",-10},{"GLOW AURORA",5},
+ {"CLEAR SKIES",10},{"ASH FALL",-15},{"SNOWFALL",-5},{"ACID CLOUDS",-10},{"THICK AIR",-5},{"THIN AIR",5},{"LAVA SEAS",8},
 };
 static uint8_t conf[128][128]; static int8_t cboost[TR_BASE][6], lmod[TR_BASE]; static int conf_ready;
 static void conf_init(void){
@@ -117,6 +117,19 @@ static void conf_init(void){
 }
 int traits_conflict(int a, int b){ if(!conf_ready) conf_init(); a %= TR_BASE; b %= TR_BASE; return a == b || tr[a].cat == tr[b].cat || conf[a][b]; }
 
+// the plain numbers behind a trait (for the meaning layer, pc/meaning): gravity or day value, temperature, danger, loot, price, life, light change, creature-class boosts
+void trait_num(int id, int *val, int *dt, int *dg, int *lt, int *pr, int *lf, int *light, int *cboost6){
+    if(!conf_ready) conf_init(); int b = (id % TR_BASE + TR_BASE) % TR_BASE;
+    *val = tr[b].val; *dt = tr[b].dt; *dg = tr[b].dg; *lt = tr[b].lt; *pr = tr[b].pr; *lf = tr[b].lf; *light = lmod[b];
+    for(int c = 0; c < 6; c++) cboost6[c] = cboost[b][c];
+}
+// 1 when a classic trait changes no number of the planet at all (it is only for looks): such a trait is a COSMETIC trait in the meaning layer
+int trait_look_only(int id){
+    int v, a, b, c, d, e, l, cb[6]; trait_num(id, &v, &a, &b, &c, &d, &e, &l, cb);
+    int ct = tr[(id % TR_BASE + TR_BASE) % TR_BASE].cat;
+    if(a || b || c || d || e || l) return 0; for(int i = 0; i < 6; i++) if(cb[i]) return 0;
+    return ct == TC_GRAVITY ? v == 100 : ct == TC_DAY ? v == 24 : 1;
+}
 // ------------------------------------------------------------------ stats: 7 families x 16 zones
 static const char *const fam_nm[N_FAM] = {"GRAVITY","TEMPERATURE","DAYLIGHT","DANGER","LOOT","PRICES","LIFE"};
 static const char *const fam_un[N_FAM] = {"PCT","C","PCT","","","",""};
@@ -144,7 +157,7 @@ static void make_stats(PlanetInfo *p, Rng *r){
         p->stat[f * N_ZONE + z] = (int16_t)(base[f] + zmod[z][f] + j * jit[f]);
     }
     for(int k = 0; k < p->n; k++){                                             // a flavour pushes one stat in one zone
-        int v = p->id[k] / TR_BASE, c = tr[p->id[k] % TR_BASE].cat; if(!v) continue;
+        int v = p->id[k] / TR_BASE, c = tr[p->id[k] % TR_BASE].cat; if(!v || trait_look_only(p->id[k])) continue;
         int f = (v + c) % N_FAM, z = (v * 3 + c) & 15, up = ((v ^ c) & 1) ? 1 : -1;
         p->stat[f * N_ZONE + z] += (int16_t)(up * unit[f]);
     }
