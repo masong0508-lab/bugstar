@@ -17,7 +17,13 @@ static int gv_wrap_long(const char *s, int w, char lines[][60], int max);
 static void gv_comma(char *b, gull v){ char t[32]; int n = 0; do { t[n++] = (char)('0' + v % 10); v /= 10; } while(v); int k = textlen(b); for(int i = n - 1; i >= 0; i--){ b[k++] = t[i]; if(i && i % 3 == 0) b[k++] = ','; } b[k] = 0; }
 static gull gv_total(int w){ return w == GV_V3 ? gv3_chars() : gi_digits(w); }
 static int gv_fetch(int w, gull pos, int n, char *o){ return w == GV_V3 ? gv3_read(pos, n, o) : gi_read(w, pos, n, o); }
+#ifdef _WIN32_CROSS
+#define readlink(a,b,c) (-1)
+extern unsigned long __attribute__((stdcall)) GetTickCount(void);
+static double gv_now(void){ return (double)GetTickCount() * 1e-3; }
+#else
 static double gv_now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec * 1e-9; }
+#endif
 static const char *gv_title(int w){ return w == GV_POW ? "2 TO THE POWER 2^32" : w == GV_COUNT ? "THE COUNTING NUMBER" : "BUGSTARILLION V3: THE NAME"; }
 
 // ---- is the number there? (2^(2^32) and V3 need the file from pc/giant/mkpow.py)

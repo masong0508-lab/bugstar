@@ -2,7 +2,11 @@
 #include "lv.h"
 #include <string.h>
 
-typedef unsigned __int128 u128;
+// portable 64x64 multiply-add (no __int128: the 32-bit Windows build has none): a*b + p + c as hi:lo
+static inline uint64_t mac(uint64_t a, uint64_t b, uint64_t p, uint64_t c, uint64_t *hi){
+    uint64_t a0=(uint32_t)a, a1=a>>32, b0=(uint32_t)b, b1=b>>32, p00=a0*b0, p01=a0*b1, p10=a1*b0, p11=a1*b1;
+    uint64_t mid=(p00>>32)+(uint32_t)p01+(uint32_t)p10; uint64_t lo=(p00&0xFFFFFFFFu)|(mid<<32), h=p11+(p01>>32)+(p10>>32)+(mid>>32);
+    lo+=p; h+= lo<p; lo+=c; h+= lo<c; *hi=h; return lo; }
 #define CAPLIMB 24                       // 2^1536 = bit 0 of limb 24
 
 void lv_zero(Lv *r){ memset(r, 0, sizeof *r); }
@@ -31,14 +35,14 @@ uint64_t lv_to_u64(const Lv *a){ return lv_fits_u64(a) ? a->w[0] : UINT64_MAX; }
 
 int lv_add(Lv *r, const Lv *a, const Lv *b){
     uint64_t c = 0; Lv t;
-    for(int i = 0; i < LV_LIMBS; i++){ u128 s = (u128)a->w[i] + b->w[i] + c; t.w[i] = (uint64_t)s; c = (uint64_t)(s >> 64); }
+    for(int i = 0; i < LV_LIMBS; i++){ uint64_t lo=a->w[i]+b->w[i], c1=lo<a->w[i]; lo+=c; c1+=lo<c; t.w[i]=lo; c=c1; }
     *r = t; return clamp(r);
 }
 int lv_add_u64(Lv *r, const Lv *a, uint64_t v){ Lv b; lv_from_u64(&b, v); return lv_add(r, a, &b); }
 int lv_sub(Lv *r, const Lv *a, const Lv *b){
     if(lv_cmp(a, b) <= 0){ int hit = lv_cmp(a, b) < 0; lv_zero(r); return hit; }
     uint64_t br = 0; Lv t;
-    for(int i = 0; i < LV_LIMBS; i++){ u128 d = (u128)a->w[i] - b->w[i] - br; t.w[i] = (uint64_t)d; br = (uint64_t)(d >> 64) & 1; }
+    for(int i = 0; i < LV_LIMBS; i++){ uint64_t x=a->w[i]-b->w[i], b1=a->w[i]<b->w[i], y=x-br, b2=x<br; t.w[i]=y; br=b1|b2; }
     *r = t; return 0;
 }
 int lv_mul(Lv *r, const Lv *a, const Lv *b){
@@ -46,7 +50,7 @@ int lv_mul(Lv *r, const Lv *a, const Lv *b){
     for(int i = 0; i < LV_LIMBS; i++){
         if(!a->w[i]) continue;
         uint64_t c = 0;
-        for(int j = 0; j < LV_LIMBS; j++){ u128 t = (u128)a->w[i] * b->w[j] + p[i + j] + c; p[i + j] = (uint64_t)t; c = (uint64_t)(t >> 64); }
+        for(int j = 0; j < LV_LIMBS; j++){ uint64_t hi; p[i + j] = mac(a->w[i], b->w[j], p[i + j], c, &hi); c = hi; }
         p[i + LV_LIMBS] += c;
     }
     int over = 0;
@@ -57,14 +61,14 @@ int lv_mul(Lv *r, const Lv *a, const Lv *b){
 }
 int lv_mul_small(Lv *r, const Lv *a, uint32_t m){
     uint64_t c = 0; Lv t;
-    for(int i = 0; i < LV_LIMBS; i++){ u128 s = (u128)a->w[i] * m + c; t.w[i] = (uint64_t)s; c = (uint64_t)(s >> 64); }
+    for(int i = 0; i < LV_LIMBS; i++){ uint64_t hi; t.w[i] = mac(a->w[i], m, 0, c, &hi); c = hi; }
     if(c){ lv_cap(r); return 1; }
     *r = t; return clamp(r);
 }
 uint32_t lv_div_small(Lv *q, const Lv *a, uint32_t d){
     if(!d){ *q = *a; return 0; }
     uint64_t rem = 0; Lv t;
-    for(int i = LV_LIMBS - 1; i >= 0; i--){ u128 cur = ((u128)rem << 64) | a->w[i]; t.w[i] = (uint64_t)(cur / d); rem = (uint64_t)(cur % d); }
+    for(int i = LV_LIMBS - 1; i >= 0; i--){ uint64_t hq, lq; uint64_t cur=(rem<<32)|(a->w[i]>>32); hq=cur/d; rem=cur%d; cur=(rem<<32)|(uint32_t)a->w[i]; lq=cur/d; rem=cur%d; t.w[i]=(hq<<32)|lq; }
     *q = t; return (uint32_t)rem;
 }
 int lv_shl(Lv *r, const Lv *a, unsigned bits){

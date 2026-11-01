@@ -2,6 +2,7 @@
 // planets, themes, tracks, classes, rival counts and race kinds (quick, time attack, elimination, tour), with fuzzed key presses for tens of thousands of frames,
 // and checks: no hang inside a frame (a watchdog alarm), no race that never ends, no rival stuck for ever, lap counters and path points always in range and only
 // ever moving by one, the player's own lap logic (the test driver must be able to finish every track). One line per race; "KFUZZ BAD" lines are failures.
+#ifdef TEST_KFUZZ
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -67,3 +68,4 @@ static void kfz_run(void){
         fade(1); oam_hide_all(); oam_flush(); }
     printf("KFUZZ SUMMARY: %d races ended, %d never ended, %d problems\n",tot_done,tot_to,kfz_bad); printf(kfz_bad?"KFUZZ FAILED\n":"KFUZZ OK\n"); fflush(stdout);
     exit(kfz_bad?1:0); }
+#endif

@@ -1,6 +1,9 @@
 // giant.c: see giant.h and pc/giant/README.md. Plain C99, no libraries beyond the C library.
 #define _FILE_OFFSET_BITS 64
 #define _POSIX_C_SOURCE 200809L
+#ifdef _WIN32_CROSS
+#define readlink(a,b,c) (-1)
+#endif
 #include "giant.h"
 #include <stdio.h>
 #include <stdlib.h>
