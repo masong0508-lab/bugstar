@@ -98,12 +98,12 @@ H ui.inc 'scpy(b,"LEVEL "); ncat(b,level); scat(b,"   BUGS FREED ");' 'scpy(b,"L
 H ui.inc 'char lv[12]="LV "; ncat(lv,level);' 'char lv[16]="LV "; sim_ncat_level(lv);'
 H ui.inc 'vbar(pg,30,75,90,xp,xp_next(),C_GOLD,"XP")' 'vbar(pg,30,75,90,sim_xpv(xp),sim_xpm(xp_next()),C_GOLD,"XP")'
 H ui.inc 'static const u8 shop_tab_n[4]={3,5,5,4};' 'static u8 shop_tab_n[4]={3,5,5,4};'
-H ui.inc 'shop_tab_id[4][5]={{0,14,13,0,0},' 'shop_tab_id[4][5]={{0,14,13,17,0},'
-H ui.inc 'static const char *const shop_nm[17]={' 'static const char *const shop_nm[18]={'
-H ui.inc '"KART CLUB","SPELL SHOP","MINING"};' '"KART CLUB","SPELL SHOP","MINING","COLONY"};'
-H ui.inc 'static const char *const shop_ds[17]={' 'static const char *const shop_ds[18]={'
-H ui.inc '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG"};' '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG","YOUR SETTLERS: SEE THEM AND TAKE WHAT THEY MADE"};'
-H ui.inc 'in_menu++; menu_msg[0]=0; ship_build_model();' 'in_menu++; menu_msg[0]=0; ship_build_model(); shop_tab_n[0]=sim_is_on()?4:3;'
+H ui.inc 'shop_tab_id[4][5]={{0,14,13,0,0},' 'shop_tab_id[4][5]={{0,14,13,17,18},'
+H ui.inc 'static const char *const shop_nm[17]={' 'static const char *const shop_nm[19]={'
+H ui.inc '"KART CLUB","SPELL SHOP","MINING"};' '"KART CLUB","SPELL SHOP","MINING","COLONY","MISSIONS"};'
+H ui.inc 'static const char *const shop_ds[17]={' 'static const char *const shop_ds[19]={'
+H ui.inc '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG"};' '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG","YOUR SETTLERS: SEE THEM AND TAKE WHAT THEY MADE","WARSHIP JOBS: BOARD AND JOURNAL"};'
+H ui.inc 'in_menu++; menu_msg[0]=0; ship_build_model();' 'in_menu++; menu_msg[0]=0; ship_build_model(); shop_tab_n[0]=sim_is_on()?5:4; shop_tab_id[0][3]=sim_is_on()?17:18; shop_tab_id[0][4]=18;'
 H ui.inc 'if(sel==15){ spell_shop(pg); continue; }' 'if(sel==17){ sim_ship_colony(pg); continue; } if(sel==15){ spell_shop(pg); continue; }'
 # --- the PC SHIP EDITOR (pc/shipyard): the hangar opens it, and your design gives the ship's numbers (no design file for the slot = the game's own numbers)
 for f in armour top_speed turn damp gun hold_bonus fuel_bonus accel16; do H ship.inc "static int ship_$f(void){" "static int ship_${f}_g(void){"; done
@@ -134,6 +134,13 @@ H main.c '        rng_s += keys; pc_ws_autotest();' ' pc_sy_autotest();' after
 H save.inc 'pc_laws_slot_load(cur_slot);' ' pc_ws_slot_load(cur_slot);' after
 H save.inc 'sram_write(slot_base(cur_slot), s, sizeof(Save)); pc_laws_slot_save(cur_slot);' ' pc_ws_slot_save(cur_slot);' after
 H main.c 'pc_laws_slot_new(s2);' ' pc_ws_slot_new(s2);' after
+H ui.inc 'static const u8 shop_tab_id[4][5]' 'static u8 shop_tab_id[4][5]'
+H ui.inc 'if(sel==16){ mining_menu(pg); continue; }' 'if(sel==18){ pc_ms_board(pg,0); box(pg,12,20,216,136); continue; } if(sel==16){ mining_menu(pg); continue; }'
+H space.inc 'if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==10)) break;' 'if(HIT(K_SEL)){ pc_ms_board(pg,1); dirty=1; wait_release(); continue; } if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==10)) break;'
+H space.inc '"A: BUY  L/R: MARKET  START: LEAVE"' '"A: BUY  L/R: MARKET  SEL: MISSIONS  START: LEAVE"'
+H space.inc 'for(int i=0;i<NSYS;i++) if(has_base(i) && (i<6 ? i<zones_open : ant_king)){ int x=sys[i].x, y=sys[i].y; rect(pg,x-3,y-3,2,2,C_RED);' 'pc_ms_map(pg); for(int i=0;i<NSYS;i++) if(has_base(i) && (i<6 ? i<zones_open : ant_king)){ int x=sys[i].x, y=sys[i].y; rect(pg,x-3,y-3,2,2,C_RED);'
+H planet.inc 'bounty_office(VISPG); planet_hud(); p_last=vbl_count; return; }' 'bounty_office(VISPG); pc_ms_board(VISPG,2); planet_hud(); p_last=vbl_count; return; }'
+sed -i '1i static void pc_ms_board(volatile unsigned short *pg, int place), pc_ms_map(volatile unsigned short *pg);' main.c
 echo '#include "../pc_warship.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 echo '#include "../coil_test.inc"' >> main.c
@@ -155,9 +162,9 @@ fi
 CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
-for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH $OBJS $SDLL -lm -lpthread -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"

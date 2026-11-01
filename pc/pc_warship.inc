@@ -4,6 +4,10 @@
 // BREAKDOWN after a kill, wide gold (a vault beside the game's 64-bit gold) and the save file (<save>.ws<slot>). The GBA game never sees any of it.
 #include "warship/ws_fight.h"
 #include "warship/ws_view.h"
+#include "warship/ms.h"
+static void pcm_reset(void), pcm_save(FILE *f), pcm_on_win(WsPay *p), pcm_on_sab(int s), pcm_collect(void), pcm_fight_tick(void), pc_ms_board(volatile u16 *pg, int place);
+static int pcm_load_line(const char *ln), pcm_contact(int i, u32 *seed, int *z), pcm_obj_kind(void), pcm_enc_mode, pcm_escort; static void pcm_dwell(int target_room, const char **prompt, char *msg, int *msg_t);
+static int pcm_cf, pcm_enc_force, pcm_clk, pcm_match_k(const WsCraft *c); static char pcm_note[40]; static unsigned char pcm_mark[8];
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,28 +44,28 @@ static void pcw_wallet(char *b, int cap){ WN t=wn_add(pcw_vault,wn((double)gold)
 
 // ---------------------------------------------------------------- the save file
 static void pcw_path(int s, char *o, int n){ const char *sv=pc_sav_path(); if(!sv){ o[0]=0; return; } snprintf(o,n,"%s.ws%d",sv,s); }
-static void pcw_defaults(void){ pcw_vault=wn(0); pcw_dust=0; pcw_kills=0; pcw_best=wn(0); pcw_kits=0; pcw_ammo[0]=-1; for(int i=1;i<WW_N;i++) pcw_ammo[i]=0; pcw_weapon=0; pcw_cheated=0; pc_ws_on=0; pcw_left_at=-1; pcw_req=0; pcw_last_ok=0; }
+static void pcw_defaults(void){ pcw_vault=wn(0); pcw_dust=0; pcw_kills=0; pcw_best=wn(0); pcw_kits=0; pcw_ammo[0]=-1; for(int i=1;i<WW_N;i++) pcw_ammo[i]=0; pcw_weapon=0; pcw_cheated=0; pc_ws_on=0; pcw_left_at=-1; pcw_req=0; pcw_last_ok=0; pcm_reset(); }
 static void pc_ws_slot_save(int s){ char p[640]; pcw_path(s,p,sizeof p); if(!p[0]) return; FILE *f=fopen(p,"w"); if(!f) return;
-    fprintf(f,"vault=%.15g %lld\ndust=%.17g\nkills=%u\nbest=%.15g %lld\nkits=%d\nammo=%d %d %d %d %d\ncheated=%d\n",pcw_vault.m,(long long)pcw_vault.e,pcw_dust,pcw_kills,pcw_best.m,(long long)pcw_best.e,pcw_kits,pcw_ammo[0],pcw_ammo[1],pcw_ammo[2],pcw_ammo[3],pcw_ammo[4],pcw_cheated); fclose(f); }
+    fprintf(f,"vault=%.15g %lld\ndust=%.17g\nkills=%u\nbest=%.15g %lld\nkits=%d\nammo=%d %d %d %d %d\ncheated=%d\n",pcw_vault.m,(long long)pcw_vault.e,pcw_dust,pcw_kills,pcw_best.m,(long long)pcw_best.e,pcw_kits,pcw_ammo[0],pcw_ammo[1],pcw_ammo[2],pcw_ammo[3],pcw_ammo[4],pcw_cheated); pcm_save(f); fclose(f); }
 static void pc_ws_slot_load(int s){ char p[640]; pcw_defaults(); pcw_path(s,p,sizeof p); if(!p[0]) return; FILE *f=fopen(p,"r"); if(!f) return; char ln[256];
     while(fgets(ln,sizeof ln,f)){ double m; long long e; int a[5];
         if(sscanf(ln,"vault=%lf %lld",&m,&e)==2){ pcw_vault.m=m; pcw_vault.e=e; } else if(sscanf(ln,"dust=%lf",&m)==1) pcw_dust=m; else if(sscanf(ln,"kills=%u",&pcw_kills)==1){}
         else if(sscanf(ln,"best=%lf %lld",&m,&e)==2){ pcw_best.m=m; pcw_best.e=e; } else if(sscanf(ln,"kits=%d",&pcw_kits)==1){}
-        else if(sscanf(ln,"ammo=%d %d %d %d %d",&a[0],&a[1],&a[2],&a[3],&a[4])==5){ for(int i=0;i<5;i++) pcw_ammo[i]=a[i]; } else if(sscanf(ln,"cheated=%d",&pcw_cheated)==1){} }
+        else if(sscanf(ln,"ammo=%d %d %d %d %d",&a[0],&a[1],&a[2],&a[3],&a[4])==5){ for(int i=0;i<5;i++) pcw_ammo[i]=a[i]; } else if(sscanf(ln,"cheated=%d",&pcw_cheated)==1){} else pcm_load_line(ln); }
     fclose(f); }
 static void pc_ws_slot_new(int s){ char p[640]; pcw_defaults(); pcw_path(s,p,sizeof p); if(p[0]) remove(p); }
 
 // ---------------------------------------------------------------- contacts: the colossal craft near this star
 static int pcw_zcap(void){ int z=300+u_far*40+(ant_king?700:0)+beast_kills*300+(int)(level>100000?2000:level/50); return z>WS_ZMAX_FAIR?WS_ZMAX_FAIR:z; }
 static void pcw_contact(int i, u32 *seed, int *z){
-    u32 h=hmix(sys_id(cur_sys)*0x9E3779B1u ^ (u32)(i+1)*0x632BE5ABu ^ uni_w[0] ^ 0x5717u); *seed=h;
+    u32 h=hmix(sys_id(cur_sys)*0x9E3779B1u ^ (u32)(i+1)*0x632BE5ABu ^ uni_w[0] ^ 0x5717u); *seed=h; { int mc=(i<8)?pcm_contact(i,seed,z):0; if(i<8) pcm_mark[i]=(unsigned char)(mc!=0); if(mc){ pcm_cf=mc-1; return; } pcm_cf=0; }
     if(i==0){ *seed=0; *z=WS_ZREF; return; }                                                      // THE GREY MOON, the reference station, waits everywhere
     int cap=pcw_zcap(); int lo=WS_ZMIN; int r=(int)((h>>8)%1000u); int zz=lo+(int)((u64)r*(u64)(cap-lo)/1000u);
     if(zz>2600 && (h%50u)!=0) zz=2500-(int)(h%300u);                                               // universe hulks are very rare
     *z=zz; }
 static void pcw_make(WsCraft *c, u32 seed, int z, int cheat){ if(seed==0 && z==WS_ZREF && !cheat) ws_make_ref(c); else ws_make(c,seed,z,cheat); }
 static WsShip pcw_ship(void){ WsShip s; memset(&s,0,sizeof s); s.attack=ws_attack((double)level,laser_lv,ship_gun(),tech_lv); s.hull_max=100; s.shield_max=shield_max(); s.armour=ship_armour();
-    s.fuel_max=fuel_max(); s.wing=wing_n; s.kits=pcw_kits; for(int i=0;i<WW_N;i++) s.ammo[i]=pcw_ammo[i]; return s; }
+    s.fuel_max=fuel_max(); s.wing=wing_n+pcm_escort; s.kits=pcw_kits; for(int i=0;i<WW_N;i++) s.ammo[i]=pcw_ammo[i]; return s; }
 static int pcw_ehp(void){ int a=ship_armour(); if(a<10) a=10; return (100+shield_max())*100/a; }
 
 // ---------------------------------------------------------------- drawing the craft in space: its hull grammar as a turning wireframe
@@ -111,7 +115,7 @@ static void pcw_hud(volatile u16 *pg){
 // ---------------------------------------------------------------- starting, leaving, winning
 static void pc_ws_breakdown(volatile u16 *pg, const WsCraft *c, const WsPay *p);
 static void pcw_engage(u32 seed, int z, int cheat){
-    WsCraft c; pcw_make(&c,seed,z,cheat);
+    WsCraft c; pcw_make(&c,seed,z,cheat); { int mi_=pcm_match_k(&c); pcm_escort = mi_==MK_ESCORT ? 2 : 0; }
     if(c.cheat){ pcw_cheated=1; plw_set_cheated(1); }
     int resume = pcw_f.c.seed==c.seed && pcw_f.c.z==c.z && pcw_f.state==WF_FLED;
     music(4); no_ambush=1; space_enter(0); no_ambush=0; in_lair=1; beast_fight=0; ambush_t=0; pc_ws_on=1;
@@ -131,7 +135,7 @@ static void pcw_end(int how){ if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws 
     do_save(); pc_ws_slot_save(cur_slot);
 }
 static void pcw_victory(void){
-    WsPay p; ws_pay(&pcw_f.c,&pcw_f.kill,&p); pcw_last=p; pcw_last_ok=1;
+    WsPay p; ws_pay(&pcw_f.c,&pcw_f.kill,&p); pcm_on_win(&p); pcw_last=p; pcw_last_ok=1;
     pcw_pay(p.reward); pcw_kills++; if(wn_cmp(p.reward,pcw_best)>0) pcw_best=p.reward; if(p.cheat){ pcw_cheated=1; plw_set_cheated(1); }
     gain_xp(200+pcw_f.c.cls*300); fame+=20+pcw_f.c.cls*5; boom(0,0,0,40,49); sfx(9);
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000)); WsCraft c=pcw_f.c; pcw_end(1);
@@ -153,7 +157,7 @@ static void pc_ws_shot(void){                                           // the t
     if(pcw_f.state==WF_WON) pcw_victory();
 }
 static void pc_ws_update(void){
-    if(!pc_ws_on) return;
+    if(!pc_ws_on) return; pcm_fight_tick();
     if(HIT(K_START)){ chase_cam^=1; for(int k=1;k<=WW_N;k++){ int w=(pcw_weapon+k)%WW_N; if(pcw_f.ammo[w]!=0){ pcw_weapon=w; break; } } char b[32]; scpy(b,"WEAPON: "); scat(b,ws_wpn_name(pcw_weapon)); space_say(b); }
     WsInput in; memset(&in,0,sizeof in); in.boost = speed>=30 && fuel>0; in.nofuel = fuel<=0; in.target=-1;
     pcw_f.dmg_out=0; pcw_f.spawn_req=0; wf_tick(&pcw_f,&in,1/60.0);
@@ -165,7 +169,7 @@ static void pc_ws_update(void){
     if(pcw_f.state==WF_WON) pcw_victory();
 }
 static int pc_ws_scan(void);
-static void pc_ws_autotest(void);
+static void pc_ws_autotest(void); static void pcm_tick(void);
 
 // ================================================================= THE INTERIOR
 EW static WdDeck pcw_deck;
@@ -184,7 +188,7 @@ static void pcw_deck_here(int from_hangar){                           // make th
     int subs[WS_MAXSUB]; int n=wd_subs_at(&pcw_f.c,pcw_path_,pcw_D,subs); wd_make(&pcw_deck,&pcw_f.c,h,subs,n,from_hangar,pcw_D);
     for(int i=0;i<pcw_deck.nroom;i++){ int s=pcw_deck.room[i].sub; if(s!=255 && !pcw_f.c.sub[s].alive) pcw_deck.room[i].sub=255; }
     pcw_px=pcw_deck.sx+0.5f; pcw_py=pcw_deck.sy+0.5f; pcw_pa=pcw_deck.sdir; pcw_key=0; pcw_schem=0; pcw_nch=0; pcw_lv=pcw_D; }
-static void pcw_pick_obj(void){ static const u8 pri[5]={WSS_GEN,WSS_REACTOR,WSS_BRIDGE,WSS_HANGAR,WSS_TURRET}; pcw_obj=-1;
+static void pcw_pick_obj(void){ { int mk=pcm_obj_kind(); if(mk>=0){ for(int i=0;i<pcw_f.c.nsub;i++) if(pcw_f.c.sub[i].alive && pcw_f.c.sub[i].kind==mk){ pcw_obj=i; return; } } } static const u8 pri[5]={WSS_GEN,WSS_REACTOR,WSS_BRIDGE,WSS_HANGAR,WSS_TURRET}; pcw_obj=-1;
     for(int k=0;k<5 && pcw_obj<0;k++) for(int i=0;i<pcw_f.c.nsub;i++) if(pcw_f.c.sub[i].alive && pcw_f.c.sub[i].kind==pri[k]){ pcw_obj=i; break; } }
 static int pcw_obj_child(int level){ return pcw_obj>=0 ? wd_sub_child(&pcw_f.c,pcw_obj,level) : -1; }
 static void pcw_text(volatile u16 *pg, int x, int y, const char *s, int c){ text(pg,x+1,y+1,s,250,1); text(pg,x,y,s,c,1); }
@@ -257,7 +261,7 @@ static void pc_ws_board(void){
         // ---- the crew live; guards shoot
         int hurt=0; wd_tick(&pcw_deck,dt,pcw_px,pcw_py,&hurt); if(hurt){ pcw_hp-=hurt; pcw_hurt=0.6f; sfx(4); } if(pcw_hurt>0) pcw_hurt-=0.03f;
         // ---- charges go off
-        for(int i=0;i<pcw_nch;i++){ PcwCharge *c=&pcw_ch[i]; if(pcw_t<c->t) continue; int s=c->sub; wf_sabotage(&pcw_f,s,pcw_schem); pcw_deck.alarm=1; sfx(9);
+        for(int i=0;i<pcw_nch;i++){ PcwCharge *c=&pcw_ch[i]; if(pcw_t<c->t) continue; int s=c->sub; wf_sabotage(&pcw_f,s,pcw_schem); pcw_deck.alarm=1; pcm_on_sab(s); sfx(9);
             for(int r=0;r<pcw_deck.nroom;r++) if(pcw_deck.room[r].sub==s) pcw_deck.room[r].sub=255;
             snprintf(msg,sizeof msg,"%s DESTROYED%s",ws_sub_name(pcw_f.c.sub[s].kind),pcw_schem?" (WEAK POINT)":""); msg_t=200; pcw_ch[i]=pcw_ch[--pcw_nch]; i--; pcw_pick_obj();
             for(int p=0;p<pcw_deck.nprop;p++) if(pcw_deck.prop[p].type==WP_CHARGE){ pcw_deck.prop[p]=pcw_deck.prop[--pcw_deck.nprop]; break; } }
@@ -270,6 +274,7 @@ static void pc_ws_board(void){
         if(kp>=0) prompt="A: TAKE THE KEYCARD"; else if(lock_near>=0) prompt = pcw_key ? "A: OPEN THE LOCKED DOOR" : "LOCKED: FIND THE KEYCARD (SECURITY)";
         else if(sp_>=0 && target_room>=0 && !pcw_schem) prompt="A: READ THE SCHEMATIC (WEAK POINT)"; else if(target_room>=0) prompt="HOLD A: PLANT A CHARGE";
         else if(at_tram && pcw_D>0) prompt="A: RIDE THE TRAM"; else if(at_tram) prompt="THE ONLY DECK: NO TRAM NEEDED";
+        pcm_dwell(target_room,&prompt,msg,&msg_t);
         if(HIT(K_A) && kp>=0){ pcw_key=1; pcw_deck.prop[kp]=pcw_deck.prop[--pcw_deck.nprop]; scpy(msg,"KEYCARD TAKEN"); msg_t=120; sfx(6); }
         else if(HIT(K_A) && lock_near>=0 && pcw_key){ for(int i=0;i<WD_W*WD_W;i++) if(pcw_deck.cell[i].kind==WDC_LOCK) pcw_deck.cell[i].kind=WDC_DOOR; scpy(msg,"THE DOOR SLIDES OPEN"); msg_t=120; sfx(2); }
         else if(HIT(K_A) && sp_>=0 && target_room>=0 && !pcw_schem){ pcw_schem=1; scpy(msg,"WEAK POINT FOUND: PLANT THE CHARGE"); msg_t=150; sfx(6); }
@@ -303,6 +308,7 @@ static void pc_ws_board(void){
     pc_ovl_fn=0; pcw_in=0; fade(1);
     build_space_palette(); REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); BG_PAL[57]=rgb15(14,16,30); BG_PAL[58]=rgb15(60,70,120);
     if(dead){ hull-=30; if(hull<1) hull=1; space_say("THROWN OUT AN AIRLOCK! -30 HULL"); } else space_say("BACK IN YOUR SHIP");
+    if(!dead) pcm_collect();
     shz=-(PCW_DS*2); svx_=svy_=svz_=0; speed=0; fade(0); wait_release();
 }
 
@@ -317,11 +323,11 @@ static void pc_ws_breakdown(volatile u16 *pg, const WsCraft *c, const WsPay *p){
     { WN a=wn(p->A); wn_text(a,v,sizeof v,1); scpy(b,"ATTACK FACTOR"); text(pg,14,y,b,C_GREY,1); rtext(pg,226,y,v,C_WHITE); y+=8; }
     snprintf(v,sizeof v,"%.3f",p->Fm); text(pg,14,y,"METHOD FACTOR",C_GREY,1); rtext(pg,226,y,v,C_WHITE); y+=8;
     snprintf(v,sizeof v,"%.3f",p->Fw); text(pg,14,y,"WEAPON FACTOR",C_GREY,1); rtext(pg,226,y,v,C_WHITE); y+=8;
-    wn_text(p->reward,v,sizeof v,0); text(pg,14,y+2,"GOLD PAID",C_GOLD,1); rtext(pg,226,y+2,v,C_GOLD); y+=12;
+    if(pcm_note[0]) text(pg,56,y+2,pcm_note,C_CYAN,1); wn_text(p->reward,v,sizeof v,0); text(pg,14,y+2,"GOLD PAID",C_GOLD,1); rtext(pg,226,y+2,v,C_GOLD); y+=12;
     if(p->reward.e>=24){ wn_sci(p->reward,v,sizeof v); rtext(pg,226,y,v,C_GREY); } y+=8;
     if(p->cheat) text(pg,14,y,"CHEATED SIZE: THIS PAY IS MARKED CHEATED",C_RED,1); else if(p->reward.e<0) text(pg,14,y,"LESS THAN ONE GOLD: IT GOES TO YOUR GOLD DUST",C_GREY,1);
     ui_foot(pg,"REWARD = COST X ATTACK X METHOD X WEAPON","A: OK");
-    do { vsync(); read_keys(); } while(!HIT(K_A) && !HIT(K_B)); wait_release();
+    do { vsync(); read_keys(); } while(!HIT(K_A) && !HIT(K_B)); wait_release(); pcm_note[0]=0;
 }
 static void pcw_detail(volatile u16 *pg, const WsCraft *c, int y0){
     char b[80], v[48]; int y=y0;
@@ -355,28 +361,29 @@ static void pcw_armoury(volatile u16 *pg){
 // the list of colossal craft near this star; in space (from the scanner) A then START engages at once, on a planet ENGAGE waits for take-off
 static int pcw_list(volatile u16 *pg, int in_space){
     enum { NC=6 }; WsCraft *cs=malloc(sizeof(WsCraft)*(NC+1)); int nc=NC, sel=0, dirty=1, detail=0, cz=WS_ZREF*2, go=0, cheat_row=plw_cheated();
-    u32 sd[NC]; int zz[NC]; for(int i=0;i<NC;i++){ pcw_contact(i,&sd[i],&zz[i]); pcw_make(&cs[i],sd[i],zz[i],0); }
+    u32 sd[NC]; int zz[NC]; for(int i=0;i<NC;i++){ pcw_contact(i,&sd[i],&zz[i]); pcw_make(&cs[i],sd[i],zz[i],pcm_cf); }
     pcw_topup(); wait_release();
     while(1){
         if(dirty){ dirty=0; oam_hide_all(); oam_flush(); ui_bg(pg,0,160); ui_panel(pg,6,6,228,136); char b[64], v[40];
             ui_head(pg,12,10,216,in_space?"WARSHIP SCANNER":"WARSHIPS NEAR THIS STAR",C_GOLD);
             if(detail){ const WsCraft *c = sel<nc ? &cs[sel] : &cs[NC]; pcw_detail(pg,c,22); ui_foot(pg,in_space?"START: ENGAGE":"START: ENGAGE AFTER TAKE-OFF","B: BACK"); }
             else { for(int i=0;i<nc;i++){ int y=24+i*12; const WsCraft *c=&cs[i]; if(i==sel) rect(pg,10,y-2,220,11,6);
-                    scpy(b,ws_class_name(c->cls)); text(pg,16,y,b,i==sel?C_WHITE:C_GREY,1); ws_len_text(c->z,v,sizeof v); text(pg,110,y,v,C_GREY,1);
+                    scpy(b,ws_class_name(c->cls)); text(pg,16,y,b,i==sel?C_WHITE:C_GREY,1); ws_len_text(c->z,v,sizeof v); text(pg,110,y,v,C_GREY,1); if(pcm_mark[i]) text(pg,152,y,"MISSION",C_CYAN,1);
                     WsThreat t; ws_threat(c,ws_attack((double)level,laser_lv,ship_gun(),tech_lv),pcw_ehp(),wing_n,pcw_kits,fuel_max(),&t); rtext(pg,226,y,t.word,t.tier>=4?C_RED:t.tier>=2?C_GOLD:C_GREEN); }
                 if(cheat_row){ int y=24+nc*12; if(sel==nc) rect(pg,10,y-2,220,11,6); ws_len_text(cz,v,sizeof v); scpy(b,"CHEAT: ANY SIZE  "); scat(b,v); text(pg,16,y,b,C_RED,1); }
                 pcw_wallet(v,sizeof v); scpy(b,"GOLD "); scat(b,v); text(pg,12,118,b,C_GOLD,1); scpy(b,"KILLS "); ncat(b,pcw_kills); if(pcw_kills){ wn_text(pcw_best,v,sizeof v,0); scat(b,"  BEST PAY "); scat(b,v); } text(pg,12,126,b,C_GREY,1);
-                ui_foot(pg, cheat_row && sel==nc ? "LEFT/RIGHT: SIZE (L/R: X10)  A: SEE IT" : "UP/DOWN: PICK  A: SEE IT  SELECT: ARMOURY","B: BACK"); } }
+                { static const char *const en[4]={"OFF","RARE","NORMAL","COMMON"}; scpy(b,"L: WARSHIP ENCOUNTERS: "); scat(b,en[pcm_enc_mode&3]); text(pg,12,108,b,C_CYAN,1); }
+                ui_foot(pg, cheat_row && sel==nc ? "LEFT/RIGHT: SIZE (L/R: X10)  A: SEE IT" : "A: SEE IT  SEL: ARMOURY  START: MISSIONS","B: BACK"); } }
         vsync(); read_keys();
         if(HIT(K_B)){ if(detail){ detail=0; dirty=1; continue; } break; }
         if(!detail){ int n=nc+(cheat_row?1:0);
             if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; sfx(7); }
             if(sel==nc){ int st = HELD(K_L)||HELD(K_R) ? 100 : 10; if(HIT(K_LEFT)){ cz-=st; if(cz<WS_ZMIN) cz=WS_ZMIN; dirty=1; } if(HIT(K_RIGHT)){ cz+=st; if(cz>WS_ZMAX) cz=WS_ZMAX; dirty=1; } }
-            if(HIT(K_SEL)){ pcw_armoury(pg); dirty=1; }
+            if(HIT(K_SEL)){ pcw_armoury(pg); dirty=1; } if(HIT(K_START)){ pc_ms_board(pg,MP_SPACE); dirty=1; } if(HIT(K_L) && sel!=nc){ pcm_enc_mode=(pcm_enc_mode+1)&3; dirty=1; sfx(7); }
             if(HIT(K_A)){ if(sel==nc) pcw_make(&cs[NC],0x5EED0000u+(u32)cz,cz,1); detail=1; dirty=1; sfx(2); } }
         else if(HIT(K_START)){ const WsCraft *c = sel<nc ? &cs[sel] : &cs[NC]; pcw_req_seed=c->seed; pcw_req_z=c->z; pcw_req_cheat=c->cheat; pcw_req=1; go=1; sfx(6); break; }
     }
-    free(cs); wait_release(); return go;
+    free(cs); wait_release(); pc_ws_slot_save(cur_slot); return go;
 }
 static void pc_ws_lab(volatile u16 *pg){ int go=pcw_list(pg,scene==2); if(go && scene!=2){ ui_bg(pg,0,160); ui_panel(pg,30,60,180,30); text(pg,40,68,"TAKE OFF: IT WAITS IN ORBIT",C_GOLD,1); text(pg,40,78,"(LAUNCH FROM YOUR SHIP)",C_GREY,1); wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)&&!HIT(K_B)); wait_release(); } }
 static int pc_ws_scan(void){                                   // in space: hold R and press SELECT
@@ -393,10 +400,12 @@ static void pc_ws_space_enter(void){                          // a craft engaged
 }
 // ---- the test hook: BUGSTAR_WS_TEST=fight,Z,SEED | inside,Z,SEED | kill,Z,SEED | lab  (after BUGSTAR_WS_AT frames in the game)
 static void pc_ws_autotest(void){
-    static int done=0; if(done || !in_game) return; const char *e=getenv("BUGSTAR_WS_TEST"); if(!e){ done=1; return; }
+    static int done=0; if(in_game) pcm_tick(); if(done || !in_game) return; const char *e=getenv("BUGSTAR_WS_TEST"); if(!e){ done=1; return; }
     const char *at=getenv("BUGSTAR_WS_AT"); if(frames < (at?atoi(at):0) || scene!=0) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
     char mode[16]={0}; int z=WS_ZREF; unsigned seed=0; sscanf(e,"%15[a-z],%d,%u",mode,&z,&seed);
     if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)0x06000000); return; }
+    if(!strcmp(mode,"missions")){ pc_ms_board((volatile u16*)0x06000000,MP_STATION); return; }
+    if(!strcmp(mode,"encounter")){ pcm_enc_mode=3; pcm_clk=3599; pcm_enc_force=1; return; }
     if(!strcmp(mode,"save")){ pc_ws_slot_save(cur_slot); return; }
     { const char *lv=getenv("BUGSTAR_WS_LEVEL"); if(lv) level=atoll(lv); }
     if(scene!=2){ oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); }
@@ -404,6 +413,7 @@ static void pc_ws_autotest(void){
     if(!strcmp(mode,"inside")){ pcw_f.layers_up=0; pcw_f.lay_hp=wn(0); pc_ws_board(); }
     if(!strcmp(mode,"kill")){ while(pcw_f.state==WF_ON && pcw_f.shots<2000000u){ pcw_f.fire_cd=0; pcw_f.overheat=0; pcw_f.heat=0; wf_fire(&pcw_f,0,-1); } if(pcw_f.state==WF_WON) pcw_victory(); }
 }
+#include "pc_missions.inc"
 #undef cosf
 #undef sinf
 #undef sqrtf
