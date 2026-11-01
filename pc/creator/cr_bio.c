@@ -76,7 +76,7 @@ void cr_bio(const CrRecipe *r0, BioReport *b){
     double lifef = clampd(1.0 + 0.1 * env.life, 0.3, 1.6);
     double fert = clampd(tf * wf * lf * lifef, 0, 1);
     b->fertility = (int)(fert * 100 + 0.5);
-    double R = radius[r->size]; double area = 4.0 * 3.14159265 * R * R / 1e6;           // million km2
+    double R = cr_radius_km(r); double area = 4.0 * 3.14159265 * R * R / 1e6;           // million km2
     double sea = r->sea > 95 ? 0.95 : r->sea / 100.0; b->land_mkm2 = area * (1.0 - sea);
     double land_km2 = b->land_mkm2 * 1e6;
     // ---- the plants
@@ -104,12 +104,12 @@ void cr_bio(const CrRecipe *r0, BioReport *b){
     static const double dietm[6] = {1.0, 1.2, 2.5, 1.6, 0.3, 0.1};
     double farm_km2 = P * farm_ha[r->tech] * mw * dietm[r->diet] * cl[r->calling].farm / yield / 100.0;
     if(r->diet == 5) farm_km2 *= (b->light < 60 || r->sea < 20) ? 8.0 : 1.0;                 // sun-and-salt folk need light and a sea
-    double ur = urban[r->tech], city_km2 = P * ur / cs[r->cstyle].dens * citym * cl[r->calling].city * msurf; if(city_km2 < 0) city_km2 = 0;
-    b->cities = (int)(P * ur / cs[r->cstyle].size + 0.999); if(P < 1) b->cities = 0; b->city_size = (int)(cs[r->cstyle].size);
+    double ur = urban[r->tech], city_km2 = P * ur / cs[r->cstyle & 15].dens * citym * cl[r->calling].city * msurf; if(city_km2 < 0) city_km2 = 0;
+    b->cities = (int)(P * ur / cs[r->cstyle & 15].size + 0.999); if(P < 1) b->cities = 0; b->city_size = (int)(cs[r->cstyle & 15].size);
     if(b->cities < 1 && P >= 1000) b->cities = 1;
     // plants after the people
     double full_cover_km2 = land_km2 * cover;
-    double fuelkg_pp = fuel_kg[r->tech] * fuelm * cl[r->calling].fuel * cs[r->cstyle].wood * mw;
+    double fuelkg_pp = fuel_kg[r->tech] * fuelm * cl[r->calling].fuel * cs[r->cstyle & 15].wood * mw;
     double stand0 = bbar * (full_cover_km2 / 1e6);                      // Gt (kg/m2 x 1e12 m2 per million km2 = 1e12 kg = Gt)
     double turn = 0.06 + 0.5 * (1.0 - sh_woody); double npp0 = stand0 * turn;
     // the sea has its own plants (plankton): about 0.13 kg of carbon per square metre a year at best (Earth's seas: roughly as much as the land)
@@ -129,7 +129,7 @@ void cr_bio(const CrRecipe *r0, BioReport *b){
     // ---- air
     double extras = npp_nat > 0 ? P * fuelkg_pp * 1e-12 / npp_nat : (P > 0 ? 9 : 0);
     double need_kg = 280.0 * mw * dietm[r->diet]; double pfood = npp_nat > 0 ? P * need_kg * 1e-12 / npp_nat : (P > 0 ? 9 : 0);
-    double smoke_gt = P * smoke_t[r->tech] * smk * cl[r->calling].smoke * cs[r->cstyle].smoke * clampd(mw, 0.05, 4) * 1e-9;
+    double smoke_gt = P * smoke_t[r->tech] * smk * cl[r->calling].smoke * cs[r->cstyle & 15].smoke * clampd(mw, 0.05, 4) * 1e-9;
     double smoke_ratio = npp_nat > 0 ? smoke_gt / npp_nat : (P > 0 ? 5 : 0);
     b->smoke = clampi((int)(smoke_ratio * 100), 0, 100);
     b->fuel_pct = (int)clampd(extras * 100, 0, 999);

@@ -20,7 +20,7 @@ int main(void){
       CrRecipe c = r; CHECK(cr_seed(&c) == s1, "a copy has another seed");
       int n = 0, same = 0;
 #define FLD(f) do{ CrRecipe t = r; t.f = (__typeof__(t.f))(t.f + 1); cr_fix(&t); n++; if(cr_seed(&t) == s1) { same++; printf("  field %s does not change the seed\n", #f); } }while(0)
-      FLD(cls); FLD(size); FLD(sea); FLD(land); FLD(rough); FLD(hour); FLD(weather); FLD(sky); FLD(ground); FLD(salt); FLD(body); FLD(limbs); FLD(height); FLD(calling); FLD(cstyle); FLD(diet); FLD(temper); FLD(pop); FLD(tech); FLD(cover); FLD(div);
+      FLD(cls); FLD(size); FLD(xsize); FLD(stock); FLD(sea); FLD(land); FLD(rough); FLD(hour); FLD(weather); FLD(sky); FLD(ground); FLD(salt); FLD(body); FLD(limbs); FLD(height); FLD(calling); FLD(cstyle); FLD(diet); FLD(temper); FLD(pop); FLD(tech); FLD(cover); FLD(div);
       { CrRecipe t = r; t.climate++; n++; if(cr_seed(&t) == s1) same++; } { CrRecipe t = r; t.col[1]++; n++; if(cr_seed(&t) == s1) same++; } { CrRecipe t = r; t.gift[2] = (uint8_t)((t.gift[2] + 5) % 24); n++; if(cr_seed(&t) == s1) same++; }
       { CrRecipe t = r; t.name[0] = 'Z'; n++; if(cr_seed(&t) == s1) same++; } { CrRecipe t = r; t.cre[0].amount = (uint8_t)(t.cre[0].amount % 9 + 1); n++; if(cr_seed(&t) == s1) same++; } { CrRecipe t = r; t.theme[0] = 3; n++; if(cr_seed(&t) == s1) same++; }
       CHECK(!same, "%d of %d single changes left the seed alone", same, n);
@@ -74,7 +74,7 @@ int main(void){
       for(int i = 0; i < 2000; i++){ if(i < 4) cr_default(&r, (uint32_t)i); else cr_randomize(&r, -1, &s);
           cr_bio(&r, &a); cr_bio(&r, &b); if(memcmp(&a, &b, sizeof a)){ ok = 0; break; }
           CHECK(a.health >= 0 && a.health <= 100 && a.grade >= 'A' && a.grade <= 'F', "health %d grade %c", a.health, a.grade);
-          CHECK(a.o2_pct >= 0 && a.o2_pct <= 40 && a.forest_lost_pct >= 0 && a.forest_lost_pct <= 100 && a.smoke >= 0 && a.smoke <= 100, "range");
+          CHECK(a.o2_pct >= 0 && a.o2_pct <= 40 && a.forest_lost_pct >= 0 && a.forest_lost_pct <= 100 && a.smoke >= 0 && a.smoke <= 100, "range o2 %d lost %d smoke %d xsize %d", a.o2_pct, a.forest_lost_pct, a.smoke, r.xsize);
           for(int k = 0; k < a.nwarn; k++) CHECK(fontsafe(a.warn[k]) && strlen(a.warn[k]) <= 40, "warning text %s", a.warn[k]);
           for(int k = 0; k < a.n_links; k++) CHECK(fontsafe(a.link[k].who) && fontsafe(a.link[k].what), "link text");
           if(i < 4){ h = fnv(&a.health, sizeof a.health, h); h = fnv(&a.o2_pct, sizeof a.o2_pct, h); h = fnv(&a.n_flora, sizeof a.n_flora, h); h = fnv(a.traj, sizeof a.traj, h); } }

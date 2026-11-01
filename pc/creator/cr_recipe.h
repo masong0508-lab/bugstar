@@ -22,6 +22,7 @@ typedef struct {
     // ---- the planet
     uint8_t cls;                 // 0..15: temperate, mountain, meadow, ocean, desert, ice, jungle, death, city, paradise, inferno, brimstone, obsidian, bone, blood sea, frozen hell
     uint8_t size;                // 0..5 tiny .. giant
+    uint8_t xsize;               // 0..8 extreme size on top of that: 0 none, 1..4 pebble, rock, asteroid, dwarf (tiny round worlds), 5..8 x4, x16, x100, x1000 bigger (the universe laws' sizes)
     uint8_t sea;                 // 0..100 percent of the surface under water
     uint8_t land;                // 0..7 shape of the land (hills, mesas, dunes, islands, craters, canyons, ridges, plains)
     uint8_t rough;               // 0..3
@@ -37,8 +38,9 @@ typedef struct {
     uint8_t body, limbs, height; // body shape 0..15, limbs 0..5 (2,4,6,8,10,12), height 0..7
     uint8_t col[3];              // swatches: skin, marks, clothes
     uint8_t gift[3];             // three gifts, 0..23, all different
+    uint8_t stock;               // 0..31 which stock the people come from (with the calling it picks one of the 512 kinds of people)
     uint8_t calling;             // 0..15
-    uint8_t cstyle;              // city style 0..15
+    uint8_t cstyle;              // city style 0..255: form (low 4 bits) x character (high 4 bits) = one of the 256 city kinds
     uint8_t diet;                // 0..5
     uint8_t temper;              // 0..7
     uint8_t pop;                 // 0..15 how many (1,000 .. 90 billion)
@@ -65,6 +67,7 @@ extern const char *const cr_limb_name[6];
 extern const char *const cr_gift_name[24];
 extern const char *const cr_calling_name[16];
 extern const char *const cr_cstyle_name[16];
+extern const char *const cr_xsize_name[9];
 extern const char *const cr_diet_name[6];
 extern const char *const cr_temper_name[8];
 extern const char *const cr_tech_name[8];
@@ -97,6 +100,14 @@ typedef struct {
     char name[24];
 } CrWorld;
 void cr_world(const CrRecipe *r, CrWorld *w);
+int  cr_world_tw(const CrRecipe *r);              // how many cells round the walkable world is (128 normal; 8, 16, 32, 64 on pebbles and dwarfs)
+int  cr_world_k16(const CrRecipe *r);             // the horizon bend in sixteenths (the game's own number for the size class; stronger on tiny worlds, flatter on huge ones)
+double cr_radius_km(const CrRecipe *r);           // the planet's radius
+
+// ---- the created universe: a planet seed IS the address (4 words of the universe number)
+void cr_uni4(const CrRecipe *r, uint32_t w[4]);
+int  cr_uni4_is(const uint32_t *w);               // 1 when the 4 words are a created planet's
+uint64_t cr_uni4_seed(const uint32_t *w);
 
 // ---- an address for it: a reserved universe whose planet seed IS the recipe seed (see CR_UNI_MARK in pc_content.c)
 #define CR_UNI_MARK 0x43524541u            // "CREA"
