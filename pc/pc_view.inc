@@ -77,3 +77,5 @@ int pc_view_main(int argc, char **argv){
     pc_hw_finish();
     return 0;
 }
+
+uint16_t pc_font_glyph(int ch){ return font[ch&127]; }      // the game's own 3x5 font, for the PC options screen

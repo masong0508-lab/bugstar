@@ -23,6 +23,8 @@ sed -i \
  -e 's/\*(volatile u32\*)0x03007FFC=(u32)irq_handler;/pc_irq_fn=irq_handler;/' \
  -e 's/\*(volatile u32\*)0x040000DC=\([^;]*\);/pc_dma3(\1);/g' \
  -e 's/^int main(void){/int bugstar_main(void){/' \
+ -e 's/SND(\([^)]*\))=\([^;]*\);/pc_snd(\1,\2);/g' \
+ -e 's|\*(volatile u16\*)(0x04000090+i\*2)=wave\[i\];|pc_snd(0x30+i*2,wave[i]);|' \
  *.inc main.c
 # the HOW BIG screen sorts every page in a scratch area: the GBA keeps it in the world builder's 32 KB; the PC has far more pages, so it gets its own
 sed -i -e 's|^#define SZ_SCR .*|#define SZ_SCR pc_szscr|' -e '/^#define NSIZE /a static u32 pc_szscr[4*NSIZE+64];' sizes.inc
@@ -38,6 +40,21 @@ echo '#include "../pc_info.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 # --- compile -----------------------------------------------------------------------------------------------------------
 # -funsigned-char: the GBA compiler's char is unsigned. -fwrapv: ARM integers wrap. -no-pie: all addresses stay below 4 GB.
-gcc -std=gnu11 -O1 -w -funsigned-char -fwrapv -fno-strict-aliasing -no-pie -m64 -DNO_LOGO ${PC_CFLAGS} \
-    -I. -I.. -Wa,-I,. ../pc_main.c ../pc_hw.c ../content/pc_content.c ../content/pcx.c main.c -lm -o ../bugstar_pc
-echo "built pc/bugstar_pc"
+# SDL: with the window front end (default) the game links the system SDL2 (libSDL2-2.0.so.0); PC_SDL=0 builds the headless-only program.
+OPT=${PC_OPT:--O2}
+SDLF=""; SDLL=""
+if [ "${PC_SDL:-1}" != "0" ]; then
+  SDLF="-DPC_SDL -I../platform/sdl2/include -Wl,-rpath,\$ORIGIN/lib -Wl,-rpath,\$ORIGIN"
+  if [ -n "$SDL_LIB" ]; then SDLL="$SDL_LIB"; else SDLL=$(ldconfig -p 2>/dev/null | awk '/libSDL2-2.0.so.0 /{print $NF; exit}'); fi
+  [ -z "$SDLL" ] && { echo "SDL2 runtime (libSDL2-2.0.so.0) not found: install it, set SDL_LIB=/path/to/libSDL2-2.0.so.0, or PC_SDL=0 for the headless build"; exit 1; }
+fi
+# the level cap: the PC build lets the character level go far past the GBA's 32-bit limit (the sim worker sets the final value)
+CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing -no-pie -m64 -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
+# the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
+mkdir -p ../obj
+STAMP=$(cat *.inc main.c assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+if [ "$(cat ../obj/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f ../obj/game.o ]; then gcc $CF -c main.c -o ../obj/game.o && echo "$STAMP" > ../obj/game.stamp; fi
+OBJS="../obj/game.o"
+for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=../obj/$(basename $f .c).o; gcc $CF -c $f -o $o; OBJS="$OBJS $o"; done
+gcc -no-pie -m64 $OBJS $SDLL -lm -o ../bugstar_pc
+echo "built pc/bugstar_pc ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"
