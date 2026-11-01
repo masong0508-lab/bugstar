@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "pc_content.h"
+#include <stdlib.h>
 
 static uint64_t mix64(uint64_t z){ z += 0x9E3779B97F4A7C15ull; z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull; z = (z ^ (z >> 27)) * 0x94D049BB133111EBull; return z ^ (z >> 31); }
 static uint64_t fold(uint64_t h, const uint32_t *w, int n, uint64_t salt){ for(int i = 0; i < n; i++) h = mix64(h ^ ((uint64_t)w[i] << 7) ^ ((uint64_t)i * 0x100000001B3ull) ^ salt); return h; }
@@ -51,11 +52,35 @@ static const Trait tr[] = {
 #undef P
 #define NTR ((int)(sizeof tr / sizeof tr[0]))
 _Static_assert(sizeof tr / sizeof tr[0] <= 128, "conf[][] is too small for this many traits");
+// the 15 flavours of each category: flavour 0 is the plain classic trait, flavours 1..15 put one of these words in front ("SALTY LAVA SEAS", "HUMMING MONUMENTS").
+static const char *const flav[NCAT][15] = {
+ {"STEADY","SWAYING","SPRINGY","PATCHY","RISING","SINKING","TIDAL","GENTLE","STUBBORN","PULSING","WARPED","LOPSIDED","HUMMING","DRIFTING","SLOW-WAVE"},                     // GRAVITY
+ {"WOBBLY","LAZY","RAGGED","BRIGHT","DIM","COPPER","PALE","SHARP","LONG-DUSK","SHORT-DAWN","DOUBLE","STUTTERING","GOLDEN","STEEL","QUIET"},                          // DAY
+ {"SWEET","SOUR","SPICY","SMOKY","CHILLY","WARM","SILKEN","RUSTY","MINTY","SALTY","HUMMING","SPARKLING","MUSKY","STILL","RESIN-SCENTED"},                           // AIR
+ {"GENTLE","VIOLENT","SEASONAL","SUDDEN","PATCHY","SILVER","RED","LATE-DAY","DAWN","NIGHT-ONLY","TWIN-CELL","RARE","DAILY","ROLLING","HEAVY-LAID"},                  // WEATHER
+ {"PURPLE","SALTY","MOSSY","SHINING","JAGGED","HOLLOW","TERRACED","SCARRED","MISTY","EMERALD","CHALKY","STRIPED","CRACKED","VELVET","SMOOTH"},                      // SURFACE
+ {"PINK","SILVER","BLUE","DISTANT","LOW","BRIGHT","FADED","DOUBLE","SLOW","TILTED","VEILED","HUGE","SMALL","RUSTY","PEARL"},                                         // SKY
+ {"SHY","BOLD","NOISY","SLEEPY","STRIPED","GLOWING","SWIFT","STUBBORN","TAME","WILD","SINGING","SECRET","GENTLE","CLEVER","FURRY"},                                  // LIFE
+ {"BROKEN","BURIED","GLASSY","MOSS-GROWN","SUNKEN","HUMMING","SEALED","SCORCHED","TOWERING","WHISPERING","TILTED","GILDED","HOLLOW","FORGOTTEN","TINY"},             // ANCIENT
+ {"FAINT","STRONG","FLICKERING","SLOW","WANDERING","COLD","WARM","SINGING","TANGLED","BRIGHT","SEASONAL","SECRET","STEADY","DEEP","RESTLESS"},                      // POWER
+};
+_Static_assert(NTR == TR_BASE, "TR_BASE must equal the number of classic traits");
+#define NTRV (TR_BASE * TR_VARIANTS)
 static const char *const cat_nm[NCAT] = { "GRAVITY", "DAY", "AIR", "WEATHER", "SURFACE", "SKY", "LIFE", "ANCIENT", "POWER" };
-int trait_count(void){ return NTR; }
-const char *trait_name(int id){ return id >= 0 && id < NTR ? tr[id].name : "?"; }
-int trait_cat(int id){ return tr[id].cat; }
+int trait_count(void){ return NTRV; }
+int trait_base_count(void){ return NTR; }
+int trait_base(int id){ return id % TR_BASE; }
+int trait_variant(int id){ return id / TR_BASE; }
+int trait_cat(int id){ return tr[id % TR_BASE].cat; }
 const char *cat_name(int c){ return c >= 0 && c < NCAT ? cat_nm[c] : "?"; }
+void trait_name_to(int id, char *out, int n){
+    if(id < 0 || id >= NTRV){ snprintf(out, n, "?"); return; }
+    int b = id % TR_BASE, v = id / TR_BASE;
+    if(v) snprintf(out, n, "%s %s", flav[tr[b].cat][v - 1], tr[b].name); else snprintf(out, n, "%s", tr[b].name);
+}
+static char ring[16][96]; static int ring_i;
+static char *ring_next(void){ ring_i = (ring_i + 1) & 15; return ring[ring_i]; }
+const char *trait_name(int id){ char *o = ring_next(); trait_name_to(id, o, 96); return o; }
 
 static int tid(const char *n){ for(int i = 0; i < NTR; i++) if(!strcmp(tr[i].name, n)) return i; return -1; }
 // impossible pairs (names, so the table reads as sentences)
@@ -70,30 +95,84 @@ static const char *const bad[][2] = {
  {"FEATHER GRAVITY","FRESH BREEZE"},{"FEATHER GRAVITY","STORMY"},
  {"SNOWFALL","RED GIANT SKY"},{"VOLCANIC","SNOWFALL"},{"METEOR SHOWERS","THICK AIR"},
 };
-static uint8_t conf[128][128]; static int conf_ready;
+// what each classic trait does to the chances of a kind of native creature (class 0 beasts, 1 fliers, 2 swimmers, 3 crawlers, 4 spirits, 5 monsters) and to the daylight
+static const struct { const char *n; uint8_t cls; int8_t w; } boost[] = {
+ {"OCEAN WORLD",2,4},{"ARCHIPELAGO",2,3},{"ICE SHEET",2,1},{"BUG GARDEN",3,4},{"HIVE WORLD",3,4},{"GIANT BUGS",3,3},{"TINY BUGS",3,3},{"FUNGUS FORESTS",3,2},
+ {"FLOATING ISLES",1,4},{"FRESH BREEZE",1,2},{"GLOW AURORA",1,1},{"THIN AIR",1,1},{"GHOST WORLD",4,5},{"RUINS",4,1},{"SINGING STONES",4,2},{"SPELL STORMS",4,2},{"LEY LINES",4,2},{"NEARBY NEBULA",4,1},
+ {"PREDATOR WORLD",5,4},{"VOLCANIC",5,2},{"LAVA SEAS",5,2},{"ANCIENT MACHINES",5,2},{"CRUSHING GRAVITY",5,1},{"METEOR SHOWERS",5,1},{"DEAD SUN",4,2},
+ {"MIGRATING HERDS",0,4},{"PEACEFUL WORLD",0,2},{"GIANT TREES",0,2},{"EVEN DAYS",0,1},{"CANYON LANDS",0,1},{"SALT FLATS",0,1},
+};
+static const struct { const char *n; int8_t d; } lightmod[] = {
+ {"LONG NIGHT",-35},{"DEAD SUN",-45},{"TWIN SUNS",25},{"RED GIANT SKY",15},{"AMBER HAZE",-10},{"DUST VEIL",-10},{"ENDLESS FOG",-15},{"STORMY",-10},{"GLOW AURORA",5},
+ {"NEARBY NEBULA",5},{"CLEAR SKIES",10},{"ASH FALL",-15},{"SNOWFALL",-5},{"ACID CLOUDS",-10},{"THICK AIR",-5},{"THIN AIR",5},{"RINGS",-3},{"LAVA SEAS",8},
+};
+static uint8_t conf[128][128]; static int8_t cboost[TR_BASE][6], lmod[TR_BASE]; static int conf_ready;
 static void conf_init(void){
-    memset(conf, 0, sizeof conf);
+    memset(conf, 0, sizeof conf); memset(cboost, 0, sizeof cboost); memset(lmod, 0, sizeof lmod);
     for(unsigned i = 0; i < sizeof bad / sizeof bad[0]; i++){ int a = tid(bad[i][0]), b = tid(bad[i][1]); if(a >= 0 && b >= 0) conf[a][b] = conf[b][a] = 1; }
+    for(unsigned i = 0; i < sizeof boost / sizeof boost[0]; i++){ int a = tid(boost[i].n); if(a >= 0) cboost[a][boost[i].cls] = boost[i].w; }
+    for(unsigned i = 0; i < sizeof lightmod / sizeof lightmod[0]; i++){ int a = tid(lightmod[i].n); if(a >= 0) lmod[a] = lightmod[i].d; }
     conf_ready = 1;
 }
-int traits_conflict(int a, int b){ if(!conf_ready) conf_init(); return a == b || tr[a].cat == tr[b].cat || conf[a][b]; }
+int traits_conflict(int a, int b){ if(!conf_ready) conf_init(); a %= TR_BASE; b %= TR_BASE; return a == b || tr[a].cat == tr[b].cat || conf[a][b]; }
 
+// ------------------------------------------------------------------ stats: 7 families x 16 zones
+static const char *const fam_nm[N_FAM] = {"GRAVITY","TEMPERATURE","DAYLIGHT","DANGER","LOOT","PRICES","LIFE"};
+static const char *const fam_un[N_FAM] = {"PCT","C","PCT","","","",""};
+static const char *const zone_nm[N_ZONE] = {"LOWLANDS","HIGHLANDS","SHORES","OPEN SEA","DEEP SEA","ICE CAPS","DESERTS","FORESTS","CITIES","RUINS","CAVES","SWAMPS","PLAINS","VOLCANOES","THE SKY","ORBIT"};
+// how each zone shifts each family: gravity (percent points), temperature (C), daylight (percent points), danger, loot, prices, life
+static const int8_t zmod[N_ZONE][N_FAM] = {
+ {0, 2, 0, 0, 0, 0, 1},   {-4, -8, 5, 1, 1, 0, -1},  {0, -2, 0, 0, 1, 0, 1},  {0, -4, 5, 1, 0, 0, 1},
+ {2, -12, -40, 2, 1, 0, 0}, {1, -35, -10, 0, 0, 1, -2}, {0, 15, 10, 1, 0, 1, -2}, {0, -2, -15, 0, 0, 0, 2},
+ {0, 3, 0, -1, 0, 0, 0},  {0, 0, -5, 1, 2, 1, -1},   {0, -6, -100, 1, 1, 0, 0}, {0, 3, -20, 1, 0, 0, 2},
+ {0, 0, 5, 0, 0, 0, 1},   {1, 40, -10, 2, 1, 0, -2}, {-3, -10, 20, 1, 0, 0, 0}, {-90, -60, 30, 1, 0, 1, -3},
+};
+int stat_count(void){ return N_STAT; }
+const char *fam_name(int f){ return f >= 0 && f < N_FAM ? fam_nm[f] : "?"; }
+const char *fam_unit(int f){ return f >= 0 && f < N_FAM ? fam_un[f] : ""; }
+const char *zone_name(int z){ return z >= 0 && z < N_ZONE ? zone_nm[z] : "?"; }
+const char *stat_name(int s){ char *o = ring_next(); if(s < 0 || s >= N_STAT) return "?"; snprintf(o, 96, "%s IN %s", fam_nm[s / N_ZONE], zone_nm[s % N_ZONE]); return o; }
+static int clampi(int v, int lo, int hi){ return v < lo ? lo : v > hi ? hi : v; }
+static void make_stats(PlanetInfo *p, Rng *r){
+    static const int unit[N_FAM] = {5, 3, 4, 1, 1, 1, 1}, jit[N_FAM] = {2, 2, 3, 1, 1, 1, 1};
+    int base[N_FAM], lt = 50;
+    for(int k = 0; k < p->n; k++) lt += lmod[p->id[k] % TR_BASE];
+    base[0] = p->gravity_pct; base[1] = p->temp_c; base[2] = clampi(lt, 0, 100); base[3] = p->danger; base[4] = p->loot; base[5] = p->price; base[6] = p->life;
+    for(int f = 0; f < N_FAM; f++) for(int z = 0; z < N_ZONE; z++){
+        int j = (int)rndn(r, 3) - 1;                                           // a little local weather in every number
+        p->stat[f * N_ZONE + z] = (int16_t)(base[f] + zmod[z][f] + j * jit[f]);
+    }
+    for(int k = 0; k < p->n; k++){                                             // a flavour pushes one stat in one zone
+        int v = p->id[k] / TR_BASE, c = tr[p->id[k] % TR_BASE].cat; if(!v) continue;
+        int f = (v + c) % N_FAM, z = (v * 3 + c) & 15, up = ((v ^ c) & 1) ? 1 : -1;
+        p->stat[f * N_ZONE + z] += (int16_t)(up * unit[f]);
+    }
+    for(int z = 0; z < N_ZONE; z++){
+        int16_t *g = &p->stat[0 * N_ZONE + z]; if(*g < 0) *g = 0;
+        int16_t *l = &p->stat[2 * N_ZONE + z]; *l = (int16_t)clampi(*l, 0, 100);
+        for(int f = 3; f < N_FAM; f++){ int16_t *s = &p->stat[f * N_ZONE + z]; *s = (int16_t)clampi(*s, f == 3 ? -5 : -3, f == 3 ? 12 : 9); }
+    }
+}
+
+// ------------------------------------------------------------------ planets
+static void make_natives(PlanetInfo *p, Rng *r);
 void planet_make(uint64_t seed, PlanetInfo *p){
     Rng r = { seed ^ 0x504C414E45545453ull }; uint8_t order[NCAT]; int want, k;
+    if(!conf_ready) conf_init();
     memset(p, 0, sizeof *p);
     for(k = 0; k < NCAT; k++) order[k] = k;
     for(k = NCAT - 1; k > 0; k--){ int j = rndn(&r, k + 1); uint8_t t = order[k]; order[k] = order[j]; order[j] = t; }
     want = 3 + (int)rndn(&r, 4);                                           // 3 to 6
     p->gravity_pct = 100; p->day_hours = 24; p->temp_c = 15;
     for(k = 0; k < NCAT && p->n < want; k++){
-        int cat = order[k], first = -1, cnt = 0, pick, tries;
+        int cat = order[k], first = -1, cnt = 0, tries;
         for(int i = 0; i < NTR; i++) if(tr[i].cat == cat){ if(first < 0) first = i; cnt++; }
         for(tries = 0; tries < 8; tries++){
-            int id = first + (int)rndn(&r, cnt), ok = 1;
-            for(int j = 0; j < p->n; j++) if(traits_conflict(id, p->id[j])) ok = 0;
-            if(ok){ pick = id; p->id[p->n++] = (uint8_t)pick;
-                if(cat == TC_GRAVITY) p->gravity_pct = tr[pick].val; else if(cat == TC_DAY) p->day_hours = tr[pick].val;
-                p->temp_c += tr[pick].dt; p->danger += tr[pick].dg; p->loot += tr[pick].lt; p->price += tr[pick].pr; p->life += tr[pick].lf;
+            int b = first + (int)rndn(&r, cnt), ok = 1, v = (int)rndn(&r, TR_VARIANTS), id = v * TR_BASE + b;
+            for(int j = 0; j < p->n; j++) if(traits_conflict(b, p->id[j])) ok = 0;
+            if(ok){ p->id[p->n++] = (uint16_t)id;
+                if(cat == TC_GRAVITY) p->gravity_pct = tr[b].val; else if(cat == TC_DAY) p->day_hours = tr[b].val;
+                p->temp_c += tr[b].dt; p->danger += tr[b].dg; p->loot += tr[b].lt; p->price += tr[b].pr; p->life += tr[b].lf;
                 break; }
         }
     }
@@ -101,7 +180,10 @@ void planet_make(uint64_t seed, PlanetInfo *p){
     if(p->danger > 8) p->danger = 8;
     if(p->life < -3) p->life = -3;
     if(p->life > 6) p->life = 6;
+    make_stats(p, &r);
+    make_natives(p, &r);
 }
+
 void planet_name(uint64_t seed, char *out){
     static const char *const a[] = {"KO","VA","ZE","MI","TOR","SYL","BRA","NU","QUI","DRA","ELO","FAR","GOR","HAL","IX","JUN"};
     static const char *const b[] = {"RA","LU","NE","SA","KO","VI","MON","TAR","LEX","DAN","PHI","ZUN"};
@@ -138,3 +220,5 @@ void universe_themes(uint64_t useed, int out[2]){
     for(int t = 0; t < 32; t++){ int b = (int)rndn(&r, n); if(theme_pair_ok(b, out[0])){ out[1] = b; return; } }
     out[1] = (out[0] + 5) % n;
 }
+
+#include "pc_beings.inc"

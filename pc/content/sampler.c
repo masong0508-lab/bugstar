@@ -17,6 +17,11 @@ int main(int argc, char **argv){
         printf("universe ...%08X%08X  themes: %s + %s\n", a.uni[1], a.uni[0], theme_get(th[0])->name, theme_get(th[1])->name);
         printf("  planet %s  gravity %d%%  day %dh  temp %dC  danger %+d  loot %+d  life %+d\n", nm, p.gravity_pct, p.day_hours, p.temp_c, p.danger, p.loot, p.life);
         printf("  traits:"); for(int k = 0; k < p.n; k++) printf(" %s%s", trait_name(p.id[k]), k + 1 < p.n ? "," : "\n");
+        for(int k = 0; k < p.nbeing; k++){ Creature c; creature_kind(p.being[k], &c); printf("  creature: %s (%s, health %d, bite %d)\n", c.name, creature_class_name(c.cls), c.stat[0], c.stat[2]); }
+        for(int k = 0; k < p.npeople; k++){ People pe; people_get(p.people[k], &pe); printf("  people: %s - %s\n", pe.name, pe.about1); }
+        if(p.city >= 0){ CityKind c; city_get(p.city, &c); printf("  city: %s - %s\n", c.name, c.about1); }
+        { Indiv iv = { p.legend_kind, p.legend_gift, p.legend_colour, p.legend_rank, p.legend_mut }; CreatureInd ci; creature_indiv(&iv, &ci); printf("  legend: %s [%s]\n", ci.name, rarity_name(ci.rarity)); }
+        printf("  stats: %s = %d, %s = %d, %s = %d\n", stat_name(1 * N_ZONE + 5), p.stat[1 * N_ZONE + 5], stat_name(3 * N_ZONE + 9), p.stat[3 * N_ZONE + 9], stat_name(6 * N_ZONE + 7), p.stat[6 * N_ZONE + 7]);
     }
     return 0;
 }
