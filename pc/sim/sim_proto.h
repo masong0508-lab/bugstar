@@ -16,4 +16,6 @@ static long long sim_xpv(long long v), sim_xpm(long long v);   // xp bar values:
 static void sim_lab(volatile unsigned short *pg);   // PC LAB > SIDE GAME: the side-game menu from anywhere
 static int  sim_open_gods(void);                 // how many god powers are open at this level (0 with the side game off)
 static void pc_land_note(void);                   // the MEANS line after landing
+static void sim_ship_colony(volatile unsigned short *pg);   // the ship menu's COLONY row
+static int  sim_is_on(void);
 #endif

@@ -127,13 +127,23 @@ static void sim_co_row(int i, char *b, int *c){
 static void sim_co_foot(int i, char *b, int *c){
     SimColony *co=sim_colony(); *c=C_GREY;
     if(i>=0){ scpy(b,"FOOD "); ncat(b,co->food); scat(b,"  WOOD "); ncat(b,co->wood); scat(b,"  ORE "); ncat(b,co->ore); scat(b,"  GOODS "); ncat(b,co->goods); *c=C_WHITE; }
+    else if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; }
     else { scpy(b,"SETTLERS "); ncat(b,co->nset); scat(b,"/"); ncat(b,col_cap(co->mask)); scat(b,"  BUILDINGS "); ncat(b,co->built); scat(b,"/"); ncat(b,col_buildings(co->mask)); }
+}
+// Phase 5: A in the colony takes what it made: food for your hunger bar, goods and ore sold for gold, a nap at your bug home (HOUSES)
+static int sim_co_act(int i){
+    SimColony *co=sim_colony(); ColGift g; menu_msg[0]=0;
+    if(!col_collect(co,100-food,&g)){ scpy(menu_msg,"NOTHING TO TAKE YET. COME BACK LATER"); sfx(4); return 0; }
+    if(g.food_pts) eat(g.food_pts); if(g.gold) gold=sadd(gold,(s64)g.gold); if(g.heal){ hearts=maxh; mp=maxmp; }
+    scpy(menu_msg,"TAKEN:"); if(g.food_pts){ scat(menu_msg," FOOD +"); ncat(menu_msg,g.food_pts); } if(g.gold){ scat(menu_msg," GOLD +"); ncat(menu_msg,g.gold); } if(g.heal) scat(menu_msg," A NAP");
+    sim_col_gifts++; sfx(6); return 0;
 }
 static void sim_colony_screen(volatile u16 *pg){
     SimColony *co=sim_colony();
     if(!(co->mask&(1u<<COLR_TENT))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_TENT)); const char *ln[3]={l1,"THE COLONY GROWS AS YOU PLAY.","EACH BIG WIN OPENS A NEW PART."}; card(pg,"COLONY",ln,3); return; }
+    if(sim_away_new && sim_away_n){ const char *ln[6]; for(int i=0;i<sim_away_n;i++) ln[i]=sim_away[i]; card(pg,"WHILE YOU WERE AWAY",ln,sim_away_n); sim_away_new=0; }
     int sel=0; char t[32]; scpy(t,"COLONY  "); ncat(t,co->nset); scat(t," SETTLERS");
-    sim_rows(pg,t,COLR_N-1+co->nset,sim_co_row,sim_co_foot,"UP/DOWN: LOOK  B: BACK",&sel,0);
+    menu_msg[0]=0; in_menu++; sim_rows(pg,t,COLR_N-1+co->nset,sim_co_row,sim_co_foot,"A: TAKE WHAT IT MADE  B: BACK",&sel,sim_co_act); in_menu--; menu_msg[0]=0;
 }
 static int sim_qm_act(int i){
     if(i==0) sim_journal(VISPG); else if(i==1) sim_people(VISPG); else if(i==2) sim_gods(VISPG);
@@ -162,3 +172,6 @@ static void sim_lab(volatile u16 *pg){                     // PC LAB > SIDE GAME
     if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
     static int sel=0; in_menu++; sim_rows(pg,"SIDE GAME",6,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act); in_menu--;
 }
+
+// the ship's COLONY row (GO tab, only with the side game on)
+static void sim_ship_colony(volatile u16 *pg){ if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind(); sim_colony_screen(pg); }

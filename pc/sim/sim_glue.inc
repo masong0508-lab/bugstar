@@ -23,7 +23,7 @@ static s32 sim_fx[SIM_MAXFOLK], sim_fy[SIM_MAXFOLK];       // where it stands (1
 static s32 sim_tgx[SIM_MAXFOLK][SIMP_N], sim_tgy[SIM_MAXFOLK][SIMP_N];   // where each logical place is, per bug
 static u16 sim_stuck[SIM_MAXFOLK];
 static int sim_nhome;
-static int sim_said_letters, sim_col_cards;   // letter pop-ups and colony cards shown (the tests read them)            // letter pop-ups shown (the tests read it)
+static int sim_said_letters, sim_col_cards, sim_col_gifts;   // letter pop-ups and colony cards shown (the tests read them)            // letter pop-ups shown (the tests read it)
 static int sim_a_up;                    // 1 once A has been seen up on this planet: keeps a key still held from the title or a menu from opening the quick menu
 
 static int sim_is_on(void){
@@ -174,11 +174,12 @@ static void sim_dump_all(void){
     char t[96]; for(int k=0;k<sim_w.nfolk;k++){ scpy(t,"near "); ncat(t,k); scat(t," "); ncat(t,sim_dist10(k)); scat(t,"\n"); sim_io_append(path,t); }
     { int nl=0; for(u32 b=0;b<sim_log_count(&sim_w);b++) if(sim_log_at(&sim_w,b)->kind==SIME_LETTER) nl++;
       scpy(t,"friends"); for(int k=0;k<sim_w.nfolk;k++){ scat(t," "); ncat(t,sim_w.friend[k]); } scat(t," letters "); ncat(t,nl); scat(t," shown "); ncat(t,sim_said_letters); scat(t,"\n"); sim_io_append(path,t); }
-    { static char cb[200]; col_dump(sim_colony(),cb,sizeof cb); sim_io_append(path,cb); scpy(t,"colcards "); ncat(t,sim_col_cards); scat(t,"\n"); sim_io_append(path,t); }
+    { static char cb[200]; col_dump(sim_colony(),cb,sizeof cb); sim_io_append(path,cb); scpy(t,"colcards "); ncat(t,sim_col_cards); scat(t," gifts "); ncat(t,sim_col_gifts); scat(t," gold "); ncat(t,gold); scat(t," food "); ncat(t,food); scat(t,"\n"); sim_io_append(path,t); }
     { Lv l; sim_level_lv(&l); char d[LV_DEC_MAX]; lv_to_dec(&l,d,sizeof d); scpy(t,"level "); scat(t,d); scat(t," powers "); ncat(t,god_unlocked_count(&l,sim_w.god.sandbox)); scat(t,"\n"); sim_io_append(path,t); }
     sim_io_append(path,"--\n");
 }
 // ---------------------------------------------------------------- the colony (Phase 4): the action game's milestones open its rungs
+static char sim_away[6][48]; static int sim_away_n, sim_away_new;   // the WHILE YOU WERE AWAY summary of the last catch-up
 static u32 sim_town32(void){ return (u32)sim_mix64(sim_w.seed ^ 0xC0105EEDull); }
 static SimColony *sim_colony(void){ return col_find(&sim_f.slot[cur_slot%SIM_SLOTS].cols, sim_town32(), 1, (u32)sim_day(&sim_w)); }
 static void sim_colflags(ColFlags *f){
@@ -187,7 +188,10 @@ static void sim_colflags(ColFlags *f){
 }
 static void sim_colony_tick(void){
     ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony();
-    u16 nw=col_update(co,col_mask(&fl)); col_catchup(co,(u32)sim_day(&sim_w));
+    u16 nw=col_update(co,col_mask(&fl));
+    { ColAway aw; int nd=col_catchup_ex(co,(u32)sim_day(&sim_w),col_year_days(SIM_SEASON_DAYS),&aw);
+      if(nd>=2 && (co->mask&(1u<<COLR_TENT))){ sim_away_n=col_away_text(&aw,co,sim_away,6); sim_away_new=1;     // read on the COLONY screen; one line now
+          char b[40]; scpy(b,"COLONY: "); if(aw.years){ ncat(b,aw.years); scat(b," YEARS PASSED"); } else { ncat(b,aw.days); scat(b," DAYS PASSED"); } if(!nw){ say(b); } } }
     if(nw){ int top=0; for(int r=1;r<COLR_N;r++) if(nw&(1u<<r)) top=r; say(col_rung_card(top)); sfx(6); sim_col_cards++; }
 }
 static int sim_open_gods(void){ if(!sim_is_on()) return 0; Lv l; sim_level_lv(&l); return god_unlocked_count(&l,sim_f.sandbox); }

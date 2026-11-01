@@ -10,8 +10,8 @@ field(){ echo "$1" | awk -v k=$2 '{for(i=1;i<=NF;i++) if($i==k) print $(i+1)}'; 
 run 0 0 tests/sim_town.txt 12000; run 1 1 tests/sim_town.txt 12000; run 1b 1 tests/sim_town.txt 12000
 cmp -s out/un1.dump out/un1b.dump || { echo "sim_unlock: DIFFERENT between two runs"; exit 1; }
 c0=$(last 0 colony); c1=$(last 1 colony)
-[ "$(field "$c0" mask)" = 0001 ] && [ "$(field "$c0" settlers)" = 0 ] && [ "$(last 0 colcards)" = "colcards 0" ] || { echo "sim_unlock: locked colony wrong: $c0"; exit 1; }
-[ "$(field "$c1" mask)" = 0003 ] && [ "$(field "$c1" settlers)" = 2 ] && [ "$(last 1 colcards)" = "colcards 1" ] || { echo "sim_unlock: tent did not open: $c1"; exit 1; }
+[ "$(field "$c0" mask)" = 0001 ] && [ "$(field "$c0" settlers)" = 0 ] && [ "$(field "$(last 0 colcards)" colcards)" = 0 ] || { echo "sim_unlock: locked colony wrong: $c0"; exit 1; }
+[ "$(field "$c1" mask)" = 0003 ] && [ "$(field "$c1" settlers)" = 2 ] && [ "$(field "$(last 1 colcards)" colcards)" = 1 ] || { echo "sim_unlock: tent did not open: $c1"; exit 1; }
 for s in 0 1; do cp out/un$s.sav out/unc$s.sav; cp out/un$s.sav.sim out/unc$s.sav.sim; run c$s 0 tests/sim_cont.txt 6000; done
 c3=$(last c1 colony); [ "$(field "$c3" mask)" = 0003 ] && [ "$(field "$c3" settlers)" = 2 ] || { echo "sim_unlock: the tent was lost after reload: $c3"; exit 1; }
 h(){ grep "^shot $2 " out/un$1.log | sed 's/.*screen=//'; }

@@ -91,6 +91,14 @@ H game.inc 'while(level<LEVEL_CAP && xp>=xp_next() && ups<64){' 'while(!sim_big_
 H ui.inc 'scpy(b,"LEVEL "); ncat(b,level); scat(b,"   BUGS FREED ");' 'scpy(b,"LEVEL "); sim_ncat_level(b); scat(b,"   BUGS FREED ");'
 H ui.inc 'char lv[12]="LV "; ncat(lv,level);' 'char lv[16]="LV "; sim_ncat_level(lv);'
 H ui.inc 'vbar(pg,30,75,90,xp,xp_next(),C_GOLD,"XP")' 'vbar(pg,30,75,90,sim_xpv(xp),sim_xpm(xp_next()),C_GOLD,"XP")'
+H ui.inc 'static const u8 shop_tab_n[4]={3,5,5,4};' 'static u8 shop_tab_n[4]={3,5,5,4};'
+H ui.inc 'shop_tab_id[4][5]={{0,14,13,0,0},' 'shop_tab_id[4][5]={{0,14,13,17,0},'
+H ui.inc 'static const char *const shop_nm[17]={' 'static const char *const shop_nm[18]={'
+H ui.inc '"KART CLUB","SPELL SHOP","MINING"};' '"KART CLUB","SPELL SHOP","MINING","COLONY"};'
+H ui.inc 'static const char *const shop_ds[17]={' 'static const char *const shop_ds[18]={'
+H ui.inc '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG"};' '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG","YOUR SETTLERS: SEE THEM AND TAKE WHAT THEY MADE"};'
+H ui.inc 'in_menu++; menu_msg[0]=0; ship_build_model();' 'in_menu++; menu_msg[0]=0; ship_build_model(); shop_tab_n[0]=sim_is_on()?4:3;'
+H ui.inc 'if(sel==15){ spell_shop(pg); continue; }' 'if(sel==17){ sim_ship_colony(pg); continue; } if(sel==15){ spell_shop(pg); continue; }'
 echo '#include "../sim/sim_glue.inc"' >> main.c
 echo '#include "../pc_info.inc"' >> main.c
 echo '#include "../creator/creator_ui.inc"' >> main.c
