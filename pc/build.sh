@@ -27,9 +27,17 @@ sed -i \
 # the HOW BIG screen sorts every page in a scratch area: the GBA keeps it in the world builder's 32 KB; the PC has far more pages, so it gets its own
 sed -i -e 's|^#define SZ_SCR .*|#define SZ_SCR pc_szscr|' -e '/^#define NSIZE /a static u32 pc_szscr[4*NSIZE+64];' sizes.inc
 sed -i '1i #include "pc_hw.h"' main.c
+# the PC content library is a separate translation unit (pc/content/pcx.c): the game's own code has names like trait_name, so it only sees pcx.h
+sed -i -e 's|^static void world_page(volatile u16 \*pg, int y); |static void pc_world_screen(volatile u16 *pg); &|' \
+       -e 's|^\( *\)if(HIT(K_SEL) \&\& page==7){|\1if(HIT(K_B) \&\& page==7){ pc_world_screen(pg); dirty=1; }\n&|' \
+       -e 's|foot = big_unlocked() ? "A: FAVOURITE  SEL: HOW BIG IS IT?" : "A: SAVE AS A FAVOURITE";|foot = big_unlocked() ? "A: FAV  SEL: HOW BIG  B: PC FILE" : "A: FAVOURITE  B: PC FILE";|' ui.inc
+# traits really change the endless galaxy's planets (gravity, light, weather); the six story worlds keep their own rules
+sed -i '1i static void pc_apply_traits(void); static int pc_applied;' game.inc
+sed -i 's|^\( *\)// a weird world: one planet in 111, only out in the galaxy.*|\1pc_applied=0; if(gal \&\& !hellw() \&\& !cur_moon) pc_apply_traits();\n&|' game.inc
+echo '#include "../pc_info.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 # --- compile -----------------------------------------------------------------------------------------------------------
 # -funsigned-char: the GBA compiler's char is unsigned. -fwrapv: ARM integers wrap. -no-pie: all addresses stay below 4 GB.
 gcc -std=gnu11 -O1 -w -funsigned-char -fwrapv -fno-strict-aliasing -no-pie -m64 -DNO_LOGO ${PC_CFLAGS} \
-    -I. -I.. -Wa,-I,. ../pc_main.c ../pc_hw.c main.c -lm -o ../bugstar_pc
+    -I. -I.. -Wa,-I,. ../pc_main.c ../pc_hw.c ../content/pc_content.c ../content/pcx.c main.c -lm -o ../bugstar_pc
 echo "built pc/bugstar_pc"

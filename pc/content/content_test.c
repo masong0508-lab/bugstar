@@ -4,6 +4,7 @@
 #include <string.h>
 #include "bignum.h"
 #include "pc_content.h"
+#include "pcx.h"
 
 static int fails;
 #define CHECK(c, ...) do{ if(!(c)){ printf("FAIL: "); printf(__VA_ARGS__); printf("\n"); fails++; } }while(0)
@@ -146,6 +147,25 @@ int main(void){
       CHECK(pairs == 266, "valid theme pairs %d, the HOW BIG page says 266", pairs);
       CHECK(trait_count() == 1040 && tn == 24, "counts: %d traits, %d themes (the HOW BIG pages say 1040 and 24)", trait_count(), tn);
       printf("how-big pages: %llu classic trait recipes, %llu flavoured recipes, %d theme pairs, %d traits, %d themes\n", cnt, cnt16, pairs, trait_count(), tn); }
+
+    // ---- pcx: the pages the game shows (same address, same pages; every line fits the screen and uses only letters the game's font has)
+    { static PcxWorld w1, w2, w3; uint32_t u[8] = {1}, cx[5] = {5}, cy[5] = {9}; long lines = 0, bad = 0; const char *okf = " ',():-.^0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ+=!?/<>*#";
+      for(int i = 0; i < 3000; i++){
+          u[0] = r32(); u[3] = r32(); cx[0] = r32(); cx[4] = r32() & 0x7FFFFFF; cy[1] = r32(); int st = r32() % 32, pl = r32() % 16, mo = r32() % 8, ap = i & 1;
+          pcx_world(u, cx, cy, st, pl, mo, ap, &w1); pcx_world(u, cx, cy, st, pl, mo, ap, &w2); if(memcmp(&w1, &w2, sizeof w1)) bad++;
+          if(w1.npages != PCX_PAGES) bad++;
+          for(int p = 0; p < w1.npages; p++){ if(w1.page[p].n < 1 || w1.page[p].n > PCX_LINES) bad++;
+              for(int l = 0; l < w1.page[p].n; l++){ const char *s = w1.page[p].t[l]; lines++;
+                  if(strlen(s) > 58 || strspn(s, okf) != strlen(s)){ if(bad < 5) printf("pcx bad line p%d l%d (%zu): %s\n", p, l, strlen(s), s); bad++; } } }
+          int e[3], e2[3]; pcx_effects(u, cx, cy, st, pl, mo, e); pcx_effects(u, cx, cy, st, pl, mo, e2); if(memcmp(e, e2, sizeof e) || e[0] < 0 || e[0] > 3 || e[1] < -1 || e[1] > 2 || e[2] < -1 || e[2] > 5) bad++; }
+      CHECK(!bad, "pcx: %ld bad pages or lines", bad);
+      // the bits above the game's own address change the world; with them all zero nothing changes
+      u[0] = 1; cx[0] = cx[1] = cx[2] = cx[3] = cx[4] = 0; cy[0] = cy[1] = cy[2] = cy[3] = cy[4] = 0; pcx_hi_clear(); pcx_world(u, cx, cy, 7, 0, 0, 1, &w1);
+      { uint32_t uh[PCX_UNI_HI] = {0}, xh[PCX_AX_HI] = {0}, yh[PCX_AX_HI] = {0}; uh[55] = 1; pcx_hi_set(uh, xh, yh); pcx_world(u, cx, cy, 7, 0, 0, 1, &w2);
+        uh[55] = 0; xh[33] = 0x800000; pcx_hi_set(uh, xh, yh); pcx_world(u, cx, cy, 7, 0, 0, 1, &w3); pcx_hi_clear(); }
+      CHECK(w1.seed != w2.seed && w1.seed != w3.seed && w2.seed != w3.seed, "pcx: the top bit of the universe / of the x side did not change the seed");
+      { uint32_t f_u[8] = {1}, f_x[5] = {0}, f_y[5] = {0}; pcx_fold(f_u, f_x, f_y); CHECK(f_u[0] == 1 && !f_u[1] && !f_x[0] && !f_y[0], "pcx_fold changed an address with no high bits"); }
+      printf("pcx: 3000 places, %ld lines, %d bad; high bits change the seed, zero high bits change nothing\n", lines, (int)bad > 0 ? (int)bad : 0); }
 
     printf(fails ? "FAILED (%d)\n" : "ALL OK\n", fails);
     return fails != 0;
