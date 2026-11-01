@@ -142,23 +142,65 @@ static void draw_sprites(int one_d){
             } }
     }
 }
+
+// ---------------------------------------------------------------- the picture, line by line (HBlank DMA)
+// The kart races' ground is drawn by the chip itself: at every HBlank three DMA channels copy a table row into DISPCNT, BLDALPHA and BG2's affine
+// registers. A real chip does that while it scans; here the picture is made once a frame, so build_lines() plays the scan: it copies the I/O block,
+// and for each of the 160 lines records the registers the line is drawn with, then runs the HBlank transfers (into the copy, never into the real
+// registers). The bitmap layer's internal reference point is reloaded whenever BG2X/BG2Y is written, else it moves on by PB/PD each line.
+typedef struct { uint16_t dc, bldcnt, bldalpha, bldy; int16_t pa,pb,pc,pd; int32_t rx,ry; } LineSt;
+static LineSt lst[160]; static int lst_dma;
+static int32_t sx28(uint32_t v){ return (int32_t)(v<<4)>>4; }
+static void build_lines(void){
+    uint8_t io[0x60]; memcpy(io,(void*)(uintptr_t)IOREG,0x60);
+    #define I16(o) (*(uint16_t*)(io+(o)))
+    #define I32(o) (*(uint32_t*)(io+(o)))
+    struct { uint32_t sad,dad,dad0,cnt,ctl; int on; } ch[4]; int any=0;
+    for(int i=0;i<4;i++){ uint32_t b=IOREG+0xB0+12*i; uint32_t ctl=R16(b+10); ch[i].ctl=ctl; ch[i].on=(ctl&0x8000) && ((ctl>>12)&3)==2;
+        ch[i].sad=R32(b); ch[i].dad=ch[i].dad0=R32(b+4); ch[i].cnt=R16(b+8); if(!ch[i].cnt) ch[i].cnt= i==3 ? 0x10000 : 0x4000; if(ch[i].on) any++; }
+    lst_dma=any>0;
+    int32_t ix=sx28(I32(0x28)), iy=sx28(I32(0x2C));
+    for(int y=0;y<160;y++){
+        LineSt *L=&lst[y]; L->dc=I16(0); L->bldcnt=I16(0x50); L->bldalpha=I16(0x52); L->bldy=I16(0x54);
+        L->pa=(int16_t)I16(0x20); L->pb=(int16_t)I16(0x22); L->pc=(int16_t)I16(0x24); L->pd=(int16_t)I16(0x26); L->rx=ix; L->ry=iy;
+        ix+=L->pb; iy+=L->pd;
+        if(!any || y>=159) continue;
+        for(int i=0;i<4;i++){ if(!ch[i].on) continue;
+            int word=(ch[i].ctl>>10)&1, dc=(ch[i].ctl>>5)&3, sc=(ch[i].ctl>>7)&3, st=word?4:2;
+            for(uint32_t n=0;n<ch[i].cnt;n++){
+                uint32_t sa=ch[i].sad, da=ch[i].dad;
+                if(sa>=0x1000 && da>=IOREG && da<IOREG+0x60-(word?3:1)){
+                    uint32_t v= word ? *(volatile uint32_t*)(uintptr_t)sa : *(volatile uint16_t*)(uintptr_t)sa; uint32_t o=(da-IOREG)&~(uint32_t)(st-1);
+                    if(word) I32(o)=v; else I16(o)=(uint16_t)v;
+                    if(o>=0x28 && o<0x2C) ix=sx28(I32(0x28)); if(o>=0x2C && o<0x30) iy=sx28(I32(0x2C));
+                }
+                ch[i].sad += sc==0||sc==3 ? st : sc==1 ? -st : 0;
+                ch[i].dad += dc==0||dc==3 ? st : dc==1 ? -st : 0;
+            }
+            if(dc==3) ch[i].dad=ch[i].dad0;
+            if(!((ch[i].ctl>>9)&1)) ch[i].on=0;
+        }
+    }
+    #undef I16
+    #undef I32
+}
 static uint16_t screen[160][240];
 static void compose(void){
+    build_lines();
     uint16_t dc=R16(IOREG), mode=dc&7; int one_d=(dc>>6)&1;
     uint16_t bd=rgbpix(R16(PALRAM));
     if(dc&0x80){ for(int y=0;y<160;y++) for(int x=0;x<240;x++) screen[y][x]=0x7FFF; return; }      // forced blank = white
     int obj_on=(dc>>12)&1, bg2_on=(dc>>10)&1;
     if(obj_on) draw_sprites(one_d); else memset(objp,4,sizeof objp);
-    uint16_t bldcnt=R16(IOREG+0x50), bldalpha=R16(IOREG+0x52); int ev=R16(IOREG+0x54)&31; if(ev>16) ev=16;
-    int bmode=(bldcnt>>6)&3; int ea=bldalpha&31, eb=(bldalpha>>8)&31; if(ea>16)ea=16; if(eb>16)eb=16;
     int bgprio=R16(IOREG+0x0C)&3;
-    int16_t pa=(int16_t)R16(IOREG+0x20), pb=(int16_t)R16(IOREG+0x22), pc=(int16_t)R16(IOREG+0x24), pd=(int16_t)R16(IOREG+0x26);
-    int32_t rx=(int32_t)(R32(IOREG+0x28)<<4)>>4, ry=(int32_t)(R32(IOREG+0x2C)<<4)>>4;
-    uint32_t base = VRAMB + ((dc&0x10) ? 0xA000 : 0);
-    for(int y=0;y<160;y++) for(int x=0;x<240;x++){
+    for(int y=0;y<160;y++){ const LineSt *L=&lst[y]; uint16_t ldc=L->dc; int lmode=ldc&7, lbg2=(ldc>>10)&1;
+      uint16_t bldcnt=L->bldcnt, bldalpha=L->bldalpha; int ev=L->bldy&31; if(ev>16) ev=16;
+      int bmode=(bldcnt>>6)&3; int ea=bldalpha&31, eb=(bldalpha>>8)&31; if(ea>16)ea=16; if(eb>16)eb=16;
+      int pa=L->pa, pc=L->pc; int32_t rx=L->rx, ry=L->ry; uint32_t base = VRAMB + ((ldc&0x10) ? 0xA000 : 0);
+      for(int x=0;x<240;x++){
         int have=0; uint16_t bc=bd;
-        if(bg2_on && mode>=3 && mode<=5){
-            int tx=(int)((rx + pa*x + pb*y)>>8), ty=(int)((ry + pc*x + pd*y)>>8);
+        if(bg2_on && lbg2 && lmode>=3 && lmode<=5){ mode=lmode; dc=(dc&~0x10)|(ldc&0x10);
+            int tx=(int)((rx + pa*x)>>8), ty=(int)((ry + pc*x)>>8);
             int bw = mode==5?160:240, bh = mode==5?128:160;
             if(tx>=0&&ty>=0&&tx<bw&&ty<bh){
                 if(mode==4){ int idx=*(volatile uint8_t*)(uintptr_t)(base+ty*240+tx); if(idx){ bc=rgbpix(R16(PALRAM+idx*2)); have=1; } else { bc=bd; } }
@@ -179,7 +221,7 @@ static void compose(void){
         else if(bmode==2 && t1) out=bright(top,ev,1);
         else if(bmode==3 && t1) out=bright(top,ev,0);
         screen[y][x]=out;
-    }
+    } }
 }
 void pc_render(uint8_t *rgb){
     compose();
@@ -207,6 +249,7 @@ int pc_write_ppm(const char *path, int scale){
 // edges over one output pixel ("sharp bilinear": flat inside a texel, soft only at the edge).
 static uint16_t *nv_oc; static uint8_t *nv_op; static size_t nv_cap;
 static uint16_t bgres[160][240]; static uint8_t bghave[160][240];
+static uint16_t bgres2[160][240]; static uint8_t bghave2[160][240];   // page 1, for the line-by-line kart ground
 static float *nv_fx, *nv_fy; static int nv_fcap;
 static void nv_resolve_bg(int mode, uint32_t base, uint16_t dc, int *bw, int *bh, uint16_t bd){
     *bw = mode==5?160:240; *bh = mode==5?128:160;
@@ -221,6 +264,7 @@ static uint16_t mix15(uint16_t a, uint16_t b, int t){      // t = 0..16: weight 
 }
 void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(W<240||H<160){ W=240; H=160; }
+    build_lines();
     size_t need=(size_t)W*H; if(need>nv_cap){ free(nv_oc); free(nv_op); nv_oc=malloc(need*2); nv_op=malloc(need); nv_cap=need; }
     if(W+H>nv_fcap){ free(nv_fx); free(nv_fy); nv_fcap=W+H; nv_fx=malloc(sizeof(float)*(W+H)); nv_fy=nv_fx+W; }
     uint16_t dc=R16(IOREG), mode=dc&7; int one_d=(dc>>6)&1;
@@ -275,7 +319,11 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     uint32_t base = VRAMB + ((dc&0x10) ? 0xA000 : 0);
     int have_bg = bg2_on && mode>=3 && mode<=5, bw=240, bh=160;
     if(have_bg) nv_resolve_bg(mode,base,dc,&bw,&bh,bd);
-    int axis = (pb==0 && pc==0);                                // no rotation: the bitmap's x depends on X only, y on Y only
+    int dmaln = have_bg && lst_dma && mode==4;
+    if(dmaln){                                                   // both pages: each line says which one it shows
+        for(int y=0;y<160;y++) for(int x=0;x<240;x++){ int i0=*(volatile uint8_t*)(uintptr_t)(VRAMB+y*240+x), i1=*(volatile uint8_t*)(uintptr_t)(VRAMB+0xA000+y*240+x);
+            bghave[y][x]=i0!=0; bgres[y][x]=i0?rgbpix(R16(PALRAM+i0*2)):bd; bghave2[y][x]=i1!=0; bgres2[y][x]=i1?rgbpix(R16(PALRAM+i1*2)):bd; } }
+    int axis = (pb==0 && pc==0) && !dmaln;                                // no rotation: the bitmap's x depends on X only, y on Y only
     int *tabx=0,*taby=0; int8_t *wx=0,*wy=0;
     if(have_bg && axis){
         tabx=malloc(sizeof(int)*(W+H)); taby=tabx+W; wx=malloc(W+H); wy=wx+W;
@@ -289,9 +337,22 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     }
     static const int bit[3]={2,4,5};
     for(int Y=0;Y<H;Y++){
+        double rpa=0,rpc=0,rrx=0,rry=0; int rpg=0, rbg=have_bg;
+        if(dmaln){                                               // this output row: the table row(s) of the game line(s) it lies over
+            double lc=(Y+0.5)*sy-0.5; int l0=(int)floor(lc); if(l0<0) l0=0; if(l0>159) l0=159; int l1=l0+1>159?159:l0+1; double f=lc-l0; if(f<0) f=0;
+            int nl=(int)((Y+0.5)*sy); if(nl>159) nl=159; const LineSt *N=&lst[nl], *A=&lst[l0], *B=&lst[l1];
+            if(!(((A->dc&B->dc)&0x410)==0x410) || A->pa==0 || B->pa==0) { A=B=N; f=0; }          // (only between two ground lines: the sky and the HUD are never mixed in)
+            rbg=(N->dc>>10)&1; rpg=(N->dc>>4)&1;
+            rpa=(A->pa*(1-f)+B->pa*f)/256.0; rpc=(A->pc*(1-f)+B->pc*f)/256.0; rrx=(A->rx*(1-f)+B->rx*f)/256.0; rry=(A->ry*(1-f)+B->ry*f)/256.0;
+            bldcnt=N->bldcnt; bldalpha=N->bldalpha; ev=N->bldy&31; if(ev>16) ev=16; bmode=(bldcnt>>6)&3; ea=bldalpha&31; eb=(bldalpha>>8)&31; if(ea>16)ea=16; if(eb>16)eb=16;
+        }
         for(int X=0;X<W;X++){
             int have=0; uint16_t bc=bd;
-            if(have_bg){
+            if(dmaln){
+                if(rbg){ double gx=X*sx; int tx=(int)floor(rrx+rpa*gx), ty=(int)floor(rry+rpc*gx);
+                    if(tx>=0&&ty>=0&&tx<240&&ty<160){ if(rpg){ have=bghave2[ty][tx]; bc=bgres2[ty][tx]; } else { have=bghave[ty][tx]; bc=bgres[ty][tx]; } } }
+            }
+            else if(have_bg){
                 int tx,ty; int wxx=0,wyy=0;
                 if(axis){ tx=tabx[X]; ty=taby[Y]; wxx=wx[X]; wyy=wy[Y]; }
                 else { double gx=X*sx, gy=Y*sy; tx=(int)floor((rx + pa*gx + pb*gy)/256.0); ty=(int)floor((ry + pc*gx + pd*gy)/256.0); }
