@@ -82,13 +82,16 @@ static uint32_t crc_upd(uint32_t c,const uint8_t*b,size_t n){ for(size_t i=0;i<n
 static void be32(uint8_t*p,uint32_t v){ p[0]=v>>24;p[1]=v>>16;p[2]=v>>8;p[3]=v; }
 static void chunk(FILE*f,const char*t,const uint8_t*d,uint32_t n){ uint8_t h[8]; be32(h,n); memcpy(h+4,t,4); fwrite(h,1,8,f);
     uint32_t c=crc_upd(0xFFFFFFFFu,(uint8_t*)t,4); if(n){ fwrite(d,1,n,f); c=crc_upd(c,d,n); } uint8_t e[4]; be32(e,~c); fwrite(e,1,4,f); }
-int plat_write_png(const char *path, const uint32_t *xrgb, int w, int h){
-    if(!crc_t[1]) crc_init();
+static int png_write(const char *path, const uint32_t *px, int w, int h, int alpha);
+int plat_write_png(const char *path, const uint32_t *xrgb, int w, int h){ return png_write(path,xrgb,w,h,0); }
+int plat_write_png_rgba(const char *path, const uint32_t *argb, int w, int h){ return png_write(path,argb,w,h,1); }
+static int png_write(const char *path, const uint32_t *xrgb, int w, int h, int alpha){
+    if(!crc_t[1]) crc_init(); int bpp=alpha?4:3;
     FILE *f=fopen(path,"wb"); if(!f) return 0;
     static const uint8_t sig[8]={137,80,78,71,13,10,26,10}; fwrite(sig,1,8,f);
-    uint8_t ih[13]; be32(ih,w); be32(ih+4,h); ih[8]=8; ih[9]=2; ih[10]=0; ih[11]=0; ih[12]=0; chunk(f,"IHDR",ih,13);
-    size_t rowb=(size_t)w*3+1, raw=rowb*h; uint8_t *rb=malloc(raw); 
-    for(int y=0;y<h;y++){ uint8_t *r=rb+y*rowb; r[0]=0; for(int x=0;x<w;x++){ uint32_t p=xrgb[(size_t)y*w+x]; r[1+x*3]=p>>16; r[2+x*3]=p>>8; r[3+x*3]=p; } }
+    uint8_t ih[13]; be32(ih,w); be32(ih+4,h); ih[8]=8; ih[9]=alpha?6:2; ih[10]=0; ih[11]=0; ih[12]=0; chunk(f,"IHDR",ih,13);
+    size_t rowb=(size_t)w*bpp+1, raw=rowb*h; uint8_t *rb=malloc(raw); 
+    for(int y=0;y<h;y++){ uint8_t *r=rb+y*rowb; r[0]=0; for(int x=0;x<w;x++){ uint32_t p=xrgb[(size_t)y*w+x]; r[1+x*bpp]=p>>16; r[2+x*bpp]=p>>8; r[3+x*bpp]=p; if(alpha) r[4+x*bpp]=p>>24; } }
     // zlib stream of stored blocks
     size_t nblk=(raw+65534)/65535; uint8_t *z=malloc(raw+nblk*5+6+16); size_t zn=0; z[zn++]=0x78; z[zn++]=0x01;
     uint32_t a=1,b=0; for(size_t i=0;i<raw;i++){ a=(a+rb[i])%65521; b=(b+a)%65521; }
@@ -129,27 +132,23 @@ static void wav_close(void){
     fwrite("data",1,4,g_wav); fwrite(&dl,4,1,g_wav); fclose(g_wav); g_wav=0;
 }
 // ------------------------------------------------------------------------------------------------ window and picture
-static void make_icon(void){            // the window icon, drawn here: a yellow star over a dark disc, a green bug in front
-    const int S=64; SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,S,S,32,SDL_PIXELFORMAT_ARGB8888); if(!s) return;
-    uint32_t *p=s->pixels;
+void plat_icon_pixels(uint32_t *p, int S){        // the icon: a yellow star over a dark disc, a green bug in front. Drawn from shapes, so any size works.
     for(int y=0;y<S;y++) for(int x=0;x<S;x++){
-        double dx=x-31.5, dy=y-31.5, r=sqrt(dx*dx+dy*dy); uint32_t c=0;
-        if(r<30){ c=0xFF141B3C; if(r>27) c=0xFF2C3A7A; }
-        // 5-point star
-        double ang=atan2(dy,dx)+M_PI/2, k=fmod(ang+M_PI*2,2*M_PI/5)-M_PI/5; double rr=r*cos(k); if(rr<0)rr=-rr;
-        double edge=(cos(M_PI/5)*14.0+0.0)/cos(k>0?k:-k); (void)rr;
-        double sr = 27.0*cos(2*M_PI/5*0)/(1.0); (void)sr;
-        double a2=fabs(k); double lim = 9.5/ (cos(a2)*0.75 + 0.0) ; (void)lim;
-        double radial = 26.0 - 15.0*(a2/(M_PI/5)); if(r<radial && r<28) c=0xFFFFD23C;
-        // the bug: body, head, legs
-        double bx=dx, by=dy+6; if((bx*bx)/110+(by*by)/190<1) c=0xFF3DB04A;
-        if((bx*bx)/110+((by-0)*(by-0))/190<1 && fabs(bx)<1.0) c=0xFF1F7A30;
-        double hx=dx, hy=dy+19; if(hx*hx+hy*hy<30) c=0xFF2A8A38;
-        if(fabs(bx)<7 && fabs(by+1)<2.5 && bx*bx/110+by*by/190<1) c=0xFF1F7A30;
+        double dx=(x+0.5)*64.0/S-32, dy=(y+0.5)*64.0/S-32, r=sqrt(dx*dx+dy*dy); uint32_t c=0;
+        if(r<30){ c=0xFF141B3C; if(r>27.5) c=0xFF2C3A7A; }
+        double ang=atan2(dy,dx)+M_PI/2; double seg=2*M_PI/5; double k=ang-seg*floor(ang/seg+0.5); double a2=fabs(k);   // angle from the nearest star tip
+        double radial=26.0-15.0*(a2/(seg/2)); if(r<radial && r<28) c=0xFFFFD23C;
+        double bx=dx, by=dy+6;                                    // the bug: body, wing split, head, eyes, legs
+        if((bx*bx)/110+(by*by)/190<1) c=0xFF3DB04A;
+        if((bx*bx)/110+(by*by)/190<1 && fabs(bx)<0.9) c=0xFF1F7A30;
+        double hy=dy+19; if(dx*dx+hy*hy<30) c=0xFF2A8A38;
         for(int l=-1;l<=1;l++){ double ly=by-l*7; if(fabs(ly)<1.2 && fabs(bx)>9 && fabs(bx)<17) c=0xFF1F7A30; }
-        if(hx*hx+hy*hy<30 && ((fabs(hx)>2 && fabs(hx)<4.5) && fabs(hy+1)<1.6)) c=0xFFFFFFFF;
+        if(dx*dx+hy*hy<30 && fabs(dx)>2 && fabs(dx)<4.5 && fabs(hy+1)<1.6) c=0xFFFFFFFF;
         p[y*S+x]=c; }
-    SDL_SetWindowIcon(win,s); SDL_FreeSurface(s);
+}
+static void make_icon(void){
+    const int S=64; SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,S,S,32,SDL_PIXELFORMAT_ARGB8888); if(!s) return;
+    plat_icon_pixels(s->pixels,S); SDL_SetWindowIcon(win,s); SDL_FreeSurface(s);
 }
 static void tex_ensure(int w, int h, int linear){
     if(tex && tex_w==w && tex_h==h && tex_linear==linear) return;
@@ -193,7 +192,7 @@ static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRender
 // ---- the options screen
 enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_REBIND, A_MAINBACK };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const mpnames[]={"AUTO","1 MEGAPIXEL","2","3","4","6","8"}; static int mp_choice;
 static int mp_val(int i){ static const int v[]={0,1,2,3,4,6,8}; return v[i]; }
@@ -207,8 +206,8 @@ static void menu_build(Item *it, int *n){
         it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
         it[k++]=(Item){1,"PAUSE WHEN UNFOCUSED",&C.pause_unfocus,0,1,1,onoff,0}; it[k++]=(Item){0,"WINDOW SIZE: NEXT",0,0,0,0,0,A_WINSIZE}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_AUDIO: it[k++]=(Item){2,"VOLUME",&C.volume,0,100,5,0,0}; it[k++]=(Item){1,"MUTE",&C.mute,0,1,1,onoff,0}; it[k++]=(Item){1,"RUMBLE (GAMEPAD)",&C.rumble,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
-    case P_CONTROLS: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+100*i}; it[k++]=(Item){0,"RESET KEYS",0,0,0,0,0,A_RESETKEYS}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
-    case P_PAD: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+100*i}; it[k++]=(Item){2,"STICK DEAD ZONE",&C.deadzone,5,80,5,0,0}; it[k++]=(Item){0,"RESET PAD",0,0,0,0,0,A_RESETPAD}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
+    case P_CONTROLS: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+i}; it[k++]=(Item){0,"RESET KEYS",0,0,0,0,0,A_RESETKEYS}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
+    case P_PAD: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+i}; it[k++]=(Item){2,"STICK DEAD ZONE",&C.deadzone,5,80,5,0,0}; it[k++]=(Item){0,"RESET PAD",0,0,0,0,0,A_RESETPAD}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_ABOUT: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     }
     *n=k;
@@ -219,12 +218,12 @@ static void apply_video(void){
     if(!win) return;
     SDL_SetWindowFullscreen(win, C.fullscreen? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
     if(!C.fullscreen) SDL_SetWindowSize(win,C.win_w,C.win_h);
-    SDL_RenderSetVSync(ren,C.vsync);
+    SDL_RenderSetVSync(ren,C.vsync); SDL_ShowCursor(C.fullscreen?SDL_DISABLE:SDL_ENABLE);
 }
 static void key_name_of(int i, char *o, size_t n){ const char *a=C.kb[i][0]?SDL_GetScancodeName(C.kb[i][0]):"-", *b=C.kb[i][1]?SDL_GetScancodeName(C.kb[i][1]):"-"; snprintf(o,n,"%s  /  %s",a,b); }
 static void pad_name_of(int i, char *o, size_t n){ const char *a=SDL_GameControllerGetStringForButton(C.pad[i]); snprintf(o,n,"%s",a?a:"-"); }
 static void menu_do(int act){
-    int idx=act>=A_REBIND?act/100:0; if(act>=A_REBIND) act=A_REBIND;
+    int idx=act>=A_REBIND?act-A_REBIND:0; if(act>=A_REBIND) act=A_REBIND;
     switch(act){
     case A_RESUME: menu_open=0; cfg_save(); break;
     case A_VIDEO: menu_page=P_VIDEO; menu_sel=0; break; case A_AUDIO: menu_page=P_AUDIO; menu_sel=0; break;
@@ -242,7 +241,7 @@ static void menu_do(int act){
     }
 }
 static void menu_draw(void){
-    int dw=dw_, dh=dh_; gs_=dh/180; if(gs_<2) gs_=2; if(gs_>10) gs_=10;
+    int dw=dw_, dh=dh_; gs_=dh/140; if(gs_<2) gs_=2; if(gs_>12) gs_=12;
     rect_fill(0,0,dw,dh,0x000000,150);
     static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT"};
     Item it[24]; int n; menu_build(it,&n);
@@ -260,7 +259,7 @@ static void menu_draw(void){
         text_at(x0+4*gs_,y,it[i].label,col);
         if(it[i].kind==1) snprintf(b,sizeof b,"< %s >",it[i].names[*it[i].val - (it[i].val==&mp_choice?0:0)]);
         else if(it[i].kind==2) snprintf(b,sizeof b,"< %d >",*it[i].val);
-        else if(it[i].action>=A_REBIND){ int bi=it[i].action/100; if(menu_wait && menu_sel==i) snprintf(b,sizeof b,"%s",menu_wait==1?"PRESS A KEY (ESC CANCELS)":"PRESS A BUTTON"); else if(menu_page==P_CONTROLS) key_name_of(bi,b,sizeof b); else pad_name_of(bi,b,sizeof b); }
+        else if(it[i].action>=A_REBIND){ int bi=it[i].action-A_REBIND; if(menu_wait && menu_sel==i) snprintf(b,sizeof b,"%s",menu_wait==1?"PRESS A KEY (ESC CANCELS)":"PRESS A BUTTON"); else if(menu_page==P_CONTROLS) key_name_of(bi,b,sizeof b); else pad_name_of(bi,b,sizeof b); }
         if(b[0]) text_at(x0+pw-4*gs_-text_w(b),y,b,i==menu_sel?0xFFD23C:0xE8D890);
         y+=lh;
     }
@@ -268,7 +267,7 @@ static void menu_draw(void){
     if(menu_page==P_PAD){ text_at(x0+4*gs_,y0+ph-lh-gs_,"ENTER THEN PRESS A BUTTON ON THE PAD",0x8890C8); }
 }
 static void menu_key(SDL_Keycode k, SDL_Scancode sc){
-    if(menu_wait==1){ if(sc==SDL_SCANCODE_ESCAPE){ menu_wait=0; return; } Item it[24]; int n; menu_build(it,&n); int bi=it[menu_sel].action/100; if(bi>=0&&bi<NB){ C.kb[bi][menu_slot]=sc; } menu_wait=0; menu_slot=0; return; }
+    if(menu_wait==1){ if(sc==SDL_SCANCODE_ESCAPE){ menu_wait=0; return; } Item it[24]; int n; menu_build(it,&n); int bi=it[menu_sel].action-A_REBIND; if(bi>=0&&bi<NB){ C.kb[bi][menu_slot]=sc; } menu_wait=0; menu_slot=0; return; }
     if(menu_wait==2) return;
     Item it[24]; int n; menu_build(it,&n);
     if(k==SDLK_ESCAPE||k==SDLK_F1){ if(menu_page==P_MAIN){ menu_open=0; cfg_save(); } else { menu_page=P_MAIN; menu_sel=0; cfg_save(); } return; }
@@ -283,7 +282,7 @@ static void menu_key(SDL_Keycode k, SDL_Scancode sc){
         else if(s->kind==0){ if(s->action>=A_REBIND) menu_slot=0; menu_do(s->action); } }
 }
 static void menu_pad(int btn){
-    if(menu_wait==2){ Item it[24]; int n; menu_build(it,&n); int bi=it[menu_sel].action/100; if(bi>=0&&bi<NB && btn!=SDL_CONTROLLER_BUTTON_GUIDE) C.pad[bi]=btn; menu_wait=0; return; }
+    if(menu_wait==2){ Item it[24]; int n; menu_build(it,&n); int bi=it[menu_sel].action-A_REBIND; if(bi>=0&&bi<NB && btn!=SDL_CONTROLLER_BUTTON_GUIDE) C.pad[bi]=btn; menu_wait=0; return; }
     switch(btn){ case SDL_CONTROLLER_BUTTON_DPAD_UP: menu_key(SDLK_UP,0); break; case SDL_CONTROLLER_BUTTON_DPAD_DOWN: menu_key(SDLK_DOWN,0); break;
         case SDL_CONTROLLER_BUTTON_DPAD_LEFT: menu_key(SDLK_LEFT,0); break; case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: menu_key(SDLK_RIGHT,0); break;
         case SDL_CONTROLLER_BUTTON_A: menu_key(SDLK_RETURN,0); break; case SDL_CONTROLLER_BUTTON_B: case SDL_CONTROLLER_BUTTON_START: case SDL_CONTROLLER_BUTTON_BACK: menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE); break; }
@@ -401,6 +400,7 @@ void plat_close(void){ pc_save_flush(1); cfg_save(); wav_close(); if(adev) SDL_C
 static void mkdirs(const char *p){ (void)p; }
 const char *plat_save_path(void){ return g_savepath; }
 int plat_paths(int argc, char **argv){            // finds the folders; call before the fake GBA starts (it loads the save)
+    for(int i=1;i+1<argc;i++) if(!strcmp(argv[i],"--icon-png")){ int S=256; uint32_t *p=malloc((size_t)S*S*4); plat_icon_pixels(p,S); for(size_t k=0;k<(size_t)S*S;k++) if(!(p[k]>>24)) p[k]=0; plat_write_png_rgba(argv[i+1],p,S,S); exit(0); }
     const char *data=NULL; int portable=0;
     for(int i=1;i<argc;i++){ if(!strcmp(argv[i],"--data")&&i+1<argc) data=argv[++i]; else if(!strcmp(argv[i],"--portable")) portable=1; }
     char *pp=NULL;
@@ -453,7 +453,7 @@ int plat_open(int argc, char **argv){
     if(!ren){ fprintf(stderr,"renderer: %s\n",SDL_GetError()); return 1; }
     { SDL_RendererInfo ri; if(SDL_GetRendererInfo(ren,&ri)==0) fprintf(stderr,"video: %s renderer, driver %s\n",ri.name,SDL_GetCurrentVideoDriver()); }
     make_icon(); font_init();
-    SDL_ShowCursor(SDL_DISABLE);
+    SDL_ShowCursor(C.fullscreen?SDL_DISABLE:SDL_ENABLE);
     pad_open();
     t_freq=SDL_GetPerformanceFrequency(); t_next=SDL_GetPerformanceCounter(); fps_t0=t_next;
     if(g_wav_path){ g_wav=fopen(g_wav_path,"wb"); if(g_wav){ uint8_t h[44]={0}; fwrite(h,1,44,g_wav); } }
