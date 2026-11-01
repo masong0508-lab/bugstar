@@ -196,7 +196,7 @@ static void pcm_hell_begin(int quiet){
     do_save(); pc_ws_slot_save(cur_slot); }
 static void pcm_test_env(void){ const char *e=getenv("BUGSTAR_AFT_GOLD"); if(e) gold=atoll(e); e=getenv("BUGSTAR_AFT_WING"); if(e) wing_n=atoi(e); e=getenv("BUGSTAR_AFT_HP"); if(e){ maxh=hearts=atoll(e); } }
 static void pcm_test_hell(void){ pcm_test_env(); pcm_aft.cls=7; pcm_hell_begin(0); }
-static void pcm_hell_warn(int cls){ PcmAft *a=&pcm_aft; if(a->warn>0 || a->fire>0) return; a->cls=cls; a->warn=600; pcm_say("FIRESTORM IN 10 SECONDS: LEAVE OR TAKE COVER"); }
+static void pcm_hell_warn(int cls){ PcmAft *a=&pcm_aft; if(a->warn>0 || a->fire>0) return; a->cls=cls; a->warn=600+(int)(((u32)pcm_clk*2654435761u>>8)%17401u); { char b[64]; int sc=a->warn/60; snprintf(b,sizeof b,"FIRESTORM IN %d MIN %d SEC: LEAVE OR TAKE COVER",sc/60,sc%60); pcm_say(b); } }
 static void pcm_planet_lost(int cls){ pcm_aft.cls=cls; pcm_en.type=0; pcm_en.on=0; pcm_say(endless?"THE PLANET-BUSTER FIRES! THE WORLD BURNS":"THE PLANET-BUSTER FIRES! A STORY WORLD HEALS LATER"); pcm_hell_begin(1); pcm_say("THE PLANET BURNS"); }
 static void pcm_fire_end(void){ PcmAft *a=&pcm_aft; int stranded=a->ship==2 && scene==0; a->fire=0; a->resc=0; pcm_say("THE FIRES DIE DOWN: THE WORLD IS ASH"); pcm_log("fire end stranded %d",stranded,0);
     if(stranded){ pcm_say("A RESCUE SHIP FINDS YOU"); launch_flag=1; } a->ship=0; }
@@ -224,7 +224,7 @@ static void pcm_test_dun(void){ PcmAft *a=&pcm_aft; const char *t=getenv("BUGSTA
     if(a->tst==300 && !strcmp(t,"seal")) pcm_log("blocked_at_start %d",pcm_up_blocked(1),0); }
 static void pcm_aft_tick(void){
     PcmAft *a=&pcm_aft; int ps=a->prev_scene; a->prev_scene=scene;
-    if(a->warn>0){ a->warn--; if(a->warn==300) pcm_say("FIRESTORM IN 5 SECONDS"); if(!a->warn) pcm_hell_begin(0); }
+    if(a->warn>0){ a->warn--; if(a->warn==18000||a->warn==10800||a->warn==3600) pcm_say(a->warn==3600?"FIRESTORM IN 1 MINUTE":a->warn==10800?"FIRESTORM IN 3 MINUTES":"FIRESTORM IN 5 MINUTES"); else if(a->warn==1800) pcm_say("FIRESTORM IN 30 SECONDS"); else if(a->warn==600) pcm_say("FIRESTORM IN 10 SECONDS"); else if(a->warn==300) pcm_say("FIRESTORM IN 5 SECONDS"); if(!a->warn) pcm_hell_begin(0); }
     if(scene==0){
         if(ps==1){ a->sealed=0; a->alt=-1; a->inv_mask=a->inv_sp=0; a->board_sp=0; if(pcm_en.type==4) pcm_en.type=0; if(a->fire>0){ pcm_say("YOU ARE ON THE BURNING SURFACE"); pcm_survive_say(); pcm_log("arrived burning %d",pcm_survive_s(),0); } }
         pcm_fire_tick(); return; }
