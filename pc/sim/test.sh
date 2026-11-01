@@ -5,6 +5,8 @@ CC="gcc -std=gnu11 -O1 -Wall -Wextra -Wno-unused-parameter -fwrapv"
 set -e
 $CC lv_test.c lv.c -o out/lv_test
 ./out/lv_test
+$CC god_test.c god.c lv.c -o out/god_test
+./out/god_test
 # against Python's own big integers: random and edge numbers, all operations, including saturation at 64^256
 python3 - <<'PY' > out/lv_cases.txt
 import random
