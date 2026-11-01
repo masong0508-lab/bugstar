@@ -922,7 +922,7 @@ static void gain_xp(int n){ { long long q=(long long)n*xpx(); n = q>1000000000LL
     s64 gain = sdiv((s64)n*pct,100); if(gain<1) gain=1;
     xp=sadd(xp,gain); pet_xp+=n/2+1; if(pet_xp>=pet_xp_next()){ pet_xp-=pet_xp_next(); pet_lv++; pet_maxhp+=3; pet_hp=pet_maxhp; char pb[32]; scpy(pb,"BUDDY IS LV "); ncat(pb,pet_lv+1); scat(pb,"!"); say(pb); }
     int ups=0;
-    while(level<S64_MAX && xp>=xp_next() && ups<64){
+    while(level<LEVEL_CAP && xp>=xp_next() && ups<64){
         xp-=xp_next(); level++; ups++; stat_pts=sadd(stat_pts,5);
         s64 q5=sdiv(level,5); int lv5 = level==q5*5; int lv10 = lv5 && sdiv(q5,2)*2==q5;
         if(lv5) stat_pts=sadd(stat_pts,5);
@@ -932,6 +932,7 @@ static void gain_xp(int n){ { long long q=(long long)n*xpx(); n = q>1000000000LL
         { s64 q100=sdiv(level,100); if(q100>=1 && q100<=NBUD && q100*100==level){ scpy(b,"LV "); ncat(b,level); scat(b,"! NEW LADYBUG BUDDY"); } }          // a new Buddy every 100 levels
         say(b); sfx(6);
     }
+    if(level>=LEVEL_CAP){ level=LEVEL_CAP; xp=0; }                              // the 32-bit limit: no level past 4,294,967,295
     if(ups>=3){ char b[40]; scpy(b,"SURGE! +"); ncat(b,ups); scat(b," LEVELS"); say(b); }
     ach_check(); hud_now();
 }

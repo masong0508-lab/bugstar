@@ -316,6 +316,9 @@ static int xo_hp(int h){ long long v=(long long)h*xo_v(XO_EHP)/100; v=v*(DPV(P_H
 #define NBUD 9                                                   // the extra Buddies (LADYBUG BUDDIES): they bite, they never get hurt
 typedef struct { s32 x, y; s16 cool; u8 flash, pad; } Bud;
 static Bud bud[NBUD]; static s32 bud_dd[NBUD];
+#ifndef LEVEL_CAP                                                               // the PC build may define its own bigger cap (-DLEVEL_CAP=...)
+#define LEVEL_CAP 4294967295LL                                                 // highest character level on GBA: the 32-bit limit
+#endif
 static s64 level;                                                // (defined for real in game.inc)
 static int bud_unlocked(void){ s64 n=sdiv(level,100); return n>NBUD ? NBUD : n<0 ? 0 : (int)n; }   // ONE extra Buddy for every 100 player levels
 static int nbud(void){

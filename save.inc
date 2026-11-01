@@ -157,7 +157,7 @@ static int load_game(int apply){
     if(!slot_read(cur_slot)) return 0;
     if(!apply) return 1;
     Save *s=&sv;
-    zone=s->zone; zone_cleared=s->zone_cleared; endless=s->endless; world_no=s->world_no; best_depth=s->best_depth; level=s->level;
+    zone=s->zone; zone_cleared=s->zone_cleared; endless=s->endless; world_no=s->world_no; best_depth=s->best_depth; level=s->level; if(level>LEVEL_CAP) level=LEVEL_CAP; if(level<1) level=1;
     st_str=s->st[0]; st_dex=s->st[1]; st_vit=s->st[2]; st_mag=s->st[3]; stat_pts=s->stat_pts; food=s->food; bugs_freed=s->bugs; fame=s->fame; portal_depth=s->portal; spell_sel=s->spell_sel;
     xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed; uni_load();
     for(int i=0;i<6;i++) have_bug[i]=s->have_bug[i];
