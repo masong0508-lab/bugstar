@@ -119,17 +119,19 @@ static void sim_qm_foot(int i, char *b, int *c){
 static void sim_level_full(void);
 // ---- COLONY (Phase 4): the unlock ladder and the settlers
 static SimColony *sim_colony(void);
-#define SIM_CO_ACT 5
+#define SIM_CO_ACT 6
+static void sim_colony_map(volatile u16 *pg);
 static void sim_co_row(int i, char *b, int *c){
     SimColony *co=sim_colony(); int r=i+1;
     if(r<COLR_N){ int open=(co->mask>>r)&1; scpy(b,open?"+ ":"- "); scat(b,col_rung_name(r)); while(textlen(b)<16) scat(b," "); scat(b,open?"OPEN":col_rung_how(r)); if(!open){ scat(b," "); scat(b,col_rung_goal(r)); } *c=open?C_GREEN:C_DGREY; return; }
     int k=i-(COLR_N-1);
     if(k<SIM_CO_ACT){ static const char *const dn[3]={"CALM","NORMAL","HARSH"};
         *c=C_GOLD;
-        if(k==0){ scpy(b,"> DIFFICULTY: "); scat(b,dn[sim_f.difficulty%3]); }
-        else if(k==1){ scpy(b,"> BUILD NEXT: "); scat(b,col_bld_name(co->plan)); }
-        else if(k==2){ scpy(b,"> CARRY WOOD AND BUILD"); }
-        else if(k==3){ scpy(b,"> BRING 10 FOOD FROM MY BAG"); }
+        if(k==0){ scpy(b,"> OPEN THE COLONY MAP"); }
+        else if(k==1){ scpy(b,"> DIFFICULTY: "); scat(b,dn[sim_f.difficulty%3]); }
+        else if(k==2){ scpy(b,"> BUILD NEXT: "); scat(b,col_bld_name(co->plan)); }
+        else if(k==3){ scpy(b,"> CARRY WOOD AND BUILD"); }
+        else if(k==4){ scpy(b,"> BRING 10 FOOD FROM MY BAG"); }
         else { scpy(b,"> STAND GUARD 3 DAYS"); }
         return; }
     k-=SIM_CO_ACT; char nm[16]; int j; col_settler(co,k,nm,&j); scpy(b,"  "); scat(b,nm); while(textlen(b)<14) scat(b," "); scat(b,col_job_name(j)); *c=C_WHITE;
@@ -138,6 +140,7 @@ static void sim_co_foot(int i, char *b, int *c){
     SimColony *co=sim_colony(); *c=C_GREY;
     if(i>=0){ scpy(b,"FOOD "); ncat(b,co->food); scat(b,"  WOOD "); ncat(b,co->wood); scat(b,"  ORE "); ncat(b,co->ore); scat(b,"  GOODS "); ncat(b,co->goods); *c=C_WHITE; }
     else if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; }
+    else if(co->state==COLS_DEAD_WORLD){ scpy(b,"BURNT FOR GOOD. SETTLE ANOTHER PLANET"); *c=C_RED; }
     else if(co->state==COLS_RUINS){ scpy(b,"RUINS. A: SETTLE AGAIN"); *c=C_RED; }
     else if(co->raid_eta){ scpy(b,"RAID OF "); ncat(b,co->raid_size); scat(b," IN "); ncat(b,co->raid_eta); scat(b," DAYS. DEFENCE "); ncat(b,col_defence(co)); *c=C_RED; }
     else { scpy(b,"SETTLERS "); ncat(b,co->nset); scat(b,"/"); ncat(b,col_cap(co->mask)); scat(b,"  BUILDINGS "); ncat(b,col_built_total(co)); scat(b,"/"); ncat(b,col_buildings(co->mask)); }
@@ -148,10 +151,11 @@ static int sim_co_act(int i){
     if(i>=COLR_N-1){
         if(k>=SIM_CO_ACT){ int s=k-SIM_CO_ACT; int j=co->job[s]==0xFF ? -1 : co->job[s]; j++; if(j>=COLJ_N) j=-1; col_set_job(co,s,j); scpy(menu_msg,"JOB SET"); sfx(2); return 0; }
         int ok=0;
-        if(k==0){ sim_f.difficulty=(u8)((sim_f.difficulty+1)%3); ok=1; }
-        else if(k==1){ int b=co->plan; for(int t=0;t<COLB_N;t++){ b=(b+1)%COLB_N; if(col_set_plan(co,b,-1)){ ok=1; break; } } }
-        else if(k==2) ok=col_help_build(co);
-        else if(k==3){ if(food>=20){ food-=10; ok=col_carry_food(co,10); } else scpy(menu_msg,"YOUR BAG HAS TOO LITTLE FOOD"); }
+        if(k==0){ sim_colony_map(VISPG); return 0; }
+        if(k==1){ sim_f.difficulty=(u8)((sim_f.difficulty+1)%3); xo[XO_SIDEDIF]=(u8)(sim_f.difficulty^XOT[XO_SIDEDIF].def); xo_save(); ok=1; }
+        else if(k==2){ int b=co->plan; for(int t=0;t<COLB_N;t++){ b=(b+1)%COLB_N; if(col_set_plan(co,b,-1)){ ok=1; break; } } }
+        else if(k==3) ok=col_help_build(co);
+        else if(k==4){ if(food>=20){ food-=10; ok=col_carry_food(co,10); } else scpy(menu_msg,"YOUR BAG HAS TOO LITTLE FOOD"); }
         else ok=col_help_guard(co);
         if(co->state==COLS_RUINS) ok=col_resettle(co,(u32)sim_day(&sim_w));
         if(ok){ sfx(2); if(!menu_msg[0]) scpy(menu_msg,"DONE"); } else { sfx(4); if(!menu_msg[0]) scpy(menu_msg,"NOT NOW"); }
@@ -160,6 +164,58 @@ static int sim_co_act(int i){
     if(g.food_pts) eat(g.food_pts); if(g.gold) gold=sadd(gold,(s64)g.gold); if(g.heal){ hearts=maxh; mp=maxmp; }
     scpy(menu_msg,"TAKEN:"); if(g.food_pts){ scat(menu_msg," FOOD +"); ncat(menu_msg,g.food_pts); } if(g.gold){ scat(menu_msg," GOLD +"); ncat(menu_msg,g.gold); } if(g.heal) scat(menu_msg," A NAP");
     sim_col_gifts++; sfx(6); return 0;
+}
+
+// ---- the COLONY MAP (the 8 x 6 grid): walk the cursor, pick what to build and where, carry wood to the site (Keflings style). Optional: the colony runs without it.
+static void sim_cell_name(const SimColony *co, int cell, char *b){
+    int g=co->grid[cell]; if(g) { scpy(b,col_bld_name(g-1)); return; }
+    scpy(b, co->state==COLS_DEAD_WORLD ? "BURNT GROUND" : (co->plan_cell==cell ? "BUILDING SITE" : "EMPTY GROUND"));
+}
+static void sim_colony_map(volatile u16 *pg){
+    SimColony *co=sim_colony(); static const char L[COLB_N+1]="HFWSOKM|T$U";
+    int cx=0, cy=0, carry=0, tick=0, dirty=1; char msg[44]; msg[0]=0; wait_release(); in_menu++;
+    while(1){
+        co=sim_colony();
+        if(dirty || !(tick&15)){ dirty=0;
+            ui_bg(pg,0,160); panel(pg,4,6,232,150,co->state==COLS_ALIVE?"COLONY MAP":"COLONY MAP: NO ONE LIVES HERE");
+            for(int y=0;y<COL_GRID_H;y++) for(int x=0;x<COL_GRID_W;x++){ int i=y*COL_GRID_W+x, g=co->grid[i], px=10+x*20, py=24+y*14;
+                rect(pg,px,py,19,13,g?(co->state==COLS_DEAD_WORLD?C_DGREY:6):C_DGREY);
+                if(!g && co->plan_cell==i && co->state==COLS_ALIVE) rect(pg,px+1,py+1,17,11,C_GOLD);
+                if(g){ char t[2]={L[(g-1)<COLB_N?g-1:COLB_N],0}; text(pg,px+7,py+3,t,co->state==COLS_DEAD_WORLD?C_RED:C_WHITE,1); }
+                else rect(pg,px+8,py+5,3,3,co->state==COLS_DEAD_WORLD?C_RED:C_GREY); }
+            if(co->state==COLS_ALIVE){ int occ[COL_GRID_W*COL_GRID_H], no=0; for(int i=0;i<COL_GRID_W*COL_GRID_H;i++) if(co->grid[i]) occ[no++]=i;
+                for(int k=0;k<co->nset && k<COL_MAXSET;k++){ int i=no?occ[(k+(tick>>6))%no]:0; rect(pg,10+(i%COL_GRID_W)*20+2+(k%4)*4,24+(i/COL_GRID_W)*14+9,3,3,C_GREEN); } }
+            { int px=10+cx*20, py=24+cy*14; rect(pg,px-1,py-1,21,1,C_CYAN); rect(pg,px-1,py+13,21,1,C_CYAN); rect(pg,px-1,py-1,1,15,C_CYAN); rect(pg,px+19,py-1,1,15,C_CYAN);
+              rect(pg,px+5,py-5,9,4,carry?C_GOLD:C_CYAN); }                                  // you: gold while you carry wood
+            char b[44]; int cell=cy*COL_GRID_W+cx;
+            text(pg,174,26,"BUILD",C_GOLD,1); text(pg,174,35,col_bld_name(co->plan),C_WHITE,1);
+            scpy(b,"WOOD "); ncat(b,col_bld_cost(co,co->plan)); text(pg,174,44,b,C_GREY,1);
+            scpy(b,"DONE "); ncat(b,co->progress); text(pg,174,53,b,C_GREY,1);
+            scpy(b,"STORE "); ncat(b,co->wood); text(pg,174,66,b,C_GREY,1);
+            scpy(b,"FOLK "); ncat(b,co->nset); text(pg,174,75,b,C_GREY,1);
+            scpy(b,"YOU: "); scat(b,carry?"WOOD":"EMPTY"); text(pg,174,88,b,carry?C_GOLD:C_GREY,1);
+            sim_cell_name(co,cell,b); text(pg,10,112,b,C_WHITE,1);
+            if(co->state==COLS_DEAD_WORLD) text(pg,10,121,"THIS PLANET IS BURNT FOR GOOD. SETTLE ANOTHER WORLD",C_RED,1);
+            else if(co->state==COLS_RUINS) text(pg,10,121,"RUINS. OPEN THE COLONY LIST AND SETTLE AGAIN",C_RED,1);
+            else if(co->raid_eta){ scpy(b,"RAID OF "); ncat(b,co->raid_size); scat(b," IN "); ncat(b,co->raid_eta); scat(b," DAYS. DEFENCE "); ncat(b,col_defence(co)); text(pg,10,121,b,C_RED,1); }
+            else text(pg,10,121,"A ON A STORE: LIFT WOOD. A ON GROUND: BUILD THERE",C_GREY,1);
+            if(msg[0]) text(pg,10,130,msg,C_GREEN,1);
+            ctext(pg,120,146,"L/R: BUILDING  A: DO  B: BACK",C_CYAN);
+        }
+        vsync(); read_keys(); tick++; if(keys!=keys_old) dirty=1;
+        if(HIT(K_B)||HIT(K_START)) break;
+        if(HIT(K_LEFT)&&cx>0){ cx--; sfx(7); } if(HIT(K_RIGHT)&&cx<COL_GRID_W-1){ cx++; sfx(7); }
+        if(HIT(K_UP)&&cy>0){ cy--; sfx(7); } if(HIT(K_DOWN)&&cy<COL_GRID_H-1){ cy++; sfx(7); }
+        if(HIT(K_L)||HIT(K_R)){ int d=HIT(K_R)?1:COLB_N-1, b=co->plan; msg[0]=0; for(int t=0;t<COLB_N;t++){ b=(b+d)%COLB_N; if(col_set_plan(co,b,-1)){ break; } } sfx(7); }
+        if(HIT(K_A)){ int cell=cy*COL_GRID_W+cx, g=co->grid[cell]; msg[0]=0;
+            if(co->state!=COLS_ALIVE){ sfx(4); scpy(msg,"NO ONE IS HERE TO WORK"); }
+            else if(!g){ if(carry){ if(col_carry_wood(co,cell)){ carry=0; scpy(msg,"YOU PUT THE WOOD DOWN"); sfx(2); } else { scpy(msg,"NOTHING CAN BE BUILT NOW"); sfx(4); } }
+                         else if(col_set_plan(co,co->plan,cell)){ scpy(msg,"SITE CHOSEN. CARRY WOOD HERE"); sfx(2); } else { scpy(msg,"CANNOT BUILD THAT YET"); sfx(4); } }
+            else if(g-1==COLB_STORE||g-1==COLB_HUT){ if(carry){ carry=0; scpy(msg,"YOU PUT IT BACK"); } else if(co->wood>0){ carry=1; scpy(msg,"YOU LIFT SOME WOOD"); sfx(2); } else { scpy(msg,"THE STORE HAS NO WOOD"); sfx(4); } }
+            else if(g-1==COLB_TOWER||g-1==COLB_WALL){ if(col_help_guard(co)){ scpy(msg,"YOU STAND GUARD: DEFENCE UP"); sfx(2); } }
+            else { scpy(msg,"WORKERS USE THIS"); } }
+    }
+    in_menu--; wait_release();
 }
 static void sim_colony_screen(volatile u16 *pg){
     SimColony *co=sim_colony();

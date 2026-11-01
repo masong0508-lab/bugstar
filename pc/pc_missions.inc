@@ -42,9 +42,12 @@ static int pcm_enc_here(void){ return pcm_en.on && pcm_en.gal==gal_hash() && pcm
 static int pcm_offers(int place, WsMission *o){ int n=0; if(pcm_enc_here() && !pcm_is_act(pcm_en.seed^0x77u)) pcm_enc_offer(&o[n++]);
     MsPlace pl; pcm_place(&pl,place); for(int s=0;s<=MS_SLOTS;s++){ if(s==MS_SLOTS && !pl.cheat_world) continue; WsMission m; ms_offer(&m,&pl,s); if(pcm_is_done(m.id)||pcm_is_act(m.id)) continue; o[n++]=m; } return n; }
 // ---------------------------------------------------------------- pay, fame, removal
+static void pcm_say(const char *s);
 static void pcm_finish(int mi, const WsPay *p, const WsCraft *c, int pay){
     WsMission m=pcm_act[mi]; snprintf(pcm_note,sizeof pcm_note,"%s +%d PERCENT",ms_kind_name(m.kind),m.bonus);
     if(pay){ pcw_pay(p->reward); pcw_kills++; if(wn_cmp(p->reward,pcw_best)>0) pcw_best=p->reward; if(p->cheat){ pcw_cheated=1; plw_set_cheated(1); } }
+    if(m.kind==MK_DEFEND){ unsigned long long rw=0; int r=sim_invasion((unsigned)(6+c->cls*8+m.bonus/5),&rw);      // a DEFEND mission brings a real raid on this planet's colony
+        if(r>0){ char b[48]; snprintf(b,sizeof b,"COLONY RAID WON: +%llu GOLD AT THE COLONY",rw); pcm_say(b); } else if(r<0) pcm_say("THE COLONY LOST THE RAID. SEE THE COLONY"); }
     fame+=15+c->cls*4+(m.dream?20:0); gain_xp(100+c->cls*200); pcm_count++; if(pcm_ndone<64) pcm_done[pcm_ndone++]=m.id; else { memmove(pcm_done,pcm_done+1,63*sizeof(u32)); pcm_done[63]=m.id; }
     pcm_act[mi]=pcm_act[--pcm_nact]; }
 static void pcm_enc_clear(void){ pcm_en.on=0; pcm_en.type=0; }

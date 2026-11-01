@@ -18,4 +18,6 @@ static int  sim_open_gods(void);                 // how many god powers are open
 static void pc_land_note(void);                   // the MEANS line after landing
 static void sim_ship_colony(volatile unsigned short *pg);   // the ship menu's COLONY row
 static int  sim_is_on(void);
+static int  sim_invasion(unsigned size, unsigned long long *reward);   // a warship DEFEND mission raids this planet's colony for real: 1 won, -1 lost, 0 no colony
+static int  sim_planet_burnt(void);              // 1 if this planet was destroyed (kept in the colony records for good)
 #endif

@@ -188,7 +188,16 @@ static void sim_colflags(ColFlags *f){
     f->friends=0; for(int k=0;k<sim_w.nfolk;k++) if(sim_w.friend[k]>=25) f->friends++;
     f->level = level>=10 ? 10 : (int)level;
 }
+static int sim_invasion(unsigned size, unsigned long long *reward){          // warship DEFEND missions: a real raid on this planet's colony now. 1 won, -1 lost, 0 none
+    if(!sim_is_on()) return 0;
+    if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
+    SimColony *co=sim_colony(); ColAway aw; uint64_t r=0; sim_f.difficulty=(u8)xo_i(XO_SIDEDIF);
+    int res=col_invade(co,size,sim_f.difficulty,(u32)sim_day(&sim_w),&aw,&r); if(reward) *reward=r;
+    return res;
+}
+static int sim_planet_burnt(void){ if(!sim_is_on()) return 0; if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind(); return col_burnt(sim_colony()); }
 static void sim_colony_tick(void){
+    sim_f.difficulty=(u8)xo_i(XO_SIDEDIF);                              // the main Options setting is the one that counts
     ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony(); u32 today=(u32)sim_day(&sim_w), yd=col_year_days(SIM_SEASON_DAYS);
     co->world_ok = pc_applied ? 1 : 0;                                  // only endless-galaxy planets can ever be destroyed; story worlds never
     if(!co->danger || co->danger==2) co->danger = (u8)(1 + (sim_town32()>>9)%6);

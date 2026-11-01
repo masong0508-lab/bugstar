@@ -8,6 +8,7 @@ static void pc_world_make(void){
     u32 cx[5], cy[5]; for(int i = 0; i < 5; i++){ cx[i] = clus[i]; cy[i] = clus[UAX + i]; }
     pcx_gods(sim_open_gods());
     pcx_world(uni_w, cx, cy, cur_sys, cur_pl, cur_moon, pc_applied, &pcw);
+    if(sim_planet_burnt() && pcw.npages > 0 && pcw.page[0].n < PCX_LINES){ PcxPage *p = &pcw.page[0]; scpy(p->t[p->n], "BURNT WORLD: THE COLONY WAS DESTROYED HERE FOR GOOD"); p->col[p->n++] = PX_RED; }
 }
 // called by make_world (build.sh puts the call in) on the planets of the endless galaxy: the PC traits set the gravity, the light and the weather
 static void pc_apply_traits(void){

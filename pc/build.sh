@@ -85,6 +85,9 @@ H() { python3 ../sim/hook.py "$@"; }
 H main.c 'typedef long long s64;' $'\n#include "sim/sim_proto.h"' after
 H main.c 'XO_PVIS, NXOPT };' 'XO_PVIS, XO_SIDE, NXOPT };'
 H main.c '  [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),' $'\n  [XO_SIDE]   =XR("SIDE GAME","PC ONLY: NAMED TOWNSFOLK, A JOURNAL AND GOD POWERS. OFF GIVES THE PLAIN GAME",xl_yn,1,XG_EXTRA),' after
+H main.c 'XO_PVIS, XO_SIDE, NXOPT };' 'XO_PVIS, XO_SIDE, XO_SIDEDIF, NXOPT };'
+H main.c 'XL(xl_pvis,"100%","50%","25%")' $'XL(xl_sdif,"CALM","NORMAL","HARSH")      XV(xl_sdif,0,1,2)\nXL(xl_pvis,"100%","50%","25%")'
+H main.c '  [XO_SIDE]   =XR(' $'  [XO_SIDEDIF]=XR("SIDE GAME DIFFICULTY","CALM: NOBODY DIES, RAIDS ALWAYS FAIL. NORMAL: HUNGER, SICKNESS AND RAIDS KILL. HARSH: A LOST BIG RAID CAN BURN THE PLANET",xl_sdif,1,XG_EXTRA),\n  [XO_SIDE]   =XR('
 H planet.inc 'life_tick(n); race_tick(n); kart_tick(n);' ' sim_frame(n);' after
 H planet.inc 'if(best<0) show_msg("NOTHING HERE");' 'if(best<0){ if(sim_quick()){ planet_hud(); p_last=vbl_count; return; } show_msg("NOTHING HERE"); }'
 H planet.inc 'oam_flush(); local_talk(&po[best]);' 'oam_flush(); sim_talk(&po[best]); local_talk(&po[best]);'
