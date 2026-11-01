@@ -2,6 +2,7 @@
 # The PC WORLD FILE screen, in the real game: pause (START), WORLD page (R x4), B opens the PC LAB, A the file, R turns its pages, B closes it. Two runs must match,
 # the pictures of the six file pages must all differ from each other and from the WORLD page, and the game must still be running after it closed.
 cd "$(dirname "$0")/.."; mkdir -p out; rm -f out/w1.sav out/w2.sav
+export BUGSTAR_SIDE=0   # the key script presses A on bare ground, which would open the side-game menu
 B=./bugstar_pc; S=tests/worldfile.txt
 $B --script $S --out out/w1 --sav out/w1.sav --frames 6000 > out/w1.log
 $B --script $S --out out/w2 --sav out/w2.sav --frames 6000 > out/w2.log

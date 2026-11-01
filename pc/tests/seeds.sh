@@ -2,6 +2,7 @@
 # Seed test: the same address must make the same world, every time (facts + a hash of each rendered picture), and match tests/seeds.golden.
 # (The golden file was made by this PC build. It guards against changes; it is not a comparison with a real GBA.)
 cd "$(dirname "$0")/.."; mkdir -p out
+export BUGSTAR_SIDE=0   # the golden is the plain game
 run(){ ./bugstar_pc --view --scale 1 --out out/seedtest "$@"; echo; }
 all(){
   run --universe 1 --star 7

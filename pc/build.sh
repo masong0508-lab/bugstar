@@ -74,6 +74,24 @@ sed -i -e 's/^static void slot_erase(int i){/static void slot_erase(int i){ pc_l
        -e 's/^\(    sram_write(slot_base(cur_slot), s, sizeof(Save));\)$/\1 pc_laws_slot_save(cur_slot);/' save.inc
 sed -i 's/if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug/if(s2>=0){ cur_slot=s2; pc_laws_slot_new(s2); oam_hide_all(); oam_flush(); if(make_bug/' main.c
 echo '#include "../pc_laws.inc"' >> main.c
+# --- the side game (pc/sim, DEPTH_PLAN): hooks into the copies in pc/gen, never the repo root. Each hook must find its anchor exactly once or the build fails.
+H() { python3 ../sim/hook.py "$@"; }
+H main.c 'typedef long long s64;' $'\n#include "sim/sim_proto.h"' after
+H main.c 'XO_PVIS, NXOPT };' 'XO_PVIS, XO_SIDE, NXOPT };'
+H main.c '  [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),' $'\n  [XO_SIDE]   =XR("SIDE GAME","PC ONLY: NAMED TOWNSFOLK, A JOURNAL AND GOD POWERS. OFF GIVES THE PLAIN GAME",xl_yn,1,XG_EXTRA),' after
+H planet.inc 'life_tick(n); race_tick(n); kart_tick(n);' ' sim_frame(n);' after
+H planet.inc 'if(best<0) show_msg("NOTHING HERE");' 'if(best<0){ if(sim_quick()){ planet_hud(); p_last=vbl_count; return; } show_msg("NOTHING HERE"); }'
+H planet.inc 'oam_flush(); local_talk(&po[best]);' 'oam_flush(); sim_talk(&po[best]); local_talk(&po[best]);'
+H planet.inc 'if(opt_minimap && !FILM && !kr_mode) planet_oremap(pg);' ' sim_hud(pg);' after
+H save.inc 'save_ext(); uni_save(); grind_save(); ore_save();' ' sim_save();' after
+H main.c 'if(!(cont && load_game(1))){ cont=0; new_game();' 'if(!(cont && load_game(1) && (sim_load(),1))){ cont=0; new_game(); sim_reset();'
+H game.inc 'scpy(lv, level<1000 ? "LV" : "L"); ncatx(lv,level,1);' ' sim_lv_fix(lv);' after
+H game.inc 'int xb = ratio(xp,xp_next(),16);' 'int xb = ratio(sim_xpv(xp),sim_xpm(xp_next()),16);'
+H game.inc 'while(level<LEVEL_CAP && xp>=xp_next() && ups<64){' 'while(!sim_big_xp() && level<LEVEL_CAP && xp>=xp_next() && ups<64){'
+H ui.inc 'scpy(b,"LEVEL "); ncat(b,level); scat(b,"   BUGS FREED ");' 'scpy(b,"LEVEL "); sim_ncat_level(b); scat(b,"   BUGS FREED ");'
+H ui.inc 'char lv[12]="LV "; ncat(lv,level);' 'char lv[16]="LV "; sim_ncat_level(lv);'
+H ui.inc 'vbar(pg,30,75,90,xp,xp_next(),C_GOLD,"XP")' 'vbar(pg,30,75,90,sim_xpv(xp),sim_xpm(xp_next()),C_GOLD,"XP")'
+echo '#include "../sim/sim_glue.inc"' >> main.c
 echo '#include "../pc_info.inc"' >> main.c
 echo '#include "../creator/creator_ui.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
@@ -95,9 +113,9 @@ fi
 CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/sim_proto.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
-for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../sim/god.c ../sim/lv.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH $OBJS $SDLL -lm -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"

@@ -3,6 +3,7 @@
 # CHEATS (off, confirm, on, size jump, speed). Two runs must match; the pictures must differ from each other where the screens differ; the laws file beside the save must hold
 # what was set and the cheat mark.  out/lawsheet*.png (if PIL is there) are contact sheets to look at.
 cd "$(dirname "$0")/.."; mkdir -p out; rm -f out/l1.* out/l2.*; python3 tests/mklaws.py > /dev/null
+export BUGSTAR_SIDE=0   # the key script presses A on bare ground, which would open the side-game menu
 B=./bugstar_pc; S=tests/laws.txt
 $B --script $S --out out/l1 --sav out/l1.sav --frames 8000 > out/l1.log
 $B --script $S --out out/l2 --sav out/l2.sav --frames 8000 > out/l2.log
