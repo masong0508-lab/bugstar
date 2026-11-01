@@ -4,7 +4,7 @@
 // here changes the game's state. Each pixel is stored as (palette index, next index, fraction) so the compositor can use the live palette (fades).
 // The compositor (pc_hw.c) shows it wherever the game's 240x160 page still holds what render_view wrote (the snapshot compare); monsters, the HUD,
 // sparks and text stay as the game drew them. 3D VIEWS = CLASSIC (or no window size known) turns it off. Water and polished-floor reflections: not done.
-extern void *malloc(unsigned long); extern void free(void*);
+#include <stdlib.h>
 extern int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h, pc_ships_mode; extern uint32_t *pc_dn_buf, *pc_dn_spl; extern int pc_dn_spl_on; extern uint8_t pc_dn_snap2[2][240*160]; extern long pc_dn_f[2]; extern uint8_t pc_dn_snap[2][240*160];
 extern double pc_now_ms(void); extern void pc_dn_report(double,int,int); extern int pc_v3d_classic(void); extern long pc_frames(void);
 typedef void (*PcParFn)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn fn, void *ctx);
