@@ -99,33 +99,51 @@ static void coil_pass_line(char *l){                              // "STAR PASS:
         ncat(l, (pt_kind==PK_STAR && pt_dmg()>0) ? pt_heat : pt_pct()); scat(l,"%");
         if(pt_kind==PK_HOLE || (pt_kind==PK_STAR && pt_sub==4)) scat(l,"  TIME SLOWS"); }
     if(pt_heat>0 && pt_kind!=PK_STAR){ scat(l,"  HEAT "); ncat(l,pt_heat); scat(l,"%"); } }
-static void coil_hud(volatile u16 *pg, CW w, int milli, int gt){
+// The glitch show tilts, mirrors and stretches the whole picture (the hardware's BG2 matrix hud_m), text and all. The readout must stay true and readable, so
+// when the picture is warped the text is drawn already counter-warped: every lit pixel of the text goes to the bitmap place that the matrix sends to the
+// pixel's screen place (a screen pixel (x,y) shows bitmap pixel ((X + pa x + pb y) / 256, (Y + pc x + pd y) / 256)). Cost: only the lit pixels.
+static void hud_px(volatile u16 *pg, int sx, int sy, int c){
+    if(!hud_on){ if(sx>=0 && sx<240 && sy>=0 && sy<160) pix(pg,sx,sy,c); return; }
+    s32 u=(hud_m[4]+hud_m[0]*sx+hud_m[1]*sy)>>8, v=(hud_m[5]+hud_m[2]*sx+hud_m[3]*sy)>>8;
+    if(u>=0 && u<240 && v>=0 && v<160) pix(pg,u,v,c); }
+static void hud_text(volatile u16 *pg, int x, int y, const char *s, int c){
+    if(!hud_on){ text(pg,x,y,s,c,1); return; }
+    for(int cx=x;*s;s++,cx+=4){ u16 g=font[(u8)*s&127]; if(!g) continue;
+        for(int k=0;k<15;k++) if(g&(1<<(14-k))) hud_px(pg,cx+k%3,y+k/3,c); } }
+static void hud_back(volatile u16 *pg, int x, int y, int w, int h){                  // a dark box behind a line (when warped: every screen pixel of the box, sent through the matrix)
+    if(!hud_on){ rect(pg,x,y,w,h,U_BG0); return; }
+    for(int j=0;j<h;j++){ int sy=y+j; if(sy<0||sy>=160) continue; s32 u=hud_m[4]+hud_m[0]*x+hud_m[1]*sy, v=hud_m[5]+hud_m[2]*x+hud_m[3]*sy;
+        for(int i=0;i<w;i++,u+=hud_m[0],v+=hud_m[2]){ int bu=u>>8, bv=v>>8; if(bu>=0 && bu<240 && bv>=0 && bv<160) pix(pg,bu,bv,U_BG0); } } }
+static void hud_line(volatile u16 *pg, int y, const char *s, int c, int back){      // centred
+    int x=120-textlen(s)*2; if(back) hud_back(pg,x-2,y-2,textlen(s)*4+4,9); hud_text(pg,x,y,s,c); }
+static void coil_hud(volatile u16 *pg, CW w, int milli, int gt, int minimal){
     char b[96]; int S=fx_safe();
     coil_fmt(b,w,milli);
-    char l[100]; scpy(l,"SPEED "); scat(l,b);                       // the speed is always the true one: nothing glitches this line
+    char l[100]; scpy(l,minimal ? "TRUE SPEED " : "SPEED "); scat(l,b);                 // the speed is always the true one: nothing glitches this line
     int c = gt>=6 ? C_RED : gt>=4 ? C_GOLD : gt>=2 ? C_CYAN : C_WHITE;
-    rect(pg,120-textlen(l)*2-2,111,textlen(l)*4+4,9,U_BG0); text(pg,120-textlen(l)*2,113,l,c,1);
+    if(minimal){ hud_line(pg,150,l,C_GOLD,1); return; }                             // (a full-screen fake error is up: only the true speed, at the bottom)
+    hud_line(pg,113,l,c,1);
     CS sp=coil_speed_cs(w,milli);
     if(sp.m){
         char t[100];
         static const u8 ord[CT_N+1]={CT_N,CT_MOON,CT_SUN,CT_PROX,CT_MW,CT_AND,CT_UNI,CT_GAME};
         int k=ord[(fx_t/130)%(CT_N+1)]; scpy(t,"TO "); scat(t,coil_trip_nm[k]); scat(t,": ");
         coil_trip(t+textlen(t), k, (u32)(coil_pd()<1?1:coil_pd()), sp);
-        if(gt>=3 && !S){ for(int i=0;t[i];i++) if(t[i]>='0'&&t[i]<='9' && (fx_rnd()&7)<(unsigned)(gt-1)) t[i]=(char)('0'+fx_rnd()%10); }       // (the glitch scrambles the extra lines, never the speed)
-        rect(pg,120-textlen(t)*2-2,120,textlen(t)*4+4,8,U_BG0); text(pg,120-textlen(t)*2,121,t,C_GREY,1);
+        if(gt>=3 && !S){ for(int i=0;t[i];i++) if(t[i]>='0'&&t[i]<='9' && (fx_rnd()&7)<(unsigned)(gt-1)) t[i]=(char)('0'+fx_rnd()%10); }       // (the glitch scrambles this extra line, never the speed)
+        hud_line(pg,121,t,C_GREY,1);
         int q=(fx_t/110)%(1+CR_N); scpy(t,"");
         if(q==0){ scpy(t,"= "); cn_sn(t,cn_kmps(sp)); scat(t," KM PER SECOND"); }
         else { scpy(t,hud_rate_nm[q-1]); cn_rate_text(t+textlen(t),q-1,sp); }
-        rect(pg,120-textlen(t)*2-2,103,textlen(t)*4+4,8,U_BG0); text(pg,120-textlen(t)*2,104,t,C_GREY,1); }
+        hud_line(pg,104,t,C_GREY,1); }
     coil_pass_line(l);
     if(l[0]){ int pc = pt_kind==PK_STAR ? C_GOLD : pt_kind==PK_HOLE ? C_RED : pt_kind==PK_PLANET||pt_kind==PK_DUST ? C_CYAN : pt_kind ? C_WHITE : C_GREY;
-        rect(pg,120-textlen(l)*2-2,94,textlen(l)*4+4,8,U_BG0); text(pg,120-textlen(l)*2,95,l,pc,1); }
+        hud_line(pg,95,l,pc,1); }
 #ifdef TEST_COILFPS
     { static u32 lv=0; char f[16]; scpy(f,"V"); ncat(f,(int)(vbl_count-lv)); lv=vbl_count; text(pg,200,30,f,C_WHITE,1); scpy(f,"T"); ncat(f,coil_tier); text(pg,200,38,f,C_WHITE,1); }
 #endif
-    if(!cw_zero(coil_cur)){ text(pg,6,20,"R OR SELECT: SLOW DOWN",C_CYAN,1); text(pg,6,28,"START: SPEED DETAILS",C_GREY,1); }
-    else if(coil_equipped()) text(pg,6,20,"L+R: ENGAGE THE COIL",C_CYAN,1);
-    if(coil_cheated()) rtext(pg,234,20,"CHEAT",C_GOLD);
+    if(!cw_zero(coil_cur)){ hud_text(pg,6,20,"R OR SELECT: SLOW DOWN",C_CYAN); hud_text(pg,6,28,"START: SPEED DETAILS",C_GREY); }
+    else if(coil_equipped()) hud_text(pg,6,20,"L+R: ENGAGE THE COIL",C_CYAN);
+    if(coil_cheated()) hud_text(pg,212,20,"CHEAT",C_GOLD);
 }
 // ---------------------------------------------------------------- SPEED DETAILS (START while the coil runs): five pages, a snapshot of the speed at the moment you open it
 static void cd_row(volatile u16 *pg, int y, const char *lab, const char *val, int c){ text(pg,10,y,lab,C_GREY,1); rtext(pg,231,y,val,c); }

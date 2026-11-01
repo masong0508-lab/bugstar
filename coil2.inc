@@ -217,10 +217,12 @@ static void coil_fx_post(volatile u16 *pg){
     int milli; CW w=coil_total_c(speed,ship_top_speed(),&milli);
     int show = coil_equipped() || dbg_sm || dbg_sshow>0;
     int gt = show ? coil_gt(w) : 0; int gt_all=gt; if(fx_off()) gt=0; if(gt>8) gt=8;
-    if(show){ if(gt_all>0) fx_t++; else fx_t=0; pt_frame(w,gt_all); coil_hud(pg,w,milli,gt_all); }
+    hud_on=0;
+    if(show){ if(gt_all>0) fx_t++; else fx_t=0; pt_frame(w,gt_all); }
     coil_toast_draw(pg);
     if(gt_all>0 && pt_kind && pt_vis()>0){ pt_draw(pg,gt_all,fx_safe()); if(pt_stretch!=256) fx_dirty|=1; }       // (what you are passing through: coil3.inc; it stays when only the glitches are off)
-    if(gt<=0){ if(pt_stretch!=256 || pt_str_prev!=256){ FX_BG2(256,0,0,pt_stretch,0,(80<<8)-pt_stretch*80); fx_dirty|=1; } else if(fx_dirty||fx_gt) coil_fx_end(); pt_str_prev=pt_stretch; fx_gt=0; return; }
+    if(gt<=0){ if(pt_stretch!=256 || pt_str_prev!=256){ FX_BG2(256,0,0,pt_stretch,0,(80<<8)-pt_stretch*80); fx_dirty|=1; hud_set(256,0,0,pt_stretch,0,(80<<8)-pt_stretch*80); } else if(fx_dirty||fx_gt) coil_fx_end(); pt_str_prev=pt_stretch; fx_gt=0;
+        if(show) coil_hud(pg,w,milli,gt_all,0); return; }
     fx_gt=gt; if((u32)gt>coil_best) coil_best=(u32)gt;
     int S=fx_safe(); fx_dirty|=1; if(fx_cool>0) fx_cool--;
 #ifdef TEST_COILEV
@@ -241,13 +243,13 @@ static void coil_fx_post(volatile u16 *pg){
         if(!S){ fx_nsp = gt-1>8?8:gt-1; for(int i=0;i<8;i++){ volatile u16 *o=(volatile u16*)(0x07000000+(120+i)*8);
                 if(i<fx_nsp){ o[0]=(u16)((fx_rnd()%140)|0); o[1]=(u16)((fx_rnd()%232)|(1<<14)); o[2]=(u16)((512+fx_rnd()%500)|((fx_rnd()&15)<<12)); } else o[0]=0x200; } fx_dirty|=1; } }
     // ---- tier 4+: the world tilts, mirrors and zooms; bands tear sideways; the music's pitch wobbles; a memory-error screen
-    if(gt>=4){ int tilt = (sinx(fx_t*3)*(S?10:(gt>=6?60:30)))>>14, zoom = 256+((sinx(fx_t*5+40)*(S?6:(gt>=6?50:24)))>>14);
+    if(gt>=4){ int tilt = (sinx(fx_t*3)*(S?10:(gt>=6?60:30)))>>14, zoom = 256+((sinx(fx_t*5+40)*(S?3:(gt>=6?14:8)))>>14);        // (the zoom is small: a big one would smear the readout, which is counter-warped to stay true)
         if(!S && (fx_t%90)==0 && (fx_rnd()&1)) fx_mir=1;
         if(!S && (fx_t%90)==45) fx_mir=0;
         if(S && (fx_t%240)==0) fx_mir=!fx_mir;    // (flash-safe: at most one flip every 4 seconds)
         if(fx_ev>=1 && fx_ev<=3){ tilt=0; zoom=256; fx_mir=0; }                                             // (the error and save screens stay upright so they can be read)
         s32 ca=cosx(tilt)*zoom>>14, sa=sinx(tilt)*zoom>>14; int pa=fx_mir?-ca:ca, pb=sa, pc=-sa, pd=ca*pt_stretch>>8;
-        s32 X=(120<<8)-(pa*120+pb*80), Y=(80<<8)-(pc*120+pd*80); FX_BG2(pa,pb,pc,pd,X,Y);
+        s32 X=(120<<8)-(pa*120+pb*80), Y=(80<<8)-(pc*120+pd*80); FX_BG2(pa,pb,pc,pd,X,Y); hud_set(pa,pb,pc,pd,X,Y);
         if(fx_tearT>0){ fx_tearT--; for(int y=fx_tearY;y<fx_tearY+14 && y<128;y++) fx_shift(pg+y*120,fx_tearD); } else if((fx_rnd()&15)==0){ fx_tearT=S?6:4; fx_tearY=(int)(fx_rnd()%110); fx_tearD=(int)(fx_rnd()%61)-30; if(S) fx_tearD/=3; }
         fx_pw = fx_ev==5 ? fx_pw : (sinx(fx_t*(3+gt))*(S?gt*4:gt*18))>>14; fx_dirty|=1; }
     // ---- tiers 4 to 7: the fake screens (only one at a time, and a pause after each); the reality break is STORM's alone
@@ -260,9 +262,10 @@ static void coil_fx_post(volatile u16 *pg){
         else if(gt>=4 && r<14){ fx_ev=1; fx_evt=0; fx_cool=S?400:200; } }
     if(fx_ev==5 && gt<7) { fx_ev=0; fx_pw=0; }
     if(fx_ev) fx_event(pg,gt,S);
-    if(gt<4 && (pt_stretch!=256 || pt_str_prev!=256)){ FX_BG2(256,0,0,pt_stretch,0,(80<<8)-pt_stretch*80); }     // (tides stretch the picture even when the glitch show does not tilt it)
+    if(gt<4 && (pt_stretch!=256 || pt_str_prev!=256)){ FX_BG2(256,0,0,pt_stretch,0,(80<<8)-pt_stretch*80); hud_set(256,0,0,pt_stretch,0,(80<<8)-pt_stretch*80); }     // (tides stretch the picture even when the glitch show does not tilt it)
     pt_str_prev=pt_stretch;
     if(gt>=8 && !S){ fx_bars(pg,12,230,10); }               // beyond STORM (cheats): colour bars on top of everything
+    if(show) coil_hud(pg,w,milli,gt_all,(fx_ev>=1 && fx_ev<=3) || fx_ev==5);     // the readout comes last, on top of every glitch, counter-warped so it stays upright and true (coil3.inc)
 }
 // ---------------------------------------------------------------- fuzz: every tier, every pass-through setting, normal and flash-safe, with random keys, through the real flight code
 // 4 pass-through modes x 2 (flash-safe off/on) x 9 speeds (off, the 7 tiers, STORM x 1 million) = 72 runs of frames_per_run frames. Checks: the real cartridge is
