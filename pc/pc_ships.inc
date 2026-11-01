@@ -29,7 +29,7 @@ static void pc_sr_space(volatile u16 *pg){
         s.size=110; s.kind = p->team ? SR_FIGHTER : SR_WING; s.team = p->team ? 1 : 0; s.col = p->team ? ce : cf; s.firing = p->fire_t>0; s.hit = pcsr_hit[i]>0 ? pcsr_hit[i] : 0; s.thrust=0.75f;
         if(!pc_sy_foe(i,&s)) sr_ship(&s);
         if(p->fire_t){ float t[3];
-            if(p->tgt==-1){ for(int k=0;k<3;k++) t[k]=eye[k]+f[k]*60-u[k]*30+r[k]*(((frames&7)-4)*4); sr_beam(s.p,t,s.col,1); }
+            if(p->tgt==-1){ for(int k=0;k<3;k++) t[k]=eye[k]+f[k]*400-u[k]*((124-VCY)*400.0f/FOCS)+r[k]*(((frames&7)-4)*400.0f/FOCS); sr_beam(s.p,t,s.col,1); }
             else if(p->tgt>=0 && pir[p->tgt].alive){ t[0]=pir[p->tgt].x; t[1]=pir[p->tgt].y; t[2]=pir[p->tgt].z; sr_beam(s.p,t,s.col,1); } } }
     for(int i=0;i<pcsr_nb;i++){ float t=(frames-pcsr_b[i].t0)/45.0f; if(t>=1 || t<0){ pcsr_b[i]=pcsr_b[--pcsr_nb]; i--; continue; } sr_boom(pcsr_b[i].p,160,t,pcsr_b[i].seed); }
     if(battle_on && pc_armada_n>0) sr_armada(pc_armada_n, sys_id(cur_sys)^0xA4A7u, frames, 14000);                          // the far battle around yours (only drawn)

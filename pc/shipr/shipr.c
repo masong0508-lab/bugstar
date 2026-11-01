@@ -261,7 +261,10 @@ static void sr_band(void *vd, int lo, int hi){
         tri(p->x[0] / GX, p->y[0] / GY, p->z, p->x[k] / GX, p->y[k] / GY, p->z, p->x[k+1] / GX, p->y[k+1] / GY, p->z, p->col); }
     for(int i = 0; i < nG2; i++) glow(G2[i].x / GX, G2[i].y / GY, G2[i].r / GX, G2[i].col, G2[i].a);
     // beams (after the hulls: light)
-    for(int i = 0; i < nB; i++){ float ax, ay, az, bx, by, bz; bgonly = Bm[i].far; if(!proj(Bm[i].a, &ax, &ay, &az) || !proj(Bm[i].b, &bx, &by, &bz)) continue;
+    for(int i = 0; i < nB; i++){ float ax, ay, az, bx, by, bz; bgonly = Bm[i].far; float A[3], B[3]; memcpy(A, Bm[i].a, 12); memcpy(B, Bm[i].b, 12);
+        { float za = (A[0]-E[0])*F[0] + (A[1]-E[1])*F[1] + (A[2]-E[2])*F[2], zb = (B[0]-E[0])*F[0] + (B[1]-E[1])*F[1] + (B[2]-E[2])*F[2];   // clip to the near plane (a beam may start or end beside the camera)
+          if(za < 61 && zb < 61) continue; if(za < 61){ float t = (61 - za) / (zb - za); for(int k = 0; k < 3; k++) A[k] += (B[k] - A[k]) * t; } else if(zb < 61){ float t = (61 - zb) / (za - zb); for(int k = 0; k < 3; k++) B[k] += (A[k] - B[k]) * t; } }
+        if(!proj(A, &ax, &ay, &az) || !proj(B, &bx, &by, &bz)) continue;
         float w = Bm[i].w * (ultra ? 9.f : 6.f) * FOC * 2 / (az + bz) / GX; if(w > 5) w = 5; if(w < .5f) w = .5f; lineadd(ax, ay, bx, by, Bm[i].col, w, ultra ? .6f : .8f); if(ultra) lineadd(ax, ay, bx, by, 0xFFFFFF, 1, .35f); }
     bgonly = 0;
     // explosions: fireball, shock ring, debris that flies out and cools
