@@ -246,3 +246,9 @@ resource nodes, the speed the sky turns (day length), and the game speed. `build
 100,000 random law sets and places with no non-finite number and valid game changes, a size sweep from a 1.5 mm pebble to a 1e20 m world, text fits the screen). `pc/tests/laws.sh` (the lab in the real game, 26 screenshots, two runs
 equal, the laws file holds the preset, the size and the cheat mark, a continued save loads its laws, 8 planets under laws equal `tests/laws.golden`). The seed viewer takes `--law KEY=VALUE`, `--laws FILE`, `--preset N`.
 If the model changes on purpose, make the golden again with `pc/tests/laws.sh --make-golden`. 49 HOW BIG pages about the laws and the real numbers behind them are in `pc/facts/11_laws.py`.
+
+## Window version and packages
+`./pc/build.sh` builds the window version (SDL2). Linux: `bugstar_pc` (libSDL2 bundled in `lib/` in the tar.gz). Windows: a 32-bit exe cross-built with llvm-mingw
+(`PC_WIN=<SDL2 mingw i686 dir> PC_CC=i686-w64-mingw32-gcc PC_ARCH=-m32 PC_OUT=BUGSTAR.exe PC_CFLAGS="-include stdio.h -include string.h -include stdlib.h -Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types" ./pc/build.sh`).
+32-bit on purpose: the game keeps addresses in 32-bit numbers, so no stack trick is needed; the GBA memory map uses VirtualAlloc. The Windows exe was compiled, NOT run (no Windows/Wine here).
+Keys: arrows/WASD, X/Space=A, Z/K=B, Backspace/Tab=Select, Enter=Start, Q=L, E=R (Coil = Q+E). Esc = options, F11 fullscreen, F12 screenshot.

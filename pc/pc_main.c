@@ -6,8 +6,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <sys/mman.h>
 #include <ucontext.h>
+#endif
 #include "pc_hw.h"
 #include "platform/pc_plat.h"
 #ifdef PC_SDL
@@ -19,7 +21,9 @@ int bugstar_main(void);
 int pc_view_main(int argc, char **argv);
 
 static int g_argc; static char **g_argv; static int g_view;
+#ifndef _WIN32
 static ucontext_t uc_main, uc_game;
+#endif
 static void game_entry(void){ if(g_view) pc_view_main(g_argc,g_argv); else bugstar_main(); }
 
 int main(int argc, char **argv){
@@ -47,11 +51,15 @@ int main(int argc, char **argv){
 #endif
     g_argc=argc; g_argv=argv;
     // The game stores some addresses in 32-bit numbers (for DMA). Run it on a stack below 4 GB so those still point at the right place.
+#ifdef _WIN32
+    game_entry();      // 32-bit process: every stack address is already below 4 GB
+#else
     size_t ss=16u<<20; void *stk=mmap(0,ss,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_32BIT,-1,0);
     if(stk==MAP_FAILED){ perror("stack"); return 2; }
     getcontext(&uc_game); uc_game.uc_stack.ss_sp=stk; uc_game.uc_stack.ss_size=ss; uc_game.uc_link=&uc_main;
     makecontext(&uc_game,game_entry,0);
     swapcontext(&uc_main,&uc_game);
+#endif
 #ifdef PC_SDL
     if(want_window) plat_close();
 #endif

@@ -27,6 +27,7 @@ sed -i \
  -e 's|\*(volatile u16\*)(0x04000090+i\*2)=wave\[i\];|pc_snd(0x30+i*2,wave[i]);|' \
  *.inc main.c
 # the HOW BIG screen sorts every page in a scratch area: the GBA keeps it in the world builder's 32 KB; the PC has far more pages, so it gets its own
+sed -i -e 's|^extern const u8 fact_bin\[\];|extern const u8 fact_bin[] __asm__("fact_bin");|' sizes.inc
 sed -i -e 's|^#define SZ_SCR .*|#define SZ_SCR pc_szscr|' -e '/^#define NSIZE /a static u32 pc_szscr[4*NSIZE+64];' sizes.inc
 sed -i '1i #include "pc_hw.h"' main.c
 # the PC content library is a separate translation unit (pc/content/pcx.c): the game's own code has names like trait_name, so it only sees pcx.h
@@ -76,18 +77,21 @@ echo '#include "../coil_test.inc"' >> main.c
 # SDL: with the window front end (default) the game links the system SDL2 (libSDL2-2.0.so.0); PC_SDL=0 builds the headless-only program.
 OPT=${PC_OPT:--O2}
 SDLF=""; SDLL=""
-if [ "${PC_SDL:-1}" != "0" ]; then
+CC=${PC_CC:-gcc}; ARCH=${PC_ARCH:--m64 -no-pie}; OUT=${PC_OUT:-bugstar_pc}
+if [ -n "$PC_WIN" ]; then   # Windows 32-bit cross build (llvm-mingw): 32-bit pointers make the game's "address in a u32" code just work
+  SDLF="-DPC_SDL -D_WIN32_CROSS -I../platform/sdl2/include"; SDLL="-L$PC_WIN/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -Wl,--disable-dynamicbase -Wl,--nxcompat -static-libgcc"
+elif [ "${PC_SDL:-1}" != "0" ]; then
   SDLF="-DPC_SDL -I../platform/sdl2/include -Wl,-rpath,\$ORIGIN/lib -Wl,-rpath,\$ORIGIN"
   if [ -n "$SDL_LIB" ]; then SDLL="$SDL_LIB"; else SDLL=$(ldconfig -p 2>/dev/null | awk '/libSDL2-2.0.so.0 /{print $NF; exit}'); fi
   [ -z "$SDLL" ] && { echo "SDL2 runtime (libSDL2-2.0.so.0) not found: install it, set SDL_LIB=/path/to/libSDL2-2.0.so.0, or PC_SDL=0 for the headless build"; exit 1; }
 fi
 # the level cap: the PC build lets the character level go far past the GBA's 32-bit limit (the sim worker sets the final value)
-CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing -no-pie -m64 -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
+CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
-mkdir -p ../obj
+mkdir -p ../obj${PC_WIN:+win}; OBJD=../obj${PC_WIN:+win}
 STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../laws/lawx.h ../content/pcx.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
-if [ "$(cat ../obj/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f ../obj/game.o ]; then rm -f ../obj/game.stamp; gcc $CF -c main.c -o ../obj/game.o || exit 1; echo "$STAMP" > ../obj/game.stamp; fi
-OBJS="../obj/game.o"
-for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=../obj/$(basename $f .c).o; gcc $CF -c $f -o $o; OBJS="$OBJS $o"; done
-gcc -no-pie -m64 $OBJS $SDLL -lm -o ../bugstar_pc
-echo "built pc/bugstar_pc ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"
+if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
+OBJS="$OBJD/game.o"
+for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+$CC $ARCH $OBJS $SDLL -lm -o ../$OUT
+echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"

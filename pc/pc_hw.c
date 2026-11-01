@@ -9,7 +9,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sys/mman.h>
+#endif
 #include "pc_hw.h"
 #include "platform/pc_plat.h"
 #include <math.h>
@@ -35,9 +39,13 @@ void pc_set_window_mode(int on){ g_window=on; }
 int  pc_window_mode(void){ return g_window; }
 
 static int map_at(uint32_t a, size_t n){
+#ifdef _WIN32
+    { void *p=VirtualAlloc((void*)(uintptr_t)a,n,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE); if(!p||(uintptr_t)p!=a){ fprintf(stderr,"pc_hw: cannot map %08x\n",a); return 0; } return 1; }
+#else
     void *p = mmap((void*)(uintptr_t)a, n, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE, -1, 0);
     if(p==MAP_FAILED || (uintptr_t)p!=a){ fprintf(stderr,"pc_hw: cannot map %08x (%zu bytes)\n",a,n); return 0; }
     return 1;
+#endif
 }
 static uint64_t g_saved_hash;
 uint64_t pc_hash_sram(void);
