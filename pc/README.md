@@ -168,3 +168,14 @@ Rule-made, so it grows with the address instead of by hand:
 - **Towns and ships**: more town layouts, shops, rumours, factions, ship parts, wingmen and outposts from the grammar tables.
 - **Feasibility**: a seed viewer for the new fields, a world sampler that checks thousands of random addresses (no crashes, no impossible trait pairs),
   a soak test for rifts, and an address/bignum test suite. A one-switch "small universe" mode for slow PCs.
+
+### Built so far: `pc/content/` (works on its own, not wired into the game yet)
+
+- `bignum.h`: a small big number (5632 bits, no library): add, multiply, shift, compare, decimal and scientific print. Used for distances, trips and counts.
+- `pc_content.c/.h`: the 8x-bits address (64 words for the universe, 39 per axis), `addr_seed()` that hashes every word, **65 planet traits in 9 categories**
+  (3 to 6 per planet, one per category, 32 impossible pairs such as DEAD SUN + OCEAN WORLD), planet effects (gravity, day length, temperature, danger, loot, life),
+  planet names, and **24 universe themes** (two per universe, no clashing pairs such as LOW GRAVITY + HEAVY HOLLOW).
+- `content_test.c`, `test.sh`: checks the scale table above by computing it (all 12 numbers match), that flipping any one of the 4544 address bits changes the seed
+  (average 31 of 64 bits), 1,000,000 random planets (valid, repeatable, every trait appears, 0 bad) and 200,000 universes (every theme appears, 0 bad).
+  Run `pc/content/test.sh`. `pc/content/sampler.c` prints sample worlds: `pc/content/test.sh 5` builds it and prints five.
+- Next: wire the traits into terrain, lighting, monsters, loot and quests, and the themes into the rules; then quests, gear sets and monsters from parts.
