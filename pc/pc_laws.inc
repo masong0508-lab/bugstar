@@ -346,9 +346,9 @@ static void pc_ch_tp(volatile u16 *pg, int *go){
 
 // ---- THE LAB: the hub on the WORLD page
 static void pc_lab_screen(volatile u16 *pg){
-    enum { LB_FILE, LB_LAWS, LB_HOW, LB_CHEAT, LB_N };
-    static const char *const nm[LB_N] = { "PLANET FILE", "UNIVERSE LAWS", "HOW THIS WORKS", "CHEATS" };
-    static const char *const ds[LB_N] = { "EVERYTHING THE GAME KNOWS ABOUT THIS PLANET: ITS TRAITS, STATS, PEOPLES, CITY AND CREATURES.", "CHANGE THE NUMBERS THAT RUN THE UNIVERSE: GRAVITY, STARS, PLANET SIZES FROM PEBBLES TO GIANTS, LIFE, TIME.", "WHY THIS UNIVERSE, GALAXY, STAR AND PLANET ARE THE WAY THEY ARE, WITH THEIR REAL NUMBERS.", "WIDE-OPEN POWERS: ANY LAW, ANY SIZE, TIME SPEED, LEVEL, GOLD, TELEPORT. MARKS THE WORLD AS CHEATED." };
+    enum { LB_FILE, LB_LAWS, LB_HOW, LB_CHEAT, LB_CREATE, LB_N };
+    static const char *const nm[LB_N] = { "PLANET FILE", "UNIVERSE LAWS", "HOW THIS WORKS", "CHEATS", "PLANET CREATOR" };
+    static const char *const ds[LB_N] = { "EVERYTHING THE GAME KNOWS ABOUT THIS PLANET: ITS TRAITS, STATS, PEOPLES, CITY AND CREATURES.", "CHANGE THE NUMBERS THAT RUN THE UNIVERSE: GRAVITY, STARS, PLANET SIZES FROM PEBBLES TO GIANTS, LIFE, TIME.", "WHY THIS UNIVERSE, GALAXY, STAR AND PLANET ARE THE WAY THEY ARE, WITH THEIR REAL NUMBERS.", "WIDE-OPEN POWERS: ANY LAW, ANY SIZE, TIME SPEED, LEVEL, GOLD, TELEPORT. MARKS THE WORLD AS CHEATED.", "MAKE YOUR OWN PLANET AND PEOPLE, SEE ITS BIOFOOTPRINT LIVE, AND LAND ON IT." };
     int sel = 0, dirty = 1; wait_release();
     while(1){
         if(dirty){ dirty = 0; oam_hide_all(); oam_flush(); char b[40]; ui_bg(pg, 0, 160); ui_panel(pg, 24, 14, 192, 126);
@@ -364,6 +364,7 @@ static void pc_lab_screen(volatile u16 *pg){
             if(sel == LB_FILE) pc_world_screen(pg);
             else if(sel == LB_LAWS) rg = pc_laws_editor(pg, 0);
             else if(sel == LB_HOW) pc_how_screen(pg);
+            else if(sel == LB_CREATE){ pc_creator_screen(pg, 1); if(sys_req) rg = 1; }
             else rg = pc_cheats_screen(pg);
             dirty = 1; if(rg){ if(!sys_req){ do_save(); sys_req = 1; } break; } wait_release(); }
     }

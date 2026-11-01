@@ -60,4 +60,6 @@ void     cr_plant(uint32_t id, CrPlant *p);
 uint32_t cr_plant_nth(uint64_t seed, uint32_t n);        // the n-th plant of a catalogue seed (every plant once)
 uint32_t cr_plant_count(void);                           // 536,870,912
 int      cr_swatch_near(uint16_t rgb);                   // the swatch that looks most like this colour
+void cr_people_info(int stock, int calling, char *name56, char *about1_72, char *about2_72);   // one of the 512 kinds of people
+void cr_city_info(int form, int character, char *name56, char *about1_72);                       // one of the 256 kinds of city
 #endif

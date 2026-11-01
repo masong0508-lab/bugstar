@@ -13,11 +13,12 @@ static void pv_hex(const char *s, u32 *w, int nw){
 }
 static void pv_hexs(char *o, const u32 *w, int nw){ int top=nw-1; while(top>0 && !w[top]) top--; char *p=o; p+=sprintf(p,"%X",w[top]); for(int i=top-1;i>=0;i--) p+=sprintf(p,"%08X",w[i]); }
 int pc_view_main(int argc, char **argv){
-    const char *universe="1", *cx="0", *cy="0", *out="seed"; int star=6, planet=0, moon=0, scale=4;
+    const char *crcode=0, *universe="1", *cx="0", *cy="0", *out="seed"; int star=6, planet=0, moon=0, scale=4;
     for(int i=1;i<argc;i++){ const char *a=argv[i], *v=i+1<argc?argv[i+1]:"";
         if(!strcmp(a,"--universe")){ universe=v; i++; } else if(!strcmp(a,"--cx")){ cx=v; i++; } else if(!strcmp(a,"--cy")){ cy=v; i++; }
         else if(!strcmp(a,"--star")){ star=atoi(v); i++; } else if(!strcmp(a,"--planet")){ planet=atoi(v); i++; } else if(!strcmp(a,"--moon")){ moon=atoi(v); i++; }
         else if(!strcmp(a,"--laws")){ plw_load(v); i++; } else if(!strcmp(a,"--law")){ plw_setk(v,1); i++; } else if(!strcmp(a,"--preset")){ plw_preset_apply(atoi(v)); i++; }
+        else if(!strcmp(a,"--crcode")){ crcode=v; i++; }
         else if(!strcmp(a,"--out")){ out=v; i++; } else if(!strcmp(a,"--scale")){ scale=atoi(v); i++; } }
     if(scale<1) scale=1; if(scale>8) scale=8;
     settings_load(); music_apply(); opt_music=0; opt_sfx=0;                 // (no sound in the viewer)
@@ -27,7 +28,7 @@ int pc_view_main(int argc, char **argv){
     // The PC content library reads a 2048-bit universe and two 1240-bit sides; the game's own address is 256 and 155 bits. The bits above the game's are
     // handed to pcx (pcx_hi_set), which also folds them into the game's words, so a high bit changes the world too. With no high bits nothing changes.
     u32 ax[UAX], ucont[UW], cxo[UAX], cyo[UAX]; { static u32 uf[UNI_W_FULL], xf[AX_W_FULL], yf[AX_W_FULL];
-        pv_hex(universe,uf,UNI_W_FULL); pv_hex(cx,xf,AX_W_FULL); pv_hex(cy,yf,AX_W_FULL); xf[AX_W_FULL-1]&=0xFFu; xf[4]&=UTOP_PC; yf[4]&=UTOP_PC;   // (1240 bits: the last word keeps 24 bits)
+        pv_hex(universe,uf,UNI_W_FULL); if(crcode){ CrRecipe cr0; if(!cr_decode(crcode,&cr0)){ printf("bad creator code\n"); return 1; } pc_cr_rec=cr0; uint32_t w4[4]; cr_uni4(&cr0,w4); for(int i=0;i<UNI_W_FULL;i++) uf[i]= i<4 ? w4[i] : 0; } pv_hex(cx,xf,AX_W_FULL); pv_hex(cy,yf,AX_W_FULL); xf[AX_W_FULL-1]&=0xFFu; xf[4]&=UTOP_PC; yf[4]&=UTOP_PC;   // (1240 bits: the last word keeps 24 bits)
         for(int i=0;i<UW;i++) uni_w[i]=ucont[i]=uf[i]; for(int i=0;i<UAX;i++){ cxo[i]=xf[i]; cyo[i]=yf[i]; }
         pcx_hi_set(uf+UW,xf+UAX,yf+UAX);
         { u32 fu[UW], fx[UAX], fy[UAX]; for(int i=0;i<UW;i++) fu[i]=uni_w[i]; for(int i=0;i<UAX;i++){ fx[i]=cxo[i]; fy[i]=cyo[i]; }

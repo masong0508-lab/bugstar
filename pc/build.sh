@@ -29,7 +29,7 @@ sed -i \
 # the HOW BIG screen sorts every page in a scratch area: the GBA keeps it in the world builder's 32 KB; the PC has far more pages, so it gets its own
 sed -i -e 's|^extern const u8 fact_bin\[\];|extern const u8 fact_bin[] __asm__("fact_bin");|' sizes.inc
 sed -i -e 's|^#define SZ_SCR .*|#define SZ_SCR pc_szscr|' -e '/^#define NSIZE /a static u32 pc_szscr[4*NSIZE+64];' sizes.inc
-sed -i '1i #include "pc_hw.h"' main.c
+sed -i '1i #include "pc_hw.h"\nstatic void pc_creator_screen(volatile unsigned short *pg, int from_game); static void pc_cr_apply(void); static int pc_cr_water(int w);' main.c
 # the PC content library is a separate translation unit (pc/content/pcx.c): the game's own code has names like trait_name, so it only sees pcx.h
 sed -i -e 's|^static void world_page(volatile u16 \*pg, int y); |static void pc_world_screen(volatile u16 *pg), pc_lab_screen(volatile u16 *pg); &|' \
        -e 's|^\( *\)if(HIT(K_SEL) \&\& page==7){|\1if(HIT(K_B) \&\& page==7){ pc_lab_screen(pg); dirty=1; if(sys_req) break; }\n&|' \
@@ -40,6 +40,8 @@ sed -i 's|^\( *\)// a weird world: one planet in 111, only out in the galaxy.*|\
 # --- the MEANING LAYER (pc/meaning, pc_info.inc pc_mn_dna): the planet's whole make-up adds up to channels; food/hunger, enemies, gold, ore, speed, light, weather and sky colour follow (endless-galaxy planets only)
 sed -i 's/^    pc_laws_dna(0);$/    pc_laws_dna(0); pc_mn_dna();/' game.inc
 sed -i -e 's/gold+=5; show_msg("SQUASH/gold+=pc_gold(5); show_msg("SQUASH/' -e 's/gold+=12+dlv()\*3; gain_xp(8+dlv()\*2); st_kills\[2\]++;/gold+=pc_gold(12+dlv()*3); gain_xp(8+dlv()*2); st_kills[2]++;/' -e 's/else { gold+=2+dlv(); show_msg("A SHINY PEBBLE/else { gold+=pc_gold(2+dlv()); show_msg("A SHINY PEBBLE/' planet.inc
+sed -i 's|^    if(dbg_hour>=0) wd.hour=dbg_hour; if(dbg_weather>=0) wd.weather=dbg_weather;|    pc_cr_apply();\n&|' game.inc
+sed -i -e 's|enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT, TI_EXTRA };|enum { TI_CONT, TI_NEW, TI_LOAD, TI_HELP, TI_OPT, TI_EXTRA, TI_CREATE };|' -e 's|static const char \*const tn\[7\]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS","EXTRAS"};|static const char *const tn[8]={"CONTINUE","NEW GAME","LOAD GAME","HOW TO PLAY","OPTIONS","EXTRAS","PLANET CREATOR"};|' -e 's|int it\[7\]; int kon=0;|int it[8]; int kon=0;|' -e 's|it\[n++\]=TI_OPT; it\[n++\]=TI_EXTRA;|it[n++]=TI_OPT; it[n++]=TI_EXTRA; it[n++]=TI_CREATE;|' -e 's|else if(it\[sel\]==TI_HELP) scpy(b,"THE BUTTONS, AND TIPS");|else if(it[sel]==TI_CREATE) scpy(b,"MAKE YOUR OWN PLANET AND PEOPLE");\n&|' -e 's|            if(a==TI_HELP){ oam_hide_all|            if(a==TI_CREATE){ oam_hide_all(); oam_flush(); pc_creator_screen(pg,0); full=1; }\n&|' main.c
 # --- the UNIVERSE LAWS (pc/laws, pc/pc_laws.inc): hooks. At the default laws every hook returns the game's own number (tests/seeds.golden proves it).
 # the world wraps every pc_tw cells (128; 64, 32, 16 or 8 on tiny worlds), the horizon bend is in sixteenths (pc_k16 = -1: the size class decides)
 sed -i -e 's/(TW<<16)-1/(pc_tw<<16)-1/g' *.inc
@@ -62,7 +64,7 @@ sed -i -e 's/^static int curv_k(void){ static const u8 ks\[6\]={12,7,4,3,2,1}; i
        -e 's/^static int curv_sh(void){ return kr_mode==1 \&\& !kloop_on ? 5 : 3; }/static int curv_sh(void){ return (kr_mode==1 \&\& !kloop_on ? 5 : 3)+4; }/' \
        -e 's/return curv_k()>4 ? curv(cam_back()>>8) : 0; }/return curv_k()>64 ? curv(cam_back()>>8) : 0; }/' \
        -e 's/^    land_smooth();$/    pc_tiny_hmap();\n    land_smooth();/' \
-       -e 's/^    if(WL(MW_FLOOD)){ water_lv += /    water_lv=pc_water(water_lv);\n&/' \
+       -e 's/^    if(WL(MW_FLOOD)){ water_lv += /    water_lv=pc_cr_water(pc_water(water_lv));\n&/' \
        -e 's/+wd\.flora\[t\]-3; if(n<1) n=1;/+wd.flora[t]-3+pc_node[t]; if(n<1) n=1;/' \
        -e 's/s32 sp = 0x1600 + (wd\.grav-1)\*0x200;/s32 sp = 0x1600 + (wd.grav-1)*0x200 - pc_slow;/' \
        -e 's/ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;/& pc_tiny_fix();/' \
@@ -73,6 +75,7 @@ sed -i -e 's/^static void slot_erase(int i){/static void slot_erase(int i){ pc_l
 sed -i 's/if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug/if(s2>=0){ cur_slot=s2; pc_laws_slot_new(s2); oam_hide_all(); oam_flush(); if(make_bug/' main.c
 echo '#include "../pc_laws.inc"' >> main.c
 echo '#include "../pc_info.inc"' >> main.c
+echo '#include "../creator/creator_ui.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 echo '#include "../coil_test.inc"' >> main.c
 # --- compile -----------------------------------------------------------------------------------------------------------
@@ -92,9 +95,9 @@ fi
 CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
-for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../meaning/meaning.c ../sim/god.c ../sim/lv.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../sim/god.c ../sim/lv.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH $OBJS $SDLL -lm -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"

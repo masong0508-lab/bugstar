@@ -287,3 +287,7 @@ void cr_plant(uint32_t id, CrPlant *p){
 }
 uint32_t cr_plant_nth(uint64_t seed, uint32_t n){ return flora_catalogue(seed, n); }
 uint32_t cr_plant_count(void){ return FL_TOTAL; }
+
+// ------------------------------------------------------------------ the 512 peoples and 256 cities, for the screen
+void cr_people_info(int stock, int calling, char *name, char *a1, char *a2){ People p; people_get((calling & 15) * 32 + (stock & 31), &p); snprintf(name, 56, "%s", p.name); snprintf(a1, 72, "%s", p.about1); snprintf(a2, 72, "%s", p.about2); }
+void cr_city_info(int form, int chr, char *name, char *a1){ CityKind c; city_get((chr & 15) * 16 + (form & 15), &c); snprintf(name, 56, "%s", c.name); snprintf(a1, 72, "%s", c.about1); }
