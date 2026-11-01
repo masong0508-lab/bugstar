@@ -126,7 +126,7 @@ static void coil_hud(volatile u16 *pg, CW w, int milli, int gt, int minimal){
     CS sp=coil_speed_cs(w,milli);
     if(sp.m){
         char t[100];
-        static const u8 ord[CT_N+1]={CT_N,CT_MOON,CT_SUN,CT_PROX,CT_MW,CT_AND,CT_UNI,CT_GAME};
+        static const u8 ord[CT_N+1]={CT_N,CT_UNIT,CT_MOON,CT_SUN,CT_PROX,CT_MW,CT_AND,CT_UNI,CT_GAME,CT_FAR};
         int k=ord[(fx_t/130)%(CT_N+1)]; scpy(t,"TO "); scat(t,coil_trip_nm[k]); scat(t,": ");
         coil_trip(t+textlen(t), k, (u32)(coil_pd()<1?1:coil_pd()), sp);
         if(gt>=3 && !S){ for(int i=0;t[i];i++) if(t[i]>='0'&&t[i]<='9' && (fx_rnd()&7)<(unsigned)(gt-1)) t[i]=(char)('0'+fx_rnd()%10); }       // (the glitch scrambles this extra line, never the speed)
@@ -150,8 +150,8 @@ static void cd_row(volatile u16 *pg, int y, const char *lab, const char *val, in
 static void cd_draw(volatile u16 *pg, int pgn, CW w, int milli){
     CS sp=coil_speed_cs(w,milli); int gt=coil_gt(w);
     { { rect(pg,0,0,240,160,U_BG0); ui_bg(pg,0,160); ui_panel(pg,4,4,232,152);
-            static const char *const hd[5]={"YOUR SPEED, EXACT","CROSSED EVERY SECOND","HOW LONG A TRIP TAKES","ALL SEVEN SPEEDS","PASSING THROUGH"};
-            ui_head(pg,9,8,200,hd[pgn],C_UNIQ); char n[8]; scpy(n,""); ncat(n,pgn+1); scat(n,"/5"); rtext(pg,231,8,n,C_GREY);
+            static const char *const hd[9]={"YOUR SPEED, EXACT","CROSSED EVERY SECOND","HOW LONG A TRIP TAKES","WHERE TO: DISTANCES","TRIPS IN SECONDS","TRIPS IN PLANCK TIMES","SPEED FOR ONE PLANCK TIME","ALL SEVEN SPEEDS","PASSING THROUGH"};
+            ui_head(pg,9,8,200,hd[pgn],C_UNIQ); char n[8]; scpy(n,""); ncat(n,pgn+1); scat(n,"/9"); rtext(pg,231,8,n,C_GREY);
             char a[100], t[100]; int y=22;
             if(pgn==0){
                 cd_row(pg,y,"TIER",coil_tier ? coil_tn[coil_tier] : "SHIP ENGINES",C_WHITE); y+=11;
@@ -170,12 +170,28 @@ static void cd_draw(volatile u16 *pg, int pgn, CW w, int milli){
                 text(pg,10,y,"100,000 LY WIDE, THE OBSERVABLE UNIVERSE 93 BILLION.",C_GREY,1); }
             else if(pgn==2){
                 int tiny=0;
-                for(int k=0;k<=CT_N;k++){ static const u8 ord[CT_N+1]={CT_N,CT_MOON,CT_SUN,CT_PROX,CT_MW,CT_AND,CT_UNI,CT_GAME}; int o=ord[k];
-                    scpy(a,coil_trip_nm[o]); a[0]=a[0]; coil_trip(t,o,(u32)(coil_pd()<1?1:coil_pd()),sp); if(t[0]=='L') tiny=1;
-                    cd_row(pg,y,a,t,t[0]=='L'?C_RED:C_WHITE); y+=10; }
-                y+=3; if(tiny){ text(pg,10,y,"RED: SHORTER THAN ONE PLANCK TIME (5.391247 X 10^-44 S),",C_RED,1); y+=9; text(pg,10,y,"THE SHORTEST TIME PHYSICS CAN TALK ABOUT.",C_RED,1); }
+                for(int k=0;k<=CT_N;k++){ static const u8 ord[CT_N+1]={CT_N,CT_UNIT,CT_MOON,CT_SUN,CT_PROX,CT_MW,CT_AND,CT_UNI,CT_GAME,CT_FAR}; int o=ord[k];
+                    scpy(a,coil_trip_nm[o]); coil_trip(t,o,(u32)(coil_pd()<1?1:coil_pd()),sp);
+                    CS tl = o==CT_N ? cs_div(cs_u((u64)(coil_pd()<1?1:coil_pd())*2000000ULL),cs_u(299792458ULL)) : cn_trip_light(o); int sub = sp.m && cs_cmp(cs_div(tl,sp),CN_TP)<0; if(sub) tiny=1;
+                    cd_row(pg,y,a,t,sub?C_RED:C_WHITE); y+=10; }
+                y+=3; if(tiny){ text(pg,10,y,"RED: UNDER ONE PLANCK TIME (5.391247 X 10^-44 S): THE COUNT",C_RED,1); y+=9; text(pg,10,y,"IS A FRACTION OF ONE. PHYSICS HAS NO SHORTER TIME.",C_RED,1); }
                 else { text(pg,10,y,"THE GAME MAP IS 25 X 2^155 LIGHT YEARS WIDE: BIGGER",C_GREY,1); y+=9; text(pg,10,y,"THAN THE REAL UNIVERSE. THE MOON IS 384,400 KM AWAY.",C_GREY,1); } }
-            else if(pgn==3){
+            else if(pgn>=3 && pgn<=6){
+                static const u8 ord[CT_N]={CT_UNIT,CT_MOON,CT_SUN,CT_PROX,CT_MW,CT_AND,CT_UNI,CT_GAME,CT_FAR};
+                static const char *const nm[CT_N]={"A GAME UNIT (2,000 KM)","THE MOON","THE SUN (1 AU)","PROXIMA, NEAREST STAR","ACROSS THE MILKY WAY","ANDROMEDA, NEAREST GALAXY","THE OBSERVABLE UNIVERSE","EDGE OF THE GAME MAP","THE FURTHEST (CHEATS)"};
+                int tiny=0;
+                for(int k=0;k<CT_N;k++){ int o=ord[k], c=C_WHITE; t[0]=0;
+                    if(pgn==3) cn_dist_text(t,o);
+                    else if(pgn==4) cn_secs_text(t,o,sp);
+                    else if(pgn==5){ cn_planck_text(t,o,sp); if(sp.m && cs_cmp(cs_div(cn_trip_light(o),sp),CN_TP)<0){ c=C_RED; tiny=1; } }
+                    else { cn_onep_text(t,o); if(sp.m && cs_cmp(cs_div(cn_trip_light(o),CN_TP),sp)<=0) c=C_GREEN; }
+                    cd_row(pg,y,nm[k],t,c); y+=10; }
+                y+=4;
+                if(pgn==3){ text(pg,10,y,"LIGHT YEAR = 9.4607 X 10^12 KM. THE FURTHEST IS A TRIP",C_GREY,1); y+=9; text(pg,10,y,"BETWEEN UNIVERSES: 2^256 OF THEM, EACH 25 X 2^155 LY.",C_GREY,1); }
+                else if(pgn==4){ text(pg,10,y,"AT YOUR SPEED RIGHT NOW. SECONDS ARE THE EXACT FIGURE",C_GREY,1); y+=9; text(pg,10,y,"(LIGHT TIME OF THE DISTANCE DIVIDED BY YOUR SPEED).",C_GREY,1); }
+                else if(pgn==5){ text(pg,10,y,"ONE PLANCK TIME = 5.391247 X 10^-44 SECONDS, THE REAL",tiny?C_RED:C_GREY,1); y+=9; text(pg,10,y,tiny?"VALUE. RED: LESS THAN ONE, SO A FRACTION OF IT.":"VALUE (CODATA 2018). BELOW IT TIME HAS NO MEANING.",tiny?C_RED:C_GREY,1); }
+                else { text(pg,10,y,"THE SPEED (X LIGHT) WHERE THE TRIP TAKES EXACTLY ONE",C_GREY,1); y+=9; text(pg,10,y,"PLANCK TIME. GREEN: YOU ARE AT OR PAST IT.",C_GREY,1); } }
+            else if(pgn==7){
                 text(pg,10,y,"TIER",C_GREY,1); text(pg,52,y,"SPEED (X LIGHT)",C_GREY,1); rtext(pg,231,y,"ACROSS THE UNIVERSE",C_GREY); y+=10;
                 for(int k=1;k<=NCT;k++){ CS ck=cs_from_cw(coil_mw[k]); text(pg,10,y,coil_tn[k],k==coil_tier?C_GOLD:C_WHITE,1); a[0]=0; cn_wfmt(a,coil_mw[k]); text(pg,52,y,a,k==coil_tier?C_GOLD:C_WHITE,1);
                     cn_trip_text(t,CT_UNI,ck); rtext(pg,231,y,t,C_CYAN); y+=10; }
@@ -194,7 +210,7 @@ static void cd_draw(volatile u16 *pg, int pgn, CW w, int milli){
             ui_lhint(pg,120,146,"A: NEXT PAGE   B: BACK",C_CYAN); } } }
 static int coil_detail(volatile u16 *pg){
     int milli; CW w=coil_total_c(speed,ship_top_speed(),&milli);
-    int pgn=0, dirty=1; const int NP=5; wait_release(); sfx(7);
+    int pgn=0, dirty=1; const int NP=9; wait_release(); sfx(7);
     while(1){
         if(dirty){ dirty=0; cd_draw(pg,pgn,w,milli); }
         vsync(); read_keys();

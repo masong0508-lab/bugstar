@@ -12,7 +12,7 @@ static CS cnc_cs(const char *s){ u64 m; int e; cnc_parse(s,&m,&e); return cs_mak
 static int cnc_idx(const char *s, const char *const *names, int n){ for(int i=0;i<n;i++) if(!strcmp(s,names[i])) return i; return 0; }
 static int cnc_run(const char *path, int *total){
     FILE *f=fopen(path,"r"); if(!f) return -1;
-    static const char *const rn[CR_N]={"EARTH","STAR","MW","GAL","UNI"}, *const tn[CT_N]={"MOON","SUN","PROX","MW","AND","UNI","GAME"};
+    static const char *const rn[CR_N]={"EARTH","STAR","MW","GAL","UNI"}, *const tn[CT_N]={"MOON","SUN","PROX","MW","AND","UNI","GAME","UNIT","FAR"};
     char ln[300]; int n=0, bad=0;
     while(fgets(ln,sizeof ln,f)){
         char *sep=strstr(ln," => "); if(!sep) continue; *sep=0; char *want=sep+4; want[strcspn(want,"\r\n")]=0;
@@ -23,6 +23,10 @@ static int cnc_run(const char *path, int *total){
         else if(!strcmp(k,"KMPS")){ cnc_parse(a1,&m,&e); CS c = strchr(a1,'d') ? cs_make(m,e) : cs_from_cw(cw_make(m,e)); cn_sn(got,cn_kmps(c)); }
         else if(!strcmp(k,"RATE")||!strcmp(k,"TRIP")){ cnc_parse(a2,&m,&e); CS c = strchr(a2,'d') ? cs_make(m,e) : cs_from_cw(cw_make(m,e));
             if(k[0]=='R') cn_rate_text(got,cnc_idx(a1,rn,CR_N),c); else cn_trip_text(got,cnc_idx(a1,tn,CT_N),c); }
+        else if(!strcmp(k,"SECS")||!strcmp(k,"PLCK")){ cnc_parse(a2,&m,&e); CS c = strchr(a2,'d') ? cs_make(m,e) : cs_from_cw(cw_make(m,e));
+            if(k[0]=='S') cn_secs_text(got,cnc_idx(a1,tn,CT_N),c); else cn_planck_text(got,cnc_idx(a1,tn,CT_N),c); }
+        else if(!strcmp(k,"DIST")) cn_dist_text(got,cnc_idx(a1,tn,CT_N));
+        else if(!strcmp(k,"ONEP")) cn_onep_text(got,cnc_idx(a1,tn,CT_N));
         else if(!strcmp(k,"TIME")) cn_time(got,cnc_cs(a1));
         else if(k[0]=='O' && k[1]=='P'){                                  // arithmetic: the answer's first 8 digits must agree (the game keeps 10)
             u64 m2; int e2; CW a, b, r; cnc_parse(a1,&m,&e); a=cw_make(m,e);

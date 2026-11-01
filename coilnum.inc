@@ -81,14 +81,15 @@ static void cn_dec(char *b, u64 r, int sig, int s){                    // r has 
     if(f>s+1){ t[k++]='.'; for(int i=s+1;i<f;i++) t[k++]=d[i]; } t[k]=0; scat(b,t); }
 static void cn_wfmt(char *b, CW w){                                    // a speed, exact: "950", "13,000,000,000,000", "2.3759 X 10^43"
     if(w.e==0) cn_comma(b,w.m); else cn_sci(b,w.m,10,w.e+9); }
-static void cn_sn(char *b, CS v){                                      // a figure: 299,792,458  23.527  0.0165  3.8973 X 10^18
+static void cn_sig(char *b, CS v, int sig){                            // a figure with 'sig' digits: 299,792,458  23.527  0.0165  3.8973 X 10^18
     if(!v.m){ scat(b,"0"); return; }
-    u64 r; int x; cs_round(v,5,&r,&x); int X=v.e+9;
-    if(x>5 || x<-3){ cn_sci(b,r,5,x); return; }
+    u64 r; int x; cs_round(v,sig,&r,&x); int X=v.e+9;
+    if(x>5 || x<-3){ cn_sci(b,r,sig,x); return; }
     if(x>=4){ u64 d=cn_p10[9-X]; cn_comma(b,(v.m+d/2)/d); return; }
-    if(x>=0){ cn_dec(b,r,5,x); return; }
+    if(x>=0){ cn_dec(b,r,sig,x); return; }
     scat(b,"0."); for(int i=0;i< -x-1;i++) scat(b,"0");
-    char d[24]; d[0]=0; cn_u(d,r); int n=5; while(n>1 && d[n-1]=='0') n--; d[n]=0; scat(b,d); }
+    char d[24]; d[0]=0; cn_u(d,r); int n=sig; while(n>1 && d[n-1]=='0') n--; d[n]=0; scat(b,d); }
+static void cn_sn(char *b, CS v){ cn_sig(b,v,5); }
 static void cn_words(char *b, CS v){                                   // "13 TRILLION", "23.759 TREDECILLION"; small figures as numbers
     u64 r; int x; cs_round(v,5,&r,&x);
     if(!v.m || x<6){ cn_sn(b,v); return; }
@@ -101,7 +102,7 @@ static void cn_time(char *b, CS t){
     b[0]=0;
     if(!t.m){ scpy(b,"NO TIME AT ALL"); return; }
     CS tp=CN_TP;
-    if(cs_cmp(t,tp)<0){ scpy(b,"LESS THAN ONE PLANCK TIME"); return; }
+    if(cs_cmp(t,tp)<0){ cn_sig(b,cs_div(t,tp),3); scat(b," PLANCK TIMES"); return; }        // shorter than one Planck time: say how MANY (a fraction): "3.2 X 10^-12 PLANCK TIMES"
     int X=t.e+9; u64 r; int x;
     if(X<=-25){                                                         // shorter than a yoctosecond: in Planck times, or in seconds with a power
         CS q=cs_div(t,tp);
@@ -131,9 +132,18 @@ static void cn_rate_text(char *b, int k, CS c){                                 
     b[0]=0; CS r=cn_rate(k,c); if(!r.m){ scpy(b,"NONE"); return; }
     if(cs_cmp(r,cs_u(1))>=0){ cn_sn(b,r); scat(b," PER SECOND"); return; }
     scpy(b,"ONE EVERY "); char t[48]; cn_time(t,cs_div(cn_len_light(k),c)); scat(b,t); }
-enum { CT_MOON, CT_SUN, CT_PROX, CT_MW, CT_AND, CT_UNI, CT_GAME, CT_N };            // the Moon, 1 AU, Proxima (4.2465 ly), the Milky Way, Andromeda (2.537 million ly), the observable universe (93 billion ly), the game's own map (25 x 2^155 ly)
+enum { CT_MOON, CT_SUN, CT_PROX, CT_MW, CT_AND, CT_UNI, CT_GAME, CT_UNIT, CT_FAR, CT_N };            // the Moon, 1 AU, Proxima (4.2465 ly), the Milky Way, Andromeda (2.537 million ly), the observable universe (93 billion ly), the game's own map (25 x 2^155 ly)
 static CS cn_trip_light(int k){                                                    // how many seconds light itself takes
     switch(k){ case CT_MOON: return cs_div(cs_u(384400000ULL),cs_u(299792458ULL)); case CT_SUN: return cs_div(cs_u(149597870700ULL),cs_u(299792458ULL));
         case CT_PROX: return cs_mulu(cs_make(42465,-4),31557600u); case CT_MW: return cs_mulu(cs_u(100000),31557600u); case CT_AND: return cs_mulu(cs_make(2537,3),31557600u);
-        case CT_UNI: return cs_mulu(cs_make(93,9),31557600u); default: return cs_mulu(cs_make(1141798154ULL,39),31557600u); } }
+        case CT_UNI: return cs_mulu(cs_make(93,9),31557600u); case CT_GAME: return cs_mulu(cs_make(1141798154ULL,39),31557600u);
+        case CT_UNIT: return cs_div(cs_u(2000000ULL),cs_u(299792458ULL));                // one game unit: 2,000 km, the shortest hop
+        default: return cs_mulu(cs_make(1322111937ULL,116),31557600u); } }               // the furthest a cheat can go: 2^256 universes of 25 x 2^155 ly = 25 x 2^411 ly
 static void cn_trip_text(char *b, int k, CS c){ if(!c.m){ scpy(b,"NEVER"); return; } cn_time(b,cs_div(cn_trip_light(k),c)); }
+
+// destinations in detail (the speed details pages): distance, seconds, Planck times, and the speed that makes the trip exactly one Planck time
+static int cn_dist_km(int k){ return k==CT_UNIT || k==CT_MOON || k==CT_SUN; }                // these are told in km, the rest in light years
+static void cn_dist_text(char *b, int k){ b[0]=0; CS ls=cn_trip_light(k); if(cn_dist_km(k)){ cn_sn(b,cn_kmps(ls)); scat(b," KM"); } else { cn_sn(b,cn_lyps(ls)); scat(b," LY"); } }
+static void cn_secs_text(char *b, int k, CS c){ b[0]=0; if(!c.m){ scpy(b,"NEVER"); return; } cn_sn(b,cs_div(cn_trip_light(k),c)); scat(b," S"); }
+static void cn_planck_text(char *b, int k, CS c){ b[0]=0; if(!c.m){ scpy(b,"NEVER"); return; } CS q=cs_div(cs_div(cn_trip_light(k),c),CN_TP); cn_sn(b,q); scat(b,(b[0]=='1' && !b[1]) ? " PLANCK TIME" : " PLANCK TIMES"); }
+static void cn_onep_text(char *b, int k){ b[0]=0; cn_sn(b,cs_div(cn_trip_light(k),CN_TP)); scat(b," X LIGHT"); }   // the speed (in c) at which the trip takes exactly one Planck time

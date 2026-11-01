@@ -15,12 +15,14 @@ PLANCK = D("5.391247e-44")         # CODATA 2018
 BIG = ["", "THOUSAND", "MILLION", "BILLION", "TRILLION", "QUADRILLION", "QUINTILLION", "SEXTILLION", "SEPTILLION", "OCTILLION", "NONILLION", "DECILLION",
        "UNDECILLION", "DUODECILLION", "TREDECILLION", "QUATTUORDECILLION", "QUINDECILLION", "SEXDECILLION", "SEPTENDECILLION", "OCTODECILLION", "NOVEMDECILLION", "VIGINTILLION"]
 RATES = ["EARTH", "STAR", "MW", "GAL", "UNI"]
-TRIPS = ["MOON", "SUN", "PROX", "MW", "AND", "UNI", "GAME"]
+TRIPS = ["MOON", "SUN", "PROX", "MW", "AND", "UNI", "GAME", "UNIT", "FAR"]
 TIERS = [("LIGHT", 1, 0), ("KILO", 1, 3), ("MEGA", 1, 6), ("GIGA", 1, 9), ("TERA", 1, 12), ("LIMIT", 13, 12), ("STORM", 23759, 39)]
 
 def adj(v): return v.adjusted()
 def rnd(v, sig):                       # first 'sig' digits rounded half up, and the exponent of the first digit
-    X = adj(v); q = (v.scaleb(-(X - sig + 1))).quantize(D(1), rounding=ROUND_HALF_UP)
+    X = adj(v); sc = v.scaleb(-(X - sig + 1)); fr = sc - sc.to_integral_value(rounding=ROUND_FLOOR)
+    if fr != D("0.5") and abs(fr - D("0.5")) < sc * D("4e-9"): raise IndexError      # (too close to a rounding tie for the game's 10 digits: not compared)
+    q = sc.quantize(D(1), rounding=ROUND_HALF_UP)
     if q >= 10 ** sig: q = q // 10; X += 1
     return int(q), X
 def comma(n): return "{:,}".format(n)
@@ -30,12 +32,12 @@ def sci(r, sig, X):
 def dec(r, sig, s):                    # the point after s+1 digits, trailing zeros of the fraction trimmed, padded with zeros if the number is short
     d = str(r).rjust(sig, "0"); head = d[:s + 1].ljust(s + 1, "0"); frac = d[s + 1:].rstrip("0")
     return head + ("." + frac if frac else "")
-def sn(v):
+def sn(v, sig=5):
     if v == 0: return "0"
-    r, x = rnd(v, 5)
-    if x > 5 or x < -3: return sci(r, 5, x)
+    r, x = rnd(v, sig)
+    if x > 5 or x < -3: return sci(r, sig, x)
     if x >= 4: return comma(int(v.quantize(D(1), rounding=ROUND_HALF_UP)))
-    if x >= 0: return dec(r, 5, x)
+    if x >= 0: return dec(r, sig, x)
     d = str(r).rstrip("0"); return "0." + "0" * (-x - 1) + d
 def wfmt(value):                       # value: int
     if value < 10 ** 19: return comma(value)
@@ -48,7 +50,7 @@ def unit(name, one): return " " + name + ("" if one else "S")
 SU = ["SECOND", "MILLISECOND", "MICROSECOND", "NANOSECOND", "PICOSECOND", "FEMTOSECOND", "ATTOSECOND", "ZEPTOSECOND", "YOCTOSECOND"]
 def timetxt(t):
     if t == 0: return "NO TIME AT ALL"
-    if t < PLANCK: return "LESS THAN ONE PLANCK TIME"
+    if t < PLANCK: return sn(t / PLANCK, 3) + " PLANCK TIMES"      # shorter than one Planck time: how many (a fraction)
     X = adj(t)
     if X <= -25:
         q = t / PLANCK
@@ -73,13 +75,27 @@ def rate(k, c):
     if v >= 1: return sn(v) + " PER SECOND"
     return "ONE EVERY " + timetxt(LEN[k] / c)
 LIGHT = {"MOON": D(384400000) / 299792458, "SUN": D(149597870700) / 299792458, "PROX": D("4.2465") * YEAR, "MW": D(100000) * YEAR,
-         "AND": D("2.537e6") * YEAR, "UNI": D("9.3e10") * YEAR, "GAME": D(25) * 2 ** 155 * YEAR}
+         "AND": D("2.537e6") * YEAR, "UNI": D("9.3e10") * YEAR, "GAME": D(25) * 2 ** 155 * YEAR,
+         "UNIT": D(2000000) / 299792458, "FAR": D("1322111937e116") * YEAR}      # (the furthest: 25 x 2^411 ly, kept to the 10 digits the game keeps)
 def trip(k, c): return timetxt(LIGHT[k] / c)
+KMS = ("UNIT", "MOON", "SUN")
+def dist(k): return sn(LIGHT[k] * C_KMS) + " KM" if k in KMS else sn(LIGHT[k] / YEAR) + " LY"
+def secs(k, c): return sn(LIGHT[k] / c) + " S"
+def plck(k, c):
+    t = sn(LIGHT[k] / c / PLANCK); return t + (" PLANCK TIME" if t == "1" else " PLANCK TIMES")
+def onep(k): return sn(LIGHT[k] / PLANCK) + " X LIGHT"
+class Skip(list):
+    def append(self, kv):          # (names beyond VIGINTILLION are made by the game's own Latin rules: not compared here)
+        try: v = kv[1]() if callable(kv[1]) else kv[1]
+        except IndexError: return
+        list.append(self, (kv[0], v))
 def cases():
-    L = []
+    L = Skip()
     speeds = []                        # whole-number speeds as (m, e)
     for nm, m, e in TIERS: speeds.append((m, e))
     for nm, m, e in TIERS: speeds.append((m * 1000000, e))        # the x1 million cheat
+    for nm, m, e in TIERS[-2:]:
+        for k in (2, 10, 100, 1000): speeds.append((m * k, e))       # the other cheat steps (x2, x10, x100, x1,000) on the top two tiers
     speeds += [(7, 0), (950, 0), (12345, 0), (1, 6), (999999999999999999, 0), (9999999999999999999, 0), (1, 19), (18446744073709551615, 0), (123456789012345, 6), (5, 100)]
     random.seed(20251101)
     for i in range(300):
@@ -90,18 +106,22 @@ def cases():
         L.append(("WFMT %de%d" % (m, e), wfmt(int(v))))
         if rnd(v, 5)[1] // 3 < len(BIG): L.append(("WORDS %de%d" % (m, e), words(v)))      # (bigger names are made by the game's own naming rules)
         L.append(("KMPS %de%d" % (m, e), sn(v * C_KMS)))
-        for k in RATES: L.append(("RATE %s %de%d" % (k, m, e), rate(k, v)))
-        for k in TRIPS: L.append(("TRIP %s %de%d" % (k, m, e), trip(k, v)))
+        for k in RATES: L.append(("RATE %s %de%d" % (k, m, e), lambda: rate(k, v)))
+        for k in TRIPS:
+            L.append(("TRIP %s %de%d" % (k, m, e), lambda: trip(k, v)))
+            L.append(("SECS %s %de%d" % (k, m, e), lambda: secs(k, v)))
+            L.append(("PLCK %s %de%d" % (k, m, e), lambda: plck(k, v)))
+    for k in TRIPS: L.append(("DIST %s" % k, lambda: dist(k))); L.append(("ONEP %s" % k, lambda: onep(k)))
     for c in ["0.001", "0.01", "0.42", "0.6", "0.999", "1.5"]:      # the ship's own speed below 1 c, as a decimal
         v = D(c)
-        for k in RATES: L.append(("RATE %s %s" % (k, c.replace(".", "d")), rate(k, v)))
-        for k in TRIPS: L.append(("TRIP %s %s" % (k, c.replace(".", "d")), trip(k, v)))
+        for k in RATES: L.append(("RATE %s %s" % (k, c.replace(".", "d")), lambda: rate(k, v)))
+        for k in TRIPS: L.append(("TRIP %s %s" % (k, c.replace(".", "d")), lambda: trip(k, v))); L.append(("SECS %s %s" % (k, c.replace(".", "d")), lambda: secs(k, v))); L.append(("PLCK %s %s" % (k, c.replace(".", "d")), lambda: plck(k, v)))
         L.append(("KMPS %s" % c.replace(".", "d"), sn(v * C_KMS)))
-    ts = ["1e-60", "5.391247e-44", "5.4e-44", "5.3e-44", "1e-43", "5.39e-41", "5.4e-41", "9.99e-25", "1e-24", "1.5e-24", "5e-21", "2.5e-19", "1e-9", "4.57e-7", "0.0004999", "0.9996", "0.5", "1", "1.28225", "59.9", "60", "3599", "3600", "86399", "86400", "31557599", "31557600",
+    ts = ["1e-60", "3.2e-56", "5.391247e-47", "5.39e-45", "5.3912e-44", "5.391246e-44", "1e-70", "5.391247e-44", "5.4e-44", "5.3e-44", "1e-43", "5.39e-41", "5.4e-41", "9.99e-25", "1e-24", "1.5e-24", "5e-21", "2.5e-19", "1e-9", "4.57e-7", "0.0004999", "0.9996", "0.5", "1", "1.28225", "59.9", "60", "3599", "3600", "86399", "86400", "31557599", "31557600",
           "63115200", "3.1557e10", "3.15576e12", "9.9996e8", "1e18", "2.934e18", "1.1e58", "9.999e20", "123456789", "1e30", "1.2345e50"]
-    for t in ts: L.append(("TIME %s" % t, timetxt(D(t))))
+    for t in ts: L.append(("TIME %s" % t, lambda: timetxt(D(t))))
     for i in range(400):
-        m = random.randint(10 ** 9, 10 ** 10 - 1); e = random.randint(-71, 51); L.append(("TIME %de%d" % (m, e), timetxt(D(m) * D(10) ** e)))
+        m = random.randint(10 ** 9, 10 ** 10 - 1); e = random.randint(-71, 51); L.append(("TIME %de%d" % (m, e), lambda: timetxt(D(m) * D(10) ** e)))
     # the speed arithmetic (ramp up, ramp down, the cheat multipliers): expected = exact result, the game keeps 10 digits (compared to within 1e-8)
     def rv():
         d = random.choice([0, 0, 3, 6, 12, 18, 25, 40, 43, 49]); m = random.randint(1, 10 ** random.randint(1, 10) - 1); return m, max(0, d - len(str(m)) + 1)
@@ -115,14 +135,18 @@ def cases():
     return L
 
 def show():
+    global BIG
+    BIG = BIG + ["(GAME LATIN NAME)"] * 400
     print("TIER      SPEED (x c)            KM/S                 UNIVERSE (93 BILLION LY)   MOON")
     for nm, m, e in TIERS:
         v = D(m) * D(10) ** e
         print("%-6s %-22s %-20s %-26s %s" % (nm, wfmt(int(v)), sn(v * C_KMS), trip("UNI", v), trip("MOON", v)))
     for nm, m, e in TIERS[-2:]:
         v = D(m) * D(10) ** e
-        for k in TRIPS: print("  %s %-6s %s" % (nm, k, trip(k, v)))
+        for k in TRIPS: print("  %s %-6s %s | %s | %s" % (nm, k, trip(k, v), secs(k, v), plck(k, v)))
         for k in RATES: print("  %s %-6s %s" % (nm, k, rate(k, v)))
+    print("DESTINATIONS: distance | speed for exactly one Planck time")
+    for k in TRIPS: print("  %-6s %-22s %s" % (k, dist(k), onep(k)))
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

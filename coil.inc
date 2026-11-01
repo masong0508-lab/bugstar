@@ -42,7 +42,7 @@ static void coil_fmt(char *b, CW w, int milli){              // the speed, exact
     if(cw_zero(w)){ scpy(b,"0."); int h=milli/10; if(h<10){ scat(b,"0"); } ncat(b,h); scat(b," X LIGHT"); return; }
     b[0]=0; cn_wfmt(b,w); scat(b," X LIGHT"); }
 static CS coil_speed_cs(CW w, int milli){ return !cw_zero(w) ? cs_from_cw(w) : cs_make((u64)milli,-3); }   // the speed as a number for the derived figures
-static const char *const coil_trip_nm[CT_N+1]={"THE MOON","THE SUN","PROXIMA","THE MILKY WAY","ANDROMEDA","THE UNIVERSE","THE GAME MAP","THE PLANET"};
+static const char *const coil_trip_nm[CT_N+1]={"THE MOON","THE SUN","PROXIMA","THE MILKY WAY","ANDROMEDA","THE UNIVERSE","THE GAME MAP","A GAME UNIT","THE FURTHEST","THE PLANET"};
 static void coil_trip(char *b, int which, u32 dist_units, CS c){      // the time to a place at speed c: 0..6 the list in coilnum.inc, 7 = the planet here (1 game unit = 2,000 km)
     if(which==CT_N){ cn_time(b, cs_div(cs_div(cs_u((u64)dist_units*2000000ULL),cs_u(299792458ULL)), c.m ? c : cs_u(1))); if(!c.m) scpy(b,"NEVER"); }
     else cn_trip_text(b,which,c); }

@@ -27,6 +27,9 @@ int pc_coil_soak(void){ int f0_=ct_fail;
             if(pm<2 && pd==0 && coil_passes==p0) bad|=64; (void)passes; } }
       CT(bad==0,"pass-through keeps its promises in every mode"); CT(worst_hull>=10,"the hull is never taken below 10");
       xo[XO_PASS]=xp; xo[XO_PDMG]=xd; xo[XO_PVIS]=xv; pt_reset(); coil_cur=cw_u64(0); coil_tier=0; }
+    { volatile u16 *pg=(volatile u16*)0x06000000; int n=0;                                            // every details page (9), at every tier and cheat step, a speed below 1 c too: drawn without a crash
+      for(int pn=0;pn<9;pn++) for(int tr=0;tr<=NCT;tr++) for(int sm=0;sm<6;sm++){ CW w = tr ? cw_mulu(coil_mw[tr],dbg_sm_v[sm]) : cw_u64(0); coil_tier=tr; dbg_sm=sm; cd_draw(pg,pn,w,tr?0:420); n++; }
+      dbg_sm=0; coil_tier=0; CT(n==9*(NCT+1)*6,"all details pages draw at every tier and cheat step"); }
     printf("coil soak: %s\n", ct_fail==f0_ ? "ok" : "FAILED"); return ct_fail!=f0_; }
 __attribute__((constructor)) static void pc_coil_selftest(void){
     if(!getenv("BUGSTAR_COILTEST")) return;
@@ -73,10 +76,14 @@ __attribute__((constructor)) static void pc_coil_selftest(void){
     b[0]=0; coil_fmt(b,coil_mw[6],0); CT(!strcmp(b,"13,000,000,000,000 X LIGHT"),"LIMIT reads in full, with commas"); b[0]=0; coil_fmt(b,cw_u64(0),420); CT(!strcmp(b,"0.42 X LIGHT"),"0.42 X LIGHT below light speed");
     b[0]=0; coil_fmt(b,cw_u64(12345),0); CT(!strcmp(b,"12,345 X LIGHT"),"12,345 is exact, not rounded to words");
     b[0]=0; cn_words(b,cs_from_cw(coil_mw[7])); CT(!strcmp(b,"23.759 TREDECILLION"),"STORM in words"); b[0]=0; cn_words(b,cs_from_cw(coil_mw[6])); CT(!strcmp(b,"13 TRILLION"),"LIMIT in words");
-    coil_trip(b,CT_MOON,0,cs_from_cw(coil_mw[7])); CT(!strcmp(b,"1 PLANCK TIME"),"the Moon at STORM is one Planck time away"); coil_trip(b,CT_N,1,cs_from_cw(coil_mw[7])); CT(!strcmp(b,"LESS THAN ONE PLANCK TIME"),"1 game unit (2,000 km) at STORM is under a Planck time");
+    coil_trip(b,CT_MOON,0,cs_from_cw(coil_mw[7])); CT(!strcmp(b,"1 PLANCK TIME"),"the Moon at STORM is one Planck time away"); coil_trip(b,CT_N,1,cs_from_cw(coil_mw[7])); CT(!strcmp(b,"0.00521 PLANCK TIMES"),"1 game unit (2,000 km) at STORM is 0.00521 Planck times");
+    coil_trip(b,CT_UNIT,0,cs_from_cw(cw_mulu(coil_mw[7],1000000))); CT(!strcmp(b,"5.21 X 10^-9 PLANCK TIMES"),"the shortest hop at STORM x 1 million: 5.21 X 10^-9 Planck times");
+    cn_dist_text(b,CT_FAR); CT(!strcmp(b,"1.3221 X 10^125 LY"),"the furthest distance: 1.3221 X 10^125 LY"); cn_dist_text(b,CT_UNIT); CT(!strcmp(b,"2000 KM"),"a game unit is 2000 km");
+    cn_onep_text(b,CT_MOON); CT(!strcmp(b,"2.3783 X 10^43 X LIGHT"),"one Planck time to the Moon needs 2.3783 X 10^43 X light");
+    cn_planck_text(b,CT_FAR,cs_from_cw(cw_mulu(coil_mw[7],1000000))); CT(strlen(b)<60,"the furthest at the top cheat fits its line");
     coil_trip(b,CT_PROX,0,cs_u(1)); CT(!strcmp(b,"4.25 YEARS"),"Proxima at light speed: 4.25 years"); coil_trip(b,CT_UNI,0,cs_from_cw(coil_mw[6])); CT(!strcmp(b,"2.61 DAYS"),"the universe at LIMIT: 2.61 days");
     coil_trip(b,CT_GAME,0,cs_from_cw(coil_mw[7])); CT(!strcmp(b,"48,100 YEARS"),"even at STORM the game map takes 48,100 years");
-    cn_time(b,cs_make(1,-60)); CT(!strcmp(b,"LESS THAN ONE PLANCK TIME"),"1e-60 s is under a Planck time"); cn_time(b,cs_make(128225,-5)); CT(!strcmp(b,"1.28 SECONDS"),"the Moon at light speed"); cn_time(b,cs_make(1,-12)); CT(!strcmp(b,"1 PICOSECOND"),"a picosecond");
+    cn_time(b,cs_make(1,-60)); CT(!strcmp(b,"1.85 X 10^-17 PLANCK TIMES"),"1e-60 s is 1.85 X 10^-17 Planck times"); cn_time(b,cs_make(128225,-5)); CT(!strcmp(b,"1.28 SECONDS"),"the Moon at light speed"); cn_time(b,cs_make(1,-12)); CT(!strcmp(b,"1 PICOSECOND"),"a picosecond");
     { const char *ref=getenv("BUGSTAR_COILREF"); if(ref){ int total=0; int bad=cnc_run(ref,&total); CT(bad==0 && total>5000,"every number matches the Python reference (pc/tests/coilref.py)"); printf("coil numbers vs Python reference: %d cases, %d differ\n",total,bad); } }
     // 7. the texts never overflow their buffers, whatever the numbers (200,000 random speeds, times and trips)
     u32 s=12345; for(int i=0;i<200000;i++){ s=s*1664525u+1013904223u; u64 n=((u64)s<<32)|(s*2654435761u); CS c=cs_make(n>>(s>>26),(int)(s%140)-70); if(!c.m) continue; CS t=cs_make((u64)s*7919u+1000000000ULL,(int)((s>>8)%200)-110);
