@@ -5,8 +5,8 @@ static void sim_when(const SimEvent *e, char *b){ int day=(int)(e->tick/SIM_DAY_
 
 static void sim_hud(volatile u16 *pg){
     if(!sim_is_on() || !sim_have_w || FILM || kr_mode) return;
-    int hr=sim_hour(&sim_w); char t[24]; t[0]=0; scat(t,"D"); ncat(t,sim_day(&sim_w)+1); scat(t," "); if(hr<10) scat(t,"0"); ncat(t,hr); scat(t,"H ");
-    scat(t,sim_weather_name(sim_w.weather));
+    int hr=sim_hour(&sim_w); char t[40]; t[0]=0; scat(t,"D"); ncat(t,sim_day(&sim_w)+1); scat(t," "); if(hr<10) scat(t,"0"); ncat(t,hr); scat(t,"H ");
+    scat(t,sim_weather_name(sim_w.weather)); if(sim_w.env_on){ scat(t," "); scat(t,sim_season_name(sim_season(&sim_w))); }
     int day = hr>=6 && hr<19;
     rect(pg,3,151,4,4,day?C_GOLD:C_CYAN); stext(pg,10,150,t,C_WHITE);
 }

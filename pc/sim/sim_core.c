@@ -49,13 +49,22 @@ void sim_species_name(uint32_t seed, char *out){
 
 static const char *const JOBN[SIMJ_N] = { "STALL KEEPER", "COOK", "CLERK", "RACER", "FORAGER", "MINER", "GUARD" };
 static const char *const TASKN[SIMT_N] = { "SLEEPING", "EATING", "WORKING", "RESTING", "CHATTING" };
-static const char *const WEATHN[SIMW_N] = { "CLEAR", "CLOUDY", "RAIN", "STORM" };
+static const char *const WEATHN[SIMW_N] = { "CLEAR", "CLOUDY", "RAIN", "STORM", "SNOW" };
 const char *sim_task_name(int t){ return t >= 0 && t < SIMT_N ? TASKN[t] : "?"; }
 const char *sim_job_name(int j){ return j >= 0 && j < SIMJ_N ? JOBN[j] : "?"; }
 const char *sim_weather_name(int w){ return w >= 0 && w < SIMW_N ? WEATHN[w] : "?"; }
 
 // ---------------------------------------------------------------- clock
 int sim_hour(const Sim *s){ return (int)((s->tick % s->day_ticks) * 24 / s->day_ticks); }
+int sim_season(const Sim *s){ return (int)((s->tick / s->day_ticks / SIM_SEASON_DAYS) % 4); }
+const char *sim_season_name(int se){ static const char *const n[4] = { "SPRING", "SUMMER", "AUTUMN", "WINTER" }; return n[se & 3]; }
+int sim_sun_hour(const Sim *s){ return s->locked ? 12 : sim_hour(s); }
+void sim_set_env(Sim *s, int day_hours, int temp_c){
+    s->env_on = 1; s->temp_c = (int16_t)temp_c; s->locked = day_hours <= 0;
+    int dt = day_hours <= 0 ? SIM_DAY_TICKS : (int)((long long)SIM_DAY_TICKS * (day_hours > 1000 ? 1000 : day_hours) / 24);
+    s->day_ticks = (uint32_t)(dt < 1200 ? 1200 : dt > 12000 ? 12000 : dt);
+    s->day_seen = (uint32_t)sim_day(s);
+}
 int sim_day(const Sim *s){ return (int)(s->tick / s->day_ticks); }
 
 // ---------------------------------------------------------------- event log
@@ -88,7 +97,7 @@ int sim_event_text(const Sim *s, const SimEvent *e, char *o, size_t n){
     case SIME_CHAT:   at = cat(o, n, at, nm); at = cat(o, n, at, " CHATTED WITH "); at = cat(o, n, at, nm2); break;
     case SIME_HUNGRY: at = cat(o, n, at, nm); at = cat(o, n, at, " IS HUNGRY"); break;
     case SIME_TIRED:  at = cat(o, n, at, nm); at = cat(o, n, at, " IS TIRED"); break;
-    case SIME_WEATHER: at = cat(o, n, at, e->a == SIMW_RAIN ? "RAIN BEGAN TO FALL" : e->a == SIMW_STORM ? "A STORM CAME IN" : e->a == SIMW_CLOUD ? "CLOUDS ROLLED IN" : "THE SKY CLEARED"); break;
+    case SIME_WEATHER: at = cat(o, n, at, e->a == SIMW_RAIN ? "RAIN BEGAN TO FALL" : e->a == SIMW_SNOW ? "SNOW BEGAN TO FALL" : e->a == SIMW_STORM ? "A STORM CAME IN" : e->a == SIMW_CLOUD ? "CLOUDS ROLLED IN" : "THE SKY CLEARED"); break;
     case SIME_DAWN:   at = cat(o, n, at, "DAY "); at = catn(o, n, at, (long)e->a + 1); at = cat(o, n, at, " BEGAN"); break;
     case SIME_CAST:   { const GodPower *p = god_power(e->a); at = cat(o, n, at, "YOU CAST: "); at = cat(o, n, at, p ? p->name : "?"); } break;
     case SIME_UNLOCK: god_unlock_text(e->a, o, n); at = strlen(o); break;
@@ -145,7 +154,13 @@ static void new_day(Sim *s, int first){
     int day = sim_day(s); s->day_seen = (uint32_t)day;
     uint32_t r = sim_rngn(s->seed, 0, RP_WEATHER, (uint64_t)day, 100);
     int w = r < 55 ? SIMW_CLEAR : r < 75 ? SIMW_CLOUD : r < 95 ? SIMW_RAIN : SIMW_STORM;
-    if(w != s->weather || first){ s->weather = (uint8_t)w; if(!first && (w == SIMW_RAIN || w == SIMW_STORM || w == SIMW_CLEAR)) sim_log(s, SIME_WEATHER, 0, w, 0); }
+    if(s->env_on){                                                                  // Phase 2: the planet's climate and the season shape the weather
+        int se = sim_season(s), t = s->temp_c + (se == 3 ? -12 : se == 1 ? 8 : 0) * (s->temp_c > -40 ? 1 : 0);
+        if(t <= 0 && (w == SIMW_RAIN || w == SIMW_STORM)) w = SIMW_SNOW;
+        else if(t > 45 && w == SIMW_RAIN) w = SIMW_CLEAR;                           // too hot for rain
+        else if(se == 2 && w == SIMW_CLEAR && r < 20) w = SIMW_CLOUD;
+    }
+    if(w != s->weather || first){ s->weather = (uint8_t)w; if(!first && (w == SIMW_RAIN || w == SIMW_STORM || w == SIMW_CLEAR || w == SIMW_SNOW)) sim_log(s, SIME_WEATHER, 0, w, 0); }
     s->weather_left = (uint16_t)(s->day_ticks / 2 + sim_rngn(s->seed, 0, RP_WEATHER, (uint64_t)day + 100000, s->day_ticks / 2));
     int target = 30 + s->forest * 4 + (s->weather == SIMW_RAIN ? 10 : 0); if(target > 90) target = 90;     // the soil drifts back to what the land can hold
     if(s->fertility < target) s->fertility = (uint8_t)(s->fertility + (target - s->fertility + 3) / 4);
@@ -314,6 +329,7 @@ uint64_t sim_hash(const Sim *s){
     hb(&x, s->hills); hb(&x, s->birds); hb(&x, s->ideas); hb(&x, s->legends); hb(&x, s->nspecies); hb(&x, s->ore); hb(&x, s->weather); h16(&x, s->weather_left);
     h32(&x, s->larder); h16(&x, s->spirit); for(int k = 0; k < SIM_MAXSPECIES; k++) h32(&x, s->species_seed[k]);
     uint8_t gb[GOD_STATE_BYTES]; god_state_to_bytes(&s->god, gb); for(int k = 0; k < GOD_STATE_BYTES; k++) hb(&x, gb[k]);
+    if(s->env_on){ hb(&x, 1); hb(&x, s->locked); h16(&x, (uint16_t)s->temp_c); }
     h32(&x, s->day_seen); h32(&x, s->log_n); uint32_t cnt = sim_log_count(s);
     for(uint32_t b = 0; b < cnt; b++){ const SimEvent *e = sim_log_at(s, b); h32(&x, e->tick); h16(&x, e->kind); h16(&x, e->who); h16(&x, e->a); h16(&x, e->b); h32(&x, e->seed32); }
     return x.h;

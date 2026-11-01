@@ -14,6 +14,7 @@
 #define SIM_HZ         10
 #define SIM_TICK_VBL   6            // one tick is 6 vblanks of the 60 Hz screen
 #define SIM_DAY_TICKS  4800         // Phase 1: a day is 8 minutes. (Phase 2 makes it depend on the planet.)
+#define SIM_SEASON_DAYS 7           // Phase 2: 7 days to a season, 4 seasons
 #define SIM_MAXFOLK    16
 #define SIM_LOGN       4096         // event ring
 #define SIM_TAILN      256          // events kept in the save file
@@ -29,7 +30,7 @@ enum { SIMJ_STALL, SIMJ_COOK, SIMJ_CLERK, SIMJ_RACER, SIMJ_FORAGER, SIMJ_MINER, 
 enum { SIMT_SLEEP, SIMT_EAT, SIMT_WORK, SIMT_LEISURE, SIMT_SOCIAL, SIMT_N };                              // what a bug is doing
 enum { SIMP_HOME, SIMP_EATERY, SIMP_WORK, SIMP_PLAZA, SIMP_N };                                           // where (the game maps these to map spots)
 enum { SIMN_HUNGER, SIMN_REST, SIMN_SOCIAL, SIMN_FUN, SIMN_N };                                           // needs: 0 bad .. 255 good
-enum { SIMW_CLEAR, SIMW_CLOUD, SIMW_RAIN, SIMW_STORM, SIMW_N };                                           // weather
+enum { SIMW_CLEAR, SIMW_CLOUD, SIMW_RAIN, SIMW_STORM, SIMW_SNOW, SIMW_N };                                           // weather
 
 enum { SIME_NONE, SIME_WAKE, SIME_SLEEP, SIME_WORK, SIME_EAT, SIME_CHAT, SIME_HUNGRY, SIME_TIRED, SIME_WEATHER, SIME_DAWN, SIME_CAST,
        SIME_UNLOCK, SIME_EMPTY, SIME_HARVEST, SIME_NEWFOLK, SIME_SPECIES, SIME_LEGEND, SIME_IDEA, SIME_SANDBOX, SIME_N };
@@ -60,6 +61,7 @@ typedef struct {
     GodState god;
     uint32_t log_n, log_head;                   // total events ever, ring head
     SimEvent log[SIM_LOGN];
+    uint8_t env_on, locked; int16_t temp_c;      // Phase 2: set by sim_set_env (the planet's day length and warmth)
     uint32_t day_seen;                          // the day new_day last ran for
     uint32_t steps_done;                        // for tests
 } Sim;
@@ -73,7 +75,12 @@ void sim_run(Sim *s, uint64_t ticks);           // tests: n ticks
 uint64_t sim_hash(const Sim *s);                // one number for the whole state (log included)
 
 int  sim_hour(const Sim *s);                    // 0..23
-int  sim_day(const Sim *s);                     // 0 based
+int  sim_day(const Sim *s);
+// Phase 2: the planet's day. day_hours from the planet (0 = tidally locked: no day, a fixed sun); day length is 4800 x hours / 24 ticks, clamped to 1200..12000.
+void sim_set_env(Sim *s, int day_hours, int temp_c);
+int  sim_season(const Sim *s);                  // 0 spring, 1 summer, 2 autumn, 3 winter
+const char *sim_season_name(int se);
+int  sim_sun_hour(const Sim *s);                // the sun's hour (12 always on a tidally locked planet)                     // 0 based
 const char *sim_task_name(int t);
 const char *sim_job_name(int j);
 const char *sim_weather_name(int w);

@@ -8,6 +8,7 @@
 #include "sim/sim_core.h"
 #include "sim/lvxp.h"
 #include "sim/sim_io.h"
+#include "content/pcx.h"
 
 // ---------------------------------------------------------------- state
 static Sim sim_w;                       // the town of the planet you are on (rebuilt when the planet changes)
@@ -110,6 +111,7 @@ static void sim_bind(void){
     mask|=(1<<SIMJ_FORAGER)|(1<<SIMJ_MINER)|(1<<SIMJ_GUARD);
     SimSlot *sl=&sim_f.slot[cur_slot%SIM_SLOTS];
     sim_init(&sim_w, sim_world_seed(), nl, (uint32_t)mask, sim_cal);
+    if(pc_applied){ u32 cx[5], cy[5]; int dh, tc; for(int i=0;i<5;i++){ cx[i]=clus[i]; cy[i]=clus[UAX+i]; } pcx_env(uni_w,cx,cy,cur_sys,cur_pl,cur_moon,&dh,&tc); sim_set_env(&sim_w,dh,tc); }   // endless-galaxy planets: their own day and climate
     if(sl->used){ sim_w.spirit=sl->spirit; sim_w.god=sl->god; sim_load_tail(&sim_w,sl); }
     sim_w.god.sandbox=sim_f.sandbox;
     sim_have_w=1; sim_seen_log=sim_w.log_n; sim_dump_at=sim_w.tick+600; sim_a_up=0;
