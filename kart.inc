@@ -294,7 +294,7 @@ static const char *const kbeing_nm[NKBEING][4]={{"SIR CRUNCH","CLICKETY","SHELLD
     {"WEBSLEY","STICKY RICKY","SILKY","TANGLES"},{"OLD STONES","RUBBLE","THE RUIN","ANCIENT ANN"},{"LIL SHIP","MINI MOTH","TINY TINA","ZOOM ZOOM"}};
 static const char *const kbeing_brag[NKBEING]={"CRUNCH! I WIN!","SLOW AND STEADY. MOSTLY STEADY.","ZORP ZORP! VICTORY!","QUONK! QUONK!","","","EVIL ALWAYS WINS. MWA HA.","RATTLE RATTLE! FIRST!",
     "I WAS ROOTING FOR ME.","ROCK SOLID DRIVING.","I AM BLOOMING GREAT.","BEEP BOOP. TOLD YOU.","EVERYTHING MUST GO! FAST!","STUCK THE LANDING.","OLD BUT GOLD.","ZOOM ZOOM ZOOM!"};
-typedef struct { s32 x, y, v, lane; s16 hd, pi; u8 lap, being, skill, item, spin, shield, boost, cloud, fin, place, nextg, po, item_n, ai_t, out, pad2; u16 ftime, pts, best, la; KLook look; char name[20]; } Racer;   // la: how far round a loop (32768 = once; 0 = not in one)
+typedef struct { s32 x, y, v, lane; s16 hd, pi; u8 lap, being, skill, item, spin, shield, boost, cloud, fin, place, nextg, po, item_n, ai_t, out, pad2, stk; u16 ftime, pts, best, la; KLook look; char name[20]; } Racer;   // la: how far round a loop (32768 = once; 0 = not in one)
 EW static Racer rc[NRC];
 static int nrc=1;
 enum { KS_COUNT, KS_RACE, KS_DONE };
@@ -731,6 +731,9 @@ static int kloop_draw_me(int slot){                                 // you, goin
     else if(form==FORM_CREATURE && form_body!=2){ int bi=inv*200/150; s32 qa=-pa*bi/inv, qb=-pb*bi/inv, qc=pc*bi/inv, qd=pd*bi/inv; set_affine(31,(s16)qa,(s16)qb,(s16)qc,(s16)qd);
         int dx=(int)(ux*off/256), dy=(int)(uy*off/256); shadow_oam[slot].a0=((y+dy-16)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((x+dx-16)&511)|(31<<9)|(1<<14); shadow_oam[slot].a2=(form_body==0?T_HOPPER:T_GRAZER)|(6<<12); slot++; }
     return slot; }
+#ifdef TEST_KFUZZ
+static int kfz_auto=0;                                             // (the kart fuzz test: 1 = the test driver steers, 0 = the keys do)
+#endif
 static void kart_auto(s32 vt){                                     // after the flag: the kart drives itself round
     Racer *k=&rc[0]; int tp=(k->pi+8)%knp; s32 dx=wrapd(kp_cx(tp)-ppx), dy=wrapd(kp_cy(tp)-ppy); int want=iatan2(dx>>4,dy>>4);
     int err=((want-khd+512)&1023)-512; if(err>12) err=12; if(err<-12) err=-12; khd=(khd+err)&1023; kturn=err>4?1:err<-4?-1:0;
@@ -740,7 +743,10 @@ static void kart_step(void){
     int up=HELD(K_UP), dn=HELD(K_DOWN), s = HELD(K_LEFT)?-1 : HELD(K_RIGHT)?1 : 0, h0=heading;
     if(kr_mode==1 && ks_state==KS_COUNT){ kv=0; return; }
     if(kloop_on){ kloop_step(); return; }
-#ifdef TEST_KAUTO
+#if defined(TEST_KAUTO) || defined(TEST_KFUZZ)
+#ifdef TEST_KFUZZ
+    if(kfz_auto)
+#endif
     if(kr_mode==1 && ks_state==KS_RACE){ Racer *k=&rc[0]; int tp=(k->pi+5)%knp; int want=iatan2(wrapd(kp_cx(tp)-ppx)>>4,wrapd(kp_cy(tp)-ppy)>>4), err=((want-khd+512)&1023)-512; s = err>3?1 : err<-3?-1 : 0; up = (err<80 && err>-80) || kv<k_vmax(&kl)/3; dn=0; }   // the test driver
 #endif
     int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)], fl = form==FORM_CREATURE && form_body==2;
@@ -818,11 +824,12 @@ static void kai(int r, int n){
         { int d2=kp_dir((k->pi+26)%knp), cv2=((d2-d0+512)&1023)-512; if(cv2<0) cv2=-cv2; cv2=cv2*3/4; if(cv2>cv) cv=cv2; }          // a bend further on counts too: brake early
         if(cv>110){ if(k->pad2<200) k->pad2++; } else if(cv<40){ if(k->pad2>45 && !k->boost) k->boost=26+(k->skill>100?10:0); k->pad2=0; }   // came out of a sharp bend: a mini-turbo
         if(cv>170) cv=170;
-        s32 vt=vtop*(256-cv/2)/256; if(k->v<vt){ k->v+=vt/40*n; if(k->v>vt) k->v=vt; } else k->v-=(k->v-vt)/8; }
+        s32 vt=vtop*(256-cv/2)/256; { int ae=err<0?-err:err; if(ae>90) vt=vt*(ae>260?35:ae>160?55:80)/100; }  /* a wide miss: slow down to come round (flat out it would circle the target for ever) */ if(k->v<vt){ k->v+=vt/40*n; if(k->v>vt) k->v=vt; } else k->v-=(k->v-vt)/8; }
     s32 st=k->v*n; k->x=(k->x+((sinx(k->hd>>2)*st)>>14))&((TW<<16)-1); k->y=(k->y+((cosx(k->hd>>2)*st)>>14))&((TW<<16)-1);
     int tx2=(k->x>>15)&255, ty2=(k->y>>15)&255;
     for(int g=0;g<24;g++){ int a=k->pi, b=(a+1)%knp; int da=kwrap8(kpx[a]-tx2)*kwrap8(kpx[a]-tx2)+kwrap8(kpy[a]-ty2)*kwrap8(kpy[a]-ty2), db=kwrap8(kpx[b]-tx2)*kwrap8(kpx[b]-tx2)+kwrap8(kpy[b]-ty2)*kwrap8(kpy[b]-ty2);
-        if(db>da) break; k->pi=(s16)b; if(b==0){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }
+        if(db>da) break; k->pi=(s16)b; if(b==0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }          // (a rival who has finished keeps driving, but no longer counts laps)
+    if(k->pi!=pi0 || k->spin) k->stk=0; else if((k->stk+=(u8)n)>=120){ int q=(k->pi+4)%knp; k->stk=0; k->x=kp_cx(q); k->y=kp_cy(q); k->hd=(s16)kp_dir(q); k->v/=2; k->pi=(s16)q; if(q<pi0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }   // circling a spot it cannot get to (a tight turn round its target) or wedged: put it back on the road a little further on
     for(int j=0;j<nkl;j++){ int d0=(klp[j]-pi0+knp)%knp, d1=(klp[j]-k->pi+knp)%knp; if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ k->la=1; k->pi=klp[j]; k->x=kp_cx(klp[j]); k->y=kp_cy(klp[j]); k->hd=(s16)kp_dir(klp[j]); return; } }
     if(cmap[ty2*HW+tx2]==KRC_PAD && !k->boost) k->boost=40;
     if(k->item && !k->fin){ if(k->ai_t>n) k->ai_t-=n; else { int t=kahead(r);
@@ -867,6 +874,7 @@ static void kart_tick(int n){
     kitems_tick(n); kbump(); kplaces(); kw_elim_tick(n);
     for(int r=1;r<nrc;r++) if(rc[r].po!=255){ po[rc[r].po].x=rc[r].x; po[rc[r].po].y=rc[r].y; }
     if(HIT(K_L)){ khorn(kl.part[KP_HORN]); for(int r=1;r<nrc;r++){ s32 dx=wrapd(rc[r].x-ppx), dy=wrapd(rc[r].y-ppy); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<(4<<16)) rc[r].lane=-rc[r].lane; } }
+    if(!rc[0].fin && nrc>1 && k_clock>36000 && k_end_t==0) k_finished=nrc-1;                    // (no race may last over ten minutes: after that the others count as done and the HURRY timer runs)
     if(!rc[0].fin && k_finished>=nrc-1 && nrc>1){ if(k_end_t==0) show_msg("HURRY! THE OTHERS ARE DONE"); k_end_t+=n; if(k_end_t>900){ rc[0].place=(u8)nrc; kfinish(0); rc[0].place=(u8)nrc; ks_state=KS_DONE; k_end_t=150; } }
     if(ks_state==KS_DONE && k_end_t>=150) kart_results();
 }

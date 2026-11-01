@@ -120,7 +120,7 @@ static void kart_results(void){
     else { static const char *const md[4]={"NO MEDAL. KEEP AT IT","BRONZE MEDAL","SILVER MEDAL","GOLD MEDAL!"}; char t[12]; kfmt_time(t,k_par()); scpy(l1,md[medal]); scat(l1,"   GOLD TIME: "); scat(l1,t); ctext(pg,120,112,l1,medal==3?C_GOLD:C_WHITE); }
     l2[0]=0; if(prize){ scpy(l2,"PRIZE: +"); ncat(l2,prize); scat(l2,kw_mode?" COINS   ":"G   "); } if(k_best_lap){ char t[12]; kfmt_time(t,k_best_lap); scat(l2,"YOUR BEST LAP "); scat(l2,t); } if(l2[0]) ctext(pg,120,122,l2,C_GOLD);
     wait_release(); for(int t=0;;t++){ vsync(); read_keys();
-#ifdef TEST_KSWEEP
+#if defined(TEST_KSWEEP) || defined(TEST_KFUZZ)
         if(t>20) break;
 #endif
         if(HIT(K_A)||HIT(K_START)) break; ctext(pg,120,140,"A: GO ON",(t&32)?C_CYAN:C_DGREY); }
@@ -134,7 +134,7 @@ static void kart_results(void){
     while(1){ in_menu++; box(pg,40,50,160,60); rect(pg,41,51,158,12,6); ctext(pg,120,54,"WHAT NOW?",C_GOLD);
         for(int i=0;i<3;i++){ if(i==sel) text(pg,52,70+i*10,">",C_CYAN,1); text(pg,60,70+i*10,opt[i],i==sel?C_WHITE:C_GREY,1); } in_menu--;
         vsync(); read_keys();
-#ifdef TEST_KSWEEP
+#if defined(TEST_KSWEEP) || defined(TEST_KFUZZ)
         sel=2; break;
 #endif
         if(HIT(K_UP)) sel=(sel+2)%3; if(HIT(K_DOWN)) sel=(sel+1)%3; if(HIT(K_A)) break; if(HIT(K_B)){ sel=2; break; } }
@@ -167,7 +167,7 @@ static void kart_cup_next(void){
         if(me==1 && k_cls<3 && kcls_open==k_cls+2) ctext(pg,120,131,k_cls==1?"NEW CLASS OPEN: IMAGO":k_cls==2?"NEW CLASS OPEN: STARBUG":"",C_CYAN);
         else if(me==1) ctext(pg,120,131,k_cls==3?"YOU WON THE SAUCER AND THE CROWN!":"YOU WON THE CROWN TOPPER!",C_CYAN); }
     in_menu--; wait_release(); for(int t=0;;t++){ vsync(); read_keys();
-#ifdef TEST_KSWEEP
+#if defined(TEST_KSWEEP) || defined(TEST_KFUZZ)
         if(t>20) break;
 #endif
         if(HIT(K_A)||HIT(K_START)) break; ctext(pg,120,142,"A: GO ON",(t&32)?C_CYAN:C_DGREY); }
