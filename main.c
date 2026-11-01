@@ -1329,6 +1329,12 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     coil_warned=1;
 #endif
     shpx.module=MD_COIL; ship_build_model(); fuel=fuel_max(); hull=100; shx=0; shy=0; shz=-PR*14; svx_=svy_=svz_=0; yaw=512;
+#ifdef TEST_COILPASS
+    xo[XO_PASS]=(u8)(TEST_COILPASS^XOT[XO_PASS].def);               // (a pass-through mode for the screenshots: 0 full, 1 reduced, 2 visual only, 3 off)
+#endif
+#ifdef TEST_COILLENT
+    dbg_coil=1;                                                   // (a lent coil: skips the STORM lock, for the screenshots)
+#endif
 #ifdef TEST_COILSM
     dbg_sm=TEST_COILSM;
 #endif

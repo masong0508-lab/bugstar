@@ -129,6 +129,7 @@ static void coil_hud(volatile u16 *pg, CW w, int milli, int gt, int minimal){
         static const u8 ord[CT_N+1]={CT_N,CT_UNIT,CT_MOON,CT_SUN,CT_PROX,CT_MW,CT_AND,CT_UNI,CT_GAME,CT_FAR};
         int k=ord[(fx_t/130)%(CT_N+1)]; scpy(t,"TO "); scat(t,coil_trip_nm[k]); scat(t,": ");
         coil_trip(t+textlen(t), k, (u32)(coil_pd()<1?1:coil_pd()), sp);
+        if(textlen(t)>41){ scpy(t,"TO "); scat(t,coil_trip_nm[k]); scat(t,": "); if(k==CT_N) coil_trip(t+textlen(t),k,(u32)(coil_pd()<1?1:coil_pd()),sp); else cn_secs_text(t+textlen(t),k,sp); }   // (too long for the line, such as a Latin-named count of years: tell it in seconds)
         if(gt>=3 && !S){ for(int i=0;t[i];i++) if(t[i]>='0'&&t[i]<='9' && (fx_rnd()&7)<(unsigned)(gt-1)) t[i]=(char)('0'+fx_rnd()%10); }       // (the glitch scrambles this extra line, never the speed)
         hud_line(pg,121,t,C_GREY,1);
         int q=(fx_t/110)%(1+CR_N); scpy(t,"");
@@ -174,7 +175,7 @@ static void cd_draw(volatile u16 *pg, int pgn, CW w, int milli){
                     scpy(a,coil_trip_nm[o]); coil_trip(t,o,(u32)(coil_pd()<1?1:coil_pd()),sp);
                     CS tl = o==CT_N ? cs_div(cs_u((u64)(coil_pd()<1?1:coil_pd())*2000000ULL),cs_u(299792458ULL)) : cn_trip_light(o); int sub = sp.m && cs_cmp(cs_div(tl,sp),CN_TP)<0; if(sub) tiny=1;
                     cd_row(pg,y,a,t,sub?C_RED:C_WHITE); y+=10; }
-                y+=3; if(tiny){ text(pg,10,y,"RED: UNDER ONE PLANCK TIME (5.391247 X 10^-44 S): THE COUNT",C_RED,1); y+=9; text(pg,10,y,"IS A FRACTION OF ONE. PHYSICS HAS NO SHORTER TIME.",C_RED,1); }
+                y+=3; if(tiny){ text(pg,10,y,"RED: UNDER ONE PLANCK TIME (5.391247 X 10^-44 S),",C_RED,1); y+=9; text(pg,10,y,"SO THE COUNT IS A FRACTION OF ONE.",C_RED,1); }
                 else { text(pg,10,y,"THE GAME MAP IS 25 X 2^155 LIGHT YEARS WIDE: BIGGER",C_GREY,1); y+=9; text(pg,10,y,"THAN THE REAL UNIVERSE. THE MOON IS 384,400 KM AWAY.",C_GREY,1); } }
             else if(pgn>=3 && pgn<=6){
                 static const u8 ord[CT_N]={CT_UNIT,CT_MOON,CT_SUN,CT_PROX,CT_MW,CT_AND,CT_UNI,CT_GAME,CT_FAR};
@@ -210,6 +211,7 @@ static void cd_draw(volatile u16 *pg, int pgn, CW w, int milli){
             ui_lhint(pg,120,146,"A: NEXT PAGE   B: BACK",C_CYAN); } } }
 static int coil_detail(volatile u16 *pg){
     int milli; CW w=coil_total_c(speed,ship_top_speed(),&milli);
+    coil_fx_end();                                                       // (the glitch's tilt, zoom and colours are put right first: the pages must be flat and clear)
     int pgn=0, dirty=1; const int NP=9; wait_release(); sfx(7);
     while(1){
         if(dirty){ dirty=0; cd_draw(pg,pgn,w,milli); }
