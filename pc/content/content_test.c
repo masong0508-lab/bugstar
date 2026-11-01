@@ -11,6 +11,20 @@ static uint64_t rs = 88172645463325252ull;
 static uint32_t r32(void){ rs ^= rs << 13; rs ^= rs >> 7; rs ^= rs << 17; return (uint32_t)(rs >> 8); }
 static void sci_is(const Big *b, const char *want, const char *what){ char s[32]; bn_sci(b, s); CHECK(!strcmp(s, want), "%s: got %s, want %s", what, s, want); }
 
+static int cs_first[NCAT], cs_n[NCAT], cs_pick[MAX_TR + 1];
+static unsigned long long count_sets(int cat, int n){
+    unsigned long long t = 0;
+    if(cat == NCAT) return n >= 3 ? 1 : 0;
+    t += count_sets(cat + 1, n);                                  // nothing from this category
+    if(n < MAX_TR) for(int ch = 0; ch < cs_n[cat]; ch++){
+        int id = cs_first[cat] + ch, ok = 1;
+        for(int j = 0; j < n; j++) if(traits_conflict(id, cs_pick[j])){ ok = 0; break; }
+        if(!ok) continue;
+        cs_pick[n] = id; t += count_sets(cat + 1, n + 1);
+    }
+    return t;
+}
+
 int main(void){
     // ---- the scale numbers in pc/README.md (8x bits)
     Big u, ax, cl, t, w, tmp;
@@ -59,6 +73,18 @@ int main(void){
       int never = 0; for(int i = 0; i < theme_count(); i++) if(!seen[i]) never++;
       CHECK(!bad && !never, "themes: %ld equal pairs, %d never picked", bad, never);
       printf("themes: %d kinds, %ld universes, %ld bad\n", theme_count(), N, bad); }
+
+    // ---- the numbers on the HOW BIG IS IT? pages in the GBA game (facts.py): counted here so the pages stay true
+    { unsigned long long cnt;
+      for(int c = 0; c < NCAT; c++){ cs_first[c] = -1; cs_n[c] = 0; }
+      for(int i = 0; i < trait_count(); i++){ int c = trait_cat(i); if(cs_first[c] < 0) cs_first[c] = i; cs_n[c]++; }
+      // every valid set of 3 to MAX_TR traits, at most one per category, no clashing pair
+      cnt = count_sets(0, 0);
+      CHECK(cnt == 10780270ull, "valid trait recipes %llu, the HOW BIG page says 10780270", cnt);
+      int tn = theme_count(), pairs = 0; for(int a = 0; a < tn; a++) for(int b = a + 1; b < tn; b++) if(theme_pair_ok(a, b)) pairs++;
+      CHECK(pairs == 266, "valid theme pairs %d, the HOW BIG page says 266", pairs);
+      CHECK(trait_count() == 65 && tn == 24, "counts: %d traits, %d themes (the HOW BIG pages say 65 and 24)", trait_count(), tn);
+      printf("how-big pages: %llu trait recipes, %d theme pairs, %d traits, %d themes\n", cnt, pairs, trait_count(), tn); }
 
     printf(fails ? "FAILED (%d)\n" : "ALL OK\n", fails);
     return fails != 0;

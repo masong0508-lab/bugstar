@@ -27,4 +27,5 @@ typedef struct { const char *name, *rule; } Theme;
 int  theme_count(void);
 const Theme *theme_get(int id);
 void universe_themes(uint64_t useed, int out[2]);
+int  theme_pair_ok(int a, int b);                  // 1 when two different themes can share a universe
 #endif

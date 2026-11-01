@@ -131,9 +131,10 @@ static const Theme th[] = {
 static const uint8_t grp[] = {1,1, 2,2, 3,3, 4,4, 5,5, 6, 7,7, 0, 4, 8,8, 0,0,0, 0, 9,9, 0};
 int theme_count(void){ return (int)(sizeof th / sizeof th[0]); }
 const Theme *theme_get(int id){ return &th[id]; }
+int theme_pair_ok(int a, int b){ return a != b && !(grp[a] && grp[a] == grp[b]); }
 void universe_themes(uint64_t useed, int out[2]){
     Rng r = { useed ^ 0x5448454D45ull }; int n = theme_count();
     out[0] = (int)rndn(&r, n);
-    for(int t = 0; t < 32; t++){ int b = (int)rndn(&r, n); if(b != out[0] && !(grp[b] && grp[b] == grp[out[0]])){ out[1] = b; return; } }
+    for(int t = 0; t < 32; t++){ int b = (int)rndn(&r, n); if(theme_pair_ok(b, out[0])){ out[1] = b; return; } }
     out[1] = (out[0] + 5) % n;
 }
