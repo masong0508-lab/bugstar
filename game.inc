@@ -25,7 +25,17 @@ static u8 tiers[12];                                 // 0..5 normal tiers per zo
 static u8 hull_plates;           // saved in the smelter block (its spare byte), see ore.inc
 #define SP_MAX 3                 // engine tunes, laser lenses and shield cells you can fit (smelter, SHIP PARTS): each is one step
 static u8 sp_n[3];               // fitted: 0 engine tunes (+thrust), 1 laser lenses (+laser damage), 2 shield cells (+10 shield each); saved in the mining-log block's spare bytes, see ore.inc
-static int shield_max(void){ return 20+shield_lv*20+sp_n[2]*10; }
+// ---- SHIP POINTS: earned by shooting ships down (1), winning a fleet battle (10) and every level you gain (1); spent in the hangar's LEVEL tab
+// on seven ship stats. Each stat has a top rank, so the ship never breaks the game however many points pile up. Saved in their own block (ore.inc).
+enum { SK_SPEED, SK_TURN, SK_ARMOUR, SK_LASER, SK_SHIELD, SK_HOLD, SK_FUEL, NSK };
+static u32 ship_pts; static u16 ship_rk[NSK];
+static const u16 ship_rk_cap[NSK]={40,40,40,999,999,200,200};
+static void ship_pts_add(s64 n){ if(n<=0) return; u64 v=(u64)ship_pts+(u64)n; ship_pts = v>4000000000u ? 4000000000u : (u32)v; }
+static u32 ship_lv(void){ u32 s=1; for(int i=0;i<NSK;i++) s+=ship_rk[i]; return s; }
+// how many points a spend of one step moves: step 0 is MAX (all it can take), else 100, 50, 5 or 1
+static const u8 pt_steps[5]={0,100,50,5,1}; static const char *const pt_step_nm[5]={"MAX","100","50","5","1"};
+static s64 pt_amount(int step, s64 have, s64 room){ s64 n = pt_steps[step] ? pt_steps[step] : have; if(n>have) n=have; if(n>room) n=room; return n<0?0:n; }
+static int shield_max(void){ return 20+shield_lv*20+sp_n[2]*10+ship_rk[SK_SHIELD]*5; }
 static u32 ml_total; static u16 ml_n[8];      // the mining log: ore pieces mined in all, and per ore (4..11); saved in a block of its own (ore.inc)
 static int st_kills[11], st_fish, st_barrels, st_mined, st_dodges, st_planets, st_uniq, st_tiers, st_floors;
 static u32 ach_done;                                 // one bit per achievement
@@ -984,7 +994,7 @@ static void gain_xp(int n){ { long long q=(long long)n*xpx(); n = q>1000000000LL
     xp=sadd(xp,gain); pet_xp+=n/2+1; if(pet_xp>=pet_xp_next()){ pet_xp-=pet_xp_next(); pet_lv++; pet_maxhp+=3; pet_hp=pet_maxhp; char pb[32]; scpy(pb,"BUDDY IS LV "); ncat(pb,pet_lv+1); scat(pb,"!"); say(pb); }
     int ups=0;
     while(level<LEVEL_CAP && xp>=xp_next() && ups<64){
-        xp-=xp_next(); level++; ups++; stat_pts=sadd(stat_pts,5);
+        xp-=xp_next(); level++; ups++; stat_pts=sadd(stat_pts,5); ship_pts_add(1);
         s64 q5=sdiv(level,5); int lv5 = level==q5*5; int lv10 = lv5 && sdiv(q5,2)*2==q5;
         if(lv5) stat_pts=sadd(stat_pts,5);
         if(lv10){ stat_pts=sadd(stat_pts,10); earn(100+(int)(level>100000?100000:level)*10); }

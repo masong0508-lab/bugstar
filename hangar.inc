@@ -3,8 +3,11 @@
 // how each choice changes the way the ship flies (compared with the ship you walked in with).
 enum { R_NAME, R_PRESET, R_HULL, R_LEN, R_WID, R_NOSE, R_WINGS, R_WSIZE, R_WPOS, R_DIHED, R_FINS, R_ENG, R_ESIZE, R_GUN, R_PODS, R_MODULE, R_TOPPER, R_COCK, R_DECAL, R_SCHEME, R_FINISH, R_PAINT, R_TRIM, R_GLOW, NROWS };
 static const char *const hg_row_nm[NROWS]={"NAME","PRESET","HULL","LENGTH","WIDTH","NOSE","WINGS","WING SIZE","WING SPOT","WING TILT","FINS","ENGINES","ENGINE SIZE","CANNON","PODS","MODULE","TOPPER","COCKPIT","DECAL","SCHEME","FINISH","PAINT","TRIM","GLOW"};
-static const char *const hg_tab_nm[4]={"BODY","WINGS","GEAR","STYLE"};
-static const u8 hg_tab_n[4]={6,5,6,7};
+static const char *const hg_tab_nm[5]={"BODY","WINGS","GEAR","STYLE","LEVEL"};
+static const u8 hg_tab_n[5]={6,5,6,7,NSK};                 // LEVEL: the seven ship stats you raise with SHIP POINTS (game.inc), not parts
+static const char *const sk_nm[NSK]={"SPEED","TURN","ARMOUR","LASER","SHIELD","HOLD","FUEL"};
+static const char *const sk_ds[NSK]={"+2 THRUST, TOP SPEED +0.5","+2% TURN RATE","1% LESS DAMAGE (TO 20%)","+1 LASER DAMAGE","+5 SHIELD","+1 HOLD SPACE","+0.2 LY OF FUEL"};
+static const u8 sk_col[NSK]={C_CYAN,C_GREEN,C_GOLD,C_RED,C_CYAN,C_GOLD,C_CYAN};
 static const u8 hg_tab_row[4][7]={{R_NAME,R_PRESET,R_HULL,R_LEN,R_WID,R_NOSE},{R_WINGS,R_WSIZE,R_WPOS,R_DIHED,R_FINS},{R_ENG,R_ESIZE,R_GUN,R_PODS,R_MODULE,R_TOPPER},{R_COCK,R_DECAL,R_SCHEME,R_FINISH,R_PAINT,R_TRIM,R_GLOW}};
 static const char *const hg_st_nm[6]={"SPEED","TURN","ARMOUR","LASER","HOLD","FUEL"};
 static const u8 hg_st_max[6]={90,150,150,12,30,50};
@@ -40,23 +43,31 @@ static void hg_copy(volatile u16 *pg, volatile u16 *bp){ for(int y=HG_PY;y<HG_PY
 static int make_ship(volatile u16 *pg, int first){
     char nm[9]; scpy(nm,ship.name); int n=textlen(nm); if(n<1){ scpy(nm,"MOTH"); n=4; }
     ShipLook before=ship; ShipX beforex=shpx; ship_build_model();
-    int tab=0, row[4]={0,0,0,0}, dirty=1, editing=0, cur=0, t=0, spin=0, tilt=26, pre=-1, selp=0, selused=0, old[6], now[6]; ship_stats(old);         // old: what the ship could do when you came in
+    static int hg_step=4; u32 sk_add[NSK]={0}; char sk_msg[32]; sk_msg[0]=0;                     // LEVEL tab: the step (MAX/100/50/5/1, kept between visits) and what this visit spent, for LEFT and B to take back
+    int tab=0, row[5]={0,0,0,0,0}, dirty=1, editing=0, cur=0, t=0, spin=0, tilt=26, pre=-1, selp=0, selused=0, old[6], now[6]; ship_stats(old);         // old: what the ship could do when you came in
     oam_hide_all(); oam_flush(); wait_release();
     while(1){
-        int r=hg_tab_row[tab][row[tab]], selh = !editing && HELD(K_SEL);
+        int r=tab<4 ? hg_tab_row[tab][row[tab]] : R_NAME, selh = !editing && HELD(K_SEL);
         if(dirty){ dirty=0; char b[40];
             panel(pg,4,20,232,128, first ? "BUILD YOUR SHIP" : "THE HANGAR");
-            for(int k=0;k<4;k++){ int x=8+k*28; if(k==tab) ui_sel(pg,x,36,27,11,U_SEL); ctext(pg,x+13,39,hg_tab_nm[k],k==tab?C_WHITE:C_GREY); }
+            for(int k=0;k<5;k++){ int x=8+k*22; if(k==tab) ui_sel(pg,x,36,22,11,U_SEL); ctext(pg,x+11,39,hg_tab_nm[k],k==tab?C_WHITE:k==4&&ship_pts?C_GREEN:C_GREY); }
             rect(pg,8,48,112,1,U_RAISE);
-            for(int i=0;i<hg_tab_n[tab];i++){ int rr=hg_tab_row[tab][i], y=52+i*11, on=(i==row[tab]); if(on) ui_sel(pg,8,y-2,112,11,U_SEL);
+            if(tab==4) for(int i=0;i<NSK;i++){ int y=52+i*10, on=(i==row[4]); if(on) ui_sel(pg,8,y-2,112,10,U_SEL);       // LEVEL: each stat, its rank bar and rank/top
+                text(pg,12,y,sk_nm[i],on?C_WHITE:C_GREY,1); ui_bar(pg,40,y+1,44,5,ship_rk[i],ship_rk_cap[i],sk_col[i]);
+                scpy(b,""); ncat(b,ship_rk[i]); scat(b,"/"); ncat(b,ship_rk_cap[i]); rtext(pg,119,y,b,ship_rk[i]>=ship_rk_cap[i]?C_GOLD:on?C_WHITE:C_GREY); }
+            else for(int i=0;i<hg_tab_n[tab];i++){ int rr=hg_tab_row[tab][i], y=52+i*11, on=(i==row[tab]); if(on) ui_sel(pg,8,y-2,112,11,U_SEL);
                 text(pg,14,y,hg_row_nm[rr], on?C_WHITE:C_GREY,1);
                 if(rr==R_NAME){ for(int kk=0;kk<8;kk++){ char ch[2]={ kk<n?nm[kk]:'_',0 }; int c=(editing&&kk==cur)?C_GOLD : kk<n?(on?C_GOLD:C_GREY):C_DGREY; text(pg,58+kk*6,y,ch,c,1); if(editing&&kk==cur&&(t&16)) rect(pg,58+kk*6,y+6,4,1,C_GOLD); } }
                 else if(rr>=R_PAINT){ u16 c = rr==R_PAINT?ship.paint : rr==R_TRIM?ship.trim : ship.glow; BG_PAL[224+i]=c; rect(pg,58,y-1,44,8,224+i); frame1(pg,58,y-1,44,8,on?C_WHITE:C_DGREY); }
                 else { const char *opt = rr==R_PRESET ? (pre>=0 ? ship_pre[pre].nm : "CUSTOM") : hg_opt(rr); scpy(b,"<"); scat(b,opt); scat(b,">"); b[15]=0; text(pg,58,y,b,on?C_GOLD:C_GREY,1); } }
             ship_stats(now); hg_bars(pg,now,old);
-            if(!editing){ const char *ds=hg_desc(r); if(ds[0]) wrap_text(pg,10,129,28,ds,C_GREY,2); }
+            if(tab==4){ scpy(b,"POINTS "); ncat(b,ship_pts); scat(b,"  SHIP LV "); ncat(b,ship_lv()); text(pg,10,124,b,ship_pts?C_GREEN:C_GREY,1);
+                scpy(b,"STEP: "); for(int k=0;k<5;k++){ if(k) scat(b," "); if(k==hg_step) scat(b,"["); scat(b,pt_step_nm[k]); if(k==hg_step) scat(b,"]"); } text(pg,10,132,b,C_GOLD,1);
+                text(pg,10,140, sk_msg[0] ? sk_msg : sk_ds[row[4]], sk_msg[0]?C_RED:C_GREY,1); }
+            else if(!editing){ const char *ds=hg_desc(r); if(ds[0]) wrap_text(pg,10,129,28,ds,C_GREY,2); }
             if(editing) ui_foot(pg,"UP/DOWN: LETTER  LEFT/RIGHT: MOVE","A: DONE");
             else if(selh) ui_foot(pg,"LEFT/RIGHT: TURN  UP/DOWN: TILT",0);
+            else if(tab==4) ui_foot(pg,"A/RIGHT: ADD  LEFT: TAKE BACK  SEL: STEP","B: UNDO  START: DONE");
             else ui_foot(pg,"A: CHANGE  L/R: TAB","SEL: SURPRISE  START: DONE");
             if(t) hg_copy(pg,(volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0:0xA000))); }         // keep the last preview while the list repaints
         t++; if(!selh) spin+=3; spin&=1023;
@@ -70,7 +81,8 @@ static int make_ship(volatile u16 *pg, int first){
           vsync(); hg_copy(pg,bp); }
         read_keys(); if(editing && (t&15)==0) dirty=1;
         { int sh=!editing && HELD(K_SEL); if(sh && !selp){ selused=0; dirty=1; }
-          if(!sh && selp){ dirty=1; if(!selused && !editing){                                                                                                  // a quick tap of SELECT: surprise me
+          if(!sh && selp && tab==4){ dirty=1; if(!selused){ hg_step=(hg_step+1)%5; sk_msg[0]=0; sfx(7); } }                                              // LEVEL: a quick tap of SELECT picks the step
+          else if(!sh && selp){ dirty=1; if(!selused && !editing){                                                                                                  // a quick tap of SELECT: surprise me
               ship.hull=rndi(NHULL); ship.len=rndi(3); ship.wid=rndi(3); ship.nose=rndi(3); ship.wings=rndi(NWING); ship.wsize=rndi(3); ship.wpos=rndi(3); ship.dihed=rndi(3); ship.engines=rndi(4); ship.esize=rndi(3); ship.fins=rndi(3); ship.cannon=rndi(NCANNON); ship.pods=rndi(4); ship.cockpit=rndi(NCOCK); ship.decal=rndi(NDECAL);
               shpx.module=rndi(coil_avail()?NMODULE:NMODULE-1); shpx.topper=rndi(NTOPPER); shpx.scheme=rndi(NSCHEME); shpx.finish=rndi(NFINISH);
               ship.paint=preset_col[rndi(NPRESET)]; ship.trim=preset_col[rndi(NPRESET)]; ship.glow=preset_col[rndi(NPRESET)]; pre=-1; ship_build_model(); sfx(6); } }
@@ -85,7 +97,19 @@ static int make_ship(volatile u16 *pg, int first){
             if(HELD(K_LEFT)){ spin-=14; selused=1; } if(HELD(K_RIGHT)){ spin+=14; selused=1; }
             if(HELD(K_UP)){ if(tilt<200) tilt+=3; selused=1; } if(HELD(K_DOWN)){ if(tilt>-90) tilt-=3; selused=1; }
             continue; }
-        if(HIT(K_R)){ tab=(tab+1)&3; dirty=1; sfx(7); } if(HIT(K_L)){ tab=(tab+3)&3; dirty=1; sfx(7); }
+        if(HIT(K_R)){ tab=(tab+1)%5; sk_msg[0]=0; dirty=1; sfx(7); } if(HIT(K_L)){ tab=(tab+4)%5; sk_msg[0]=0; dirty=1; sfx(7); }
+        if(tab==4){                                                                                       // LEVEL: spend SHIP POINTS a step at a time; LEFT and B give back what this visit spent
+            int c=NSK, i; if(HIT(K_UP)){ row[4]=(row[4]+c-1)%c; sk_msg[0]=0; dirty=1; sfx(7); } if(HIT(K_DOWN)){ row[4]=(row[4]+1)%c; sk_msg[0]=0; dirty=1; sfx(7); }
+            i=row[4];
+            if(HIT(K_A)||HIT(K_RIGHT)){ s64 n=pt_amount(hg_step,ship_pts,ship_rk_cap[i]-ship_rk[i]); dirty=1;
+                if(n>0){ ship_rk[i]=(u16)(ship_rk[i]+n); ship_pts-=(u32)n; sk_add[i]+=(u32)n; sk_msg[0]=0; sfx(2); }
+                else { scpy(sk_msg, ship_rk[i]>=ship_rk_cap[i] ? "THAT ONE IS AT ITS TOP RANK" : "NO SHIP POINTS: SHOOT SHIPS, LEVEL UP"); sfx(4); } }
+            if(HIT(K_LEFT)){ s64 n=pt_amount(hg_step,sk_add[i],sk_add[i]); dirty=1;
+                if(n>0){ ship_rk[i]=(u16)(ship_rk[i]-n); ship_pts+=(u32)n; sk_add[i]-=(u32)n; sk_msg[0]=0; sfx(4); }
+                else { scpy(sk_msg,"ONLY THIS VISIT'S POINTS COME BACK"); sfx(4); } }
+            if(HIT(K_B)){ u32 t=0; for(int k=0;k<NSK;k++){ ship_rk[k]=(u16)(ship_rk[k]-sk_add[k]); ship_pts+=sk_add[k]; t+=sk_add[k]; sk_add[k]=0; } scpy(sk_msg, t ? "UNDONE: ALL POINTS BACK" : "NOTHING TO UNDO"); dirty=1; sfx(4); }
+            if(HIT(K_START)) break;
+            continue; }
         { int c=hg_tab_n[tab]; if(HIT(K_UP)){ row[tab]=(row[tab]+c-1)%c; dirty=1; sfx(7); } if(HIT(K_DOWN)){ row[tab]=(row[tab]+1)%c; dirty=1; sfx(7); } }
         r=hg_tab_row[tab][row[tab]];
         { int d = HIT(K_RIGHT)?1 : HIT(K_LEFT)?-1 : (HIT(K_A) && r!=R_NAME && r<R_PAINT) ? 1 : 0;
@@ -96,5 +120,6 @@ static int make_ship(volatile u16 *pg, int first){
         if(HIT(K_START)) break;
         if(HIT(K_B)){ if(first){ ship=before; shpx=beforex; ship_build_model(); wait_release(); return 0; } ship=before; shpx=beforex; scpy(nm,before.name); n=textlen(nm); pre=-1; ship_build_model(); dirty=1; sfx(4); }
     }
+    if(fuel>fuel_max()) fuel=fuel_max(); if(shield>shield_max()) shield=shield_max();          // (points taken back can shrink the tanks)
     scpy(ship.name,nm); sfx(6); wait_release(); return 1;
 }
