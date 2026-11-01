@@ -464,7 +464,7 @@ static void pc_creator_screen(volatile u16 *pg, int from_game){
         if(HIT(K_L)){ cu_tab = (cu_tab + TB_N - 1) % TB_N; dirty = 1; sfx(7); } if(HIT(K_R)){ cu_tab = (cu_tab + 1) % TB_N; dirty = 1; sfx(7); }
         if(cu_tab == TB_BIO){ if(hr){ cu_sub = (cu_sub + 1) % 5; dirty = 1; sfx(7); } if(hl){ cu_sub = (cu_sub + 4) % 5; dirty = 1; sfx(7); } }
         else {
-            if(hu){ cu_row[cu_tab] = (cu_row[cu_tab] + nrows - 1) % nrows; dirty = 1; sfx(7); } if(hd){ cu_row[cu_tab] = (cu_row[cu_tab] + 1) % nrows; dirty = 1; sfx(7); }
+            if(nrows>0){ if(hu){ cu_row[cu_tab] = (cu_row[cu_tab] + nrows - 1) % nrows; dirty = 1; sfx(7); } if(hd){ cu_row[cu_tab] = (cu_row[cu_tab] + 1) % nrows; dirty = 1; sfx(7); } }
             if((hr || hl) && id < UR_DICE){ changed = cu_change(id, hr ? 1 : -1, hr == 2 || hl == 2); dirty = 1; if(changed) sfx(7); }
             else if((hr || hl) && id == UR_EX){ changed = cu_change(id, hr ? 1 : -1, 0); dirty = 1; }
             if(HIT(K_A) || mopen){ int lv = 0; changed |= cu_open(pg, id, &lv); if(lv) leave = lv; dirty = 1; sfx(2); wait_release(); }

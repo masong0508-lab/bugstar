@@ -8,6 +8,9 @@
 #include <string.h>
 #ifndef _WIN32
 #include <sys/mman.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #include <ucontext.h>
 #endif
 #include "pc_hw.h"
@@ -44,7 +47,12 @@ int main(int argc, char **argv){
 #else
     if(want_window){ plat_paths(argc,argv); if(!sav) sav=plat_save_path(); }
 #endif
-    if(!pc_hw_init(sav)) return 2;
+    if(!pc_hw_init(sav)){
+#ifndef _WIN32
+        // rare: the system put a library or the stack on a low address the fake GBA needs; start over (the layout is random each time)
+        { const char *r=getenv("PC_RETRY"); int n=r?atoi(r):0; if(n<8){ char b[8]; snprintf(b,8,"%d",n+1); setenv("PC_RETRY",b,1); execv("/proc/self/exe",argv); } }
+#endif
+        return 2; }
     pc_script(script,out,frames);
 #ifdef PC_SDL
     if(want_window){ pc_set_window_mode(1); if(plat_open(argc,argv)) return 2; }

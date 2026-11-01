@@ -13,6 +13,8 @@ mkdir -p gen; rm -f gen/*.inc gen/*.c gen/*.h
 cp "$ROOT"/*.inc "$ROOT"/main.c "$ROOT"/logo.h gen/; cp genroot/assets.h genroot/facts.bin gen/
 cd gen
 # --- the patches -------------------------------------------------------------------------------------------------------
+# the game has a global array named sinf (save slot info); it shadows libm sinf() for the PC code that calls it (planet creator crashed). Rename it.
+sed -i "s/\\bsinf\\b/pc_slotinfo/g" debug.inc save.inc main.c
 sed -i \
  -e 's/__attribute__((section("\.[ie]wram")))//g' \
  -e 's/__attribute__((section("\.iwram"), long_call, target("arm"), noinline))/__attribute__((noinline))/' \
