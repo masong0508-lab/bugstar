@@ -99,3 +99,29 @@ OpenGL/SDL, which this container does not have, so POLY starts after the window 
 
 `build.sh` build · `pc_hw.c/.h` fake GBA · `pc_main.c` program + 32-bit stack · `pc_view.inc` seed viewer · `seedview.sh` viewer to PNG ·
 `tests/` scripts, key scripts and `seeds.golden` · `gen/`, `out/`, `bugstar_pc` are build output (ignored).
+
+## Scale update (PC port only, a plan, not wired in yet)
+
+Asked for: multiply the galaxies, stars and planets in ONE universe by 2^256; make one universe's light years 30x bigger
+(sexquintuple read as 6 x 5); and multiply the NUMBER OF UNIVERSES by the same 2^256.
+
+| | before (GBA rules) | PC plan |
+|---|---|---|
+| universes | 2^256 = 1.16e77 | 2^512 = 1.34e154 |
+| galaxies per universe | 2^270 = 1.90e81 | 2^526 = 2.20e158 |
+| stars per universe (32 per cluster) | 2^315 = 6.7e94 | 2^571 = 7.7e171 |
+| planets per universe (up to 16 per star) | 1.07e96 | 1.24e173 |
+| width of one universe | 25 ly x 2^155 = 1.14e48 ly | x30 = 3.4e49 ly |
+| galaxies, all universes | 2.2e158 | 2.9e312 |
+| stars, all universes | 7.7e171 | 1.0e326 |
+| planets, all universes (max) | 1.2e173 | 1.7e327 |
+| trip to a neighbour universe (width x U^2) | 1.5e229 ly | 6.2e357 ly |
+
+Notes:
+- The per-universe counts (`2^270`, `2^315`) come from the code's own address sizes: 155 bits per axis,
+  a galaxy is a 2^20 x 2^20 block of clusters, 32 stars per cluster.
+- To hold this, the PC address needs about 2x the bits: 5 words per axis -> 9 words, and the universe number
+  UW=8 words -> 16 words. `amix()` must hash every word, as it does now.
+- Old GBA addresses still map to the same worlds: they sit at the start of the bigger range. The PC build never changes the GBA game.
+- Nothing is stored for this. Every place is made from its address when you arrive.
+- These are counts of PLACES THAT CAN EXIST. Nobody can visit them all, and the numbers say nothing about how deep each place is.
