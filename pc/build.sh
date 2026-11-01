@@ -99,9 +99,17 @@ H ui.inc 'static const char *const shop_ds[17]={' 'static const char *const shop
 H ui.inc '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG"};' '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG","YOUR SETTLERS: SEE THEM AND TAKE WHAT THEY MADE"};'
 H ui.inc 'in_menu++; menu_msg[0]=0; ship_build_model();' 'in_menu++; menu_msg[0]=0; ship_build_model(); shop_tab_n[0]=sim_is_on()?4:3;'
 H ui.inc 'if(sel==15){ spell_shop(pg); continue; }' 'if(sel==17){ sim_ship_colony(pg); continue; } if(sel==15){ spell_shop(pg); continue; }'
+# --- the PC SHIP EDITOR (pc/shipyard): the hangar opens it, and your design gives the ship's numbers (no design file for the slot = the game's own numbers)
+for f in armour top_speed turn damp gun hold_bonus fuel_bonus accel16; do H ship.inc "static int ship_$f(void){" "static int ship_${f}_g(void){"; done
+H ship.inc '#define SV_MAX 128' $'static int pc_sy_stat(int k, int v);\nstatic int ship_armour(void){ return pc_sy_stat(0, ship_armour_g()); } static int ship_top_speed(void){ return pc_sy_stat(1, ship_top_speed_g()); } static int ship_turn(void){ return pc_sy_stat(2, ship_turn_g()); } static int ship_damp(void){ return pc_sy_stat(3, ship_damp_g()); }\nstatic int ship_gun(void){ return pc_sy_stat(4, ship_gun_g()); } static int ship_hold_bonus(void){ return pc_sy_stat(5, ship_hold_bonus_g()); } static int ship_fuel_bonus(void){ return pc_sy_stat(6, ship_fuel_bonus_g()); } static int ship_accel16(void){ return pc_sy_stat(7, ship_accel16_g()); }\n#define SV_MAX 128'
+H hangar.inc 'static int make_ship(volatile u16 *pg, int first){' $'static int pc_sy_screen(volatile u16 *pg, int first);\nstatic int make_ship(volatile u16 *pg, int first){ return pc_sy_screen(pg, first); }\nstatic int make_ship_g(volatile u16 *pg, int first){'
+H main.c 'typedef long long s64;' $'\nstatic void pc_sy_slot_erase(int s), pc_sy_slot_copy(int a, int b);' after
+H save.inc 'pc_laws_slot_erase(i);' ' pc_sy_slot_erase(i);' after
+H save.inc 'pc_laws_slot_copy(from,to);' ' pc_sy_slot_copy(from,to);' after
 echo '#include "../sim/sim_glue.inc"' >> main.c
 echo '#include "../pc_info.inc"' >> main.c
 echo '#include "../creator/creator_ui.inc"' >> main.c
+echo '#include "../shipyard/shipyard_ui.inc"' >> main.c
 echo '#include "../pc_giant.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 echo '#include "../coil_test.inc"' >> main.c
@@ -123,9 +131,9 @@ fi
 CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_giant.inc ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_giant.inc ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
-for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../giant/giant.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH $OBJS $SDLL -lm -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"
