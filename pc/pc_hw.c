@@ -241,6 +241,7 @@ void pc_render(uint8_t *rgb){
 int pc_write_ppm(const char *path, int scale){
     if(getenv("PC_NATIVE")){                                   // test: make the picture with the native path (pc_compose_native) at scale x 240x160
         int W=240*scale, H=160*scale; uint32_t *b=malloc((size_t)W*H*4); pc_compose_native(b,W,H,atoi(getenv("PC_NATIVE"))>1);
+        if(getenv("PC_NBENCH")){ int n=atoi(getenv("PC_NBENCH")); double mn=1e9,sum=0; for(int i=0;i<n;i++){ struct timespec a,c; clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&a); pc_compose_native(b,W,H,1); clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&c); double ms=(c.tv_sec-a.tv_sec)*1e3+(c.tv_nsec-a.tv_nsec)/1e6; if(ms<mn) mn=ms; sum+=ms; } fprintf(stderr,"native compose %dx%d: best %.2f ms avg %.2f ms (cpu time, all threads) over %d (frame %ld)\n",W,H,mn,sum/n,n,g_frame); }   // (test: time the whole native picture)
         FILE *f=fopen(path,"wb"); if(!f){ free(b); return 0; } fprintf(f,"P6 %d %d 255\n",W,H);
         for(size_t i=0;i<(size_t)W*H;i++){ uint8_t p[3]={(uint8_t)(b[i]>>16),(uint8_t)(b[i]>>8),(uint8_t)b[i]}; fwrite(p,1,3,f); } fclose(f); free(b); return 1; }
     static uint8_t rgb[240*160*3]; pc_render(rgb);
@@ -365,20 +366,22 @@ static void nv_rows(void *vc, int lo, int hi){
             { const LineSt *N=&lst[R0.nl]; bldcnt=N->bldcnt; bldalpha=N->bldalpha; ev=N->bldy&31; if(ev>16) ev=16; bmode=(bldcnt>>6)&3; ea=bldalpha&31; eb=(bldalpha>>8)&31; if(ea>16)ea=16; if(eb>16)eb=16; }
             if(nat3 && R0.ground){ fog=R0.fog; nv_row(Y+1<H?Y+1:Y,sy,&R1); double g=W*0.5*sx;
                 double du=(R1.rx+R1.pa*g)-(R0.rx+R0.pa*g), dv=(R1.ry+R1.pc*g)-(R0.ry+R0.pc*g); double fy=sqrt(du*du+dv*dv), fx=sqrt(rpa*rpa+rpc*rpc)*sx;
-                FP=fx>fy?fx:fy; if(FP<0.0625) FP=0.0625; iFP=(float)(1.0/FP); nfx=(int)ceil(fx-0.25); nfy=(int)ceil(fy-0.25); if(nfx<1)nfx=1; if(nfx>3)nfx=3; if(nfy<1)nfy=1; if(nfy>3)nfy=3; if(nfx*nfy>4){ if(nfx>=nfy) nfx=4/nfy; else nfy=4/nfx; if(nfx<1)nfx=1; if(nfy<1)nfy=1; } }
+                FP=fx>fy?fx:fy; if(FP<0.0625) FP=0.0625; iFP=(float)(1.0/FP); nfx=(int)ceil(fx-0.25); nfy=(int)ceil(fy-0.25); if(nfx<1)nfx=1; if(nfx>3)nfx=3; if(nfy<1)nfy=1; if(nfy>3)nfy=3; if(nfx*nfy>2){ if(nfx>=nfy){ nfx=2; nfy=1; } else { nfy=2; nfx=1; } } }
         }
+        uint32_t bd888=(uint32_t)lut5[bd&31]<<16|(uint32_t)lut5[(bd>>5)&31]<<8|lut5[(bd>>10)&31]; int fog256=fog>0?(int)(fog*256+0.5):0;   // (the haze colour and strength, once per row, in integers)
+        double gx0=0.5*sx-0.5, ustep=rpa*sx, vstep=rpc*sx, ubase=rrx+rpa*gx0, vbase=rry+rpc*gx0;
         for(int X=0;X<W;X++){
             int have=0; uint16_t bc=bd;
             uint32_t bc888=0; int sm=0;
             if(dmaln){
                 if(nat3){
-                    if(rbg && R0.ground){ double g=(X+0.5)*sx-0.5; double u0=rrx+rpa*g, v0=rry+rpc*g;
+                    if(rbg && R0.ground){ double g=(X+0.5)*sx-0.5; double u0=ubase+ustep*X, v0=vbase+vstep*X;
                         if(u0>=0&&v0>=0&&u0<240&&v0<160){ have=1; uint32_t c;
                             if(nfx==1&&nfy==1){ c=nv_bil(1,(float)u0,(float)v0,iFP); if(FP<0.5) c=nv_grain(c,(float)u0,(float)v0,(float)FP); }
                             else { double du=rpa*sx/nfx, dv=rpc*sx/nfx, ex=(R1.rx+R1.pa*g-(rrx+rpa*g))/nfy, ey=(R1.ry+R1.pc*g-(rry+rpc*g))/nfy; unsigned sr=0,sg=0,sb=0; int n=0;
                                 for(int j=0;j<nfy;j++) for(int i=0;i<nfx;i++){ double ox=i-(nfx-1)*0.5, oy=j-(nfy-1)*0.5; uint32_t t=nv_bil(1,(float)(u0+du*ox+ex*oy),(float)(v0+dv*ox+ey*oy),1.0/(FP/(nfx>nfy?nfx:nfy))); sr+=t>>16&255; sg+=t>>8&255; sb+=t&255; n++; }
                                 c=(sr/n)<<16|(sg/n)<<8|(sb/n); }
-                            if(fog>0){ uint16_t bdc=bd; uint32_t d=(uint32_t)lut5[bdc&31]<<16|(uint32_t)lut5[(bdc>>5)&31]<<8|lut5[(bdc>>10)&31]; c=mix888(c,d,fog); }
+                            if(fog256){ uint32_t rb=((c&0xFF00FF)*(256-fog256)+(bd888&0xFF00FF)*fog256)>>8, gg=((c&0xFF00)*(256-fog256)+(bd888&0xFF00)*fog256)>>8; c=(rb&0xFF00FF)|(gg&0xFF00); }
                             bc888=c; sm=1; { size_t q=(size_t)Y*W+X; if((nv_op[q]&7)>=4){ out[q]=c; continue; } } bc=(uint16_t)((c>>3&31)|((c>>11&31)<<5)|((c>>19&31)<<10)); } }
                     else if(rbg){ int tx=(int)((X+0.5)*sx), nl=R0.nl; if(tx>239) tx=239; have=rpg? bghave2[nl][tx] : bghave[nl][tx]; bc=rpg? bgres2[nl][tx] : bgres[nl][tx];
                         if(!rpg && skyok[nl] && bgres[nl][tx]==skym[nl]){ double p=(Y+0.5)*sy-0.5-nl; int nb=nl+(p>0?1:-1); double w=p<0?-p:p; if(w>1) w=1;
