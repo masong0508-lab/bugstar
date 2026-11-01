@@ -637,7 +637,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
       if(best>=0){ s32 az=rz>200?rz:200; if(rz<200) keys|=K_RIGHT; else { if(rx*8>az) keys|=K_RIGHT; else if(rx*8<-az) keys|=K_LEFT; if(ry*8>az) keys|=K_DOWN; else if(ry*8<-az) keys|=K_UP; }          // (DOWN lifts the nose)
           if(rz>200 && rx*5<az && rx*5>-az && ry*5<az && ry*5>-az) keys|=K_A; if(rz>(in_lair?6000:2500)) keys|=K_B; } }
 #endif
-    coil_sel_eaten=0; coil_ctl();                                                   // the STORMCLOCK COIL (coil2.inc): engage, drop out, ramp
+    coil_sel_eaten=0; coil_start_eaten=0; coil_ctl();                                                   // the STORMCLOCK COIL (coil2.inc): engage, drop out, ramp
     // steer, throttle
     // the ship has weight: turning ramps up and settles, it banks into turns, and it drifts before the engines catch up
     // ---- flight: real momentum. engines push along the nose, mass resists, fins settle the turn, wings bite in air
@@ -705,7 +705,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(lair_out){ lair_out=0; lair_leave(); return 0; }
     if(ambush_t && !in_lair && --ambush_t==0){ hyperspace(); lair_enter(); return 0; }
     if(HIT(K_SEL) && !coil_sel_eaten){ if(in_lair){ lair_leave(); return 0; } return 2; }
-    if(HIT(K_START)){ chase_cam^=1; char b[40]; scpy(b, chase_cam?"CHASE VIEW. ":"COCKPIT VIEW. "); int n=0; for(int i=0;i<8;i++) n+=cargo[i]; scat(b,"CARGO "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); space_say(b); }
+    if(HIT(K_START) && !coil_start_eaten){ chase_cam^=1; char b[40]; scpy(b, chase_cam?"CHASE VIEW. ":"COCKPIT VIEW. "); int n=0; for(int i=0;i<8;i++) n+=cargo[i]; scat(b,"CARGO "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); space_say(b); }
     // A: land, dock, or fire
     if(laser_cool) laser_cool--;
     if(HIT(K_A) && can_land){ if(body_menu()) return 1; return 0; }

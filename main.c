@@ -205,7 +205,7 @@ static int cargo_n(void){ int n=0; for(int i=0;i<8;i++) n+=cargo[i]; return n; }
 // ================================================================= MORE OPTIONS (OPTIONS screen, press SELECT)
 // Every extra option is a row in XOT. Its setting is stored as (index XOR default), so a zero byte (a fresh game, or EWRAM at power on)
 // always means "the normal setting". xo_v(XO_...) is the number the game uses; xo_i(XO_...) is which choice is picked.
-#define NXO 48
+#define NXO 52
 typedef struct { const char *name, *help; const char *const *lab; const s32 *val; u8 n, def, grp; } XOpt;
 #define XL(id,...) static const char *const id##_l[]={__VA_ARGS__};
 #define XV(id,...) static const s32 id##_v[]={__VA_ARGS__};
@@ -217,7 +217,7 @@ enum { XO_DMGIN, XO_DMGOUT, XO_CRIT, XO_BITESPD, XO_BITERNG, XO_KNOCK, XO_HITSTO
        XO_HUNGER, XO_REGEN, XO_HEAL, XO_MANA, XO_MAXH, XO_FUEL,
        XO_MOVE, XO_DODGEI, XO_DODGED, XO_FLOORS,
        XO_XP, XO_GOLD, XO_DROPS, XO_UNIQUE, XO_XPNEED,
-       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, XO_GFX, XO_RUMBLE, XO_RUMEV, XO_RUMHUM, XO_MUSVAR, XO_MUSL, XO_MUSBAL, XO_FSAFE, XO_GLITCH, NXOPT };
+       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, XO_GFX, XO_RUMBLE, XO_RUMEV, XO_RUMHUM, XO_MUSVAR, XO_MUSL, XO_MUSBAL, XO_FSAFE, XO_GLITCH, XO_PASS, XO_PDMG, XO_PVIS, NXOPT };
 XL(xl_dmgin,"NONE","1/4","1/2","NORMAL","X2","X4","X10")           XV(xl_dmgin,0,25,50,100,200,400,1000)
 XL(xl_dmgout,"1/4","1/2","NORMAL","X2","X5","X10","X100","X1000")  XV(xl_dmgout,25,50,100,200,500,1000,10000,100000)
 XL(xl_crit,"NORMAL","+10%","+25%","+50%","ALWAYS")                   XV(xl_crit,0,10,25,50,100)
@@ -237,6 +237,9 @@ XL(xl_musl,"NONE","DRUMS","ARPEGGIOS","DRUMS+ARP","AMBIENCE","DRUMS+AMB","ARP+AM
 XL(xl_musb,"BALANCED","MELODY UP","BASS UP")                       XV(xl_musb,0,1,2)
 XL(xl_yn,"OFF","ON")                                                XV(xl_yn,0,1)
 XL(xl_gl,"ON","OFF")                                                XV(xl_gl,0,1)
+XL(xl_pass,"FULL","REDUCED","VISUAL ONLY","OFF")                     XV(xl_pass,0,1,2,3)
+XL(xl_pdmg,"100%","50%","25%","10%")                             XV(xl_pdmg,100,50,25,10)
+XL(xl_pvis,"100%","50%","25%")                                    XV(xl_pvis,100,50,25)
 XL(xl_espd,"FROZEN","1/2","3/4","NORMAL","X1.5","X2","X3")          XV(xl_espd,0,50,75,100,150,200,300)
 XL(xl_bud,"ALL","NONE","1","2","3","5","7")                    XV(xl_bud,9,0,1,2,3,5,7)
 XL(xl_ehp,"1/4","1/2","NORMAL","X2","X5","X10")                     XV(xl_ehp,25,50,100,200,500,1000)
@@ -306,6 +309,9 @@ static const XOpt XOT[NXOPT]={
   [XO_MUSBAL] =XR("MUSIC MIX","BALANCE BETWEEN THE MELODY AND THE BASS",xl_musb,0,XG_EXTRA),
   [XO_FSAFE]  =XR("FLASH-SAFE MODE","SPEED GLITCHES WITHOUT STROBING, NOISE OR FAST COLOUR FLASHES. SMALLER SHAKES. TURN IT ON IF FLASHING LIGHTS BOTHER YOU",xl_yn,0,XG_EXTRA),
   [XO_GLITCH] =XR("SPEED GLITCHES","THE SCREEN GLITCHES OF THE STORMCLOCK COIL AND THE SPEED CHEATS. OFF: THE SPEED READOUT STAYS, THE GLITCHES GO",xl_gl,0,XG_EXTRA),
+  [XO_PASS]   =XR("PASS-THROUGH EFFECTS","FLYING THROUGH STARS, PLANETS AND GALAXIES AT COIL SPEED. REDUCED: HALF. VISUAL ONLY: NO DAMAGE. OFF: NOTHING",xl_pass,0,XG_EXTRA),
+  [XO_PDMG]   =XR("PASS DAMAGE","HOW MUCH HEAT, FUEL AND SHIELD LOSS A PASS-THROUGH CAUSES. THE HULL NEVER FALLS BELOW 10 FROM IT",xl_pdmg,0,XG_EXTRA),
+  [XO_PVIS]   =XR("PASS SCREEN EFFECTS","HOW STRONG THE FLARES, RINGS AND STRETCHING ARE. 25% IS GENTLE. FLASH-SAFE MODE STILL APPLIES",xl_pvis,0,XG_EXTRA),
   [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),
 };
 _Static_assert(NXOPT<=NXO, "the extra options must fit the NXO bytes");
@@ -363,6 +369,7 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 #include "deep.inc"
 #include "extras.inc"
 #include "coil2.inc"
+#include "coil3.inc"
 #include "debug.inc"
 #ifdef TEST_LAUNCH
 #include "film.inc"
@@ -1331,7 +1338,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_COILFUZZ
     { int sr=coil_sramtest(); int n=coil_fuzz(TEST_COILFUZZ); char b[40]; scpy(b,sr?"SAVE TEST FAILED":"FUZZ OK "); if(!sr) ncat(b,n);
 #ifdef PC_COILREPORT
-      { extern void pc_coil_report(int,int); pc_coil_report(n,sr); }
+      { extern void pc_coil_report(int,int); extern int pc_coil_soak(void); int sk=pc_coil_soak(); pc_coil_report(n,sr||sk); }
 #endif
       volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); rect(pg,0,0,240,160,0); text(pg,20,60,b,C_WHITE,2); for(;;) vsync(); }
 #endif

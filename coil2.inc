@@ -38,13 +38,16 @@ static int coil_drop_roll(int quest_done, int mask, int own, u32 r, int force){
     return force || (r%10000u)==0; }
 // ---------------------------------------------------------------- the save block (slot + 0xC50, in the gap after the ship parts)
 #define CO_OFF 0xC50
-typedef struct { u32 magic; u8 own, qstep, warned, pad0; u32 rolls, wins, best; u8 pad[20]; u32 sum; } CoilSave;
+typedef struct { u32 magic; u8 own, qstep, warned, pad0; u32 rolls, wins, best;
+                 u8 maxtier, r1; u16 limit_s; u32 passes, pstars, pplanets; u8 pad[4]; u32 sum; } CoilSave;   // (the newer fields sit in what used to be 20 spare zero bytes: an older save has zeros there, so it still loads, and the sum is the same)
 _Static_assert(SHX_OFF+16 <= CO_OFF && CO_OFF+sizeof(CoilSave) <= 0xD00, "the coil block must sit between the ship parts and the kart blocks");
-static void coil_reset(void){ coil_own=coil_warned=coil_qstep=coil_tier=0; coil_rolls=coil_wins=coil_best=0; coil_cur=0; }
+static void coil_reset(void){ coil_own=coil_warned=coil_qstep=coil_tier=coil_maxtier=0; coil_rolls=coil_wins=coil_best=0; coil_limit_s=0; coil_passes=coil_pstars=coil_pplanets=0; coil_cur=cw_u64(0); pt_reset(); }
 static void coil_save(void){ CoilSave s; memset(&s,0,sizeof s); s.magic=0x4C494F43u; s.own=coil_own; s.qstep=coil_qstep; s.warned=coil_warned; s.rolls=coil_rolls; s.wins=coil_wins; s.best=coil_best;
+    s.maxtier=coil_maxtier; s.limit_s=coil_limit_s; s.passes=coil_passes; s.pstars=coil_pstars; s.pplanets=coil_pplanets;
     s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+CO_OFF,&s,sizeof s); }
 static void coil_load(void){ CoilSave s; sram_read(slot_base(cur_slot)+CO_OFF,&s,sizeof s); coil_reset();
-    if(s.magic==0x4C494F43u && s.sum==fnv(&s,sizeof s-4)){ coil_own=s.own&1; coil_qstep=s.qstep>NQS?NQS:s.qstep; coil_warned=s.warned&1; coil_rolls=s.rolls; coil_wins=s.wins; coil_best=s.best>7?7:s.best; }
+    if(s.magic==0x4C494F43u && s.sum==fnv(&s,sizeof s-4)){ coil_own=s.own&1; coil_qstep=s.qstep>NQS?NQS:s.qstep; coil_warned=s.warned&1; coil_rolls=s.rolls; coil_wins=s.wins; coil_best=s.best>8?8:s.best;
+        coil_maxtier=s.maxtier>NCT?NCT:s.maxtier; coil_limit_s=s.limit_s; coil_passes=s.passes; coil_pstars=s.pstars; coil_pplanets=s.pplanets; }
     if(shpx.module==MD_COIL && !coil_own){ shpx.module=0; ship_build_model(); } }                // (a lent coil, or a damaged save: it is not on your ship)
 static char coil_toast_s[44]; static int coil_toast_t=0;
 static void coil_toast(const char *t){ scpy(coil_toast_s,t); coil_toast_s[42]=0; coil_toast_t=210; }
@@ -74,17 +77,19 @@ static int coil_try_drop(void){                              // an enemy you sho
 static u32 coil_hours(u32 hours, const u32 *t10){            // a star trip with the coil on the ship takes the time the flight really takes at that speed (never longer than the jump)
     if(!coil_equipped() || !coil_tier) return hours;
     for(int i=1;i<LYW;i++) if(t10[i]) return hours;
-    u64 M=sat_mul(coil_mult[coil_tier%(NCT+1)],dbg_sm_v[dbg_sm%6]); if(M<1) return hours;
-    u64 h=(u64)t10[0]*8766u/10u/M; return h<hours ? (u32)h : hours; }
+    CW M=cw_mulu(coil_mw[coil_tier%(NCT+1)],dbg_sm_v[dbg_sm%6]); if(cw_zero(M)) return hours;
+    u64 h = M.e ? 0 : (u64)t10[0]*8766u/10u/M.m; return h<hours ? (u32)h : hours; }       // (a speed above 10^19 c: the trip takes under an hour)
 // ---------------------------------------------------------------- controls: engage, step up, drop out (called every flying frame from space_frame)
 static int coil_pd(void){ s32 a=shx>>6, b=shy>>6, c=shz>>6; return isqrt((u32)(a*a+b*b+c*c))<<6; }
 static void coil_cut(const char *why){                      // back to normal flight, at once. Far out, space snaps back to near the planet.
-    if(coil_cur>=1 && coil_pd()>26000){ s32 pd=coil_pd(); shx=(s32)((s64)shx*14000/pd); shy=(s32)((s64)shy*14000/pd); shz=(s32)((s64)shz*14000/pd); }
-    coil_cur=0; coil_tier=0; svx_=svy_=svz_=0; speed=0; if(why && why[0]) space_say(why); }
+    if(!cw_zero(coil_cur) && coil_pd()>26000){ s32 pd=coil_pd(); shx=(s32)((s64)shx*14000/pd); shy=(s32)((s64)shy*14000/pd); shz=(s32)((s64)shz*14000/pd); }
+    coil_cur=cw_u64(0); coil_tier=0; svx_=svy_=svz_=0; speed=0; pt_reset(); if(why && why[0]) space_say(why); }
 static void coil_warn(void);
 static void coil_ctl(void){
     static int rhold=0;
-    if(!coil_equipped() || in_lair){ if(coil_cur||coil_tier){ coil_cut(in_lair?"COIL OFF: NOT IN THE LAIR":0); } coil_tier=0; return; }
+    if(HIT(K_START) && !in_lair && (dbg_sshow>0 || (coil_equipped() && (coil_tier || !cw_zero(coil_cur))))){          // START: the SPEED DETAILS pages (coil3.inc)
+        coil_start_eaten=1; coil_detail((volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0xA000:0))); }
+    if(!coil_equipped() || in_lair){ if(!cw_zero(coil_cur)||coil_tier){ coil_cut(in_lair?"COIL OFF: NOT IN THE LAIR":0); } coil_tier=0; return; }
 #ifdef TEST_COILTOUR
     { static int tf=0; tf++; int tt=tf/TEST_COILTOUR; coil_tier = tt<1 ? 0 : tt>NCT ? NCT : tt; }   // (a test tour: a new tier every TEST_COILTOUR frames)
 #endif
@@ -94,23 +99,30 @@ static void coil_ctl(void){
         if(!coil_warned){ coil_warn(); chord=0; }
         else if(fuel<=0) space_say("COIL NEEDS FUEL");
         else if(coil_pd()<PR*4 || dbg_sshow<0) space_say("TOO CLOSE TO THE PLANET FOR THE COIL");
-        else { if(coil_tier<NCT) coil_tier++; char b[40]; scpy(b,"COIL "); scat(b,coil_tn[coil_tier]); scat(b,": "); { u64 M=coil_mult[coil_tier]; coil_num(b+textlen(b),M); } scat(b," X LIGHT"); space_say(b); sfx(3); } }
+        else if(coil_tier==NCT-1 && !coil_storm_open()){            // the last step is locked until LIMIT has been held for 30 seconds
+            char b[40]; scpy(b,"STORM LOCKED: HOLD LIMIT "); ncat(b,coil_limit_s); scat(b,"/"); ncat(b,COIL_GATE_S); scat(b," S"); space_say(b); sfx(4); }
+        else { if(coil_tier<NCT) coil_tier++; if(coil_tier>coil_maxtier){ coil_maxtier=coil_tier; }
+            char b[40]; scpy(b,"COIL "); scat(b,coil_tn[coil_tier]); scat(b,": "); cn_wfmt(b+textlen(b),coil_mw[coil_tier]); scat(b," X LIGHT"); space_say(b); sfx(3); } }
     if(coil_tier && (HIT(K_SEL) || rhold>=3)){ if(HIT(K_SEL)) coil_sel_eaten=1; coil_cut("COIL OFF. SLOWING DOWN"); rhold=0; }
     else if(coil_tier){ s32 sdx=shx-stx_, sdy=shy-sty_, sdz=shz-stz_; s32 sd=isqrt((u32)((sdx>>6)*(sdx>>6)+(sdy>>6)*(sdy>>6)+(sdz>>6)*(sdz>>6)))<<6;
         s32 pdn=coil_pd();
         if(fuel<=0) coil_cut("COIL OFF: OUT OF FUEL");
-        else if(coil_cur>=1 && pdn<PR*4+speed*24){ coil_cut("COIL OFF: THE PLANET IS CLOSE"); }
-        else if(coil_cur>=1 && sd<2600+speed*24){ coil_cut("COIL OFF: THE STATION IS CLOSE"); }
+        else if(!cw_zero(coil_cur) && pdn<PR*4+speed*24){ coil_cut("COIL OFF: THE PLANET IS CLOSE"); }
+        else if(!cw_zero(coil_cur) && sd<2600+speed*24){ coil_cut("COIL OFF: THE STATION IS CLOSE"); }
         else if(hull<=0) coil_cut(0);
-        else if(sd<2600 && coil_cur<2) { /* parked at the station: it does not start */ coil_tier=0; space_say("TOO CLOSE TO THE STATION FOR THE COIL"); } }
-    u64 tgt = coil_tier ? coil_mult[coil_tier] : 0;
-    if(coil_cur<tgt){ coil_cur=sat_add(coil_cur,coil_cur/12+1); if(coil_cur>tgt) coil_cur=tgt; }
-    else if(coil_cur>tgt){ u64 d=coil_cur/4+1; coil_cur = coil_cur>d ? coil_cur-d : 0; if(coil_cur<tgt) coil_cur=tgt; }
-    if(coil_cur>=1){ crash_cd=2; if((frames&63)==0 && !dbg_fuel){ fuel-=xo_fuel(1); if(fuel<0) fuel=0; } }
+        else if(sd<2600 && cw_cmp(coil_cur,cw_u64(2))<0) { /* parked at the station: it does not start */ coil_tier=0; space_say("TOO CLOSE TO THE STATION FOR THE COIL"); } }
+    CW tgt = coil_tier ? coil_mw[coil_tier] : cw_u64(0);
+    if(cw_cmp(coil_cur,tgt)<0){                                  // speeding up: a twelfth more every frame (halves of it beyond LIMIT, so the push to STORM takes about 3 seconds)
+        CW st = cw_add(cw_divu(coil_cur, cw_cmp(coil_cur,coil_mw[6])<0 ? 12 : 2), cw_u64(1)); coil_cur=cw_add(coil_cur,st); if(cw_cmp(coil_cur,tgt)>0) coil_cur=tgt; }
+    else if(cw_cmp(coil_cur,tgt)>0){ CW d=cw_add(cw_divu(coil_cur,4),cw_u64(1)); coil_cur = cw_cmp(coil_cur,d)>0 ? cw_sub(coil_cur,d) : cw_u64(0); if(cw_cmp(coil_cur,tgt)<0) coil_cur=tgt; }
+    if(!cw_zero(coil_cur) && !coil_cheated() && coil_tier==6 && cw_cmp(coil_cur,coil_mw[6])>=0){          // seconds held at LIMIT (the key to STORM)
+        static int lf=0; if(++lf>=60){ lf=0; if(coil_limit_s<65535){ coil_limit_s++;
+            if(coil_limit_s==COIL_GATE_S){ coil_toast("STORM UNLOCKED: ONE MORE L+R"); sfx(6); coil_save(); } } } }
+    if(!cw_zero(coil_cur)){ crash_cd=2; if((frames&63)==0 && !dbg_fuel){ fuel-=xo_fuel(1); if(fuel<0) fuel=0; } }
 }
-static s32 coil_vmax(s32 vmax){                              // the engaged coil: velocity swings round to the nose and the top speed grows (4x at LIGHT to 9x at LIMIT)
-    if(coil_cur<1) return vmax;
-    u64 tg=coil_mult[coil_tier%(NCT+1)]; int fr = (tg && coil_cur<tg) ? (int)(coil_cur*256/tg) : 256; if(fr<16) fr=16;
+static s32 coil_vmax(s32 vmax){                              // the engaged coil: velocity swings round to the nose and the top speed grows (4x at LIGHT to 10x at STORM)
+    if(cw_zero(coil_cur)) return vmax;
+    int fr = cw_ratio256(coil_cur, coil_mw[coil_tier%(NCT+1)]); if(fr<16) fr=16;
     s32 t = vmax + (s32)((s64)vmax*(2+coil_tier)*fr/256);
     s32 vx=(bf[0]*t)>>14, vy=(bf[1]*t)>>14, vz=(bf[2]*t)>>14; svx_+=(vx-svx_)/8; svy_+=(vy-svy_)/8; svz_+=(vz-svz_)/8; return t; }
 static void coil_bounds(void){                               // the picture maths holds up to about 130,000 from the star: stay inside 90,000
@@ -145,7 +157,7 @@ static void coil_fx_end(void){
         if(fx_dirty&2){ build_space_palette(); }             // the colours
         if(fx_nsp){ for(int i=120;i<128;i++) *(volatile u16*)(0x07000000+i*8)=0x200; fx_nsp=0; }   // the junk sprites (the last 8 slots)
         fx_pw=0; }
-    fx_dirty=0; fx_gt=0; fx_ev=0; fx_evt=0; fx_mir=0; fx_tearT=0; fx_pal=0; }
+    fx_dirty=0; fx_gt=0; fx_ev=0; fx_evt=0; fx_mir=0; fx_tearT=0; fx_pal=0; pt_stretch=pt_str_prev=256; }
 IWRAM static void fx_shift(volatile u16 *row, int d){        // rotate one row of the picture by d halfwords (2 pixels each)
     if(d==0) return;
     if(d<0){ d+=120; }
@@ -201,32 +213,15 @@ static void fx_event(volatile u16 *pg, int gt, int S){
     default: break; }
     (void)gt;
 }
-static void coil_hud(volatile u16 *pg, u64 w, int milli, int gt){
-    char b[64]; int S=fx_safe();
-    coil_fmt(b,w,milli);
-    if(gt>=3 && !S){ for(int i=0;b[i];i++) if(b[i]>='0'&&b[i]<='9' && (fx_rnd()&7)<(unsigned)(gt-1)) b[i]=(char)('0'+fx_rnd()%10); }       // the digits scramble
-    char l[72]; scpy(l,"SPEED "); scat(l,b);
-    int c = gt>=6 ? C_RED : gt>=4 ? C_GOLD : gt>=2 ? C_CYAN : C_WHITE;
-    rect(pg,120-textlen(l)*2-2,111,textlen(l)*4+4,9,U_BG0); text(pg,120-textlen(l)*2,113,l,c,1);
-    if(w>=1){ static const char *const lab[4]={"THE PLANET","THE NEXT STAR","THE GALAXY EDGE","THE EDGE OF THE UNIVERSE"}; int k=(fx_t/150)&3; char t[56]; scpy(t,"TO "); scat(t,lab[k]); scat(t,": ");
-        u64 M = w; coil_trip(t+textlen(t), k==0?0:k, k==0?(u32)(coil_pd()<1?1:coil_pd()):0, M);
-        if(k==0) { /* distance to the planet in km units */ }
-        rect(pg,120-textlen(t)*2-2,120,textlen(t)*4+4,8,U_BG0); text(pg,120-textlen(t)*2,121,t,C_GREY,1); }
-#ifdef TEST_COILFPS
-    { static u32 lv=0; char f[16]; scpy(f,"V"); ncat(f,(int)(vbl_count-lv)); lv=vbl_count; text(pg,200,30,f,C_WHITE,1); scpy(f,"T"); ncat(f,coil_tier); text(pg,200,38,f,C_WHITE,1); }
-#endif
-    if(coil_cur>=1) text(pg,6,20,"R OR SELECT: SLOW DOWN",C_CYAN,1);
-    else if(coil_equipped()) text(pg,6,20,"L+R: ENGAGE THE COIL",C_CYAN,1);
-    if(coil_cheated()) rtext(pg,234,20,"CHEAT",C_GOLD);
-}
 static void coil_fx_post(volatile u16 *pg){
-    int milli; u64 w=coil_total_c(speed,ship_top_speed(),&milli);
+    int milli; CW w=coil_total_c(speed,ship_top_speed(),&milli);
     int show = coil_equipped() || dbg_sm || dbg_sshow>0;
-    int gt = show ? coil_gt(w) : 0; if(fx_off()) gt=0; if(gt>7) gt=7;
-    if(show) coil_hud(pg,w,milli,gt);
+    int gt = show ? coil_gt(w) : 0; int gt_all=gt; if(fx_off()) gt=0; if(gt>8) gt=8;
+    if(show){ if(gt_all>0) fx_t++; else fx_t=0; pt_frame(w,gt_all); coil_hud(pg,w,milli,gt_all); }
     coil_toast_draw(pg);
-    if(gt<=0){ if(fx_dirty||fx_gt) coil_fx_end(); fx_gt=0; fx_t=0; return; }
-    fx_t++; fx_gt=gt; if((u32)gt>coil_best) coil_best=(u32)gt;
+    if(gt_all>0 && pt_kind && pt_vis()>0){ pt_draw(pg,gt_all,fx_safe()); if(pt_stretch!=256) fx_dirty|=1; }       // (what you are passing through: coil3.inc; it stays when only the glitches are off)
+    if(gt<=0){ if(pt_stretch!=256 || pt_str_prev!=256){ FX_BG2(256,0,0,pt_stretch,0,(80<<8)-pt_stretch*80); fx_dirty|=1; } else if(fx_dirty||fx_gt) coil_fx_end(); pt_str_prev=pt_stretch; fx_gt=0; return; }
+    fx_gt=gt; if((u32)gt>coil_best) coil_best=(u32)gt;
     int S=fx_safe(); fx_dirty|=1; if(fx_cool>0) fx_cool--;
 #ifdef TEST_COILEV
     if(!fx_ev && fx_t==TEST_COILT){ fx_ev=TEST_COILEV; fx_evt=0; }
@@ -251,40 +246,54 @@ static void coil_fx_post(volatile u16 *pg){
         if(!S && (fx_t%90)==45) fx_mir=0;
         if(S && (fx_t%240)==0) fx_mir=!fx_mir;    // (flash-safe: at most one flip every 4 seconds)
         if(fx_ev>=1 && fx_ev<=3){ tilt=0; zoom=256; fx_mir=0; }                                             // (the error and save screens stay upright so they can be read)
-        s32 ca=cosx(tilt)*zoom>>14, sa=sinx(tilt)*zoom>>14; int pa=fx_mir?-ca:ca, pb=sa, pc=-sa, pd=ca;
+        s32 ca=cosx(tilt)*zoom>>14, sa=sinx(tilt)*zoom>>14; int pa=fx_mir?-ca:ca, pb=sa, pc=-sa, pd=ca*pt_stretch>>8;
         s32 X=(120<<8)-(pa*120+pb*80), Y=(80<<8)-(pc*120+pd*80); FX_BG2(pa,pb,pc,pd,X,Y);
         if(fx_tearT>0){ fx_tearT--; for(int y=fx_tearY;y<fx_tearY+14 && y<128;y++) fx_shift(pg+y*120,fx_tearD); } else if((fx_rnd()&15)==0){ fx_tearT=S?6:4; fx_tearY=(int)(fx_rnd()%110); fx_tearD=(int)(fx_rnd()%61)-30; if(S) fx_tearD/=3; }
         fx_pw = fx_ev==5 ? fx_pw : (sinx(fx_t*(3+gt))*(S?gt*4:gt*18))>>14; fx_dirty|=1; }
-    // ---- tiers 4, 5, 6: the fake screens (only one at a time, and a pause after each)
+    // ---- tiers 4 to 7: the fake screens (only one at a time, and a pause after each); the reality break is STORM's alone
     if(fx_ev==0 && fx_cool<=0){
         unsigned r=fx_rnd()%(S?900u:420u);
-        if(gt>=6 && r<3){ fx_ev=5; fx_evt=0; }
+        if(gt>=7 && r<3){ fx_ev=5; fx_evt=0; }
         else if(gt>=5 && r<6){ fx_ev=4; fx_evt=0; fx_cool=S?500:240; }
         else if(gt>=5 && r<8){ fx_ev=3; fx_evt=0; fx_cool=S?700:420; }
         else if(gt>=5 && r<10){ fx_ev=2; fx_evt=0; fx_cool=S?700:420; }
         else if(gt>=4 && r<14){ fx_ev=1; fx_evt=0; fx_cool=S?400:200; } }
-    if(fx_ev==5 && gt<6) { fx_ev=0; fx_pw=0; }
+    if(fx_ev==5 && gt<7) { fx_ev=0; fx_pw=0; }
     if(fx_ev) fx_event(pg,gt,S);
-    if(gt>=7 && !S){ fx_bars(pg,12,230,10); }               // beyond the limit (cheats): colour bars on top of everything
+    if(gt<4 && (pt_stretch!=256 || pt_str_prev!=256)){ FX_BG2(256,0,0,pt_stretch,0,(80<<8)-pt_stretch*80); }     // (tides stretch the picture even when the glitch show does not tilt it)
+    pt_str_prev=pt_stretch;
+    if(gt>=8 && !S){ fx_bars(pg,12,230,10); }               // beyond STORM (cheats): colour bars on top of everything
 }
-// ---------------------------------------------------------------- fuzz: every tier for thousands of frames with random keys, through the real flight code
-static int coil_fuzz(int frames_per_tier){
-    int ok=0; u32 sk=keys, so=keys_old; u8 sw=coil_warned; u8 st=coil_tier, so_=coil_own, sm_=shpx.module, xs=xo[XO_FSAFE];
-    u32 h0=fnv((const void*)SRAM,0x8000); coil_own=1; dbg_coil=1; shpx.module=MD_COIL; coil_warned=1; if(fuel<50) fuel=fuel_max();
-    for(int tier=0;tier<=2*(NCT+2)+1;tier++){ int pass=tier>NCT+2; if(tier==NCT+3){ dbg_sm=0; coil_tier=0; coil_cur=0; } xo[XO_FSAFE]=pass ? (u8)(1^XOT[XO_FSAFE].def) : xs;      // (the second time round with FLASH-SAFE MODE on)
-        for(int f=0;f<frames_per_tier;f++){
-            keys_old=keys; keys=(u32)(fx_rnd()&0x3FF); keys&=~(K_SEL|K_START); if((fx_rnd()&63)==0) keys|=K_SEL;       // random keys (SELECT now and then drops out)
-            int tt=tier>NCT+2 ? tier-(NCT+3) : tier;
-            if(tt>=1 && tt<=NCT && !coil_tier && coil_pd()>=PR*4){ coil_tier=(u8)tt; }
-            if(tt>NCT){ dbg_sm=1+(int)(fx_rnd()%5); }
-            if(coil_tier || dbg_sm){ fuel=fuel_max(); hull=100; shield=shield_max(); }
+// ---------------------------------------------------------------- fuzz: every tier, every pass-through setting, normal and flash-safe, with random keys, through the real flight code
+// 4 pass-through modes x 2 (flash-safe off/on) x 9 speeds (off, the 7 tiers, STORM x 1 million) = 72 runs of frames_per_run frames. Checks: the real cartridge is
+// never changed (-1), a pass-through never takes the hull below 10 (-2), the speed readout and all five detail pages draw without trouble.
+static int fz_pass=0, fz_kinds=0, fz_heat=0, fz_hmin=100, fz_gmax=0;       // what the last fuzz saw: passes started, which kinds (bits), highest heat, lowest hull, highest glitch tier
+static int coil_fuzz(int frames_per_run){
+    int ok=0, bad=0; u32 sk=keys, so=keys_old; u8 sw=coil_warned; u8 st=coil_tier, so_=coil_own, sm_=shpx.module, xs=xo[XO_FSAFE], xp=xo[XO_PASS], xd=xo[XO_PDMG], xv=xo[XO_PVIS]; CW sc=coil_cur;
+    int shl=hull, shs=shield; u16 sls=coil_limit_s; u32 spa=coil_passes, sps=coil_pstars, spp=coil_pplanets;
+    u32 h0=fnv((const void*)SRAM,0x8000); coil_own=1; dbg_coil=1; shpx.module=MD_COIL; coil_warned=1; int run=0;
+    for(int pm=0;pm<4;pm++) for(int sf=0;sf<2;sf++) for(int tt=0;tt<=NCT+1;tt++,run++){
+        xo[XO_FSAFE]=(u8)(sf^XOT[XO_FSAFE].def); xo[XO_PASS]=(u8)(pm^XOT[XO_PASS].def); xo[XO_PDMG]=(u8)((run%4)^XOT[XO_PDMG].def); xo[XO_PVIS]=(u8)(((run/3)%3)^XOT[XO_PVIS].def);
+        coil_fx_end(); pt_reset(); dbg_sm=0; coil_tier=0; coil_cur=cw_u64(0); shx=0; shy=0; shz=-PR*14; svx_=svy_=svz_=0; hull=100; shield=shield_max(); fuel=fuel_max();
+        for(int f=0;f<frames_per_run;f++){
+            keys_old=keys; keys=(u32)(fx_rnd()&0x3FF); keys&=~(K_SEL|K_START); if((fx_rnd()&15)) keys&=~K_R; if((fx_rnd()&255)==0) keys|=K_SEL;       // random keys (SELECT now and then drops out)
+            if(tt>=1 && !coil_tier && coil_pd()>=PR*4){ coil_tier=(u8)(tt>NCT?NCT:tt); if(run&1) coil_cur=coil_mw[coil_tier]; }       // (half the runs start at full speed, half ramp up)
+            if(tt>NCT) dbg_sm=5;                                                                                              // STORM x 1 million
+            if(coil_tier || dbg_sm){ fuel=fuel_max(); }
+            int hb=hull;
             int r=space_frame();
             if(r==0) coil_fx_post((volatile u16*)(0x06000000 + (page_back?0xA000:0))); else { coil_fx_end(); space_enter(0); }
+            if(pt_kind && pt_t==1){ fz_pass++; fz_kinds|=1<<pt_kind; } if(pt_heat>fz_heat) fz_heat=pt_heat; if(!cw_zero(coil_cur) && hull<fz_hmin) fz_hmin=hull; if(fx_gt>fz_gmax) fz_gmax=fx_gt;
+            if(!cw_zero(coil_cur) && hull<10 && hb>=10) bad|=2;                                                                  // a pass-through must never take the hull below 10
+            if(hull<10){ hull=100; }
+            if((f&63)==31){ int mi; CW w=coil_total_c(speed,ship_top_speed(),&mi); volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0)); cd_draw(pg,(f>>6)%5,w,mi); }   // (a detail page: the five of them in turn)
             vsync(); REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1;
             ok++; }
         coil_fx_end(); }
-    dbg_sm=0; dbg_coil=0; coil_tier=st; coil_cur=0; keys=sk; keys_old=so; coil_warned=sw; coil_own=so_; shpx.module=sm_; xo[XO_FSAFE]=xs; ship_build_model();
+    dbg_sm=0; dbg_coil=0; coil_tier=st; coil_cur=sc; keys=sk; keys_old=so; coil_warned=sw; coil_own=so_; shpx.module=sm_; xo[XO_FSAFE]=xs; xo[XO_PASS]=xp; xo[XO_PDMG]=xd; xo[XO_PVIS]=xv; ship_build_model();
+    hull=shl; shield=shs; coil_limit_s=sls; coil_passes=spa; coil_pstars=sps; coil_pplanets=spp; pt_reset();
     if(fnv((const void*)SRAM,0x8000)!=h0) return -1;                                          // (nothing in the cartridge may change)
+    if(bad) return -2;
     return ok; }
 // ---------------------------------------------------------------- the quest log (START > EXTRAS > STORMCLOCK COIL). A shows the next page, B leaves.
 static void coil_log(volatile u16 *pg){
@@ -320,9 +329,23 @@ static void coil_log(volatile u16 *pg){
     wait_release(); }
 // a check of the cartridge block (the tests call it): save, forget, load; then a damaged block must load as "nothing". Returns 0 when all is well.
 __attribute__((unused)) static int coil_sramtest(void){
-    u8 o=coil_own, q=coil_qstep, w=coil_warned; u32 r=coil_rolls, wi=coil_wins, b=coil_best; int bad=0;
-    coil_own=1; coil_qstep=5; coil_warned=1; coil_rolls=12345; coil_wins=77; coil_best=6; coil_save();
-    coil_reset(); coil_load(); if(!(coil_own==1 && coil_qstep==5 && coil_warned==1 && coil_rolls==12345 && coil_wins==77 && coil_best==6)) bad|=1;
+    u8 o=coil_own, q=coil_qstep, w=coil_warned, mt=coil_maxtier; u32 r=coil_rolls, wi=coil_wins, b=coil_best, pa=coil_passes, ps=coil_pstars, pp=coil_pplanets; u16 ls=coil_limit_s; int bad=0;
+    coil_own=1; coil_qstep=5; coil_warned=1; coil_rolls=12345; coil_wins=77; coil_best=8; coil_maxtier=7; coil_limit_s=31; coil_passes=99999; coil_pstars=4321; coil_pplanets=765; coil_save();
+    coil_reset(); coil_load(); if(!(coil_own==1 && coil_qstep==5 && coil_warned==1 && coil_rolls==12345 && coil_wins==77 && coil_best==8 && coil_maxtier==7 && coil_limit_s==31 && coil_passes==99999 && coil_pstars==4321 && coil_pplanets==765)) bad|=1;
     SRAM[slot_base(cur_slot)+CO_OFF+5]^=0x55;                                  // damage one byte
-    coil_load(); if(coil_own || coil_qstep || coil_rolls) bad|=2;
-    SRAM[slot_base(cur_slot)+CO_OFF+5]^=0x55; coil_own=o; coil_qstep=q; coil_warned=w; coil_rolls=r; coil_wins=wi; coil_best=b; coil_save(); return bad; }
+    coil_load(); if(coil_own || coil_qstep || coil_rolls || coil_limit_s) bad|=2;
+    { XSet cur; sram_read(XS_OFF,&cur,sizeof cur); u8 sx[NXO]; memcpy(sx,xo,NXO);                                   // the options block: an older save (48 options) must load, and the new ones round-trip
+      struct { u32 magic; u8 v[XO_OLDN]; u32 sum; } ob; memset(&ob,0,sizeof ob); ob.magic=0x584F5053; for(int i=0;i<XO_OLDN;i++) ob.v[i]=(u8)(XOT[i].n>1 ? (1^XOT[i].def) : XOT[i].def);
+      ob.sum=fnv(&ob,sizeof ob-4); sram_write(XS_OFF,&ob,sizeof ob); memset(xo,0,NXO); xo_load();
+      for(int i=0;i<XO_OLDN;i++) if(xo[i]!=ob.v[i]) bad|=8;
+      for(int i=XO_OLDN;i<NXO;i++) if(xo[i]) bad|=8;
+      xo[XO_PASS]=(u8)(2^XOT[XO_PASS].def); xo[XO_PDMG]=(u8)(3^XOT[XO_PDMG].def); xo[XO_PVIS]=(u8)(1^XOT[XO_PVIS].def); xo_save(); memset(xo,0,NXO); xo_load();
+      if(!(pt_mode()==2 && xo_i(XO_PDMG)==3 && xo_i(XO_PVIS)==1 && xo[XO_FSAFE]==ob.v[XO_FSAFE])) bad|=16;
+      sram_write(XS_OFF,&cur,sizeof cur); memcpy(xo,sx,NXO); }
+    SRAM[slot_base(cur_slot)+CO_OFF+5]^=0x55;
+    { typedef struct { u32 magic; u8 own, qstep, warned, pad0; u32 rolls, wins, best; u8 pad[20]; u32 sum; } OldCoilSave;     // a save from before STORM existed: the same bytes with zeros where the new fields are
+      OldCoilSave os; memset(&os,0,sizeof os); os.magic=0x4C494F43u; os.own=1; os.qstep=8; os.warned=1; os.rolls=555; os.wins=12; os.best=6; os.sum=fnv(&os,sizeof os-4);
+      _Static_assert(sizeof(OldCoilSave)==sizeof(CoilSave), "the coil block keeps its size");
+      sram_write(slot_base(cur_slot)+CO_OFF,&os,sizeof os); coil_reset(); coil_load();
+      if(!(coil_own==1 && coil_qstep==8 && coil_warned==1 && coil_rolls==555 && coil_wins==12 && coil_best==6 && coil_maxtier==0 && coil_limit_s==0 && coil_passes==0)) bad|=4; }
+    coil_own=o; coil_qstep=q; coil_warned=w; coil_rolls=r; coil_wins=wi; coil_best=b; coil_maxtier=mt; coil_limit_s=ls; coil_passes=pa; coil_pstars=ps; coil_pplanets=pp; coil_save(); return bad; }

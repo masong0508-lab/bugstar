@@ -93,6 +93,7 @@ typedef struct { u32 magic; u8 music, sfx, autosave, shake, last, pad[3]; u32 su
 _Static_assert(__builtin_offsetof(Settings,sum)==sizeof(Settings)-4, "Settings: the sum must be the last 4 bytes");
 // ---------------------------------------------------------------- the MORE OPTIONS settings (saved just after the options, at the far end of SRAM)
 #define XS_OFF 0x7F40
+#define XO_OLDN 48                                                                                    // the first builds kept 48 option bytes; more were added later, so an older block has its sum earlier
 typedef struct { u32 magic; u8 v[NXO]; u32 sum; } XSet;
 _Static_assert(XS_OFF >= SET_OFF+20 && XS_OFF+sizeof(XSet) <= 0x8000, "the extra options must fit between the options and the end of SRAM");
 #define DS_OFF 0x7F80
@@ -108,8 +109,12 @@ static void xo_apply(void){ SND(0x20)=xo_snd(); }
 static void xo_save(void){ XSet s; memset(&s,0,sizeof s); s.magic=0x584F5053; for(int i=0;i<NXO;i++) s.v[i]=xo[i]; s.sum=fnv(&s,sizeof s-4); sram_write(XS_OFF,&s,sizeof s); }
 static void xo_load(void){
     XSet s; sram_read(XS_OFF,&s,sizeof s);
-    if(s.magic!=0x584F5053 || s.sum!=fnv(&s,sizeof s-4)) return;                                  // never saved: everything stays normal
-    for(int i=0;i<NXO;i++) xo[i] = (i<NXOPT && (s.v[i]^XOT[i].def)<XOT[i].n) ? s.v[i] : 0;
+    if(s.magic!=0x584F5053) return;                                                                  // never saved: everything stays normal
+    int nv = NXO;
+    if(s.sum!=fnv(&s,sizeof s-4)){                                                                   // not the current layout: maybe the older one (48 options, the sum right after them)?
+        u32 old; memcpy(&old,&s.v[XO_OLDN],4); if(old!=fnv(&s,4+XO_OLDN)) return;                    // (no: damaged, so everything stays normal)
+        nv = XO_OLDN; }
+    for(int i=0;i<NXO;i++) xo[i] = (i<NXOPT && i<nv && (s.v[i]^XOT[i].def)<XOT[i].n) ? s.v[i] : 0;   // (options added later start at their normal setting)
 }
 static void settings_save(void){
     Settings s; memset(&s,0,sizeof(s)); s.magic=0x53544553;

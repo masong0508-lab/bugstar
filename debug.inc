@@ -79,7 +79,7 @@ static void dbg_tick(void){                                    // every frame of
     if(dbg_fuel){ fuel=fuel_max(); hull=100; shield=shield_max(); }
     dbg_overlay();
 }
-static void dbg_all_off(void){ dbg_god=dbg_mp=dbg_food=dbg_gold=dbg_fuel=dbg_ohk=dbg_noclip=dbg_spd=0; dbg.spdi=0; dbg_info=0; dbg_sm=dbg_sshow=dbg_force=dbg_qdone=0; if(dbg_coil){ dbg_coil=0; if(!coil_own && shpx.module==MD_COIL){ shpx.module=0; ship_build_model(); coil_cur=0; coil_tier=0; } } }
+static void dbg_all_off(void){ dbg_god=dbg_mp=dbg_food=dbg_gold=dbg_fuel=dbg_ohk=dbg_noclip=dbg_spd=0; dbg.spdi=0; dbg_info=0; dbg_sm=dbg_sshow=dbg_force=dbg_qdone=0; if(dbg_coil){ dbg_coil=0; if(!coil_own && shpx.module==MD_COIL){ shpx.module=0; ship_build_model(); coil_cur=cw_u64(0); coil_tier=0; } } }
 
 // ---------------------------------------------------------------- the menu: pages, rows, what each row shows and does
 enum { DPG_GAME, DPG_CHEAT, DPG_ITEMS, DPG_WORLD, DPG_SHIP, DPG_GO, DPG_INFO, DPG_TOOLS, NDPG };
@@ -150,7 +150,7 @@ static const DRow dm_row[NDR]={
  [DR_REVEAL]={DPG_WORLD,DL,'A',"REVEAL THE FLOOR MAP","THE WHOLE FLOOR GOES ON YOUR MAP"},
  [DR_STAIRS]={DPG_WORLD,DL,'A',"TELEPORT TO THE STAIRS","STAND ON THE STAIRS YOU ARE LOOKING FOR. PRESS A THERE"},
  [DR_COIL]={DPG_SHIP,DL,'V',"CHEAT: STORMCLOCK COIL","LEND YOURSELF THE COIL FOR THIS SESSION ONLY. FIT IT AT THE HANGAR. NEVER SAVED"},
- [DR_SPDX]={DPG_SHIP,DB,'V',"CHEAT: SHIP SPEED","MULTIPLIES YOUR SPEED, WITH OR WITHOUT THE COIL: X2 TO X1 MILLION (PAST THE COIL'S LIMIT). MARKED CHEAT"},
+ [DR_SPDX]={DPG_SHIP,DB,'V',"CHEAT: SHIP SPEED","MULTIPLIES YOUR SPEED, WITH OR WITHOUT THE COIL: X2 TO X1 MILLION (PAST STORM AT THE TOP). MARKED CHEAT"},
  [DR_SSHOW]={DPG_SHIP,DB,'V',"CHEAT: SPEED READOUT","SHOW YOUR SPEED AS TIMES THE SPEED OF LIGHT, WITH TRAVEL TIMES"},
  [DR_FORCE]={DPG_SHIP,DL,'V',"CHEAT: FORCE THE RARE ROLL","THE COIL DROP IS CERTAIN, BUT STILL ONLY WHEN THE QUEST IS DONE AND ALL SIX CONDITIONS HOLD"},
  [DR_QDONE]={DPG_SHIP,DL,'V',"CHEAT: QUEST DONE","COUNT THE COIL QUEST AS DONE FOR THIS SESSION. NEVER SAVED"},
@@ -262,7 +262,7 @@ static void dm_change(int id, int dd, int mul){
     case DR_GOD: dbg_god^=1; break;   case DR_INFMP: dbg_mp^=1; break;   case DR_NOFOOD: dbg_food^=1; break;   case DR_INFGOLD: dbg_gold^=1; break;
     case DR_INFFUEL: dbg_fuel^=1; break;   case DR_OHK: dbg_ohk^=1; break;   case DR_NOCLIP: dbg_noclip^=1; break;
     case DR_SPEED: dbg.spdi=(dbg.spdi+dd+5)%5; dbg_spd=dbg_spd_v[dbg.spdi]; break;
-    case DR_COIL: dbg_coil^=1; if(dbg_coil){ shpx.module=MD_COIL; ship_build_model(); } else if(!coil_own && shpx.module==MD_COIL){ shpx.module=0; ship_build_model(); coil_cur=0; coil_tier=0; } break;
+    case DR_COIL: dbg_coil^=1; if(dbg_coil){ shpx.module=MD_COIL; ship_build_model(); } else if(!coil_own && shpx.module==MD_COIL){ shpx.module=0; ship_build_model(); coil_cur=cw_u64(0); coil_tier=0; } break;
     case DR_SPDX: dbg_sm=(dbg_sm+dd+6)%6; break;   case DR_SSHOW: dbg_sshow^=1; break;   case DR_FORCE: dbg_force^=1; break;   case DR_QDONE: dbg_qdone^=1; break;
     case DR_LEVEL: { s64 nl=level+(s64)dd*mul; if(nl<1) nl=1; if(nl>99999) nl=99999; if(nl>level) stat_pts=sadd(stat_pts,(nl-level)*5);
         level=nl; xp=0; recalc(); hearts=maxh; mp=maxmp; hud_now(); } break;
