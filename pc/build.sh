@@ -109,7 +109,7 @@ H ui.inc 'if(sel==15){ spell_shop(pg); continue; }' 'if(sel==17){ sim_ship_colon
 for f in armour top_speed turn damp gun hold_bonus fuel_bonus accel16; do H ship.inc "static int ship_$f(void){" "static int ship_${f}_g(void){"; done
 H ship.inc '#define SV_MAX 128' $'static int pc_sy_stat(int k, int v);\nstatic int ship_armour(void){ return pc_sy_stat(0, ship_armour_g()); } static int ship_top_speed(void){ return pc_sy_stat(1, ship_top_speed_g()); } static int ship_turn(void){ return pc_sy_stat(2, ship_turn_g()); } static int ship_damp(void){ return pc_sy_stat(3, ship_damp_g()); }\nstatic int ship_gun(void){ return pc_sy_stat(4, ship_gun_g()); } static int ship_hold_bonus(void){ return pc_sy_stat(5, ship_hold_bonus_g()); } static int ship_fuel_bonus(void){ return pc_sy_stat(6, ship_fuel_bonus_g()); } static int ship_accel16(void){ return pc_sy_stat(7, ship_accel16_g()); }\n#define SV_MAX 128'
 H hangar.inc 'static int make_ship(volatile u16 *pg, int first){' $'static int pc_sy_screen(volatile u16 *pg, int first);\nstatic int make_ship(volatile u16 *pg, int first){ return pc_sy_screen(pg, first); }\nstatic int make_ship_g(volatile u16 *pg, int first){'
-H main.c 'typedef long long s64;' $'\nstatic void pc_sy_slot_erase(int s), pc_sy_slot_copy(int a, int b);' after
+H main.c 'typedef long long s64;' $'\nstatic void pc_sy_slot_erase(int s), pc_sy_slot_copy(int a, int b), pc_sy_autotest(void);' after
 H save.inc 'pc_laws_slot_erase(i);' ' pc_sy_slot_erase(i);' after
 H save.inc 'pc_laws_slot_copy(from,to);' ' pc_sy_slot_copy(from,to);' after
 echo '#include "../sim/sim_glue.inc"' >> main.c
@@ -130,6 +130,7 @@ H space.inc 'static int space_danger(void){ return in_lair ?' 'static int space_
 H space.inc '    if(hive_card && !no_ambush) show_hive_card();' ' pc_ws_space_enter();' after
 H space.inc 'space_say(in_lair?"YOU RAMMED THE BEAST!":' 'space_say(in_lair?(pc_ws_on?"YOU RAMMED ITS HULL!":"YOU RAMMED THE BEAST!"):'
 H main.c '        rng_s += keys;' ' pc_ws_autotest();' after
+H main.c '        rng_s += keys; pc_ws_autotest();' ' pc_sy_autotest();' after
 H save.inc 'pc_laws_slot_load(cur_slot);' ' pc_ws_slot_load(cur_slot);' after
 H save.inc 'sram_write(slot_base(cur_slot), s, sizeof(Save)); pc_laws_slot_save(cur_slot);' ' pc_ws_slot_save(cur_slot);' after
 H main.c 'pc_laws_slot_new(s2);' ' pc_ws_slot_new(s2);' after

@@ -6,6 +6,7 @@
 #include "../shipr/shipr.h"
 extern int pc_ships_mode, pc_armada_n;           // pc_hw.c: -1 = off (the game draws its own), 0 CLASSIC, 1 NATIVE, 2 ULTRA; ships in the far battle
 void pc_sr_snapshot(const volatile void *pg);    // pc_hw.c
+static int pc_sy_player(int cx, int cy, int sc, int yaw_, int pitch_); static int pc_sy_foe(int i, SrShip *s);
 static int pc_sr_on(void){ return pc_ships_mode >= 0; }
 static uint32_t pc_sr_rgb(int idx){ u16 c=BG_PAL[idx]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; return (uint32_t)(r<<3|r>>2)<<16 | (uint32_t)(g<<3|g>>2)<<8 | (uint32_t)(b<<3|b>>2); }
 static s16 pcsr_hp[NPIR]; static s8 pcsr_alive[NPIR]; static float pcsr_hit[NPIR];
@@ -26,7 +27,7 @@ static void pc_sr_space(volatile u16 *pg){
         float Rx=fz, Rz=-fx, rl=sqrtf(Rx*Rx+Rz*Rz); if(rl<1e-4f){ Rx=1; Rz=0; rl=1; } Rx/=rl; Rz/=rl;                   // (the game's own sideways and up for this ship)
         s.u[0]=fy*Rz; s.u[1]=fz*Rx-fx*Rz; s.u[2]=-fy*Rx;
         s.size=110; s.kind = p->team ? SR_FIGHTER : SR_WING; s.team = p->team ? 1 : 0; s.col = p->team ? ce : cf; s.firing = p->fire_t>0; s.hit = pcsr_hit[i]>0 ? pcsr_hit[i] : 0; s.thrust=0.75f;
-        sr_ship(&s);
+        if(!pc_sy_foe(i,&s)) sr_ship(&s);
         if(p->fire_t){ float t[3];
             if(p->tgt==-1){ for(int k=0;k<3;k++) t[k]=eye[k]+f[k]*60-u[k]*30+r[k]*(((frames&7)-4)*4); sr_beam(s.p,t,s.col,1); }
             else if(p->tgt>=0 && pir[p->tgt].alive){ t[0]=pir[p->tgt].x; t[1]=pir[p->tgt].y; t[2]=pir[p->tgt].z; sr_beam(s.p,t,s.col,1); } } }
@@ -39,6 +40,7 @@ static int pc_sr_tag; static void pc_sr_mark(volatile u16 *pg){ pc_sr_tag=((u32)
 // drawn at the window's resolution (no 120-column grid, no checkerboard dither: the two shades are mixed)
 static uint32_t pc_sr_mixc(uint32_t a, uint32_t b){ return ((a>>1)&0x7F7F7F)+((b>>1)&0x7F7F7F); }
 static void pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_){
+    if(pc_sy_player(cx,cy,sc,yaw_,pitch_)) return;                     // (your own design from the ship editor, pc/shipyard)
     ship_ramps(); float rc=cosx(ship_roll>>2)/16384.0f, rs=sinx(ship_roll>>2)/16384.0f, cyw=cosx(yaw_>>2)/16384.0f, syw=sinx(yaw_>>2)/16384.0f, cp=cosx(pitch_>>2)/16384.0f, sp=sinx(pitch_>>2)/16384.0f;
     static float px[SV_MAX], py[SV_MAX], pz[SV_MAX];
     for(int i=0;i<snv;i++){ float x=shv[i*3], y=shv[i*3+1], z=shv[i*3+2];

@@ -70,6 +70,9 @@ int main(void){
       CHECK(sy_lib_save(sv, &x), "lib save"); char nm[SY_LIBMAX][SY_NAME + 1]; int n = sy_lib_list(sv, nm, SY_LIBMAX); CHECK(n == 1 && !strcmp(nm[0], "TEST SHIP"), "lib list %d", n); CHECK(sy_lib_load(sv, nm[0], &y) && sy_same(&x, &y), "lib load");
       char code[400], back[400]; sy_code(&x, code, sizeof code); CHECK(sy_code_write(sv, code) && sy_code_read(sv, back, sizeof back) && !strcmp(code, back), "code file");
       FILE *f = fopen("/tmp/sy_test_dir/x.slot0.ship", "wb"); fputs("garbage", f); fclose(f); CHECK(!sy_slot_load(sv, 0, &y), "a broken file is refused"); }
+    { SyDesign x = d; sy_preset(&x, 5); SyRooms r; sy_rooms(&x, &r); CHECK(r.hangar && r.fighters == 16 && r.quarters && r.bunks == 24 && r.shieldgen && r.reactor, "carrier rooms"); sy_rooms(&d, &r); CHECK(!r.hangar && r.turret == 1, "moth rooms");
+      SyDesign f, g; sy_foe(&f, 5, 1, 3); sy_foe(&g, 5, 1, 3); CHECK(sy_same(&f, &g), "foe deterministic"); sy_foe(&g, 6, 1, 3); CHECK(!sy_same(&f, &g), "foe seeds differ"); sy_foe(&g, 5, 0, 3); CHECK(!sy_same(&f, &g) && g.paint != f.paint, "teams differ");
+      for(uint32_t s = 0; s < 500; s++){ sy_foe(&f, s, s & 1, s % 10); bounds(&f, "foe"); trip(&f, "foe"); SyStats st; sy_stats(&f, &st); CHECK(!(st.warn & (SYWN_POWER | SYWN_HEAT)), "foe %u unbalanced", s); } }
     if(fails){ printf("sy_test: %d FAILED\n", fails); return 1; }
     printf("sy_test: all good\n"); return 0;
 }

@@ -119,7 +119,7 @@ void sy_fix(SyDesign *d){
     d->nsec = CL(d->nsec, 1, SY_MAXSEC);
     for(int i = 0; i < SY_MAXSEC; i++){ SySec *s = &d->sec[i]; if(i >= d->nsec){ memset(s, 0, sizeof *s); continue; }
         s->len = CL(s->len, 1, SY_UNIT_MAX); s->wid = CL(s->wid, 1, SY_UNIT_MAX); s->hgt = CL(s->hgt, 1, SY_UNIT_MAX); s->shape %= SY_NSHAPE; s->armour = CL(s->armour, 0, 5); }
-    d->sym = d->sym ? 1 : 0; d->ingame = d->ingame ? 1 : 0; d->nose %= SY_NNOSE;
+    d->sym = d->sym ? 1 : 0; d->ingame = d->ingame ? 1 : 0; d->foes = d->foes ? 1 : 0; d->nose %= SY_NNOSE;
     d->wing %= SY_NWING; d->wspan = CL(d->wspan, 0, 15); d->wsweep = CL(d->wsweep, 0, 15); d->wsec = d->wsec % d->nsec; d->wtilt %= 3; d->fins %= 3;
     d->eng %= SY_NENG; d->neng = CL(d->neng, 1, 6); d->esize %= 4; d->reactor = CL(d->reactor, 0, 5); d->tanks = CL(d->tanks, 0, 6); d->radiators = CL(d->radiators, 0, 5);
     d->ngun = CL(d->ngun, 0, SY_MAXGUN);
@@ -135,14 +135,14 @@ void sy_default(SyDesign *d){
     d->ngun = 1; d->gun[0] = (SyGun){SYGK_LASER, 0, 0, SYGP_NOSE};
     d->shield = 1; d->cockpit = SYCP_BUBBLE; d->bays = 0; d->cargo = 1; d->quarters = 1;
     d->paint = C15(150, 156, 176); d->trim = C15(232, 80, 72); d->glow = C15(90, 200, 255); d->light = C15(255, 230, 140); d->emcol = C15(255, 210, 60);
-    d->pattern = SYPT_STRIPE; d->finish = SYFI_GLOSS; d->ingame = 1;
+    d->pattern = SYPT_STRIPE; d->finish = SYFI_GLOSS; d->ingame = 1; d->foes = 0;
     static const uint8_t em[8] = {0x18, 0x3C, 0x7E, 0xFF, 0x18, 0x18, 0x24, 0x42}; memcpy(d->emblem, em, 8);
     static const uint8_t dc[8] = {0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81}; memcpy(d->decal, dc, 8);
 }
 static void tame(SyDesign *d);
 const char *const sy_preset_name[SY_NPRESET] = {"MOTH","DART","HAULER","GUNBOAT","INTERCEPTOR","CARRIER","TANK","EXPLORER","CORVETTE","STARHAMMER"};
 void sy_preset(SyDesign *d, int i){
-    char nm[SY_NAME + 1]; memcpy(nm, d->name, sizeof nm); int ig = d->ingame; uint8_t em[8], dc[8]; memcpy(em, d->emblem, 8); memcpy(dc, d->decal, 8);
+    char nm[SY_NAME + 1]; memcpy(nm, d->name, sizeof nm); int ig = d->ingame, fo = d->foes; uint8_t em[8], dc[8]; memcpy(em, d->emblem, 8); memcpy(dc, d->decal, 8);
     sy_default(d); i = ((i % SY_NPRESET) + SY_NPRESET) % SY_NPRESET;
     switch(i){
     case 1: d->nsec = 3; d->sec[0] = (SySec){5, 2, 2, SYSH_ROUND, 0}; d->sec[1] = (SySec){5, 3, 2, SYSH_WEDGE, 0}; d->sec[2] = (SySec){3, 3, 2, SYSH_FLAT, 0}; d->wing = SYWK_DELTA; d->wspan = 7; d->wsweep = 10;
@@ -172,7 +172,17 @@ void sy_preset(SyDesign *d, int i){
         d->gun[0] = (SyGun){SYGK_BEAM, 2, 0, SYGP_NOSE}; d->gun[1] = (SyGun){SYGK_CANNON, 2, 1, SYGP_TOP}; d->gun[2] = (SyGun){SYGK_MISSILE, 2, 2, SYGP_LEFT}; d->gun[3] = (SyGun){SYGK_LASER, 2, 3, SYGP_RIGHT}; d->gun[4] = (SyGun){SYGK_FLAK, 1, 4, SYGP_BELOW}; d->gun[5] = (SyGun){SYGK_CANNON, 1, 5, SYGP_TOP};
         d->paint = C15(40, 40, 50); d->trim = C15(220, 30, 30); d->glow = C15(255, 60, 60); d->pattern = SYPT_TIGER; d->finish = SYFI_METAL; d->cockpit = SYCP_BRIDGE; break;
     default: break; }
-    memcpy(d->name, nm, sizeof nm); d->ingame = ig; memcpy(d->emblem, em, 8); memcpy(d->decal, dc, 8); tame(d);
+    memcpy(d->name, nm, sizeof nm); d->ingame = ig; d->foes = fo; memcpy(d->emblem, em, 8); memcpy(d->decal, dc, 8); tame(d);
+}
+void sy_foe(SyDesign *d, uint32_t seed, int team, int level){
+    uint64_t r = 0x9E3779B97F4A7C15ull ^ ((uint64_t)seed * 0xD1B54A32D192ED03ull) ^ (uint64_t)team << 40; sy_rng(&r); sy_rng(&r);
+    SyDesign f; sy_default(&f); strcpy(f.name, team ? "RAIDER" : "WINGMAN"); sy_random(&f, &r);
+    if(level < 0) level = 0; if(level > 9) level = 9;
+    for(int i = 0; i < f.nsec; i++){ int a = f.sec[i].armour + (level >= 6) - (level < 2); f.sec[i].armour = (uint8_t)(a < 0 ? 0 : a > 5 ? 5 : a); }
+    if(level >= 4 && f.neng < 6) f.neng++;
+    if(team){ f.paint = C15(150 + (int)(sy_rng(&r) % 100), 40 + (int)(sy_rng(&r) % 40), 40); f.trim = C15(40, 40, 50); f.glow = C15(255, 80, 40); }
+    else { f.paint = C15(100, 140 + (int)(sy_rng(&r) % 100), 200); f.trim = C15(240, 240, 250); f.glow = C15(90, 220, 255); }
+    f.emcol = f.trim; f.ingame = 1; f.foes = 0; tame(&f); *d = f;
 }
 void sy_balance(SyDesign *d){       // enough reactor, cooling, beds and fuel for the parts (a fix-up loop; it never removes parts)
     sy_fix(d);
@@ -216,7 +226,7 @@ static void walk(SyDesign *d, BW *w, BR *r, int dec){                    // the 
     if(dec) d->name[L] = 0;
     uint8_t ns = (uint8_t)(d->nsec - 1); bits(w, r, dec, &ns, 3); if(dec) d->nsec = (uint8_t)(ns + 1);
     for(int i = 0; i < d->nsec; i++){ SySec *s = &d->sec[i]; bits(w, r, dec, &s->len, 4); bits(w, r, dec, &s->wid, 4); bits(w, r, dec, &s->hgt, 4); bits(w, r, dec, &s->shape, 2); bits(w, r, dec, &s->armour, 3); }
-    bits(w, r, dec, &d->sym, 1); bits(w, r, dec, &d->ingame, 1); bits(w, r, dec, &d->nose, 2);
+    bits(w, r, dec, &d->sym, 1); bits(w, r, dec, &d->ingame, 1); bits(w, r, dec, &d->foes, 1); bits(w, r, dec, &d->nose, 2);
     bits(w, r, dec, &d->wing, 3); bits(w, r, dec, &d->wspan, 4); bits(w, r, dec, &d->wsweep, 4); bits(w, r, dec, &d->wsec, 3); bits(w, r, dec, &d->wtilt, 2); bits(w, r, dec, &d->fins, 2);
     bits(w, r, dec, &d->eng, 2); bits(w, r, dec, &d->neng, 3); bits(w, r, dec, &d->esize, 2); bits(w, r, dec, &d->reactor, 3); bits(w, r, dec, &d->tanks, 3); bits(w, r, dec, &d->radiators, 3);
     bits(w, r, dec, &d->ngun, 3); if(dec && d->ngun > SY_MAXGUN) d->ngun = SY_MAXGUN;
@@ -273,7 +283,7 @@ int sy_rows(int tab, const SyDesign *d, const SyCursor *c, int *ids){
     int n = 0, a = c->advanced;
     #define R(x) ids[n++] = (x)
     switch(tab){
-    case SYT_SHIP: R(SYR_PRESET); R(SYR_DICE); R(SYR_MODE); R(SYR_INGAME); R(SYR_UNDO); R(SYR_REDO); if(a) R(SYR_SNAP); break;
+    case SYT_SHIP: R(SYR_PRESET); R(SYR_DICE); R(SYR_MODE); R(SYR_INGAME); R(SYR_UNDO); R(SYR_REDO); if(a){ R(SYR_FOES); R(SYR_SNAP); } break;
     case SYT_HULL: R(SYR_SEC); R(SYR_LEN); R(SYR_WID); R(SYR_HGT); R(SYR_SHAPE); R(SYR_NOSE); R(SYR_ADDSEC); R(SYR_DELSEC); R(SYR_SYM); if(a){ R(SYR_COPYSEC); R(SYR_STRETCH); } break;
     case SYT_WINGS: R(SYR_WING); R(SYR_WSPAN); R(SYR_WSWEEP); R(SYR_FINS); if(a){ R(SYR_WSEC); R(SYR_WTILT); } break;
     case SYT_POWER: R(SYR_ENG); R(SYR_NENG); R(SYR_ESIZE); R(SYR_REACTOR); R(SYR_RADS); R(SYR_TANKS); break;
@@ -290,7 +300,7 @@ const char *sy_row_label(int id){
     static char armb[12];
     if(id >= SYR_ARM0 && id <= SYR_ARM_END){ snprintf(armb, sizeof armb, "PLATES %d", id - SYR_ARM0 + 1); return armb; }
     switch(id){
-    case SYR_PRESET: return "START FROM"; case SYR_DICE: return "SURPRISE ME"; case SYR_MODE: return "MODE"; case SYR_SNAP: return "SNAP"; case SYR_INGAME: return "FLY IT"; case SYR_UNDO: return "UNDO"; case SYR_REDO: return "REDO";
+    case SYR_PRESET: return "START FROM"; case SYR_DICE: return "SURPRISE ME"; case SYR_MODE: return "MODE"; case SYR_SNAP: return "SNAP"; case SYR_FOES: return "FOE SHIPS"; case SYR_INGAME: return "FLY IT"; case SYR_UNDO: return "UNDO"; case SYR_REDO: return "REDO";
     case SYR_SEC: return "SECTION"; case SYR_LEN: return "LENGTH"; case SYR_WID: return "WIDTH"; case SYR_HGT: return "HEIGHT"; case SYR_SHAPE: return "SHAPE"; case SYR_NOSE: return "NOSE"; case SYR_SYM: return "SYMMETRY";
     case SYR_ADDSEC: return "ADD SECTION"; case SYR_COPYSEC: return "COPY SECTION"; case SYR_DELSEC: return "REMOVE SECTION"; case SYR_STRETCH: return "STRETCH ALL";
     case SYR_WING: return "WINGS"; case SYR_WSPAN: return "SPAN"; case SYR_WSWEEP: return "SWEEP"; case SYR_WSEC: return "WING SPOT"; case SYR_WTILT: return "TILT"; case SYR_FINS: return "FINS";
@@ -310,6 +320,7 @@ const char *sy_row_help(int id){
     case SYR_DICE: return "A: ROLL A RANDOM SHIP THAT WORKS. UNDO BRINGS YOURS BACK";
     case SYR_MODE: return "SIMPLE SHOWS THE MAIN PARTS. ADVANCED SHOWS EVERY PART";
     case SYR_SNAP: return "SNAP ON: DRAGGING MOVES IN STEPS OF 2. OFF: STEPS OF 1";
+    case SYR_FOES: return "YES: ALLIES AND ENEMIES ARE BUILT FROM THE SAME PARTS";
     case SYR_INGAME: return "YES: YOU FLY THIS DESIGN IN SPACE. NO: THE OLD SHIP";
     case SYR_UNDO: return "A: TAKE BACK THE LAST CHANGE (ALSO START, RIGHT CLICK)"; case SYR_REDO: return "A: PUT BACK WHAT YOU TOOK BACK";
     case SYR_SEC: return "PICK A HULL SECTION. 1 IS THE NOSE. CLICK ONE IN THE PLAN";
@@ -370,7 +381,7 @@ void sy_row_value(int id, const SyDesign *d, const SyCursor *c, char *o, int n){
     if(id >= SYR_ARM0 && id <= SYR_ARM_END){ snprintf(o, n, "%d", d->sec[id - SYR_ARM0].armour); return; }
     switch(id){
     case SYR_PRESET: snprintf(o, n, "PICK"); break; case SYR_MODE: snprintf(o, n, "%s", c->advanced ? "ADVANCED" : "SIMPLE"); break;
-    case SYR_SNAP: snprintf(o, n, "%s", c->snap ? "ON" : "OFF"); break; case SYR_INGAME: snprintf(o, n, "%s", d->ingame ? "YES" : "NO"); break;
+    case SYR_SNAP: snprintf(o, n, "%s", c->snap ? "ON" : "OFF"); break; case SYR_INGAME: snprintf(o, n, "%s", d->ingame ? "YES" : "NO"); break; case SYR_FOES: snprintf(o, n, "%s", d->foes ? "YES" : "NO"); break;
     case SYR_SEC: snprintf(o, n, "%d OF %d", c->sec + 1, d->nsec); break;
     case SYR_LEN: snprintf(o, n, "%d", s->len); break; case SYR_WID: snprintf(o, n, "%d", s->wid); break; case SYR_HGT: snprintf(o, n, "%d", s->hgt); break;
     case SYR_SHAPE: snprintf(o, n, "%s", shape_nm[s->shape % SY_NSHAPE]); break; case SYR_NOSE: snprintf(o, n, "%s", nose_nm[d->nose % SY_NNOSE]); break;
@@ -429,7 +440,7 @@ int sy_change(SyDesign *d, SyCursor *c, int id, int delta){
     case SYR_PRESET: { static int p; p = cyc(p, dir, SY_NPRESET); sy_preset(d, p); return 1; }
     case SYR_DICE: return 0;
     case SYR_MODE: c->advanced ^= 1; return 0; case SYR_SNAP: c->snap ^= 1; return 0;
-    case SYR_INGAME: d->ingame ^= 1; return 1;
+    case SYR_INGAME: d->ingame ^= 1; return 1; case SYR_FOES: d->foes ^= 1; return 1;
     case SYR_SEC: c->sec = cyc(c->sec, dir, d->nsec); return 0;
     case SYR_LEN: return clampstep(&s->len, dir * st * us, 1, SY_UNIT_MAX); case SYR_WID: return clampstep(&s->wid, dir * st * us, 1, SY_UNIT_MAX); case SYR_HGT: return clampstep(&s->hgt, dir * st * us, 1, SY_UNIT_MAX);
     case SYR_SHAPE: s->shape = (uint8_t)cyc(s->shape, dir, SY_NSHAPE); return 1; case SYR_NOSE: d->nose = (uint8_t)cyc(d->nose, dir, SY_NNOSE); return 1;
@@ -584,4 +595,10 @@ void sy_mesh(const SyDesign *d0, SyMesh *m){
     #undef HH
     int rad = 1; for(int i = 0; i < m->nv; i++){ int x = m->v[i].x, y = m->v[i].y, z = m->v[i].z, q = x < 0 ? -x : x; if(y > q || -y > q) q = y < 0 ? -y : y; if(z > q || -z > q) q = z < 0 ? -z : z; if(q > rad) rad = q; }
     m->len = L; m->rad = rad;
+}
+
+void sy_rooms(const SyDesign *d0, SyRooms *r){
+    SyDesign dd = *d0; sy_fix(&dd); const SyDesign *d = &dd; int guns = 0; for(int i = 0; i < d->ngun; i++) if(d->gun[i].kind) guns += gun_mult(d, &d->gun[i]);
+    memset(r, 0, sizeof *r); r->reactor = d->reactor > 0; r->hangar = d->bays > 0; r->quarters = d->quarters > 0; r->bridge = d->cockpit == SYCP_BRIDGE || d->nsec >= 3; r->turret = (uint8_t)(guns > 6 ? 6 : guns);
+    r->shieldgen = d->shield > 0; r->workshop = d->cargo >= 4; r->mess = d->quarters >= 3; r->bunks = (uint8_t)(d->quarters * 4); r->crates = (uint8_t)(d->cargo * 2); r->guns = (uint8_t)(guns > 12 ? 12 : guns); r->fighters = (uint8_t)(d->bays * 4);
 }

@@ -9,7 +9,7 @@
 #define SY_MAXSEC 8          // hull sections, nose to tail
 #define SY_MAXGUN 6          // weapon / turret mounts
 #define SY_UNIT_MAX 15       // a section's length, width and height are 1..15 grid units
-#define SY_VERSION 1
+#define SY_VERSION 1                 // (the foes bit was added before any file was shared: still version 1)
 
 enum { SYSH_ROUND, SYSH_BOX, SYSH_WEDGE, SYSH_FLAT, SY_NSHAPE };                         // section shapes
 enum { SYNO_POINT, SYNO_BLUNT, SYNO_FORK, SYNO_RAM, SY_NNOSE };
@@ -36,6 +36,7 @@ typedef struct {
     uint8_t pattern, finish;
     uint8_t decal[8], emblem[8];                                                 // 8x8 one-bit pictures drawn in the editor
     uint16_t emcol;                                                              // the emblem's colour
+    uint8_t foes;                                                                // 1 = allied and enemy ships in space are built from the same parts (see sy_foe)
     uint8_t ingame;                                                              // 1 = the game uses this design for your ship
 } SyDesign;
 
@@ -66,6 +67,7 @@ void sy_fix(SyDesign *d);                                                       
 extern const char *const sy_preset_name[SY_NPRESET];
 void sy_preset(SyDesign *d, int i);                                              // keeps the name
 void sy_random(SyDesign *d, uint64_t *rng);
+void sy_foe(SyDesign *d, uint32_t seed, int team, int level);                  // an allied (team 0) or enemy (1) design from a seed: the same part grammar, balanced; level 0..9 = stronger
 void sy_balance(SyDesign *d);                                                    // add reactor, radiators, beds, tanks until the warnings go (where it can)                                      // SURPRISE ME: a sensible random ship (keeps the name)
 uint64_t sy_rng(uint64_t *s);
 
@@ -90,7 +92,7 @@ int  sy_hist_redo(SyHist *h, SyDesign *d);
 enum { SYT_SHIP, SYT_HULL, SYT_WINGS, SYT_POWER, SYT_GUNS, SYT_GUARD, SYT_ROOMS, SYT_PAINT, SYT_BADGE, SYT_FILE, SY_NTAB };
 extern const char *const sy_tab_name[SY_NTAB];
 enum {
-    SYR_PRESET, SYR_DICE, SYR_MODE, SYR_SNAP, SYR_INGAME, SYR_UNDO, SYR_REDO,
+    SYR_PRESET, SYR_DICE, SYR_MODE, SYR_SNAP, SYR_INGAME, SYR_FOES, SYR_UNDO, SYR_REDO,
     SYR_SEC, SYR_LEN, SYR_WID, SYR_HGT, SYR_SHAPE, SYR_NOSE, SYR_SYM, SYR_ADDSEC, SYR_COPYSEC, SYR_DELSEC, SYR_STRETCH,
     SYR_WING, SYR_WSPAN, SYR_WSWEEP, SYR_WSEC, SYR_WTILT, SYR_FINS,
     SYR_ENG, SYR_NENG, SYR_ESIZE, SYR_REACTOR, SYR_TANKS, SYR_RADS,
@@ -113,6 +115,13 @@ int  sy_change(SyDesign *d, SyCursor *c, int id, int delta);                    
 int  sy_action(SyDesign *d, SyCursor *c, int id);
 void sy_cursor_fix(const SyDesign *d, SyCursor *c);                              // after undo, presets or loads                                // A on add/copy/remove rows; 1 = changed
 extern const uint16_t sy_swatch[32];                                             // the colour steps for LEFT RIGHT on colour rows
+
+// ---- the INTERIOR hook (boarding): what rooms a design has, in the warship interior's room kinds (pc/warship/ws_deck.h WR_*, WP_* props).
+// pc/warship's wd_make can take this list instead of its own mix: one entry per room kind, how many rooms, and how many props of the
+// kinds that belong to the parts (guns in turrets, crates in cargo, bunks in crew rooms). Not wired into wd_make yet: that file is the
+// warship worker's. A design's own ship (no craft seed) is one deck.
+typedef struct { uint8_t reactor, hangar, quarters, bridge, turret, shieldgen, workshop, mess; uint8_t bunks, crates, guns, fighters; } SyRooms;
+void sy_rooms(const SyDesign *d, SyRooms *r);
 
 // ---- the 3D model for the preview (and for any renderer that wants it): points and faces in model units, nose at -z
 #define SY_MAXV 520

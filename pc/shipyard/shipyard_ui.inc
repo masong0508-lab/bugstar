@@ -19,10 +19,21 @@ static char sy_note[64]; static u32 sy_clock; static uint64_t sy_rngs = 0x5EEDB0
 static u16 sy_savepal[256];
 
 // ---------------------------------------------------------------- the game hooks (pc/build.sh renames the ship.inc stat functions to *_g)
-static int pc_sy_slot = -1, pc_sy_on; static SyGame pc_sy_gm;
+static int pc_sy_slot = -1, pc_sy_on, pc_sy_foes; static SyGame pc_sy_gm; static SyDesign pc_sy_des;
+typedef struct { int ok; float v[SY_MAXV * 3]; uint16_t tri[SY_MAXF * 6]; uint32_t tcol[SY_MAXF * 2]; SrMesh m; float scale; } PcSyMesh;
+static PcSyMesh pc_sy_fm[12], pc_sy_mc; static int pc_sy_mc_ok; static SyMesh pc_sy_tmp;
+static uint32_t sy_rgb15(u16 c, int k, int fin){ extern u16 sy_shade_p(u16, int, int); u16 q = sy_shade_p(c, k, fin); int r = q & 31, g = (q >> 5) & 31, b = (q >> 10) & 31; return (uint32_t)(r << 3 | r >> 2) << 16 | (uint32_t)(g << 3 | g >> 2) << 8 | (uint32_t)(b << 3 | b >> 2); }
+static void sy_srmesh(const SyDesign *d, PcSyMesh *o){      // the design as triangles for the PC ship renderer (x right, y up, z forward: our y and z are flipped)
+    sy_mesh(d, &pc_sy_tmp); const SyMesh *m = &pc_sy_tmp; int nt = 0;
+    for(int i = 0; i < m->nv; i++){ o->v[i * 3] = m->v[i].x; o->v[i * 3 + 1] = -m->v[i].y; o->v[i * 3 + 2] = -m->v[i].z; }
+    uint32_t cl[7] = { sy_rgb15(d->paint, 5, d->finish), sy_rgb15(d->trim, 5, d->finish), sy_rgb15(0x4A52, 5, 2), sy_rgb15(d->glow, 6, 0), sy_rgb15(d->light, 5, 0), sy_rgb15(0x2108, 5, 2), sy_rgb15(d->emcol, 5, 0) };
+    for(int i = 0; i < m->nf && nt + 2 <= SY_MAXF * 2; i++){ const SyF *f = &m->f[i]; o->tri[nt * 3] = f->v[0]; o->tri[nt * 3 + 1] = f->v[1]; o->tri[nt * 3 + 2] = f->v[2]; o->tcol[nt++] = cl[f->col % 7];
+        if(f->n == 4){ o->tri[nt * 3] = f->v[0]; o->tri[nt * 3 + 1] = f->v[2]; o->tri[nt * 3 + 2] = f->v[3]; o->tcol[nt++] = cl[f->col % 7]; } }
+    o->m.v = o->v; o->m.nv = m->nv; o->m.tri = o->tri; o->m.nt = nt; o->m.tcol = o->tcol; o->scale = 1.f / (m->rad > 8 ? m->rad : 8); o->ok = 1;
+}
 static void pc_sy_refresh(void){
     if(pc_sy_slot == cur_slot) return; pc_sy_slot = cur_slot; pc_sy_on = 0; SyDesign d;
-    if(pc_sav_path() && sy_slot_load(pc_sav_path(), cur_slot, &d) && d.ingame){ sy_game(&d, &pc_sy_gm); pc_sy_on = 1; }
+    if(pc_sav_path() && sy_slot_load(pc_sav_path(), cur_slot, &d) && d.ingame){ sy_game(&d, &pc_sy_gm); pc_sy_on = 1; pc_sy_des = d; pc_sy_foes = d.foes; pc_sy_mc_ok = 0; for(int i = 0; i < 12; i++) pc_sy_fm[i].ok = 0; }
 }
 static int pc_sy_stat(int k, int v){            // k: 0 armour, 1 top speed, 2 turn, 3 damp, 4 gun, 5 hold, 6 fuel, 7 push
     pc_sy_refresh(); if(!pc_sy_on) return v; SyGame *g = &pc_sy_gm; int r;
@@ -58,6 +69,7 @@ static void sy_to_look(const SyDesign *d){          // the game's own ship model
 }
 
 // ---------------------------------------------------------------- colours
+static u16 sy_shade(u16 c, int k, int fin);
 static u16 sy_shade(u16 c, int k, int fin){                // k 0..7 dark to light
     int r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; int lo = fin == SYFI_MATTE ? 45 : fin == SYFI_METAL ? 25 : 35, hi = fin == SYFI_MATTE ? 105 : fin == SYFI_METAL ? 135 : 120;
     int f = lo + (hi - lo) * k / 7; r = r * f / 100; g = g * f / 100; b = b * f / 100;
@@ -65,6 +77,7 @@ static u16 sy_shade(u16 c, int k, int fin){                // k 0..7 dark to lig
     if(fin == SYFI_PEARL){ r = (r * 3 + 24) / 4; g = (g * 3 + 22) / 4; b = (b * 3 + 28) / 4; }
     if(r > 31) r = 31; if(g > 31) g = 31; if(b > 31) b = 31; return (u16)(r | (g << 5) | (b << 10));
 }
+u16 sy_shade_p(u16 c, int k, int fin){ return sy_shade(c, k, fin); }
 static void sy_pal(void){
     const SyDesign *d = &sy_d;
     for(int k = 0; k < 8; k++){ BG_PAL[SYP_PAINT + k] = sy_shade(d->paint, k, d->finish); BG_PAL[SYP_TRIM + k] = sy_shade(d->trim, k, d->finish); BG_PAL[SYP_METAL + k] = sy_shade(rgb15(120, 124, 136), k, SYFI_METAL);
@@ -241,6 +254,39 @@ static int sy_open(volatile u16 *pg, int id, int *leave){
     case SYR_PRESET: sy_say("LEFT RIGHT: PICK A READY SHIP"); return 0;
     default: if(sy_row_is_value(id)) return sy_change(&sy_d, &sy_c, id, 1); return sy_action(&sy_d, &sy_c, id);
     }
+}
+
+// ---- the design DRAWN in space: your ship in the chase view, and allied / enemy ships built from the same parts (when FOE SHIPS is on)
+static int pc_sy_player(int cx, int cy, int sc, int yaw_, int pitch_){
+    pc_sy_refresh(); if(!pc_sy_on) return 0; if(!pc_sy_mc_ok){ sy_srmesh(&pc_sy_des, &pc_sy_mc); pc_sy_mc_ok = 1; }
+    float rc = cosx(ship_roll >> 2) / 16384.0f, rs = sinx(ship_roll >> 2) / 16384.0f, cyw = cosx(yaw_ >> 2) / 16384.0f, syw = sinx(yaw_ >> 2) / 16384.0f, cp = cosx(pitch_ >> 2) / 16384.0f, sp = sinx(pitch_ >> 2) / 16384.0f;
+    static float px[SY_MAXV], py[SY_MAXV], pz[SY_MAXV]; PcSyMesh *o = &pc_sy_mc; float k = (float)sh_rad * o->scale;
+    for(int i = 0; i < o->m.nv; i++){ float x = o->v[i * 3] * k, y = o->v[i * 3 + 1] * k, z = o->v[i * 3 + 2] * k;
+        float rx = x * cyw + z * syw, rz = -x * syw + z * cyw, ry = y * cp + rz * sp; rz = -y * sp + rz * cp;
+        float d = 400 + rz; if(d < 60) d = 60; float f = sc * 25600.0f / d / 16384.0f, X = rx * f, Y = -ry * f; float X2 = X * rc - Y * rs, Y2 = X * rs + Y * rc; px[i] = X2 + cx; py[i] = Y2 + cy; pz[i] = rz; }
+    static int ord[SY_MAXF * 2]; static float zz[SY_MAXF * 2]; int n = o->m.nt; for(int t = 0; t < n; t++){ ord[t] = t; zz[t] = (pz[o->tri[t * 3]] + pz[o->tri[t * 3 + 1]] + pz[o->tri[t * 3 + 2]]) / 3; }
+    for(int a = 1; a < n; a++){ int v = ord[a]; float z = zz[v]; int b = a - 1; while(b >= 0 && zz[ord[b]] < z){ ord[b + 1] = ord[b]; b--; } ord[b + 1] = v; }
+    for(int q = 0; q < n; q++){ int t = ord[q]; int a = o->tri[t * 3], b = o->tri[t * 3 + 1], c = o->tri[t * 3 + 2];
+        float ux = o->v[b * 3] - o->v[a * 3], uy = o->v[b * 3 + 1] - o->v[a * 3 + 1], uz = o->v[b * 3 + 2] - o->v[a * 3 + 2], vx = o->v[c * 3] - o->v[a * 3], vy = o->v[c * 3 + 1] - o->v[a * 3 + 1], vz = o->v[c * 3 + 2] - o->v[a * 3 + 2];
+        float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, L = sqrtf(nx * nx + ny * ny + nz * nz) + 1e-6f; nx /= L; ny /= L; nz /= L;
+        float mx = nx * cyw + nz * syw, mz0 = -nx * syw + nz * cyw, my = ny * cp + mz0 * sp, mz = -ny * sp + mz0 * cp; float l = (-mx * 0.35f + my * 0.7f - mz * 0.55f); if(l < 0) l = -l * 0.5f; if(l > 1) l = 1;
+        uint32_t c0 = o->tcol[t]; int R = (int)((c0 >> 16 & 255) * (0.45f + 0.65f * l)), G = (int)((c0 >> 8 & 255) * (0.45f + 0.65f * l)), B = (int)((c0 & 255) * (0.45f + 0.65f * l)); if(R > 255) R = 255; if(G > 255) G = 255; if(B > 255) B = 255;
+        float X[3] = { px[a], px[b], px[c] }, Y[3] = { py[a], py[b], py[c] }; sr_poly2d(X, Y, 3, 2.0f + zz[t] / 1000.0f, (uint32_t)(R << 16 | G << 8 | B)); }
+    if(sh_flame) for(int e = 0; e < sh_en; e++){ float ex = sh_eng[e][0], ey = sh_eng[e][1], ez = sh_eng[e][2] - 8; float rx = ex * cyw + ez * syw, rz = -ex * syw + ez * cyw, ry = ey * cp + rz * sp; rz = -ey * sp + rz * cp; float d = 400 + rz; if(d < 60) d = 60; float f = sc * 25600.0f / d / 16384.0f, X = rx * f, Y = -ry * f;
+        float gx = X * rc - Y * rs + cx, gy = X * rs + Y * rc + cy, r = sh_eng[e][3] * f * 0.9f + 1; sr_glow2d(gx, gy, r * (0.8f + 0.25f * sh_flame), sy_rgb15(pc_sy_des.glow, 6, 0), 0.8f); sr_glow2d(gx, gy, r * 0.45f, 0xFFFFFF, 0.6f); }
+    sr_commit(pc_sr_tag); return 1;
+}
+static int pc_sy_foe(int i, SrShip *s){      // 1 = drawn here as a mesh (an allied or enemy ship from the part grammar)
+    pc_sy_refresh(); if(!pc_sy_on || !pc_sy_foes) return 0; int team = s->team ? 1 : 0, slot = team * 6 + (i % 6); PcSyMesh *o = &pc_sy_fm[slot];
+    if(!o->ok){ SyDesign d; sy_foe(&d, (uint32_t)(i % 6) * 2654435761u + (uint32_t)cur_sys * 40503u, team, space_danger() > 9 ? 9 : space_danger() < 0 ? 0 : space_danger()); sy_srmesh(&d, o); }
+    sr_mesh(&o->m, s->p, s->f, s->u, s->size * o->scale * 1.2f, s->col); return 1; }
+// the test hook: BUGSTAR_SY_TEST=PRESET[,foes] BUGSTAR_SY_AT=frames: after that many frames in the game, give this slot that preset design and fly into space
+static void pc_sy_autotest(void){
+    static int done = 0; if(done || !in_game) return; const char *e = getenv("BUGSTAR_SY_TEST"); if(!e){ done = 1; return; }
+    const char *at = getenv("BUGSTAR_SY_AT"); if(frames < (at ? atoi(at) : 0)) return; done = 1; int p = 0, f = 0; sscanf(e, "%d,%d", &p, &f);
+    SyDesign d; sy_default(&d); sy_preset(&d, p); d.foes = f; if(pc_sav_path()) sy_slot_save(pc_sav_path(), cur_slot, &d); pc_sy_slot = -1; pc_sy_refresh(); if(pc_sy_on) sy_to_look(&d);
+    if(scene != 2){ oam_hide_all(); oam_flush(); scene = 2; page_back = 1; space_enter(1); music(3); }
+    if(getenv("BUGSTAR_SY_PIRATES")) spawn_pirates(atoi(getenv("BUGSTAR_SY_PIRATES")));
 }
 static int make_ship_g(volatile u16 *pg, int first);
 static int pc_sy_screen(volatile u16 *pg, int first){
