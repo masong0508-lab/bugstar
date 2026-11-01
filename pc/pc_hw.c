@@ -22,6 +22,7 @@
 
 void (*pc_irq_fn)(void);
 int pc_ships_mode=-1, pc_armada_n=0;   // the ship renderer: -1 off (the game draws its own ships), 0 CLASSIC, 1 NATIVE, 2 ULTRA; ships in the far battle (PC_SHIPS / PC_ARMADA for tests)
+int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h; uint32_t *pc_dn_buf; long pc_dn_f[2]={-100,-100}; uint8_t pc_dn_snap[2][240*160];   // the native dungeon (pc_dnative.inc): the picture, its size, the page snapshot it belongs to
 static uint8_t sr_snap[2][240*128]; static long sr_snap_f[2]={-100,-100};
 void pc_sr_snapshot(const volatile void *pg){ int t=((uintptr_t)pg)>=0x0600A000u ? 1 : 0; memcpy(sr_snap[t],(const void*)pg,240*128); sr_snap_f[t]=pc_frames(); }
 int pc_vid3d;                   // 3D views: 0 AUTO, 1 NATIVE, 2 CLASSIC (set by the window front end; PC_V3D=0..2 in the environment for tests)
@@ -57,7 +58,7 @@ static uint64_t g_saved_hash;
 uint64_t pc_hash_sram(void);
 int pc_hw_init(const char *sav_path){
     g_sav = sav_path;
-    if(getenv("PC_SHIPS")) pc_ships_mode=atoi(getenv("PC_SHIPS")); if(getenv("PC_ARMADA")) pc_armada_n=atoi(getenv("PC_ARMADA"));
+    if(getenv("PC_NATIVE") && getenv("PC_SCALE")){ int sc=atoi(getenv("PC_SCALE")); if(sc>1){ pc_nat_w=240*sc; pc_nat_h=160*sc; } } if(getenv("PC_SHIPS")) pc_ships_mode=atoi(getenv("PC_SHIPS")); if(getenv("PC_ARMADA")) pc_armada_n=atoi(getenv("PC_ARMADA"));
     if(!map_at(EWRAM,0x40000) || !map_at(IWRAM,0x8000) || !map_at(IOREG,0x1000) || !map_at(PALRAM,0x1000) ||
        !map_at(VRAMB,0x20000) || !map_at(OAMB,0x1000) || !map_at(GPIOB,0x10000) || !map_at(SRAMB,0x10000)) return 0;
     R16(IOREG+0x130)=0x03FF;                                  // no key pressed
@@ -423,7 +424,9 @@ static void nv_rows(void *vc, int lo, int hi){
         }
     }
 }
+int pc_v3d_classic(void);
 static int nv_v3(void){ int v3=pc_vid3d; static int env=-2; if(env==-2){ const char *e=getenv("PC_V3D"); env=e?atoi(e):-1; } if(env>=0) v3=env; return v3; }
+int pc_v3d_classic(void){ return nv_v3()==2; }
 static int spr_tex(int tile,int tx,int ty,int w,int h,int one_d,int is8,int pal,uint16_t *col){    // one texel of a sprite: 0 = transparent
     if(tx<0||ty<0||tx>=w||ty>=h) return 0; int units=is8?2:1; int t=tile + (ty>>3)*(one_d ? (w>>3)*units : 32) + (tx>>3)*units;
     uint32_t addr=VRAMB+0x10000+(uint32_t)t*32 + (ty&7)*(is8?8:4) + ((tx&7)>>(is8?0:1)); if(addr>=VRAMB+0x18000) return 0;
@@ -473,6 +476,7 @@ static void nv_sprites(void *vc, int lo, int hi){
     }
 void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(W<240||H<160){ W=240; H=160; }
+    if(W>240 && H>160){ pc_nat_w=W; pc_nat_h=H; }       // (the game's own native renderers, e.g. the dungeon, make their picture at this size)
     build_lines();
     size_t need=(size_t)W*H; if(need>nv_cap){ free(nv_oc); free(nv_op); nv_oc=malloc(need*2); nv_op=malloc(need); nv_cap=need; }
     if(W+H>nv_fcap){ free(nv_fx); free(nv_fy); nv_fcap=W+H; nv_fx=malloc(sizeof(float)*(W+H)); nv_fy=nv_fx+W; }
@@ -520,6 +524,17 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     free(tabx); free(wx);
     clock_gettime(CLOCK_MONOTONIC,&T3);
     if(getenv("PC_TIMING")){ double a=(T1.tv_sec-T0.tv_sec)*1e3+(T1.tv_nsec-T0.tv_nsec)/1e6, b=(T2.tv_sec-T1.tv_sec)*1e3+(T2.tv_nsec-T1.tv_nsec)/1e6, c=(T3.tv_sec-T2.tv_sec)*1e3+(T3.tv_nsec-T2.tv_nsec)/1e6; fprintf(stderr,"compose %dx%d: sprites %.2f prep %.2f main %.2f ms\n",W,H,a,b,c); }
+    if(mode==4 && pc_dn_w==W && pc_dn_h==H && pc_dn_buf && !pc_v3d_classic() && !lst_dma){                  // the native dungeon: wherever the page still holds what the 3D pass wrote
+        int t=(dc>>4)&1; if(g_frame-pc_dn_f[t]<=4){ const uint8_t *pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0)); int Y0=(18*H+159)/160; uint32_t pal[256];
+            for(int i=0;i<256;i++){ uint16_t c=R16(PALRAM+i*2); pal[i]=(uint32_t)((c&31)<<3|(c&31)>>2)<<16 | (uint32_t)(((c>>5)&31)<<3|((c>>5)&31)>>2)<<8 | (uint32_t)(((c>>10)&31)<<3|((c>>10)&31)>>2); }
+            int fadeop = (bmode>=2 && ev>0 && (bldcnt&4)) ? bmode : 0;
+            for(int Y=Y0;Y<H;Y++){ int gy=(int)((Y+0.5)*sy); if(gy>159) gy=159; const uint32_t *src=pc_dn_buf+(size_t)(Y-Y0)*W;
+                for(int X=0;X<W;X++){ int gx=(int)((X+0.5)*sx); if(gx>239) gx=239; int gi=gy*240+gx; size_t q=(size_t)Y*W+X;
+                    if(gy<18 || pgb[gi]!=pc_dn_snap[t][gi] || (nv_op[q]&7)<4) continue;
+                    uint32_t v=src[X], a=pal[v&255], b=pal[(v>>8)&255]; int f=(v>>16)&255; uint32_t rb=((a&0xFF00FF)*(256-f)+(b&0xFF00FF)*f)>>8, g=((a&0xFF00)*(256-f)+(b&0xFF00)*f)>>8; uint32_t c=(rb&0xFF00FF)|(g&0xFF00);
+                    if(fadeop==2){ uint32_t r2=(c>>16&255)+((255-(c>>16&255))*ev>>4), g2=(c>>8&255)+((255-(c>>8&255))*ev>>4), b2=(c&255)+((255-(c&255))*ev>>4); c=r2<<16|g2<<8|b2; }
+                    else if(fadeop==3){ uint32_t r2=(c>>16&255)*(16-ev)>>4, g2=(c>>8&255)*(16-ev)>>4, b2=(c&255)*(16-ev)>>4; c=r2<<16|g2<<8|b2; }
+                    out[q]=c; } } } }
     if(pc_ships_mode>=0 && mode==4 && !(bmode>=2 && ev>=12)){                 // the ship renderer, under whatever the game drew after its ships (cockpit, HUD, sparks)
         int t=(dc>>4)&1; if(getenv("SR_DBG")) fprintf(stderr,"sr: page %d tag %d snapf %ld/%ld frame %ld n=%d\n",t,sr_shown_tag(),sr_snap_f[0],sr_snap_f[1],g_frame,sr_count());
         if(sr_select(t) && g_frame-sr_snap_f[t]<=4){
