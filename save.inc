@@ -56,6 +56,7 @@ static u32 sg_sum(const SaveG *g){ return fnv(g,sizeof(SaveG)-4); }
 #define LX_OFF 0xA80                                                                   // the newer parts of your bug and your humanoid (after the travel log, before the trophies)
 typedef struct { u32 magic; BugX b; HumX h; u32 sum; } LookSave;
 _Static_assert(LX_OFF+sizeof(LookSave) <= 0xB00, "the look block must end before the trophies");
+#define SLK_OFF (LX_OFF + ((sizeof(LookSave)+3)&~3u))                                  // three saved humanoid looks (the creator's MY LOOKS), right after the look block
 static void lookx_save(void){ LookSave l; memset(&l,0,sizeof l); l.magic=0x584B4F4Cu; l.b=bugx; l.h=humx; l.sum=fnv(&l,sizeof l-4); sram_write(slot_base(cur_slot)+LX_OFF,&l,sizeof l); }
 static void lookx_load(void){ LookSave l; sram_read(slot_base(cur_slot)+LX_OFF,&l,sizeof l); if(l.magic!=0x584B4F4Cu || l.sum!=fnv(&l,sizeof l-4)){ bugx_default(); humx_default(); return; } bugx=l.b; humx=l.h; }
 #define SHX_OFF 0xC40                                                                  // the newer ship parts (module, topper, paint scheme, finish): the gap between the play-time block and the kart blocks

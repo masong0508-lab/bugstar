@@ -43,27 +43,42 @@ static void hum_palette(void){                                                  
 }
 // the humanoid's picture is drawn at run time too: 32x64, the body (16 wide, 32 tall) in the bottom half, hats and hair above it,
 // capes and wings behind it. Body coordinates as before: x 0..15, y 0..31 (the head round (7.5,5), the feet on row 30).
+// POSES (hum_fr): 0 stand, 1 and 2 the two steps of a walk, 3 and 4 a swing (wind-up, strike), 5 hurt, 6 a blink. The picture is drawn again only when the pose changes.
+static const s8 hm_up[][3]={{2,10,-1},{3,10,-1},{2,9,-1},{3,9,-1},{1,8,-1},{2,8,-1},{0,7,-1},{1,7,-1},{0,6,7},{1,6,7},{0,5,7},{1,5,7},{127,0,0}};          // an arm thrown up (-1: sleeve colour)
+static const s8 hm_fw[][3]={{2,10,-1},{3,10,-1},{2,11,-1},{3,11,-1},{1,12,-1},{2,12,-1},{0,13,-1},{1,13,-1},{0,14,7},{1,14,7},{0,15,7},{1,15,7},{127,0,0}};   // an arm out and down
+static const u8 hm_mark[NCAL][3]={{7,7,2},{5,2,5},{6,7,3},{1,2,6},{7,5,7},{7,5,0},{5,7,7}};                  // a small badge on the chest for each calling (3x3)
 static void hum_draw(void){
     for(int i=0;i<32*64;i++) bug_px[i]=0;
     #define HP(x,y,v) do{ int xx_=(x)+8, yy_=(y)+32; if(xx_>=0&&xx_<32&&yy_>=0&&yy_<64) bug_px[yy_*32+xx_]=(u8)(v); }while(0)
-    int fur=hum.style&1, hs=humx.hair%10, tp=humx.top%10, bt=humx.bot%6, sh=humx.shoes%5, bk=humx.back%6;
+    int fr=hum_fr, blink=(fr==6), hurt=(fr==5), swing=(fr==3||fr==4), ll=0, rl=0, lao=0, rao=0;
+    if(fr==1){ ll=3; lao=1; rao=-1; } if(fr==2){ rl=3; lao=-1; rao=1; } if(hurt){ ll=1; rl=1; }
+    int fur=hum.style&1, hs=humx.hair%14, tp=humx.top%14, bt=humx.bot%8, sh=humx.shoes%7, bk=humx.back%9, fc=humx.face%12, bd=humx.beard%8, ht=humx.hat%18;
     // 1. on your back, behind everything
     if(bk==1) for(int y=9;y<=29;y++){ int w=4+(y-9)/4; for(int x=8-w;x<=7+w;x++) HP(x,y,5); }                                     // a cape
     if(bk==2) for(int y=3;y<=20;y++){ int span = y<10 ? y-2 : (20-y)*7/10; for(int k=0;k<=span;k++){ int c=(k==span||((y+k)%3==0&&k>1))?1:5; HP(3-k,y,c); HP(12+k,y,c); } }   // wings
     if(bk==3){ for(int y=11;y<=18;y++) for(int x=1;x<=14;x++) HP(x,y,5); }                                                     // a backpack (straps later)
     if(bk==5){ for(int y=10;y<=19;y++){ HP(0,y,5); HP(1,y,5); HP(14,y,5); HP(15,y,5); } for(int y=20;y<=22;y++){ int c=(y&1)?13:15; HP(0,y,c); HP(1,y+(y==22),c); HP(14,y,c); HP(15,y+(y==22),c); } }   // a jetpack
+    if(bk==6){ for(int y=5;y<=16;y++){ HP(12,y,12); HP(13,y,12); HP(14,y,y&1?12:1); } HP(12,3,13); HP(13,2,13); HP(14,3,13); HP(13,4,1); }                   // a quiver, arrows poking out
+    if(bk==7){ for(int k=0;k<=17;k++) HP(14-k*3/4,20-k,k<5?13:14); HP(0,2,12); HP(1,1,12); HP(0,3,13); HP(1,3,13); HP(2,3,13); }                         // a sword across the back
+    if(bk==8){ for(int y=6;y<=10;y++) for(int x=1;x<=14;x++) HP(x,y,(y==6||y==10)?1:5); for(int y=6;y<=10;y++){ HP(3,y,12); HP(12,y,12); } }               // a bedroll
     // 2. hair and hoods behind the head
     if(!fur){ if(hs==6) for(int y=-3;y<=9;y++) for(int x=1;x<=14;x++){ int dx=x*2-15, dy=y*2-7; if(dx*dx+dy*dy<=26*4) HP(x,y,10); }          // afro
               if(hs==3) for(int y=3;y<=9;y++){ HP(3,y,10); HP(12,y,10); }                                                                     // long hair
-              if(hs==4) for(int y=3;y<=12;y++){ HP(12,y,10); HP(13,y,10); } }                                                                 // ponytail
+              if(hs==4) for(int y=3;y<=12;y++){ HP(12,y,10); HP(13,y,10); }                                                                   // ponytail
+              if(hs==11) for(int y=3;y<=14;y++){ HP(2+(y&1),y,10); HP(13-(y&1),y,10); HP(3-(y&1),y,y>9?1:10); HP(12+(y&1),y,y>9?1:10); }               // dreads
+              if(hs==12){ for(int y=4;y<=6;y++) for(int x=1;x<=3;x++){ HP(x,y,10); HP(15-x,y,10); } for(int y=7;y<=10;y++){ HP(2,y,10); HP(13,y,10); } HP(2,4,13); HP(13,4,13); } }   // pigtails
     if(tp==5) for(int y=0;y<=10;y++) for(int x=2;x<=13;x++){ int dx=x*2-15, dy=y*2-9; if(dx*dx+dy*dy<=19*4) HP(x,y,3); }                    // a hood
     // 3. the head
     for(int y=0;y<12;y++) for(int x=0;x<16;x++){ int dx=x*2-15, dy=y*2-10; if(dx*dx+dy*dy<=50) HP(x,y,(!fur && y<=3 && hs!=1 && hs!=5) ? 10 : 7); }
+    for(int y=2;y<=8;y++) for(int x=4;x<=11;x++){ u8 *q=&bug_px[(y+32)*32+x+8];                                                         // light from the left: a lit cheek, a shaded side and jaw
+        if(*q==7){ if(x>=11 || (x==10&&(y==4||y==7)) || (y==8&&x>=8)) *q=6; else if(x<=4 || (x==5&&(y==4||y==7))) *q=8; } }
     if(!fur){ if(hs==2){ for(int x=5;x<=10;x++) HP(x,1,10); HP(5,0,10); HP(7,0,10); HP(9,0,10); HP(6,-1,10); HP(8,-1,10); HP(10,0,10); }            // spiky
               if(hs==5) for(int y=-2;y<=3;y++){ HP(7,y,10); HP(8,y,10); }                                                                     // mohawk
               if(hs==7) for(int y=-2;y<=1;y++) for(int x=5;x<=10;x++){ int dx=x*2-15, dy=y*2; if(dx*dx+dy*dy<=14) HP(x,y,10); }               // bun
               if(hs==8) for(int y=3;y<=7;y++){ HP(4,y,10); HP(11,y,10); HP(3,y,10); HP(12,y,10); }                                           // bob
-              if(hs==9){ HP(5,1,10); HP(7,1,10); HP(9,1,10); HP(4,2,10); HP(11,2,10); HP(3,4,10); HP(12,4,10); HP(6,0,10); HP(8,0,10); } }   // curly
+              if(hs==9){ HP(5,1,10); HP(7,1,10); HP(9,1,10); HP(4,2,10); HP(11,2,10); HP(3,4,10); HP(12,4,10); HP(6,0,10); HP(8,0,10); }       // curly
+              if(hs==10){ for(int x=3;x<=9;x++) HP(x,4,10); for(int x=3;x<=6;x++) HP(x,3,10); HP(3,5,10); HP(2,6,10); HP(3,6,10); HP(12,4,10); HP(12,5,10); }   // swept to the side
+              if(hs==13){ static const s8 m[]={4,0, 6,-1, 7,0, 9,-1, 11,0, 5,-1, 10,-2, 8,-1, 3,2, 12,2, 2,4, 13,4, 5,4, 10,4}; for(int i=0;i<14;i++) HP(m[i*2],m[i*2+1],10); } }   // messy
     else switch(hs){                                                                   // furry: ears
         case 0: { static const s8 e[]={4,0, 4,1, 5,1, 4,2, 5,2, 6,2, 11,0, 11,1, 10,1, 11,2, 10,2, 9,2}; for(int i=0;i<12;i++) HP(e[i*2],e[i*2+1],10); HP(5,2,13); HP(10,2,13); } break;   // pointy
         case 1: for(int y=-1;y<=3;y++) for(int x=2;x<=13;x++){ int d1=(x*2-9)*(x*2-9)+(y*2-3)*(y*2-3), d2=(x*2-21)*(x*2-21)+(y*2-3)*(y*2-3); if(d1<=10||d2<=10) HP(x,y,(d1<=2||d2<=2)?13:10); } break;   // round
@@ -74,10 +89,16 @@ static void hum_draw(void){
         case 6: { static const s8 e[]={4,0, 4,1, 5,1, 4,2, 5,2, 6,2, 11,0, 11,1, 10,1, 11,2, 10,2, 9,2, 7,0, 8,0, 7,1, 8,-1}; for(int i=0;i<16;i++) HP(e[i*2],e[i*2+1],10); } break;   // fluffy
         case 7: for(int y=0;y<=3;y++) for(int x=3;x<=12;x++){ int d1=(x*2-9)*(x*2-9)+(y*2-4)*(y*2-4), d2=(x*2-21)*(x*2-21)+(y*2-4)*(y*2-4); if(d1<=6||d2<=6) HP(x,y,10); } break;   // bear
         case 8: for(int y=-3;y<=2;y++){ HP(4,y,10); HP(11,y,10); if(y>-2){ HP(5,y,y<1?13:10); HP(10,y,y<1?13:10); } if(y>0){ HP(6,y,10); HP(9,y,10); } } break;   // long and pointed
+        case 10: for(int k=0;k<=5;k++){ HP(3-k/2,3-k/3,10); HP(12+k/2,3-k/3,10); if(k<4){ HP(3-k/2,4-k/3,13); HP(12+k/2,4-k/3,13); } } break;                    // elf ears: out to the sides
+        case 11: for(int y=-5;y<=2;y++){ HP(5,y,y<1?13:10); HP(6,y,10); } for(int y=2;y<=8;y++){ HP(11,y,10); HP(12,y,10); } break;                                   // one up, one down
+        case 12: for(int y=-4;y<=2;y++){ HP(4,y,10); HP(11,y,10); if(y==-3||y==-1){ HP(3,y,10); HP(2,y-1,10); HP(12,y,10); HP(13,y-1,10); } } break;                // antlers
+        case 13: for(int y=-3;y<=2;y++) for(int k=0;k<=y+3;k++){ if(k<4){ HP(3+k,y,(k>0&&k<y+3&&y>-1)?13:10); HP(12-k,y,(k>0&&k<y+3&&y>-1)?13:10); } } HP(7,-1,10); HP(8,-1,10); HP(7,-2,10); break;   // tall cat
     }
     // 4. the face
     if(fur){ HP(7,6,13); HP(8,6,13); for(int x=6;x<=9;x++) HP(x,7,13); HP(7,7,1); HP(8,7,1); }                                          // the muzzle
-    switch(humx.face%8){
+    if(hurt && fc!=5 && fc!=6 && fc!=7 && fc!=11){ HP(5,4,1); HP(6,5,1); HP(5,6,1); HP(10,4,1); HP(9,5,1); HP(10,6,1); if(!fur){ HP(7,7,1); HP(8,7,1); HP(7,8,1); HP(8,8,1); } }   // >_< and an open mouth
+    else if(blink && fc!=5 && fc!=6 && fc!=7 && fc!=11){ HP(5,5,1); HP(6,5,1); HP(9,5,1); HP(10,5,1); }                                  // eyes shut
+    else switch(fc){
         case 0: HP(6,5,9); HP(9,5,9); break;
         case 1: HP(6,4,9); HP(6,5,9); HP(9,4,9); HP(9,5,9); break;                                                                     // big eyes
         case 2: HP(5,5,1); HP(6,4,1); HP(7,5,1); HP(8,5,1); HP(9,4,1); HP(10,5,1); break;                                               // happy
@@ -86,46 +107,74 @@ static void hum_draw(void){
         case 5: for(int x=5;x<=10;x++){ HP(x,4,1); HP(x,6,1); } HP(5,5,1); HP(7,5,1); HP(8,5,1); HP(10,5,1); HP(6,5,9); HP(9,5,9); break;   // glasses
         case 6: for(int x=4;x<=11;x++){ HP(x,4,1); HP(x,5,1); } HP(9,4,9); break;                                                       // shades
         case 7: HP(6,5,9); for(int y=4;y<=6;y++) for(int x=8;x<=10;x++) HP(x,y,1); for(int x=4;x<=11;x++) HP(x,3,1); break;            // eyepatch
+        case 8: HP(6,5,9); HP(9,5,1); HP(10,5,1); HP(10,4,1); break;                                                                    // a wink
+        case 9: HP(6,4,9); HP(6,5,9); HP(9,4,9); HP(9,5,9); HP(5,4,8); HP(10,4,8); if(!fur && !bd){ HP(7,7,1); HP(8,7,1); HP(7,8,1); HP(8,8,1); } break;   // surprised
+        case 10: HP(6,5,9); HP(9,5,9); HP(10,3,1); HP(10,4,1); HP(11,5,1); HP(11,6,1); break;                                            // a scar over one eye
+        case 11: for(int x=4;x<=11;x++){ HP(x,4,13); HP(x,5,14); } HP(5,4,8); HP(10,4,8); break;                                        // a visor
     }
-    switch(humx.beard%6){
+    if(!fur && !blink && (hs==1||hs==5) && (fc<4||fc==8||fc==9||fc==10)){ HP(5,3,10); HP(6,3,10); HP(9,3,10); HP(10,3,10); }                   // eyebrows on a bald head
+    if(!fur && !hurt && !bd && fc!=9){ HP(7,7,6); HP(8,7,6); }                                                                          // a small mouth
+    if(!fur) HP(8,6,6);                                                                                                                 // a nose
+    switch(bd){
         case 1: HP(6,7,1); HP(7,8,1); HP(8,8,1); HP(9,7,1); break;                                                                     // a smile
         case 2: HP(5,7,10); HP(6,7,10); HP(9,7,10); HP(10,7,10); HP(6,6,10); HP(9,6,10); break;                                         // moustache
         case 3: for(int y=6;y<=9;y++) for(int x=3;x<=12;x++){ int dx=x*2-15, dy=y*2-10; if((dx*dx+dy*dy<=50 || (y==9 && x>=5 && x<=10)) && !(y==7 && x>=6 && x<=9)) HP(x,y,10); } break;   // beard
         case 4: HP(7,8,10); HP(8,8,10); HP(7,9,10); HP(8,9,10); break;                                                                 // goatee
         case 5: HP(6,7,9); HP(9,7,9); HP(6,8,9); HP(9,8,9); break;                                                                     // fangs
+        case 6: for(int y=6;y<=15;y++){ int w=y<10 ? 5 : 5-(y-9)*5/7; for(int x=8-w-1;x<=7+w+1;x++){ if(y<=9 && x>=5 && x<=10 && y<=8) continue; HP(x,y,10); } } break;   // a long beard down the chest
+        case 7: for(int y=6;y<=9;y++) for(int x=3;x<=12;x++){ int dx=x*2-15, dy=y*2-10; if(dx*dx+dy*dy<=50 && ((x+y)&1) && !(y==7 && x>=6 && x<=9)) HP(x,y,10); } break;   // stubble
     }
     // 5. neck, body, arms
-    for(int y=9;y<11;y++) for(int x=7;x<9;x++) HP(x,y,7);
+    for(int y=9;y<11;y++){ HP(7,y,7); HP(8,y,6); }
+    for(int y=10;y<20;y++) for(int x=4;x<12;x++) HP(x,y, x==4?2 : x==11?4 : 3);
+    for(int y=11;y<=13;y++){ HP(8,y,4); HP(9,y,4); }                                                                                    // light on the chest
+    if(tp==0 || tp==1){ HP(7,10,7); HP(8,10,6); HP(7,11,6); }                                                                          // an open neck
+    int lc = (tp==2||tp==3) ? 7 : 3;
     for(int y=10;y<20;y++){
-        for(int x=4;x<12;x++) HP(x,y, x==4?2 : x==11?4 : 3);
-        int arm = (tp==2||tp==3) ? 7 : (tp==1||tp==7) && y>=13 ? 7 : 3; if(y>=18) arm=7;          // sleeves: long, short or none; hands
-        for(int x=2;x<4;x++){ HP(x,y,arm); HP(x+10,y,arm); }
-        HP(3,y,arm==7?6:2); HP(12,y,arm==7?6:2); }                                                    // a darker inner edge, so the arms read as arms and not as part of the body
+        int arm = (tp==2||tp==3) ? 7 : (tp==1||tp==7||tp==10) && y>=13 ? 7 : 3; if(y>=18) arm = tp==13 ? 13 : 7;          // sleeves: long, short or none; hands (gloves in a space suit)
+        int ec = arm==7 ? 6 : arm==13 ? 14 : 2;
+        if(!swing && !hurt){ HP(2,y+lao,arm); HP(3,y+lao,ec); }
+        if(!hurt){ HP(13,y+rao,arm); HP(12,y+rao,ec); }
+        if(arm==3 && y==16 && tp!=2 && tp!=3){ if(!swing && !hurt){ HP(2,y+lao,2); HP(3,y+lao,2); } HP(12,y+rao,2); HP(13,y+rao,2); } }   // cuffs
+    if(swing || hurt) for(int i=0; (swing && fr==4 ? hm_fw : hm_up)[i][0]!=127; i++){ const s8 *p=(swing && fr==4 ? hm_fw : hm_up)[i]; HP(p[0],p[1],p[2]<0?lc:p[2]); if(hurt) HP(15-p[0],p[1],p[2]<0?lc:p[2]); }
     if(tp==2) for(int y=10;y<19;y++){ HP(4,y,7); HP(11,y,7); }                                                                         // tank top
     if(tp==3) for(int y=10;y<19;y++) for(int x=6;x<=9;x++) HP(x,y,12);                                                                  // a vest over a shirt
-    if(tp==4){ for(int y=11;y<19;y++){ HP(7,y,12); HP(8,y,12); } HP(6,10,4); HP(9,10,4); }                                             // a jacket
+    if(tp==4){ for(int y=11;y<19;y++){ HP(7,y,12); HP(8,y,12); } HP(6,10,4); HP(9,10,4); for(int y=14;y<=15;y++){ HP(5,y,1); HP(10,y,1); } }  // a jacket, with pockets
     if(tp==5){ for(int y=15;y<=16;y++) for(int x=6;x<=9;x++) HP(x,y,2); HP(6,11,9); HP(9,11,9); }                                       // hoodie: pocket, strings
     if(tp==8){ for(int x=4;x<12;x++){ HP(x,12,4); HP(x,15,4); } for(int y=9;y<=11;y++) for(int x=1;x<=4;x++){ HP(x,y,4); HP(x+10,y,4); } HP(7,13,12); HP(8,13,12); HP(7,14,12); HP(8,14,12); }   // armour
     if(tp==9) for(int y=11;y<19;y+=2){ for(int x=4;x<12;x++) HP(x,y,12); HP(2,y,12); HP(3,y,12); HP(12,y,12); HP(13,y,12); }          // stripes
+    if(tp==10){ for(int y=10;y<=11;y++) for(int x=5;x<=10;x++) HP(x,y,4); HP(7,12,2); HP(8,12,2); }                                    // a tunic: a laced neck
+    if(tp==11){ for(int y=14;y<20;y++) for(int x=4;x<12;x++) HP(x,y,11); for(int y=10;y<=13;y++){ HP(5,y,11); HP(10,y,11); } HP(5,14,12); HP(10,14,12); HP(7,16,1); HP(8,16,1); }   // dungarees
+    if(tp==12){ for(int y=10;y<20;y++){ HP(7,y,4); HP(8,y,4); } HP(6,10,4); HP(9,10,4); HP(5,11,4); HP(10,11,4); }                     // a coat, open at the front
+    if(tp==13){ for(int x=5;x<=10;x++) HP(x,10,13); for(int y=12;y<=14;y++) for(int x=6;x<=9;x++) HP(x,y,14); HP(7,13,9); HP(8,13,4); }     // a space suit: collar ring, chest panel
+    if(tp!=2){ int cl=hum_calling(); if(cl!=CAL_NONE) for(int y=0;y<3;y++) for(int x=0;x<3;x++) if((hm_mark[cl][y]>>(2-x))&1) HP(5+x,12+y,12); }   // your calling's badge
     for(int x=4;x<12;x++) HP(x,19,12);                                                                                                  // the belt
+    HP(7,19,13); HP(8,19,13);                                                                                                           // and its buckle
     // 6. legs and feet
-    int skirt = tp==6 ? 28 : tp==7 ? 25 : 0;                                                     // a robe or a dress covers the legs
-    for(int y=20;y<30;y++) for(int x=5;x<11;x++){
-        int c = bt==5 ? 7 : 11;                                                                  // trousers (or bare legs, or fur)
-        if(bt==1 && y>=24) c=7; if(bt==2 && y>=25) c=7; if(bt==4 && (x==5||x==10)) c=12;        // shorts, under a skirt, side stripes
-        if(y>=27){ c = (sh==3||sh==4) ? 7 : 13; if(sh==4 && (y==27||y==29)) c=13; if(sh==2 && y==28 && (x==6||x==9)) c=9; }   // shoes, bare feet, sandals, trainers
-        if(sh==1 && y>=24) c = y==24 ? 14 : 13;                                                  // boots
-        HP(x,y,c); }
-    for(int y=23;y<=29;y++) HP(7,y,1);                                                                                                   // a dark line between the legs
+    int skirt = tp==6 ? 28 : tp==7 ? 25 : tp==10 ? 25 : tp==12 ? 27 : 0;                                                          // a robe or a dress covers the legs
+    for(int s=0;s<2;s++){ int lift = s==0 ? ll : rl, x0 = s==0 ? 5 : 8, x1 = s==0 ? 7 : 10;
+        for(int y=20;y<=29-lift;y++){ int yy=y+lift; for(int x=x0;x<=x1;x++){
+            int c = bt==5 ? 7 : 11;                                                              // trousers (or bare legs, or fur)
+            if(bt==1 && yy>=24) c=7; if(bt==2 && yy>=25) c=7; if(bt==4 && (x==5||x==10)) c=12;  // shorts, under a skirt, side stripes
+            if(bt==6 && yy>=26) c=7; if(bt==7 && yy>=25) c = ((x+yy)&1) ? 7 : 11;                // capri trousers, ragged ones
+            if(x==10 && yy<27){ if(c==7) c=6; else if(c==11 && (yy&1)) c=1; }                    // a shaded outer edge
+            if(yy>=27){ c = (sh==3||sh==4) ? 7 : 13; if(sh==4 && (yy==27||yy==29)) c=13; if(sh==2 && yy==28 && (x==6||x==9)) c=9; }   // shoes, bare feet, sandals, trainers
+            if(sh==1 && yy>=24) c = yy==24 ? 14 : 13;                                            // boots
+            if(sh==5 && yy>=24) c = (x==x0||x==x1) ? 14 : 13;                                    // shin guards
+            if(sh==6 && (yy==25||yy==26)) c=12;                                                  // socks
+            HP(x,y,c); } } }
+    for(int y=23;y<=29-ll;y++) HP(7,y,1);                                                                                                // a dark line between the legs
     if(bt==2) for(int y=20;y<25;y++){ int w=(y-20)/2; for(int x=4-w;x<=11+w;x++) HP(x,y,11); }                                       // a skirt
     if(bt==3) for(int y=20;y<27;y++){ HP(4,y,11); HP(11,y,11); }                                                                       // baggy trousers
-    if(skirt) for(int y=20;y<skirt;y++){ int w = tp==7 ? (y-19)/2 : 0; for(int x=4-w;x<=11+w;x++) HP(x,y, x==4-w?2 : x==11+w?4 : 3); }   // robe, dress
-    for(int x=4;x<8;x++) HP(x,30,1); for(int x=8;x<12;x++) HP(x,30,1);
+    if(skirt) for(int y=20;y<skirt;y++){ int w = tp==7 ? (y-19)/2 : tp==10 ? (y-19)/3 : 0; if(tp==12){ for(int x=4;x<=6;x++) HP(x,y,x==4?2:3); for(int x=9;x<=11;x++) HP(x,y,x==11?2:4); continue; }
+        for(int x=4-w;x<=11+w;x++) HP(x,y, x==4-w?2 : x==11+w?4 : 3); }                                                                 // robe, dress, tunic, coat
+    for(int x=4;x<8;x++) HP(x,30-ll,1); for(int x=8;x<12;x++) HP(x,30-rl,1);
     // 7. in front: scarf, straps, hair over the shoulders, and the hat
     if(bk==4){ for(int x=5;x<=10;x++){ HP(x,9,5); HP(x,10,5); } for(int y=11;y<=15;y++){ HP(10,y,5); HP(11,y,5); } }                    // a scarf
     if(bk==3) for(int y=10;y<=15;y++){ HP(5,y,5); HP(10,y,5); }                                                                         // backpack straps
+    if(bk==6) for(int k=0;k<=7;k++){ HP(5+k,10+k,12); HP(6+k,10+k,1); }                                                                 // the quiver's strap
     if(!fur && hs==3) for(int y=9;y<=13;y++){ HP(4,y,10); HP(5,y,10); HP(10,y,10); HP(11,y,10); }
-    switch(humx.hat%12){
+    switch(ht){
         case 1: for(int y=1;y<=2;y++) for(int x=4;x<=11;x++) HP(x,y,15); for(int x=11;x<=13;x++) HP(x,2,15); HP(7,0,15); HP(8,0,15); break;                       // cap
         case 2: for(int x=3;x<=12;x++) HP(x,1,15); for(int y=-6;y<=0;y++) for(int x=5;x<=10;x++) HP(x,y,y==-1?12:15); break;                                     // top hat
         case 3: for(int y=-9;y<=1;y++){ int w=(y+9)/2; for(int x=7-w;x<=8+w;x++) HP(x,y,15); } for(int x=2;x<=13;x++) HP(x,2,15); HP(7,-4,9); HP(8,-3,9); break;   // wizard
@@ -137,30 +186,45 @@ static void hum_draw(void){
         case 9: HP(11,1,15); HP(12,0,15); HP(13,0,15); HP(12,2,15); HP(13,2,15); HP(13,1,15); break;                                                              // bow
         case 10: for(int x=5;x<=10;x++){ HP(x,-3,15); HP(x,-1,15); } HP(4,-2,15); HP(11,-2,15); break;                                                           // halo
         case 11: for(int y=-6;y<=1;y++){ int w=(y+6)/3; for(int x=7-w;x<=8+w;x++) HP(x,y,(y==-4||y==-1)?12:15); } HP(7,-7,9); HP(8,-7,9); break;              // party hat
+        case 12: for(int y=1;y<=2;y++) for(int x=4;x<=11;x++) HP(x,y,15); for(int x=11;x<=13;x++) HP(x,2,15); HP(7,0,15); HP(8,0,15);                              // feather cap
+                 for(int k=0;k<=5;k++){ HP(11+k/2,1-k,13); HP(12+k/2,1-k,k&1?13:14); } break;
+        case 13: for(int x=3;x<=12;x++) HP(x,2,12); for(int y=0;y<=1;y++) for(int x=4;x<=6;x++){ HP(x,y,14); HP(x+5,y,14); } HP(4,0,13); HP(9,0,13); HP(5,1,9); HP(10,1,9); break;   // goggles on the brow
+        case 14: for(int y=-1;y<=4;y++) for(int x=3;x<=12;x++){ int dx=x*2-15, dy=y*2-6; if(dx*dx+dy*dy<=60 && y<=4) HP(x,y,15); } for(int x=5;x<=10;x++) HP(x,4,9);   // horned helmet
+                 for(int k=0;k<=4;k++){ HP(2-k/2,1-k,13); HP(13+k/2,1-k,13); } break;
+        case 15: for(int y=-3;y<=1;y++){ int w=2+(y+3)*2+(y>-1); for(int x=7-w;x<=8+w;x++) if(x>=0&&x<=15) HP(x,y,15); } for(int x=1;x<=14;x++) HP(x,2,15); HP(7,-1,13); HP(8,-1,13); HP(7,0,13); HP(8,0,13); HP(7,0,0); break;   // pirate hat
+        case 16: for(int y=-8;y<=-1;y++) for(int x=3;x<=12;x++){ int dx=x*2-15, dy=(y+6)*2; if(y>=-3 ? (x>=4&&x<=11) : (dx*dx+dy*dy<=75)) HP(x,y,15); } for(int x=4;x<=11;x++){ HP(x,0,15); HP(x,1,12); } break;   // chef
+        case 17: for(int k=0;k<=5;k++){ HP(5-k/3,0-k,15); HP(10+k/3,0-k,15); } HP(3,-6,13); HP(4,-6,13); HP(3,-7,13); HP(4,-7,13); HP(11,-6,13); HP(12,-6,13); HP(11,-7,13); HP(12,-7,13); for(int x=4;x<=11;x++) HP(x,2,15); break;   // antennae
     }
     #undef HP
     for(int i=0;i<32*64;i++) if(!bug_px[i]){ int y=i>>5, x=i&31, o=0;                  // an outline round everything (as before)
         if(x>0 && bug_px[i-1]>1) o=1; if(x<31 && bug_px[i+1]>1) o=1; if(y>0 && bug_px[i-32]>1) o=1; if(y<63 && bug_px[i+32]>1) o=1;
         if(o) bug_px[i]=1; }
 }
-static void hum_build(void){ hum_draw(); px_tiles(32,64,T_HUMAN); }
+static void hum_build(void){ hum_draw(); px_tiles(32,64,T_HUMAN); hum_cur=hum_fr+1; }
+__attribute__((noinline)) static void hum_set(int f){ if(f+1!=hum_cur){ hum_fr=(u8)f; hum_build(); } }                // changes the pose (drawn again only when it differs)
+// on the planet: hurt, swinging, walking, blinking or standing (kept out of the fast code on purpose)
+__attribute__((noinline)) static void hum_pose(int moved){ EW static u8 hp_was, hp_t; int hh=hearts>255?255:(int)hearts; if(hh<hp_was) hp_t=14; hp_was=(u8)hh; if(hp_t) hp_t--;
+    hum_set(hp_t ? 5 : mine_t ? (mine_t>4 ? 3 : 4) : moved ? 1+((frames>>3)&1) : (frames%170<5 ? 6 : 0)); }
 // draws the humanoid (and its tail, and the tool in its hand) into shadow_oam from slot on; z=2 is the planet's 2x drawing, z=1 is half that (the creator preview)
-static int hum_oam(int slot, int cx, int feet, int z, int facing, int lean, int sq, int shr, int sw, int tool){
+__attribute__((noinline)) static int hum_oam(int slot, int cx, int feet, int z, int facing, int lean, int sq, int shr, int sw, int tool){
+    if(z==2 && shr>=64){ hum_pose(sw); if(sw) sw--; }                                  // on the planet (the only place the shrink ray's 64 is added): pick the pose, sw becomes the tool's bob
     int k=3-z, pa=hum_wd[hum.build%3]*k+shr, pd=hum_ht[hum.height%5]*k+shr; if(z==2){ pa=pa*4/3; pd=pd*4/3; }       // on the planet and in karts it is three quarters of its old size (the creator preview, z=1, is unchanged)
-    int h=32*256/pd, wpx=16*256/pa;
+    int h=32*256/pd, wpx=16*256/pa; if(z==2 && !hum_fr && ((frames>>5)&1)) sq+=3;                   // standing: it breathes
     set_affine(31, facing?-pa:pa, facing?lean:-lean, 0, pd+sq);
     shadow_oam[slot].a0 = ((feet-h-64)&255) | (1<<8)|(1<<9) | (2<<14);              // 32x64, drawn at run time (hum_draw): the body is its bottom half
     shadow_oam[slot].a1 = ((cx-32)&511) | (31<<9) | (3<<14); shadow_oam[slot].a2 = T_HUMAN | (6<<12); slot++;
     if(hum.style && slot<125){ int tx = facing ? cx-wpx/2-2*z : cx+wpx/2+2*z, ty = feet - 11*h/32 - 4*z;      // the tail sits behind the hips
         shadow_oam[slot].a0 = ((ty-16)&255) | (1<<8)|(1<<9);
         shadow_oam[slot].a1 = ((tx-16)&511) | (31<<9) | (1<<14); shadow_oam[slot].a2 = T_TAIL | (6<<12); slot++; }
-    if(tool>=0 && slot<125){ int hx = facing ? cx+10 : cx-18, hy = feet - 30*h/64 + sw;
+    if(tool>=0 && slot<125){ static const s8 tdy[7]={0,0,0,-12,-4,-12,0}, tdx[7]={0,0,0,1,2,1,0};          // the tool follows the hand through the poses
+        int hx = (facing ? cx+10+tdx[hum_fr%7] : cx-18-tdx[hum_fr%7]), hy = feet - 30*h/64 + sw + tdy[hum_fr%7]*h/32;
         shadow_oam[slot].a0 = (hy&255); shadow_oam[slot].a1 = (hx&511) | (facing?0:(1<<12)); shadow_oam[slot].a2 = (T_TOOL0+tool); slot++; }
     return slot;
 }
+__attribute__((noinline)) static int hum_oam_still(int slot, int cx, int feet, int z, int facing, int lean, int sq, int shr, int sw, int tool){ hum_set(0); return hum_oam(slot,cx,feet,z,facing,lean,sq,shr,sw,tool); }   // (in karts and on the pause screen)
 static void form_palette(void){ volatile u16 *P=OBJ_PAL+6*16; for(int i=0;i<16;i++) P[i]=obj_pal[i]; if(form==FORM_HUMAN){ hum_palette(); return; } u16 c=form_col?form_col:look.col[LC_SHELL]; P[6]=shade15(c,7); P[7]=c; P[8]=lift15(c,8); P[5]=look.col[LC_EYE]; }
 static int me_oam(int slot, int cx, int feet, int frame){                               // you, as a sprite, for the pause screen's portrait
-    if(form==FORM_HUMAN) return hum_oam(slot,cx,feet,1,1,0,0,0,frame,(tools_owned && form==FORM_HUMAN) ? tool_held : -1);
+    if(form==FORM_HUMAN) return hum_oam_still(slot,cx,feet,1,1,0,0,0,frame,(tools_owned && form==FORM_HUMAN) ? tool_held : -1);
     if(form==FORM_CREATURE){ int fl=form_body==2; set_affine(30,-128,0,0,128);
         shadow_oam[slot].a0 = ((feet-(fl?16:32)-(fl?6+frame*2:frame))&255) | (1<<8)|(1<<9) | (fl?(1<<14):0);
         shadow_oam[slot].a1 = ((cx-16)&511) | (30<<9) | (fl?(0<<14):(1<<14)); shadow_oam[slot].a2 = (form_body==0?T_HOPPER:form_body==1?T_GRAZER:T_FLYER) | (6<<12); return slot+1; }

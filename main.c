@@ -1344,6 +1344,13 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_CC
     if(TEST_CC) human_creator(VISPG,0); else make_bug(VISPG,0); if(TEST_CC){ form=FORM_HUMAN; recalc(); form_palette(); } planet_hud();
 #endif
+#ifdef TEST_HUMS
+    { form=FORM_HUMAN; hum.made=1; static const u8 pf[5]={0,1,3,4,5}; tools_owned=1; tool_held=0;           // a test card: every ready-made look and some newer parts, in five poses
+      for(int i=0;;i=(i+1)%28){ const CHumP *q=&cc_hp[i%NCHP]; hum.style=q->style; hum.height=q->height; hum.build=q->build; humx.hair=q->hair; humx.face=q->face; humx.beard=q->beard; humx.top=q->top; humx.bot=q->bot; humx.shoes=q->shoes; humx.hat=q->hat; humx.back=q->back;
+          for(int k=0;k<7;k++) hum.col[k]=q->col[k]; humx.c_hat=q->col[7]; humx.c_back=q->col[8];
+          if(i>=NCHP){ int j=i-NCHP; humx.hair=10+j%4; humx.face=8+j%4; humx.beard=(j%3==0)?6:(j%3==1)?7:0; humx.top=10+j%4; humx.bot=6+j%2; humx.shoes=5+j%2; humx.hat=12+j%6; humx.back=6+j%3; if(hum.style) humx.hair=10+j%4; }
+          hum_palette(); for(int p=0;p<5;p++){ hum_fr=pf[p]; hum_build(); for(int f=0;f<16;f++){ rect(VISPG,0,0,240,160,0); oam_hide_all(); int n=hum_oam(0,120,120,2,0,0,0,0,0,p>=2?0:-1); (void)n; vsync(); oam_flush(); } } } }
+#endif
 #ifdef TEST_KMENU
     kart_menu(1);
 #endif

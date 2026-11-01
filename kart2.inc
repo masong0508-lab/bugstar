@@ -316,7 +316,7 @@ static void kgarage(volatile u16 *pg){
           if(kl.part[KP_TOP]){ int tp = view ? an[2] : an[0], tx = view ? cx+(an[1]+3-16)*256/inv : cx, ty=gy-(16-tp)*256/inv-4*256/inv-bob;
               shadow_oam[slot].a0=((ty-8)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((tx-16)&511)|(29<<9); shadow_oam[slot].a2=(T_TOP1+(kl.part[KP_TOP]-1)*2); slot++; }
           int feet=gy-kb_seat[b]*256/inv-bob, dx2 = view ? (12-16)*256/inv : 0;
-          if(form==FORM_HUMAN) slot=hum_oam(slot,cx+dx2,feet+4,1,1,0,0,0,0,-1);
+          if(form==FORM_HUMAN)slot=hum_oam_still(slot,cx+dx2,feet+4,1,1,0,0,0,0,-1);
           else if(form==FORM_CREATURE){ int fl=form_body==2; set_affine(31,-170,0,0,170); shadow_oam[slot].a0=((feet-(fl?8:16)-(fl?8:16))&255)|(1<<8)|(1<<9)|(fl?(1<<14):0); shadow_oam[slot].a1=((cx+dx2-16)&511)|(31<<9)|(fl?0:(1<<14)); shadow_oam[slot].a2=(form_body==0?T_HOPPER:form_body==1?T_GRAZER:T_FLYER)|(6<<12); slot++; }
           else if(view){ set_affine(31,-210,0,0,210); int dh=16*256/210; bug_obj(slot,cx+dx2,feet-dh/2+3,31,210); shadow_oam[slot].a2=bug_tile(0)|BUG_BANK; slot++; }
           else { set_affine(31,380,0,0,380); int dh=64*256/380; shadow_oam[slot].a0=((feet-dh/2+3-64)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((cx-64)&511)|(31<<9)|(3<<14); shadow_oam[slot].a2=T_BACK|BUG_BANK; slot++; }

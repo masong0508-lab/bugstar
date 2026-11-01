@@ -248,7 +248,7 @@ static void px_tiles(int w, int h, int tile){                                   
         const u8 *p=&bug_px[(ty*8+y)*w + tx*8+x]; *v++ = (p[0]|(p[1]<<4)) | ((p[2]|(p[3]<<4))<<8); }
 }
 static void bug_tiles_to_vram(int frame, int tile){ bug_draw(frame); px_tiles(32,32,tile); }
-static void hum_build(void);
+static void hum_build(void); EW static u8 hum_fr, hum_cur; static void hum_set(int f);   // the humanoid's pose (see hum_draw)
 static void bug_build(void){ obj_palette(); bug_tiles_to_vram(0,T_BUGSIDE); bug_tiles_to_vram(1,T_BUGSIDE2); hum_build(); }
 static int bug_tile(int frame){ return frame&1 ? T_BUGSIDE2 : T_BUGSIDE; }
 static void bug_obj(int slot, int cx, int body_cy, int mtx, int pd){                // your bug's 32x32 picture: (cx, body_cy) is the middle of its body, pd the matrix's height scale (256 = 1x)
@@ -346,7 +346,7 @@ static const char *const cal_name[NCAL+1]={"KNIGHT","WIZARD","RANGER","ROGUE","E
 static const char *const cal_fx[NCAL+1]={"+3 DEF +8 HP -SPD","+8 MANA +1 DMG","+15 SPD +6 CRIT","+12 CRIT +15 GOLD","+8 SPD +1 LIGHT","+1 REGEN +4 HP","+35 GOLD +1 DMG","NO BONUS"};
 static const u8 cal_set[NCAL][7]={{8,7,255,1,4,255,2},{6,3,1,255,5,3,255},{5,6,1,1,255,255,255},{5,5,4,255,6,255,0},{255,1,5,2,5,255,255},{255,10,2,255,255,255,255},{4,4,1,255,255,2,255}};   // the outfit each calling asks for: top, hat, back, shoes, face, beard, build (255 = leave it)
 static int hum_calling(void){
-    int p[NCAL]={0,0,0,0,0,0,0}, h=humx.hat%12, t=humx.top%10, b=humx.back%6, s=humx.shoes%5, f=humx.face%8, bd=humx.beard%6;
+    int p[NCAL]={0,0,0,0,0,0,0}, h=humx.hat%18, t=humx.top%14, b=humx.back%9, s=humx.shoes%7, f=humx.face%12, bd=humx.beard%8;
     if(t==8) p[0]+=3; if(h==7) p[0]+=2; if(s==1) p[0]+=1; if(hum.build==2) p[0]+=1; if(f==4) p[0]+=1;
     if(h==3) p[1]+=3; if(t==6) p[1]+=2; if(b==1) p[1]+=1; if(f==5) p[1]+=1; if(bd==3) p[1]+=1;
     if(t==5||t==3||t==4) p[2]+=2; if(h==6||h==1) p[2]+=2; if(s==1) p[2]+=1; if(b==1) p[2]+=1;
@@ -354,6 +354,9 @@ static int hum_calling(void){
     if(b==5||b==3) p[4]+=3; if(h==1) p[4]+=1; if(s==2) p[4]+=1; if(f==5) p[4]+=1;
     if(b==2) p[5]+=3; if(h==10) p[5]+=3;
     if(h==4||h==2) p[6]+=3; if(b==1) p[6]+=1; if(bd==2) p[6]+=1; if(t==7||t==4) p[6]+=1;
+    if(h==14) p[0]+=2; if(t==10) p[0]+=1; if(s==5) p[0]+=2; if(b==7) p[0]+=1; if(t==12) p[1]+=2; if(bd==6) p[1]+=2; if(h==12) p[2]+=2; if(b==6) p[2]+=3; if(t==10) p[2]+=1; if(s==6) p[2]+=1;
+    if(h==15) p[3]+=3; if(h==13) p[3]+=1; if(f==10) p[3]+=1; if(bd==7) p[3]+=1; if(b==8) p[4]+=3; if(h==13) p[4]+=2; if(t==13) p[4]+=3; if(f==11) p[4]+=1; if(t==11) p[4]+=1;
+    if(t==12 && b==2) p[5]+=1; if(h==17) p[5]+=1; if(h==16) p[6]+=1;
     int best=-1, bi=CAL_NONE; for(int i=0;i<NCAL;i++) if(p[i]>best){ best=p[i]; bi=i; } return best>=3 ? bi : CAL_NONE; }
 static void humx_default(void){ memset(&humx,0,sizeof humx); humx.c_hat=C15(200,60,60); humx.c_back=C15(60,80,200); }
 static const u16 hum_wd[3]={164,140,128};                                          // sprite width (affine, 128 = the 2x drawing size)

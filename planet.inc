@@ -694,7 +694,7 @@ sprites:;
       set_affine(31, up ? 256+shr*2 : facing? -(128+shr):128+shr, up ? 0 : facing? lean:-lean, 0, up ? 256+shr*2 : 128+sq+shr);
       if(shr && form!=FORM_HUMAN) sy += up ? 32-8192/(256+shr*2) : 16-2048/(128+shr);
       if(pvis && form==FORM_HUMAN){                                                   // the humanoid: its own height, build, colours, ears and tail (see the creator in ui.inc)
-                slot=hum_oam(slot,120,sy-bob,2,facing,lean,sq,shr,moved?((frames>>3)&1):0,tools_owned?tool_held:-1); }
+                slot=hum_oam(slot,120,sy-bob,2,facing,lean,sq,shr,moved?1+((frames>>3)&1):0,tools_owned?tool_held:-1); }   // (sw: 0 standing, 1 or 2 the two steps; hum_oam picks the pose from it)
       else if(pvis && form==FORM_CREATURE){                                           // a creature: one of this world's body plans, in your colour
                 int fl = form_body==2; int hop = (form_body==0 && moved) ? ((frames>>2)&1)*4 : 0; int fly = fl ? 10+(sinx((frames*5)&255)>>12) : 0;
                 shadow_oam[slot].a0 = ((sy-(fl?16:32)-bob-hop-fly)&255) | (1<<8)|(1<<9) | (fl?(1<<14):0);

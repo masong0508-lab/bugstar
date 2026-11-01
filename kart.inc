@@ -888,7 +888,7 @@ static int kart_draw_me(int slot, int sy){
         shadow_oam[slot].a0=((ty-8)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((120-16)&511)|(29<<9); shadow_oam[slot].a2=(T_TOP1+(kl.part[KP_TOP]-1)*2); slot++; }
     int seat=kb_seat[b], feet=sy-seat*256/inv-bob;
     if(kw_mode && kw_driver_on()) slot=kw_draw_driver(slot,120,feet+2,150*inv/190,0);
-    else if(form==FORM_HUMAN) slot=hum_oam(slot,120,feet+4,2,1,0,0,40,0,-1);
+    else if(form==FORM_HUMAN)slot=hum_oam_still(slot,120,feet+4,2,1,0,0,40,0,-1);
     else if(form==FORM_CREATURE){ int fl=form_body==2; set_affine(31,-200,0,0,200);
         shadow_oam[slot].a0=((feet-(fl?10:20))&255)|(1<<8)|(1<<9)|(fl?(1<<14):0); shadow_oam[slot].a1=((120-16)&511)|(31<<9)|(fl?0:(1<<14)); shadow_oam[slot].a2=(form_body==0?T_HOPPER:form_body==1?T_GRAZER:T_FLYER)|(6<<12); slot++; }
     else { int bi=400*inv/190; set_affine(31,bi,0,0,bi); int cy2=feet-31*256/bi; shadow_oam[slot].a0=((cy2-64)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((120-64)&511)|(31<<9)|(3<<14); shadow_oam[slot].a2=T_BACK|BUG_BANK; slot++; }   // your bug from behind, its shell over the seat

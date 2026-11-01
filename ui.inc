@@ -333,13 +333,24 @@ static int wrap_text(volatile u16 *pg, int x, int y, int maxc, const char *s, in
 typedef struct { BugLook l; BugX b; Hum h; HumX x; } CCSnap;                      // everything the creator can change (for undo)
 static void cc_take(CCSnap *s){ s->l=look; s->b=bugx; s->h=hum; s->x=humx; }
 static void cc_put(const CCSnap *s){ look=s->l; bugx=s->b; hum=s->h; humx=s->x; }
+// ---- MY LOOKS: three humanoid looks you can save and bring back (own guarded block in the slot, just after the look block)
+typedef struct { u8 part[8]; u8 body; u8 pad; u16 col[9]; } HLook;                      // hair, face, mouth, top, bottom, shoes, hat, back; body: bit 7 = used, then style, height, build
+typedef struct { u16 magic; HLook s[3]; u16 sum; } LooksSave;
+_Static_assert(SLK_OFF+sizeof(LooksSave) <= 0xB00, "MY LOOKS must end before the trophies");
+static void lk_load(LooksSave *L){ sram_read(slot_base(cur_slot)+SLK_OFF,L,sizeof *L); if(L->magic!=0x4B4Cu || L->sum!=(u16)fnv(L,sizeof *L-2)){ memset(L,0,sizeof *L); L->magic=0x4B4Cu; } }
+static void lk_store(LooksSave *L){ L->sum=(u16)fnv(L,sizeof *L-2); sram_write(slot_base(cur_slot)+SLK_OFF,L,sizeof *L); }
+static void lk_pack(HLook *h){ memset(h,0,sizeof *h); h->part[0]=humx.hair; h->part[1]=humx.face; h->part[2]=humx.beard; h->part[3]=humx.top; h->part[4]=humx.bot; h->part[5]=humx.shoes; h->part[6]=humx.hat; h->part[7]=humx.back;
+    h->body=(u8)(0x80|(hum.style&1)|((hum.height%5)<<1)|((hum.build%3)<<4)); for(int k=0;k<7;k++) h->col[k]=hum.col[k]; h->col[7]=humx.c_hat; h->col[8]=humx.c_back; }
+static void lk_unpack(const HLook *h){ humx.hair=h->part[0]%14; humx.face=h->part[1]%12; humx.beard=h->part[2]%8; humx.top=h->part[3]%14; humx.bot=h->part[4]%8; humx.shoes=h->part[5]%7; humx.hat=h->part[6]%18; humx.back=h->part[7]%9;
+    hum.style=h->body&1; hum.height=((h->body>>1)&7)%5; hum.build=((h->body>>4)&3)%3; for(int k=0;k<7;k++) hum.col[k]=h->col[k]; humx.c_hat=h->col[7]; humx.c_back=h->col[8]; }
+static const u8 cc_posef[4]={0,1,3,5}; static const char *const cc_posen[4]={"STAND","WALK","SWING","HURT"};
 static int cc_run(volatile u16 *pg, int human, int first){
     static const char *const body_n[2]={"HUMAN","FURRY"}, *const ht_n[5]={"TINY","SHORT","AVERAGE","TALL","TOWERING"}, *const bd_n[3]={"SLIM","NORMAL","BROAD"},
-        *const hair_n[10]={"SHORT","BALD","SPIKY","LONG","PONYTAIL","MOHAWK","AFRO","BUN","BOB","CURLY"}, *const ears_n[10]={"POINTY","ROUND","FLOPPY","BUNNY","CAT","HORNS","FLUFFY","BEAR","LONG","NONE"},
-        *const face_n[8]={"DOTS","BIG","HAPPY","SLEEPY","ANGRY","GLASSES","SHADES","EYEPATCH"}, *const beard_n[6]={"NONE","SMILE","MOUSTACHE","BEARD","GOATEE","FANGS"},
-        *const top_n[10]={"SHIRT","T-SHIRT","TANK TOP","VEST","JACKET","HOODIE","ROBE","DRESS","ARMOUR","STRIPES"}, *const bot_n[6]={"TROUSERS","SHORTS","SKIRT","BAGGY","STRIPED","NONE"},
-        *const shoe_n[5]={"SHOES","BOOTS","TRAINERS","BARE FEET","SANDALS"}, *const hhat_n[12]={"NONE","CAP","TOP HAT","WIZARD","CROWN","BEANIE","COWBOY","HELMET","HEADBAND","BOW","HALO","PARTY HAT"},
-        *const back_n[6]={"NONE","CAPE","WINGS","BACKPACK","SCARF","JETPACK"},
+        *const hair_n[14]={"SHORT","BALD","SPIKY","LONG","PONYTAIL","MOHAWK","AFRO","BUN","BOB","CURLY","SIDE PART","DREADS","PIGTAILS","MESSY"}, *const ears_n[14]={"POINTY","ROUND","FLOPPY","BUNNY","CAT","HORNS","FLUFFY","BEAR","LONG","NONE","ELF","LOP","ANTLERS","TUFTED"},
+        *const face_n[12]={"DOTS","BIG","HAPPY","SLEEPY","ANGRY","GLASSES","SHADES","EYEPATCH","WINK","SURPRISED","SCARRED","VISOR"}, *const beard_n[8]={"NONE","SMILE","MOUSTACHE","BEARD","GOATEE","FANGS","LONG BEARD","STUBBLE"},
+        *const top_n[14]={"SHIRT","T-SHIRT","TANK TOP","VEST","JACKET","HOODIE","ROBE","DRESS","ARMOUR","STRIPES","TUNIC","DUNGAREES","COAT","SPACESUIT"}, *const bot_n[8]={"TROUSERS","SHORTS","SKIRT","BAGGY","STRIPED","NONE","CAPRI","RAGGED"},
+        *const shoe_n[7]={"SHOES","BOOTS","TRAINERS","BARE FEET","SANDALS","GREAVES","SOCKS"}, *const hhat_n[18]={"NONE","CAP","TOP HAT","WIZARD","CROWN","BEANIE","COWBOY","HELMET","HEADBAND","BOW","HALO","PARTY HAT","FEATHER","GOGGLES","HORNED","PIRATE","CHEF","ANTENNAE"},
+        *const back_n[9]={"NONE","CAPE","WINGS","BACKPACK","SCARF","JETPACK","QUIVER","SWORD","BEDROLL"},
         *const shell_n[3]={"SHORT","NORMAL","LONG"}, *const shape_n[5]={"ROUND","DOME","FLAT","SPIKY","HUMPED"}, *const fin_n[4]={"SHINY","MATTE","METAL","PEARL"},
         *const pat_n[12]={"PLAIN","STRIPED","SPOTTED","BANDED","CHECKED","ZIGZAG","DOTTED","DIAMONDS","TIGER","HALVES","SPECKLED","RINGS"},
         *const eye_n[8]={"SMALL","BIG","GOOGLY","SLEEPY","ANGRY","STARRY","ONE BIG EYE","SHADES"}, *const mouth_n[6]={"NONE","SMILE","JAWS","PINCERS","FANGS","TONGUE"},
@@ -351,9 +362,10 @@ static int cc_run(volatile u16 *pg, int human, int first){
     #define CR(a,b,c,d,e,f,g,h) R[nr++]=(CRow){a,b,c,d,e,f,g,h,0}
     CR("NAME",0,0,0,0,0,0,0); CR("LOOKS",0,1,0,0,0,0,0);
     if(human){
+        CR("MY LOOKS",0,5,0,0,0,0,0);
         CR("CALLING",0,4,0,0,0,0,0); CR("BODY",0,2,2,&hum.style,body_n,0,0); CR("HEIGHT",0,2,5,&hum.height,ht_n,0,0); CR("BUILD",0,2,3,&hum.build,bd_n,0,0);
-        CR("HAIR","EARS",2,10,&humx.hair,hair_n,0,0); R[nr-1].opt2=ears_n; CR("FACE",0,2,8,&humx.face,face_n,0,0); CR("MOUTH",0,2,6,&humx.beard,beard_n,0,0);
-        CR("TOP",0,2,10,&humx.top,top_n,0,0); CR("BOTTOM",0,2,6,&humx.bot,bot_n,0,0); CR("SHOES","FEET",2,5,&humx.shoes,shoe_n,0,0); CR("HAT",0,2,12,&humx.hat,hhat_n,0,0); CR("BACK",0,2,6,&humx.back,back_n,0,0);
+        CR("HAIR","EARS",2,14,&humx.hair,hair_n,0,0); R[nr-1].opt2=ears_n; CR("FACE",0,2,12,&humx.face,face_n,0,0); CR("MOUTH",0,2,8,&humx.beard,beard_n,0,0);
+        CR("TOP",0,2,14,&humx.top,top_n,0,0); CR("BOTTOM",0,2,8,&humx.bot,bot_n,0,0); CR("SHOES","FEET",2,7,&humx.shoes,shoe_n,0,0); CR("HAT",0,2,18,&humx.hat,hhat_n,0,0); CR("BACK",0,2,9,&humx.back,back_n,0,0);
         CR("SKIN","FUR",3,0,0,0,&hum.col[HC_SKIN],0); CR("HAIR","EARS+TAIL",3,0,0,0,&hum.col[HC_HAIR],0); CR("SHOES","MUZZLE",3,0,0,0,&hum.col[HC_ACC],0);
         CR("SHIRT",0,3,0,0,0,&hum.col[HC_SHIRT],0); CR("PANTS",0,3,0,0,0,&hum.col[HC_PANTS],0); CR("BELT",0,3,0,0,0,&hum.col[HC_BELT],0); CR("EYES",0,3,0,0,0,&hum.col[HC_EYES],0);
         CR("HAT COL",0,3,0,0,0,&humx.c_hat,&humx.hat); CR("BACK COL",0,3,0,0,0,&humx.c_back,&humx.back);
@@ -372,11 +384,12 @@ static int cc_run(volatile u16 *pg, int human, int first){
     #define PUSH() do{ cc_take(&hist[hp]); scpy(hnm[hp],nm); hp=(hp+1)&7; if(hn<8) hn++; }while(0)
     #define APPLY() do{ if(human){ hum_palette(); hum_build(); } else bug_build(); }while(0)
     int tn[5]; u8 tr[5][8];                                                  // the five sections of the creator, and which rows sit on each
-    { static const u8 tb_h[23]={0,0,0,0,0,0, 1,1,1, 2,2,2, 1,2, 3,3,3, 4,4,4, 3, 4,4}, tb_b[26]={0,0,0,0,0,0, 1,1,1, 2,2, 1, 2,2, 1,1, 3,3,3,3, 4,4,4,4,4, 3};
-      for(int k=0;k<5;k++) tn[k]=0; for(int i=0;i<nr;i++){ int k = i<(human?23:26) ? (human?tb_h[i]:tb_b[i]) : 4; if(tn[k]<8) tr[k][tn[k]++]=(u8)i; } }
+    { static const u8 tb_h[24]={0,0,0,0,0,0,0, 1,1,1, 2,2,2, 1,2, 3,3,3, 4,4,4, 3, 4,4}, tb_b[26]={0,0,0,0,0,0, 1,1,1, 2,2, 1, 2,2, 1,1, 3,3,3,3, 4,4,4,4,4, 3};
+      for(int k=0;k<5;k++) tn[k]=0; for(int i=0;i<nr;i++){ int k = i<(human?24:26) ? (human?tb_h[i]:tb_b[i]) : 4; if(tn[k]<8) tr[k][tn[k]++]=(u8)i; } }
     static const char *const tab_h[5]={"BODY","HEAD","DRESS","SKIN","DYES"}, *const tab_b[5]={"BODY","FACE","LIMBS","PAINT","TRIM"};
     const char *const *tabs = human ? tab_h : tab_b;
     int tab=0, trow[5]={0,0,0,0,0}, sel=0, dirty=1, t=0, pi=-1, sch=-1, rep=0, note_t=0, selp=0, selused=0; u32 lock=0; char note[48]; note[0]=0;
+    int face_ov=0, pose_ov=0, ov_t=0, msl=0, clip_ok=0; u16 clip=0; LooksSave mls; if(human) lk_load(&mls);      // the preview's turn and pose (hold SELECT), MY LOOKS, a colour to copy
     wait_release(); oam_hide_all(); oam_flush();
     if(human){ if(!hum.made) hum_from_look(); hum.made=1; hum_palette(); hum_build(); } else bug_build();
     while(1){
@@ -393,13 +406,14 @@ static int cc_run(volatile u16 *pg, int human, int first){
                 else if(r->kind==1){ scpy(b,"<"); scat(b, pi>=0 ? (human?cc_hp[pi].nm:cc_bp[pi].nm) : "READY-MADE"); scat(b,">"); b[15]=0; text(pg,58,y,b,vc,1); }
                 else if(r->kind==2){ scpy(b,"<"); scat(b,(human&&hum.style&&r->opt2)?r->opt2[*r->v%r->n]:r->opt[*r->v%r->n]); scat(b,">"); b[15]=0; text(pg,58,y,b,ron?vc:C_DGREY,1); }
                 else if(r->kind==4){ scpy(b,"<"); scat(b,cal_name[hum_calling()]); scat(b,">"); text(pg,58,y,b,vc,1); }
+                else if(r->kind==5){ scpy(b,"<"); scat(b,msl<3?"LOAD ":"SAVE "); ncat(b,msl%3+1); if(msl<3 && !(mls.s[msl].body&0x80)) scat(b," -"); scat(b,">"); text(pg,58,y,b,vc,1); }
                 else if(ron){ BG_PAL[224+j]=*r->c; rect(pg,58,y-1,24,8,224+j); frame1(pg,58,y-1,24,8,sl?C_WHITE:C_DGREY); int pc=cc_pidx(*r->c); text(pg,86,y,pc>=0?preset_name[pc]:"CUSTOM",sl?C_WHITE:C_GREY,1); }
                 else text(pg,58,y,"(OFF)",C_DGREY,1);
                 if((lock>>i)&1) rect(pg,112,y+1,5,5,C_GOLD); }
             ui_well(pg,124,36,108,64);                                                           // the live preview, framed like the ship's
             for(int k=0;k<14;k++) pix(pg,127+((k*37)%102),39+((k*53)%58),(k&3)?U_RAISE:U_SOFT);
             if(human) for(int k=0;k<5;k++) rect(pg,127,92-k*12,4,2,k==hum.height?C_GOLD:C_DGREY);
-            if(selp) text(pg,128,39,"A: LOCK  B: MATCH",C_CYAN,1); else text(pg,128,39,"HOLD SEL: MORE",U_RAISE,1);
+            if(selp){ text(pg,128,39,"A: LOCK  B: MATCH",C_CYAN,1); text(pg,128,47,"L/R: COPY/PASTE COLOUR",C_CYAN,1); text(pg,128,55,"<>: TURN   ^v: POSE",C_CYAN,1); } else text(pg,128,39,"HOLD SEL: MORE",U_RAISE,1);
             ctext(pg,178,103,nm,C_GOLD);
             { int nc=0; for(int i=0;i<nr;i++) if(R[i].kind==3 && (!R[i].dep || *R[i].dep) && nc<10){ BG_PAL[232+nc]=*R[i].c; rect(pg,127+nc*10,113,9,5,232+nc); nc++; } }     // every colour at a glance
             if(human){ int cl=hum_calling(); scpy(b,cal_name[cl]); scat(b,": "); scat(b,cal_fx[cl]); ctext(pg,178,122,b,cl==CAL_NONE?C_DGREY:C_GOLD); }
@@ -410,12 +424,17 @@ static int cc_run(volatile u16 *pg, int human, int first){
               if(note_t) wrap_text(pg,10,129,28,note,C_GOLD,2);
               else { if(cr->kind==0) scpy(ds,"A: TYPE A NAME. UP TO 8 LETTERS"); else if(cr->kind==1) scpy(ds,"LEFT/RIGHT: TRY A READY-MADE LOOK");
                   else if(cr->kind==4) scpy(ds,"LEFT/RIGHT: DRESS FOR A CALLING. IT GIVES PERKS");
+                  else if(cr->kind==5) scpy(ds,"LEFT/RIGHT: LOAD OR SAVE SLOT 1-3. A: DO IT");
                   else if(cr->kind==2){ scpy(ds,"LEFT/RIGHT: CHANGE THE "); scat(ds,dn); }
                   else if(on) scpy(ds,"LEFT/RIGHT: BROWSE. A: MIX YOUR OWN"); else scpy(ds,"TURN ITS PART ON FIRST");
                   wrap_text(pg,10,129,28,ds,C_GREY,2); } }
             ui_foot(pg,"A: CHANGE  L/R: TAB","SEL: SURPRISE  START: DONE"); }
         t++; int facing=(t/150)&1;
-        if(human){ int n=hum_oam(0,178,95-((t>>5)&1),1,facing,0,0,0,0,-1); shadow_oam[n].a0=((95-2)&255)|(1<<14); shadow_oam[n].a1=((178-8)&511); shadow_oam[n].a2=T_SHADOW; }
+        if(human){ int pose, ph=t%480;                                                                                  // the preview acts: it stands, walks, swings and gets hurt on its own (SELECT + arrows steer it)
+            if(ov_t){ ov_t--; facing=face_ov; pose=pose_ov; } else pose = ph<150 ? 0 : ph<270 ? 1 : ph<340 ? 2 : ph<370 ? 3 : 0;
+            int hf = cc_posef[pose]; if(pose==0 && (t%120)>113) hf=6; else if(pose==1) hf=1+((t>>3)&1); else if(pose==2) hf=((t>>4)&1)?4:3;
+            hum_set(hf);
+            int n=hum_oam(0,178,95-(pose==1?((t>>3)&1):((t>>5)&1)),2,facing,pose==1?6:pose==2?10:0,0,24,pose==1?((t>>3)&1):0,(pose==2 && tools_owned)?tool_held:-1); shadow_oam[n].a0=((95-2)&255)|(1<<14); shadow_oam[n].a1=((178-8)&511); shadow_oam[n].a2=T_SHADOW; }
         else { int wf=(t>>3)&1; set_affine(31, facing?170:-170, 0, 0, 170);
             bug_obj(0,178,76-wf,31,170); shadow_oam[0].a2=bug_tile(wf)|BUG_BANK;
             shadow_oam[1].a0=((88-2)&255)|(1<<14); shadow_oam[1].a1=((178-8)&511); shadow_oam[1].a2=T_SHADOW; }
@@ -431,6 +450,10 @@ static int cc_run(volatile u16 *pg, int human, int first){
         if(HIT(K_START)) break;
         if(selp){                                                                                  // holding SELECT: A locks the row, B matches the colours
             if(HIT(K_A) && sel>=1){ lock^=(u32)1<<sel; selused=1; dirty=1; sfx(7); scpy(note,((lock>>sel)&1)?"LOCKED: SURPRISE AND LOOKS SKIP IT":"UNLOCKED"); note_t=60; }
+            if(HIT(K_LEFT)||HIT(K_RIGHT)){ selused=1; face_ov=HIT(K_RIGHT)?0:1; ov_t=900; }
+            if(HIT(K_UP)||HIT(K_DOWN)){ selused=1; if(!ov_t) pose_ov=0; pose_ov=(pose_ov+(HIT(K_DOWN)?1:3))&3; ov_t=900; scpy(note,"POSE: "); scat(note,cc_posen[pose_ov]); note_t=40; dirty=1; }
+            if(HIT(K_R) && cr->kind==3){ selused=1; clip=*cr->c; clip_ok=1; scpy(note,"COLOUR COPIED. SEL+L PASTES IT"); note_t=60; dirty=1; sfx(7); }
+            if(HIT(K_L)){ selused=1; if(clip_ok && cr->kind==3 && on){ PUSH(); *cr->c=clip; pi=-1; APPLY(); scpy(note,"COLOUR PASTED"); } else scpy(note,"COPY A COLOUR FIRST (SEL+R)"); note_t=50; dirty=1; sfx(7); }
             if(HIT(K_B)){ selused=1; int a=-1; if(cr->kind==3) a=sel; else for(int i=0;i<nr;i++) if(R[i].kind==3){ a=i; break; }
                 if(a>=0){ sch=(sch+1)%9; PUSH(); cc_scheme(R,nr,a,lock,sch); pi=-1; APPLY(); scpy(note,"PALETTE: "); scat(note,cc_sch_nm[sch]); note_t=70; dirty=1; sfx(6); } }
             continue; }
@@ -442,6 +465,7 @@ static int cc_run(volatile u16 *pg, int human, int first){
         if(d){
             if(cr->kind==2){ PUSH(); *cr->v=(u8)((*cr->v+d+cr->n)%cr->n); pi=-1; APPLY(); dirty=1; sfx(2); }
             else if(cr->kind==3 && on){ if(fresh) PUSH(); int p=cc_pidx(*cr->c); p = p<0 ? (d>0?0:NPRESET-1) : (p+d+NPRESET)%NPRESET; *cr->c=preset_col[p]; pi=-1; APPLY(); dirty=1; sfx(7); }
+            else if(cr->kind==5){ msl=(msl+d+6)%6; dirty=1; sfx(7); }
             else if(cr->kind==4){ PUSH(); int cu=hum_calling(), nx = cu==CAL_NONE ? (d>0?0:NCAL-1) : (cu+d+NCAL)%NCAL; const u8 *o=cal_set[nx];     // dress for the next calling
                 if(o[0]!=255) cc_set8(R,nr,lock,&humx.top,o[0]); if(o[1]!=255) cc_set8(R,nr,lock,&humx.hat,o[1]); if(o[2]!=255) cc_set8(R,nr,lock,&humx.back,o[2]); if(o[3]!=255) cc_set8(R,nr,lock,&humx.shoes,o[3]);
                 if(o[4]!=255) cc_set8(R,nr,lock,&humx.face,o[4]); if(o[5]!=255) cc_set8(R,nr,lock,&humx.beard,o[5]); if(o[6]!=255) cc_set8(R,nr,lock,&hum.build,o[6]);
@@ -458,6 +482,10 @@ static int cc_run(volatile u16 *pg, int human, int first){
         }
         if(HIT(K_A)){
             if(cr->kind==0){ PUSH(); cc_name(pg,nm); dirty=1; }
+            else if(cr->kind==5){ int sl=msl%3;
+                if(msl<3){ if(mls.s[sl].body&0x80){ PUSH(); lk_unpack(&mls.s[sl]); pi=-1; APPLY(); scpy(note,"LOADED LOOK "); ncat(note,sl+1); sfx(6); } else { scpy(note,"SLOT EMPTY. SAVE ONE FIRST"); sfx(4); } }
+                else { lk_pack(&mls.s[sl]); lk_store(&mls); scpy(note,"SAVED TO SLOT "); ncat(note,sl+1); sfx(2); }
+                note_t=60; dirty=1; }
             else if(cr->kind==3 && on){ u16 old=*cr->c; PUSH(); oam_hide_all(); oam_flush(); *cr->c=pick_colour(pg,(human&&hum.style&&cr->nm2)?cr->nm2:cr->nm,old);
                 if(*cr->c==old){ hp=(hp+7)&7; hn--; } else { pi=-1; APPLY(); } dirty=1; } }
         if(HIT(K_B)){
