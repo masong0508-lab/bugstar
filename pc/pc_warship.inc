@@ -7,7 +7,7 @@
 #include "warship/ms.h"
 static void pcm_reset(void), pcm_save(FILE *f), pcm_on_win(WsPay *p), pcm_on_sab(int s), pcm_collect(void), pcm_fight_tick(void), pc_ms_board(volatile u16 *pg, int place);
 static int pcm_load_line(const char *ln), pcm_contact(int i, u32 *seed, int *z), pcm_obj_kind(void), pcm_enc_mode, pcm_escort; static void pcm_dwell(int target_room, const char **prompt, char *msg, int *msg_t);
-static int pcm_cf, pcm_enc_force, pcm_clk, pcm_match_k(const WsCraft *c); static char pcm_note[40]; static unsigned char pcm_mark[8];
+static u32 pcm_test_setup(int z); static int pcm_cf, pcm_enc_force, pcm_clk, pcm_match_k(const WsCraft *c); static char pcm_note[40]; static unsigned char pcm_mark[8];
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -409,7 +409,9 @@ static void pc_ws_autotest(void){
     if(!strcmp(mode,"save")){ pc_ws_slot_save(cur_slot); return; }
     { const char *lv=getenv("BUGSTAR_WS_LEVEL"); if(lv) level=atoll(lv); }
     if(scene!=2){ oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); }
+    if(!strcmp(mode,"mkill")) seed=pcm_test_setup(z);
     pcw_engage(seed,z,0);
+    if(!strcmp(mode,"mkill")) strcpy(mode,"kill");
     if(!strcmp(mode,"inside")){ pcw_f.layers_up=0; pcw_f.lay_hp=wn(0); pc_ws_board(); }
     if(!strcmp(mode,"kill")){ while(pcw_f.state==WF_ON && pcw_f.shots<2000000u){ pcw_f.fire_cd=0; pcw_f.overheat=0; pcw_f.heat=0; wf_fire(&pcw_f,0,-1); } if(pcw_f.state==WF_WON) pcw_victory(); }
 }

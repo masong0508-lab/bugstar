@@ -158,3 +158,4 @@ static void pcm_tick(void){
 static void pcm_fight_tick(void){ if(pcm_en.on && pcm_en.type==1 && pcm_en.seed==pcw_f.c.seed && pcw_f.layers_up==0){ pcm_en.type=0; space_say("SHIELDS DOWN: ITS PLANET WEAPON FAILED"); } }
 static int pcm_contact(int i, u32 *seed, int *z){ if(i==1){ int mi=pcm_here(); if(mi>=0){ *seed=pcm_act[mi].cseed; *z=pcm_act[mi].z; return 1+pcm_act[mi].cheat; } }
     if(i==2 && pcm_enc_here()){ *seed=pcm_en.seed; *z=pcm_en.z; return 1; } return 0; }
+static u32 pcm_test_setup(int z){ WsMission o[8]; pcm_offers(MP_STATION,o); WsMission m=o[0]; m.kind=MK_DESTROY; m.state=1; m.gal=gal_hash(); m.tsys=sys_id(cur_sys); m.z=z; m.cseed=0; pcm_act[pcm_nact++]=m; return 0; }
