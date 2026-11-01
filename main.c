@@ -1220,6 +1220,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     fade(1);
     gen_cluster();
     if(!(cont && load_game(1))){ cont=0; new_game(); story_dna(0); cam_fp=opt_cam; planet_tables(); gen_cluster(); load_ext_defaults(); play_reset(0); do_save(); }
+#ifdef TEST_FP
+    cam_fp=1;                                                                    // (a test: start in first person)
+#endif
 #ifdef TEST_WORLD
     endless=1; world_no=TEST_WORLD; make_world();
 #endif

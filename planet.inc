@@ -376,7 +376,8 @@ IWRAM static void render_planet(volatile u16 *pg){
         for(int yy=18; yy<ytop; yy++){ int ix=skyrow[yy]; col[yy*120]=ix|(ix<<8); }
     }
     // a few stars in the sky
-    for(int k=0;k<22;k++){ int x=(k*53+17)%120, y=19+((k*31+5)%50); if(y<ybin[x*8]) { int ix = ((frames>>3)+k)&7 ? 4 : 5; pg[y*120+x]=ix|(ix<<8); } }
+    { int hor=(heading*536)>>10;                                                                // they sit in the sky, so they slide round as you turn (88 of them round the whole sky, about 20 in view)
+      for(int k=0;k<88;k++){ int x=(((k*83+17-hor)%536)+536)%536; if(x>=120) continue; int y=19+((k*31+5)%50); if(y<ybin[x*8]) { int ix = ((frames>>3)+k)&7 ? 4 : 5; pg[y*120+x]=ix|(ix<<8); } } }
 }
 
 // ---------------------------------------------------------------- the status bar, messages
@@ -394,18 +395,26 @@ static void show_msg(const char *s){ int n=0; while(s[n] && n<39){ msg[n]=s[n]; 
 
 // ---------------------------------------------------------------- one frame on the surface
 static int p_last=0;
+// where a spot of the sky falls on the screen. az goes 0..119 round the whole sky (120 = one full turn), the view is about 70 degrees wide, so the sun, moons and stars
+// slide across at the same speed as the ground when you turn (turn left: they move right) and drop out of sight behind you. -999: not in view.
+static int sky_col(int az){
+    int d=(((az%120+120)%120)*1024/120 - heading) & 1023; if(d>=512) d-=1024;           // how far right of where you look (1024 = a full turn)
+    if(d<-150||d>150) return -999;
+    int i=d>>2, f=d&3; s32 s0=sinx(i), s1=sinx(i+1), c0=cosx(i), c1=cosx(i+1);
+    s32 sn=s0+(((s1-s0)*f)>>2), cs=c0+(((c1-c0)*f)>>2);
+    return 60 + (int)(sn*86/cs); }                                                       // the flat screen: column = tan(angle), 86 columns per 1.0
 static void sky_put(volatile u16 *pg, int c, int y, int ix){                            // paint one pixel pair, only where the sky shows
     if(c<0||c>=120||y<19||y>=150) return; int v=pg[y*120+c]&0xFF; if((v>=SKY_B && v<SKY_B+8) || v==4 || v==5 || v==0) pg[y*120+c]=ix|(ix<<8); }
 static void sky_decor(volatile u16 *pg){
-    int ho=(heading*120)>>10;
+    int hor=(heading*536)>>10;                                                          // the sky turns 536 columns to the full turn (the view is 120 columns, 70 degrees)
     if(WL(MW_SUNS)){ int ns=2+WL(MW_SUNS)/7, r=3+WL(MW_SUNS)/4;                         // SUNS: two to five of them
-        for(int k=0;k<ns;k++){ int cx=(20+k*29+120-ho)%120, cy=30+k*9;
+        for(int k=0;k<ns;k++){ int cx=sky_col(20+k*29), cy=30+k*9; if(cx<-40) continue;
             for(int dy=-r;dy<=r;dy++) for(int dx=-r;dx<=r;dx++){ int d=dx*dx*4+dy*dy; if(d<=r*r) sky_put(pg,cx+dx,cy+dy, d<r*r/3?94:d<r*r*2/3?89:88); } } }
     if(WL(MW_MOONS)){ int nm=1+WL(MW_MOONS)/5;                                          // MOONS
-        for(int k=0;k<nm;k++){ int cx=(k*23+60+120-ho)%120, cy=24+(k*13)%34, r=2+(k%3);
+        for(int k=0;k<nm;k++){ int cx=sky_col(k*23+60), cy=24+(k*13)%34, r=2+(k%3); if(cx<-40) continue;
             for(int dy=-r;dy<=r;dy++) for(int dx=-r;dx<=r;dx++){ int d=dx*dx*4+dy*dy; if(d<=r*r) sky_put(pg,cx+dx,cy+dy, dx>0?92:91); } } }
     if(WL(MW_RINGS)){ int t=WL(MW_RINGS);                                               // RINGS: a band across the sky
-        for(int c=0;c<120;c++){ int dc=((c+ho)%120)-60; int y=26+t/2+dc*dc*(4+t/4)/900; sky_put(pg,c,y,90); sky_put(pg,c,y+1,93); if(t>12) sky_put(pg,c,y+3,90); } }
+        for(int c=0;c<120;c++){ int dc=((c+hor+536-60+268)%536)-268; int y=26+t/2+dc*dc*(4+t/4)/900; sky_put(pg,c,y,90); sky_put(pg,c,y+1,93); if(t>12) sky_put(pg,c,y+3,90); } }
     if(WL(MW_METEOR)){ int t=(frames*3)%200; int x0=(frames/67*37)%120;                 // METEORS: streaks
         for(int k=0;k<8;k++) sky_put(pg,(x0+t/2+k)%120,20+t/3+k,94); }
 }
@@ -413,32 +422,32 @@ static void sky_decor(volatile u16 *pg){
 // Everything is a pure function of the clock and the world's seed, so nothing is saved and nothing can corrupt the world.
 // A moon's lit side faces the sun, so you see phases, and when a moon crosses the sun it eclipses it.
 static int sys_nmoon(int i, int p);
-static void sky_disc(volatile u16 *pg, int cx, int cy, int rc, int sun_cx, int lit, int dark, int sunmode){
-    int d=((cx-sun_cx)%120+120)%120; int dd = d<60 ? d : d-120;               // -60..60 columns away from the sun
+static void sky_disc(volatile u16 *pg, int cx, int cy, int rc, int dd, int lit, int dark, int sunmode){   // dd: -60..60, how far round the sky it is from the sun
+    if(cx<-40) return;
     int ad=dd<0?-dd:dd, t=ad*2*rc/60-rc;                                       // where the shadow edge falls
     for(int dy=-rc*2;dy<=rc*2;dy++) for(int dx=-rc;dx<=rc;dx++){ int q=dx*dx*4+dy*dy; if(q>rc*rc*4) continue;
         int side = dd>0 ? -dx : dx; int c;
         if(sunmode) c = q<rc*rc*4/3?94 : q<rc*rc*8/3?89 : 88;
         else c = side>=-t ? lit : dark;
-        sky_put(pg,((cx+dx)%120+120)%120,cy+dy,c); }
+        sky_put(pg,cx+dx,cy+dy,c); }
 }
 static void sky_bodies(volatile u16 *pg){
-    int ho=(heading*120)>>10; u32 T=(u32)frames;
+    u32 T=(u32)frames;
     u32 s = hmix((u32)world_no*0x9E3779B1u ^ 0x5B1Eu ^ (u32)zone);
     int sun_az = (int)((s&127) + T/64);                                         // a full turn about every two minutes
-    int sun_cx = ((sun_az-ho)%120+120)%120;
+    int sun_cx = sky_col(sun_az);
     int hz=g_phz;
-    if(wd.hour!=2){ int cy = wd.hour==1 ? hz-8 : hz-34-(int)((s>>8)&7); sky_disc(pg,sun_cx,cy,4,sun_cx,0,0,1); }
+    if(wd.hour!=2){ int cy = wd.hour==1 ? hz-8 : hz-34-(int)((s>>8)&7); sky_disc(pg,sun_cx,cy,4,0,0,0,1); }
     int nm=0, onmoon=cur_moon;
     if(cur_sys>=0 && sys[cur_sys].kind>=6) nm = onmoon ? 1 : sys_nmoon(cur_sys,cur_pl);
     for(int k=0;k<nm;k++){ u32 h=hmix(s ^ (u32)(k+1)*0x85EBCA6Bu ^ (u32)cur_pl*0x27D4EB2Fu);
         int per=2400+(int)(h&2047)+k*1900;                                      // slower for the far ones
         int az=(int)((h>>12)&127) + (int)(T*120u/(u32)per);
-        int cx=((az-ho)%120+120)%120;
+        int cx=sky_col(az), ddm=((az-sun_az)%120+120)%120; if(ddm>=60) ddm-=120;
         int rc = onmoon ? 9 : 2+(int)((h>>20)%3u);
         int cy = onmoon ? hz-40 : (k==0 ? (wd.hour==1?hz-14:wd.hour==2?hz-34:hz-22-(int)((h>>8)&3)) : hz-26-(k*9)%30);
         cy += (int)((sinx((int)((T*3u/(u32)(per>>5+1))&255))*3)>>14);
-        sky_disc(pg,cx,cy,rc,sun_cx, onmoon?90:91, onmoon?93:92, 0); }
+        sky_disc(pg,cx,cy,rc,ddm, onmoon?90:91, onmoon?93:92, 0); }
 }
 static void weird_frame(int n){
     if(!wd.weird){ g_nst=NSTEP; g_wob=0; g_fog=0; return; }
@@ -464,7 +473,7 @@ static void weird_frame(int n){
     (void)n;
 }
 static void hell_sky(volatile u16 *pg){                                                 // a great sun or moon hangs over every hell world
-    static const u8 rr[6]={14,9,12,13,15,8}; int k=wd.cls-PC_INFERNO, ho=(heading*120)>>10, r=rr[k], cx=(30+k*17+120-ho)%120, cy=38+(k&1)*6;
+    static const u8 rr[6]={14,9,12,13,15,8}; int k=wd.cls-PC_INFERNO, r=rr[k], cx=sky_col(30+k*17), cy=38+(k&1)*6; if(cx<-40) return;
     for(int dy=-r;dy<=r;dy++) for(int dx=-r;dx<=r;dx++){ int d=dx*dx*4+dy*dy; if(d<=r*r) sky_put(pg,cx+dx,cy+dy, d<r*r/3?94:d<r*r*2/3?89:88); }
     if(wd.cls==PC_BONE){ sky_put(pg,cx-2,cy-1,94); sky_put(pg,cx+2,cy-1,94); sky_put(pg,cx-2,cy,94); sky_put(pg,cx+2,cy,94); sky_put(pg,cx,cy+2,94); sky_put(pg,cx,cy+3,94); }   // the moon is a skull
 }
