@@ -90,7 +90,23 @@ static int page_back=0;
 static volatile int opt_music=2;   // 0 off, 1 low, 2 full
 static volatile int opt_sfx=1;
 static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1, opt_baby=0, opt_hunger=1, opt_faintloss=1, opt_xpm=0, opt_goldm=0;
-static const u16 dif_hp[6]={100,100,125,150,190,260}, dif_aw[6]={100,100,115,130,160,200}, dif_spd[6]={100,100,106,112,120,130}, dif_cd[6]={100,100,88,76,62,50};   // monsters by difficulty: health %, how far they notice you %, speed %, how long they wait between attacks %   // easy = (opt_diff==0)
+// ---- the difficulty numbers: each difficulty has its own set, and the options screen can change every one (kept in SRAM, see save.inc)
+enum { P_DMG, P_HP, P_HPZ, P_SPD, P_SEE, P_ATK, P_AI, P_BITE, P_MORE, P_CHAMP, P_BOSS, P_HUN, P_GOLD, NDP };
+typedef struct { s16 lo, st; u8 n; } DPS;                    // each number goes from lo in steps of st, n steps in all (at most 254)
+static const DPS dps[NDP]={ {10,10,200}, {5,5,200}, {0,1,101}, {20,2,150}, {0,5,100}, {20,2,91}, {0,1,6}, {0,1,61}, {0,5,101}, {0,1,101}, {0,1,6}, {0,10,101}, {0,5,201} };
+//   P_DMG damage you take %, P_HP foe health %, P_HPZ extra health % per zone, P_SPD foe speed %, P_SEE how far foes see you %, P_ATK how fast they attack again %,
+//   P_AI foe tactics 0..5, P_BITE bites grow (1/60 per level), P_MORE more foes %, P_CHAMP champion chance %, P_BOSS extra-boss pattern 0..5, P_HUN hunger speed % (0 = never), P_GOLD gold bonus %
+static const s16 dpdef[6][NDP]={      // what each difficulty starts with (these are the numbers the game always used)
+    {  50, 100,  0, 100, 100, 100, 0, 0,   0,  8, 0,  67,   0 },       // EASY
+    { 300, 100,  6, 100, 100, 100, 1, 1,   0, 11, 1, 200, 100 },       // NORMAL
+    { 400, 125, 12, 106, 115, 112, 2, 2,  25, 14, 2, 240, 125 },       // HARD
+    { 500, 150, 18, 112, 130, 124, 3, 3,  50, 17, 3, 300, 150 },       // BRUTAL
+    { 700, 190, 24, 120, 160, 138, 4, 4,  75, 20, 4, 400, 250 },       // NIGHTMARE
+    {1000, 260, 30, 130, 200, 150, 5, 5, 100, 23, 5, 600, 400 } };     // INSANE-SECT
+static u8 dpo[6][NDP];                                       // what you changed: 0 = still the starting number, else 1 + the step you set
+static int dpv_of(int d, int p){ int x=dpo[d][p]; return x ? dps[p].lo+(x-1)*dps[p].st : dpdef[d][p]; }
+#define DPV(p) dpv_of(opt_diff,p)
+#define DP_CD() (200-DPV(P_ATK)>0 ? 200-DPV(P_ATK) : 0)      // the old "wait between attacks" %
 static int cur_slot=0, last_slot=0;   // the slot you are playing, and the one you used last
 static int in_game=0;
 static int sys_req=0, cluster_no=0;                 // cluster_no: how many intergalactic jumps you have made (it sets the danger)
@@ -295,7 +311,7 @@ static int xo_i(int o){ int i=xo[o]^XOT[o].def; return i<XOT[o].n ? i : XOT[o].d
 static int xo_v(int o){ return XOT[o].val[xo_i(o)]; }
 static u16 xo_snd(void){ int i=xo_i(XO_VOL); if(i>=7) return 0; { int l=7-i; return (u16)(0xFF00|(l<<4)|l); } }   // the sound chip's master volume (and mute)
 static int zone;   // (defined for real in game.inc)
-static int xo_hp(int h){ long long v=(long long)h*xo_v(XO_EHP)/100; v=v*(dif_hp[opt_diff]+opt_diff*zone*6)/100;      // harder difficulties: tougher monsters, and more so the further you go
+static int xo_hp(int h){ long long v=(long long)h*xo_v(XO_EHP)/100; v=v*(DPV(P_HP)+DPV(P_HPZ)*zone)/100;      // harder difficulties: tougher monsters, and more so the further you go
     if(v<1) v=1; if(v>32000) v=32000; return (int)v; }   // monster health is a 16-bit number
 #define NBUD 9                                                   // the extra Buddies (LADYBUG BUDDIES): they bite, they never get hurt
 typedef struct { s32 x, y; s16 cool; u8 flash, pad; } Bud;
@@ -388,7 +404,7 @@ static int mon_dmg(DObj *o){
     if(nm_of(o->kind)) b=b*nm_of(o->kind)->dmm/8;
     if(o->champ) b=b*3/2;
     if(fl_ev==FE_CURSED) b=b*3/2;
-    if(opt_diff>=1) b+=b*opt_diff*dlv()/60;                                          // the deeper you are, the harder they bite, and harder still on the high difficulties
+    { int bg=DPV(P_BITE); if(bg) b+=b*bg*dlv()/60; }                                          // the deeper you are, the harder they bite, and harder still on the high difficulties
     { int sv=xo_v(XO_ESTR); if(sv!=100){ b=(int)((long long)b*sv/100); if(b<1) b=1; } }
     return b;
 }
@@ -438,7 +454,7 @@ static void kill_mon(DObj *o){
     hud_now();
 }
 static int alert_t=0;     // the pack is on guard for a few seconds after you start a fight: foes notice you from twice as far (hard difficulties)
-static void hit_mon(DObj *o, int dmg, int crit){ if(opt_diff>=2) alert_t=300;
+static void hit_mon(DObj *o, int dmg, int crit){ if(DPV(P_AI)>=2) alert_t=300;
     if(dmg>32000) dmg=32000;                                                           // (monster health is 16 bits: a bigger hit must not wrap round)
     if(nm_has(o,NF_ARMOR)){ dmg=(dmg+1)/2; if(dmg<1) dmg=1; }                         // rockbacks: half damage
     o->hp-=dmg; o->flash=6; add_fnum(o->x,o->y,dmg,crit?C_GOLD:C_WHITE); sfx(1);
@@ -914,33 +930,33 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             if(o->stag) o->stag--;
             if(mboss && boss){                                  // the labyrinth boss: it sleeps, then it hunts you down the corridors
                 if(hunt_t){ if(--hunt_t==0){ say("IT HAS YOUR SCENT"); sfx(14); } }
-                else if(!stun_t && !o->stag && !o->wind && td>contact+0x800) hunt_move(o, (0x0580+tier_now()*0x30)*dif_spd[opt_diff]/100); }
-            else if(!stun_t && !o->stag && !o->wind && td<0x70000*xo_v(XO_EAWARE)/100*dif_aw[opt_diff]/100*(alert_t>0?2:1)){
-                s32 st = nm ? (s32)nm->stp : boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : o->kind==K_SLIME?(o->sub?0x0480:0x0300) : o->kind==K_SCORP?0x0780 : toad?0x0420 : o->kind==K_ANT?0x0660 : o->kind==K_CENTI?0x0800 : o->kind==K_GOLEM?0x0240 : drone?0x0500 : shroom?0x0300 : o->kind==K_CRAB?0x0340 : 0x0600; st=st*xo_v(XO_ESPEED)/100;  st=st*dif_spd[opt_diff]/100;
+                else if(!stun_t && !o->stag && !o->wind && td>contact+0x800) hunt_move(o, (0x0580+tier_now()*0x30)*DPV(P_SPD)/100); }
+            else if(!stun_t && !o->stag && !o->wind && td<0x70000*xo_v(XO_EAWARE)/100*DPV(P_SEE)/100*(alert_t>0?2:1)){
+                s32 st = nm ? (s32)nm->stp : boss?0x0500 : bat?(0x0700+((frames+i*9)%24<12?0x400:0)) : o->kind==K_BEETLE?0x0380 : o->kind==K_SLIME?(o->sub?0x0480:0x0300) : o->kind==K_SCORP?0x0780 : toad?0x0420 : o->kind==K_ANT?0x0660 : o->kind==K_CENTI?0x0800 : o->kind==K_GOLEM?0x0240 : drone?0x0500 : shroom?0x0300 : o->kind==K_CRAB?0x0340 : 0x0600; st=st*xo_v(XO_ESPEED)/100;  st=st*DPV(P_SPD)/100;
                 int away = wasp && td<0x18000, keep = wasp && td<0x40000 && td>=0x18000;
                 if(!keep && (td>contact+0x800 || away)){
                     s32 fx=tdx, fy=tdy;
-                    if(opt_diff>=2 && !at_pet && !away){ fx+=pvx*(opt_diff+2); fy+=pvy*(opt_diff+2); }      // they cut you off: they head for where you are going, not where you are
-                    if(opt_diff>=2 && !away && td>0x28000){ int sg=(i%3)-1; fx=tdx-sg*(tdy>>1); fy=tdy+sg*(tdx>>1); }      // in a pack: one comes straight, one swings left, one swings right
+                    if(DPV(P_AI)>=2 && !at_pet && !away){ fx+=pvx*(DPV(P_AI)+2); fy+=pvy*(DPV(P_AI)+2); }      // they cut you off: they head for where you are going, not where you are
+                    if(DPV(P_AI)>=2 && !away && td>0x28000){ int sg=(i%3)-1; fx=tdx-sg*(tdy>>1); fy=tdy+sg*(tdx>>1); }      // in a pack: one comes straight, one swings left, one swings right
                     s32 stx=(fx>0?st:-st), sty=(fy>0?st:-st); if(away){ stx=-stx; sty=-sty; }
                     int mvd=0; if(!solid(o->x+stx*3,o->y)){ o->x+=stx; mvd=1; } if(!solid(o->x,o->y+sty*3)){ o->y+=sty; mvd=1; }
-                    if(!mvd && opt_diff>=1 && !away){                        // stuck on a wall or a pillar: slide round it instead of pushing at it
+                    if(!mvd && DPV(P_AI)>=1 && !away){                        // stuck on a wall or a pillar: slide round it instead of pushing at it
                         int sg=(i&1)?1:-1; s32 sl=sg*st;
                         if(iabs(fx)>=iabs(fy)){ if(!solid(o->x,o->y+sl*3)) o->y+=sl; else if(!solid(o->x,o->y-sl*3)) o->y-=sl; }
                         else { if(!solid(o->x+sl*3,o->y)) o->x+=sl; else if(!solid(o->x-sl*3,o->y)) o->x-=sl; } } }
-                else if(keep && opt_diff>=2){                                // archers and wasps circle you at range instead of standing still
+                else if(keep && DPV(P_AI)>=2){                                // archers and wasps circle you at range instead of standing still
                     int sg=(i&1)?1:-1; s32 sx_=(tdy>0?-st:st)*sg/2, sy_=(tdx>0?st:-st)*sg/2;
                     if(!solid(o->x+sx_*3,o->y)) o->x+=sx_; if(!solid(o->x,o->y+sy_*3)) o->y+=sy_; }
             }
-            if(o->cool){ o->cool--; if(opt_diff>=2 && o->cool && (frames%100)>=dif_cd[opt_diff]) o->cool--; }      // they recover faster: bites and shots come more often
-            if(opt_diff>=2 && !wasp && !boss && !at_pet && !stun_t && !o->stag && !o->wind && td>0x100){
+            if(o->cool){ o->cool--; if(DPV(P_AI)>=2 && o->cool && (frames%100)>=DP_CD()) o->cool--; }      // they recover faster: bites and shots come more often
+            if(DPV(P_AI)>=2 && !wasp && !boss && !at_pet && !stun_t && !o->stag && !o->wind && td>0x100){
                 if(o->cool>16 && td<reach+0x9000){                           // hit and run: after a bite it slips out of your jaws while it recovers, then comes back
-                    s32 s2=0x0500*dif_spd[opt_diff]/100, ax=(tdx>0?-s2:s2), ay=(tdy>0?-s2:s2); if(opt_diff<4){ ax/=2; ay/=2; }
+                    s32 s2=0x0500*DPV(P_SPD)/100, ax=(tdx>0?-s2:s2), ay=(tdy>0?-s2:s2); if(DPV(P_AI)<4){ ax/=2; ay/=2; }
                     if(!solid(o->x+ax*3,o->y)) o->x+=ax; if(!solid(o->x,o->y+ay*3)) o->y+=ay; }
-                else if(opt_diff>=3 && atk_t>0 && td<reach+0x4000 && rndi(100)<(opt_diff-2)*10){     // you are mid-bite: it sidesteps your jaws
+                else if(DPV(P_AI)>=3 && atk_t>0 && td<reach+0x4000 && rndi(100)<(DPV(P_AI)-2)*10){     // you are mid-bite: it sidesteps your jaws
                     int sg=(i&1)?1:-1; o->kvx+=(s32)(((long long)(-tdy)*0x1400*sg)/td); o->kvy+=(s32)(((long long)tdx*0x1400*sg)/td); } }
             if(wasp && !stun_t && !o->cool && d<0x60000){        // wasps shoot stingers
-                s32 sdx=dx, sdy=dy; if(opt_diff>=2){ sdx+=pvx*8; sdy+=pvy*8; }      // they lead their shots
+                s32 sdx=dx, sdy=dy; if(DPV(P_AI)>=2){ sdx+=pvx*8; sdy+=pvy*8; }      // they lead their shots
                 s32 l=isqrt((u32)((sdx>>8)*(sdx>>8)+(sdy>>8)*(sdy>>8))); if(l<1) l=1;
                 if(toad) fire_proj(1, o->x, o->y, 0x6000, (sdx>>8)*0x0B00/l, (sdy>>8)*0x0B00/l, mon_dmg(o)*3/2), o->cool=85+rndi(40);
                 else if(shroom) fire_proj(1, o->x, o->y, 0x6000, (sdx>>8)*0x0900/l, (sdy>>8)*0x0900/l, mon_dmg(o)*2), o->cool=95+rndi(40);
@@ -950,7 +966,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
                 else fire_proj(1, o->x, o->y, 0x8000, (sdx>>8)*0x1400/l, (sdy>>8)*0x1400/l, mon_dmg(o)), o->cool=55+rndi(30); }
             if(o->wind){                                    // winding up: it stands still, then snaps
                 if(--o->wind==0){
-                    if(td<reach+0x3000+(opt_diff>=2?opt_diff*0x400:0)){      // (a wider snap: small steps sideways no longer dodge it)
+                    if(td<reach+0x3000+(DPV(P_AI)>=2?DPV(P_AI)*0x400:0)){      // (a wider snap: small steps sideways no longer dodge it)
                         if(td>0x100){ o->kvx += (s32)(((long long)tdx*(boss?0x1400:0x0C00))/td); o->kvy += (s32)(((long long)tdy*(boss?0x1400:0x0C00))/td); }   // it lunges
                         if(at_pet){ pet_hp-=mon_dmg(o)/2; petobj.flash=6; }
                         else { if(invuln && dodge_msg_t){ say("DODGED!"); st_dodges++; gain_xp(1); }
@@ -961,9 +977,9 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
                     } else { o->stag=3; }                      // it snapped at empty air and is open for a moment
                 }
             }
-            else if(!wasp && !stun_t && !o->stag && td<reach && !o->cool){ o->cool=boss?34:46; o->wind = nm?nm->wind : boss?3:o->kind==K_BEETLE?6:o->kind==K_SCORP||o->kind==K_CENTI?3:o->kind==K_SLIME?5:o->kind==K_GOLEM?9 : o->kind==K_CRAB?7 : 4; if(opt_diff>=3 && o->wind>2){ o->wind-=opt_diff-2; if(o->wind<2) o->wind=2; } sfx(14); }      // (high difficulty: less time to react)
+            else if(!wasp && !stun_t && !o->stag && td<reach && !o->cool){ o->cool=boss?34:46; o->wind = nm?nm->wind : boss?3:o->kind==K_BEETLE?6:o->kind==K_SCORP||o->kind==K_CENTI?3:o->kind==K_SLIME?5:o->kind==K_GOLEM?9 : o->kind==K_CRAB?7 : 4; if(DPV(P_AI)>=3 && o->wind>2){ o->wind-=DPV(P_AI)-2; if(o->wind<2) o->wind=2; } sfx(14); }      // (high difficulty: less time to react)
             // beetles charge from a distance: a long wind-up, then they barrel at you. into a wall, and they are stunned
-            else if((o->kind==K_BEETLE||o->kind==K_SCORP||(nm&&(nm->fl&NF_CHARGE))) && !stun_t && !o->stag && !o->cool && td>0x18000 && td<0x50000 && rndi((o->kind==K_SCORP?55:40)*dif_cd[opt_diff]/100+1)==0){ o->cool=70*dif_cd[opt_diff]/100; o->wind=8; o->lunge=1; sfx(14); }
+            else if((o->kind==K_BEETLE||o->kind==K_SCORP||(nm&&(nm->fl&NF_CHARGE))) && !stun_t && !o->stag && !o->cool && td>0x18000 && td<0x50000 && rndi((o->kind==K_SCORP?55:40)*DP_CD()/100+1)==0){ o->cool=70*DP_CD()/100; o->wind=8; o->lunge=1; sfx(14); }
             if(o->lunge && !o->wind){ o->lunge=0; if(td>0x100){ o->kvx=(s32)(((long long)tdx*0x3000)/td); o->kvy=(s32)(((long long)tdy*0x3000)/td); } }
             // the boss calls her brood at half health, and gets angry
             if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1; say("THE QUEEN CALLS HER BROOD!"); sfx(9);

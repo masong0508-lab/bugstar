@@ -95,6 +95,15 @@ _Static_assert(__builtin_offsetof(Settings,sum)==sizeof(Settings)-4, "Settings: 
 #define XS_OFF 0x7F40
 typedef struct { u32 magic; u8 v[NXO]; u32 sum; } XSet;
 _Static_assert(XS_OFF >= SET_OFF+20 && XS_OFF+sizeof(XSet) <= 0x8000, "the extra options must fit between the options and the end of SRAM");
+#define DS_OFF 0x7F80
+typedef struct { u32 magic; u8 v[6][NDP]; u32 sum; } DSet;       // the difficulty numbers you changed (see DPV in main.c)
+_Static_assert(DS_OFF >= XS_OFF+sizeof(XSet) && DS_OFF+sizeof(DSet) <= 0x8000, "the difficulty numbers must fit between the extra options and the end of SRAM");
+static void dd_save(void){ DSet s; memset(&s,0,sizeof s); s.magic=0x44494646; memcpy(s.v,dpo,sizeof dpo); s.sum=fnv(&s,sizeof s-4); sram_write(DS_OFF,&s,sizeof s); }
+static void dd_load(void){
+    DSet s; sram_read(DS_OFF,&s,sizeof s);
+    if(s.magic!=0x44494646 || s.sum!=fnv(&s,sizeof s-4)) return;                                    // never saved: every difficulty keeps its own numbers
+    for(int d=0;d<6;d++) for(int p=0;p<NDP;p++) dpo[d][p] = s.v[d][p]<=dps[p].n ? s.v[d][p] : 0;
+}
 static void xo_apply(void){ SND(0x20)=xo_snd(); }
 static void xo_save(void){ XSet s; memset(&s,0,sizeof s); s.magic=0x584F5053; for(int i=0;i<NXO;i++) s.v[i]=xo[i]; s.sum=fnv(&s,sizeof s-4); sram_write(XS_OFF,&s,sizeof s); }
 static void xo_load(void){
@@ -105,10 +114,10 @@ static void xo_load(void){
 static void settings_save(void){
     Settings s; memset(&s,0,sizeof(s)); s.magic=0x53544553;
     s.music=opt_music; s.sfx=opt_sfx; s.autosave=opt_autosave; s.shake=opt_shake; s.last=last_slot; s.pad[0]=opt_diff; s.pad[1]=(opt_minimap)|(opt_nums<<1)|(opt_hints<<2)|(opt_arrow<<3)|(opt_insane<<4); s.pad[2]=opt_cam|(opt_baby<<1)|((!opt_hunger)<<2)|((!opt_faintloss)<<3)|(opt_xpm<<4)|(opt_goldm<<6);
-    s.sum=fnv(&s,sizeof(s)-4); sram_write(SET_OFF,&s,sizeof(s)); xo_save();
+    s.sum=fnv(&s,sizeof(s)-4); sram_write(SET_OFF,&s,sizeof(s)); xo_save(); dd_save();
 }
 static void settings_load(void){
-    xo_load(); xo_apply();
+    xo_load(); xo_apply(); dd_load();
     Settings s; sram_read(SET_OFF,&s,sizeof(s));
     if(s.magic!=0x53544553 || s.sum!=fnv(&s,sizeof(s)-4) || s.music>2 || s.last>=NSLOT) return;   // first run: keep the defaults
     opt_music=s.music; opt_sfx=s.sfx&1; opt_autosave=s.autosave&1; opt_shake=s.shake&1; last_slot=s.last; opt_insane=(s.pad[1]>>4)&1; opt_diff=s.pad[0]%6; if(opt_diff==5 && !opt_insane) opt_diff=4; opt_easy=(opt_diff==0); opt_minimap=s.pad[1]&1; opt_nums=(s.pad[1]>>1)&1; opt_hints=(s.pad[1]>>2)&1; opt_arrow=(s.pad[1]>>3)&1; opt_cam=s.pad[2]&1; opt_baby=(s.pad[2]>>1)&1; opt_hunger=!((s.pad[2]>>2)&1); opt_faintloss=!((s.pad[2]>>3)&1); opt_xpm=(s.pad[2]>>4)&3; if(opt_xpm>2) opt_xpm=2; opt_goldm=(s.pad[2]>>6)&3; if(opt_goldm>2) opt_goldm=2;
@@ -338,24 +347,62 @@ static void options_more(volatile u16 *pg){
 
 // ---------------------------------------------------------------- the difficulty details: every number the chosen difficulty changes, read from the same tables the game uses
 static void dif_line(volatile u16 *pg, int y, const char *lab, const char *val, int c){ text(pg,26,y,lab,C_GREY,1); rtext(pg,206,y,val,c); }
-static void dif_pct(char *b, int v){ b[0]=0; ncat(b,v); scat(b,"%"); }
-static void dif_details(volatile u16 *pg){
-    char b[40]; int y=47, d=opt_diff;
+enum { NDL = NDP+1 };      // the rows of the list: one for each number, and "put them back" at the end
+static const char *const dp_nm[NDP]={"DAMAGE YOU TAKE","FOE HEALTH","FOE HEALTH PER ZONE","FOE SPEED","HOW FAR FOES SEE YOU","FOES ATTACK AGAIN AT","FOE TACTICS","FOE BITES GROW","MORE FOES","CHAMPIONS","EXTRA BOSSES","HUNGER","GOLD PAID"};
+static const char *const dp_hlp[NDL]={
+    "HOW HARD HITS HURT YOU. HALF IS GENTLE, X3 IS NORMAL, X10 IS CRUEL",
+    "HOW MUCH HEALTH EVERY FOE HAS",
+    "EXTRA FOE HEALTH FOR EVERY ZONE YOU REACH",
+    "HOW FAST FOES RUN AT YOU",
+    "HOW FAR AWAY FOES NOTICE YOU. 0 MEANS THEY NEVER DO",
+    "HOW OFTEN FOES BITE AND SHOOT AGAIN. MORE IS FASTER",
+    "0 JUST CHARGE. 1 SLIDE ROUND WALLS. 2 FLANK IN PACKS. 3 DODGE YOUR BITE. 4 AND 5 SMARTER",
+    "FOE BITES GET STRONGER FOR EVERY LEVEL YOU GO DOWN",
+    "EXTRA FOES IN EVERY DUNGEON ROOM",
+    "THE CHANCE THAT A FOE IS A BIG CHAMPION",
+    "HOW MANY EXTRA BOSSES WAIT DEEP DOWN",
+    "HOW FAST YOU GET HUNGRY. NEVER MEANS NOBODY STARVES",
+    "EXTRA GOLD THAT EVERYTHING PAYS",
+    "A: PUT EVERY NUMBER OF THIS DIFFICULTY BACK" };
+static void dp_x100(char *b, int v){ ncat(b,v/100); if(v%100){ scat(b,"."); ncat(b,(v%100)/10); if(v%10) ncat(b,v%10); } }     // 250 -> 2.5, 67 -> 0.67
+static void dp_fmt(char *b, int p, int v){
+    static const char *const boss[6]={"NONE","1 PER 2 TIERS","1 PER 2 TIERS","3 PER 4 TIERS","1 PER TIER+","2+ PER TIER"};
+    static const char *const ai[6]={"JUST CHARGE","SLIDE ROUND WALLS","FLANK IN PACKS","DODGE YOUR BITE","CUNNING","DEADLY"};
+    b[0]=0;
+    switch(p){
+    case P_DMG: if(v==50) scpy(b,"HALF"); else { scat(b,"X"); dp_x100(b,v); } break;
+    case P_HPZ: scat(b,"+"); ncat(b,v); scat(b,"% A ZONE"); break;
+    case P_AI: scpy(b,ai[v%6]); break;
+    case P_BITE: if(!v) scpy(b,"NORMAL"); else { int t=v*1000/60; scat(b,"+"); ncat(b,t/10); scat(b,"."); ncat(b,t%10); scat(b,"% A LEVEL DEEP"); } break;
+    case P_MORE: case P_GOLD: scat(b,"+"); ncat(b,v); scat(b,"%"); break;
+    case P_BOSS: scpy(b,boss[v%6]); break;
+    case P_HUN: if(!v) scpy(b,"NEVER"); else { scat(b,"X"); dp_x100(b,v); } break;
+    default: ncat(b,v); scat(b,"%"); }
+}
+static int dp_edited(int d){ for(int p=0;p<NDP;p++) if(dpo[d][p]) return 1; return 0; }
+static void dp_step(int d, int p, int dir, int mult){      // one step up or down (mult steps): from a starting number that is off the grid, the next step that way
+    while(mult--){
+        int v=dpv_of(d,p), lo=dps[p].lo, st=dps[p].st, n=dps[p].n;
+        int k = dir>0 ? (v-lo)/st+1 : (v-lo+st-1)/st-1;
+        if(k<0) k=0; if(k>n-1) k=n-1;
+        dpo[d][p] = (lo+k*st==dpdef[d][p]) ? 0 : (u8)(k+1);
+    }
+}
+static void dif_details(volatile u16 *pg, int ts, int tt){       // ts: the row you are on (-1: just looking), tt: the first row shown
+    char b[40]; int d=opt_diff, y=47;
     if(opt_baby){
         dif_line(pg,y,"DAMAGE YOU TAKE","1 AT MOST",C_GREEN); y+=7; dif_line(pg,y,"HUNGER","NEVER",C_GREEN); y+=7; dif_line(pg,y,"FAINTING","COSTS NOTHING",C_GREEN); y+=7;
         dif_line(pg,y,"GOLD AND XP","X2",C_GREEN); y+=7; dif_line(pg,y,"BUDDY","HEALS YOUR BOO-BOOS",C_GREEN); return; }
-    static const char *const boss[6]={"NONE","1 PER 2 TIERS","1 PER 2 TIERS","3 PER 4 TIERS","1 PER TIER+","2+ PER TIER"};
-    scpy(b,d==0?"HALF":""); if(d){ b[0]=0; ncat(b,dif_dmg[d]/2); scat(b,"X"); } dif_line(pg,y,"DAMAGE YOU TAKE",b,d==0?C_GREEN:d>=2?C_RED:C_WHITE); y+=7;
-    dif_pct(b,dif_hp[d]); if(d){ scat(b," +"); ncat(b,d*6); scat(b,"% A ZONE"); } dif_line(pg,y,"FOE HEALTH",b,d>=2?C_RED:C_WHITE); y+=7;
-    dif_pct(b,dif_spd[d]); dif_line(pg,y,"FOE SPEED",b,d>=2?C_RED:C_WHITE); y+=7;
-    dif_pct(b,dif_aw[d]); dif_line(pg,y,"HOW FAR FOES SEE YOU",b,d>=2?C_RED:C_WHITE); y+=7;
-    dif_pct(b,200-dif_cd[d]); dif_line(pg,y,"FOES ATTACK AGAIN AT",b,d>=2?C_RED:C_WHITE); y+=7;
-    dif_line(pg,y,"PACKS FLANK YOU",d>=2?"YES":"NO",d>=2?C_RED:C_WHITE); y+=7;
-    if(d){ int t=d*1000/60; b[0]=0; scat(b,"+"); ncat(b,t/10); scat(b,"."); ncat(b,t%10); scat(b,"% A LEVEL DEEP"); } else scpy(b,"NORMAL"); dif_line(pg,y,"FOE BITES GROW",b,d?C_RED:C_WHITE); y+=7;
-    b[0]=0; scat(b,"+"); ncat(b,d>=2?(d-1)*25:0); scat(b,"% / "); ncat(b,8+d*3); scat(b,"% CHAMPS"); dif_line(pg,y,"MORE FOES / CHAMPIONS",b,d>=2?C_RED:C_WHITE); y+=7;
-    dif_line(pg,y,"EXTRA BOSSES",boss[d],d>=3?C_RED:C_WHITE); y+=7;
-    { int hx = d==0 ? 7 : 120/dif_hun[d]; b[0]=0; scat(b,"X"); ncat(b,hx/10); scat(b,"."); ncat(b,hx%10); dif_line(pg,y,"HUNGER",b,d==0?C_GREEN:C_RED); y+=7; }
-    b[0]=0; scat(b,"+"); ncat(b,dif_gold[d]); scat(b,"%"); dif_line(pg,y,"GOLD PAID",b,C_GREEN);
+    for(int r=0;r<11;r++){ int i=tt+r; y=47+r*7; if(i>=NDL) break;
+        if(i==ts) rect(pg,18,y-1,204,7,6);
+        if(i==NDP){ text(pg,26,y,"PUT THEM ALL BACK",i==ts?C_WHITE:C_GREY,1); rtext(pg,206,y,dp_edited(d)?"A":"NOTHING TO PUT BACK",dp_edited(d)?C_GOLD:C_DGREY); break; }
+        int v=dpv_of(d,i), nv=dpdef[1][i], ed=dpo[d][i]!=0;
+        int hard = i==P_GOLD ? v<nv : v>nv, easy = i==P_GOLD ? v>nv : v<nv;      // (against NORMAL: red is tougher, green is gentler)
+        dp_fmt(b,i,v);
+        text(pg,26,y,dp_nm[i],i==ts?C_WHITE:ed?C_GOLD:C_GREY,1);
+        rtext(pg,206,y,b,i==ts?C_GOLD:hard?C_RED:easy?C_GREEN:C_WHITE);
+    }
+    if(tt>0) text(pg,216,47,"^",C_CYAN,1); if(tt+11<NDL) text(pg,216,117,"v",C_CYAN,1);
 }
 // ---------------------------------------------------------------- the options screen
 static void options_screen(volatile u16 *pg){
@@ -363,30 +410,45 @@ static void options_screen(volatile u16 *pg){
     static const char *const nm[NOPT]={"DIFFICULTY","HUNGER","LOSE STUFF WHEN YOU FAINT","XP SPEED","GOLD","PLANET CAMERA","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE","MINIMAP","DAMAGE NUMBERS","BUTTON HINTS","GUIDE ARROW"};
     static const char *const hlp[NOPT]={"BABY: 1 DAMAGE, NO HUNGER, NOTHING LOST, 2X GOLD AND XP. EASY: HALF DAMAGE. HARD UP: MORE DAMAGE, MORE GOLD","OFF: NOBODY EVER STARVES","OFF: FAINTING COSTS NO GOLD AND NO BAG","HOW FAST YOU LEVEL UP","HOW MUCH GOLD EVERYTHING PAYS","WHICH VIEW A NEW GAME STARTS WITH","THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT","THE LITTLE MAP IN THE DUNGEON CORNER","NUMBERS THAT FLY OFF THINGS YOU BITE","THE 'A: ...' LINES THAT SAY WHAT A DOES","THE YELLOW ARROW ON PLANETS"};
     static const char *const dif[7]={"BABY","EASY","NORMAL","HARD","BRUTAL","NIGHTMARE","INSANE-SECT"}, *const cam[2]={"3RD PERSON","1ST PERSON"}, *const mv[3]={"OFF","LOW","FULL"}, *const yn[2]={"OFF","ON"}, *const mx[3]={"X1","X2","X5"};
-    int sel=0, top=0, dirty=1; oam_hide_all(); oam_flush(); if(in_game) rect(pg,0,18,240,142,0); wait_release();
+    int sel=0, top=0, dirty=1, ts=-1, tt=0, hold=0, hdir=0; oam_hide_all(); oam_flush(); if(in_game) rect(pg,0,18,240,142,0); wait_release();
     while(1){
         if(sel<top) top=sel; if(sel>=top+10) top=sel-9;
         if(dirty){ dirty=0; char b[20];
             panel(pg,12,20,216,136,"OPTIONS");
             for(int r=0;r<10;r++){ int i=top+r; if(sel==OP_DIFF && r>0) break;       // (on DIFFICULTY the rows under it give way to its details)
                 int y=37+r*9; int dsel = opt_baby ? 0 : opt_diff+1; int *pv = i==OP_DIFF?&dsel : i==OP_HUNGER?&opt_hunger : i==OP_FAINT?&opt_faintloss : i==OP_XP?&opt_xpm : i==OP_GOLD?&opt_goldm : i==OP_CAM?&opt_cam : i==OP_MUSIC?&opt_music : i==OP_SFX?&opt_sfx : i==OP_AUTO?&opt_autosave : i==OP_SHAKE?&opt_shake : i==OP_MAP?&opt_minimap : i==OP_NUMS?&opt_nums : i==OP_HINTS?&opt_hints : &opt_arrow;
-                int v=*pv; if(i==sel) rect(pg,18,y-2,204,10,6);
-                text(pg,26,y,nm[i],i==sel?C_WHITE:C_GREY,1);
-                scpy(b,"< "); scat(b, i==OP_DIFF?dif[v] : i==OP_CAM?cam[v] : i==OP_MUSIC?mv[v] : (i==OP_XP||i==OP_GOLD)?mx[v] : yn[v]); scat(b," >");
-                rtext(pg,206,y,b, i==sel?C_GOLD : (i==OP_DIFF ? (v<=1?C_GREEN:v>=3?C_RED:C_GREY) : C_GREY));
+                int v=*pv, on=(i==sel && ts<0); if(on) rect(pg,18,y-2,204,10,6);
+                text(pg,26,y,nm[i],on?C_WHITE:C_GREY,1);
+                scpy(b,"< "); scat(b, i==OP_DIFF?dif[v] : i==OP_CAM?cam[v] : i==OP_MUSIC?mv[v] : (i==OP_XP||i==OP_GOLD)?mx[v] : yn[v]); if(i==OP_DIFF && !opt_baby && dp_edited(opt_diff)) scat(b,"*"); scat(b," >");
+                rtext(pg,206,y,b, on?C_GOLD : (i==OP_DIFF ? (v<=1?C_GREEN:v>=3?C_RED:C_GREY) : C_GREY));
             }
-            if(sel==OP_DIFF) dif_details(pg); else { if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<NOPT) text(pg,216,118,"v",C_CYAN,1); }
+            if(sel==OP_DIFF) dif_details(pg,ts,tt); else { if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<NOPT) text(pg,216,118,"v",C_CYAN,1); }
             rect(pg,18,128,204,1,C_DGREY);
             { const char *h=hlp[sel]; char hb[112];
               if(sel==OP_DIFF){      // the tip for the difficulty you are ON
                   static const char *const tg[6]={"A GENTLE TRIP: HALF DAMAGE AND SLOWER HUNGER","THE INTENDED GAME: FOES HIT HARD AND HUNT YOU DOWN","FOES FLANK YOU IN PACKS AND RECOVER FASTER","TOUGH FAST FOES, MORE CHAMPIONS, MORE BOSSES","ONE MISTAKE IS ENOUGH. BEAT THE ANT KING HERE TO UNLOCK INSANE-SECT","54 TIERS AND A MOB OF BOSSES. GOOD LUCK, BUG"};
-                  h = opt_baby ? "FOR BABIES, REALLY: NOTHING CAN HURT YOU MUCH" : tg[opt_diff]; }
+                  h = opt_baby ? "FOR BABIES, REALLY: NOTHING CAN HURT YOU MUCH" : ts>=0 ? dp_hlp[ts] : dp_edited(opt_diff) ? "YOU CHANGED SOME OF THESE NUMBERS (*). PRESS DOWN TO EDIT THEM" : tg[opt_diff]; }
               int L=textlen(h); if(L>52){ char h1[56]; int k=0; while(k<52 && h[k]) k++; while(k>0 && h[k]!=' ') k--; for(int j=0;j<k;j++) h1[j]=h[j]; h1[k]=0; ctext(pg,120,132,h1,C_GREY); ctext(pg,120,140,h+k+1,C_GREY); } else ctext(pg,120,134,h,C_GREY); }
-            ui_chint(pg,120,148,"LEFT/RIGHT: CHANGE  SELECT: MORE  B: BACK",C_CYAN);
+            ui_chint(pg,120,148, ts>=0 ? "LEFT/RIGHT: CHANGE  A: PUT BACK  B: BACK" : sel==OP_DIFF && !opt_baby ? "LEFT/RIGHT: LEVEL  DOWN: EDIT NUMBERS  B: BACK" : "LEFT/RIGHT: CHANGE  SELECT: MORE  B: BACK",C_CYAN);
         }
         vsync(); read_keys();
+        if(ts>=0){      // EDITING THE NUMBERS under DIFFICULTY: up and down pick a number, left and right change it (hold to run, L and R for big steps)
+            if(HIT(K_UP)){ ts--; sfx(7); dirty=1; }
+            if(HIT(K_DOWN)){ if(ts<NDL-1) ts++; else { ts=-1; sel=OP_HUNGER; } sfx(7); dirty=1; }
+            if(ts>=0){
+                if(ts<tt) tt=ts; if(ts>=tt+11) tt=ts-10;
+                int dir = HELD(K_RIGHT) ? 1 : HELD(K_LEFT) ? -1 : 0;
+                if(dir!=hdir){ hdir=dir; hold=0; }
+                if(dir && ts<NDP){ if(hold==0 || (hold>=18 && hold%3==0)) { dp_step(opt_diff,ts,dir,hold>=70?5:1); sfx(2); dirty=1; } hold++; }
+                if(ts<NDP && (HIT(K_R)||HIT(K_L))){ dp_step(opt_diff,ts,HIT(K_R)?1:-1,10); sfx(2); dirty=1; }
+                if(HIT(K_A)){ if(ts<NDP) dpo[opt_diff][ts]=0; else for(int p=0;p<NDP;p++) dpo[opt_diff][p]=0; sfx(4); dirty=1; }
+            }
+            if(HIT(K_B)){ ts=-1; tt=0; sfx(4); dirty=1; wait_release(); }
+            if(HIT(K_START)){ settings_save(); wait_release(); return; }
+            continue;
+        }
         if(HIT(K_UP)){ sel=(sel+NOPT-1)%NOPT; sfx(7); dirty=1; }
-        if(HIT(K_DOWN)){ sel=(sel+1)%NOPT; sfx(7); dirty=1; }
+        if(HIT(K_DOWN)){ if(sel==OP_DIFF && !opt_baby){ ts=0; tt=0; hold=0; hdir=0; } else sel=(sel+1)%NOPT; sfx(7); dirty=1; }
         int d = HIT(K_RIGHT)||HIT(K_A) ? 1 : HIT(K_LEFT) ? -1 : 0;
         if(d){ dirty=1;
             if(sel==OP_DIFF){ int nd=opt_insane?7:6, ds=((opt_baby?0:opt_diff+1)+d+nd)%nd; opt_baby=(ds==0); opt_diff=ds?ds-1:0; opt_easy=(opt_diff==0); }

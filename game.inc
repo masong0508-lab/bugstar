@@ -19,7 +19,7 @@ static u32 gsk(u32 k){ int top=UW-1; while(top>3 && !uni_w[top]) top--; if(!(uni
 // ---- the grind: zone tiers, counters, achievements, Buddy's level (saved in their own block, see save.inc)
 static u8 tiers[12];                                 // 0..5 normal tiers per zone, 6..11 the Insane-sect tiers
 #define TZ (zone+(opt_diff==5?6:0))
-static const u8 dif_dmg[6]={1,6,8,10,14,20}, dif_hun[6]={12,6,5,4,3,2}; static const u16 dif_gold[6]={0,100,125,150,250,400};   // NORMAL is now what NIGHTMARE used to be (3x damage, 2x hunger, +100 gold); every step above it is harder again   // damage taken (in halves), hunger speed (/12), gold bonus                                  // how many extra times each zone's boss has been beaten: each tier is harder and richer
+// (the difficulty numbers: damage, hunger, gold and the rest are in main.c, DPV(), and can be changed in the options)
 #define HP_MAX 5                 // hull plates you can fit (void bar + 2 plating each, at the smelter): every plate takes 3% off the damage the ship takes
 static u8 hull_plates;           // saved in the smelter block (its spare byte), see ore.inc
 #define SP_MAX 3                 // engine tunes, laser lenses and shield cells you can fit (smelter, SHIP PARTS): each is one step
@@ -629,7 +629,7 @@ static void recalc(void){
     d_sting += have_bug[BUG_BEE]*2;
     if(eqa.it==IT_SHELL && eqa.sub==3 && eqa.rar!=R_UNIQUE) d_spd -= 15;        // the sticky shell slows you
     { int tp=trophy_points(); d_dmg += tp/15; gold_find += tp/5; maxh += tp/10; d_def += tp/30; }   // your trophy case
-    gold_find+=dif_gold[opt_diff];                                                   // hard mode pays better
+    gold_find+=DPV(P_GOLD);                                                   // hard mode pays better
     { int r = fame>=1200?5: fame>=700?4: fame>=350?3: fame>=150?2: fame>=50?1:0; gold_find += r*5; maxh += r*3; d_crit += r; }   // fame has its perks
     maxh=sadd(maxh,sadd(20,sadd(smul(st_vit,3),smul(level,2)))); if(maxh<1) maxh=1; if(xo_v(XO_MAXH)!=100){ maxh=sdiv(smul(maxh,xo_v(XO_MAXH)),100); if(maxh<1) maxh=1; }
     maxmp=sadd(maxmp,sadd(5,smul(st_mag,3))); if(maxmp<0) maxmp=0;
@@ -787,14 +787,14 @@ static void kw_unlock(void); static int kw_unlocked(void); static void kart_worl
 static void hurt(int n){
     if(invuln || (kr_mode && scene==0)) return;                                      // in a kart nothing can bite you
     s64 def = sadd(d_def, shield_t ? sadd(5,sdiv(st_mag,2)) : 0);
-    s64 nn = n - sdiv(def,2); if(nn>=1){ if(opt_easy) nn=(nn+1)>>1; else if(opt_diff>=1) nn=(nn*dif_dmg[opt_diff])>>1; } if(nn<1) nn=1; if(opt_baby) nn=1; { int dv=xo_v(XO_DMGIN); if(dv!=100){ nn=nn*dv/100; if(dv && nn<1) nn=1; } }                                                       // BABY MODE: never more than 1 damage
+    s64 nn = n - sdiv(def,2); if(nn>=1){ int pc=DPV(P_DMG); s64 m=smul(nn,pc); nn = pc<100 ? sdiv(sadd(m,99),100) : sdiv(m,100); } if(nn<1) nn=1; if(opt_baby) nn=1; { int dv=xo_v(XO_DMGIN); if(dv!=100){ nn=nn*dv/100; if(dv && nn<1) nn=1; } }                                                       // BABY MODE: never more than 1 damage
     if(def>=100 || rndi(100) < (int)def){ say("BLOCKED!"); invuln=15; return; }
     hearts-=nn; invuln=xo_v(XO_INVT); shake_t=opt_shake?10:0; sfx(4); hud_now();
 }
 static void hunger_tick(int every){
     if(!opt_hunger || opt_baby) return;                                                  // HUNGER off, or BABY MODE: nobody ever gets hungry
     every=every*100/xo_v(XO_HUNGER); if(every<1) every=1;
-    if(opt_easy) every+=every/2; else if(opt_diff>=1) every=every*dif_hun[opt_diff]/12;
+    { int hx=DPV(P_HUN); if(hx<=0) return; every=every*100/hx; if(every<1) every=1; }                                    // the difficulty's hunger speed (0 = nobody gets hungry)
     if(mark_on(MK_FULL)) every+=every/2; if(mark_on(MK_HUNGRY)) every=every*2/3;
     if(++hunger_t < every) return; hunger_t=0;
     if(food>0){ food--; if(food==20) say("YOU ARE HUNGRY"); if(food%5==0) hud_now(); }
