@@ -1,5 +1,7 @@
 # BUGSTAR roadmap: mining and worlds (status, 29 Oct 2026)
 
+**Next steps after 1 Nov 2026: see `ROADMAP_NEXT.md`.**
+
 Replaces the PDF of 28 Oct. Hard limits are unchanged: IWRAM and EWRAM are full (new code and tables go in ROM), SRAM blocks must not move, and every new block needs a version byte and an old-save fallback.
 
 ## Done
