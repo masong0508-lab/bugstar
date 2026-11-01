@@ -355,6 +355,8 @@ void pc_par_chunk(int total, int chunk, ParFn fn, void *ctx){
     int lo,hi; while(par_take(&lo,&hi)) fn(ctx,lo,hi);
     pthread_mutex_lock(&PP.m); while(PP.left>0) pthread_cond_wait(&PP.done,&PP.m); pthread_mutex_unlock(&PP.m);
 }
+static int nv_v3(void); int pc_v3d_classic(void); extern int pc_nat_w;
+#include "pc_kartnat_r.inc"
 typedef struct { int dmaln, nat3, have_bg, W, H, bgprio, axis, bw, bh, ev, bmode, ea, eb; double sx, sy; uint16_t bldcnt, bldalpha, bd; uint8_t lut5[32]; int *tabx, *taby; int8_t *wx, *wy; int32_t rx, ry; int pa, pb, pc, pd; uint32_t *out; } NvCtx;
 static void nv_rows(void *vc, int lo, int hi){
     NvCtx *c=(NvCtx*)vc; __typeof__(c->dmaln) dmaln=c->dmaln; __typeof__(c->nat3) nat3=c->nat3; __typeof__(c->have_bg) have_bg=c->have_bg; __typeof__(c->W) W=c->W; __typeof__(c->H) H=c->H; __typeof__(c->bgprio) bgprio=c->bgprio; __typeof__(c->axis) axis=c->axis; __typeof__(c->bw) bw=c->bw; __typeof__(c->bh) bh=c->bh; __typeof__(c->ev) ev=c->ev; __typeof__(c->bmode) bmode=c->bmode; __typeof__(c->ea) ea=c->ea; __typeof__(c->eb) eb=c->eb; __typeof__(c->sx) sx=c->sx; __typeof__(c->sy) sy=c->sy; __typeof__(c->bldcnt) bldcnt=c->bldcnt; __typeof__(c->bldalpha) bldalpha=c->bldalpha; __typeof__(c->bd) bd=c->bd; __typeof__(c->tabx) tabx=c->tabx; __typeof__(c->taby) taby=c->taby; __typeof__(c->wx) wx=c->wx; __typeof__(c->wy) wy=c->wy; __typeof__(c->rx) rx=c->rx; __typeof__(c->ry) ry=c->ry; __typeof__(c->pa) pa=c->pa; __typeof__(c->pb) pb=c->pb; __typeof__(c->pc) pc=c->pc; __typeof__(c->pd) pd=c->pd; __typeof__(c->out) out=c->out; const uint8_t *lut5=c->lut5; (void)nat3;
@@ -375,8 +377,10 @@ static void nv_rows(void *vc, int lo, int hi){
             int have=0; uint16_t bc=bd;
             uint32_t bc888=0; int sm=0;
             if(dmaln){
+                int kn_hit = kn_on && (kn_buf[(size_t)Y*W+X]>>31);
                 if(nat3){
-                    if(rbg && R0.ground){ double g=(X+0.5)*sx-0.5; double u0=ubase+ustep*X, v0=vbase+vstep*X;
+                    if(kn_hit){ uint32_t c=kn_buf[(size_t)Y*W+X]&0xFFFFFF; have=1; bc888=c; sm=1; size_t q=(size_t)Y*W+X; if((nv_op[q]&7)>=4 && ((kn_buf[q]&0x40000000u) || !(bmode>=2))){ out[q]=c; continue; } bc=(uint16_t)((c>>3&31)|((c>>11&31)<<5)|((c>>19&31)<<10)); }
+                    else if(rbg && R0.ground){ double g=(X+0.5)*sx-0.5; double u0=ubase+ustep*X, v0=vbase+vstep*X;
                         if(u0>=0&&v0>=0&&u0<240&&v0<160){ have=1; uint32_t c;
                             if(nfx==1&&nfy==1){ c=nv_bil(1,(float)u0,(float)v0,iFP); if(FP<0.5) c=nv_grain(c,(float)u0,(float)v0,(float)FP); }
                             else { double du=rpa*sx/nfx, dv=rpc*sx/nfx, ex=(R1.rx+R1.pa*g-(rrx+rpa*g))/nfy, ey=(R1.ry+R1.pc*g-(rry+rpc*g))/nfy; unsigned sr=0,sg=0,sb=0; int n=0;
@@ -451,16 +455,18 @@ static void nv_sprites(void *vc, int lo, int hi){
             double pa=1,pb=0,pc=0,pd=1;
             if(aff){ int g=(a1>>9)&31; uint32_t p=OAMB+g*32; pa=(int16_t)R16(p+6)/256.0; pb=(int16_t)R16(p+14)/256.0; pc=(int16_t)R16(p+22)/256.0; pd=(int16_t)R16(p+30)/256.0; }
             int hf=!aff&&((a1>>12)&1), vf=!aff&&((a1>>13)&1);
-            int ox0=(int)floor(x0/sx), ox1=(int)ceil((x0+bw)/sx), oy0=(int)floor(y0/sy), oy1=(int)ceil((y0+bh)/sy);
+            double kox=0, koy=0; if(kn_on && y0+bh/2.0>=KN.g0-2){ double fx,fy; kn_fwd(x0+bw/2.0,y0+bh/2.0,&fx,&fy); kox=fx-(x0+bw/2.0); koy=fy-(y0+bh/2.0); }
+            double x0d=x0+kox, y0d=y0+koy;
+            int ox0=(int)floor(x0d/sx), ox1=(int)ceil((x0d+bw)/sx), oy0=(int)floor(y0d/sy), oy1=(int)ceil((y0d+bh)/sy);
             if(ox0<0)ox0=0; if(oy0<lo)oy0=lo; if(ox1>W)ox1=W; if(oy1>hi)oy1=hi; if(oy0>=oy1) continue;
             int units=is8?2:1;
             for(int Y=oy0;Y<oy1;Y++){
                 double gy=Y*sy;                                  // the top edge of this output pixel, in game pixels
                 for(int X=ox0;X<ox1;X++){
                     double gx=X*sx; int tx,ty;
-                    if(aff){ double dx=gx-x0-bw/2.0, dy=gy-y0-bh/2.0; double fx=pa*dx+pb*dy+w/2.0, fy=pc*dx+pd*dy+h/2.0;
+                    if(aff){ double dx=gx-x0d-bw/2.0, dy=gy-y0d-bh/2.0; double fx=pa*dx+pb*dy+w/2.0, fy=pc*dx+pd*dy+h/2.0;
                              if(fx<0||fy<0) continue; tx=(int)fx; ty=(int)fy; if(tx>=w||ty>=h) continue; }
-                    else { int ix=(int)floor(gx-x0), iy=(int)floor(gy-y0); if(ix<0||iy<0||ix>=bw||iy>=bh) continue; tx=hf?w-1-ix:ix; ty=vf?h-1-iy:iy; }
+                    else { int ix=(int)floor(gx-x0d), iy=(int)floor(gy-y0d); if(ix<0||iy<0||ix>=bw||iy>=bh) continue; tx=hf?w-1-ix:ix; ty=vf?h-1-iy:iy; }
                     size_t q=(size_t)Y*W+X;
                     if((nv_op[q]&7)<4 && (nv_op[q]&3)<=prio) continue;
                     int t=tile + (ty>>3)*(one_d ? (w>>3)*units : 32) + (tx>>3)*units;
@@ -469,7 +475,7 @@ static void nv_sprites(void *vc, int lo, int hi){
                     int idx=*(volatile uint8_t*)(uintptr_t)addr; if(!is8){ idx = (tx&1) ? idx>>4 : idx&15; } if(!idx) continue;
                     nv_oc[q]=rgbpix(R16(PALRAM+0x200 + 2*(is8? idx : pal*16+idx))); nv_op[q]=(uint8_t)(prio | (gm==1?16:0));
                     if(aff && sprsm){                                      // a scaled or turned sprite: the colour is a bilinear mix of the opaque texels around, the edge stays as it was
-                        double ux=pa*(gx-x0-bw/2.0)+pb*(gy-y0-bh/2.0)+w/2.0-0.5, uy=pc*(gx-x0-bw/2.0)+pd*(gy-y0-bh/2.0)+h/2.0-0.5; int ix=(int)floor(ux), iy=(int)floor(uy); double ax=ux-ix, ay=uy-iy;
+                        double ux=pa*(gx-x0d-bw/2.0)+pb*(gy-y0d-bh/2.0)+w/2.0-0.5, uy=pc*(gx-x0d-bw/2.0)+pd*(gy-y0d-bh/2.0)+h/2.0-0.5; int ix=(int)floor(ux), iy=(int)floor(uy); double ax=ux-ix, ay=uy-iy;
                         double wsum=0, r=0, g2=0, b2=0; for(int jy=0;jy<2;jy++) for(int jx=0;jx<2;jx++){ uint16_t cc; if(!spr_tex(tile,ix+jx,iy+jy,w,h,one_d,is8,pal,&cc)) continue; double wt=(jx?ax:1-ax)*(jy?ay:1-ay); wsum+=wt; r+=wt*(cc&31); g2+=wt*((cc>>5)&31); b2+=wt*((cc>>10)&31); }
                         if(wsum>0.01) nv_oc[q]=(uint16_t)((int)(r/wsum+0.5) | (int)(g2/wsum+0.5)<<5 | (int)(b2/wsum+0.5)<<10); }
                 }
@@ -492,7 +498,7 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     const double sx=240.0/W, sy=160.0/H;                       // game pixels per output pixel
     struct timespec T0,T1,T2,T3,T4; clock_gettime(CLOCK_MONOTONIC,&T0);
     // ---- sprites
-    memset(nv_op,4,need); int sprsm = nv_v3()!=2 && lst_dma && W>240;
+    kn_prep(W,H,R16(IOREG)&7); memset(nv_op,4,need); int sprsm = nv_v3()!=2 && lst_dma && W>240;
     if((dc>>12)&1){ SpCtx c={W,H,one_d,sprsm,sx,sy}; pc_par(H,nv_sprites,&c); }
     clock_gettime(CLOCK_MONOTONIC,&T1);
     // ---- bitmap layer + blend
@@ -509,7 +515,7 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(dmaln){                                                   // both pages: each line says which one it shows
         for(int y=0;y<160;y++) for(int x=0;x<240;x++){ int i0=*(volatile uint8_t*)(uintptr_t)(VRAMB+y*240+x), i1=*(volatile uint8_t*)(uintptr_t)(VRAMB+0xA000+y*240+x);
             bghave[y][x]=i0!=0; bgres[y][x]=i0?rgbpix(R16(PALRAM+i0*2)):bd; bghave2[y][x]=i1!=0; bgres2[y][x]=i1?rgbpix(R16(PALRAM+i1*2)):bd; }
-        if(nat3) nv_ground_prep(bd); }
+        if(nat3) nv_ground_prep(bd); if(nat3 && kn_on) kn_pass(W,H,sx,sy,bd); else kn_on=0; }
     int axis = (pb==0 && pc==0) && !dmaln;                                // no rotation: the bitmap's x depends on X only, y on Y only
     int *tabx=0,*taby=0; int8_t *wx=0,*wy=0;
     if(have_bg && axis){
