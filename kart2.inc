@@ -133,7 +133,11 @@ static void kart_results(void){
     const char *const *opt = k_type==3 ? tn : qn; int sel=0;
     while(1){ in_menu++; box(pg,40,50,160,60); rect(pg,41,51,158,12,6); ctext(pg,120,54,"WHAT NOW?",C_GOLD);
         for(int i=0;i<3;i++){ if(i==sel) text(pg,52,70+i*10,">",C_CYAN,1); text(pg,60,70+i*10,opt[i],i==sel?C_WHITE:C_GREY,1); } in_menu--;
-        vsync(); read_keys(); if(HIT(K_UP)) sel=(sel+2)%3; if(HIT(K_DOWN)) sel=(sel+1)%3; if(HIT(K_A)) break; if(HIT(K_B)){ sel=2; break; } }
+        vsync(); read_keys();
+#ifdef TEST_KSWEEP
+        sel=2; break;
+#endif
+        if(HIT(K_UP)) sel=(sel+2)%3; if(HIT(K_DOWN)) sel=(sel+1)%3; if(HIT(K_A)) break; if(HIT(K_B)){ sel=2; break; } }
     wait_release();
     if(sel==0){ kart_go(nrc, nrc>1?-1:0, 0, 0); return; }
     if(sel==1 && k_type==3){ kgive_back(); kr_mode=2; ks_state=0; nrc=1; ppx=kret_x; ppy=kret_y; heading=kret_h; heading_rays(); kbuild_menu(); return; }

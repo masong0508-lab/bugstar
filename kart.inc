@@ -720,7 +720,7 @@ static int kloop_draw_me(int slot){                                 // you, goin
     set_affine(29,(s16)pa,(s16)pb,(s16)pc,(s16)pd);
     shadow_oam[slot].a0=((y-16)&255)|(1<<8)|(1<<9)|(1<<14); shadow_oam[slot].a1=((x-32)&511)|(29<<9)|(2<<14); shadow_oam[slot].a2=(T_KDYN+8)|(7<<12); slot++;   // the side view
     int b=kl.part[KP_BODY], off=(kb_seat[b]-1)*256/inv;
-    if(kw_mode && kw_driver_on()){ int bi=150*inv/190; s32 qa=bi*uy/256, qb=-bi*ux/256, qc=-bi*ux/256, qd=-bi*uy/256; if(kloop_sd<=0){ qa=-qa; qb=-qb; }   // a Kart World driver: turned with the loop too
+    if(kw_mode && kw_driver_on() && slot<122){ int bi=150*inv/190; s32 qa=bi*uy/256, qb=-bi*ux/256, qc=-bi*ux/256, qd=-bi*uy/256; if(kloop_sd<=0){ qa=-qa; qb=-qb; }   // a Kart World driver: turned with the loop too
         int s2=kw_draw_driver_rot(slot,x+(int)(ux*(off+(16*128/bi))/256),y+(int)(uy*(off+(16*128/bi))/256),(int)qa,(int)qb,(int)qc,(int)qd); if(s2>=0) slot=s2; }
     else if(form==FORM_HUMAN && slot<120){ int sx=(hum_wd[hum.build%3]+40)*4/3*inv/190, sy=(hum_ht[hum.height%5]+40)*4/3*inv/190; if(sx<64) sx=64; if(sy<64) sy=64;   // your humanoid, sitting in the seat, turned with the kart
         s32 qa=sx*uy/256, qb=-sx*ux/256, qc=-sy*ux/256, qd=-sy*uy/256; if(kloop_sd<=0){ qa=-qa; qb=-qb; }
