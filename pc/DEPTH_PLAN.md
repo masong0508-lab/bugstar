@@ -107,7 +107,7 @@ Each rung uses a flag the game already keeps. Rungs are per planet, except where
 | Ship, trade | `shop_menu()`, `bazaar()`, `workbench()`, `good_price()`, `eco_name`, `cargo[8]` | Trade |
 | UI | `card()`, `list_pick()`, `panel()`, `char_screen()` (9 tabs), `say()`, `show_msg()`, `draw_hud()` | Screens |
 | Save | 32 KB SRAM, 3 slots, `do_save()`, `load_game()`, blocks with magic + sum. `pc_hw.c` maps it to the `.sav` file. | We do NOT touch it |
-| PC content | `pc/content/pc_content.c`: `planet_make()` (65 traits, 3 to 6 per planet), `universe_themes()` (24 themes), `addr_seed()` (2048-bit). Being wired in by another agent. | Colony flavour |
+| PC content | `pc/content/pc_content.c`: `planet_make()` (1,040 traits = 65 x 16 flavours, 3 to 6 per planet, 112 stats = 7 x 16, native creatures from 12,672 kinds, 512 peoples, 256 city kinds), `universe_themes()` (24 themes), `addr_seed()` (2048-bit). Wired in: the PC WORLD FILE screen (pause, WORLD page, B) and gravity/light/weather on galaxy planets; use it from sim code only through `pcx.h`. | Colony flavour |
 | Tests | `pc/tests/determinism.sh`, `seeds.sh`, `play.txt`, `cont.txt`, `pc/content/test.sh` | Pattern to copy |
 
 Facts that shape the design:
@@ -238,7 +238,7 @@ typedef struct {                 // about 200 bytes
 - Choose a plot near the landing field. It is stamped into `hfine`/`cmap` like `city_stamp()`. Size grows 3x3, 5x5, 7x7.
 - Furniture: bed, table, shelf, stove, chest, lamp, plant, rug, trophy stand (shows relics via the `relic_shelf()` idea). About 20 pieces to start.
 - Comfort score from furniture and the planet. Sleeping in a good home heals, fills REST, and can skip a night (fast-forward x10 with a fade).
-- Planet traits change what you can build (65 traits; `planet_make()`):
+- Planet traits change what you can build (65 classic traits, each in 16 flavours = 1,040; the home feature follows the classic trait; `planet_make()`):
 
 | Trait | Home feature |
 |---|---|
@@ -355,7 +355,7 @@ gold -> furniture/buildings -> comfort -> mood -> output
 ### 6.2 REPLAYABLE: every planet is different
 
 - Source of variety:
-  - the planet seed and its 3 to 6 of 65 traits (`planet_make()`);
+  - the planet seed and its 3 to 6 of 1,040 traits (65 classic x 16 flavours), its 112 stats, native creatures, peoples and city (`planet_make()`);
   - the 2 universe themes (24) from `universe_themes()`, e.g. HUNGER FREE removes the food chain; STARVING makes cooking mandatory; ENDLESS NIGHT swaps the day schedule; PIRATE KINGDOM raises raids;
   - the settler cast (names, traits, skills) from the seed;
   - the founding choices: site, starting kit, policy;

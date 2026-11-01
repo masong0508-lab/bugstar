@@ -169,13 +169,40 @@ Rule-made, so it grows with the address instead of by hand:
 - **Feasibility**: a seed viewer for the new fields, a world sampler that checks thousands of random addresses (no crashes, no impossible trait pairs),
   a soak test for rifts, and an address/bignum test suite. A one-switch "small universe" mode for slow PCs.
 
-### Built so far: `pc/content/` (works on its own, not wired into the game yet)
+### Built so far: `pc/content/` (the library) and how the game uses it
+
+Everything is made on demand from a seed or an id by word lists (parts x parts); nothing is stored. Ids are "part B x (number of parts A) + part A", so low ids are the plain ones.
+
+| What | Count | Made of |
+|---|---|---|
+| planet traits | **1,040** | 65 classic traits (9 categories) x 16 flavours (flavour 0 = plain, 15 flavour words per category: SALTY LAVA SEAS) |
+| stats per planet | **112** | 7 families (gravity, temperature, daylight, danger, loot, prices, life) x 16 zones (lowlands ... orbit) |
+| kinds of people | **512** | 32 stocks x 16 ways of life (REED-WEAVING FERNLINGS) |
+| kinds of city | **256** | 16 forms x 16 characters (QUIET CLIFF NEST) |
+| creature kinds | **12,672** | 66 body plans (6 classes of 11) x 192 variants (size 4 x diet 3 x habitat 4 x behaviour 4) = 192 x the GBA game's 66 monster kinds (16 x 12) |
+| creature individuals | **415,236,096** | 12,672 kinds x 32,768 (gift 16 x colouring 16 x age/rank 8 x mutation 16) |
+| universe themes | 24 | unchanged; 266 pairs that can share a universe |
+| trait recipes | 10,780,270 plain, **144,586,870,865,920** with flavours | 3 to 6 traits, one per category, no clashing pair |
 
 - `bignum.h`: a small big number (5632 bits, no library): add, multiply, shift, compare, decimal and scientific print. Used for distances, trips and counts.
-- `pc_content.c/.h`: the 8x-bits address (64 words for the universe, 39 per axis), `addr_seed()` that hashes every word, **65 planet traits in 9 categories**
-  (3 to 6 per planet, one per category, 32 impossible pairs such as DEAD SUN + OCEAN WORLD), planet effects (gravity, day length, temperature, danger, loot, life),
-  planet names, and **24 universe themes** (two per universe, no clashing pairs such as LOW GRAVITY + HEAVY HOLLOW).
-- `content_test.c`, `test.sh`: checks the scale table above by computing it (all 12 numbers match), that flipping any one of the 4544 address bits changes the seed
-  (average 31 of 64 bits), 1,000,000 random planets (valid, repeatable, every trait appears, 0 bad) and 200,000 universes (every theme appears, 0 bad).
-  Run `pc/content/test.sh`. `pc/content/sampler.c` prints sample worlds: `pc/content/test.sh 5` builds it and prints five.
-- Next: wire the traits into terrain, lighting, monsters, loot and quests, and the themes into the rules; then quests, gear sets and monsters from parts.
+- `pc_content.c/.h` (+ `pc_beings.inc`, same translation unit): the 8x-bits address (64 words for the universe, 39 per axis), `addr_seed()` that hashes every word,
+  the traits (3 to 6 per planet, one per category, 31 impossible pairs across categories such as DEAD SUN + OCEAN WORLD; the rules sit on the classic traits so a flavour never breaks them),
+  the 112 stats, the native creatures, peoples and city of each planet, one famous native creature, planet names, and the 24 universe themes (two per universe, no clashing pairs).
+- `pcx.c/.h`: a flat API with plain types. The game's own code has names like `trait_name`, so it never includes `pc_content.h`; it calls `pcx_world()` (finished pages of text),
+  `pcx_effects()` (what the traits change in the game's world) and `pcx_fold()` / `pcx_hi_set()` (the address bits above the game's own).
+- `content_test.c`, `test.sh`: scale numbers, 4544 address bit flips (average 31 of 64 bits change), 1,000,000 random planets (valid, repeatable, all 1,040 traits appear),
+  unique names for every trait, stat, people, city and creature kind (all 12,672 compared), 200,000 random individuals (same name means same individual), the
+  forbidden-pair rules over all 1,040 x 1,040 traits, the exact counts, 3,000 `pcx` places (every line fits the screen and the font). Run `pc/content/test.sh`.
+  `pc/content/sampler.c` prints sample worlds: `pc/content/test.sh 5` builds it and prints five.
+
+**How the game uses it (PC build only; `build.sh` adds `pc_info.inc` and three small `sed` patches to the copies in `pc/gen`):**
+- **PC WORLD FILE**: pause (START), go to the WORLD page, press **B**. Six pages, L and R turn them, B closes: THIS PLACE (the universe's two themes and what they do, the planet's numbers),
+  TRAITS (3 to 6 of the 1,040), STATS (the 112 as a table, zones down and families across), PEOPLE AND CITY, CREATURES (the native kinds), FAMOUS CREATURE (one individual with name, gift, mutation, stats).
+  Test: `pc/tests/worldfile.sh` (plays the game to a planet, opens the file, turns all pages).
+- **The traits change the planet** on the endless galaxy's worlds (after the story; not moons, not the hell worlds): gravity (0.35 / 0.70 / 1.05 / 1.40 g from the planet's gravity percent),
+  light (LONG NIGHT and DEAD SUN make night, TIDALLY LOCKED and RED GIANT SKY dusk) and weather (STORMY and ACID RAIN rain, SNOWFALL snow, SANDSTORMS and ENDLESS FOG dust, ASH FALL ash).
+  The six story worlds keep their own rules and the file says so. The other numbers (danger, loot, prices, life, the stats, peoples, creatures, themes) are shown, not yet used by the game's rules.
+- **The seed viewer** (`--view`) reads a full 2048-bit universe (up to 512 hex digits) and two 1240-bit sides (up to 310 digits), prints the six pages (`PCX` lines) and writes `<prefix>_pcfile1..6.ppm`.
+  Bits above the game's own 256 / 155 are handed to `pcx_hi_set()` and folded into the game's words, so the top digit changes the world too (tested in `seeds.sh`).
+  In normal play the address only reaches the game's own 256 / 155 bits (that is all the game's navigation and save format hold), so the high words are zero there.
+- Next: wire danger, loot, prices, life, the themes, the native creatures, peoples and cities into the game's rules (monsters, loot, quests, towns).

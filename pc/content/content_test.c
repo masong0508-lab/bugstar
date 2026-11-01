@@ -121,6 +121,8 @@ int main(void){
       // the forbidden-pair rules sit on the classic traits: a flavour never changes them
       { long diff = 0, forb = 0; for(int a = 0; a < trait_count(); a += 7) for(int b = 0; b < trait_count(); b++){ int c1 = traits_conflict(a, b), c0 = traits_conflict(a % TR_BASE, b % TR_BASE); if(c1 != c0) diff++; }
         for(int a = 0; a < TR_BASE; a++) for(int b = a + 1; b < TR_BASE; b++) if(traits_conflict(a, b) && trait_cat(a) != trait_cat(b)) forb++;
+        { long cp = 0; for(int a = 0; a < trait_count(); a++) for(int b = a + 1; b < trait_count(); b++) cp += traits_conflict(a, b);
+          CHECK(cp == 72056, "clashing trait pairs among the 1,040: %ld (the HOW BIG page says 72056)", cp); printf("clashing trait pairs among 1,040 traits: %ld of 540,280\n", cp); }
         CHECK(!diff, "%ld flavoured pairs differ from the classic rule", diff); CHECK(forb == 31, "forbidden pairs across categories: %ld (want 31)", forb);
         printf("forbidden pairs: %ld across categories (classic rule), flavours change none\n", forb); }
       printf("counts: %d traits (%d x %d), %d stats (%d x %d), %d peoples (%d x %d), %d cities (%d x %d), %d creature kinds (%d x %d), %llu individuals\n",
