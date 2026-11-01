@@ -8,30 +8,31 @@ extern void *malloc(unsigned long); extern void free(void*);
 extern int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h, pc_ships_mode; extern uint32_t *pc_dn_buf, *pc_dn_spl; extern int pc_dn_spl_on; extern uint8_t pc_dn_snap2[2][240*160]; extern long pc_dn_f[2]; extern uint8_t pc_dn_snap[2][240*160];
 extern double pc_now_ms(void); extern void pc_dn_report(double,int,int); extern int pc_v3d_classic(void); extern long pc_frames(void);
 typedef void (*PcParFn)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn fn, void *ctx);
-typedef struct { double top, bot, inv; int yt, yb; const u16 *rp; int L, edge, perp; u16 hv[48]; u8 nt[48]; } DnCol;
+typedef struct { double top, bot, inv; int yt, yb; const u16 *rp; int L, edge, perp, mm; u16 hv[48]; u8 nt[48]; } DnCol;
 typedef struct { int W, H, Y0; double sy, hzf; DnCol *col; double *rxc, *ryc; uint32_t *buf; s32 px, py; } DnCtx;
 #define PC_DN_NONE 0x20000000u        // (this pixel stays the game's own picture)
 static inline uint32_t dn_pk(int base, int s){ int sh=s>>4, f=(s&15)*17; if(s<0){ sh=0; f=0; } if(sh>=7){ sh=7; f=0; } return (uint32_t)(base+sh) | (uint32_t)(base+sh+(sh<7))<<8 | (uint32_t)f<<16; }
 static inline int dn_lsub(s32 fx, s32 fy){ s32 a=fx-0x2000, b=fy-0x2000; int x0=(a>>14)&127, x1=(x0+1)&127, y0=(b>>14)&127, y1=(y0+1)&127, fxr=(a>>6)&255, fyr=(b>>6)&255;
     int t0=lsub[y0*128+x0]*(256-fxr)+lsub[y0*128+x1]*fxr, t1=lsub[y1*128+x0]*(256-fxr)+lsub[y1*128+x1]*fxr; return (t0*(256-fyr)+t1*fyr)>>16; }
 // a floor/ceiling texel with its 4 neighbours blended (only the shade; if the neighbours use other colour ramps the nearest texel wins). Returns the shade in 1/512 units and the ramp in *rmp.
-static inline int dn_bil(const u8 *tab, int base, s32 fx, s32 fy, int *rmp){
+static inline int dn_bil(const u8 *tab, int base, s32 fx, s32 fy, int *rmp, int m){      // m: window pixels per texel (x16): the blend is only as wide as one pixel, so texels stay crisp
     int px=((fx>>6)&1023)-16, py=((fy>>6)&1023)-16; int x0=(px>>5)&31, x1=(x0+1)&31, y0=(py>>5)&31, y1=(y0+1)&31, fu=px&31, fv=py&31;
+    fu=((fu-16)*m>>4)+16; if(fu<0) fu=0; if(fu>32) fu=32; fv=((fv-16)*m>>4)+16; if(fv<0) fv=0; if(fv>32) fv=32;
     int a=tab[base|(y0<<5)|x0], b=tab[base|(y0<<5)|x1], c=tab[base|(y1<<5)|x0], d=tab[base|(y1<<5)|x1];
     if((a>>5)==(b>>5) && (a>>5)==(c>>5) && (a>>5)==(d>>5)){ *rmp=a>>5; return (((a&31)*(32-fu)+(b&31)*fu)*(32-fv)+((c&31)*(32-fu)+(d&31)*fu)*fv)>>1; }   // (31*32*32 = 31744, in 1/512 of a shade step... see below)
     int t=(fv>=16)?((fu>=16)?d:c):((fu>=16)?b:a); *rmp=t>>5; return (t&31)<<9; }
 static void dn_rows(void *vc, int lo, int hi){
     DnCtx *c=(DnCtx*)vc; int W=c->W; double sy=c->sy, hz=c->hzf;
     for(int Y=lo+c->Y0;Y<hi+c->Y0;Y++){ double yg=(Y+0.5)/sy; uint32_t *row=c->buf+(unsigned long)(Y-c->Y0)*W;
-        int fl=yg>hz, d0=0, d1=0; double fr=0, rd=0; int sl=0, fg=0, bil=0;
+        int fl=yg>hz, d0=0, d1=0; double fr=0, rd=0; int sl=0, fg=0, bil=0, bm=16;
         if(fl || yg<hz){ double dd=fl?yg-hz:hz-yg; if(dd<0.5) dd=0.5; if(dd>98.5) dd=98.5; d0=(int)dd; d1=d0+1; fr=dd-d0; if(d0<1){ d0=1; fr=0; }
             if(fl){ rd=(double)(FOC<<15)/dd; sl=(int)(rl_rel[d0]+(rl_rel[d1]-rl_rel[d0])*fr); fg=(int)(rf_rel[d0]+(rf_rel[d1]-rf_rel[d0])*fr); }
             else { rd=(double)(FOC<<16)/dd; sl=(int)(cl_rel[d0]+(cl_rel[d1]-cl_rel[d0])*fr); fg=(int)(cf_rel[d0]+(cf_rel[d1]-cf_rel[d0])*fr); }
-            { double dx=rd*(c->rxc[W>1?W-1:0]-c->rxc[0])/65536.0/(W>1?W-1:1); if(dx<0) dx=-dx; bil = dx<3000.0; } }      // (one pixel covers less than 1.5 texels: blend the texels)
+            { double dx=rd*(c->rxc[W>1?W-1:0]-c->rxc[0])/65536.0/(W>1?W-1:1); if(dx<0) dx=-dx; bil = dx<3000.0; { double m=2048.0/(dx>1?dx:1); bm=(int)(m*16); if(bm>256) bm=256; if(bm<16) bm=16; } } }      // (one pixel covers less than 1.5 texels: blend the texels)
         for(int X=0;X<W;X++){ const DnCol *k=&c->col[X];
             if(yg>=k->top && yg<k->bot){                                                             // the wall
                 if(k->edge || Y==k->yt || Y==k->yb){ row[X]=dn_pk(k->rp[0]&0xFF,0); continue; }
-                double vv=(yg-k->top)*k->inv-0.5; if(vv<0) vv=0; int v0=(int)vv, fv=(int)((vv-v0)*16), v1=v0+1>47?47:v0+1; if(v0>47) v0=47;
+                double vv=(yg-k->top)*k->inv-0.5; if(vv<0) vv=0; int v0=(int)vv, fv=(int)((vv-v0)*16), v1=v0+1>47?47:v0+1; fv=((fv-8)*k->mm>>4)+8; if(fv<0) fv=0; if(fv>16) fv=16; if(v0>47) v0=47;
                 int h0=k->hv[v0], h1=k->hv[v1], e, s;
                 if(!((h0|h1)&0x2000) && ((h0>>10)&7)==((h1>>10)&7)){ int r=(h0>>10)&7; e=k->rp[r]; int ts=(h0&1023)*(16-fv)+(h1&1023)*fv;      // all four texels use one ramp: blend the shade
                     s=(e&0x100) ? (ts>>7) : (ts*k->L)>>14; }
@@ -41,13 +42,13 @@ static void dn_rows(void *vc, int lo, int hi){
             if(tx>=MW || ty>=MW){ row[X]=dn_pk(R_CEIL,0); continue; }
             int fc=fcode[ty*MW+tx], Lp, lsv=dn_lsub(fx,fy);
             if(fl){ int e, s, ts, rp;
-                if(bil){ ts=dn_bil(floor_tex,fc<<10,fx,fy,&rp); } else { int t=floor_tex[(fc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
+                if(bil){ ts=dn_bil(floor_tex,fc<<10,fx,fy,&rp,bm); } else { int t=floor_tex[(fc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
                 e=framp[(fc<<3)|rp];
                 if(fc==5 || (fc==2 && rp==0)){ row[X]=PC_DN_NONE; continue; }                   // water and polished floors mirror the walls: the game's own picture stays
                 if(e&0x100) s=ts>>7; else { Lp=sl+((lsv*fg)>>6); if(Lp>127) Lp=127; s=(ts*Lp)>>14; }
                 row[X]=dn_pk(e&0xFF,s); }
             else { int cc=((fc>=3&&fc<=5)||fc==9), ts, rp;
-                if(bil){ ts=dn_bil(ceil_tex,cc<<10,fx,fy,&rp); } else { int t=ceil_tex[(cc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
+                if(bil){ ts=dn_bil(ceil_tex,cc<<10,fx,fy,&rp,bm); } else { int t=ceil_tex[(cc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
                 int e=cramp[(cc<<3)|rp];
                 Lp=sl+((lsv*fg)>>7); if(Lp>127) Lp=127; row[X]=dn_pk(e&0xFF,(ts*Lp)>>14); } } }
 }
@@ -96,11 +97,11 @@ static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply)
         int w=wtex[cell]; if(w<=WT_CRYSTAL && ((cell*7+side)&1)) u=0xFFFF-u;      // (a mirrored wall: mirror u)
         int lx=(hx-((rx*5)>>4))>>14, ly=(hy-((ry*5)>>4))>>14; if(lx<0)lx=0; if(lx>127)lx=127; if(ly<0)ly=0; if(ly>127)ly=127;
         int li=perp>>12; if(li>511) li=511; int L=((light_tab[li]*lantk)>>6)+((lsub[(ly<<7)|lx]*fog_tab[li])>>6); L=tonemap[L>511?511:L]; if(side==0) L=(L*48)>>6; L+=((cell*37)&7)-3; if(L<0) L=0; if(L>127) L=127;
-        double h=(double)FOC*65536.0/perp; DnCol *k=&col[X]; k->top=hzf-h; k->bot=hzf+h/2; k->rp=wramp+w*8; k->L=L; k->perp=perp; dn_perp[X]=perp;
+        double h=(double)FOC*65536.0/perp; DnCol *k=&col[X]; double mm=h*1.5*sy/48.0; if(mm<1) mm=1; if(mm>8) mm=8; k->mm=(int)(mm*16); k->top=hzf-h; k->bot=hzf+h/2; k->rp=wramp+w*8; k->L=L; k->perp=perp; dn_perp[X]=perp;
         k->inv=48.0/(k->bot-k->top); k->yt=(int)(k->top*sy); k->yb=(int)(k->bot*sy); k->edge=(int)(perp>>4);   // (edge holds perp until the edge test below)
-        { int p=(int)(u>>6)-16, ta=p>>5, fu=p&31, ca=ta<0?0:ta, cb=ta+1>31?31:ta+1; if(ca>31) ca=31;
+        { int p=(int)(u>>6)-16, ta=p>>5, fu0=p&31, fu=((fu0-16)*k->mm>>4)+16, ca=ta<0?0:ta, cb=ta+1>31?31:ta+1; if(fu<0) fu=0; if(fu>32) fu=32; if(ca>31) ca=31;
           const u8 *c0=wall_tex+w*1536+ca*48, *c1=wall_tex+w*1536+cb*48;
-          for(int v=0;v<48;v++){ int a=c0[v], b=c1[v]; k->nt[v]=(fu>=16?b:a);
+          for(int v=0;v<48;v++){ int a=c0[v], b=c1[v]; k->nt[v]=(fu0>=16?b:a);
               if((a>>5)==(b>>5)) k->hv[v]=(u16)(((a>>5)<<10)|(((a&31)*(32-fu)+(b&31)*fu)&1023)); else k->hv[v]=0x2000; } } }
     { int step=W/120>1?W/120:1; for(int X=0;X<W;X++){ int p=col[X].edge, e=0; if(X>=step && col[X-step].edge-p>0x400) e=1; if(X+step<W && col[X+step].edge-p>0x400) e=1; col[X].L|=e<<16; } for(int X=0;X<W;X++){ col[X].edge=col[X].L>>16; col[X].L&=0xFFFF; } }
     DnCtx c={W,H,Y0,sy,hzf,col,rxc,ryc,pc_dn_buf,px_,py_}; pc_par_chunk(H-Y0,8,dn_rows,&c);
