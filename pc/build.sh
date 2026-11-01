@@ -73,6 +73,11 @@ sed -i -e 's/^static void slot_erase(int i){/static void slot_erase(int i){ pc_l
        -e 's/xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed; uni_load();/& pc_laws_slot_load(cur_slot);/' \
        -e 's/^\(    sram_write(slot_base(cur_slot), s, sizeof(Save));\)$/\1 pc_laws_slot_save(cur_slot);/' save.inc
 sed -i 's/if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug/if(s2>=0){ cur_slot=s2; pc_laws_slot_new(s2); oam_hide_all(); oam_flush(); if(make_bug/' main.c
+# --- the PC ship renderer (pc/shipr, pc/pc_ships.inc): the space ships go to it when it is on (pc_ships_mode >= 0, the window build's SHIPS option)
+sed -i -e 's|^    int crowd=0; for(int i=0;i<NPIR;i++) if(pir\[i\].alive) crowd++;$|    if(pc_sr_on()){ pc_sr_space(pg); goto pc_sr_done; }\n&|' \
+       -e 's|^    for(int k=0;k<4;k++) if(cans\[k\].alive){ int sx,sy; s32 z; if(sproj|    pc_sr_done: pc_sr_mark(pg);\n&|' space.inc
+sed -i '1i static int pc_sr_on(void); static void pc_sr_space(volatile u16 *pg), pc_sr_mark(volatile u16 *pg);' space.inc
+echo '#include "../pc_ships.inc"' >> main.c
 echo '#include "../pc_laws.inc"' >> main.c
 # --- the side game (pc/sim, DEPTH_PLAN): hooks into the copies in pc/gen, never the repo root. Each hook must find its anchor exactly once or the build fails.
 H() { python3 ../sim/hook.py "$@"; }
@@ -123,9 +128,9 @@ fi
 CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_giant.inc ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../shipr/shipr.h ../pc_giant.inc ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
-for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../giant/giant.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../giant/giant.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH $OBJS $SDLL -lm -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"

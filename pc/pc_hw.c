@@ -15,10 +15,14 @@
 #include <sys/mman.h>
 #endif
 #include "pc_hw.h"
+#include "shipr/shipr.h"
 #include "platform/pc_plat.h"
 #include <math.h>
 
 void (*pc_irq_fn)(void);
+int pc_ships_mode=-1, pc_armada_n=0;   // the ship renderer: -1 off (the game draws its own ships), 0 CLASSIC, 1 NATIVE, 2 ULTRA; ships in the far battle (PC_SHIPS / PC_ARMADA for tests)
+static uint8_t sr_snap[2][240*128]; static long sr_snap_f[2]={-100,-100};
+void pc_sr_snapshot(const volatile void *pg){ int t=((uintptr_t)pg)>=0x0600A000u ? 1 : 0; memcpy(sr_snap[t],(const void*)pg,240*128); sr_snap_f[t]=pc_frames(); }
 int pc_vid3d;                   // 3D views: 0 AUTO, 1 NATIVE, 2 CLASSIC (set by the window front end; PC_V3D=0..2 in the environment for tests)
 
 #define EWRAM 0x02000000u
@@ -52,6 +56,7 @@ static uint64_t g_saved_hash;
 uint64_t pc_hash_sram(void);
 int pc_hw_init(const char *sav_path){
     g_sav = sav_path;
+    if(getenv("PC_SHIPS")) pc_ships_mode=atoi(getenv("PC_SHIPS")); if(getenv("PC_ARMADA")) pc_armada_n=atoi(getenv("PC_ARMADA"));
     if(!map_at(EWRAM,0x40000) || !map_at(IWRAM,0x8000) || !map_at(IOREG,0x1000) || !map_at(PALRAM,0x1000) ||
        !map_at(VRAMB,0x20000) || !map_at(OAMB,0x1000) || !map_at(GPIOB,0x10000) || !map_at(SRAMB,0x10000)) return 0;
     R16(IOREG+0x130)=0x03FF;                                  // no key pressed
@@ -457,6 +462,12 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
         }
     }
     free(tabx); free(wx);
+    if(pc_ships_mode>=0 && mode==4 && !(bmode>=2 && ev>=12)){                 // the ship renderer, under whatever the game drew after its ships (cockpit, HUD, sparks)
+        int t=(dc>>4)&1; if(getenv("SR_DBG")) fprintf(stderr,"sr: page %d tag %d snapf %ld/%ld frame %ld n=%d\n",t,sr_shown_tag(),sr_snap_f[0],sr_snap_f[1],g_frame,sr_count());
+        if(sr_select(t) && g_frame-sr_snap_f[t]<=4){
+            static uint8_t mk[240*160]; int same=0; const uint8_t *pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0));
+            for(int i=0;i<240*128;i++){ int e= pgb[i]==sr_snap[t][i]; same+=e; mk[i]= e ? (pgb[i]==0 ? 2 : 1) : 0; } memset(mk+240*128,0,240*32);
+            if(same>240*128*6/10) sr_render(out,W,H,mk,0); } }
 }
 void pc_compose_240(uint32_t *out){ pc_compose_native(out,240,160,0); }
 

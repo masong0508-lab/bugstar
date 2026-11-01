@@ -12,7 +12,7 @@
 #include "pc_plat.h"
 extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;
 
-extern int pc_vid3d;
+extern int pc_vid3d, pc_ships_mode, pc_armada_n;
 int pc_motor(void);                 // pc_hw.c: is the (cartridge) rumble motor on right now
 int pc_script_keys(uint16_t *k);    // pc_hw.c: keys from a --script file, if one was given (for tests)
 long pc_frames(void);
@@ -21,7 +21,7 @@ long pc_frames(void);
 static const char *bname[NB]={"A","B","SELECT","START","RIGHT","LEFT","UP","DOWN","R","L"};
 // ------------------------------------------------------------------------------------------------ settings
 typedef struct {
-    int textsize, contrast, mouse, video3d, fullscreen, scale_mode, vsync, show_fps, volume, mute, pause_unfocus, rumble, deadzone, max_mp;
+    int ships, armada, textsize, contrast, mouse, video3d, fullscreen, scale_mode, vsync, show_fps, volume, mute, pause_unfocus, rumble, deadzone, max_mp;
     int kb[NB][2]; int pad[NB]; int win_w, win_h;
 } Cfg;
 enum { SM_CRISP, SM_SMOOTH, SM_COUNT };
@@ -29,7 +29,7 @@ static Cfg C;
 static char g_pref[1024], g_cfgpath[1100], g_savepath[1100], g_shotdir[1100];
 static void cfg_defaults(void){
     memset(&C,0,sizeof C);
-    C.mouse=1; C.fullscreen=0; C.scale_mode=SM_CRISP; C.vsync=1; C.show_fps=0; C.volume=80; C.mute=0; C.pause_unfocus=1; C.rumble=1; C.deadzone=30; C.max_mp=0;
+    C.mouse=1; C.ships=1; C.armada=1; C.fullscreen=0; C.scale_mode=SM_CRISP; C.vsync=1; C.show_fps=0; C.volume=80; C.mute=0; C.pause_unfocus=1; C.rumble=1; C.deadzone=30; C.max_mp=0;
     C.win_w=960; C.win_h=640;
     static const int kb[NB][2]={{SDL_SCANCODE_X,SDL_SCANCODE_SPACE},{SDL_SCANCODE_Z,SDL_SCANCODE_K},{SDL_SCANCODE_BACKSPACE,SDL_SCANCODE_TAB},{SDL_SCANCODE_RETURN,SDL_SCANCODE_KP_ENTER},
         {SDL_SCANCODE_RIGHT,SDL_SCANCODE_D},{SDL_SCANCODE_LEFT,SDL_SCANCODE_A},{SDL_SCANCODE_UP,SDL_SCANCODE_W},{SDL_SCANCODE_DOWN,SDL_SCANCODE_S},
@@ -43,8 +43,8 @@ static void cfg_defaults(void){
 static void cfg_save(void){
     FILE *f=fopen(g_cfgpath,"w"); if(!f) return;
     fprintf(f,"# BUGSTAR PC settings (edit in the game: press Esc). scale_mode: 0 crisp, 1 smooth\n");
-    fprintf(f,"textsize=%d\ncontrast=%d\nmouse=%d\nvideo3d=%d\nfullscreen=%d\nscale_mode=%d\nvsync=%d\nshow_fps=%d\nvolume=%d\nmute=%d\npause_unfocus=%d\nrumble=%d\ndeadzone=%d\nmax_mp=%d\nwin_w=%d\nwin_h=%d\n",
-        C.textsize,C.contrast,C.mouse,C.video3d,C.fullscreen,C.scale_mode,C.vsync,C.show_fps,C.volume,C.mute,C.pause_unfocus,C.rumble,C.deadzone,C.max_mp,C.win_w,C.win_h);
+    fprintf(f,"ships=%d\narmada=%d\ntextsize=%d\ncontrast=%d\nmouse=%d\nvideo3d=%d\nfullscreen=%d\nscale_mode=%d\nvsync=%d\nshow_fps=%d\nvolume=%d\nmute=%d\npause_unfocus=%d\nrumble=%d\ndeadzone=%d\nmax_mp=%d\nwin_w=%d\nwin_h=%d\n",
+        C.ships,C.armada,C.textsize,C.contrast,C.mouse,C.video3d,C.fullscreen,C.scale_mode,C.vsync,C.show_fps,C.volume,C.mute,C.pause_unfocus,C.rumble,C.deadzone,C.max_mp,C.win_w,C.win_h);
     for(int i=0;i<NB;i++){ fprintf(f,"key_%s=%s,%s\n",bname[i],C.kb[i][0]?SDL_GetScancodeName(C.kb[i][0]):"",C.kb[i][1]?SDL_GetScancodeName(C.kb[i][1]):"");
         fprintf(f,"pad_%s=%s\n",bname[i],SDL_GameControllerGetStringForButton(C.pad[i])?SDL_GameControllerGetStringForButton(C.pad[i]):""); }
     fclose(f);
@@ -55,7 +55,7 @@ static void cfg_load(void){
         char *e=strchr(ln,'='); if(!e||ln[0]=='#') continue; *e++=0; size_t n=strlen(e); while(n&&(e[n-1]=='\n'||e[n-1]=='\r')) e[--n]=0;
         int v=atoi(e);
         #define I(nm,fld,lo,hi) if(!strcmp(ln,nm)){ C.fld = v<lo?lo:v>hi?hi:v; continue; }
-        I("textsize",textsize,0,2) I("contrast",contrast,0,1) I("mouse",mouse,0,1) I("video3d",video3d,0,2) I("fullscreen",fullscreen,0,1) I("scale_mode",scale_mode,0,SM_COUNT-1) I("vsync",vsync,0,1) I("show_fps",show_fps,0,1) I("volume",volume,0,100) I("mute",mute,0,1)
+        I("ships",ships,0,2) I("armada",armada,0,3) I("textsize",textsize,0,2) I("contrast",contrast,0,1) I("mouse",mouse,0,1) I("video3d",video3d,0,2) I("fullscreen",fullscreen,0,1) I("scale_mode",scale_mode,0,SM_COUNT-1) I("vsync",vsync,0,1) I("show_fps",show_fps,0,1) I("volume",volume,0,100) I("mute",mute,0,1)
         I("pause_unfocus",pause_unfocus,0,1) I("rumble",rumble,0,1) I("deadzone",deadzone,5,80) I("max_mp",max_mp,0,40) I("win_w",win_w,240,16384) I("win_h",win_h,160,16384)
         if(!strncmp(ln,"key_",4)){ for(int i=0;i<NB;i++) if(!strcmp(ln+4,bname[i])){ char *c=strchr(e,','); char a[64]="",b[64]=""; if(c){ *c=0; snprintf(b,sizeof b,"%s",c+1); } snprintf(a,sizeof a,"%s",e);
                 C.kb[i][0]=a[0]?SDL_GetScancodeFromName(a):0; C.kb[i][1]=b[0]?SDL_GetScancodeFromName(b):0; } }
@@ -197,6 +197,7 @@ typedef struct { int kind; const char *label; int *val; int lo, hi, step; const 
 enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
+static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
 static const char *const v3names[]={"AUTO","NATIVE (SMOOTH)","CLASSIC (GBA)"};
 static const char *const mpnames[]={"AUTO","1 MEGAPIXEL","2","3","4","6","8"}; static int mp_choice;
 static int mp_val(int i){ static const int v[]={0,1,2,3,4,6,8}; return v[i]; }
@@ -206,7 +207,7 @@ static void menu_build(Item *it, int *n){
     case P_MAIN: it[k++]=(Item){0,"RESUME",0,0,0,0,0,A_RESUME}; it[k++]=(Item){0,"VIDEO",0,0,0,0,0,A_VIDEO}; it[k++]=(Item){0,"AUDIO",0,0,0,0,0,A_AUDIO}; it[k++]=(Item){0,"ACCESSIBILITY AND MOUSE",0,0,0,0,0,A_ACCESS};
         it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
         it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
-    case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,2,1,v3names,0};
+    case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,2,1,v3names,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
         it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
         it[k++]=(Item){1,"PAUSE WHEN UNFOCUSED",&C.pause_unfocus,0,1,1,onoff,0}; it[k++]=(Item){0,"WINDOW SIZE: NEXT",0,0,0,0,0,A_WINSIZE}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_ACCESS: it[k++]=(Item){1,"MENU TEXT SIZE",&C.textsize,0,2,1,tsnames,0}; it[k++]=(Item){1,"HIGH CONTRAST",&C.contrast,0,1,1,hcnames,0}; it[k++]=(Item){1,"MOUSE PLAYS THE GAME",&C.mouse,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
@@ -408,7 +409,7 @@ static void wait_until(uint64_t t){
     for(;;){ uint64_t n=SDL_GetPerformanceCounter(); if(n>=t) return; double ms=(double)(t-n)*1000.0/t_freq; if(ms>2.5) SDL_Delay((Uint32)(ms-2.0)); else if(ms>1.0) SDL_Delay(1); }
 }
 void plat_frame(void){
-    long fr=pc_frames();
+    long fr=pc_frames(); { static const int an[4]={0,500,2000,10000}; if(!getenv("PC_SHIPS")) pc_ships_mode=C.ships; if(!getenv("PC_ARMADA")) pc_armada_n=an[C.armada]; }
     audio_frame();
     uint64_t now=SDL_GetPerformanceCounter();
     int late = now > t_next + t_freq/50;                        // more than a frame behind: skip showing this one, catch up
