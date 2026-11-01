@@ -18,6 +18,7 @@ const char *plw_key(int id){ return lw_defs[id].key; }
 const char *plw_name(int id){ return lw_defs[id].name; }
 const char *plw_desc(int id){ return lw_defs[id].desc; }
 const char *plw_unit(int id){ return lw_defs[id].unit; }
+int plw_find(const char *key){ return lw_find(key); }
 int plw_visible(int id, int adv){ return lw_visible(id, adv); }
 int plw_match(int id, const char *q){ return lw_match(id, q); }
 int plw_is_edited(int id){ need(); return lw_is_edited(&g_set, id); }
@@ -96,9 +97,11 @@ int plw_live(const PlwEnv *e, int id, char lines[][PLW_W], int max){
     }
     int m = 0;
     for(int i = 0; i < n && m < max; i++){
-        int k = idx[i]; char va[32], vb[32], u[40]; lw_fmt_big(a.o[k], va, sizeof va); lw_fmt_big(b.o[k], vb, sizeof vb);
-        snprintf(u, sizeof u, "%s", lw_out_unit[k]); if(strlen(u) > 11) u[11] = 0;
-        char t[200]; snprintf(t, sizeof t, "%s: %s %s (NORMAL %s)", lw_out_name[k], va, u, vb); snprintf(lines[m++], PLW_W, "%.57s", t);
+        int k = idx[i]; char va[32], vb[32], t[200]; lw_fmt_big(a.o[k], va, sizeof va); lw_fmt_big(b.o[k], vb, sizeof vb);
+        int L = snprintf(t, sizeof t, "%s: %s (NORMAL %s)", lw_out_name[k], va, vb);
+        const char *u = lw_out_unit[k]; int ul = (int)strlen(u), room = 57 - L - 1;
+        if(ul && room >= 3){ while(ul > room){ while(ul > 0 && u[ul - 1] != ' ') ul--; if(ul > 0) ul--; } if(ul > 0) snprintf(t + L, sizeof t - L, " %.*s", ul, u); }
+        snprintf(lines[m++], PLW_W, "%.57s", t);
     }
     return m;
 }
@@ -107,4 +110,9 @@ void plw_file_remove(const char *path){ remove(path); }
 void plw_file_copy(const char *from, const char *to){
     FILE *f = fopen(from, "rb"); if(!f){ remove(to); return; } FILE *g = fopen(to, "wb");
     if(g){ char buf[4096]; size_t k; while((k = fread(buf, 1, sizeof buf, f)) > 0) fwrite(buf, 1, k, g); fclose(g); } fclose(f);
+}
+
+int plw_setk(const char *kv, int cheat){
+    char k[40]; int i = 0; while(kv[i] && kv[i] != '=' && i < 39){ k[i] = kv[i]; i++; } k[i] = 0; if(kv[i] != '=') return 0;
+    int id = lw_find(k); if(id < 0) return 0; need(); lw_set(&g_set, id, atoi(kv + i + 1), cheat); return 1;
 }

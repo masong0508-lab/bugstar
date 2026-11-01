@@ -174,11 +174,11 @@ int main(void){
         if(lw_uly(&s) < 1 || lw_galbits(&s) < 4 || lw_galbits(&s) > 40 || lw_warp_cost(&s, 100) < 1 || lw_hours(&s, 100000) < 1) bad++;
         if(r.o[LO_P_RADIUS] < minr) minr = r.o[LO_P_RADIUS]; if(r.o[LO_P_RADIUS] > maxr) maxr = r.o[LO_P_RADIUS];
         maxtw[a.tw == 8 ? 0 : a.tw == 16 ? 1 : a.tw == 32 ? 2 : a.tw == 64 ? 3 : 4]++;
-        if(it % 5000 == 0){ LxPage P[LX_PAGES]; int n = lw_explain(&s, &e, P); if(n != LX_PAGES) bad++;
-            for(int p = 0; p < n; p++){ if(P[p].n < 3) bad++; for(int l = 0; l < P[p].n; l++){ if(!font_ok(P[p].t[l]) || strlen(P[p].t[l]) > 57){ bad++; if(bad < 6) printf("  text line problem: %s\n", P[p].t[l]); } } } }
+        if(it % 400 == 0){ LxPage P[LX_PAGES]; int n = lw_explain(&s, &e, P); if(n != LX_PAGES) bad++;
+            for(int p = 0; p < n; p++){ if(P[p].n < 3) bad++; for(int l = 0; l < P[p].n; l++){ if(!font_ok(P[p].t[l]) || strlen(P[p].t[l]) > 55){ bad++; if(bad < 6) printf("  text line problem: %s\n", P[p].t[l]); } } } }
       }
       printf("100000 random law sets (sensible and cheat ranges) and places: radius from %.3g m to %.3g m; worlds that repeat every 8/16/32/64 cells: %d/%d/%d/%d, normal 128: %d\n", minr, maxr, maxtw[0], maxtw[1], maxtw[2], maxtw[3], maxtw[4]);
-      CHECK(bad == 0, "%ld bad results", bad); }
+      CHECK(bad == 0, "%ld bad results", bad); CHECK(lw_explain_overflow() == 0, "%d explain lines did not fit on a page", lw_explain_overflow()); }
 
     // ---------------------------------------------------------------- planet size from pebble to giant
     {

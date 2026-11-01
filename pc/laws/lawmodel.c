@@ -245,7 +245,7 @@ void lw_apply(const LawSet *s, const LwEnv *e, LwApply *a){
         double k = 16.0 * (int[]){ 12, 7, 4, 3, 2, 1 }[ps] * lpow(rr, -0.8);
         if(circ < 128){ int P = circ <= 8 ? 8 : circ <= 16 ? 16 : circ <= 32 ? 32 : circ <= 64 ? 64 : 128; a->tw = P; k = 16.0 * 256.0 * 2 * PI / P; }
         else { double cap = a->k16 > 200 ? a->k16 : 200; if(k > cap) k = cap; }
-        a->k16 = ci(roundi(k), 0, 4000);
+        a->k16 = ci(roundi(k), 0, 1024);          // (1,024 = the game's own TINY PLANET at its strongest: farther round and the picture is only sky)
         int pc = 0; double best = 1e9, lr = lw_lg2((e->moon > 0 ? R_MOON[ps] : R_TAB[ps]) * rr);
         for(int i = 0; i < 6; i++){ double d = lr - lw_lg2(e->moon > 0 ? R_MOON[i] * 3.5 : R_TAB[i]); if(d < 0) d = -d; if(d < best){ best = d; pc = i; } }
         a->psz = pc;
@@ -284,7 +284,7 @@ void lw_apply(const LawSet *s, const LwEnv *e, LwApply *a){
     if(!e->hell){
         int nc = e->cls;
         if(Tc - Tr >= 40 || Tr - Tc >= 40){
-            if(Tc < -100) nc = 15; else if(Tc < -15) nc = 5; else if(Tc > 160) nc = 10; else if(Tc > 48) nc = 4;
+            if(Tc < -15) nc = 5; else if(Tc > 48) nc = 4;       // (never a hell world: those come only from HELL WORLDS)
             else if(e->cls == 5 || e->cls == 4 || e->cls >= 10) nc = 0;
         }
         if(nc != e->cls) a->cls = nc;

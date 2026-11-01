@@ -17,6 +17,7 @@ int pc_view_main(int argc, char **argv){
     for(int i=1;i<argc;i++){ const char *a=argv[i], *v=i+1<argc?argv[i+1]:"";
         if(!strcmp(a,"--universe")){ universe=v; i++; } else if(!strcmp(a,"--cx")){ cx=v; i++; } else if(!strcmp(a,"--cy")){ cy=v; i++; }
         else if(!strcmp(a,"--star")){ star=atoi(v); i++; } else if(!strcmp(a,"--planet")){ planet=atoi(v); i++; } else if(!strcmp(a,"--moon")){ moon=atoi(v); i++; }
+        else if(!strcmp(a,"--laws")){ plw_load(v); i++; } else if(!strcmp(a,"--law")){ plw_setk(v,1); i++; } else if(!strcmp(a,"--preset")){ plw_preset_apply(atoi(v)); i++; }
         else if(!strcmp(a,"--out")){ out=v; i++; } else if(!strcmp(a,"--scale")){ scale=atoi(v); i++; } }
     if(scale<1) scale=1; if(scale>8) scale=8;
     settings_load(); music_apply(); opt_music=0; opt_sfx=0;                 // (no sound in the viewer)

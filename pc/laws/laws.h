@@ -123,9 +123,10 @@ int  lw_time_pct(const LawSet *s);                               // game speed i
 
 // ---- HOW THIS WORKS: plain text pages with the numbers of this place
 #define LX_PAGES 9
-#define LX_LINES 17
+#define LX_LINES 18
 #define LX_W 60
 typedef struct { char title[32]; int n; char t[LX_LINES][LX_W]; uint8_t col[LX_LINES]; } LxPage;     // col: 0 white, 1 gold, 2 grey, 3 cyan, 4 green, 5 red
+int  lw_explain_overflow(void);                                    // how many lines so far did not fit on a page (tests want 0)
 int  lw_explain(const LawSet *s, const LwEnv *e, LxPage *pages);   // fills up to LX_PAGES pages; returns how many
 // number words (the same ones the screens use)
 void lw_fmt_big(double v, char *out, int n);                     // 1,234 / 1.5 BILLION / 3.2E21

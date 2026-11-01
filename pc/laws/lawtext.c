@@ -2,11 +2,14 @@
 // Font rule: capitals, digits, space and . , ' : ( ) - / % ? ! only. Lines are cut at 57 letters (the screen holds 58).
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include "laws.h"
 
-#define MAXC 57
-static void line(LxPage *p, int col, const char *s){ if(p->n < LX_LINES){ snprintf(p->t[p->n], LX_W, "%.*s", MAXC, s); p->col[p->n++] = (uint8_t)col; } }
+#define MAXC 55
+static int g_over;                                        // lines that did not fit on a page (the test wants 0)
+int lw_explain_overflow(void){ return g_over; }
+static void line(LxPage *p, int col, const char *s){ if(p->n >= LX_LINES){ g_over++; if(getenv("LAW_OVER")) fprintf(stderr, "over: %s: %s\n", p->title, s); } if(p->n < LX_LINES){ snprintf(p->t[p->n], LX_W, "%.*s", MAXC, s); p->col[p->n++] = (uint8_t)col; } }
 static void wrap(LxPage *p, int col, const char *s){          // word wrap at 57 letters
     char buf[400]; snprintf(buf, sizeof buf, "%s", s); char cur[LX_W]; cur[0] = 0; int L = 0;
     for(char *w = strtok(buf, " "); w; w = strtok(0, " ")){

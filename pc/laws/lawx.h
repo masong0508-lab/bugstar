@@ -16,7 +16,7 @@ typedef struct {                       // what the game changes (see LwApply in 
     int hour, weather, snow, sand, cls, city, ruins, fauna, beetles, rough, hs, mood, snowl;
     int water_pct, aurora, meteor, badair, hunger_pct, day_pct, danger_add, node_add[4];
 } PlwApply;
-#define PLW_LINES 17
+#define PLW_LINES 18
 #define PLW_W 60
 #define PLW_PAGES 9
 typedef struct { char title[32]; int n; char t[PLW_LINES][PLW_W]; uint8_t col[PLW_LINES]; } PlwPage;
@@ -27,6 +27,7 @@ int  plw_cat_n(void);                                           // 6 categories
 const char *plw_cat_name(int c);
 int  plw_cat(int id);
 const char *plw_key(int id), *plw_name(int id), *plw_desc(int id), *plw_unit(int id);
+int  plw_find(const char *key);                                 // law id from its key ("P_SIZE"), or -1
 int  plw_visible(int id, int advanced);
 int  plw_match(int id, const char *query);                      // upper case words
 int  plw_is_edited(int id);
@@ -53,6 +54,7 @@ int  plw_undo_depth(void);
 void plw_slot_path(const char *sav, int slot, char *out, int n);
 int  plw_load(const char *path);                                // 1 ok; missing file = defaults, returns 0
 int  plw_save(const char *path);                                // a default set deletes the file
+int  plw_setk(const char *key_eq_value, int cheat);              // "P_SIZE=-60": sets a law by its key (tests, the seed viewer); returns 1 if known
 void plw_file_remove(const char *path);
 void plw_file_copy(const char *from, const char *to);           // a missing source deletes the target
 // ---- the model
