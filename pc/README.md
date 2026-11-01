@@ -341,3 +341,36 @@ On the PC the hangar opens the **SHIP EDITOR** (new game, and SHIP > HANGAR). Th
 - Tests: `pc/shipyard/test.sh` (recipe and share code round trips, determinism, stats bounds, 200,000 random edits, random bytes,
   files) and `pc/tests/shipyard.sh` (all 10 tabs in the real game, two runs match, the design file, and a TANK really takes less damage
   and an INTERCEPTOR really flies faster in the game). Not done yet: designs for allied/enemy ships and boarding interiors.
+
+## COLOSSAL WARSHIPS (pc/warship, pc/pc_warship.inc)
+
+**Where to find them:** go to the PC LAB, pick WARSHIPS, choose a craft, press START (ENGAGE), then take off. Or in space, hold R and press SELECT to open the scanner. THE GREY MOON (the reference station) is on every list. If cheats are on, the list also has an ANY SIZE row. Inside the fight: START changes weapon, SELECT retreats, and you can board once the shields are down (hold R near the hull, then A). On board: arrows to walk and turn, L/R to step sideways, B to run, A to use things, shoot or hold to plant a charge, SELECT for the deck map, the tram platform to move between sectors, START in a hangar to leave.
+
+**Sizes:** z = 100 x log10(length in m), from 1 nm (NANO SWARM) to 10^30 m (MULTIVERSE HULK). Cheats go up to 10^3000 m. There are 19 classes. Hull grammar: 16 shapes x symmetry x segments x 6 add-ons x 8 surfaces x 12 cultures x 10 materials. Over 5,000 seeds this gave 5,000 different designs.
+
+**The one reward formula:** reward = cost x A x Fm x Fw.
+- cost = K x (materials + crew pay + aircraft + weapons + power), all built from the mass, about L^3. K = 52500.636.
+- A = attack^-4.2032, where attack = level + 5 x laser + gun + 25 x tech.
+- Fm = 1 - 0.45 x inside + 0.15 x inside x precision.
+- Fw = the damage-weighted mean of (weapon multiplier)^-0.4.
+- Fm and Fw are never above 1, so no mix of method or weapons pays more than the outside-only laser kill. The worst mix pays 0.066 of it.
+
+| size | class | cost (attack 1) |
+|---|---|---|
+| 1 nm | NANO SWARM | about 10^-19 gold |
+| 1 m | SKIFF | 82.8 million |
+| 1 km | DREADNOUGHT | 63.6 quadrillion |
+| 160 km | THE GREY MOON (reference) | 407 sextillion (4.07e23) |
+| 10^9 m | STAR HULK | about 4.8e37 |
+| 1 universe | UNIVERSE HULK | about 7.6e107 |
+| 10^3000 m (cheat) | BEYOND HULK | 1.12e11702, marked CHEATED |
+
+**Calibration (tested):** the reference station, killed outside only with the laser at attack 1, pays 4.0700e23. At attack 1,000 it pays 9.999e10. The ratio is the same at every size.
+
+**Numbers:** WN is a mantissa times 10^exponent. It saturates at 10^(10^15) and says so. Names come from pc/giant (Conway-Wechsler). Gold goes into the game's 64-bit gold while it fits. The rest goes into a vault, and amounts below 1 collect as gold dust. All of this is saved in `<save>.ws<slot>`.
+
+**Fight rules:** regenerating shield layers (when every generator is down, the shields drop), fighter waves (the game's own pirates), point defence, repair crews (stop shooting and the damage on the current section heals; a long absence rebuilds everything), sections in order, phases, an enraged core, heat, ammo and fuel. THREAT gives the attack, toughness, wingmen, kits and fuel you need.
+
+**Interiors:** a tree of sectors, 8 children per node, down to 64x64 decks. A universe hulk is 82 levels deep. Every subsystem has a path and a room. Some rooms are locked: the keycard is in SECURITY, and a crawl vent is the other way in. The crew follow sleep, eat, chat and work shifts, and react to alarms. Guards fight you. Charges blow up subsystems, which changes the fight outside; read the schematic first to hit the weak point. The view is drawn by PC code (pc/warship/ws_view.c) through `pc_ovl_fn` at the window's own resolution.
+
+**Tests:** `pc/warship/test.sh` covers calibration, variety, scaling and names, balance, the bot fights, interior reachability and determinism, and the save format: 78,745 checks, 0 failures. `pc/tests/warship.sh` is the in-game test. `pc/tests/ws_shots.sh` writes interior pictures.

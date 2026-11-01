@@ -397,6 +397,7 @@ static void pc_ws_autotest(void){
     const char *at=getenv("BUGSTAR_WS_AT"); if(frames < (at?atoi(at):0) || scene!=0) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
     char mode[16]={0}; int z=WS_ZREF; unsigned seed=0; sscanf(e,"%15[a-z],%d,%u",mode,&z,&seed);
     if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)0x06000000); return; }
+    if(!strcmp(mode,"save")){ pc_ws_slot_save(cur_slot); return; }
     { const char *lv=getenv("BUGSTAR_WS_LEVEL"); if(lv) level=atoll(lv); }
     if(scene!=2){ oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); }
     pcw_engage(seed,z,0);
