@@ -212,6 +212,7 @@ EW static Can cans[4];
 static char smsg[40];
 static void space_say(const char *t){ int n=0; while(t[n]&&n<39){ smsg[n]=t[n]; n++; } smsg[n]=0; space_msg_t=90; }
 
+static int chase_cam;                                   // 1: your ship seen from behind, 0: the cockpit (set below)
 static void norm3(s16 *v){ s32 l=isqrt((u32)(v[0]*v[0]+v[1]*v[1]+v[2]*v[2])); if(l>0){ v[0]=v[0]*16384/l; v[1]=v[1]*16384/l; v[2]=v[2]*16384/l; } }
 static void basis(void){
     s32 sy=sinx(yaw>>2), cy=cosx(yaw>>2), sp=sinx(pitch>>2), cp=cosx(pitch>>2);
@@ -219,6 +220,10 @@ static void basis(void){
     br[0]=cy; br[1]=0; br[2]=-sy;
     bu[0]=(-sy*sp)>>14; bu[1]=cp; bu[2]=(-cy*sp)>>14;
 }
+// the view banks with the ship. roll_ is how far the ship leans: + is the RIGHT wing down (a right turn), - the left. The world turns the other way on screen, so the horizon's right side climbs when you bank right, as it does in a real cockpit.
+// (in the chase view the camera takes half the bank and the ship on screen takes the other half, so the ship leans into the turn against the horizon by the full amount)
+static int cam_roll(void){ int r=chase_cam ? roll_/2 : roll_; if(!chase_cam && speed>6){ int a=speed>60?60:speed; r+=(sinx((frames*7)&255)>>12)*a/60 + (sinx((frames*3+90)&255)>>13)*a/60; } return r; }      // (the cockpit hums a little with the engines)
+static void apply_roll(void){ int rr=cam_roll(); s32 c=cosx(rr>>2), s_=sinx(rr>>2); for(int k=0;k<3;k++){ s32 r=br[k], u=bu[k]; br[k]=(r*c-u*s_)>>14; bu[k]=(u*c+r*s_)>>14; } }
 // world point -> camera; returns 0 if behind
 static int cam3(s32 x, s32 y, s32 z, s32 *cx, s32 *cy, s32 *cz){
     s32 rx=x-shx, ry=y-shy, rz=z-shz;
@@ -412,14 +417,16 @@ static void show_hive_card(void){
 
 // ---------------------------------------------------------------- the cockpit
 static const s8 scan_pts[32][2]={{44,0},{43,3},{40,5},{35,7},{29,9},{22,10},{15,11},{7,12},{0,12},{-7,12},{-15,11},{-22,10},{-29,9},{-35,7},{-40,5},{-43,3},{-44,0},{-43,-3},{-40,-5},{-35,-7},{-29,-9},{-22,-10},{-15,-11},{-7,-12},{0,-12},{7,-12},{15,-11},{22,-10},{29,-9},{35,-7},{40,-5},{43,-3}};
+static s32 bl_c=16384, bl_s=0;                                 // the scanner does not bank with the view: it undoes the roll
 static void blip(volatile u16 *pg, s32 x, s32 y, s32 z, int c){
-    s32 cx,cy,cz; cam3(x,y,z,&cx,&cy,&cz);
+    s32 cx,cy,cz; cam3(x,y,z,&cx,&cy,&cz); { s32 x0=(cx*bl_c+cy*bl_s)>>14, y0=(cy*bl_c-cx*bl_s)>>14; cx=x0; cy=y0; }
     s32 rng=16000; if(cx>rng||cx<-rng||cz>rng||cz<-rng) return;
     int bx=120+cx*44/rng, by=144-cz*12/rng, h=-(cy*10/rng); if(h>10) h=10; if(h<-10) h=-10;
     for(int i=0;i!=h;i+= h>0?1:-1) if(by+i>=129&&by+i<159) pix(pg,bx,by+i,c);
     if(by+h>=129&&by+h<159){ pix(pg,bx,by+h,c); pix(pg,bx+1,by+h,c); }
 }
 static void cockpit(volatile u16 *pg){
+    { int rr=cam_roll(); bl_c=cosx(rr>>2); bl_s=sinx(rr>>2); }
     for(int i=128*120;i<160*120;i++) pg[i]=57|(57<<8);
     for(int i=128*120;i<129*120;i++) pg[i]=58|(58<<8);
     for(int i=0;i<32;i++) pix(pg,120+scan_pts[i][0],144+scan_pts[i][1],58);
@@ -634,9 +641,8 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     int tr=ship_turn(); int ty = (HELD(K_LEFT) ? -40 : HELD(K_RIGHT) ? 40 : 0)*tr/100, tp = (HELD(K_UP) ? -28 : HELD(K_DOWN) ? 28 : 0)*tr/100;
     { int dp=ship_damp()+ship_mass()/8; yawv += (ty-yawv)/dp; pitv += (tp-pitv)/dp; }
     yaw=(yaw+(yawv>>2))&1023; pitch+=pitv>>2; if(pitch>230) pitch=230; if(pitch<-230) pitch=-230;
-    roll_ += (yawv*(2+ship.wsize+(ship.wings?1:0)) - roll_)/6;
-    basis();
-    { s32 c=cosx(roll_>>2), s_=sinx(roll_>>2); for(int k=0;k<3;k++){ s32 r=br[k], u=bu[k]; br[k]=(r*c+u*s_)>>14; bu[k]=(u*c-r*s_)>>14; } }
+    { int rt=yawv*(2+ship.wsize+(ship.wings?1:0)); if(rt>96) rt=96; if(rt<-96) rt=-96; roll_ += (rt - roll_)/6; }          // lean into the turn: right turn = right wing down (+), at most about 34 degrees
+    basis(); apply_roll();
     s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
     int in_air = !in_lair && pd < PR*5/2;                                          // close to the planet there is air
     { int a16=ship_accel16(); int burn = HELD(K_L) && fuel>0;
@@ -765,13 +771,18 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=10; svx_=svy_=svz_=0; space_say("SHIP WRECKED! CARGO LOST"); sfx(9); }
     // ---- draw
     int sv_yaw=yaw, sv_pit=pitch;
-    if(sshake && opt_shake){ yaw=(yaw+((frames&1)?sshake:-sshake)/2)&1023; pitch+=((frames&2)?sshake:-sshake)/3; basis();
-        s32 c=cosx(roll_>>2), s_=sinx(roll_>>2); for(int k=0;k<3;k++){ s32 r=br[k], u=bu[k]; br[k]=(r*c+u*s_)>>14; bu[k]=(u*c-r*s_)>>14; } }
+    if(sshake && opt_shake){ yaw=(yaw+((frames&1)?sshake:-sshake)/2)&1023; pitch+=((frames&2)?sshake:-sshake)/3; basis(); apply_roll(); }          // (a hit shakes the view on top of the bank)
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
     { static u32 zero=0; *(volatile u32*)0x040000D4=(u32)&zero; *(volatile u32*)0x040000D8=(u32)pg; *(volatile u32*)0x040000DC=(120*128/2)|(2<<23)|(1<<26)|(1u<<31); }
+    int vpx=120, vpy=VCY, vdrift=0, stk=0;                                        // where you are really heading on the screen (not always where the nose points), and how long the stars streak
+    { s32 vm=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_)); stk=vm*16/ship_top_speed(); if(stk<6) stk=0; if(stk>24) stk=24;
+      if(vm>6){ s32 cxv=(svx_*br[0]+svy_*br[1]+svz_*br[2])>>14, cyv=(svx_*bu[0]+svy_*bu[1]+svz_*bu[2])>>14, czv=(svx_*bf[0]+svy_*bf[1]+svz_*bf[2])>>14;
+          if(czv>vm/3){ vpx=120+cxv*FOCS/czv; vpy=VCY-cyv*FOCS/czv; if(vpx<-60) vpx=-60; if(vpx>300) vpx=300; if(vpy<-40) vpy=-40; if(vpy>170) vpy=170;
+              int ddx=vpx-120, ddy=vpy-VCY; vdrift = (ddx<0?-ddx:ddx)+(ddy<0?-ddy:ddy) > 10 && vm>20; } } }
     for(int i=0;i<96;i++){ s16 *d=&star_dir[i*3]; s32 z=(d[0]*bf[0]+d[1]*bf[1]+d[2]*bf[2])>>14; if(z<2000) continue;
         s32 x=(d[0]*br[0]+d[1]*br[1]+d[2]*br[2])>>14, y=(d[0]*bu[0]+d[1]*bu[1]+d[2]*bu[2])>>14;
-        int sx=120+x*FOCS/z, sy=VCY-y*FOCS/z; dot2(pg,sx,sy, i<20?5 : i<50?4 : 3); }
+        int sx=120+x*FOCS/z, sy=VCY-y*FOCS/z, sc_=i<20?5 : i<50?4 : 3; dot2(pg,sx,sy,sc_);
+        if(stk && i<70){ int ex=sx-((sx-vpx)*stk>>8), ey=sy-((sy-vpy)*stk>>8); if((ex-sx)|(ey-sy)) line2(pg,sx,sy,ex,ey,sc_); } }       // fast: the stars streak away from where you are heading
     { s32 z=(sun[0]*bf[0]+sun[1]*bf[1]+sun[2]*bf[2])>>14;
       if(z>2000){ s32 x=(sun[0]*br[0]+sun[1]*br[1]+sun[2]*br[2])>>14, y=(sun[0]*bu[0]+sun[1]*bu[1]+sun[2]*bu[2])>>14;
           int sx=120+x*FOCS/z, sy=VCY-y*FOCS/z;
@@ -830,8 +841,8 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     // crosshair
     if(!FILM) for(int k=4;k<9;k++){ dot2(pg,120+k,VCY,52); dot2(pg,120-k,VCY,52); dot2(pg,120,VCY+k,52); dot2(pg,120,VCY-k,52); }
     // the chase camera: your own ship, seen from behind, banking into turns and nosing up and down
-    if(chase_cam){ ship_roll=(-roll_*2)&1023; int bob=(sinx((frames*3)&255)>>12);
-        { int scx=120 + (yawv>>2), scy=100 + bob + (pitv>>2), scs=52 + speed/6, syw=(-(yawv*2))&1023, spt=(40 - pitv)&1023;
+    if(chase_cam){ ship_roll=(roll_-roll_/2)&1023; int bob=(sinx((frames*3)&255)>>12);              // the ship leans into the turn (the other half of the bank is the camera's)
+        { int scx=120 + (yawv>>2), scy=100 + bob - (pitv>>2), scs=54 - speed/14, syw=(yawv*2)&1023, spt=(46 + pitv*2)&1023;   // a left turn swings the ship's nose and its place on the screen LEFT, nose up lifts it; it is seen from above and behind, and drops back a little at speed
           sh_flame = 1 + (HELD(K_B)?1:0) + ((HELD(K_B)&&HELD(K_L)&&fuel>0)?1:0); ship_draw(pg, scx, scy, scs, syw, spt, 0,0, 0,0,240,128); sh_flame=0;
           if(lz) for(int m=0;m<sh_mzn;m++){ int mx_,my_; ship_proj(sh_mz[m][0],sh_mz[m][1],sh_mz[m][2],scx,scy,scs,syw,spt,&mx_,&my_);          // the bolts leave the ship's own guns and run to where you are aiming
               int uh=(5-lz)*7, ut=uh-7; if(ut<0) ut=0;                                                       // a bolt flies out along the line to the crosshair, a few frames
@@ -840,6 +851,11 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         ship_roll=0; }
     if(hit_t){ hit_t--; if(!FILM) for(int x=0;x<240;x+=3){ dot2(pg,x,0,53); dot2(pg,x,127,53); } }
     if(tract_t) for(int x=100;x<140;x+=4){ dot2(pg,x,118,50); dot2(pg,120+(x-120)/2,100+(x&7),50); }
+    if(!FILM && vdrift && !(frames&2)){ int mx=vpx, my=vpy; if(mx>6 && mx<233 && my>4 && my<123){ dot2(pg,mx,my-3,50); dot2(pg,mx,my+3,50); dot2(pg,mx-3,my,50); dot2(pg,mx+3,my,50); } }      // a small cross where you are really going (drifting)
+    if(!chase_cam && !FILM){                                                        // the cockpit: the canopy frame round the view, so it feels like sitting in the ship
+        for(int y=0;y<18;y++){ int w=(18-y)*2+2; rect(pg,0,y,w,1,57); rect(pg,240-w,y,w,1,57); }
+        for(int y=0;y<14;y++){ int w=(14-y)*2; rect(pg,0,127-y,w,1,57); rect(pg,240-w,127-y,w,1,57); }
+        rect(pg,0,18,3,95,57); rect(pg,237,18,3,95,57); rect(pg,0,0,240,1,58); rect(pg,3,18,1,95,58); rect(pg,236,18,1,95,58); }
     cockpit(pg);
     if(sv_yaw!=yaw || sv_pit!=pitch){ yaw=sv_yaw; pitch=sv_pit; }
     static char pb[32]; const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;

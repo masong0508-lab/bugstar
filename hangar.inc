@@ -40,7 +40,7 @@ static void hg_copy(volatile u16 *pg, volatile u16 *bp){ for(int y=HG_PY;y<HG_PY
 static int make_ship(volatile u16 *pg, int first){
     char nm[9]; scpy(nm,ship.name); int n=textlen(nm); if(n<1){ scpy(nm,"MOTH"); n=4; }
     ShipLook before=ship; ShipX beforex=shpx; ship_build_model();
-    int tab=0, row[4]={0,0,0,0}, dirty=1, editing=0, cur=0, t=0, spin=0, tilt=10, pre=-1, selp=0, selused=0, old[6], now[6]; ship_stats(old);         // old: what the ship could do when you came in
+    int tab=0, row[4]={0,0,0,0}, dirty=1, editing=0, cur=0, t=0, spin=0, tilt=26, pre=-1, selp=0, selused=0, old[6], now[6]; ship_stats(old);         // old: what the ship could do when you came in
     oam_hide_all(); oam_flush(); wait_release();
     while(1){
         int r=hg_tab_row[tab][row[tab]], selh = !editing && HELD(K_SEL);
@@ -83,7 +83,7 @@ static int make_ship(volatile u16 *pg, int first){
             continue; }
         if(selp){                                                                                         // holding SELECT: the arrows turn and tilt the view
             if(HELD(K_LEFT)){ spin-=14; selused=1; } if(HELD(K_RIGHT)){ spin+=14; selused=1; }
-            if(HELD(K_UP)){ if(tilt>-90) tilt-=3; selused=1; } if(HELD(K_DOWN)){ if(tilt<200) tilt+=3; selused=1; }
+            if(HELD(K_UP)){ if(tilt<200) tilt+=3; selused=1; } if(HELD(K_DOWN)){ if(tilt>-90) tilt-=3; selused=1; }
             continue; }
         if(HIT(K_R)){ tab=(tab+1)&3; dirty=1; sfx(7); } if(HIT(K_L)){ tab=(tab+3)&3; dirty=1; sfx(7); }
         { int c=hg_tab_n[tab]; if(HIT(K_UP)){ row[tab]=(row[tab]+c-1)%c; dirty=1; sfx(7); } if(HIT(K_DOWN)){ row[tab]=(row[tab]+1)%c; dirty=1; sfx(7); } }

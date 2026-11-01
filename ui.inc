@@ -1260,7 +1260,7 @@ static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
                 if(mt) shop_prev_copy(pg,(volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0:0xA000))); }         // keep the last picture of the ship while the menu repaints
             { volatile u16 *bp=(volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0:0xA000));                          // the little ship is drawn on the hidden page, then copied over after the vertical blank
               ui_well(bp,SK_X,SK_Y,SK_W,SK_H); for(int k=0;k<8;k++) pix(bp,SK_X+3+((k*29+mt/5)%68),SK_Y+3+((k*17)%38),(k&3)?U_RAISE:U_SOFT);
-              { int hs=27*256/sh_rad; if(hs<50) hs=50; if(hs>110) hs=110; frames++; mt++; mspin+=3; mspin&=1023; sh_flame=1; ship_draw(bp,SK_X+SK_W/2,SK_Y+SK_H/2+3,hs,mspin,10+(sinx((mt*2)&255)>>11),0,0,SK_X+1,SK_Y+1,SK_X+SK_W-1,SK_Y+SK_H-1); sh_flame=0; }
+              { int hs=27*256/sh_rad; if(hs<50) hs=50; if(hs>110) hs=110; frames++; mt++; mspin+=3; mspin&=1023; sh_flame=1; ship_draw(bp,SK_X+SK_W/2,SK_Y+SK_H/2+3,hs,mspin,26+(sinx((mt*2)&255)>>11),0,0,SK_X+1,SK_Y+1,SK_X+SK_W-1,SK_Y+SK_H-1); sh_flame=0; }
               vsync(); shop_prev_copy(pg,bp); }
             read_keys(); if(keys!=keys_old) dirty=1;
             int n=shop_tab_n[tab];

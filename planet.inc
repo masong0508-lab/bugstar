@@ -37,6 +37,7 @@ static int facing=1, msg_timer=0, prompt_k=-2;
 static char msg[40];
 static int enter_dungeon_flag=0;
 IWRAM_DATA static s16 raydx[120];                          // per column: sideways cells per cell of depth, 8.8 (before turning)
+static int iatan2(s32 x, s32 y);                              // (kart.inc)
 static int cam_fp=0, heading=0;                            // first person? and which way you face (0..1023, 0 = north = up the map)
 static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc);
 static u8 kcam[8]={0,1,1,1,1,0,1,1};                       // the kart camera (kart.inc): view, distance, height, field of view, swing, look into turns, speed zoom, bump shake
@@ -757,7 +758,8 @@ sprites:;
             if(!m7_on) sh_occ = bin>=0 ? ybin+bin : 0;                                    // a nearer hill or canyon wall hides it (and its shadow)
 #endif
             if(!m7_on) ship_shadow(pg, sx, sy, sc);
-            ship_draw(pg, sx, sy-(f>>9), sc, (1024-heading)&1023, cam_fp?30:70, 236, 237, 0,18,240,160);
+            { int el=iatan2(cam_h+curve-gh, zc); if(el<24) el=24; if(el>230) el=230;                // how high above it the camera looks down on it (the true angle: the nose rises up the screen, the engines face you)
+              ship_draw(pg, sx, sy-(f>>9), sc, (1024-heading)&1023, el, 236, 237, 0,18,240,160); }
             sh_occ=0; continue; }
         if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
         static const u8 ksz[29]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14, 17,18,12,14};      // size of each kind in 16ths of a cell

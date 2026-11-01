@@ -229,7 +229,7 @@ static void polyfill_(volatile u16 *pg, const int *px, const int *py, int n, int
 static int ship_roll=0;                                                        // extra bank applied on screen (the chase camera)
 static s32 shp_c[10];                                                       // this draw's turn: yaw cos/sin, pitch cos/sin, roll cos/sin, rolled?, centre x, scale, centre y
 static void sh_pt(int x, int y, int z, int *X, int *Y, int *Z){                // one model point to the screen (the same maths as the vertex loop in ship_draw)
-    s32 rx=(x*shp_c[0] + z*shp_c[1])>>14, rz=(-x*shp_c[1] + z*shp_c[0])>>14; s32 ry=(y*shp_c[2] - rz*shp_c[3])>>14; rz=(y*shp_c[3] + rz*shp_c[2])>>14;
+    s32 rx=(x*shp_c[0] + z*shp_c[1])>>14, rz=(-x*shp_c[1] + z*shp_c[0])>>14; s32 ry=(y*shp_c[2] + rz*shp_c[3])>>14; rz=(-y*shp_c[3] + rz*shp_c[2])>>14;
     s32 d=400+rz; if(d<60) d=60; s32 f=(shp_c[8]*25600)/d, xx=(rx*f)>>14, yy=-((ry*f)>>14);
     if(shp_c[6]){ s32 x2=(xx*shp_c[4]-yy*shp_c[5])>>14, y2=(xx*shp_c[5]+yy*shp_c[4])>>14; xx=x2; yy=y2; }
     xx+=shp_c[7]; yy+=shp_c[9]; if(xx<-2000) xx=-2000; if(xx>2000) xx=2000; if(yy<-2000) yy=-2000; if(yy>2000) yy=2000; *X=xx; *Y=yy; *Z=rz;
@@ -254,7 +254,7 @@ static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pi
     shp_c[0]=cy_; shp_c[1]=sy_; shp_c[2]=cp; shp_c[3]=sp; shp_c[4]=rc; shp_c[5]=rs; shp_c[6]=rolled; shp_c[7]=cx; shp_c[8]=sc; shp_c[9]=cy;
     for(int i=0;i<snv;i++){ s32 x=shv[i*3], y=shv[i*3+1], z=shv[i*3+2];
         s32 rx=(x*cy_ + z*sy_)>>14, rz=(-x*sy_ + z*cy_)>>14;
-        s32 ry=(y*cp - rz*sp)>>14; rz=(y*sp + rz*cp)>>14;
+        s32 ry=(y*cp + rz*sp)>>14; rz=(-y*sp + rz*cp)>>14;                      // (a turn about the sideways axis: a positive pitch_ looks DOWN on the ship from above, so its nose rises up the screen)
         rz_[i]=(s16)rz;
         s32 d = 400 + rz; if(d<60) d=60;
         s32 f=(sc*25600)/d;                                                     // one division per vertex: the scale at this depth
@@ -270,7 +270,7 @@ static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pi
         int area=(px[b]-px[a])*(py[c]-py[a]) - (px[c]-px[a])*(py[b]-py[a]);        // facing: screen-space winding
         s32 mx=shn[fi*3], my=shn[fi*3+1], mz=shn[fi*3+2];                          // the stored normal, turned the same way as the ship
         s32 nx=(mx*cy_ + mz*sy_)>>14, nz0=(-mx*sy_ + mz*cy_)>>14;
-        s32 ny=(my*cp - nz0*sp)>>14, nz=(my*sp + nz0*cp)>>14;
+        s32 ny=(my*cp + nz0*sp)>>14, nz=(-my*sp + nz0*cp)>>14;
         s32 dot=(-nx*5 + ny*11 - nz*8)>>8;                                         // light from (-0.35, 0.75, -0.55), scaled by 16
         if(area>=0) dot=-dot;
         int X[8], Y[8]; for(int k=0;k<F->n;k++){ X[k]=px[F->v[k]]; Y[k]=py[F->v[k]]; }
@@ -290,7 +290,7 @@ static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pi
 }
 static void ship_proj(int mx, int my, int mz, int cx, int cy, int sc, int yaw_, int pitch_, int *ox, int *oy){   // where a point of the model lands on the screen (the same maths as ship_draw)
     s32 rc=cosx(ship_roll>>2), rs=sinx(ship_roll>>2), cy_=cosx(yaw_>>2), sy_=sinx(yaw_>>2), cp=cosx(pitch_>>2), sp=sinx(pitch_>>2);
-    s32 rx=(mx*cy_ + mz*sy_)>>14, rz=(-mx*sy_ + mz*cy_)>>14, ry=(my*cp - rz*sp)>>14; rz=(my*sp + rz*cp)>>14;
+    s32 rx=(mx*cy_ + mz*sy_)>>14, rz=(-mx*sy_ + mz*cy_)>>14, ry=(my*cp + rz*sp)>>14; rz=(-my*sp + rz*cp)>>14;
     s32 d=400+rz; if(d<60) d=60; s32 f=(sc*25600)/d, X=(rx*f)>>14, Y=-((ry*f)>>14);
     if(!(rs==0 && rc>0)){ s32 X2=(X*rc - Y*rs)>>14, Y2=(X*rs + Y*rc)>>14; X=X2; Y=Y2; }
     *ox=(int)(X+cx); *oy=(int)(Y+cy);
