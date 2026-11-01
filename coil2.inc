@@ -156,8 +156,11 @@ IWRAM static void fx_shift(volatile u16 *row, int d){        // rotate one row o
 static void fx_hex(char *b, u32 v){ int n=textlen(b); for(int i=7;i>=0;i--){ int x=(v>>(i*4))&15; b[n++]=(char)(x<10?'0'+x:'A'+x-10); } b[n]=0; }
 static void fx_bars(volatile u16 *pg, int n, int maxw, int cols){  // n coloured bars across the view
     for(int i=0;i<n;i++){ int y=fx_rnd()%128, h=1+fx_rnd()%6; if(y+h>128) h=128-y; rect(pg,fx_rnd()%(240-maxw+1),y,maxw/2+fx_rnd()%(maxw/2+1),h,(int)(49+fx_rnd()%cols)); } }
-static void fx_noise(volatile u16 *pg, int y0, int y1, int dim){   // the world as garbage
-    for(int y=y0;y<y1;y++){ volatile u16 *r=pg+y*120; for(int i=0;i<120;i++){ u32 v=fx_rnd(); r[i]= dim ? (u16)(((v&1)?57:56)|(((v&2)?58:57)<<8)) : (u16)v; } } }
+static void fx_noise(volatile u16 *pg, int y0, int y1, int dim){   // the world as garbage (dim: flash-safe, a dark, calm mosaic that changes only every 40 frames, never noise)
+    if(dim){ u32 ph=(u32)(fx_t/40)*0x9E3779B1u;
+        for(int y=y0;y<y1;y++){ volatile u16 *r=pg+y*120; for(int i=0;i<120;i++){ u32 h=((u32)(i>>2)*0x85EBCA6Bu)^((u32)(y>>3)*0xC2B2AE35u)^ph; h^=h>>15; h*=0x2C1B3C6Du; h^=h>>13; u16 c=(u16)((h&1)?U_BG1:U_BG0); r[i]=(u16)(c|(c<<8)); } }
+        return; }
+    for(int y=y0;y<y1;y++){ volatile u16 *r=pg+y*120; for(int i=0;i<120;i++){ r[i]=(u16)fx_rnd(); } } }
 static void fx_text_scatter(volatile u16 *pg, const char *s, int c, int amp){ int x=120-textlen(s)*2+(int)(fx_rnd()%(2*amp+1))-amp, y=60+(int)(fx_rnd()%(2*amp+1))-amp; text(pg,x+1,y+1,s,0,1); text(pg,x,y,s,c,1); }
 static void fx_event(volatile u16 *pg, int gt, int S){
     char b[48];
@@ -187,7 +190,8 @@ static void fx_event(volatile u16 *pg, int gt, int S){
         if(++fx_evt>(S?26:12)){ fx_ev=0; } break; }
     case 5: {                                                // REALITY BREAK: the full sequence, 6 seconds
         int t=fx_evt;
-        if(t<90){ fx_bars(pg,S?4:10+t/6,200,8); for(int k=0;k<(S?2:4);k++) fx_shift(pg+((fx_rnd()%128)*120),(int)(fx_rnd()%(t/3+3))-(t/6)); fx_text_scatter(pg,"REALITY INTEGRITY FAILING",C_RED,t/12); }
+        if(t<90){ u32 keep=fx_s; if(S) fx_s=((u32)(fx_t/45)*0x9E3779B1u)|1u;      // (flash-safe: the same few bars and shifts for 45 frames, never a flicker)
+            fx_bars(pg,S?3:10+t/6,200,8); for(int k=0;k<(S?2:4);k++) fx_shift(pg+((fx_rnd()%128)*120),(int)(fx_rnd()%(t/3+3))-(t/6)); fx_text_scatter(pg,"REALITY INTEGRITY FAILING",C_RED,t/12); if(S) fx_s=keep; }
         else if(t<180){ if(S) fx_noise(pg,0,128,1); else fx_noise(pg,(t&1)?0:64,(t&1)?64:128,0);
             static const char *const c[4]={"NOTHING IS WHERE YOU LEFT IT","THE STARS ARE LISTENING","IS THIS STILL THE SAME GAME","DO NOT LOOK AT THE SUN"}; fx_text_scatter(pg,c[((t-90)/23)&3],C_WHITE,3); }
         else if(t<240){ int bar=(t-180)*64/50; if(bar>64) bar=64; rect(pg,0,0,240,bar,0); rect(pg,0,160-bar,240,bar,0); if(t>=230) rect(pg,0,79,240,2,C_WHITE); fx_pw=-60-(t-180)*8; }
@@ -232,7 +236,7 @@ static void coil_fx_post(volatile u16 *pg){
         int x0=120+(ca*r0>>14), y0=VCY+(sa*r0>>14)*3/4, x1=120+(ca*r1>>14), y1=VCY+(sa*r1>>14)*3/4, xm=120+(ca*((r0+r1)/2)>>14), ym=VCY+(sa*((r0+r1)/2)>>14)*3/4;
         line2(pg,x0,y0,xm,ym,55); line2(pg,xm,ym,x1,y1,gt>=2?53:54); } }
     // ---- tier 2+: the colours cycle; the lines of the picture wobble
-    if(gt>=2){ int every = S ? 24 : (gt>=4 ? 1 : 3); if((fx_t%every)==0){ u16 t0=BG_PAL[49]; for(int i=49;i<56;i++) BG_PAL[i]=BG_PAL[i+1]; BG_PAL[56]=t0; fx_dirty|=2; }
+    if(gt>=2){ int every = S ? 48 : (gt>=4 ? 1 : 3); if((fx_t%every)==0){ u16 t0=BG_PAL[49]; for(int i=49;i<56;i++) BG_PAL[i]=BG_PAL[i+1]; BG_PAL[56]=t0; fx_dirty|=2; }
         int amp = (gt==2?1 : gt==3?2 : gt==4?4 : gt==5?7 : 12); if(S) amp=(amp+2)/3;
         int step = gt>=4 ? 3 : 4; for(int y=(fx_t&3);y<128;y+=step){ int d=(sinx(y*5+fx_t*11)*amp)>>14; if(d) fx_shift(pg+y*120,d); } }
     // ---- tier 3+: tiles of the picture are copied over each other; bands go blocky; junk sprites; the HUD digits scramble (in coil_hud)

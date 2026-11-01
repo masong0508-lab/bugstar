@@ -1317,9 +1317,16 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     cur_sys=TEST_ARRIVE; fade(0); arrive_on_planet(); return;
 #endif
 #ifdef TEST_COIL
-    fade(0); scene=2; page_back=1; space_enter(1); music(3); coil_own=1; coil_warned=1; shpx.module=MD_COIL; ship_build_model(); fuel=fuel_max(); hull=100; shx=0; shy=0; shz=-PR*14; svx_=svy_=svz_=0; yaw=512;
+    fade(0); scene=2; page_back=1; space_enter(1); music(3); coil_own=1;
+#ifndef TEST_COILWARN
+    coil_warned=1;
+#endif
+    shpx.module=MD_COIL; ship_build_model(); fuel=fuel_max(); hull=100; shx=0; shy=0; shz=-PR*14; svx_=svy_=svz_=0; yaw=512;
 #ifdef TEST_COILSM
     dbg_sm=TEST_COILSM;
+#endif
+#ifdef TEST_COILFS
+    xo[XO_FSAFE]=1;
 #endif
 #ifdef TEST_COILFUZZ
     { int sr=coil_sramtest(); int n=coil_fuzz(TEST_COILFUZZ); char b[40]; scpy(b,sr?"SAVE TEST FAILED":"FUZZ OK "); if(!sr) ncat(b,n);
