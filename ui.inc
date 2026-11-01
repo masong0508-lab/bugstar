@@ -309,12 +309,12 @@ static const s16 cc_dh[9][6]={{30,-30,60,-60,15,-15},{180,0,180,0,180,0},{120,24
 static const u8 cc_ss[9][6]={{200,200,170,170,220,220},{210,160,230,120,190,255},{220,220,170,170,255,140},{200,220,180,160,230,120},{230,200,170,140,110,80},{70,80,60,70,90,60},{255,255,255,255,255,255},{160,140,120,180,100,70},{200,180,220,150,240,200}};
 static const u8 cc_vv[9][6]={{210,160,230,140,190,120},{220,150,120,230,170,90},{220,200,150,130,100,240},{220,150,230,120,190,90},{90,130,170,210,240,255},{250,245,250,240,250,245},{255,255,255,255,255,255},{110,150,130,90,190,160},{60,90,50,110,70,230}};
 static int cc_pidx(u16 c){ for(int i=0;i<NPRESET;i++) if(preset_col[i]==c) return i; return -1; }
-static void cc_scheme(CRow *R, int nr, int a, u32 lock, int sch){        // paint every unlocked colour row to go with the colour in row a
+static void cc_scheme(const CRow *R, int nr, int a, u32 lock, int sch){        // paint every unlocked colour row to go with the colour in row a
     int h0,s0,v0; cc_hsv(*R[a].c,&h0,&s0,&v0); int k=0;
     for(int i=0;i<nr;i++) if(R[i].kind==3 && i!=a && !((lock>>i)&1)){ int sl=k%6; k++;
         *R[i].c = cc_rgb(sch>=7 ? cc_dh[sch][sl] : h0+cc_dh[sch][sl], cc_ss[sch][sl], cc_vv[sch][sl]); } }
-static void cc_set8(CRow *R, int nr, u32 lock, u8 *p, int val){ for(int i=0;i<nr;i++) if(R[i].v==p){ if(!((lock>>i)&1)) *p=(u8)val; return; } *p=(u8)val; }
-static void cc_set16(CRow *R, int nr, u32 lock, u16 *p, u16 val){ for(int i=0;i<nr;i++) if(R[i].c==p){ if(!((lock>>i)&1)) *p=val; return; } *p=val; }
+static void cc_set8(const CRow *R, int nr, u32 lock, u8 *p, int val){ for(int i=0;i<nr;i++) if(R[i].v==p){ if(!((lock>>i)&1)) *p=(u8)val; return; } *p=(u8)val; }
+static void cc_set16(const CRow *R, int nr, u32 lock, u16 *p, u16 val){ for(int i=0;i<nr;i++) if(R[i].c==p){ if(!((lock>>i)&1)) *p=val; return; } *p=val; }
 static void cc_name(volatile u16 *pg, char *nm){
     char b[9]; scpy(b,nm); int n=textlen(b), cur=0, t=0; if(n<1){ scpy(b,"PIP"); n=3; }
     oam_hide_all(); oam_flush(); wait_release();
@@ -358,25 +358,24 @@ static int cc_run(volatile u16 *pg, int human, int first){
         *const horn_n[10]={"NONE","HORN","TWIN HORNS","RHINO","UNICORN","ANTLERS","BULL","BLADE","TRIDENT","CURLED"}, *const wing_n[9]={"NONE","LITTLE","BEETLE","BUTTERFLY","BAT","FAIRY","DRAGON","ANGEL","DRAGONFLY"}, *const tail_n[8]={"NONE","STINGER","SPIKES","CURLY","LONG","FLUFFY","FAN","CLUB"},
         *const hat_n[16]={"NONE","CAP","TOP HAT","BOW","CROWN","PARTY HAT","FLOWER","HALO","BEANIE","CHEF","HELMET","VIKING","WIZARD","COWBOY","PIRATE","TIARA"},
         *const orn_n[8]={"NONE","GEM","SAIL","FLAG","MUSHROOM","CANDLE","FLOWERS","SPROUT"};
-    CRow R[40]; int nr=0;
-    #define CR(a,b,c,d,e,f,g,h) R[nr++]=(CRow){a,b,c,d,e,f,g,h,0}
-    CR("NAME",0,0,0,0,0,0,0); CR("LOOKS",0,1,0,0,0,0,0);
-    if(human){
-        CR("MY LOOKS",0,5,0,0,0,0,0);
-        CR("CALLING",0,4,0,0,0,0,0); CR("BODY",0,2,2,&hum.style,body_n,0,0); CR("HEIGHT",0,2,5,&hum.height,ht_n,0,0); CR("BUILD",0,2,3,&hum.build,bd_n,0,0);
-        CR("HAIR","EARS",2,14,&humx.hair,hair_n,0,0); R[nr-1].opt2=ears_n; CR("FACE",0,2,12,&humx.face,face_n,0,0); CR("MOUTH",0,2,8,&humx.beard,beard_n,0,0);
-        CR("TOP",0,2,14,&humx.top,top_n,0,0); CR("BOTTOM",0,2,8,&humx.bot,bot_n,0,0); CR("SHOES","FEET",2,7,&humx.shoes,shoe_n,0,0); CR("HAT",0,2,18,&humx.hat,hhat_n,0,0); CR("BACK",0,2,9,&humx.back,back_n,0,0);
-        CR("SKIN","FUR",3,0,0,0,&hum.col[HC_SKIN],0); CR("HAIR","EARS+TAIL",3,0,0,0,&hum.col[HC_HAIR],0); CR("SHOES","MUZZLE",3,0,0,0,&hum.col[HC_ACC],0);
-        CR("SHIRT",0,3,0,0,0,&hum.col[HC_SHIRT],0); CR("PANTS",0,3,0,0,0,&hum.col[HC_PANTS],0); CR("BELT",0,3,0,0,0,&hum.col[HC_BELT],0); CR("EYES",0,3,0,0,0,&hum.col[HC_EYES],0);
-        CR("HAT COL",0,3,0,0,0,&humx.c_hat,&humx.hat); CR("BACK COL",0,3,0,0,0,&humx.c_back,&humx.back);
-    } else {
-        CR("LENGTH",0,2,3,&look.shell,shell_n,0,0); CR("SHAPE",0,2,5,&bugx.shape,shape_n,0,0); CR("FINISH",0,2,4,&bugx.finish,fin_n,0,0); CR("PATTERN",0,2,12,&look.pat,pat_n,0,0);
-        CR("EYES",0,2,8,&look.eye,eye_n,0,0); CR("MOUTH",0,2,6,&bugx.mouth,mouth_n,0,0); CR("ANTENNAE",0,2,8,&look.ant,ant_n,0,0); CR("LEGS",0,2,3,&look.legs,legs_n,0,0); CR("LEG STYLE",0,2,4,&bugx.legst,legst_n,0,0);
-        CR("HORN",0,2,10,&look.horn,horn_n,0,0); CR("WINGS",0,2,9,&bugx.wings,wing_n,0,0); CR("TAIL",0,2,8,&bugx.tail,tail_n,0,0); CR("HAT",0,2,16,&bugx.hat,hat_n,0,0); CR("ORNAMENT",0,2,8,&bugx.x0,orn_n,0,0);
-        CR("SHELL",0,3,0,0,0,&look.col[LC_SHELL],0); CR("MARKINGS",0,3,0,0,0,&look.col[LC_MARK],&look.pat); CR("HEAD",0,3,0,0,0,&look.col[LC_HEAD],0);
-        CR("EYE COL",0,3,0,0,0,&look.col[LC_EYE],0); CR("ANT COL",0,3,0,0,0,&look.col[LC_ANT],0); CR("LEG COL",0,3,0,0,0,&look.col[LC_LEGS],0); CR("HORN COL",0,3,0,0,0,&look.col[LC_HORN],0);
-        CR("WING COL",0,3,0,0,0,&look.col[LC_WING],&bugx.wings); CR("HAT COL",0,3,0,0,0,&bugx.c_hat,0); CR("OUTLINE",0,3,0,0,0,&bugx.c_line,0);
-    }
+    static const CRow rows_h[]={ {"NAME",0,0,0,0,0,0,0,0}, {"LOOKS",0,1,0,0,0,0,0,0},
+        {"MY LOOKS",0,5,0,0,0,0,0,0},
+        {"CALLING",0,4,0,0,0,0,0,0}, {"BODY",0,2,2,&hum.style,body_n,0,0,0}, {"HEIGHT",0,2,5,&hum.height,ht_n,0,0,0}, {"BUILD",0,2,3,&hum.build,bd_n,0,0,0},
+        {"HAIR","EARS",2,14,&humx.hair,hair_n,0,0,ears_n}, {"FACE",0,2,12,&humx.face,face_n,0,0,0}, {"MOUTH",0,2,8,&humx.beard,beard_n,0,0,0},
+        {"TOP",0,2,14,&humx.top,top_n,0,0,0}, {"BOTTOM",0,2,8,&humx.bot,bot_n,0,0,0}, {"SHOES","FEET",2,7,&humx.shoes,shoe_n,0,0,0}, {"HAT",0,2,18,&humx.hat,hhat_n,0,0,0}, {"BACK",0,2,9,&humx.back,back_n,0,0,0},
+        {"SKIN","FUR",3,0,0,0,&hum.col[HC_SKIN],0,0}, {"HAIR","EARS+TAIL",3,0,0,0,&hum.col[HC_HAIR],0,0}, {"SHOES","MUZZLE",3,0,0,0,&hum.col[HC_ACC],0,0},
+        {"SHIRT",0,3,0,0,0,&hum.col[HC_SHIRT],0,0}, {"PANTS",0,3,0,0,0,&hum.col[HC_PANTS],0,0}, {"BELT",0,3,0,0,0,&hum.col[HC_BELT],0,0}, {"EYES",0,3,0,0,0,&hum.col[HC_EYES],0,0},
+        {"HAT COL",0,3,0,0,0,&humx.c_hat,&humx.hat,0}, {"BACK COL",0,3,0,0,0,&humx.c_back,&humx.back,0},
+    };
+    static const CRow rows_b[]={ {"NAME",0,0,0,0,0,0,0,0}, {"LOOKS",0,1,0,0,0,0,0,0},
+        {"LENGTH",0,2,3,&look.shell,shell_n,0,0,0}, {"SHAPE",0,2,5,&bugx.shape,shape_n,0,0,0}, {"FINISH",0,2,4,&bugx.finish,fin_n,0,0,0}, {"PATTERN",0,2,12,&look.pat,pat_n,0,0,0},
+        {"EYES",0,2,8,&look.eye,eye_n,0,0,0}, {"MOUTH",0,2,6,&bugx.mouth,mouth_n,0,0,0}, {"ANTENNAE",0,2,8,&look.ant,ant_n,0,0,0}, {"LEGS",0,2,3,&look.legs,legs_n,0,0,0}, {"LEG STYLE",0,2,4,&bugx.legst,legst_n,0,0,0},
+        {"HORN",0,2,10,&look.horn,horn_n,0,0,0}, {"WINGS",0,2,9,&bugx.wings,wing_n,0,0,0}, {"TAIL",0,2,8,&bugx.tail,tail_n,0,0,0}, {"HAT",0,2,16,&bugx.hat,hat_n,0,0,0}, {"ORNAMENT",0,2,8,&bugx.x0,orn_n,0,0,0},
+        {"SHELL",0,3,0,0,0,&look.col[LC_SHELL],0,0}, {"MARKINGS",0,3,0,0,0,&look.col[LC_MARK],&look.pat,0}, {"HEAD",0,3,0,0,0,&look.col[LC_HEAD],0,0},
+        {"EYE COL",0,3,0,0,0,&look.col[LC_EYE],0,0}, {"ANT COL",0,3,0,0,0,&look.col[LC_ANT],0,0}, {"LEG COL",0,3,0,0,0,&look.col[LC_LEGS],0,0}, {"HORN COL",0,3,0,0,0,&look.col[LC_HORN],0,0},
+        {"WING COL",0,3,0,0,0,&look.col[LC_WING],&bugx.wings,0}, {"HAT COL",0,3,0,0,0,&bugx.c_hat,0,0}, {"OUTLINE",0,3,0,0,0,&bugx.c_line,0,0},
+    };
+    const CRow *R = human ? rows_h : rows_b; const int nr = human ? (int)(sizeof rows_h/sizeof rows_h[0]) : (int)(sizeof rows_b/sizeof rows_b[0]);
     int np = human ? NCHP : NCBP;
     char nm[9]; scpy(nm,look.name); if(textlen(nm)<1) scpy(nm,"PIP");
     EW static CCSnap before, hist[8]; char bnm[9]; cc_take(&before); scpy(bnm,nm);
@@ -393,12 +392,12 @@ static int cc_run(volatile u16 *pg, int human, int first){
     wait_release(); oam_hide_all(); oam_flush();
     if(human){ if(!hum.made) hum_from_look(); hum.made=1; hum_palette(); hum_build(); } else bug_build();
     while(1){
-        sel=tr[tab][trow[tab]]; CRow *cr=&R[sel]; int on=!cr->dep || *cr->dep;
+        sel=tr[tab][trow[tab]]; const CRow *cr=&R[sel]; int on=!cr->dep || *cr->dep;
         if(dirty){ dirty=0; char b[44];
             panel(pg,4,20,232,128, human ? (first?"YOU ARE A HUMANOID NOW":"THE MIRROR: HUMANOID") : (first?"MAKE YOUR BUG":"THE MIRROR"));
             for(int k=0;k<5;k++){ int x=8+k*22; if(k==tab) ui_sel(pg,x,36,21,11,U_SEL); ctext(pg,x+10,39,tabs[k],k==tab?C_WHITE:C_GREY); }
             rect(pg,8,48,112,1,U_RAISE);
-            for(int j=0;j<tn[tab];j++){ int i=tr[tab][j], y=52+j*11, sl=(j==trow[tab]); CRow *r=&R[i]; int ron=!r->dep || *r->dep;
+            for(int j=0;j<tn[tab];j++){ int i=tr[tab][j], y=52+j*11, sl=(j==trow[tab]); const CRow *r=&R[i]; int ron=!r->dep || *r->dep;
                 if(sl) ui_sel(pg,8,y-2,112,11,U_SEL);
                 text(pg,14,y,(human&&hum.style&&r->nm2)?r->nm2:r->nm, sl?C_WHITE:ron?C_GREY:C_DGREY,1);
                 int vc = sl?C_GOLD:C_GREY;

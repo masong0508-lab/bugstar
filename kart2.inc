@@ -36,14 +36,14 @@ static int krec_off(int i){ return i<30 ? 0x7000+i*128 : 0x6010+(i-30)*128; }
 static int krec_get(int i, KRec *r){ sram_read(krec_off(i),r,128); if(!((r->at.used&0xE0)==0xA0 && r->sum==fnv(r,124))) return 0; r->at.used^=0xA5; return 1; }   // (on the cartridge 'used' is 0xA5 ^ the universe's table number, so old tracks, in universe 0-2^32, still read)
 static void krec_put(int i, KRec *r){ KRec t=*r; if(t.at.used>UT_N) t.at.used=0; t.at.used^=0xA5; t.at.chk=fav_chk(&t.at); t.sum=fnv(&t,124); sram_write(krec_off(i),&t,128); }
 static int uni_alloc(const u32 *u){                                    // the table number for universe u (adds it if new); -1 if the 31 slots are all in use by favourites and tracks
-    UTab t; ut_read(&t); int k=ut_find(&t,u); if(k>=0) return k;
-    int free_=-1; for(int i=0;i<UT_N;i++){ u32 o=0; for(int j=0;j<UW-1;j++) o|=t.h[i][j]; if(!o){ free_=i; break; } }
+    int k=ut_find(u); if(k>=0) return k; ut_ensure();
+    int free_=-1; for(int i=0;i<UT_N;i++){ u32 r[UW-1], o=0; ut_row(i,r); for(int j=0;j<UW-1;j++) o|=r[j]; if(!o){ free_=i; break; } }
     if(free_<0){ u8 used[UT_N+1]; for(int i=0;i<=UT_N;i++) used[i]=0; Fav f; KRec r;
         for(int i=0;i<NFAV;i++) if(fav_get(i,&f)) used[f.used]=1;
         for(int i=0;i<NKREC;i++) if(krec_get(i,&r)) used[r.at.used]=1;
         used[0]=1; for(int i=0;i<UT_N;i++) if(!used[i+1]){ free_=i; break; } }
     if(free_<0) return -1;
-    for(int j=0;j<UW-1;j++) t.h[free_][j]=u[1+j]; ut_write(&t); return free_+1; }
+    ut_put_row(free_,u+1); return free_+1; }
 static void krec_clear(int i){ for(int k=0;k<128;k++) SRAM[krec_off(i)+k]=0; }
 static void kw_fav(Fav *f);
 static int krec_here(const KRec *r){ Fav h; if(kw_mode) kw_fav(&h); else fav_here(&h); return fav_eq(&r->at,&h); }
@@ -412,10 +412,13 @@ static void kart_menu(int at_post){
     in_menu--; planet_hud(); p_last=vbl_count; }
 
 // ---------------------------------------------------------------- buttons while driving
+static void kart_pause_back(volatile u16 *pg){                       // behind a pause box in a hardware-ground race: the ground half of the page holds the map's flat texture (the road itself is drawn by the hardware lines, which a menu turns off), so lay a dim hatch there
+    int y0=g_phz+3; if(y0<50) y0=50; if(y0>110) y0=110; rect(pg,0,y0,240,160-y0,0);
+    for(int y=y0;y<160;y++) for(int x=(y&1);x<240;x+=2) pix(pg,x,y,C_DGREY); }
 static int kart_buttons(void){                                     // A, SELECT and START in a kart; 1 = a menu was open (the frame starts over)
     if(kr_mode==2){
         if(HIT(K_A)) kbuild_drop(); if(HIT(K_SEL)) kbuild_undo();
-        if(HIT(K_START)){ oam_hide_all(); oam_flush(); in_menu++; static const char *const o[4]={"FINISH THE TRACK","KEEP BUILDING","CAMERA","THROW IT AWAY"}; int sel=0; volatile u16 *pg=VISPG;
+        if(HIT(K_START)){ oam_hide_all(); oam_flush(); in_menu++; static const char *const o[4]={"FINISH THE TRACK","KEEP BUILDING","CAMERA","THROW IT AWAY"}; int sel=0; volatile u16 *pg=VISPG; if(m7_on) kart_pause_back(pg);
             while(1){ box(pg,50,46,140,62); rect(pg,51,47,138,12,6); ctext(pg,120,50,"BUILDING",C_GOLD); for(int i=0;i<4;i++){ if(i==sel) text(pg,60,64+i*10,">",C_CYAN,1); text(pg,68,64+i*10,o[i],i==sel?C_WHITE:C_GREY,1); }
                 vsync(); read_keys(); if(HIT(K_UP)) sel=(sel+3)%4; if(HIT(K_DOWN)) sel=(sel+1)%4; if(HIT(K_B)){ sel=1; break; } if(HIT(K_A)) break; }
             wait_release(); in_menu--;
@@ -423,7 +426,7 @@ static int kart_buttons(void){                                     // A, SELECT 
             planet_hud(); p_last=vbl_count; return 1; }
         return 0; }
     if(HIT(K_A) && rc[0].item && !kroul && ks_state==KS_RACE && !rc[0].spin) kuse_item(0);
-    if(HIT(K_START)){ oam_hide_all(); oam_flush(); in_menu++; static const char *const o[4]={"KEEP RACING","START AGAIN","CAMERA","QUIT THE RACE"}; int sel=0; volatile u16 *pg=VISPG;
+    if(HIT(K_START)){ oam_hide_all(); oam_flush(); in_menu++; static const char *const o[4]={"KEEP RACING","START AGAIN","CAMERA","QUIT THE RACE"}; int sel=0; volatile u16 *pg=VISPG; if(m7_on) kart_pause_back(pg);
         while(1){ box(pg,50,46,140,62); rect(pg,51,47,138,12,6); ctext(pg,120,50,"PAUSED",C_GOLD); for(int i=0;i<4;i++){ if(i==sel) text(pg,60,64+i*10,">",C_CYAN,1); text(pg,68,64+i*10,o[i],i==sel?C_WHITE:C_GREY,1); }
             vsync(); read_keys(); if(HIT(K_UP)) sel=(sel+3)%4; if(HIT(K_DOWN)) sel=(sel+1)%4; if(HIT(K_B)||HIT(K_START)){ sel=0; break; } if(HIT(K_A)) break; }
         wait_release(); in_menu--;

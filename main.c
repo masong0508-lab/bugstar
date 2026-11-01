@@ -1331,6 +1331,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #endif
 #ifdef TEST_KART
     k_cls=1; k_type=0; k_trk=TEST_KART%kt_count(); k_rec=-1; kt_official(k_trk,&kt);
+#ifdef TEST_KSTUNT
+    k_stunts=TEST_KSTUNT;
+#endif
 #ifdef TEST_KLAPS
     kt.laps=TEST_KLAPS;
 #endif
@@ -1338,6 +1341,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #endif
 #ifdef TEST_KJUMP
     if(nkj){ int p=(kjl[TEST_KJUMP%nkj]-26+knp)%knp; ppx=kp_cx(p); ppy=kp_cy(p); heading=kp_dir(p); heading_rays(); cam_h=ground_h(ppx,ppy)+CAM_UP; rc[0].pi=(s16)p; for(int r=1;r<nrc;r++){ rc[r].x=kp_cx((p+knp-30)%knp); rc[r].y=kp_cy((p+knp-30)%knp); } }
+#endif
+#ifdef TEST_KLOOP
+    if(nkl){ int p=(klp[TEST_KLOOP%nkl]-TEST_KLOOPB+knp)%knp; ppx=kp_cx(p); ppy=kp_cy(p); heading=kp_dir(p); khd=heading; heading_rays(); cam_h=ground_h(ppx,ppy)+CAM_UP; rc[0].pi=(s16)p; for(int r=1;r<nrc;r++){ rc[r].x=kp_cx((p+knp-30)%knp); rc[r].y=kp_cy((p+knp-30)%knp); rc[r].pi=(s16)((p+knp-30)%knp); } }
 #endif
 #ifdef TEST_KBR
     if(nkb){ int pc=kbs[0]+KBR_S, p=(pc-TEST_KBR+knp)%knp;
@@ -1488,6 +1494,9 @@ static void run_game(void){
     }
 }
 
+#ifdef TEST_KSWEEP
+volatile u32 sweep_n;
+#endif
 int main(void){
 #ifdef TEST_STACK
     { extern u32 __bss_end; u32 *p=&__bss_end; u32 sp_now; __asm__ volatile("mov %0, sp":"=r"(sp_now)); while((u32)p<sp_now-0x100) *p++=0xA5A5A5A5u; }   // (testing: paint the free stack so its deepest use can be seen)
@@ -1504,7 +1513,22 @@ int main(void){
     rng_s ^= 0x9E3779B9;
     settings_load(); music_apply();
 #ifdef TEST_KW
-    kw_defaults(1); kw.coins=50000; kw_store(); new_game(); bug_look_default(); humx_default(); kart_world();
+    kw_defaults(1); kw.coins=50000; kw_store(); new_game(); bug_look_default(); humx_default();
+#ifdef TEST_KWRACE
+    kw_load(); kw_mode=1; kw.unlocked=1; kw.seed=TEST_KWRACE; kw.track=TEST_KWTRK; kw.stunts=1; kw.laps=2; k_cls=1; kw_start_planet_race(kw.seed,kw.track,NRC,0); kw_run();      // (straight into a race on a chosen planet and track)
+#endif
+#ifdef TEST_KSWEEP
+    {   // the crash hunt: race after race on different planets, tracks, classes, mirrored or backwards, with every stunt on, the test driver at the wheel
+        kw_load(); kw_mode=1; kw.unlocked=1; kw.laps=1; kw.stunts=1;
+        for(u32 n=0;;n++){ sweep_n=n; kw.seed=hmix(n*2654435761u+17u)%900000000u; kw.track=hmix(n*40503u+9u)%KW_TRACKS; kw.mirror=(u8)((n>>3)&1); kw.reverse=(u8)((n>>4)&1); kw.stunts=(u8)(n%3==2?0:1); k_cls=(int)(n%5);
+            kw_start_planet_race(kw.seed,kw.track,NRC,0); kw_quit=0;
+            for(int f=0;!kw_quit && f<TEST_KSWEEP;f++){ read_keys(); frames++; if(invuln) invuln--; rng_s+=keys; planet_frame(); vsync(); if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?(1<<4):0); page_back^=1; oam_flush(); } }
+            fade(1); oam_hide_all(); oam_flush(); } }
+#endif
+    kart_world();
+#ifdef TEST_KWLOOP
+    { static volatile int never=0; while(!never) kart_world(); }                    // (the crash hunt: never leave Kart World; the rest of the game stays in the build)
+#endif
 #endif
 #ifdef TEST_UNLOCK
     kw_unlock();

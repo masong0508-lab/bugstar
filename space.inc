@@ -982,13 +982,20 @@ _Static_assert(FAV_HDR+4 <= 0x6C00, "the favourites must end before the Dungeon 
 typedef struct { u32 magic; u32 h[UT_N][UW-1]; u32 sum; } UTab;   // the upper 224 bits of the universes your favourites and tracks are in (shared by all slots)
 _Static_assert(UT_OFF+sizeof(UTab) <= 0x7000 && UT_OFF >= 0x6C00+136, "the universe table sits between the Dungeon Forge block and your tracks");
 static int uni_alloc(const u32 *u);                                                 // (in kart2.inc: it also knows the saved tracks)
-static void ut_write(UTab *t){ t->sum=fnv(t,sizeof *t-4); sram_write(UT_OFF,t,sizeof *t); }
-static void ut_read(UTab *t){ sram_read(UT_OFF,t,sizeof *t); if(t->magic==0x38545455u && t->sum==fnv(t,sizeof *t-4)) return;
-    struct { u32 magic; u32 h[UT_N][3]; u32 sum; } o; sram_read(0x6D00,&o,sizeof o); memset(t,0,sizeof *t); t->magic=0x38545455u;   // the 128-bit version kept the table here: bring it over
-    if(o.magic==0x42545455u && o.sum==fnv(&o,sizeof o-4)){ for(int i=0;i<UT_N;i++) for(int k=0;k<3;k++) t->h[i][k]=o.h[i][k]; ut_write(t); } }
-static int ut_find(const UTab *t, const u32 *u){ u32 hi=0; for(int j=1;j<UW;j++) hi|=u[j]; if(!hi) return 0;
-    for(int i=0;i<UT_N;i++){ int same=1; for(int j=0;j<UW-1;j++) if(t->h[i][j]!=u[1+j]){ same=0; break; } if(same) return i+1; } return -1; }
-static int uni_find(const u32 *u){ UTab t; ut_read(&t); return ut_find(&t,u); }
+// (the table is used straight from the cartridge, a row at a time: a whole copy on the stack would be 1.1 KB, and the stack is only 2 KB)
+static u32 ut_sum(void){ u32 h=2166136261u; u8 b[32]; for(unsigned o=0;o<sizeof(UTab)-4;o+=32){ unsigned n=sizeof(UTab)-4-o; if(n>32) n=32; sram_read(UT_OFF+o,b,n); for(unsigned i=0;i<n;i++){ h^=b[i]; h*=16777619u; } } return h; }
+static void ut_seal(void){ u32 s=ut_sum(); sram_write(UT_OFF+sizeof(UTab)-4,&s,4); }
+static int ut_good(void){ u32 m, s; sram_read(UT_OFF,&m,4); if(m!=0x38545455u) return 0; sram_read(UT_OFF+sizeof(UTab)-4,&s,4); return s==ut_sum(); }
+static void ut_ensure(void){ if(ut_good()) return;
+    struct { u32 magic; u32 h[UT_N][3]; u32 sum; } o; sram_read(0x6D00,&o,sizeof o); int old = o.magic==0x42545455u && o.sum==fnv(&o,sizeof o-4);   // the 128-bit version kept the table here: bring it over
+    u32 m=0x38545455u, r[UW-1]; sram_write(UT_OFF,&m,4);
+    for(int i=0;i<UT_N;i++){ for(int k=0;k<UW-1;k++) r[k]= (old && k<3) ? o.h[i][k] : 0; sram_write(UT_OFF+4+i*(UW-1)*4,r,(UW-1)*4); }
+    ut_seal(); }
+static void ut_row(int i, u32 *r){ sram_read(UT_OFF+4+i*(UW-1)*4,r,(UW-1)*4); }
+static void ut_put_row(int i, const u32 *r){ sram_write(UT_OFF+4+i*(UW-1)*4,r,(UW-1)*4); ut_seal(); }
+static int ut_find(const u32 *u){ u32 hi=0; for(int j=1;j<UW;j++) hi|=u[j]; if(!hi) return 0; ut_ensure();
+    for(int i=0;i<UT_N;i++){ u32 r[UW-1]; ut_row(i,r); int same=1; for(int j=0;j<UW-1;j++) if(r[j]!=u[1+j]){ same=0; break; } if(same) return i+1; } return -1; }
+static int uni_find(const u32 *u){ return ut_find(u); }
 static u8 fav_chk(const Fav *f){ const u8 *p=(const u8*)f; u8 c=0x5A; for(int i=0;i<FAV_SZ-1;i++) c=(u8)(((c<<1)|(c>>7))^p[i]); return c; }
 static void fav_init(void){ u32 m; sram_read(FAV_HDR,&m,4); if(m==0x31564146u) return; for(int i=0;i<NFAV*FAV_SZ;i++) SRAM[FAV_BASE+i]=0; m=0x31564146u; sram_write(FAV_HDR,&m,4); }
 static int fav_get(int i, Fav *f){ sram_read(FAV_BASE+i*FAV_SZ,f,FAV_SZ); if(!((f->used&0xE0)==0xA0 && f->chk==fav_chk(f))) return 0; f->used^=0xA5; return 1; }
@@ -996,7 +1003,7 @@ static void fav_set(int i, const Fav *f){ Fav g=*f; if(g.used>UT_N) g.used=0; g.
 static void fav_clear(int i){ for(int k=0;k<FAV_SZ;k++) SRAM[FAV_BASE+i*FAV_SZ+k]=0; }
 static void fav_here(Fav *f){ u8 *p=(u8*)f; for(int i=0;i<FAV_SZ;i++) p[i]=0; ax_get(0,f->cx); ax_get(1,f->cy); f->seed=uni_w[0]; { int ix=uni_find(uni_w); f->used=(u8)(ix<0?0x80:ix); } f->star=(u8)cur_sys; f->body=(u8)(cur_pl*8+cur_moon); }
 static int fav_eq(const Fav *a, const Fav *b){ const u8 *p=(const u8*)a, *q=(const u8*)b; for(int i=0;i<FAV_SZ-2;i++) if(p[i]!=q[i]) return 0; return a->used==b->used; }
-static void fav_uni(const Fav *f, u32 *u){ for(int i=1;i<UW;i++) u[i]=0; u[0]=f->seed; if(f->used>0 && f->used<=UT_N){ UTab t; ut_read(&t); for(int k=0;k<UW-1;k++) u[1+k]=t.h[f->used-1][k]; } }   // the favourite's universe
+static void fav_uni(const Fav *f, u32 *u){ for(int i=1;i<UW;i++) u[i]=0; u[0]=f->seed; if(f->used>0 && f->used<=UT_N){ u32 r[UW-1]; ut_ensure(); ut_row(f->used-1,r); for(int k=0;k<UW-1;k++) u[1+k]=r[k]; } }   // the favourite's universe
 static int fav_in_uni(const Fav *f){ u32 u[UW]; fav_uni(f,u); return uni_eq(u,uni_w); }
 static int fav_add_here(void){ fav_init(); Fav h, f; if(uni_alloc(uni_w)<0) return -3; fav_here(&h); int empty=-1;
     for(int i=0;i<NFAV;i++){ if(fav_get(i,&f)){ if(fav_eq(&f,&h)) return -2; } else if(empty<0) empty=i; }
