@@ -22,6 +22,7 @@ static s32 sim_fx[SIM_MAXFOLK], sim_fy[SIM_MAXFOLK];       // where it stands (1
 static s32 sim_tgx[SIM_MAXFOLK][SIMP_N], sim_tgy[SIM_MAXFOLK][SIMP_N];   // where each logical place is, per bug
 static u16 sim_stuck[SIM_MAXFOLK];
 static int sim_nhome;
+static int sim_said_letters;            // letter pop-ups shown (the tests read it)
 static int sim_a_up;                    // 1 once A has been seen up on this planet: keeps a key still held from the title or a menu from opening the quick menu
 
 static int sim_is_on(void){
@@ -160,7 +161,7 @@ static void sim_unlock_msgs(void){
     Lv l; sim_level_lv(&l); sim_check_unlocks(&sim_w,&l);
     int c=0, last=0;
     for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_UNLOCK){ c++; last=e->a; } }
-    for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_LETTER){ char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); break; } }
+    for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_LETTER){ char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_said_letters++; break; } }
     sim_seen_log=sim_w.log_n;
     if(c>3){ char b[40]; b[0]=0; ncat(b,c); scat(b," NEW GOD POWERS ARE OPEN"); say(b); sfx(6); }
     else if(c>0){ char b[40]; scpy(b,"NEW POWER "); ncat(b,last); scat(b,": "); scat(b,god_power(last)->name); say(b); sfx(6); }
@@ -169,6 +170,8 @@ static void sim_dump_all(void){
     const char *path=sim_io_env("BUGSTAR_SIM_DUMP"); if(!path) return;
     static char buf[4096]; sim_dump(&sim_w,buf,sizeof buf); sim_io_append(path,buf);
     char t[96]; for(int k=0;k<sim_w.nfolk;k++){ scpy(t,"near "); ncat(t,k); scat(t," "); ncat(t,sim_dist10(k)); scat(t,"\n"); sim_io_append(path,t); }
+    { int nl=0; for(u32 b=0;b<sim_log_count(&sim_w);b++) if(sim_log_at(&sim_w,b)->kind==SIME_LETTER) nl++;
+      scpy(t,"friends"); for(int k=0;k<sim_w.nfolk;k++){ scat(t," "); ncat(t,sim_w.friend[k]); } scat(t," letters "); ncat(t,nl); scat(t," shown "); ncat(t,sim_said_letters); scat(t,"\n"); sim_io_append(path,t); }
     { Lv l; sim_level_lv(&l); char d[LV_DEC_MAX]; lv_to_dec(&l,d,sizeof d); scpy(t,"level "); scat(t,d); scat(t," powers "); ncat(t,god_unlocked_count(&l,sim_w.god.sandbox)); scat(t,"\n"); sim_io_append(path,t); }
     sim_io_append(path,"--\n");
 }
@@ -181,6 +184,8 @@ static void sim_frame(int n){
     if(!(keys&K_A)) sim_a_up=1;
     int steps=sim_feed(&sim_w,n,20); sim_cal+=(u64)steps;
     sim_walk(n);
+    { static int nk=-2; if(nk==-2){ const char *e=sim_io_env("BUGSTAR_SIM_NEAR"); nk = e && *e ? e[0]-'0' : -1; }   // a test hook: keep the player beside townsperson k
+      if(nk>=0 && nk<sim_w.nfolk){ ppx=sim_fx[nk]+0xC000; ppy=sim_fy[nk]; } }
     if(frames%30==0) sim_unlock_msgs();
     if(sim_dump_at && sim_w.tick>=sim_dump_at){ sim_dump_at=sim_w.tick+600; sim_dump_all(); }
 }
