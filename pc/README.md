@@ -282,4 +282,4 @@ SELECT rolls the dice for the tab, START undoes. The planet and the footprint pa
 
 PC LAB (pause, WORLD page, B) then GIANT NUMBERS: a viewer for 2^(2^32) (1,292,913,987 digits), the counting number 1..123,456,790 (1,000,000,008 digits),
 the complete name of BUGSTARILLION v3 (6,376,476,945,538,615,314 letters), a namer for any typed number, and a scale ladder. Details, definitions, the record research
-and the tests: `pc/giant/README.md`. The 646 MB digit file is built once by `pc/giant/mkpow.py` and is not in git (`pc/giant/cache/`); the counting number needs no file.
+and the tests: `pc/giant/README.md`. No digit file is needed or shipped: the game keeps the rule 2^(2^32) and works any digits out exactly when they are shown (proved error bound or exact modular arithmetic, every million-digit block checked against a 10 KB fingerprint table). An optional 100 MB FAST CACHE for the middle is made only when asked.

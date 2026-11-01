@@ -118,5 +118,5 @@ STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.b
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
 for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../giant/giant.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
-$CC $ARCH $OBJS $SDLL -lm -o ../$OUT
+$CC $ARCH $OBJS $SDLL -lm $( [ -z "$PC_WIN" ] && echo -lpthread ) -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"

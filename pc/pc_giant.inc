@@ -21,29 +21,68 @@ static double gv_now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t
 static const char *gv_title(int w){ return w == GV_POW ? "2 TO THE POWER 2^32" : w == GV_COUNT ? "THE COUNTING NUMBER" : "BUGSTARILLION V3: THE NAME"; }
 
 // ---- is the number there? (2^(2^32) and V3 need the file from pc/giant/mkpow.py)
-static int gv_ready(int w){ if(w == GV_COUNT) return 1; if(w == GV_POW) return gi_open(GI_POW) == 0; return gv3_ready() || gv3_open() == 0; }
-static int gv_building;                                         // the file is being made by a program in the background
-static void gv_start_build(void){
-    char exe[600], cmd[1500]; int n = (int)readlink("/proc/self/exe", exe, sizeof exe - 1); if(n <= 0) return; exe[n] = 0; char *sl = strrchr(exe, '/'); if(!sl) return; *sl = 0;
-    const char *d = gi_dir(); char dd[600]; if(!d[0]){ snprintf(dd, sizeof dd, "%s/giant/cache", exe); d = dd; }
-    snprintf(cmd, sizeof cmd, "mkdir -p '%s' && (nohup python3 '%s/giant/mkpow.py' '%s/%s.part' > '%s/build.log' 2>&1 && mv '%s/%s.part' '%s/%s') > /dev/null 2>&1 &", d, exe, d, gi_file(GI_POW), d, d, gi_file(GI_POW), d, gi_file(GI_POW));
-    if(system(cmd) == 0){ gv_building = 1; gi_set_dir(d); }
+static int gv_ready(int w){ if(w == GV_COUNT) return 1; if(w == GV_POW){ gi_open(GI_POW); return 1; } return gv3_ready() || gv3_open() == 0; }
+static int gv_fast;                                              // scrolling fast: do not work digits out until the key is let go
+
+// ---- while digits are worked out (exact arithmetic on this computer): a progress screen, B stops
+typedef struct { volatile u16 *pg; double t0, tlast; const char *what; int active; } GvWork;
+static GvWork gv_work;
+static int gv_work_cb(gull done, gull total, void *ud){
+    GvWork *e = ud; double t = gv_now();
+    if(!e->active){ e->active = 1; e->t0 = t; e->tlast = 0; }
+    if(t - e->tlast < 0.05 && done < total) return 0; e->tlast = t;
+    volatile u16 *pg = e->pg; oam_hide_all(); oam_flush(); ui_bg(pg, 0, 160); ui_panel(pg, 8, 20, 224, 112); ui_head(pg, 14, 24, 212, e->what ? e->what : "WORKING OUT THE DIGITS", C_GOLD);
+    text(pg, 14, 38, "EXACT ARITHMETIC ON THIS COMPUTER: 2 IS SQUARED", C_WHITE, 1);
+    text(pg, 14, 45, "32 TIMES, KEEPING THE DIGITS THAT ARE NEEDED.", C_WHITE, 1);
+    text(pg, 14, 52, "EVERY BLOCK OF A MILLION DIGITS IS CHECKED.", C_GREY, 1);
+    if(total < 1) total = 1; if(done > total) done = total;
+    rect(pg, 14, 64, 212, 10, U_PANEL); int wd = (int)((long double)done / (long double)total * 210.0L); rect(pg, 15, 65, wd, 8, C_GREEN);
+    { char b[64]; gull pm = (gull)((long double)done * 1000.0L / (long double)total); scpy(b, ""); ncat(b, (s64)(pm / 10)); scat(b, "."); ncat(b, (s64)(pm % 10)); scat(b, "%   TIME "); ncat(b, (s64)(t - e->t0)); scat(b, " S"); ctext(pg, 120, 80, b, C_WHITE); }
+    text(pg, 14, 96, "THE DEEPER INTO THE NUMBER, THE LONGER IT TAKES:", C_GREY, 1);
+    text(pg, 14, 103, "THE MIDDLE TAKES MINUTES. THE FAST CACHE (MENU)", C_GREY, 1);
+    text(pg, 14, 110, "KEEPS THE MIDDLE ON DISK (100 MB).", C_GREY, 1);
+    ui_foot(pg, "", "B: STOP"); vsync(); read_keys(); return HIT(K_B) ? 1 : 0;
 }
-static void gv_missing_screen(volatile u16 *pg, int w){
-    int dirty = 1; wait_release();
+static void gv_hook_on(volatile u16 *pg, const char *what){ gv_work.pg = pg; gv_work.what = what; gv_work.active = 0; gi_set_hook(gv_work_cb, &gv_work); }
+static const char *gv_mode_name(void){ int m = gi_mode(); return m == GI_MODE_FILE ? "FULL DIGIT FILE" : m == GI_MODE_CACHE ? "LIVE + FAST CACHE" : "WORKED OUT LIVE"; }
+
+// ---- WHERE THE DIGITS COME FROM: the mode, memory, and the FAST CACHE (made and deleted only when asked)
+static void gv_store_screen(volatile u16 *pg){
+    int dirty = 1, msg = 0; wait_release();
     while(1){
-        if(dirty){ dirty = 0; oam_hide_all(); oam_flush(); ui_bg(pg, 0, 160); ui_panel(pg, 4, 4, 232, 143); ui_head(pg, 9, 8, 222, gv_title(w), C_GOLD);
-            const char *L[] = { "THE DIGITS OF THIS NUMBER ARE NOT BUILT YET.", "", "THEY ARE WORKED OUT ONCE, EXACTLY, BY A PYTHON PROGRAM", "(PC/GIANT/MKPOW.PY) AND KEPT IN ONE FILE OF 646 MB:", gi_file(GI_POW), "",
-                "IT NEEDS ABOUT 5 GB OF MEMORY AND 15 TO 30 MINUTES.", "THE GAME THEN JUMPS INTO THE FILE: IT NEVER HOLDS THE", "WHOLE NUMBER.", "" , 0 };
-            for(int i = 0; L[i]; i++) text(pg, 9, 20 + i * 7, L[i], i == 4 ? C_CYAN : C_WHITE, 1);
-            if(gv_building) text(pg, 9, 96, "BUILDING NOW IN THE BACKGROUND. COME BACK LATER.", C_GREEN, 1);
-            else text(pg, 9, 96, "A: BUILD IT NOW (STARTS PYTHON IN THE BACKGROUND)", C_GOLD, 1);
-            { char b[640]; scpy(b, "FOLDER: "); scat(b, gi_dir()[0] ? gi_dir() : "(NONE YET)"); b[56] = 0; text(pg, 9, 110, b, C_GREY, 1); }
-            text(pg, 9, 118, "OR SET BUGSTAR_GIANT_DIR TO A FOLDER WITH THE FILE.", C_GREY, 1);
-            ui_foot(pg, "A: BUILD IT NOW", "B: BACK"); }
+        if(dirty){ dirty = 0; oam_hide_all(); oam_flush(); ui_bg(pg, 0, 160); ui_panel(pg, 4, 4, 232, 143); ui_head(pg, 9, 8, 222, "WHERE THE DIGITS COME FROM", C_GOLD);
+            char b[96]; int y = 20;
+            scpy(b, "NOW: "); scat(b, gv_mode_name()); text(pg, 9, y, b, C_CYAN, 1); y += 9;
+            const char *L[] = { "THE NUMBER IS STORED AS WHAT IT IS: 2^(2^32). ANY", "DIGIT IS WORKED OUT EXACTLY WHEN IT IS NEEDED, THEN", "KEPT IN MEMORY (AT MOST ABOUT 100 MB). NEAR THE START", "OR THE END IT IS QUICK. THE MIDDLE TAKES MINUTES AND", "ABOUT 3 GB OF MEMORY WHILE IT WORKS.", 0 };
+            for(int i = 0; L[i]; i++){ text(pg, 9, y, L[i], C_WHITE, 1); y += 7; } y += 3;
+            scpy(b, "IN MEMORY NOW: "); gv_comma(b, gi_ram_bytes()); scat(b, " BYTES"); text(pg, 9, y, b, C_GREY, 1); y += 9;
+            if(gi_cache_present()){ scpy(b, "FAST CACHE: ON DISK, "); gv_comma(b, gi_cache_bytes()); scat(b, " BYTES"); text(pg, 9, y, b, C_GREEN, 1); y += 7;
+                text(pg, 9, y, "DIGITS 526,000,001 TO 766,000,000 READ AT ONCE.", C_GREEN, 1); y += 9; }
+            else { text(pg, 9, y, "FAST CACHE: NOT MADE (NOTHING BIG ON THE DISK).", C_GREY, 1); y += 7;
+                scpy(b, "MAKING IT: "); gv_comma(b, gi_cache_bytes()); scat(b, " BYTES, A FEW MINUTES ONCE."); text(pg, 9, y, b, C_GREY, 1); y += 9; }
+            if(gi_mode() == GI_MODE_FILE){ text(pg, 9, y, "(A FULL 646 MB DIGIT FILE IS IN USE: FOR TESTS.)", C_GREY, 1); y += 7; }
+            if(msg == 1) text(pg, 9, 124, "DONE.", C_GREEN, 1); else if(msg == 2){ scpy(b, "NOT MADE: "); scat(b, gi_error()); b[56] = 0; text(pg, 9, 124, b, C_RED, 1); } else if(msg == 3) text(pg, 9, 124, "STOPPED. NOTHING WAS WRITTEN.", C_GREY, 1);
+            ui_foot(pg, gi_cache_present() ? "SEL: DELETE THE CACHE" : "A: MAKE THE FAST CACHE", "B: BACK"); }
         vsync(); read_keys();
         if(HIT(K_B) || HIT(K_START)) break;
-        if(HIT(K_A) && !gv_building){ gv_start_build(); dirty = 1; sfx(2); }
+        if(HIT(K_A) && !gi_cache_present()){ gv_hook_on(pg, "MAKING THE FAST CACHE"); int rc = gi_cache_build(gv_work_cb, &gv_work); msg = rc == 0 ? 1 : rc == 1 ? 3 : 2; dirty = 1; wait_release(); }
+        if(HIT(K_SEL) && gi_cache_present()){ gi_cache_delete(); msg = 0; dirty = 1; sfx(7); }
+    }
+    wait_release();
+}
+
+// ---- BUGSTARILLION V3 needs its index (0.7 MB): made once from all the digits
+static void gv_missing_screen(volatile u16 *pg, int w){
+    int dirty = 1, msg = 0; wait_release(); (void)w;
+    while(1){
+        if(dirty){ dirty = 0; oam_hide_all(); oam_flush(); ui_bg(pg, 0, 160); ui_panel(pg, 4, 4, 232, 143); ui_head(pg, 9, 8, 222, gv_title(GV_V3), C_GOLD);
+            const char *L[] = { "TO FIND ANY LETTER OF THE NAME AT ONCE, THE GAME", "NEEDS AN INDEX (0.7 MB): THE LETTER COUNT AT EVERY", "65,536TH TERM. IT IS MADE ONCE FROM ALL 1,292,913,987", "DIGITS OF 2^(2^32), WORKED OUT EXACTLY IN TWO PASSES.", "", "IT TAKES SOME MINUTES AND ABOUT 3 GB OF MEMORY WHILE", "IT WORKS. NOTHING ELSE BIG IS KEPT.", 0 };
+            for(int i = 0; L[i]; i++) text(pg, 9, 22 + i * 7, L[i], C_WHITE, 1);
+            if(msg == 2){ char b[80]; scpy(b, "NOT MADE: "); scat(b, gi_error()); b[56] = 0; text(pg, 9, 100, b, C_RED, 1); } else if(msg == 3) text(pg, 9, 100, "STOPPED.", C_GREY, 1);
+            ui_foot(pg, "A: MAKE THE INDEX NOW", "B: BACK"); }
+        vsync(); read_keys();
+        if(HIT(K_B) || HIT(K_START)) break;
+        if(HIT(K_A)){ gv_hook_on(pg, "MAKING THE V3 INDEX"); int rc = gv3_build_index(gv_work_cb, &gv_work); if(rc == 0) break; msg = rc == 1 ? 3 : 2; dirty = 1; wait_release(); }
     }
     wait_release();
 }
@@ -123,7 +162,7 @@ static void gv_cmp_lines(int w, char L[][64], int *C, int *n){
 static int gv_big;                                              // big type (fewer digits, easier to read, good on a phone)
 typedef struct { int rw, pitch, rows, y0, gw; } GvLay;
 static GvLay gv_lay(int w){
-    GvLay l; int hdr = w == GV_V3 ? 21 : 13;
+    GvLay l; int hdr = w == GV_COUNT ? 13 : 21;
     if(gv_big){ l.rw = w == GV_V3 ? 25 : 18; l.pitch = 12; l.gw = 32; } else { l.rw = w == GV_V3 ? 52 : 36; l.pitch = 7; l.gw = 16; }
     l.y0 = hdr + 2; l.rows = (148 - l.y0) / l.pitch; return l;
 }
@@ -132,13 +171,18 @@ static gull gv_nrows(int w){ gull t = gv_total(w); GvLay l = gv_lay(w); return (
 
 static void gv_draw(volatile u16 *pg, int w, gull top, int msg_t, const char *msg){
     GvLay l = gv_lay(w); gull T = gv_total(w); int off = gv_off(w); char b[96], row[80];
-    ui_bg(pg, 0, 160);
     gull p0 = top * (gull)l.rw; p0 = p0 >= (gull)off ? p0 - (gull)off : 0; if(top == 0 && off) p0 = 0;     // real position of the first digit on the screen
+    static char buf[40 * 64 + 8]; int want = l.rows * l.rw; if(want > (int)sizeof buf - 8) want = (int)sizeof buf - 8;
+    int skip = gv_fast && ((w == GV_POW && !(gi_have(p0) && gi_have(p0 + (gull)want - 1))) || w == GV_V3);
+    V3Info vi; int vok = 0;
+    if(!skip){ memset(buf, 0, sizeof buf); gv_fetch(w, p0, want, buf); if(w == GV_V3) vok = gv3_info(p0, &vi) == 0; }     // (may work digits out: done before drawing)
+    oam_hide_all(); oam_flush(); ui_bg(pg, 0, 160);
     scpy(b, w == GV_V3 ? "LETTER " : "DIGIT "); gv_comma(b, p0 + 1); scat(b, " OF "); gv_comma(b, T); text(pg, 3, 3, b, C_GOLD, 1);
     { char pc[16]; gull pm = (gull)((long double)p0 * 1000.0L / (long double)T); scpy(pc, ""); ncat(pc, (s64)(pm / 10)); scat(pc, "."); ncat(pc, (s64)(pm % 10)); scat(pc, "%"); rtext(pg, 236, 3, pc, C_CYAN); }
-    if(w == GV_V3){ V3Info vi; if(gv3_info(p0, &vi) == 0){ scpy(b, "TERM "); gv_comma(b, vi.j); scat(b, " OF "); gv_comma(b, gv3_parts()); scat(b, "  VALUE "); ncat(b, vi.coef); text(pg, 3, 11, b, C_GREEN, 1); } }
-    static char buf[40 * 64 + 8]; int want = l.rows * l.rw; if(want > (int)sizeof buf - 8) want = (int)sizeof buf - 8;
-    gv_fetch(w, p0, want, buf);
+    if(w == GV_POW){ text(pg, 3, 11, gv_mode_name(), C_DGREY, 1); }
+    if(w == GV_V3 && vok){ { scpy(b, "TERM "); gv_comma(b, vi.j); scat(b, " OF "); gv_comma(b, gv3_parts()); scat(b, "  VALUE "); ncat(b, vi.coef); text(pg, 3, 11, b, C_GREEN, 1); } }
+    if(skip){ ctext(pg, 120, 70, w == GV_V3 ? "MOVING FAST: LET GO TO READ" : "MOVING FAST: LET GO TO SEE THE DIGITS HERE", C_GREY); ctext(pg, 120, 80, "(THEY ARE WORKED OUT WHEN YOU STOP)", C_DGREY);
+        ui_foot(pg, "UP DN LINE  L R PAGE", "A JUMP  START MENU"); return; }
     int k = 0;                                                   // k = index in buf
     for(int r = 0; r < l.rows; r++){
         int y = l.y0 + r * l.pitch; gull vstart = (top + (gull)r) * (gull)l.rw;                  // virtual index of this row's first digit
@@ -228,6 +272,7 @@ static gull gv_pos_of_row(int w, gull top){ int off = gv_off(w); GvLay l = gv_la
 static gull gv_row_of_pos(int w, gull p){ GvLay l = gv_lay(w); return (p + (gull)gv_off(w)) / (gull)l.rw; }
 static void gv_view(volatile u16 *pg, int w, gull start_pos){
     if(!gv_ready(w)){ gv_missing_screen(pg, w); if(!gv_ready(w)) return; }
+    gv_hook_on(pg, 0);
     gull top = gv_row_of_pos(w, start_pos), nrows = gv_nrows(w), T = gv_total(w); int dirty = 1, hold = 0, msg_t = 0; char msg[48]; msg[0] = 0;
     wait_release();
     while(1){
@@ -241,14 +286,16 @@ static void gv_view(volatile u16 *pg, int w, gull start_pos){
             int h = hold++; gull st = 0;
             if(h == 0) st = 1; else if(h >= 14 && h < 40) st = (h % 3 == 0) ? 1 : 0; else if(h >= 40){ int e = (h - 40) / 7; if(e > 30) e = 30; st = (gull)1 << e; }
             if(st){ gull d = st * unit; if(dn){ top = (top + d > maxtop || top + d < top) ? maxtop : top + d; } else top = top > d ? top - d : 0; dirty = 1; }
-        } else hold = 0;
+            gv_fast = w != GV_COUNT && h >= 40;
+        } else { if(gv_fast){ gv_fast = 0; dirty = 1; } hold = 0; }
         if(HIT(K_SEL)){ gv_big = !gv_big; dirty = 1; sfx(7); gull p = gv_pos_of_row(w, top); top = gv_row_of_pos(w, p); }
         if(HIT(K_A)){ gull v = gv_pos_of_row(w, top) + 1;
             if(gv_enter(pg, w == GV_V3 ? "JUMP TO LETTER NUMBER" : "JUMP TO DIGIT NUMBER", &v, 1, T)){ top = gv_row_of_pos(w, v - 1); } dirty = 1; }
         if(HIT(K_START)){
-            static const char *const m1[] = { "JUMP TO DIGIT NUMBER", "GO TO THE START", "GO TO THE END", "ABOUT THIS NUMBER", "NAME THE GROUPS HERE", "WRITE THE WHOLE NUMBER TO A FILE", "BIG / SMALL TYPE", "BACK TO THE VIEWER" };
+            static const char *const m1[] = { "JUMP TO DIGIT NUMBER", "GO TO THE START", "GO TO THE END", "ABOUT THIS NUMBER", "NAME THE GROUPS HERE", "WRITE THE WHOLE NUMBER TO A FILE", "BIG / SMALL TYPE", "WHERE THE DIGITS COME FROM", "BACK TO THE VIEWER" };
             static const char *const m3[] = { "JUMP TO LETTER NUMBER", "JUMP TO TERM NUMBER", "GO TO THE START", "GO TO THE END", "ABOUT THE NAME", "WRITE 1 MB FROM HERE TO A FILE", "WRITE 100 MB FROM HERE", "BIG / SMALL TYPE", "BACK TO THE VIEWER" };
-            int c = w == GV_V3 ? gv_menu(pg, "MENU", m3, 9) : gv_menu(pg, "MENU", m1, 8); dirty = 1;
+            int c = w == GV_V3 ? gv_menu(pg, "MENU", m3, 9) : gv_menu(pg, "MENU", m1, w == GV_POW ? 9 : 8); dirty = 1;
+                if(w == GV_COUNT && c == 7) c = 8;
             if(c >= 0){
                 if(w == GV_V3){
                     if(c == 0){ gull v = gv_pos_of_row(w, top) + 1; if(gv_enter(pg, "JUMP TO LETTER NUMBER", &v, 1, T)) top = gv_row_of_pos(w, v - 1); }
@@ -261,6 +308,7 @@ static void gv_view(volatile u16 *pg, int w, gull start_pos){
                     if(c == 0){ gull v = gv_pos_of_row(w, top) + 1; if(gv_enter(pg, "JUMP TO DIGIT NUMBER", &v, 1, T)) top = gv_row_of_pos(w, v - 1); }
                     else if(c == 1) top = 0; else if(c == 2) top = maxtop; else if(c == 3) gv_info(pg, w); else if(c == 4) gv_groups_screen(pg, w, gv_pos_of_row(w, top)); else if(c == 5) gv_do_export(pg, w, 0, T);
                     else if(c == 6){ gv_big = !gv_big; gull p = gv_pos_of_row(w, top); top = gv_row_of_pos(w, p); }
+                    else if(c == 7){ gv_store_screen(pg); gv_hook_on(pg, 0); }
                 }
             }
             dirty = 1; wait_release();
@@ -305,7 +353,7 @@ static void gv_page_about(GvPage *p, int w, int pg){
                 gv_ln(p, "2 TO THE POWER 2^32  =  2^4,294,967,296", C_GOLD);
                 gv_para(p, "THE NUMBER OF DIFFERENT THINGS THAT 512 MIB (4,294,967,296 BITS) OF MEMORY CAN HOLD: EACH BIT IS 0 OR 1, SO IT IS 2 X 2 X 2 ... WITH 4.29 BILLION TWOS.", C_WHITE);
                 gv_para(p, "REAL: YES. A TRUE MATHEMATICAL NUMBER, NOT INVENTED. EVERY DIGIT IS EXACT.", C_GREEN);
-                gv_para(p, "HOW THE DIGITS WERE MADE: PYTHON'S DECIMAL MODULE SQUARED 2 THIRTY-TWO TIMES (2, 4, 16, 256 ...), WITH NO ROUNDING AT ALL, AND WROTE THE DIGITS TO ONE FILE. THE GAME NEVER KEEPS THE WHOLE NUMBER IN MEMORY: IT JUMPS INTO THE FILE.", C_GREY);
+                gv_para(p, "HOW THE DIGITS ARE MADE: THE GAME KEEPS ONLY THE RULE, 2^(2^32). WHEN YOU LOOK SOMEWHERE IT SQUARES 2 THIRTY-TWO TIMES WITH EXACT WHOLE-NUMBER ARITHMETIC, KEEPING THE TOP DIGITS (WITH A PROVED ERROR BOUND) FOR THE FIRST HALF OR THE LAST DIGITS (EXACT) FOR THE SECOND HALF. IT KEEPS AT MOST ABOUT 100 MB IN MEMORY; THE FAST CACHE (MENU) PUTS THE MIDDLE 240 MILLION DIGITS ON DISK IN 100 MB.", C_GREY);
             } else {
                 gv_ln(p, "1 2 3 4 5 ... 123,456,789 123,456,790 IN A ROW", C_GOLD);
                 gv_para(p, "THE WHOLE NUMBERS WRITTEN ONE AFTER ANOTHER: 123456789101112... UP TO 123,456,790. IT IS CHAMPERNOWNE'S CONSTANT (1933), CUT OFF AFTER 123,456,790, AS A WHOLE NUMBER.", C_WHITE);
@@ -326,10 +374,9 @@ static void gv_page_about(GvPage *p, int w, int pg){
         else if(pg == 3){ scpy(p->title, "COMPARE"); static char L[40][64]; static int C[40]; int n; gv_cmp_lines(w, L, C, &n); for(int i = 0; i < n && p->n < 26; i++) gv_ln(p, L[i], C[i]); }
         else { scpy(p->title, "HOW IT WAS CHECKED");
             if(w == GV_POW){
-                gv_para(p, "1. EVERY DIGIT, MODULO 8 PRIMES, AGAINST PYTHON'S POW(2, 2^32, P): THE FILE'S WHOLE VALUE MUST MATCH.", C_WHITE);
-                gv_para(p, "2. THE LAST 2,000 DIGITS FROM POW(2, 2^32, 10^2000) AND THE FIRST 300 FROM A SEPARATE LOGARITHM CALCULATION.", C_WHITE);
-                gv_para(p, "3. THOUSANDS OF RANDOM WINDOWS READ BY THE GAME'S CODE AGAINST A SEPARATE PYTHON READER OF THE FILE.", C_WHITE);
-                gv_para(p, "4. THE EXPORT'S SHA-256 AGAINST PYTHON'S. RUN PC/GIANT/TEST.SH", C_WHITE);
+                gv_para(p, "1. A SEPARATE PROGRAM (PYTHON'S DECIMAL MODULE) WORKED OUT ALL THE DIGITS ONCE. ITS WHOLE VALUE MATCHES POW(2, 2^32, P) FOR 10 PRIMES; ITS FIRST 300 DIGITS MATCH A LOGARITHM AND ITS LAST 2,000 POW(2, 2^32, 10^2000).", C_WHITE);
+                gv_para(p, "2. THE GAME CARRIES ONLY A FINGERPRINT (8 BYTES OF SHA-256) OF EACH OF ITS 1,293 BLOCKS OF A MILLION DIGITS: 10 KB. EVERY BLOCK THE GAME WORKS OUT MUST MATCH, OR IT IS NOT SHOWN.", C_WHITE);
+                gv_para(p, "3. THE TESTS COMPARE WINDOWS AND THE WHOLE EXPORT (SHA-256) WITH THE PYTHON DIGITS. RUN PC/GIANT/TEST.SH", C_WHITE);
             } else {
                 gv_para(p, "1. THOUSANDS OF RANDOM WINDOWS, AT EVERY CHANGE FROM 1-DIGIT TO 2-DIGIT ... TO 9-DIGIT NUMBERS, AND AT THE END, AGAINST A PYTHON READER THAT FINDS THE NUMBER BY BISECTION.", C_WHITE);
                 gv_para(p, "2. THE EXPORT'S SIZE AND SHA-256 AGAINST A PYTHON PROGRAM THAT WRITES 1 TO 123,456,790 ITSELF. RUN PC/GIANT/TEST.SH", C_WHITE);
@@ -481,7 +528,7 @@ static void gv_ladder(volatile u16 *pg){
                 char dd[220]; scpy(dd, "DIGITS: "); { int L = (int)strlen(R[sel].e); if(L < 19){ gv_comma(dd, strtoull(R[sel].e, 0, 10) + 1); } else { scat(dd, "10^"); ncat(dd, L - 1); scat(dd, " (A "); ncat(dd, L); scat(dd, "-DIGIT NUMBER)"); } } text(pg, 9, 104, dd, C_WHITE, 1);
                 for(int i = 0; i < n && i < 4; i++) text(pg, 9, 112 + i * 7, lines[i], C_GREY, 1); }
             else { text(pg, 9, 97, "SEE BUGSTARILLION V3 IN THE LAB: THE NAME IS", C_CYAN, 1); text(pg, 9, 104, "ABOUT 6 QUINTILLION LETTERS, READ LIVE.", C_WHITE, 1);
-                if(gv_ready(GV_V3)){ char t[60]; int g = gv3_read(0, 54, t); t[g] = 0; text(pg, 9, 112, t, C_GOLD, 1); } else text(pg, 9, 112, "(NEEDS THE 2^(2^32) FILE: SEE GIANT NUMBERS)", C_RED, 1); }
+                if(gv_ready(GV_V3)){ char t[60]; int g = gv3_read(0, 54, t); t[g] = 0; text(pg, 9, 112, t, C_GOLD, 1); } else text(pg, 9, 112, "(NEEDS THE V3 INDEX: OPEN THE V3 NAME ONCE)", C_RED, 1); }
             ui_foot(pg, "UP DN: RUNG", "B: BACK"); }
         vsync(); read_keys(); if(HIT(K_B) || HIT(K_START)) break;
         if(HIT(K_UP)){ sel = (sel + NR - 1) % NR; dirty = 1; sfx(7); } if(HIT(K_DOWN)){ sel = (sel + 1) % NR; dirty = 1; sfx(7); }
@@ -501,7 +548,8 @@ static void pc_giant_hub(volatile u16 *pg){
     while(1){
         if(dirty){ dirty = 0; oam_hide_all(); oam_flush(); ui_bg(pg, 0, 160); ui_panel(pg, 14, 10, 212, 132); ui_head(pg, 20, 15, 200, "GIANT NUMBERS", C_GOLD);
             for(int i = 0; i < H_N; i++){ int y = 29 + i * 12; if(i == sel) rect(pg, 20, y - 2, 200, 11, 6); text(pg, 26, y, nm[i], i == sel ? C_WHITE : C_GREY, 1);
-                if(i == H_POW || i == H_V3){ int ok = gi_open(GI_POW) == 0; rtext(pg, 214, y, ok ? "READY" : "NOT BUILT", ok ? C_GREEN : C_RED); } }
+                if(i == H_POW){ gi_open(GI_POW); int m = gi_mode(); rtext(pg, 214, y, m == GI_MODE_FILE ? "FILE" : m == GI_MODE_CACHE ? "LIVE + CACHE" : "LIVE", C_GREEN); }
+                if(i == H_V3){ int ok = gv3_have_index(); rtext(pg, 214, y, ok ? "READY" : "INDEX NEEDED", ok ? C_GREEN : C_GOLD); } }
             { char ls[5][60]; int k = pc_lw_wrap(ds[sel], 50, ls, 5); for(int i = 0; i < k; i++) text(pg, 20, 94 + i * 7, ls[i], C_GREY, 1); }
             ui_foot(pg, "UP/DOWN: PICK  A: OPEN", "B: BACK"); }
         vsync(); read_keys(); if(HIT(K_B) || HIT(K_START)) break;

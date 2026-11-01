@@ -153,6 +153,7 @@ void gsha256_buf(const unsigned char *d, gu64 n, unsigned char out[32]){ GiSha s
 
 // ================================================================= where the files are
 static char g_dir[600];
+#include "gpow.inc"
 static FILE *g_pf; static int g_pstate;       // 0 not tried, 1 open, 2 failed (missing), 3 wrong
 static const char *const FN[GI_N] = {"pow2_2e32.bcd", "(none: worked out live)"};
 const char *gi_file(int which){ return FN[which]; }
@@ -170,22 +171,28 @@ static void find_dir(void){
         snprintf(c, sizeof c, "%s/../pc/giant/cache/%s", exe, FN[0]); if(file_exists(c)){ snprintf(g_dir, sizeof g_dir, "%s/../pc/giant/cache", exe); return; } } }
     snprintf(c, sizeof c, "giant/cache/%s", FN[0]); if(file_exists(c)){ strcpy(g_dir, "giant/cache"); return; }
     snprintf(c, sizeof c, "pc/giant/cache/%s", FN[0]); if(file_exists(c)){ strcpy(g_dir, "pc/giant/cache"); return; }
-    if(e && *e) strncpy(g_dir, e, sizeof g_dir - 1);
+    if(e && *e){ strncpy(g_dir, e, sizeof g_dir - 1); return; }
+    // no digit file anywhere: the small files (FAST CACHE, V3 index) go to <program folder>/giant/cache
+    if(n > 0){ snprintf(g_dir, sizeof g_dir, "%s/giant/cache", exe); }
 }
+static void gi_mkdir(void){ char cmd[700]; if(!g_dir[0]) find_dir(); snprintf(cmd, sizeof cmd, "mkdir -p '%s' 2>/dev/null", g_dir); if(system(cmd)){} }
 int gi_open(int which){
     if(which == GI_COUNT) return 0;
     if(g_pstate == 1) return 0;
     if(g_pstate == 2 || g_pstate == 3) g_pstate = 0;           // (try again: the file may have been built meanwhile)
-    find_dir(); if(!g_dir[0]) return 1;
+    // the digits are always there: worked out on the spot (gpow.inc). A full digit file (pow2_2e32.bcd, made by mkpow.py: used by the tests
+    // and by developers) or the FAST CACHE band file are used when present.
+    find_dir(); g_pstate = 1; gi_cache_open();
+    if(!g_dir[0]) return 0;
     char p[700]; snprintf(p, sizeof p, "%s/%s", g_dir, FN[0]);
-    FILE *f = fopen(p, "rb"); if(!f){ g_pstate = 2; return 1; }
-    unsigned char h[64]; if(fread(h, 1, 64, f) != 64 || memcmp(h, "BSGPOW2\0", 8)){ fclose(f); g_pstate = 3; return 2; }
+    FILE *f = fopen(p, "rb"); if(!f) return 0;
+    unsigned char h[64]; if(fread(h, 1, 64, f) != 64 || memcmp(h, "BSGPOW2\0", 8)){ fclose(f); return 0; }
     gu64 e, dg; memcpy(&e, h + 8, 8); memcpy(&dg, h + 16, 8);
     fseeko(f, 0, SEEK_END); gu64 sz = (gu64)ftello(f);
-    if(e != GI_POW_E || dg != GI_POW_DIGITS || sz != 64 + (GI_POW_DIGITS + 1) / 2){ fclose(f); g_pstate = 3; return 2; }
-    g_pf = f; g_pstate = 1; return 0;
+    if(e != GI_POW_E || dg != GI_POW_DIGITS || sz != 64 + (GI_POW_DIGITS + 1) / 2){ fclose(f); return 0; }
+    g_pf = f; return 0;
 }
-int gi_ready(int which){ return which == GI_COUNT ? 1 : g_pstate == 1; }
+int gi_ready(int which){ if(which == GI_POW && g_pstate != 1) gi_open(GI_POW); return which == GI_COUNT ? 1 : g_pstate == 1; }
 
 static int count_read(gu64 pos, int n, char *out){
     gu64 cum = 0, first = 1, cnt = 9; int d = 1, got = 0;
@@ -199,7 +206,26 @@ static int count_read(gu64 pos, int n, char *out){
     }
     return got;
 }
+static int pow_read_file(gu64 pos, int n, char *out);
 static int pow_read(gu64 pos, int n, char *out){
+    if(pos >= GI_POW_DIGITS) return 0;
+    if(pos + (gu64)n > GI_POW_DIGITS) n = (int)(GI_POW_DIGITS - pos);
+    if(g_pf) return pow_read_file(pos, n, out);
+    int got = 0;
+    while(got < n){
+        gu64 q = pos + (gu64)got; int k = gp_read_disk(q, n - got, out + got);
+        if(!k) for(int b = 0; b < GP_NBAND && !k; b++) if(gp_have(&gp_band[b], q)){ k = gp_read_band(&gp_band[b], q, n - got, out + got); gp_band[b].used = ++gp_clock; }
+        if(!k){                                                                 // not kept anywhere: work it out now (into the band used longest ago)
+            int v = 0; for(int b = 1; b < GP_NBAND; b++) if(gp_band[b].used < gp_band[v].used) v = b;
+            gu64 b0, bn; gp_plan(q, &b0, &bn);
+            if(gp_make(&gp_band[v], b0, bn, gp_hook, gp_hook_ud)) break;
+            continue;
+        }
+        got += k;
+    }
+    return got;
+}
+static int pow_read_file(gu64 pos, int n, char *out){
     if(!g_pf || pos >= GI_POW_DIGITS) return 0;
     if(pos + (gu64)n > GI_POW_DIGITS) n = (int)(GI_POW_DIGITS - pos);
     gu64 b0 = pos >> 1, b1 = (pos + (gu64)n - 1) >> 1; int nb = (int)(b1 - b0 + 1);
@@ -216,8 +242,24 @@ int gi_read(int which, gu64 pos, int n, char *out){
 }
 
 // ================================================================= export
+typedef struct { FILE *f; GiSha sh; gu64 pos, wrote; int err; char *o; } GiExp;
+static int gi_exp_emit(const char *d, gu64 n, void *ud){
+    GiExp *E = ud; int k = 0;
+    for(gu64 i = 0; i < n; i++){ E->o[k++] = d[i]; E->pos++; if(E->pos % 100 == 0 || E->pos == GI_POW_DIGITS) E->o[k++] = '\n'; }
+    if(fwrite(E->o, 1, (size_t)k, E->f) != (size_t)k){ E->err = 1; return 1; }
+    gsha_add(&E->sh, E->o, (gu64)k); E->wrote += (gu64)k; return 0;
+}
 int gi_export(int which, const char *path, gi_progress_fn pr, void *ud, char hex[65], gu64 *bytes){
     if(!gi_ready(which)) return 3;
+    if(which == GI_POW && !g_pf){                                   // work the whole number out in two passes (head half, tail half), straight to the file
+        FILE *f = fopen(path, "wb"); if(!f) return 2;
+        GiExp E; memset(&E, 0, sizeof E); E.f = f; E.o = malloc((1 << 16) * 2 + 4); gsha_init(&E.sh);
+        int rc = gp_window(0, GP_SPLIT, gi_exp_emit, &E, pr, ud);
+        if(!rc) rc = gp_window(GP_SPLIT, GI_POW_DIGITS - GP_SPLIT, gi_exp_emit, &E, pr, ud);
+        if(fclose(f)) E.err = 1; free(E.o);
+        if(hex) gsha_end(&E.sh, hex); if(bytes) *bytes = E.wrote;
+        return E.err ? 2 : rc == 1 ? 1 : rc ? 2 : 0;
+    }
     FILE *f = fopen(path, "wb"); if(!f) return 2;
     gu64 total = gi_digits(which), pos = 0, wrote = 0; GiSha sh; gsha_init(&sh);
     enum { CH = 1 << 20 };                                       // (a multiple of 100? no: lines are cut by position, below)
@@ -282,6 +324,38 @@ static int gv3_build(void){
     }
     free(buf); nblk3 = nb; TOT3 = P - 1; return 0;
 }
+// the same index from the digits as one stream (worked out on the spot in two passes: no digit file needed)
+typedef struct { gu64 i, j, P, C[4]; char d3[3]; gu64 nb; gi_progress_fn pr; void *ud; } V3S;
+static void v3s_term(V3S *S, gu64 j, int add){
+    int a = (int)((j - 1) % 3) + 1; gu64 k = (j - (gu64)a) / 3;
+    if(k % B3 == 0) Ablk[a][k / B3] = S->C[a];
+    S->P += wterm(gv3_coef(j), a, S->C[a]);
+    if(add) S->C[a] += TLEN[(S->d3[0] - '0') * 100 + (S->d3[1] - '0') * 10 + (S->d3[2] - '0')];
+    if(j % B3 == 0 || j == L3) Pblk[(j - 1) / B3 + 1] = S->P;
+}
+static int v3s_emit(const char *d, gu64 n, void *ud){
+    V3S *S = ud;
+    for(gu64 q = 0; q < n; q++){ S->d3[0] = S->d3[1]; S->d3[1] = S->d3[2]; S->d3[2] = d[q]; if(S->i >= 3) v3s_term(S, S->i - 2, 1); S->i++; }
+    return 0;
+}
+int gv3_build_index(gi_progress_fn pr, void *ud){
+    if(gv3_state == 1) return 0;
+    if(g_pstate != 1) gi_open(GI_POW);
+    tl_init(); gen_chunklen(0); L3 = GI_POW_DIGITS;
+    char c[3]; for(int a = 1; a <= 3; a++){ int v = 0; gi_read(GI_POW, 0, 3, c); for(int i = 0; i < a; i++) v = v * 10 + c[i] - '0'; lv3[a] = v; }
+    gu64 nb = (L3 + B3 - 1) / B3; free(Pblk); Pblk = calloc(nb + 1, 8);
+    for(int a = 1; a <= 3; a++){ nablk[a] = kmax(a) / B3 + 1; free(Ablk[a]); Ablk[a] = calloc(nablk[a] + 1, 8); }
+    V3S S; memset(&S, 0, sizeof S);
+    int rc = gp_window(0, GP_SPLIT, v3s_emit, &S, pr, ud);
+    if(!rc) rc = gp_window(GP_SPLIT, L3 - GP_SPLIT, v3s_emit, &S, pr, ud);
+    if(rc || S.i != L3) return rc ? rc : 3;
+    for(gu64 j = L3 - 2; j <= L3; j++) v3s_term(&S, j, 0);
+    nblk3 = nb; TOT3 = S.P - 1;
+    gi_mkdir(); char p[700]; idx_path(p, sizeof p); FILE *f = fopen(p, "wb");
+    if(f){ gu64 hd[4] = {0x3356494458ull, L3, B3, nblk3}; fwrite(hd, 8, 4, f); fwrite(Pblk, 8, nblk3 + 1, f); for(int a = 1; a <= 3; a++) fwrite(Ablk[a], 8, nablk[a] + 1, f); fclose(f); }
+    gv3_state = 1; return 0;
+}
+int gv3_have_index(void){ if(gv3_state == 1 || g_pf) return 1; if(g_pstate != 1) gi_open(GI_POW); char p[700]; idx_path(p, sizeof p); return file_exists(p); }
 int gv3_open(void){
     if(gv3_state == 1) return 0;
     if(gi_open(GI_POW)) return 1;
@@ -298,6 +372,7 @@ int gv3_open(void){
         fclose(f);
         if(!ok){ free(Pblk); Pblk = 0; for(int a = 1; a <= 3; a++){ free(Ablk[a]); Ablk[a] = 0; } }
     }
+    if(!ok && !g_pf) return 1;                                     // no index yet: gv3_build_index() makes it (a few minutes, 0.7 MB)
     if(!ok){
         gv3_build();
         f = fopen(p, "wb");
@@ -420,3 +495,46 @@ int gv3_export(const char *path, gu64 start, gu64 n, gi_progress_fn pr, void *ud
     if(fclose(f)) rc = rc ? rc : 2; free(b); if(hex) gsha_end(&sh, hex);
     return rc;
 }
+
+// ================================================================= on-the-spot digits of 2^(2^32): settings, the FAST CACHE, a direct window (tests)
+void gi_set_hook(gi_progress_fn pr, void *ud){ gp_hook = pr; gp_hook_ud = ud; }
+const char *gi_error(void){ return gp_err; }
+int gi_mode(void){ if(g_pstate != 1) gi_open(GI_POW); return g_pf ? GI_MODE_FILE : gp_diskf ? GI_MODE_CACHE : GI_MODE_LIVE; }
+int gi_have(gu64 pos){ if(g_pf) return 1; if(gp_diskf && pos >= gp_disk.b0 && pos < gp_disk.b0 + gp_disk.n) return 1; for(int b = 0; b < GP_NBAND; b++) if(gp_have(&gp_band[b], pos)) return 1; return 0; }
+gu64 gi_ram_bytes(void){ gu64 t = 0; for(int b = 0; b < GP_NBAND; b++) if(gp_band[b].pk) t += gp_pkbytes(gp_band[b].n); return t; }
+static void gi_cache_path(char *p, int n){ const char *d = gi_dir(); if(!d[0]){ find_dir(); d = gi_dir(); } snprintf(p, n, "%s/pow2_2e32.band", d[0] ? d : "."); }
+#define GI_CACHE_B0 (GP_SPLIT - 120 * GP_BLKD)
+#define GI_CACHE_N (240 * GP_BLKD)
+gu64 gi_cache_bytes(void){ return 64 + gp_pkbytes(GI_CACHE_N); }
+int gi_cache_open(void){
+    if(gp_diskf) return 0;
+    char p[760]; gi_cache_path(p, sizeof p); FILE *f = fopen(p, "rb"); if(!f) return 1;
+    unsigned char h[64]; gu64 b0, n; if(fread(h, 1, 64, f) != 64 || memcmp(h, "BSGBAND1", 8)){ fclose(f); return 2; }
+    memcpy(&b0, h + 8, 8); memcpy(&n, h + 16, 8); fseeko(f, 0, SEEK_END);
+    if(b0 != GI_CACHE_B0 || n != GI_CACHE_N || (gu64)ftello(f) != gi_cache_bytes()){ fclose(f); return 2; }
+    gp_disk.b0 = b0; gp_disk.n = n; gp_diskf = f; return 0;
+}
+// build the FAST CACHE: the 240,000,000 digits around the middle (where working out is dearest), checked block by block, 100 MB
+int gi_cache_build(gi_progress_fn pr, void *ud){
+    if(g_pstate != 1) gi_open(GI_POW);
+    char p[760], tp[780]; gi_cache_path(p, sizeof p); snprintf(tp, sizeof tp, "%s.part", p);
+    gi_mkdir();
+    GpBand L = {0}, R = {0}; int rc = gp_make(&L, GI_CACHE_B0, GI_CACHE_N / 2, pr, ud);
+    if(!rc) rc = gp_make(&R, GP_SPLIT, GI_CACHE_N / 2, pr, ud);
+    if(rc){ free(L.pk); free(R.pk); return rc; }
+    FILE *f = fopen(tp, "wb"); if(!f){ free(L.pk); free(R.pk); return 5; }
+    unsigned char h[64]; memset(h, 0, 64); memcpy(h, "BSGBAND1", 8); gu64 b0 = GI_CACHE_B0, n = GI_CACHE_N; memcpy(h + 8, &b0, 8); memcpy(h + 16, &n, 8);
+    fwrite(h, 1, 64, f);
+    unsigned char *pk = calloc((size_t)gp_pkbytes(n), 1); int okw = pk != 0;
+    if(pk){ for(gu64 t = 0; t < n / 3; t++){ gu64 q = t * 3; const GpBand *B = q < GI_CACHE_N / 2 ? &L : &R; gu64 r = q - (B == &L ? 0 : GI_CACHE_N / 2); gp_put3(pk, t, gp_get3(B->pk, r / 3)); }   // (both halves are multiples of 3)
+        okw = fwrite(pk, 1, (size_t)gp_pkbytes(n), f) == (size_t)gp_pkbytes(n); }
+    free(pk); free(L.pk); free(R.pk);
+    if(fclose(f) || !okw){ remove(tp); return 5; }
+    if(rename(tp, p)){ remove(tp); return 5; }
+    return gi_cache_open() ? 5 : 0;
+}
+int gi_cache_delete(void){ char p[760]; gi_cache_path(p, sizeof p); if(gp_diskf){ fclose(gp_diskf); gp_diskf = 0; } gp_disk.n = 0; return remove(p) == 0 ? 0 : 1; }
+int gi_cache_present(void){ return gp_diskf != 0; }
+int gi_window(gu64 pos, gu64 n, int (*emit)(const char *d, gu64 n, void *ud), void *ud, gi_progress_fn pr, void *pud){ return gp_window(pos, n, emit, ud, pr, pud); }
+void gi_forget(void){ for(int b = 0; b < GP_NBAND; b++){ free(gp_band[b].pk); gp_band[b].pk = 0; gp_band[b].n = 0; } }
+void gi_use_file(int on){ if(!on && g_pf){ fclose(g_pf); g_pf = 0; } }

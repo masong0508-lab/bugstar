@@ -7,9 +7,17 @@
 #include <time.h>
 static double now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec * 1e-9; }
 static int prog(gu64 d, gu64 t, void *u){ (void)u; static int last = -1; int p = (int)(d * 100 / t); if(p != last && p % 10 == 0){ fprintf(stderr, "  %d%%\n", p); } last = p; return 0; }
+static int gw_emit(const char *d, gu64 n, void *u){ (void)u; fwrite(d, 1, n, stdout); return 0; }
 int main(int argc, char **argv){
     if(argc < 2){ fprintf(stderr, "usage: giant_test cmd ...\n"); return 2; }
     const char *c = argv[1];
+    if(getenv("GIANT_LIVE")){ gi_open(GI_POW); gi_use_file(0); }               // work digits out on the spot even when the full file is there
+    // gw POS N: digits worked out on the spot (gpow), straight (no band, no checksum); prints digits then the seconds on stderr
+    if(!strcmp(c, "gw")){ gu64 p = strtoull(argv[2], 0, 10), n = strtoull(argv[3], 0, 10); double t = now();
+        struct E { int z; } e; int rc = gi_window(p, n, gw_emit, &e, getenv("GIANT_VERBOSE") ? prog : 0, 0); printf("\n"); fprintf(stderr, "gw rc=%d %.3f s\n", rc, now() - t); return rc; }
+    // gr POS N ...: read through the normal path (bands, block checks); prints the digits per pair and the time
+    if(!strcmp(c, "gr")){ gi_open(GI_POW); for(int i = 2; i + 1 < argc; i += 2){ gu64 p = strtoull(argv[i], 0, 10); int n = atoi(argv[i + 1]); char *b = calloc(n + 1, 1); double t = now(); int g = gi_read(GI_POW, p, n, b); printf("%s\n", b); fprintf(stderr, "gr %llu %d got=%d %.3f s mode=%d ram=%llu %s\n", p, n, g, now() - t, gi_mode(), gi_ram_bytes(), gi_error()); free(b); } return 0; }
+    if(!strcmp(c, "cache")){ gi_open(GI_POW); double t = now(); int rc = !strcmp(argv[2], "build") ? gi_cache_build(prog, 0) : gi_cache_delete(); fprintf(stderr, "cache %s rc=%d %.1f s bytes=%llu %s\n", argv[2], rc, now() - t, gi_cache_bytes(), gi_error()); return rc; }
     if(!strcmp(c, "tokens")){ char b[64]; for(int v = 0; v < 1000; v++){ gcw_tok(v, 0, b); printf("%d %s ", v, b); gcw_tok(v, 1, b); printf("%s ", b); gen_chunk(v, b); printf("%s\n", b); } return 0; }
     if(!strcmp(c, "place")){ static char b[1 << 16]; for(int i = 2; i < argc; i++){ gu64 n = gcw_place(argv[i], b, sizeof b); printf("%s %llu %s\n", argv[i], n, n < sizeof b ? b : "(long)"); } return 0; }
     if(!strcmp(c, "en")){ char b[600]; for(int i = 2; i < argc; i++){ gen_u64(strtoull(argv[i], 0, 10), b, sizeof b); printf("%s\n", b); } return 0; }

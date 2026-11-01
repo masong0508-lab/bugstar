@@ -25,12 +25,59 @@ Nothing here is stored whole. A digit (or a letter of a name) is worked out, or 
 ## 2 to the power 2^32 (the real number)
 
 `2^(2^32)` is the number of different values that 512 MiB (2^32 bits) of memory can hold. It is exactly `floor(2^32 x log10(2)) + 1 = 1,292,913,987` digits long.
-It starts 3103280543863286140299891155863645591032873999615578336754066... (read live from the file).
+It starts 3103280543863286140299891155863645591032873999615578336754066... and ends ...982336.
 
-How its digits are made: `mkpow.py` squares 2 thirty-two times (2, 4, 16, 256, ... ) with Python's `decimal` module (libmpdec: exact arithmetic, number-theoretic-transform multiplication) with a precision large
-enough that rounding never happens (rounding and inexact results are *trapped*: they would stop the program). It writes the digits packed two to a byte, with a 64-byte header, to `pow2_2e32.bcd` (646 MB).
-Needs about 5 GB of RAM and 15 to 40 minutes. The game looks for the file in `$BUGSTAR_GIANT_DIR`, `<program folder>/giant/cache`, `./giant/cache`, `pc/giant/cache`; the viewer's "not built" screen has **A: BUILD IT NOW**
-(starts the Python program in the background). The file is not in the repository (it is 646 MB); the counting number needs no file.
+### How the game holds it: the rule, not the digits
+
+The game ships **no digits**. The number is kept as what it is, `2^(2^32)`, and any stretch of its digits is **worked out exactly** when you look at it (`gpow.inc`):
+
+- **First half (digits 1 to 646,000,000): the head method.** 2 is squared 32 times keeping only the top P limbs (base 100,000) of each square, always rounding down.
+  The result L satisfies `L x 100000^e <= 2^(2^32) < (L + 100000^3) x 100000^e`: after t rounded squarings the relative error is at most `2^(t+1) / 100000^(P-1)`, so the error is
+  below 100000 x 2^33 < 100000^3 units of the last limb. A digit is used only when L and L + 100000^3 agree on it; 20 guard digits are never used. So every digit shown is **proved**.
+- **Second half: the tail method.** 2 is squared 32 times **modulo 100000^T** (keep the low T limbs). This is exact whole-number arithmetic.
+- **Squaring**: number-theoretic transforms modulo two primes (3 x 2^30 + 1 and 13 x 2^28 + 1, Montgomery arithmetic, cache-blocked), joined by the Chinese remainder
+  theorem, one prime on each of two threads. The biggest square (129 million limbs) uses transforms of 2^28 points. Plain C, no libraries.
+- **Checked against an independent computation**: the game carries `gpow_blocks.h`, an 8-byte SHA-256 fingerprint of each of the 1,293 blocks of a million digits
+  (**10,344 bytes**), made from the digits that Python's `decimal` module (libmpdec) computed (`mkpow.py`) and that were checked there (whole value modulo 10 primes,
+  first 300 digits from a 500-place logarithm, last 2,000 from `pow(2, 2^32, 10^2000)`). Every block the game works out is hashed and must match, or it is not shown.
+- What has been worked out is kept in memory in up to two **bands** (block aligned, at most 120 million digits each, 10 bits per 3 digits: **at most about 100 MB of RAM**).
+  Hold-scrolling fast does not start any work; it starts when you let go. While it works there is a progress screen; **B stops it**.
+
+How long a window takes depends only on how deep it is (distance from the nearer end), measured on this 2-core test machine while other jobs were running:
+
+| depth (digits from the nearer end) | wall time | CPU time | peak memory |
+|---|---|---|---|
+| up to 10,000 | under 0.1 s | | |
+| 120,000 | 0.3 s | | |
+| 1,000,000 to 2,000,000 | 2 to 4 s | 1.6 s | |
+| 20,000,000 | 20 s | 10 s | 81 MB |
+| 200,000,000 | 117 s | 72 s | 1.2 GB |
+| 646,000,000 (the middle, the worst case) | 151 to 190 s | 97 s | 2.5 GB |
+
+**The FAST CACHE (optional, made only when you ask: viewer menu, WHERE THE DIGITS COME FROM)**: the 240,000,000 digits around the middle (digits 526,000,001 to
+766,000,000), where working out is dearest, in one file of **100,000,067 bytes** (`pow2_2e32.band`, 10 bits per 3 digits), every block checked when it is made. Making it
+takes two middle-sized computations (about 5 minutes here); SELECT deletes it. With it, the worst window left is at depth 526 million instead of 646 million (about 20% faster);
+inside it any window is instant. An honest note: no 100 MB store can make *every* window instant, because the digits are essentially random (537 MB of information, see below)
+and a digit at depth d needs arithmetic on about d digits; the cache spends its 100 MB where the arithmetic costs most.
+
+**Sizes, measured** (xz -9 on 20 MB samples from the middle of the number):
+
+| form | bytes | note |
+|---|---|---|
+| text, 100 digits a line (the export) | 1,305,843,127 | xz brings text to 44%, no better than packing |
+| one byte per digit | 1,292,913,987 | |
+| packed decimal, 2 digits a byte (`mkpow.py`'s file, tests only) | 646,457,058 | xz: -15% (it removes the unused nibble values) |
+| 10 bits per 3 digits | 538,714,162 | xz: +0.005% (nothing left to squeeze) |
+| the information floor, 1,292,913,987 x log2(10) / 8 | 536,870,912 | = 2^32 bits, the number's own binary size |
+| **what the game ships** | **10,344** | the block fingerprints; the digits come from the rule |
+| what the game writes to disk by default | **0** (0.7 MB if you make the V3 index) | |
+| the FAST CACHE, only if asked | 100,000,067 | |
+
+The whole number can still be written out as text (menu, WRITE THE WHOLE NUMBER TO A FILE): the game works it out in two passes (head half, tail half) straight to the file,
+about 6 to 7 minutes here and 1.3 GB on disk, with the SHA-256 shown at the end (it is `8df43d3fd1f669b3c1d422dca7dea4bea6a1bcc325d688681ce94efbc964059b`).
+
+`mkpow.py` (Python decimal, about 16 minutes and 5 GB of RAM) still builds the full packed file `pow2_2e32.bcd`; it is the **independent reference** the tests compare with,
+and the game uses it when it is present (`BUGSTAR_GIANT_DIR`, `<program folder>/giant/cache`, `./giant/cache`, `pc/giant/cache`), but the game does not need it.
 
 ## The counting number (also real)
 
@@ -73,7 +120,7 @@ term 1 is `c(1) TRILLION` (3-illion), term 2 `c(2) UNTRIGINTILLION` (31-illion),
 - Parts: L = **1,292,913,987** terms (v2: 11,896,480).
 - Letters in the whole name: **6,376,476,945,538,615,314** (v2's place names add up to about 8.9 billion letters; the googolplex name is 769; Noll's googolplex word 3,871).
 - The viewer finds any letter without reading the name from the start: a table with the position of every 65,536th term and the running letter count of the three alignments of triples (`pow2_2e32.v3idx`,
-  about 0.7 MB, made in about a minute the first time and then kept next to the digit file) plus a short scan. A seek takes about a fraction of a second.
+  about 0.7 MB, made once from all the digits worked out in two passes, a few minutes, then kept in `giant/cache`) plus a short scan. A seek takes about a fraction of a second.
 
 ### What is real and what is invented (read this before quoting it)
 
@@ -89,15 +136,17 @@ term 1 is `c(1) TRILLION` (3-illion), term 2 `c(2) UNTRIGINTILLION` (31-illion),
 
 ## Names of the files
 
-`giant.h` / `giant.c` the library (digits, names, SHA-256, export, V3) · `mkpow.py` builds the digit file · `ref.py` the independent Python reference · `test.sh`, `test_giant.py`, `test_pow.py`, `test_v3.py`, `giant_test.c` the tests ·
-`../pc_giant.inc` the screens (included by `build.sh`) · `../tests/giant.sh` plays the screens in the real game · `../facts/13_giant.py` 36 HOW BIG pages (exact: digit counts and leading digits from 400-place logarithms, trailing digits by modular arithmetic) ·
-`cache/` (ignored by git) the 646 MB file and the index.
+`giant.h` / `giant.c` the library (digits, names, SHA-256, export, V3) · `gpow.inc` the exact on-the-spot arithmetic for 2^(2^32) · `gpow_blocks.h` the 1,293 block fingerprints · `mkpow.py` builds the reference digit file · `ref.py` the independent Python reference · `test.sh`, `test_giant.py`, `test_pow.py`, `test_v3.py`, `giant_test.c` the tests ·
+`../pc_giant.inc` the screens (included by `build.sh`) · `../tests/giant.sh` plays the screens in the real game · `../facts/13_giant.py` 40 HOW BIG pages (exact: digit counts and leading digits from 400-place logarithms, trailing digits by modular arithmetic) ·
+`cache/` (ignored by git) the V3 index, the optional FAST CACHE, and (tests only) the 646 MB reference file.
 
 ## Tests (`pc/giant/test.sh all`, about 25 minutes the first time)
 
 - names: all 1000 chunks (both endings and the English words), 309 big names (up to 400 digits), well known names, the googolplex name length, English for 64-bit numbers, SHA-256 against `hashlib` (also at every padding edge), decimal-string helpers;
 - counting number: 3,027 windows (every change from 1-digit to 9-digit numbers, the end, 3,000 random) against a Python reader that finds the number by bisection; the 1,010,000,009-byte export, its size and SHA-256 against a Python program that writes 1..123,456,790 itself;
-- 2^(2^32): the digit count from a 500-place logarithm; the first 300 digits from that logarithm; the last 2000 from `pow(2, 2^32, 10^2000)`; the **whole file's value modulo ten primes** against `pow(2, 2^32, p)`;
+- live (`test.sh live`; `GIANT_FULL=1` adds the whole export and the FAST CACHE): windows worked out on the spot at both ends, the split and random depths against the
+  reference digits; reads through the bands with their block checks; the whole number worked out and written out has the reference SHA-256; the FAST CACHE reads;
+- 2^(2^32) reference file: the digit count from a 500-place logarithm; the first 300 digits from that logarithm; the last 2000 from `pow(2, 2^32, 10^2000)`; the **whole file's value modulo ten primes** against `pow(2, 2^32, p)`;
   4,000+ random windows and the edges against Python reading the file's nibbles; the name of the top place decoded back to the order of magnitude; the export's size and SHA-256; seek speed;
 - v3: the total number of letters and every sampled term's start and length against a numpy sweep over all 1,292,913,987 terms; windows at term starts, ends and middles of the longest names against names rebuilt by Python; an exported range;
 - in the real game: `pc/tests/giant.sh` (viewer, jump, hold-scroll, big type, menu, about pages, the namer, the ladder, an export, phone-size contact sheet).
