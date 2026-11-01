@@ -14,6 +14,7 @@ void pc_render(uint8_t *rgb);                       // 240x160 RGB of what the s
 int  pc_write_ppm(const char *path, int scale);     // the same, scaled up with sharp pixels
 uint64_t pc_hash_screen(void);
 uint64_t pc_hash_sram(void);
+extern int pc_vid3d;                 // 3D views: 0 AUTO, 1 NATIVE (smooth, made at window size), 2 CLASSIC (the GBA look)
 extern int pc_time_pct;              // game speed in percent (100 = normal)
 const char *pc_sav_path(void);       // the save file path, or NULL
 extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;   // the mouse in the 240x160 picture (x = -1 when it is outside), buttons bit0 left bit1 right, wheel steps (the creator clears it)

@@ -12,6 +12,7 @@
 #include "pc_plat.h"
 extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;
 
+extern int pc_vid3d;
 int pc_motor(void);                 // pc_hw.c: is the (cartridge) rumble motor on right now
 int pc_script_keys(uint16_t *k);    // pc_hw.c: keys from a --script file, if one was given (for tests)
 long pc_frames(void);
@@ -20,7 +21,7 @@ long pc_frames(void);
 static const char *bname[NB]={"A","B","SELECT","START","RIGHT","LEFT","UP","DOWN","R","L"};
 // ------------------------------------------------------------------------------------------------ settings
 typedef struct {
-    int fullscreen, scale_mode, vsync, show_fps, volume, mute, pause_unfocus, rumble, deadzone, max_mp;
+    int video3d, fullscreen, scale_mode, vsync, show_fps, volume, mute, pause_unfocus, rumble, deadzone, max_mp;
     int kb[NB][2]; int pad[NB]; int win_w, win_h;
 } Cfg;
 enum { SM_CRISP, SM_SMOOTH, SM_COUNT };
@@ -42,8 +43,8 @@ static void cfg_defaults(void){
 static void cfg_save(void){
     FILE *f=fopen(g_cfgpath,"w"); if(!f) return;
     fprintf(f,"# BUGSTAR PC settings (edit in the game: press Esc). scale_mode: 0 crisp, 1 smooth\n");
-    fprintf(f,"fullscreen=%d\nscale_mode=%d\nvsync=%d\nshow_fps=%d\nvolume=%d\nmute=%d\npause_unfocus=%d\nrumble=%d\ndeadzone=%d\nmax_mp=%d\nwin_w=%d\nwin_h=%d\n",
-        C.fullscreen,C.scale_mode,C.vsync,C.show_fps,C.volume,C.mute,C.pause_unfocus,C.rumble,C.deadzone,C.max_mp,C.win_w,C.win_h);
+    fprintf(f,"video3d=%d\nfullscreen=%d\nscale_mode=%d\nvsync=%d\nshow_fps=%d\nvolume=%d\nmute=%d\npause_unfocus=%d\nrumble=%d\ndeadzone=%d\nmax_mp=%d\nwin_w=%d\nwin_h=%d\n",
+        C.video3d,C.fullscreen,C.scale_mode,C.vsync,C.show_fps,C.volume,C.mute,C.pause_unfocus,C.rumble,C.deadzone,C.max_mp,C.win_w,C.win_h);
     for(int i=0;i<NB;i++){ fprintf(f,"key_%s=%s,%s\n",bname[i],C.kb[i][0]?SDL_GetScancodeName(C.kb[i][0]):"",C.kb[i][1]?SDL_GetScancodeName(C.kb[i][1]):"");
         fprintf(f,"pad_%s=%s\n",bname[i],SDL_GameControllerGetStringForButton(C.pad[i])?SDL_GameControllerGetStringForButton(C.pad[i]):""); }
     fclose(f);
@@ -54,7 +55,7 @@ static void cfg_load(void){
         char *e=strchr(ln,'='); if(!e||ln[0]=='#') continue; *e++=0; size_t n=strlen(e); while(n&&(e[n-1]=='\n'||e[n-1]=='\r')) e[--n]=0;
         int v=atoi(e);
         #define I(nm,fld,lo,hi) if(!strcmp(ln,nm)){ C.fld = v<lo?lo:v>hi?hi:v; continue; }
-        I("fullscreen",fullscreen,0,1) I("scale_mode",scale_mode,0,SM_COUNT-1) I("vsync",vsync,0,1) I("show_fps",show_fps,0,1) I("volume",volume,0,100) I("mute",mute,0,1)
+        I("video3d",video3d,0,2) I("fullscreen",fullscreen,0,1) I("scale_mode",scale_mode,0,SM_COUNT-1) I("vsync",vsync,0,1) I("show_fps",show_fps,0,1) I("volume",volume,0,100) I("mute",mute,0,1)
         I("pause_unfocus",pause_unfocus,0,1) I("rumble",rumble,0,1) I("deadzone",deadzone,5,80) I("max_mp",max_mp,0,40) I("win_w",win_w,240,16384) I("win_h",win_h,160,16384)
         if(!strncmp(ln,"key_",4)){ for(int i=0;i<NB;i++) if(!strcmp(ln+4,bname[i])){ char *c=strchr(e,','); char a[64]="",b[64]=""; if(c){ *c=0; snprintf(b,sizeof b,"%s",c+1); } snprintf(a,sizeof a,"%s",e);
                 C.kb[i][0]=a[0]?SDL_GetScancodeFromName(a):0; C.kb[i][1]=b[0]?SDL_GetScancodeFromName(b):0; } }
@@ -195,6 +196,7 @@ enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
 enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
+static const char *const v3names[]={"AUTO","NATIVE (SMOOTH)","CLASSIC (GBA)"};
 static const char *const mpnames[]={"AUTO","1 MEGAPIXEL","2","3","4","6","8"}; static int mp_choice;
 static int mp_val(int i){ static const int v[]={0,1,2,3,4,6,8}; return v[i]; }
 static void menu_build(Item *it, int *n){
@@ -203,7 +205,7 @@ static void menu_build(Item *it, int *n){
     case P_MAIN: it[k++]=(Item){0,"RESUME",0,0,0,0,0,A_RESUME}; it[k++]=(Item){0,"VIDEO",0,0,0,0,0,A_VIDEO}; it[k++]=(Item){0,"AUDIO",0,0,0,0,0,A_AUDIO};
         it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
         it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
-    case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0};
+    case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,2,1,v3names,0};
         it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
         it[k++]=(Item){1,"PAUSE WHEN UNFOCUSED",&C.pause_unfocus,0,1,1,onoff,0}; it[k++]=(Item){0,"WINDOW SIZE: NEXT",0,0,0,0,0,A_WINSIZE}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_AUDIO: it[k++]=(Item){2,"VOLUME",&C.volume,0,100,5,0,0}; it[k++]=(Item){1,"MUTE",&C.mute,0,1,1,onoff,0}; it[k++]=(Item){1,"RUMBLE (GAMEPAD)",&C.rumble,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
@@ -294,7 +296,7 @@ static void present_game(int with_overlay){
     SDL_GetRendererOutputSize(ren,&dw_,&dh_);
     int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth);
     tex_ensure(W,H,linear);
-    pc_compose_native(pix,W,H,smooth);
+    pc_vid3d=C.video3d; pc_compose_native(pix,W,H,smooth);
     SDL_UpdateTexture(tex,NULL,pix,W*4);
     SDL_SetRenderDrawColor(ren,0,0,0,255); SDL_RenderClear(ren);
     SDL_RenderCopy(ren,tex,NULL,&dst);

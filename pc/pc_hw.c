@@ -19,6 +19,7 @@
 #include <math.h>
 
 void (*pc_irq_fn)(void);
+int pc_vid3d;                   // 3D views: 0 AUTO, 1 NATIVE, 2 CLASSIC (set by the window front end; PC_V3D=0..2 in the environment for tests)
 
 #define EWRAM 0x02000000u
 #define IWRAM 0x03000000u
@@ -262,6 +263,58 @@ static uint16_t mix15(uint16_t a, uint16_t b, int t){      // t = 0..16: weight 
     int r=((a&31)*(16-t)+(b&31)*t+8)>>4, g=(((a>>5)&31)*(16-t)+((b>>5)&31)*t+8)>>4, bl=(((a>>10)&31)*(16-t)+((b>>10)&31)*t+8)>>4;
     return (uint16_t)(r|(g<<5)|(bl<<10));
 }
+
+// ---- the kart ground at native size (NATIVE 3D view). The game's own line tables say, for every game line, where on the map window (page 1) the ground
+// under that line starts and how far one pixel steps. Here those are interpolated between lines (so the road is smooth in perspective at any
+// window height, no 160-step ladder), the map is filtered (bilinear close up, averaged taps far away), the distance haze is continuous, and the
+// sky's one-colour-per-row bands are blended into a smooth gradient. Nothing here touches the game's state: it is only how the picture is made.
+typedef struct { double pa,pc,rx,ry,fog; int pg,bg,ground,nl; } RowP;
+static uint32_t pg888[2][160][240]; static uint16_t skym[160]; static int skyok[160];
+static void nv_row(int Y, double sy, RowP *r){
+    double lc=(Y+0.5)*sy-0.5; int l0=(int)floor(lc); if(l0<0) l0=0; if(l0>159) l0=159; int l1=l0+1>159?159:l0+1; double f=lc-l0; if(f<0) f=0;
+    int nl=(int)((Y+0.5)*sy); if(nl>159) nl=159; if(nl<0) nl=0; const LineSt *N=&lst[nl], *A=&lst[l0], *B=&lst[l1];
+    r->ground = ((N->dc&0x410)==0x410) && N->pa!=0;
+    if(!(((A->dc&B->dc)&0x410)==0x410) || A->pa==0 || B->pa==0){ A=B=N; f=0; }
+    r->nl=nl; r->bg=(N->dc>>10)&1; r->pg=(N->dc>>4)&1;
+    r->pa=(A->pa*(1-f)+B->pa*f)/256.0; r->pc=(A->pc*(1-f)+B->pc*f)/256.0; r->rx=(A->rx*(1-f)+B->rx*f)/256.0; r->ry=(A->ry*(1-f)+B->ry*f)/256.0;
+    r->fog=-1; uint16_t bc=N->bldcnt;
+    if(((bc>>6)&3)==1 && (bc&4) && (bc&0x2000)){ double eb=(((A->bldalpha>>8)&31)*(1-f)+((B->bldalpha>>8)&31)*f)/16.0; r->fog= eb>1?1:eb; }
+}
+static inline uint32_t mix888(uint32_t a, uint32_t b, double t){
+    int ar=a>>16&255, ag=a>>8&255, ab=a&255, br=b>>16&255, bg=b>>8&255, bb=b&255;
+    return (uint32_t)(int)(ar+(br-ar)*t+0.5)<<16 | (uint32_t)(int)(ag+(bg-ag)*t+0.5)<<8 | (uint32_t)(int)(ab+(bb-ab)*t+0.5);
+}
+static void nv_ground_prep(uint16_t bd){
+    uint8_t lut5[32]; for(int i=0;i<32;i++) lut5[i]=(uint8_t)(i<<3|i>>2);
+    for(int p=0;p<2;p++) for(int y=0;y<160;y++) for(int x=0;x<240;x++){ uint16_t c= p ? bgres2[y][x] : bgres[y][x];
+        pg888[p][y][x]=(uint32_t)lut5[c&31]<<16 | (uint32_t)lut5[(c>>5)&31]<<8 | lut5[(c>>10)&31]; }
+    for(int y=0;y<160;y++){ skyok[y]=0; if(y<19 || (lst[y].dc&0x10)) continue;               // the sky rows: the colour most of the row has (a vote), if it is more than half
+        int cand=0, cnt=0; for(int x=0;x<240;x++){ uint16_t c=bgres[y][x]; if(cnt==0){ cand=c; cnt=1; } else if(c==cand) cnt++; else cnt--; }
+        int n=0; for(int x=0;x<240;x++) n+= bgres[y][x]==cand; if(n>=140){ skym[y]=(uint16_t)cand; skyok[y]=1; } }
+}
+static inline uint32_t nv_bil(int pg, float u, float v, float iF){      // "sharp bilinear" (u,v >= 0 texels; iF = 1 / footprint): flat inside a texel, blended over one output pixel at its edges
+    u=u<0?0:u; v=v<0?0:v; int x0=(int)u, y0=(int)v; float fu=u-x0, fv=v-y0;
+    float tx=(fu-0.5f)*iF+0.5f, ty=(fv-0.5f)*iF+0.5f; tx=tx<0?0:tx>1?1:tx; ty=ty<0?0:ty>1?1:ty;
+    int ax=fu<0.5f?x0-1:x0+1, ay=fv<0.5f?y0-1:y0+1; float wx = fu<0.5f ? 1-tx : tx, wy = fv<0.5f ? 1-ty : ty;
+    int X0=x0>239?239:x0, Y0=y0>159?159:y0, X1=ax<0?0:ax>239?239:ax, Y1=ay<0?0:ay>159?159:ay;
+    int wxi=(int)(wx*256), wyi=(int)(wy*256);
+    if(!wxi && !wyi) return pg888[pg][Y0][X0];
+    uint32_t a=pg888[pg][Y0][X0], b=pg888[pg][Y0][X1], c=pg888[pg][Y1][X0], d=pg888[pg][Y1][X1];
+    uint32_t rb0=(a&0xFF00FF)*(256-wxi)+(b&0xFF00FF)*wxi, g0=(a&0xFF00)*(256-wxi)+(b&0xFF00)*wxi, rb1=(c&0xFF00FF)*(256-wxi)+(d&0xFF00FF)*wxi, g1=(c&0xFF00)*(256-wxi)+(d&0xFF00)*wxi;
+    rb0=(rb0>>8)&0xFF00FF; rb1=(rb1>>8)&0xFF00FF; g0=(g0>>8)&0xFF00; g1=(g1>>8)&0xFF00;
+    uint32_t rb=(((rb0*(256-wyi)+rb1*wyi)>>8)&0xFF00FF), g=(((g0*(256-wyi)+g1*wyi)>>8)&0xFF00); return rb|g;
+}
+static inline uint32_t nv_grain(uint32_t c, float u, float v, float F){   // close up the map is only one texel per cell: a faint fixed grain, finer than the texel, keeps the ground from looking like smooth plastic
+    if(F>=0.5) return c; double k=(0.5-F)/0.5; int iu=(int)(u*5), iv=(int)(v*5); uint32_t h=(uint32_t)iu*2654435761u ^ (uint32_t)iv*2246822519u; h^=h>>15; h*=2246822519u; h^=h>>13;
+    int d=(int)((h&255)-128)*(int)(k*9)/128;          // +-9 at the closest
+    int r=(c>>16&255)+d, g=(c>>8&255)+d, b=(c&255)+d; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; b=b<0?0:b>255?255:b; return (uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b;
+}
+static int nv_v3(void){ int v3=pc_vid3d; static int env=-2; if(env==-2){ const char *e=getenv("PC_V3D"); env=e?atoi(e):-1; } if(env>=0) v3=env; return v3; }
+static int spr_tex(int tile,int tx,int ty,int w,int h,int one_d,int is8,int pal,uint16_t *col){    // one texel of a sprite: 0 = transparent
+    if(tx<0||ty<0||tx>=w||ty>=h) return 0; int units=is8?2:1; int t=tile + (ty>>3)*(one_d ? (w>>3)*units : 32) + (tx>>3)*units;
+    uint32_t addr=VRAMB+0x10000+(uint32_t)t*32 + (ty&7)*(is8?8:4) + ((tx&7)>>(is8?0:1)); if(addr>=VRAMB+0x18000) return 0;
+    int idx=*(volatile uint8_t*)(uintptr_t)addr; if(!is8){ idx = (tx&1) ? idx>>4 : idx&15; } if(!idx) return 0;
+    *col=rgbpix(R16(PALRAM+0x200 + 2*(is8? idx : pal*16+idx))); return 1; }
 void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(W<240||H<160){ W=240; H=160; }
     build_lines();
@@ -274,7 +327,7 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(dc&0x80){ for(size_t i=0;i<need;i++) out[i]=0xFFFFFF; return; }
     const double sx=240.0/W, sy=160.0/H;                       // game pixels per output pixel
     // ---- sprites
-    memset(nv_op,4,need);
+    memset(nv_op,4,need); int sprsm = nv_v3()!=2 && lst_dma && W>240;
     if((dc>>12)&1){
         static const uint8_t dim[3][4][2]={{{8,8},{16,16},{32,32},{64,64}},{{16,8},{32,8},{32,16},{64,32}},{{8,16},{8,32},{16,32},{32,64}}};
         for(int i=0;i<128;i++){                                  // lowest number first: on a tie of priority, the lower sprite number stays on top (as on the chip)
@@ -306,6 +359,10 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
                     if(addr>=VRAMB+0x18000) continue;
                     int idx=*(volatile uint8_t*)(uintptr_t)addr; if(!is8){ idx = (tx&1) ? idx>>4 : idx&15; } if(!idx) continue;
                     nv_oc[q]=rgbpix(R16(PALRAM+0x200 + 2*(is8? idx : pal*16+idx))); nv_op[q]=(uint8_t)(prio | (gm==1?16:0));
+                    if(aff && sprsm){                                      // a scaled or turned sprite: the colour is a bilinear mix of the opaque texels around, the edge stays as it was
+                        double ux=pa*(gx-x0-bw/2.0)+pb*(gy-y0-bh/2.0)+w/2.0-0.5, uy=pc*(gx-x0-bw/2.0)+pd*(gy-y0-bh/2.0)+h/2.0-0.5; int ix=(int)floor(ux), iy=(int)floor(uy); double ax=ux-ix, ay=uy-iy;
+                        double wsum=0, r=0, g2=0, b2=0; for(int jy=0;jy<2;jy++) for(int jx=0;jx<2;jx++){ uint16_t cc; if(!spr_tex(tile,ix+jx,iy+jy,w,h,one_d,is8,pal,&cc)) continue; double wt=(jx?ax:1-ax)*(jy?ay:1-ay); wsum+=wt; r+=wt*(cc&31); g2+=wt*((cc>>5)&31); b2+=wt*((cc>>10)&31); }
+                        if(wsum>0.01) nv_oc[q]=(uint16_t)((int)(r/wsum+0.5) | (int)(g2/wsum+0.5)<<5 | (int)(b2/wsum+0.5)<<10); }
                 }
             }
         }
@@ -319,10 +376,12 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     uint32_t base = VRAMB + ((dc&0x10) ? 0xA000 : 0);
     int have_bg = bg2_on && mode>=3 && mode<=5, bw=240, bh=160;
     if(have_bg) nv_resolve_bg(mode,base,dc,&bw,&bh,bd);
-    int dmaln = have_bg && lst_dma && mode==4;
+    int v3=nv_v3();
+    int dmaln = have_bg && lst_dma && mode==4, nat3 = dmaln && v3!=2;
     if(dmaln){                                                   // both pages: each line says which one it shows
         for(int y=0;y<160;y++) for(int x=0;x<240;x++){ int i0=*(volatile uint8_t*)(uintptr_t)(VRAMB+y*240+x), i1=*(volatile uint8_t*)(uintptr_t)(VRAMB+0xA000+y*240+x);
-            bghave[y][x]=i0!=0; bgres[y][x]=i0?rgbpix(R16(PALRAM+i0*2)):bd; bghave2[y][x]=i1!=0; bgres2[y][x]=i1?rgbpix(R16(PALRAM+i1*2)):bd; } }
+            bghave[y][x]=i0!=0; bgres[y][x]=i0?rgbpix(R16(PALRAM+i0*2)):bd; bghave2[y][x]=i1!=0; bgres2[y][x]=i1?rgbpix(R16(PALRAM+i1*2)):bd; }
+        if(nat3) nv_ground_prep(bd); }
     int axis = (pb==0 && pc==0) && !dmaln;                                // no rotation: the bitmap's x depends on X only, y on Y only
     int *tabx=0,*taby=0; int8_t *wx=0,*wy=0;
     if(have_bg && axis){
@@ -337,19 +396,33 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     }
     static const int bit[3]={2,4,5};
     for(int Y=0;Y<H;Y++){
-        double rpa=0,rpc=0,rrx=0,rry=0; int rpg=0, rbg=have_bg;
+        double rpa=0,rpc=0,rrx=0,rry=0; int rpg=0, rbg=have_bg; RowP R0,R1; int nfx=1,nfy=1; double fog=-1, FP=1; float iFP=1;
         if(dmaln){                                               // this output row: the table row(s) of the game line(s) it lies over
-            double lc=(Y+0.5)*sy-0.5; int l0=(int)floor(lc); if(l0<0) l0=0; if(l0>159) l0=159; int l1=l0+1>159?159:l0+1; double f=lc-l0; if(f<0) f=0;
-            int nl=(int)((Y+0.5)*sy); if(nl>159) nl=159; const LineSt *N=&lst[nl], *A=&lst[l0], *B=&lst[l1];
-            if(!(((A->dc&B->dc)&0x410)==0x410) || A->pa==0 || B->pa==0) { A=B=N; f=0; }          // (only between two ground lines: the sky and the HUD are never mixed in)
-            rbg=(N->dc>>10)&1; rpg=(N->dc>>4)&1;
-            rpa=(A->pa*(1-f)+B->pa*f)/256.0; rpc=(A->pc*(1-f)+B->pc*f)/256.0; rrx=(A->rx*(1-f)+B->rx*f)/256.0; rry=(A->ry*(1-f)+B->ry*f)/256.0;
-            bldcnt=N->bldcnt; bldalpha=N->bldalpha; ev=N->bldy&31; if(ev>16) ev=16; bmode=(bldcnt>>6)&3; ea=bldalpha&31; eb=(bldalpha>>8)&31; if(ea>16)ea=16; if(eb>16)eb=16;
+            nv_row(Y,sy,&R0); rbg=R0.bg; rpg=R0.pg; rpa=R0.pa; rpc=R0.pc; rrx=R0.rx; rry=R0.ry;
+            { const LineSt *N=&lst[R0.nl]; bldcnt=N->bldcnt; bldalpha=N->bldalpha; ev=N->bldy&31; if(ev>16) ev=16; bmode=(bldcnt>>6)&3; ea=bldalpha&31; eb=(bldalpha>>8)&31; if(ea>16)ea=16; if(eb>16)eb=16; }
+            if(nat3 && R0.ground){ fog=R0.fog; nv_row(Y+1<H?Y+1:Y,sy,&R1); double g=W*0.5*sx;
+                double du=(R1.rx+R1.pa*g)-(R0.rx+R0.pa*g), dv=(R1.ry+R1.pc*g)-(R0.ry+R0.pc*g); double fy=sqrt(du*du+dv*dv), fx=sqrt(rpa*rpa+rpc*rpc)*sx;
+                FP=fx>fy?fx:fy; if(FP<0.0625) FP=0.0625; iFP=(float)(1.0/FP); nfx=(int)ceil(fx-0.25); nfy=(int)ceil(fy-0.25); if(nfx<1)nfx=1; if(nfx>3)nfx=3; if(nfy<1)nfy=1; if(nfy>3)nfy=3; if(nfx*nfy>4){ if(nfx>=nfy) nfx=4/nfy; else nfy=4/nfx; if(nfx<1)nfx=1; if(nfy<1)nfy=1; } }
         }
         for(int X=0;X<W;X++){
             int have=0; uint16_t bc=bd;
+            uint32_t bc888=0; int sm=0;
             if(dmaln){
-                if(rbg){ double gx=X*sx; int tx=(int)floor(rrx+rpa*gx), ty=(int)floor(rry+rpc*gx);
+                if(nat3){
+                    if(rbg && R0.ground){ double g=(X+0.5)*sx-0.5; double u0=rrx+rpa*g, v0=rry+rpc*g;
+                        if(u0>=0&&v0>=0&&u0<240&&v0<160){ have=1; uint32_t c;
+                            if(nfx==1&&nfy==1){ c=nv_bil(1,(float)u0,(float)v0,iFP); if(FP<0.5) c=nv_grain(c,(float)u0,(float)v0,(float)FP); }
+                            else { double du=rpa*sx/nfx, dv=rpc*sx/nfx, ex=(R1.rx+R1.pa*g-(rrx+rpa*g))/nfy, ey=(R1.ry+R1.pc*g-(rry+rpc*g))/nfy; unsigned sr=0,sg=0,sb=0; int n=0;
+                                for(int j=0;j<nfy;j++) for(int i=0;i<nfx;i++){ double ox=i-(nfx-1)*0.5, oy=j-(nfy-1)*0.5; uint32_t t=nv_bil(1,(float)(u0+du*ox+ex*oy),(float)(v0+dv*ox+ey*oy),1.0/(FP/(nfx>nfy?nfx:nfy))); sr+=t>>16&255; sg+=t>>8&255; sb+=t&255; n++; }
+                                c=(sr/n)<<16|(sg/n)<<8|(sb/n); }
+                            if(fog>0){ uint16_t bdc=bd; uint32_t d=(uint32_t)lut5[bdc&31]<<16|(uint32_t)lut5[(bdc>>5)&31]<<8|lut5[(bdc>>10)&31]; c=mix888(c,d,fog); }
+                            bc888=c; sm=1; bc=(uint16_t)((c>>3&31)|((c>>11&31)<<5)|((c>>19&31)<<10)); } }
+                    else if(rbg){ int tx=(int)((X+0.5)*sx), nl=R0.nl; if(tx>239) tx=239; have=rpg? bghave2[nl][tx] : bghave[nl][tx]; bc=rpg? bgres2[nl][tx] : bgres[nl][tx];
+                        if(!rpg && skyok[nl] && bgres[nl][tx]==skym[nl]){ double p=(Y+0.5)*sy-0.5-nl; int nb=nl+(p>0?1:-1); double w=p<0?-p:p; if(w>1) w=1;
+                            if(nb>=19 && nb<160 && skyok[nb]){ uint16_t a=skym[nl], b2=skym[nb]; uint32_t ca=(uint32_t)lut5[a&31]<<16|(uint32_t)lut5[(a>>5)&31]<<8|lut5[(a>>10)&31], cb=(uint32_t)lut5[b2&31]<<16|(uint32_t)lut5[(b2>>5)&31]<<8|lut5[(b2>>10)&31];
+                                bc888=mix888(ca,cb,w); sm=1; } } }
+                }
+                else if(rbg){ double gx=X*sx; int tx=(int)floor(rrx+rpa*gx), ty=(int)floor(rry+rpc*gx);
                     if(tx>=0&&ty>=0&&tx<240&&ty<160){ if(rpg){ have=bghave2[ty][tx]; bc=bgres2[ty][tx]; } else { have=bghave[ty][tx]; bc=bgres[ty][tx]; } } }
             }
             else if(have_bg){
@@ -380,7 +453,7 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
                 else if(bmode==2 && t1) res=bright(top,ev,1);
                 else if(bmode==3 && t1) res=bright(top,ev,0);
             }
-            out[q]=XRGB(res);
+            out[q]= (sm && tl==0 && !semi) ? bc888 : XRGB(res);
         }
     }
     free(tabx); free(wx);
