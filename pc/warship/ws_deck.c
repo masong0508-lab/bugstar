@@ -103,7 +103,7 @@ static int carve(WdDeck *d, int a, int b, int cw, int8_t ceil){
     return 1;
 }
 static void prop(WdDeck *d, int type, float x, float y, float z, float w, float h, int a){
-    if(d->nprop>=WD_MAXPROP) return; WdProp *p=&d->prop[d->nprop++]; p->type=(uint8_t)type; p->x=x; p->y=y; p->z=z; p->w=w; p->h=h; p->a=(uint8_t)a;
+    if(d->nprop>=WD_MAXPROP) return; if(type==WP_BUNK||type==WP_TABLE||type==WP_BENCH||type==WP_SOFA||type==WP_CONSOLE||type==WP_SCHEMA||type==WP_KEY) h*=0.5f; WdProp *p=&d->prop[d->nprop++]; p->type=(uint8_t)type; p->x=x; p->y=y; p->z=z; p->w=w; p->h=h; p->a=(uint8_t)a;
     int cx=(int)x, cy=(int)y; p->room = inb(cx,cy) ? C(d,cx,cy).room : 0; }
 static void ring_windows(WdDeck *d, int r, int side){
     WdRoom *m=&d->room[r];
@@ -132,11 +132,11 @@ static void furnish(WdDeck *d, R *r, int ri_){
     case WR_QUARTERS: for(float x=x0+0.9f;x<x1-0.5f;x+=1.6f){ prop(d,WP_BUNK,x,y0+0.6f,0,1.2f,1.8f,ri(r,4)); prop(d,WP_BUNK,x,y1-0.6f,0,1.2f,1.8f,ri(r,4)); } prop(d,WP_LAMP,cx,cy,hc-2,0.6f,0.5f,1); break;
     case WR_MESS: for(float x=x0+2;x<x1-1;x+=3) for(float y=y0+1.5f;y<y1-1;y+=2.5f){ prop(d,WP_TABLE,x,y,0,1.8f,0.8f,0); prop(d,WP_BENCH,x,y-0.8f,0,1.6f,0.45f,0); prop(d,WP_BENCH,x,y+0.8f,0,1.6f,0.45f,0); } prop(d,WP_LAMP,cx,cy,hc-2,0.8f,0.6f,1); break;
     case WR_LOUNGE: for(int i=0;i<3;i++) prop(d,WP_SOFA,x0+1.5f+i*2.4f,y0+1.2f,0,1.8f,0.8f,i); for(int i=0;i<3;i++) prop(d,WP_PLANT,x1-0.8f,y0+1+i*1.6f,0,0.8f,1.4f,ri(r,4)); ring_windows(d,ri_,3); break;
-    case WR_GARDEN: for(float x=x0+1;x<x1-0.5f;x+=1.4f) for(float y=y0+1;y<y1-0.5f;y+=2.2f) prop(d,WP_PLANT,x,y,0,1.0f,1.2f+rf(r)*1.4f,ri(r,4)); for(float x=x0+2;x<x1;x+=4) prop(d,WP_LAMP,x,cy,hc-2,1.2f,0.4f,2); break;
+    case WR_GARDEN: for(float x=x0+1.2f;x<x1-0.8f;x+=2.4f) for(float y=y0+1.2f;y<y1-0.8f;y+=2.6f) prop(d,WP_PLANT,x,y,0,1.4f,0.5f+rf(r)*0.4f,4+ri(r,4)); for(float x=x0+2;x<x1;x+=4) prop(d,WP_LAMP,x,cy,hc-2,1.2f,0.4f,2); break;
     case WR_WORKSHOP: for(float x=x0+1.5f;x<x1-1;x+=2.5f){ prop(d,WP_BENCH,x,y0+1.0f,0,1.8f,0.9f,1); prop(d,WP_CRATE,x,y1-0.8f,0,0.9f,0.9f,ri(r,3)); } prop(d,WP_PIPE,x0+0.3f,cy,0,0.4f,hc,0); break;
     case WR_TRENCH: for(float t=0;t<(W>H?W:H);t+=3) prop(d,WP_PIPE, W>H ? x0+t+0.5f : x0+0.3f, W>H ? y0+0.3f : y0+t+0.5f, -8,0.35f,(float)hc+8,0); break;
     case WR_TRAM: { for(int y=m->y0;y<=m->y1;y++) for(int x=m->x0;x<=m->x1;x++){ if(y>=m->y0+(m->y1-m->y0)/2+1 && y<m->y1 && x>m->x0 && x<m->x1){ C(d,x,y).kind=WDC_PIT; C(d,x,y).floor=-6; } else if(y==m->y0+(m->y1-m->y0)/2) C(d,x,y).kind=WDC_TRAM; }
-        prop(d,WP_TRAMCAR,cx,y0+H*0.78f,-6,W*0.7f,5.5f,0); for(float x=x0+1;x<x1;x+=3) prop(d,WP_LAMP,x,y0+0.5f,hc-2,0.6f,0.4f,0); break; }
+        prop(d,WP_TRAMCAR,cx,y0+H*0.78f,-6,W*0.7f,1.7f,0); for(float x=x0+1;x<x1;x+=3) prop(d,WP_LAMP,x,y0+0.5f,hc-2,0.6f,0.4f,0); break; }
     case WR_SECURITY: prop(d,WP_CONSOLE,x0+1,y0+1,0,1,1,3); prop(d,WP_CONSOLE,x0+2.2f,y0+1,0,1,1,2); prop(d,WP_CRATE,x1-1,y1-1,0,0.9f,0.9f,0); break;
     default: break;
     }
@@ -240,7 +240,7 @@ void wd_make(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, int ns
         spot_near(d,&r,WP_SOFA,WR_LOUNGE,&n->spot[WA_CHAT][0],&n->spot[WA_CHAT][1]); { static const uint8_t jt[4]={WP_CONSOLE,WP_BENCH,WP_PLANT,WP_CRATE}; spot_near(d,&r,jt[i%4],WR_WORKSHOP,&n->spot[WA_WORK][0],&n->spot[WA_WORK][1]); }
         int a=WA_SLEEP+ri(&r,4); n->act=(uint8_t)a; n->x=n->spot[a][0]+0.5f; n->y=n->spot[a][1]+0.5f; n->tx=n->x; n->ty=n->y; n->chat=rf(&r)*10; }
     // guards: by the locked door, in each target room, in security
-    for(int i=1;i<d->nroom && d->nnpc<WD_MAXNPC;i++){ const WdRoom *m=&d->room[i]; int g = m->sub!=255 ? 2 : m->kind==WR_SECURITY ? 2 : 0; if(m->locked) g++;
+    for(int i=1;i<d->nroom && d->nnpc<WD_MAXNPC;i++){ const WdRoom *m=&d->room[i]; int g = m->sub!=255 ? 2 : m->kind==WR_SECURITY ? 2 : 0; if(m->locked) g++; if(i==hang_entry && from_hangar) g=0;
         for(int k=0;k<g && d->nnpc<WD_MAXNPC;k++){ WdNpc *n=&d->npc[d->nnpc++]; memset(n,0,sizeof *n); n->kind = (m->kind==WR_BRIDGE && k==0) ? WN_OFFICER : WN_GUARD; n->alive=1; n->hp=60; n->act=WA_WORK; n->home=(uint8_t)i;
             float fx,fy; free_spot(d,&r,i,&fx,&fy); n->x=fx; n->y=fy; n->tx=fx; n->ty=fy; for(int s=0;s<4;s++){ n->spot[s][0]=(int)fx; n->spot[s][1]=(int)fy; } } }
     snprintf(d->name,sizeof d->name,"%s DECK %d",syl[leaf%16],(int)((leaf>>4)%40)+1);

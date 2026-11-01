@@ -31,7 +31,7 @@ static V3 light_at(float x, float y){                          // smooth light: 
     float fx=x-0.5f, fy=y-0.5f; int ix=(int)floorf(fx), iy=(int)floorf(fy); float ax=fx-ix, ay=fy-iy; V3 s=v3(0,0,0);
     for(int k=0;k<4;k++){ int cx=ix+(k&1), cy=iy+(k>>1); if(cx<0) cx=0; if(cy<0) cy=0; if(cx>WD_W-1) cx=WD_W-1; if(cy>WD_W-1) cy=WD_W-1; int i=cy*WD_W+cx;
         float w=((k&1)?ax:1-ax)*((k>>1)?ay:1-ay); s.r+=w*D->lr[i]; s.g+=w*D->lg[i]; s.b+=w*D->lb[i]; }
-    return vmul(s,1/255.0f*1.9f);
+    return vmul(s,1/255.0f*1.55f);
 }
 static uint32_t pack(V3 c){ int r=(int)(c.r*255+0.5f), g=(int)(c.g*255+0.5f), b=(int)(c.b*255+0.5f); r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; b=b<0?0:b>255?255:b; return (uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; }
 static V3 tonemap(V3 c){ return v3(c.r/(1+c.r*0.35f)*1.25f, c.g/(1+c.g*0.35f)*1.25f, c.b/(1+c.b*0.35f)*1.25f); }
@@ -51,7 +51,7 @@ static V3 wall_tex(int rk, float u, float z, float ceil, uint32_t cellh, float *
         return vmix(P1,P0,0.3f+0.2f*vnoise(u*3,z));
     }
     if(rk==WR_GARDEN) base=v3(.86f,.88f,.84f); else if(rk==WR_QUARTERS||rk==WR_LOUNGE) base=vmix(P0,v3(.62f,.46f,.33f),0.55f); else if(rk==WR_REACTOR||rk==WR_TRENCH) base=vmul(P1,1.05f); else if(rk==WR_MESS) base=vmix(P0,v3(.75f,.70f,.62f),0.4f);
-    V3 c=vmul(base,var);
+    V3 c=vmul(base,var); if(rk==WR_CORRIDOR) c=vmul(vmix(base,P1,0.35f),0.85f);
     if(ceil>20 && z>9){                                         // tall halls: ribs and girders up into the dark
         float rib=fr_(u*0.5f); if(rib<0.12f) return vmul(P1,0.8f+rib); if(fr_(z/12.0f)<0.06f) return vmul(P1,0.7f);
         if(fr_(u*0.5f+0.25f)<0.03f && fr_(z/6)<0.5f){ *emis=0.8f; return PA; }
@@ -136,21 +136,25 @@ static void model_prop(const WdProp *q){
         add(1,x+L*0.5f,y,z+h*0.13f,0.04f,0,h*0.13f,v3(.15f,.15f,.15f),0); add(1,x-L*0.4f,y-L*0.4f,z+h*0.13f,0.04f,0,h*0.13f,v3(.15f,.15f,.15f),0); add(1,x-L*0.4f,y+L*0.4f,z+h*0.13f,0.04f,0,h*0.13f,v3(.15f,.15f,.15f),0); break; }
     case WP_CRATE: { V3 cc=v3(fc[a&3][0]*0.8f,fc[a&3][1]*0.8f,fc[a&3][2]*0.7f); add(0,x,y,z+h*0.5f,w*0.45f,w*0.45f,h*0.5f,cc,0); add(0,x,y,z+h*0.5f,w*0.46f,w*0.46f,h*0.06f,vmul(cc,0.5f),0); break; }
     case WP_CONSOLE: case WP_SCHEMA: { add(0,x,y,z+h*0.3f,w*0.42f,w*0.32f,h*0.3f,P1,0); V3 sc = q->type==WP_SCHEMA ? v3(.3f,.6f,1.0f) : vmix(PA,v3(.3f,1,.6f),(a&1)*0.5f);
-        add(0,x,y,z+h*0.75f,w*0.4f,w*0.06f,h*0.18f,sc,0.9f+0.1f*sinf((float)T*3+x)); if(q->type==WP_SCHEMA) add(1,x,y,z+h*1.15f,w*0.2f,0,h*0.2f,v3(.3f,.6f,1),0.7f); break; }
+        add(0,x,y,z+h*0.78f,w*0.4f,w*0.05f,h*0.16f,vmul(sc,0.7f),0.45f+0.08f*sinf((float)T*3+x)); pr[npr-1].pat=3; if(q->type==WP_SCHEMA) add(1,x,y,z+h*1.15f,w*0.2f,0,h*0.2f,v3(.3f,.6f,1),0.7f); break; }
     case WP_BUNK: { V3 bl=v3(fc[a&3][0]*0.6f+0.2f,0.3f+0.1f*a,0.35f); add(0,x,y,z+h*0.15f,w*0.45f,0.42f,h*0.03f,P1,0); add(0,x,y,z+h*0.2f,w*0.42f,0.38f,h*0.03f,bl,0);
         add(0,x,y,z+h*0.62f,w*0.45f,0.42f,h*0.03f,P1,0); add(0,x,y,z+h*0.67f,w*0.42f,0.38f,h*0.03f,vmul(bl,0.9f),0);
         for(int k=0;k<4;k++) add(0,x+((k&1)?w*0.43f:-w*0.43f),y+((k&2)?0.4f:-0.4f),z+h*0.5f,0.03f,0.03f,h*0.5f,P1,0); break; }
     case WP_TABLE: add(0,x,y,z+h*0.94f,w*0.5f,0.42f,h*0.06f,vmix(P0,v3(.8f,.8f,.78f),0.5f),0); add(1,x,y,z+h*0.45f,0.08f,0,h*0.45f,P1,0); break;
     case WP_BENCH: add(0,x,y,z+h*0.8f,w*0.5f,0.18f,h*0.2f,vmix(P1,v3(.5f,.3f,.2f),0.5f),0); break;
     case WP_SOFA: { V3 s=v3(.45f+0.15f*(a&1),.25f,.30f+0.1f*a); add(0,x,y,z+h*0.25f,w*0.5f,0.35f,h*0.25f,s,0); add(0,x,y-0.3f,z+h*0.6f,w*0.5f,0.08f,h*0.35f,vmul(s,0.85f),0); break; }
-    case WP_PLANT: { add(1,x,y,z+0.12f,w*0.22f,0,0.12f,v3(.5f,.35f,.25f),0); V3 g=v3(.18f,.45f+0.1f*a,.15f); add(2,x,y,z+0.25f+h*0.45f,w*0.3f+h*0.1f,0,0,g,0.05f); add(2,x+0.12f,y-0.08f,z+0.25f+h*0.7f,w*0.2f+h*0.05f,0,0,vmul(g,1.15f),0.05f); break; }
+    case WP_PLANT: { V3 g=v3(.16f,.42f+0.05f*(a&3),.14f);
+        if(a>=4){ add(0,x,y,z+0.18f,w*0.45f,0.3f,0.18f,v3(.75f,.77f,.78f),0); add(0,x,y,z+0.37f,w*0.42f,0.25f,0.02f,v3(.25f,.17f,.1f),0);          // a hydroponic tray, a row of greens, a grow light
+            for(int k=0;k<5;k++){ float px2=x-w*0.36f+k*w*0.18f; float hh=0.12f+0.05f*((k*7+a)%3); add(2,px2,y-0.1f,z+0.42f+hh,hh,0,0,vmul(g,0.9f+0.1f*(k&1)),0.04f); add(2,px2+0.05f,y+0.12f,z+0.40f+hh*0.8f,hh*0.8f,0,0,vmul(g,1.1f),0.04f); }
+            add(0,x,y,z+1.05f,w*0.45f,0.08f,0.02f,v3(1,.85f,.95f),1.2f); add(0,x-w*0.44f,y,z+0.7f,0.02f,0.02f,0.35f,P1,0); add(0,x+w*0.44f,y,z+0.7f,0.02f,0.02f,0.35f,P1,0); break; }
+        add(1,x,y,z+0.12f,w*0.18f,0,0.12f,v3(.5f,.35f,.25f),0); add(2,x,y,z+0.25f+h*0.35f,w*0.18f+h*0.06f,0,0,g,0.05f); add(2,x+0.1f,y-0.07f,z+0.25f+h*0.6f,w*0.13f+h*0.04f,0,0,vmul(g,1.15f),0.05f); add(2,x-0.08f,y+0.06f,z+0.25f+h*0.5f,w*0.12f+h*0.04f,0,0,vmul(g,0.9f),0.05f); break; }
     case WP_LAMP: add(0,x,y,z+0.05f,w*0.5f,w*0.25f,0.05f,v3(1,.95f,.85f),1.6f); add(1,x,y,z+0.6f,0.02f,0,0.5f,P1,0); break;
     case WP_CORE: { float rad=w*0.5f, pul=0.8f+0.2f*sinf((float)T*4); add(1,x,y,z+h*0.5f,rad,0,h*0.5f,v3(.45f,.75f,1.0f),0.75f*pul); pr[npr-1].pat=1;
         for(float k=0.05f;k<1;k+=0.07f) add(1,x,y,z+h*k,rad*1.25f,0,0.12f,P1,0); add(1,x,y,z+h-0.3f,rad*1.6f,0,0.3f,vmul(P1,0.8f),0); break; }
     case WP_DOME: add(2,x,y,z,w*0.5f,0,0,v3(.45f,.8f,1),0.6f+0.15f*sinf((float)T*2)); pr[npr-1].pat=2; add(1,x,y,z+0.15f,w*0.55f,0,0.15f,P1,0); for(int k=0;k<6;k++){ float an=k*1.047f+(float)T*0.3f; add(1,x+cosf(an)*w*0.62f,y+sinf(an)*w*0.62f,z+h*0.4f,0.12f,0,h*0.4f,P1,0); add(2,x+cosf(an)*w*0.62f,y+sinf(an)*w*0.62f,z+h*0.82f,0.18f,0,0,PA,1.2f); } break;
     case WP_GUN: add(0,x,y,z+h*0.25f,w*0.5f,w*0.5f,h*0.25f,P1,0); add(1,x,y,z+h*0.6f,w*0.35f,0,h*0.12f,vmul(P0,0.9f),0); add(0,x,y,z+h*0.78f,w*0.12f,w*0.8f,w*0.12f,vmul(P1,1.2f),0); add(0,x,y+w*0.8f,z+h*0.78f,w*0.06f,0.05f,w*0.06f,v3(1,.4f,.2f),1.5f); break;
     case WP_PIPE: add(1,x,y,z+h*0.5f,w*0.5f,0,h*0.5f,vmix(P1,v3(.5f,.42f,.3f),0.4f),0); break;
-    case WP_TRAMCAR: add(0,x,y,z+h*0.5f,w*0.5f,0.9f,h*0.42f,vmix(P0,v3(.9f,.9f,.92f),0.4f),0); add(0,x,y-0.92f,z+h*0.62f,w*0.46f,0.02f,h*0.14f,v3(.8f,.9f,1),0.8f); add(0,x,y,z+h*0.05f,w*0.48f,0.6f,h*0.05f,v3(.1f,.1f,.1f),0); break;
+    case WP_TRAMCAR: add(0,x,y,z+h*0.5f,w*0.5f,0.9f,h*0.42f,vmix(P0,v3(.9f,.9f,.92f),0.4f),0); add(0,x,y-0.92f,z+h*0.62f,w*0.46f,0.02f,h*0.14f,v3(.55f,.7f,.85f),0.35f); pr[npr-1].pat=4; add(0,x,y,z+h*0.05f,w*0.48f,0.6f,h*0.05f,v3(.1f,.1f,.1f),0); break;
     case WP_KEY: { static const float kc[4][3]={{1,1,1},{1,.3f,.3f},{.3f,1,.4f},{.4f,.6f,1}}; add(0,x,y,z+0.45f+0.05f*sinf((float)T*3),0.12f,0.08f,0.02f,v3(kc[a&3][0],kc[a&3][1],kc[a&3][2]),1.4f); add(0,x,y,z+0.2f,0.25f,0.25f,0.2f,P1,0); break; }
     case WP_CHARGE: add(0,x,y,z+0.12f,0.12f,0.12f,0.12f,v3(.3f,.3f,.3f),0); add(2,x,y,z+0.28f,0.05f,0,0,v3(1,.1f,.1f),fmodf((float)T,0.6f)<0.3f?2.0f:0.2f); break;
     default: break;
@@ -265,9 +269,11 @@ void wv_render(uint32_t *out, int W, int H, const WdDeck *d, float px, float py,
                 V3 col=p->col; float em=p->emis;
                 if(p->pat==1){ float hz2=ez+rz*best; float an=atan2f(hy-p->y,hx-p->x); float band=sinf(hz2*9-(float)T*5); band*=band; float st=fr_(an*3.0f/3.14159f+(float)T*0.2f);
                     col=vmix(v3(.10f,.25f,.55f),v3(.75f,.95f,1.0f),0.25f+0.75f*band); if(st<0.08f) col=vmul(col,0.4f); em=p->emis*(0.5f+band); }
+                else if(p->pat==3){ float hz2=ez+rz*best; if(fr_(hz2*28)<0.3f || fr_((hx+hy)*9)<0.12f) col=vmul(col,0.55f); }                 // a screen: scan lines and panes
+                else if(p->pat==4){ if(fr_((hx+hy)*1.2f)<0.12f){ col=vmul(P1,0.8f); em=0; } }                                                  // tram windows: frames between the panes
                 else if(p->pat==2){ float hz2=ez+rz*best; float an=atan2f(hy-p->y,hx-p->x); if(fr_(an*4/3.14159f)<0.05f || fr_((hz2-p->z)*6)<0.06f){ col=vmul(col,0.5f); em*=0.3f; } }
                 V3 li=light_at(hx,hy); out[Y*W+X]=pack(finish(vmul(col,lam),li,em,best)); zb[Y*W+X]=best; } } }
     noprop:
-    if(alarm>0 || hurt>0){ float ar=alarm*0.25f+hurt*0.5f; for(int i=0;i<W*H;i++){ uint32_t c=out[i]; int r=(int)((c>>16&255)*(1-ar)+255*ar), g=(int)((c>>8&255)*(1-ar*0.8f)), bl=(int)((c&255)*(1-ar*0.8f)); out[i]=(uint32_t)(r>255?255:r)<<16|(uint32_t)g<<8|(uint32_t)bl; } }
+    if(alarm>0 || hurt>0){ float ar=alarm*0.12f+hurt*0.45f; for(int i=0;i<W*H;i++){ uint32_t c=out[i]; int r=(int)((c>>16&255)*(1-ar)+255*ar), g=(int)((c>>8&255)*(1-ar*0.8f)), bl=(int)((c&255)*(1-ar*0.8f)); out[i]=(uint32_t)(r>255?255:r)<<16|(uint32_t)g<<8|(uint32_t)bl; } }
     { int cx=W/2, cy=H/2, s=W/160+1; for(int k=-3*s;k<=3*s;k++){ if(abs(k)<s) continue; out[cy*W+cx+k]=0xD0E0F0; out[(cy+k)*W+cx]=0xD0E0F0; } }   // the aim
 }
