@@ -9,6 +9,7 @@
 #include "sim/lvxp.h"
 #include "sim/sim_io.h"
 #include "content/pcx.h"
+static SimColony *sim_colony(void);
 
 // ---------------------------------------------------------------- state
 static Sim sim_w;                       // the town of the planet you are on (rebuilt when the planet changes)
@@ -22,7 +23,7 @@ static s32 sim_fx[SIM_MAXFOLK], sim_fy[SIM_MAXFOLK];       // where it stands (1
 static s32 sim_tgx[SIM_MAXFOLK][SIMP_N], sim_tgy[SIM_MAXFOLK][SIMP_N];   // where each logical place is, per bug
 static u16 sim_stuck[SIM_MAXFOLK];
 static int sim_nhome;
-static int sim_said_letters;            // letter pop-ups shown (the tests read it)
+static int sim_said_letters, sim_col_cards;   // letter pop-ups and colony cards shown (the tests read them)            // letter pop-ups shown (the tests read it)
 static int sim_a_up;                    // 1 once A has been seen up on this planet: keeps a key still held from the title or a menu from opening the quick menu
 
 static int sim_is_on(void){
@@ -155,6 +156,7 @@ static void sim_env_once(void){
     if(sim_env_done) return; sim_env_done=1;
     const char *e=sim_io_env("BUGSTAR_SET_LEVEL");      // a test hook: start with this level (a decimal number, up to 64^256)
     if(e && *e){ Lv v; if(lv_from_dec(&v,e)>=0 && !lv_is_zero(&v)){ sim_big_set(&v); recalc(); hearts=maxh; mp=maxmp; } }
+    e=sim_io_env("BUGSTAR_SET_FREED"); if(e && *e) bugs_freed=e[0]-'0';     // a test hook: bugs freed so far (0..9)
     e=sim_io_env("BUGSTAR_SANDBOX"); if(e && e[0]=='1'){ Lv l; sim_level_lv(&l); sim_f.sandbox=1; if(sim_have_w) sim_set_sandbox(&sim_w,1,&l); }
 }
 static void sim_unlock_msgs(void){
@@ -172,8 +174,21 @@ static void sim_dump_all(void){
     char t[96]; for(int k=0;k<sim_w.nfolk;k++){ scpy(t,"near "); ncat(t,k); scat(t," "); ncat(t,sim_dist10(k)); scat(t,"\n"); sim_io_append(path,t); }
     { int nl=0; for(u32 b=0;b<sim_log_count(&sim_w);b++) if(sim_log_at(&sim_w,b)->kind==SIME_LETTER) nl++;
       scpy(t,"friends"); for(int k=0;k<sim_w.nfolk;k++){ scat(t," "); ncat(t,sim_w.friend[k]); } scat(t," letters "); ncat(t,nl); scat(t," shown "); ncat(t,sim_said_letters); scat(t,"\n"); sim_io_append(path,t); }
+    { static char cb[200]; col_dump(sim_colony(),cb,sizeof cb); sim_io_append(path,cb); scpy(t,"colcards "); ncat(t,sim_col_cards); scat(t,"\n"); sim_io_append(path,t); }
     { Lv l; sim_level_lv(&l); char d[LV_DEC_MAX]; lv_to_dec(&l,d,sizeof d); scpy(t,"level "); scat(t,d); scat(t," powers "); ncat(t,god_unlocked_count(&l,sim_w.god.sandbox)); scat(t,"\n"); sim_io_append(path,t); }
     sim_io_append(path,"--\n");
+}
+// ---------------------------------------------------------------- the colony (Phase 4): the action game's milestones open its rungs
+static u32 sim_town32(void){ return (u32)sim_mix64(sim_w.seed ^ 0xC0105EEDull); }
+static SimColony *sim_colony(void){ return col_find(&sim_f.slot[cur_slot%SIM_SLOTS].cols, sim_town32(), 1, (u32)sim_day(&sim_w)); }
+static void sim_colflags(ColFlags *f){
+    f->bugs_freed=bugs_freed; f->zone_cleared=zone_cleared; f->best_depth=best_depth; f->bosses=__builtin_popcount((unsigned)cleared_mask);
+    f->outposts=outposts_done; f->ore_tool=ore_tool; f->hives=hive_done; f->ant_king=ant_king; f->relics=relic_bits!=0;
+}
+static void sim_colony_tick(void){
+    ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony();
+    u16 nw=col_update(co,col_mask(&fl)); col_catchup(co,(u32)sim_day(&sim_w));
+    if(nw){ int top=0; for(int r=1;r<COLR_N;r++) if(nw&(1u<<r)) top=r; say(col_rung_card(top)); sfx(6); sim_col_cards++; }
 }
 static int sim_open_gods(void){ if(!sim_is_on()) return 0; Lv l; sim_level_lv(&l); return god_unlocked_count(&l,sim_f.sandbox); }
 static void sim_frame(int n){
@@ -186,7 +201,7 @@ static void sim_frame(int n){
     sim_walk(n);
     { static int nk=-2; if(nk==-2){ const char *e=sim_io_env("BUGSTAR_SIM_NEAR"); nk = e && *e ? e[0]-'0' : -1; }   // a test hook: keep the player beside townsperson k
       if(nk>=0 && nk<sim_w.nfolk){ ppx=sim_fx[nk]+0xC000; ppy=sim_fy[nk]; } }
-    if(frames%30==0) sim_unlock_msgs();
+    if(frames%30==0){ sim_unlock_msgs(); sim_colony_tick(); }
     if(sim_dump_at && sim_w.tick>=sim_dump_at){ sim_dump_at=sim_w.tick+600; sim_dump_all(); }
 }
 

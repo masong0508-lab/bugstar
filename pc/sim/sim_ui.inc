@@ -108,19 +108,38 @@ static void sim_gods(volatile u16 *pg){
 
 // ---- the quick menu: A on empty ground
 static void sim_qm_row(int i, char *b, int *c){
-    static const char *const nm[5]={"JOURNAL","PEOPLE","GOD POWERS","SANDBOX","MY LEVEL"}; scpy(b,nm[i]); *c=C_GREY;
+    static const char *const nm[6]={"JOURNAL","PEOPLE","GOD POWERS","SANDBOX","MY LEVEL","COLONY"}; scpy(b,nm[i]); *c=C_GREY;
     if(i==2){ Lv l; sim_level_lv(&l); scat(b,"  "); ncat(b,god_unlocked_count(&l,sim_w.god.sandbox)); scat(b,"/"); ncat(b,god_count()); }
     if(i==3){ scat(b,sim_w.god.sandbox ? ": ON. ALL POWERS OPEN" : ": OFF"); }
 }
 static void sim_qm_foot(int i, char *b, int *c){
-    static const char *const hp[5]={"WHAT HAPPENED HERE, NEWEST FIRST","WHO LIVES HERE AND HOW THEY FEEL","POWERS OPEN BY LEVEL: 1 POWER PER 1,000 LEVELS","PLAY WITH EVERY POWER OPEN. NO LEVEL NEEDED","YOUR LEVEL IN FULL"};
+    static const char *const hp[6]={"WHAT HAPPENED HERE, NEWEST FIRST","WHO LIVES HERE AND HOW THEY FEEL","POWERS OPEN BY LEVEL: 1 POWER PER 1,000 LEVELS","PLAY WITH EVERY POWER OPEN. NO LEVEL NEEDED","YOUR LEVEL IN FULL","YOUR SETTLERS. THEY GROW AS YOU PLAY THE ACTION GAME"};
     if(i>=0){ scpy(b,hp[i]); *c=C_GREY; } else { b[0]=0; }
 }
 static void sim_level_full(void);
+// ---- COLONY (Phase 4): the unlock ladder and the settlers
+static SimColony *sim_colony(void);
+static void sim_co_row(int i, char *b, int *c){
+    SimColony *co=sim_colony(); int r=i+1;
+    if(r<COLR_N){ int open=(co->mask>>r)&1; scpy(b,open?"+ ":"- "); scat(b,col_rung_name(r)); while(textlen(b)<16) scat(b," "); scat(b,open?"OPEN":col_rung_how(r)); *c=open?C_GREEN:C_DGREY; return; }
+    int k=r-COLR_N; char nm[16]; int j; col_settler(co,k,nm,&j); scpy(b,"  "); scat(b,nm); while(textlen(b)<14) scat(b," "); scat(b,col_job_name(j)); *c=C_WHITE;
+}
+static void sim_co_foot(int i, char *b, int *c){
+    SimColony *co=sim_colony(); *c=C_GREY;
+    if(i>=0){ scpy(b,"FOOD "); ncat(b,co->food); scat(b,"  WOOD "); ncat(b,co->wood); scat(b,"  ORE "); ncat(b,co->ore); scat(b,"  GOODS "); ncat(b,co->goods); *c=C_WHITE; }
+    else { scpy(b,"SETTLERS "); ncat(b,co->nset); scat(b,"/"); ncat(b,col_cap(co->mask)); scat(b,"  BUILDINGS "); ncat(b,co->built); scat(b,"/"); ncat(b,col_buildings(co->mask)); }
+}
+static void sim_colony_screen(volatile u16 *pg){
+    SimColony *co=sim_colony();
+    if(!(co->mask&(1u<<COLR_TENT))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_TENT)); const char *ln[3]={l1,"THE COLONY GROWS AS YOU PLAY.","EACH BIG WIN OPENS A NEW PART."}; card(pg,"COLONY",ln,3); return; }
+    int sel=0; char t[32]; scpy(t,"COLONY  "); ncat(t,co->nset); scat(t," SETTLERS");
+    sim_rows(pg,t,COLR_N-1+co->nset,sim_co_row,sim_co_foot,"UP/DOWN: LOOK  B: BACK",&sel,0);
+}
 static int sim_qm_act(int i){
     if(i==0) sim_journal(VISPG); else if(i==1) sim_people(VISPG); else if(i==2) sim_gods(VISPG);
     else if(i==3){ Lv l; sim_level_lv(&l); sim_f.sandbox=!sim_f.sandbox; sim_set_sandbox(&sim_w,sim_f.sandbox,&l); sim_seen_log=sim_w.log_n; sfx(2); }
-    else { sim_level_full(); }
+    else if(i==4) sim_level_full();
+    else sim_colony_screen(VISPG);
     return 0;
 }
 static void sim_level_full(void){                          // the level in all its digits, in lines of 36
@@ -134,12 +153,12 @@ static int sim_quick(void){
     sim_a_up=0;
     if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
     volatile u16 *pg=VISPG; oam_hide_all(); oam_flush(); in_menu++;
-    static int sel=0; sim_rows(pg,"SIDE GAME",5,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act);
+    static int sel=0; sim_rows(pg,"SIDE GAME",6,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act);
     in_menu--; return 1;
 }
 
 static void sim_lab(volatile u16 *pg){                     // PC LAB > SIDE GAME
     if(!sim_is_on()){ const char *ln[3]={"THE SIDE GAME IS OFF.","TURN SIDE GAME ON IN THE OPTIONS","(MORE OPTIONS)."}; card(pg,"SIDE GAME",ln,3); return; }
     if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
-    static int sel=0; in_menu++; sim_rows(pg,"SIDE GAME",5,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act); in_menu--;
+    static int sel=0; in_menu++; sim_rows(pg,"SIDE GAME",6,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act); in_menu--;
 }

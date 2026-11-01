@@ -416,6 +416,7 @@ size_t simfile_write(const SimFile *f, uint8_t *buf, size_t cap){
         god_state_to_bytes(&sl->god, d); p16(d + GOD_STATE_BYTES, sl->spirit); PUT("GODS", s, 1, GOD_STATE_BYTES + 2);
         if(sl->has_lv){ d[0] = 1; lv_to_bytes(&sl->lv_true, d + 1); lv_to_bytes(&sl->lv_xp, d + 1 + LV_BYTES); PUT("LEVL", s, 1, 1 + 2 * LV_BYTES); }
         if(sl->nfr){ d[0] = sl->nfr; for(int i = 0; i < sl->nfr; i++){ p32(d + 1 + i * 6, sl->fr[i].town); d[5 + i * 6] = sl->fr[i].who; d[6 + i * 6] = sl->fr[i].val; } PUT("FRND", s, 1, 1 + (size_t)sl->nfr * 6); }
+        if(sl->cols.n){ size_t m = col_list_write(&sl->cols, d, sizeof d); if(m) PUT("COLN", s, 1, m); }
         p16(d, sl->ntail); for(int i = 0; i < sl->ntail; i++){ const SimEvent *e = &sl->tail[i]; uint8_t *q = d + 2 + i * 16; p32(q, e->tick); p16(q + 4, e->kind); p16(q + 6, e->who); p16(q + 8, e->a); p16(q + 10, e->b); p32(q + 12, e->seed32); }
         PUT("TAIL", s, 1, 2 + (size_t)sl->ntail * 16);
     }
@@ -440,6 +441,7 @@ int simfile_read(SimFile *f, const uint8_t *buf, size_t n){
         else if(!memcmp(h, "LEVL", 4) && len == 1 + 2 * LV_BYTES && d[0]){ sl->used = 1; sl->has_lv = 1; lv_from_bytes(&sl->lv_true, d + 1); lv_from_bytes(&sl->lv_xp, d + 1 + LV_BYTES); }
         else if(!memcmp(h, "FRND", 4) && len >= 1){ int c = d[0]; if(c > SIM_FRMAX || len != 1u + (uint32_t)c * 6) { f->bad_chunks++; continue; }
             sl->used = 1; sl->nfr = (uint8_t)c; for(int i = 0; i < c; i++){ sl->fr[i].town = g32(d + 1 + i * 6); sl->fr[i].who = d[5 + i * 6]; sl->fr[i].val = d[6 + i * 6] > 100 ? 100 : d[6 + i * 6]; } }
+        else if(!memcmp(h, "COLN", 4)){ if(col_list_read(&sl->cols, d, len) < 0){ f->bad_chunks++; continue; } sl->used = 1; }
         else if(!memcmp(h, "TAIL", 4) && len >= 2){ uint16_t c = g16(d); if(c > SIM_TAILN || len != 2u + (uint32_t)c * 16) { f->bad_chunks++; continue; }
             sl->used = 1; sl->ntail = c; for(int i = 0; i < c; i++){ const uint8_t *q = d + 2 + i * 16; SimEvent *e = &sl->tail[i]; e->tick = g32(q); e->kind = g16(q + 4); e->who = g16(q + 6); e->a = g16(q + 8); e->b = g16(q + 10); e->seed32 = g32(q + 12); } }
     }

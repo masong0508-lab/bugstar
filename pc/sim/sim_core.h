@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include "lv.h"
 #include "god.h"
+#include "colony.h"
 
 #define SIM_HZ         10
 #define SIM_TICK_VBL   6            // one tick is 6 vblanks of the 60 Hz screen
@@ -119,6 +120,7 @@ typedef struct {
     Lv       lv_true, lv_xp;                    // the big level (see pc/sim/BIGLEVEL in README.md): used only above the s64 range
     uint8_t  has_lv;
     uint8_t nfr; struct { uint32_t town; uint8_t who, val; } fr[SIM_FRMAX];   // Phase 3: friendships, by town (seed hash) and townsperson
+    ColList  cols;                              // Phase 4: the colonies of this slot (chunk COLN)
     uint16_t ntail; SimEvent tail[SIM_TAILN];   // the newest events, oldest first
 } SimSlot;
 typedef struct { uint8_t side_on; uint8_t sandbox; SimSlot slot[SIM_SLOTS]; int bad_chunks; } SimFile;
