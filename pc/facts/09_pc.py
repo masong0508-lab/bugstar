@@ -2,7 +2,7 @@ from helpers import *
 import sys
 if hasattr(sys, "set_int_max_str_digits"): sys.set_int_max_str_digits(0)
 
-# Numbers about the PC port's upgraded addresses (8 times the bits): 2048-bit universe, 1240 bits per axis, 65 classic traits (1,040 with flavours; see 10_pc16.py), 24 themes.
+# Numbers about the PC port's upgraded addresses (8 times the bits): 2048-bit universe, 1240 bits per axis, 1,040 traits (65 plain traits times 16 flavours; see 10_pc16.py), 24 themes.
 # Everything is worked out here from those sizes, which are the ones in pc/content/pc_content.h and pc/README.md.
 UB, AB = 2048, 1240
 U = 2 ** UB                          # universes
@@ -12,8 +12,8 @@ PL = 16 * ST                         # planets in one universe, at most
 W_LY = 25 * 30 * 2 ** AB             # width of a universe in light years (25 ly x 30 x 2^1240)
 TRIP_LY = W_LY * U * U               # trip to a neighbour universe
 LY_M = 9460730472580800               # metres in a light year
-TREES = 10780270                      # classic trait recipes: 65 traits (counted by pc/content/content_test.c)
 TREES16 = 144586870865920             # trait recipes with the 16 flavours: 1,040 traits (counted by pc/content/content_test.c)
+TREES = TREES16                       # recipes of all 1,040 traits
 PAIRS_OK = 266                        # theme pairs that can share a universe (276 pairs, 10 clash)
 YEAR_S = 365.25 * 86400
 
@@ -30,7 +30,7 @@ PAGES = [
 (39, "PC: WORDS IN ONE AXIS", "1,240 BITS IS 38.75 WORDS OF 32 BITS, SO THE GAME USES 39", "(THE UNIVERSE NUMBER USES 64 WORDS. NOTHING IS STORED)", 0),
 (64 + 39 + 39 + 1, "PC: MIXES FOR ONE PLANET", "THE SEED HASHES 64, 39 AND 39 WORDS, THEN ONE LAST STIR", "(NO WORD OF THE ADDRESS IS EVER SKIPPED)", 0),
 (lambda: str(PL // 2 ** 64), "PC: PLANETS PER 64-BIT SEED", "TRAITS AND NAMES USE A 64-BIT SEED. THIS MANY SHARE ONE", "(ON AVERAGE. THE ADDRESS IS FAR BIGGER THAN THE SEED)", 1),
-(lambda: str(PL // TREES), "PC: PLANETS PER CLASSIC MIX", "10,780,270 MIXES OF THE 65 PLAIN TRAITS: PLANETS EACH", "(ONLY THE PLAIN TRAITS COUNTED. THE FLAVOURS COME NEXT)", 1),
+(lambda: str(PL // TREES), "PC: PLANETS PER TRAIT MIX", "144,586,870,865,920 TRAIT RECIPES: THIS MANY PLANETS EACH", "(ON AVERAGE. 65 PLAIN TRAITS GAVE ONLY 10.8 MILLION)", 1),
 (lambda: str(U // PAIRS_OK), "PC: UNIVERSES PER THEME PAIR", "266 THEME PAIRS CAN HAPPEN: THIS MANY UNIVERSES SHARE EACH", "(ON AVERAGE. TWO RULE CHANGES, NEVER CLASHING)", 1),
 (10, "PC: THEME PAIRS THAT CLASH", "OF 276 PAIRS OF THEMES, 10 CANNOT SHARE A UNIVERSE", "(HUNGER FREE AND STARVING WILL NEVER MEET)", 0),
 (lambda: str(W_LY * LY_M), "PC: METRES ACROSS A UNIVERSE", "THE WIDTH OF ONE PC UNIVERSE IN METRES, 1.42 X 10^376 LY", "(A LIGHT YEAR IS ABOUT 9.46 TRILLION KILOMETRES)", 1),

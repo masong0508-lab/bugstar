@@ -16,6 +16,7 @@ The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Rea
 **PC (`pc/`)**
 - Done: SDL2 window (resizable, fullscreen, hi-DPI, vsync, keyboard, gamepad with hot-plug and rebinding, mouse, text size, high contrast), per-OS saves, NATIVE kart view, ship renderer (CLASSIC/NATIVE/ULTRA, 10,000-ship far battles), content x16 (1,040 traits, 112 stats, 512 peoples, 256 cities, 12,672 creature kinds, 536,870,912 plants), meaning layer (32 channels, roles, synergies), 146 universe laws with editor, HOW THIS WORKS, CHEATS, planet creator with biofootprint and share codes, side game Phases 1 to 5 (town, seasons, friends and letters, colony ladder, failure and rewards, 100-year catch-up), 48 god powers (power n at level 1000 x n), 64^256 level (`Lv`), giant numbers viewer (2^(2^32), 1,292,913,987 digits) and Bugstarillion v3, colossal warships (19 sizes, 16 hulls, interiors, reward formula, threat, cost screen), missions board and random encounters, ship editor, 1,565 facts pages.
 - Windows exe: compiled only, never run.
+- Status 1 Nov 2026 (late): warship aftermath (hellscape, sealed entrance, escape, floor invasions, boarders), colony map screen, side game DIFFICULTY, native dungeon, kart NATIVE ground, window screenshots, facts pages refreshed (1,571 total), planet creator crash fixed, all pc/tests suites re-run and passing.
 
 ## 1. Do first (small, high value)
 
@@ -25,7 +26,7 @@ The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Rea
 4. **Play the GBA ROM start to finish** once: new game, level up, spend ship points, MINI STAT BARS toggle, kart race, coil quest log. Look for anything that looks wrong at the HUD.
 5. **Fix `PARITY.md`** (karts exist on the GBC) and write the GBC jump-pad fix into its notes after playing it.
 
-## 2. Finish the warship threats (PC, `pc/pc_missions.inc`, `pc/warship/`)
+## 2. Warship threats: DONE except balance (PC, `pc/pc_missions.inc`, `pc/warship/`)
 
 The planet-buster countdown, orbital strikes and troop waves are in. The extreme end is only a documented hook (`pcm_planet_lost`, `pcm_tick`):
 - **Hellscape:** a severe bombardment turns the whole surface into fire (use the hell-world look, weather and per-second damage).
@@ -37,7 +38,7 @@ The planet-buster countdown, orbital strikes and troop waves are in. The extreme
 - Gate everything with WARSHIP ENCOUNTERS (OFF/RARE/NORMAL/COMMON) and side game DIFFICULTY.
 - Tests: bot runs with and without preparation; the entrance-collapse path; the save is byte-identical apart from the stated penalty.
 
-## 3. Finish the side game (PC, `pc/sim/`)
+## 3. Side game: Phases 6 and up remain (PC, `pc/sim/`)
 
 - **Colony map screen:** the 8 x 6 grid exists in code but has no screen. Add placement ("choose where"), selecting a building, walking and carrying (Keflings-style) instead of menu actions.
 - **Permanent ruins:** a destroyed planet stays a burnt world in the colony records, resettle elsewhere, and the planet file shows it.
@@ -64,7 +65,7 @@ The planet-buster countdown, orbital strikes and troop waves are in. The extreme
 
 ## 6. Content and the facts screen
 
-- `pc/facts/09_pc.py` still quotes old counts (65 traits, 24 themes, 10,780,270 recipes); update it to the x16 numbers or remove the stale lines.
+- DONE: `pc/facts/09_pc.py` now quotes the x16 numbers; hellscape, threat and native view pages added.
 - The in-game text of each new PC screen needs a pass for plain words.
 - Add the planned page counts to the GBC (the GBC HOW BIG page is excluded on purpose).
 

@@ -1,15 +1,22 @@
-# BUGSTAR PC (step 1 and 2 of PC_PORT_PLAN.md)
+# BUGSTAR PC
 
-What this is: the GBA game's **own C code**, built for a PC (Linux, 64-bit), running on a **fake GBA** instead of the real chip.
-It is headless for now: it reads a key script, writes pictures (PPM) and a save file. No window yet (see "Not done").
+The GBA game's **own C code** built for a PC (Linux 64-bit, Windows 32-bit) on a fake GBA, with an SDL2 window and PC-only extras.
+Status 1 Nov 2026: playable in a window (keyboard, gamepad, mouse, fullscreen, options with Esc), and headless for tests.
 
 ```
-./pc/build.sh                     # builds pc/bugstar_pc  (needs gcc, python3; no SDL, no 32-bit libs)
-./pc/tests/determinism.sh         # same key script twice -> same pictures, same save
-./pc/tests/seeds.sh               # 6 addresses (near and far) -> same worlds twice, and same as tests/seeds.golden
-./pc/seedview.sh --star 7         # the seed viewer: one PNG with 4 views + facts
-./pc/bugstar_pc --script tests/play.txt --out out/p --sav out/p.sav --frames 4501   # play from a key script
+./pc/build.sh                              # builds pc/bugstar_pc (needs gcc, python3, SDL2 dev files)
+./pc/bugstar_pc                            # opens the window and plays
+./pc/bugstar_pc --script S --out out/p --sav f.sav --frames N     # headless: key script in, pictures and save out
+./pc/tests/*.sh                            # test suites (determinism, seeds, laws, coil, giant, warship, aftermath, sim_*, kart, creator ...)
 ```
+
+**Keys:** arrows/WASD move, X or Space = A, Z or K = B, Backspace/Tab = Select, Enter = Start, E = R, Q = L, Q+E = Stormclock Coil.
+Esc = options (video, audio, rebind keys and pad), F11 fullscreen, F12 screenshot, F3 fps. Gamepad and mouse work.
+**Saves:** with `portable.txt` next to the exe (as in the zip/tar.gz packages), saves, settings and screenshots go in `data/`; without it, in the per-OS user folder.
+**Packages:** `pc/dist/BUGSTAR-PC-linux64.tar.gz` and `BUGSTAR-PC-windows32.zip` (the Windows exe is cross-compiled and has never been run on real Windows).
+**Known fixes (Nov 2026):** the planet creator used to crash on some planets because a game global named `sinf` shadowed libm `sinf()` (build.sh now renames it).
+Random-key fuzz runs (14 seeds, 12,000 to 20,000 frames) and every test in pc/tests pass. The numbers in the old "Not done" list below
+about no window, no sound and wrong kart ground are history; the window, sound, gamepad, kart ground and native dungeon exist now (see ROADMAP_NEXT.md).
 
 ## How it works (one page)
 
@@ -374,6 +381,6 @@ On the PC the hangar opens the **SHIP EDITOR** (new game, and SHIP > HANGAR). Th
 **Interiors:** a tree of sectors, 8 children per node, down to 64x64 decks. A universe hulk is 82 levels deep. Every subsystem has a path and a room. Some rooms are locked: the keycard is in SECURITY, and a crawl vent is the other way in. The crew follow sleep, eat, chat and work shifts, and react to alarms. Guards fight you. Charges blow up subsystems, which changes the fight outside; read the schematic first to hit the weak point. The view is drawn by PC code (pc/warship/ws_view.c) through `pc_ovl_fn` at the window's own resolution.
 
 **Missions and encounters (pc/warship/ms.c, pc/pc_missions.inc).** Find a mission board in the YOUR SHIP menu (MISSIONS), at a station (SELECT), at a town's bounty office, at an outpost (START inside the station board, if the star has one), or in the warship scanner/PC LAB list (START). Seven kinds: DESTROY, SABOTAGE, STEAL PLANS, RESCUE, ESCORT (2 convoy wingmen join the fight), DEFEND, SURVEY. Each place posts 5 jobs from its own seed, with a mix set by the kind of place, the star's economy and the galaxy; some are DREAM jobs far above your level and some are in a FAR galaxy. The briefing shows giver, faction, craft, size class, THREAT, preparation, pay (the one formula x the kind's share x the mission bonus), target star and planet, and an optional deadline in star jumps. The JOURNAL (L/R) lists active missions and abandons them; target stars get a cyan diamond on the galaxy map. Go to the target star and use the scanner: the mission craft is on the list. Inside jobs: stay 3 seconds in the BRIDGE (plans), a TURRET room (captives) or the REACTOR (survey), or blow the named system; get back to a hangar and START to be paid on the cost breakdown. Missions and the done list are saved in the .ws file (old saves load). Cheated sizes stay marked CHEATED.
-WARSHIP ENCOUNTERS (L in the PC LAB warships list: OFF, RARE default, NORMAL, COMMON): on a planet or in a dungeon a warship may arrive; it shows on the board and scanner for 10 game minutes. On NORMAL and COMMON big ones bring a PLANET-BUSTER (timer; leave the planet, beat its shield layers or sabotage a turret), orbital strikes or troop waves, with warnings. Not done yet: the burning-planet hellscape, collapsing entrances, portal escapes, dungeon floor invasions and side-game colony destruction (hooks: pcm_planet_lost and pcm_tick in pc/pc_missions.inc). A lost buster costs 1/5 of your gold and cargo.
+WARSHIP ENCOUNTERS (L in the PC LAB warships list: OFF, RARE default, NORMAL, COMMON): on a planet or in a dungeon a warship may arrive; it shows on the board and scanner for 10 game minutes. On NORMAL and COMMON big ones bring a PLANET-BUSTER (timer; leave the planet, beat its shield layers or sabotage a turret), orbital strikes or troop waves, with warnings. The burning-planet hellscape, collapsing entrances, portal escapes, dungeon floor invasions and boarding parties are in (pc/tests/aftermath.sh). A lost buster costs 1/5 of your gold and cargo.
 
 **Tests:** `pc/warship/test.sh` covers calibration, variety, scaling and names, balance, the bot fights, interior reachability and determinism, and the save format: 78,745 checks, 0 failures. `pc/tests/warship.sh` is the in-game test. `pc/tests/ws_shots.sh` writes interior pictures.
