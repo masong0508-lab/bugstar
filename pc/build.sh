@@ -5,9 +5,12 @@
 # with the fake GBA in pc_hw.c. The game's source in the repo root is never edited by this.
 set -e
 cd "$(dirname "$0")"; PCD=$(pwd); ROOT=$(dirname "$PCD")
-( cd "$ROOT" && python3 gen.py >/dev/null )                       # assets.h, facts.bin: same generators as the GBA build
+# assets.h and facts.bin come from the same generators as the GBA build, run in a scratch copy (pc/genroot, not committed) with BUGSTAR_PC=1:
+# that adds the PC version's own HOW BIG IS IT? pages (pc/facts/*.py). The repo root's assets.h and facts.bin are never touched.
+rm -rf genroot; mkdir -p genroot/pc; cp "$ROOT"/*.py genroot/; cp -r facts genroot/pc/facts; rm -rf genroot/pc/facts/__pycache__
+( cd genroot && BUGSTAR_PC=1 python3 gen.py >/dev/null )
 mkdir -p gen; rm -f gen/*.inc gen/*.c gen/*.h
-cp "$ROOT"/*.inc "$ROOT"/main.c "$ROOT"/assets.h "$ROOT"/facts.bin "$ROOT"/logo.h gen/
+cp "$ROOT"/*.inc "$ROOT"/main.c "$ROOT"/logo.h gen/; cp genroot/assets.h genroot/facts.bin gen/
 cd gen
 # --- the patches -------------------------------------------------------------------------------------------------------
 sed -i \
@@ -21,6 +24,8 @@ sed -i \
  -e 's/\*(volatile u32\*)0x040000DC=\([^;]*\);/pc_dma3(\1);/g' \
  -e 's/^int main(void){/int bugstar_main(void){/' \
  *.inc main.c
+# the HOW BIG screen sorts every page in a scratch area: the GBA keeps it in the world builder's 32 KB; the PC has far more pages, so it gets its own
+sed -i -e 's|^#define SZ_SCR .*|#define SZ_SCR pc_szscr|' -e '/^#define NSIZE /a static u32 pc_szscr[4*NSIZE+64];' sizes.inc
 sed -i '1i #include "pc_hw.h"' main.c
 echo '#include "../pc_view.inc"' >> main.c
 # --- compile -----------------------------------------------------------------------------------------------------------

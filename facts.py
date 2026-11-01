@@ -171,6 +171,13 @@ F = [
 
 from facts_more import MORE                     # the second batch of pages (facts_more.py)
 F = F + MORE
+import os, glob, importlib.util                  # the PC version's own pages (pc/facts/NN_*.py): only when BUGSTAR_PC is set (pc/build.sh does)
+if os.environ.get("BUGSTAR_PC"):
+    import sys
+    _d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pc", "facts"); sys.path.insert(0, _d)
+    for _f in sorted(glob.glob(os.path.join(_d, "[0-9]*.py"))):
+        _sp = importlib.util.spec_from_file_location("pcfacts_" + os.path.basename(_f)[:-3], _f); _m = importlib.util.module_from_spec(_sp); _sp.loader.exec_module(_m)
+        F = F + _m.PAGES
 
 OLD = [(1,"0"),(5,"32768"),(5,"38400"),(5,"65536"),(6,"27033"),(10,"42949"),(10,"42949"),(11,"35029"),(12,"28242"),(13,"10000"),(16,"42949"),
        (19,"10000"),(19,"92233"),(22,"29548"),(24,"33344"),(25,"28261"),(27,"12750"),(29,"79228"),(31,"12676"),(36,"26313"),(48,"80737"),(49,"11417"),
