@@ -138,6 +138,10 @@ static int sys_nplan(int i){ if(sys[i].kind<6 || is_hive(i)) return 1;
     if(galaxy_dense()) return 6+(int)((h>>12)%11u);                                    // 6..16 planets: more than ten about half the time
     return r<480?1 : r<740?2 : r<880?3 : r<950?4 : r<985?5 : 6+(int)((h>>12)%3u); }      // about half the stars have 2 or more planets; a few have 6 to 8
 static int sys_nmoon(int i, int p){ if(sys[i].kind<6 || is_hive(i)) return 0;
+#ifdef TEST_MOONS
+    return 3;
+#endif
+
     int r=(int)(amix(gsk(112)^0x4D4F4F4Eu^((u32)p*0x9E3779B1u),i)%100u); return r<40?0 : r<70?1 : r<88?2 : r<96?3 : 4; }
 static int body_count(int i){ int n=0, np=sys_nplan(i); for(int p=0;p<np;p++) n+=1+sys_nmoon(i,p); return n; }
 static void body_at(int i, int k, int *pp, int *pm){ int np=sys_nplan(i); for(int p=0;p<np;p++){ int nm=sys_nmoon(i,p); if(k<=nm){ *pp=p; *pm=k; return; } k-=nm+1; } *pp=0; *pm=0; }
@@ -355,6 +359,9 @@ static void ship_dies(Pirate *p, int by_you){
     if(lr(3)==0) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].good=255; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; }
 }
 static void space_enter(int from_planet){
+#ifdef TEST_MOONS
+    if(sys[cur_sys].kind<6){ sys[cur_sys].kind=6; cur_pl=0; cur_moon=0; }
+#endif
     if(cur_rock){ cur_rock=0; cur_moon=0; rock_t=0; }                          // lifting off a rock: the planet is the body again
     lseed = gsk(113) ^ 0x1234567 ^ frames;
     for(int i=0;i<96;i++){ s16 *d=&star_dir[i*3]; d[0]=lr(32768)-16384; d[1]=lr(32768)-16384; d[2]=lr(32768)-16384; norm3(d); }
@@ -368,6 +375,9 @@ static void space_enter(int from_planet){
     { u32 sid=sys_id(cur_sys)^body_salt(); pl_tex = (sid&1)<<13; pl_rot=sid*7; }
     if(from_planet){ shx=0; shy=900; shz=-(PR*3); yaw=0; pitch=0; speed=0; space_say("B: THRUST  R: BRAKE/TRACTOR  L: BURN"); }
     else { shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=20; }
+#ifdef TEST_MOONS
+    shz=-(PR*11); shy=1500;
+#endif
     int danger=sys_dlv(cur_sys);
     in_lair=0;
     battle_on=0; basis(); spawn_wing();
@@ -583,7 +593,33 @@ static int body_menu(void){
         if(HIT(K_B)){ wait_release(); return 0; }
     }
 }
+// ---- bodies on orbits: the moons of this planet, and the other planets of this star far away. Pure functions of the clock and
+// the star's seed: nothing is saved, nothing can corrupt the world.
+static void orbit_draw(volatile u16 *pg, int far_pass){
+    if(in_lair || cur_rock || sys[cur_sys].kind<6) return;
+    s32 pcx,pcy,pcz; if(!cam3(0,0,0,&pcx,&pcy,&pcz)) pcz=-1;
+    u32 sid=sys_id(cur_sys); u32 T=(u32)frames;
+    s32 Lx=(sun[0]*br[0]+sun[1]*br[1]+sun[2]*br[2])>>14, Ly=(sun[0]*bu[0]+sun[1]*bu[1]+sun[2]*bu[2])>>14, Lz=(sun[0]*bf[0]+sun[1]*bf[1]+sun[2]*bf[2])>>14;
+    int nm=sys_nmoon(cur_sys,cur_pl);
+    for(int k=0;k<nm;k++){ u32 h=hmix(sid ^ (u32)(cur_pl+1)*0x9E3779B1u ^ (u32)(k+1)*0x85EBCA6Bu);
+        int per=1800+(int)(h&1023)+k*1500, ang=(int)(((T%(u32)per)*1024u/(u32)per) + ((h>>10)&1023))&1023;
+        s32 orb=PR*(4+k), x=(cosx(ang>>2)*(orb>>2))>>12, z=(sinx(ang>>2)*(orb>>2))>>12, y=(z*(((int)(h>>20)&7)-3))>>4;
+        int mr=PR/4+(int)((h>>24)%(PR/6)), sx,sy; s32 zz;
+        if(!sproj(x,y,z,&sx,&sy,&zz)) continue;
+        if((zz>pcz)!=far_pass) continue;
+        int r=(mr*FOCS)/zz; if(r>1200 || sx+r<0 || sx-r>240 || sy+r<0 || sy-r>128) continue;
+        if(r<3){ dot2(pg,sx,sy,56); if(r>=2){ dot2(pg,sx+1,sy,56); dot2(pg,sx,sy+1,51); } }
+        else planet_fill(pg,sx,sy,r,Lx,Ly,Lz,(int)((T>>3)+(h&127))&127,pl_noise+(((h>>8)&1)<<13)); }
+    if(far_pass){ int np=sys_nplan(cur_sys);                                    // the other worlds of this star: bright dots, each going round at its own pace
+        for(int p=0;p<np && p<8;p++){ if(p==cur_pl) continue; u32 h=hmix(sid ^ (u32)(p+1)*0x2545F491u);
+            int ang=(int)((h&1023) + T/(u32)(40+p*23))&1023; s32 D=PR*70+(p*PR*6);
+            int sx,sy; s32 zz; if(!sproj((cosx(ang>>2)*(D>>2))>>12, (int)((h>>12)&511)-256, (sinx(ang>>2)*(D>>2))>>12, &sx,&sy,&zz)) continue;
+            dot2(pg,sx,sy,(p&1)?56:51); dot2(pg,sx+1,sy,(p&1)?51:56); } }
+}
 static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
+#ifdef TEST_MOONS
+    shx=0; shy=1500; shz=-(PR*11); svx_=svy_=svz_=0;
+#endif
 #ifdef TEST_SAUTO
     { int best=-1; s32 bd=0x7FFFFFFF, rx=0, ry=0, rz=1;                                // (for filming: chase the nearest enemy, or the beast, and shoot)
       if(in_lair){ best=999; rx=(-shx*br[0]-shy*br[1]-shz*br[2])>>14; ry=(-shx*bu[0]-shy*bu[1]-shz*bu[2])>>14; rz=(-shx*bf[0]-shy*bf[1]-shz*bf[2])>>14; }
@@ -639,6 +675,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(tract_t) tract_t--;
     for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue; if(is_belt() && (a->seed&3)==0 && (frames&31)==0){ s16 t=a->vx; a->vx=-a->vz; a->vz=t; }   // a tumbling rock keeps turning its drift
         a->x+=a->vx; a->y+=a->vy; a->z+=a->vz; if(a->flash) a->flash--;
+        if(is_belt() && !in_lair){ a->x -= (a->z*6)>>14; a->z += (a->x*6)>>14; }          // the belt slowly circles its star
         if(in_lair) continue; s32 dx=shx-a->x, dy=shy-a->y, dz=shz-a->z, rr=a->r+110;
         if(dx>-rr&&dx<rr&&dy>-rr&&dy<rr&&dz>-rr&&dz<rr){ s32 l=isqrt((u32)(dx*dx+dy*dy+dz*dz)); if(l<1) l=1;
             if(l<rr){ shx=a->x+dx*rr/l; shy=a->y+dy*rr/l; shz=a->z+dz*rr/l; svx_=dx*(speed+6)/l; svy_=dy*(speed+6)/l; svz_=dz*(speed+6)/l;
@@ -739,12 +776,14 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
       if(z>2000){ s32 x=(sun[0]*br[0]+sun[1]*br[1]+sun[2]*br[2])>>14, y=(sun[0]*bu[0]+sun[1]*bu[1]+sun[2]*bu[2])>>14;
           int sx=120+x*FOCS/z, sy=VCY-y*FOCS/z;
           for(int dy=-12;dy<=12;dy++) for(int dx=-12;dx<=12;dx++){ int d2=dx*dx+dy*dy; if(d2>144) continue; int c = d2<30?49 : d2<70?50 : ((dx+dy)&1)?51:0; if(c) dot2(pg,sx+dx,sy+dy,c); } } }
+    orbit_draw(pg,1);                                                             // moons behind the planet, and the far worlds
     // the planet
     { s32 cx,cy,cz; if(!in_lair && cam3(0,0,0,&cx,&cy,&cz) && cz>PR/3){
         int r=(int)(((long long)PR*FOCS)/cz), px=120+(s32)(((long long)cx*FOCS)/cz), py=VCY-(s32)(((long long)cy*FOCS)/cz);
         if(r<1200 && px+r>0 && px-r<240 && py+r>0 && py-r<128){
             s32 Lx=(sun[0]*br[0]+sun[1]*br[1]+sun[2]*br[2])>>14, Ly=(sun[0]*bu[0]+sun[1]*bu[1]+sun[2]*bu[2])>>14, Lz=(sun[0]*bf[0]+sun[1]*bf[1]+sun[2]*bf[2])>>14;
             if(r<2) r=2; planet_fill(pg,px,py,r,Lx,Ly,Lz,(pl_rot+(frames>>3))&127,pl_noise+pl_tex); } } }
+    orbit_draw(pg,0);                                                             // moons in front of the planet
     // flying dust gives a sense of speed
     for(int i=0;i<20;i++){ s32 *d=&dust[i*3];
         for(int k=0;k<3;k++){ s32 rel=d[k]-(k==0?shx:k==1?shy:shz); if(rel>800) d[k]-=1600; if(rel<-800) d[k]+=1600; }

@@ -999,6 +999,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
               if(ki>=0){ dmap[ty*MW+tx]=D_FLOOR; wtex[ty*MW+tx]=WT_STONE; drop_at(ki); say("KEYCARD ACCEPTED. THE DOOR SLIDES OPEN"); sfx(5); hud_now(); build_light(); }
               else say("LOCKED. THE DRONES KEEP A KEYCARD SOMEWHERE"); } }
       else lock_ahead=0; }
+    if(here!=D_DOWN) dn_ok=1;
     if(here!=D_UP) stair_ok=1;           // you arrive standing on the up stairs: step off once before they work
     int foe = foe_ahead(dirx,diry);
     if(auto_run && foe) auto_run=0;                                  // something to bite right ahead: stop
@@ -1009,8 +1010,13 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     else if(HELD(K_A) && cur_rock==5 && !atk_t){ do_bite(dirx,diry); }     // a mine: holding A keeps biting the wall
     else if(HIT(K_A)){
         if(near_cage>=0){ dob[near_cage].alive=0; free_bug(dob[near_cage].sub); }
-        else if(here==D_UP && stair_ok) return 1;
-        else if(here==D_DOWN){ fl_leave(); wacc=WDIV-1; fade(1); dungeon_enter(); dungeon_checkpoint(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; }
+        else if(here==D_UP && stair_ok){
+            if(!(!endless && !forge_on && !base_mode && depth_no>=2)) return 1;                       // the way out
+            oam_hide_all(); oam_flush(); int to=stair_panel(VISPG); dungeon_hud_both();
+            if(to==0) return 1;
+            if(to>0){ arrive_dn = to<depth_no; depth_no=to-1; wacc=WDIV-1; fade(1); dungeon_enter(); dungeon_checkpoint(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0; fade(0); return 0; } }
+        else if(here==D_DOWN && dn_ok){ int sk = ((py_>>16)*MW+(px_>>16))==skip_cell; fl_leave(); if(sk){ depth_no++; if(skip_taken<99) skip_taken++; } wacc=WDIV-1; fade(1); dungeon_enter(); dungeon_checkpoint(); music(boss_floor()?4:1); pvx=pvy=0; hitstop=kick_t=pknock_t=0;
+            if(sk && !fl_ev){ say("SHORTCUT! YOU SKIPPED A FLOOR"); msg_timer=60; } fade(0); return 0; }
         else if(!atk_t) do_bite(dirx,diry);
     }
     if(hearts<=0) return 2;
@@ -1078,7 +1084,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     else if(!opt_hints){}
     else if(lock_ahead) text(pg,120-14*4,24,"A: USE KEYCARD",C_GOLD,2);
     else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);
-    else if((here==D_UP && stair_ok)||here==D_DOWN){ const char *m2 = here==D_UP? "A: CLIMB UP" : "A: GO DEEPER"; text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
+    else if((here==D_UP && stair_ok)||(here==D_DOWN && dn_ok)){ const char *m2 = here==D_UP? ((!endless&&!forge_on&&!base_mode&&depth_no>=2)?"A: STAIRS" : "A: CLIMB UP") : (((py_>>16)*MW+(px_>>16))==skip_cell ? "A: SHORTCUT!" : "A: GO DEEPER"); text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
     else if(fish_state==1) text(pg,120-8*4,24,"WAITING...",C_CYAN,2);
     else if(fish_state==2) text(pg,120-6*4,24,"PRESS A!",(frames&2)?C_RED:C_WHITE,2);
     else if(fish_state==3) text(pg,120-8*4,24,"HOLD A TO REEL",C_CYAN,2);
@@ -1292,6 +1298,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     st_str=TEST_BSTR; st_vit=300; recalc(); hearts=maxh;                          // (for filming: a longer fight you don't lose)
 #endif
 #endif
+#ifdef TEST_SKIP
+    zone=1; portal_depth=4; enter_dungeon_flag=1;
+#endif
 #ifdef TEST_ZONE
     zone=TEST_ZONE; portal_depth=2+TEST_ZONE; st_str=300; st_vit=300; recalc(); hearts=maxh;     // (filming: a floor in another zone)
 #endif
@@ -1383,9 +1392,16 @@ static void run_game(void){
             if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }
             if(enter_dungeon_flag){ int fgs=(enter_dungeon_flag==3); if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; save_game(); fade(1); oam_hide_all(); oam_flush();
                 if(fgs) forge_begin();
-                depth_no=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
+                depth_no=0; fl_max=0; skip_taken=0; arrive_dn=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
                 tier_lock = (!endless && zone_cleared) ? tiers[TZ]+1 : 0;
                 scene=1; dungeon_enter();
+#ifdef TEST_SKIP
+                if(skip_cell>=0){ px_=((skip_cell%MW)<<16)+0x8000; py_=((skip_cell/MW)<<16)+0x8000; dn_ok=1; } else { px_=up_x; py_=up_y; stair_ok=1; }
+#ifdef TEST_UPS
+                px_=up_x; py_=up_y; stair_ok=1; fl_max=7;
+#endif
+                st_str=300; st_vit=300; recalc(); hearts=maxh;
+#endif
                 if(tier_lock>0){ char tb[40]; scpy(tb,"TIER "); ncat(tb,tier_lock+1); scat(tb,"! MORE FLOORS, TOUGHER BOSS"); say(tb); }
 #ifdef TEST_FOE
                 for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=k?K_BEETLE:K_SPIDER; b->alive=1; b->hp=b->maxhp=k?40:20; b->x=px_+(cosx(pang>>2)<<(k?4:3)); b->y=py_+(sinx(pang>>2)<<(k?4:3)); }

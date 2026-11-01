@@ -123,6 +123,8 @@ static void planet_palette(void){
     if(WL(MW_HEAT)) for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=lerp15(BG_PAL[SKY_B+i],rgb15(255,60,20),WL(MW_HEAT)/2);
     if(WL(MW_FROST)) for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=lerp15(BG_PAL[SKY_B+i],rgb15(210,235,255),WL(MW_FROST)/2);
     BG_PAL[88]=wcol[MW_SUNS]; BG_PAL[89]=lift15(wcol[MW_SUNS],10); BG_PAL[90]=wcol[MW_RINGS]; BG_PAL[91]=lift15(wcol[MW_MOONS],6); BG_PAL[92]=shade15(wcol[MW_MOONS],9); BG_PAL[93]=lift15(wcol[MW_RINGS],8); BG_PAL[94]=rgb15(255,240,200);
+    if(!wd.weird && !hellw()){ BG_PAL[88]=rgb15(255,170,60); BG_PAL[89]=rgb15(255,215,110); BG_PAL[94]=rgb15(255,248,215);       // an ordinary world: a warm sun, pale moons, a blue parent planet
+        BG_PAL[91]=rgb15(222,226,238); BG_PAL[92]=rgb15(74,80,108); BG_PAL[90]=rgb15(80,130,215); BG_PAL[93]=rgb15(26,40,96); }
     if(WL(MW_NEGATIVE)) for(int i=8;i<96;i++) if(i<30||i>=40) BG_PAL[i]=lerp15(BG_PAL[i],BG_PAL[i]^0x7FFF,6+WL(MW_NEGATIVE)/3);       // NEGATIVE: colours turn inside out
     if(WL(MW_SEPIA)) for(int i=8;i<96;i++){ if(i>=30&&i<40) continue; u16 c=BG_PAL[i]; int gy=((c&31)+((c>>5)&31)+((c>>10)&31))*8/3;        // OLD PHOTO: brown and faded
         BG_PAL[i]=lerp15(c,rgb15(gy*11/10,gy,gy*7/10),6+WL(MW_SEPIA)/3); }
@@ -403,6 +405,37 @@ static void sky_decor(volatile u16 *pg){
     if(WL(MW_METEOR)){ int t=(frames*3)%200; int x0=(frames/67*37)%120;                 // METEORS: streaks
         for(int k=0;k<8;k++) sky_put(pg,(x0+t/2+k)%120,20+t/3+k,94); }
 }
+// ---- the real sky: the sun, this world's moons (or its parent planet, if you stand on a moon) on their own orbits.
+// Everything is a pure function of the clock and the world's seed, so nothing is saved and nothing can corrupt the world.
+// A moon's lit side faces the sun, so you see phases, and when a moon crosses the sun it eclipses it.
+static int sys_nmoon(int i, int p);
+static void sky_disc(volatile u16 *pg, int cx, int cy, int rc, int sun_cx, int lit, int dark, int sunmode){
+    int d=((cx-sun_cx)%120+120)%120; int dd = d<60 ? d : d-120;               // -60..60 columns away from the sun
+    int ad=dd<0?-dd:dd, t=ad*2*rc/60-rc;                                       // where the shadow edge falls
+    for(int dy=-rc*2;dy<=rc*2;dy++) for(int dx=-rc;dx<=rc;dx++){ int q=dx*dx*4+dy*dy; if(q>rc*rc*4) continue;
+        int side = dd>0 ? -dx : dx; int c;
+        if(sunmode) c = q<rc*rc*4/3?94 : q<rc*rc*8/3?89 : 88;
+        else c = side>=-t ? lit : dark;
+        sky_put(pg,((cx+dx)%120+120)%120,cy+dy,c); }
+}
+static void sky_bodies(volatile u16 *pg){
+    int ho=(heading*120)>>10; u32 T=(u32)frames;
+    u32 s = hmix((u32)world_no*0x9E3779B1u ^ 0x5B1Eu ^ (u32)zone);
+    int sun_az = (int)((s&127) + T/64);                                         // a full turn about every two minutes
+    int sun_cx = ((sun_az-ho)%120+120)%120;
+    int hz=g_phz;
+    if(wd.hour!=2){ int cy = wd.hour==1 ? hz-8 : hz-34-(int)((s>>8)&7); sky_disc(pg,sun_cx,cy,4,sun_cx,0,0,1); }
+    int nm=0, onmoon=cur_moon;
+    if(cur_sys>=0 && sys[cur_sys].kind>=6) nm = onmoon ? 1 : sys_nmoon(cur_sys,cur_pl);
+    for(int k=0;k<nm;k++){ u32 h=hmix(s ^ (u32)(k+1)*0x85EBCA6Bu ^ (u32)cur_pl*0x27D4EB2Fu);
+        int per=2400+(int)(h&2047)+k*1900;                                      // slower for the far ones
+        int az=(int)((h>>12)&127) + (int)(T*120u/(u32)per);
+        int cx=((az-ho)%120+120)%120;
+        int rc = onmoon ? 9 : 2+(int)((h>>20)%3u);
+        int cy = onmoon ? hz-40 : (k==0 ? (wd.hour==1?hz-14:wd.hour==2?hz-34:hz-22-(int)((h>>8)&3)) : hz-26-(k*9)%30);
+        cy += (int)((sinx((int)((T*3u/(u32)(per>>5+1))&255))*3)>>14);
+        sky_disc(pg,cx,cy,rc,sun_cx, onmoon?90:91, onmoon?93:92, 0); }
+}
 static void weird_frame(int n){
     if(!wd.weird){ g_nst=NSTEP; g_wob=0; g_fog=0; return; }
     g_fog = WL(MW_FOG)!=0; g_nst = g_fog ? NSTEP-WL(MW_FOG) : NSTEP; if(g_nst<22) g_nst=22;
@@ -630,7 +663,7 @@ static void planet_frame(void){
 #ifdef TEST_GEN
       { char gb[48]; scpy(gb,"GEN "); ncat(gb,(int)(gen_cyc/16780)); scat(gb,"MS OCT "); ncat(gb,(int)(oct_cyc/16780)); scat(gb," COL "); ncat(gb,(int)(col_cyc/16780)); scat(gb," CITY "); ncat(gb,(int)(city_cyc/16780)); stext(pg,4,130,"",C_RED); { char g2[40]; scpy(g2,"NRM "); ncat(g2,(int)(nrm_cyc/16780)); scat(g2," SMO "); ncat(g2,(int)(smo_cyc/16780)); stext(pg,4,40,g2,C_RED); } stext(pg,4,140,gb,C_RED); }
 #endif
-      weather_draw(pg); if(wd.weird) sky_decor(pg); if(hellw()) hell_sky(pg);
+      weather_draw(pg); if(wd.weird) sky_decor(pg); if(hellw()) hell_sky(pg); if(!wd.weird && !hellw()) sky_bodies(pg);
 #ifdef TEST_CITY
       stext(pg,4,140,tdbg,C_RED);
 #endif

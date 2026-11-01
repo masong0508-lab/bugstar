@@ -262,6 +262,18 @@ static int kind_hp(int k, int b){
     if(nm_of(k)) return b*nm_of(k)->hpm/8;
     return b;
 }
+#ifdef TEST_SKIP
+#define SKIP_CHANCE 100
+#else
+#define SKIP_CHANCE 30
+#endif
+static s16 skip_cell=-1; static u8 fl_max, skip_taken, arrive_dn, dn_ok=1;       // a shortcut stair (skips a floor), the deepest floor seen this trip, shortcuts taken, "you came up these stairs"
+static void face_open(int c){                                                        // stand on a cell, facing the longest open way
+    px_=((c%MW)<<16)+0x8000; py_=((c/MW)<<16)+0x8000;
+    int best=0, bl=-1; static const s8 ddx[4]={1,0,-1,0}, ddy[4]={0,1,0,-1};
+    for(int k=0;k<4;k++){ int x=c%MW, y=c/MW, l=0; while(l<20){ x+=ddx[k]; y+=ddy[k]; if(x<0||y<0||x>=MW||y>=MW) break; int t=dmap[y*MW+x]; if(t==D_WALL||t==D_PILLAR) break; l++; } if(l>bl){ bl=l; best=k; } }
+    pang = best*256;
+}
 static void make_floor(void){
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_BRICK; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
     nrooms=0; nlights=0; nlamps=0; ntorch=0; ponds_made=0; pond_cells=0; pond_floor = rndi(100) < (zone==1 ? 45 : 20);   // about 1 floor in 5 has a pond (the Pond zone: nearly every other floor)
@@ -370,6 +382,11 @@ static void make_floor(void){
     for(int i=1;i<nrooms;i++){ int d=(rooms[i].x-r0->x)*(rooms[i].x-r0->x)+(rooms[i].y-r0->y)*(rooms[i].y-r0->y); if(d>fd){ fd=d; far=i; } }
     int up=room_floor_cell(r0), dn=room_floor_cell(&rooms[far]);
     dmap[up]=D_UP; dmap[dn]=D_DOWN; add_light(up%MW,up/MW,40); add_light(dn%MW,dn/MW,40);
+    skip_cell=-1;                                                                    // SHORTCUT: sometimes a second way down hides in another room. It drops you two floors
+    if(!forge_on && !base_mode && !maze && !terr_on && !bossfl && !mz_last && nrooms>=4 && depth_no>=2 && cur_rock!=5 && !(endless && hive_here())
+       && (endless ? ((depth_no+1)%(cur_moon?5:10))!=0 : depth_no+2<=zone_floors()) && rndi(100)<SKIP_CHANCE){
+        int sr=1+rndi(nrooms-1); if(sr==far) sr = sr%(nrooms-1)+1; if(sr==far) sr=0;
+        if(sr>0){ int sc=room_floor_cell(&rooms[sr]); if(sc!=up && sc!=dn && dmap[sc]==D_FLOOR){ skip_cell=sc; dmap[sc]=D_DOWN; add_light(sc%MW,sc/MW,56); } } }
     { u16 *bq=(u16*)(lsub+2048); u8 *bv=lsub; int pass, ok=0;     // glitch guard: the stairs down must be reachable; if a column or pillar blocks the way, knock it out
       for(pass=0;pass<3 && !ok;pass++){
         if(pass==1){ for(int i=0;i<MW*MW;i++) if(dmap[i]==D_PILLAR) dmap[i]=D_FLOOR; }
@@ -378,19 +395,19 @@ static void make_floor(void){
         int h=0,t=0; bq[t++]=(u16)up; bv[up]=1;
         while(h<t){ int c=bq[h++]; int nb[4]={c-1,c+1,c-MW,c+MW}; for(int k=0;k<4;k++){ int j=nb[k]; if(j<0||j>=MW*MW||bv[j]||!floorish(j)) continue; bv[j]=1; bq[t++]=(u16)j; } }
         ok=bv[dn]; }
+      if(skip_cell>=0 && !bv[skip_cell]){ dmap[skip_cell]=D_FLOOR; skip_cell=-1; }
     }
     build_light(); build_walls();
     // player on the up stairs, facing the next room
-    px_=((up%MW)<<16)+0x8000; py_=((up/MW)<<16)+0x8000;
-    { int best=0, bl=-1; static const s8 ddx[4]={1,0,-1,0}, ddy[4]={0,1,0,-1};
-      for(int k=0;k<4;k++){ int x=up%MW, y=up/MW, l=0; while(l<20){ x+=ddx[k]; y+=ddy[k]; if(x<0||y<0||x>=MW||y>=MW) break; int t=dmap[y*MW+x]; if(t==D_WALL||t==D_PILLAR) break; l++; } if(l>bl){ bl=l; best=k; } }
-      pang = best*256; }
+    face_open(up);
     // monsters, treasure, items, a caged bug or two; the last floor of the zone has a boss instead of stairs down
     int last = mz_last;
     if(last){ dmap[dn]=D_FLOOR; }
     if(endless && depth_no>1 && !(forge_on && last)) dmap[up]=D_FLOOR;          // no way back up: warp out or keep going
     tgt_x=((dn%MW)<<16)+0x8000; tgt_y=((dn/MW)<<16)+0x8000;
     up_x=((up%MW)<<16)+0x8000; up_y=((up/MW)<<16)+0x8000;
+    if(arrive_dn && dmap[dn]==D_DOWN){ face_open(dn); tgt_x=up_x; tgt_y=up_y; }      // you came UP: you step out of the stairs down
+    arrive_dn=0;
     ndo=0;
     #define SPAWN(k_,cell_,hp_,sub_) do{ if(ndo<NDO){ DObj *o=&dob[ndo++]; memset(o,0,sizeof(DObj)); int c_=(cell_); o->kind=(k_); o->alive=1; o->hp=o->maxhp=xo_hp(hp_); o->sub=(sub_); o->x=((c_%MW)<<16)+0x8000; o->y=((c_/MW)<<16)+0x8000; } }while(0)
     int base_hp = 6 + dlv()*5 + depth_no*2; if(endless && cur_moon) base_hp = base_hp*(100+moon_tier()*10)/100;      // every moon tier: +10% monster health
@@ -945,10 +962,10 @@ static void map_page(volatile u16 *pg){
         if(t==D_WALL){ int any=0; for(int k=0;k<4;k++){ static const s8 d4[4][2]={{1,0},{-1,0},{0,1},{0,-1}}; int xx=x+d4[k][0], yy=y+d4[k][1];
                 if(xx>=0&&yy>=0&&xx<MW&&yy<MW && dmap[yy*MW+xx]!=D_WALL) any=1; } if(!any) continue; c=R_STONE+3; }
         else if(t==D_PILLAR) c=R_STONE+5;
-        else if(t==D_DOWN) c=C_GOLD; else if(t==D_UP) c=C_CYAN;
+        else if(t==D_DOWN) c=(i==skip_cell)?C_UNIQ:C_GOLD; else if(t==D_UP) c=C_CYAN;
         else if(fmat[i]==FL_WATER) c=R_WATER+3; else if(fmat[i]==FL_SHALLOW) c=R_WATER+5;
         else c=C_DGREY;
-        if(!seen[i]) c = t==D_DOWN ? C_GOLD : R_STONE+1;           // a sight berry shows the whole floor, dimly
+        if(!seen[i]) c = (t==D_DOWN && i!=skip_cell) ? C_GOLD : R_STONE+1;           // a sight berry shows the whole floor, dimly
         rect(pg,ox+x*4,oy+y*4,4,4,c); }
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; int x=o->x>>16, y=o->y>>16; if(!seen[y*MW+x]) continue;
         int c = o->kind==K_CAGE ? C_GREEN : o->kind==K_CHEST ? C_GOLD : o->kind==K_BOSS||o->kind==K_CORE ? C_RED : (o->kind==K_ITEM && o->it==IT_KEY) ? C_GOLD : -1;
@@ -962,12 +979,14 @@ static void map_page(volatile u16 *pg){
     rect(pg,lx,y,5,5,C_RED); text(pg,lx+9,y,"YOU",C_WHITE,1); y+=9;
     rect(pg,lx,y,5,5,C_GOLD); text(pg,lx+9,y,"STAIRS DOWN",C_WHITE,1); y+=9;
     rect(pg,lx,y,5,5,C_CYAN); text(pg,lx+9,y,"STAIRS UP",C_WHITE,1); y+=9;
+    if(skip_cell>=0 && seen[skip_cell]){ rect(pg,lx,y,5,5,C_UNIQ); text(pg,lx+9,y,"SHORTCUT",C_WHITE,1); y+=9; }
     rect(pg,lx+1,y+1,3,3,C_GREEN); text(pg,lx+9,y,"CAGED BUG",C_WHITE,1); y+=9;
     rect(pg,lx+1,y+1,3,3,C_RED); text(pg,lx+9,y,base_mode?"CORE":"BOSS",C_WHITE,1); y+=9;
     if(base_mode){ rect(pg,lx,y,5,5,C_RED); text(pg,lx+9,y,"LOCKED DOOR",C_WHITE,1); y+=9; }
     y+=5;
     if(!endless && depth_no>=zone_floors()){ if(boss_floor()) text(pg,lx,y,"THE BOSS IS HERE",C_RED,1); else { text(pg,lx,y,"BOSS BEATEN!",C_GREEN,1); text(pg,lx,y+9,"EXIT: STAIRS UP",C_GREY,1); } }
     else text(pg,lx,y,stairs_seen()?"YOU FOUND THE STAIRS":"FIND THE STAIRS",stairs_seen()?C_GREEN:C_GREY,1);
+    if(skip_taken){ char sb[24]; scpy(sb,"SHORTCUTS TAKEN: "); ncat(sb,skip_taken); text(pg,lx,y+9,sb,C_UNIQ,1); }
 }
 static int base_floors(void){ return 2 + (outposts_done>5?3:outposts_done/2); }
 static int boss_floor(void){ for(int i=0;i<ndo;i++) if(dob[i].alive && dob[i].kind==K_BOSS) return 1; return 0; }
@@ -985,13 +1004,33 @@ static int hud_dirty=0;
 static void dungeon_hud(void){ hud_dirty=2; }
 static void dungeon_hud_both(void){ char b[40]; dungeon_label(b); for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b); hud_dirty=0; }
 static int stair_ok;
+static int stair_panel(volatile u16 *pg){                       // the stairs up: back to the surface, or any floor you have already been to. -1 = stay where you are
+    int sel=depth_no-1, top=fl_max>depth_no?fl_max:depth_no, redraw=1; wait_release();
+    while(1){
+        if(redraw){ redraw=0; char b[40];
+            panel(pg,30,50,180,70,"THE STAIRS UP");
+            if(sel==0) scpy(b,"BACK TO THE SURFACE"); else { scpy(b,sel>depth_no?"DOWN TO FLOOR B":"UP TO FLOOR B"); ncat(b,sel); }
+            ctext(pg,120,70,b,C_GOLD);
+            ctext(pg,120,81,"UP/DOWN: PICK WHERE TO GO",U_SOFT);
+            { int w=ui_hints(pg,0,104,"A: GO  B: STAY",C_WHITE,0); ui_hints(pg,120-w/2,104,"A: GO  B: STAY",C_WHITE,1); } }
+        vsync(); read_keys();
+        if(HIT(K_UP)||HIT(K_LEFT)){ do{ sel--; if(sel<0) sel=top; }while(sel==depth_no); redraw=1; sfx(0); }
+        if(HIT(K_DOWN)||HIT(K_RIGHT)){ do{ sel++; if(sel>top) sel=0; }while(sel==depth_no); redraw=1; sfx(0); }
+        if(HIT(K_A)){ sfx(2); wait_release(); return sel; }
+        if(HIT(K_B)){ wait_release(); return -1; } }
+}
 static void dungeon_palette(void){      // the dungeon's whole background palette, from the clean copy
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
     for(int i=0;i<8;i++) BG_PAL[R_SPIDER+i]= endless ? w_mon[i] : zone_mon_pal[zone*8+i];
 }
 static void dungeon_enter(void){ auto_run=0;
-    depth_no++; stair_ok=0; st_floors++; ach_check(); sight=0; msg_timer=0;
-    make_floor();
+    depth_no++; stair_ok=0; if(depth_no>fl_max){ fl_max=depth_no; st_floors++; } ach_check(); sight=0; msg_timer=0;
+    { int ad=arrive_dn; make_floor(); dn_ok=!ad; }
+    { int sx=px_>>16, sy=py_>>16;                                                    // safe arrival: nothing hostile waits within a few steps of where you appear
+      for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive || !is_mon(o->kind) || o->kind==K_BOSS || o->kind==K_CORE) continue;
+          int ox=o->x>>16, oy=o->y>>16; if(ox<sx-3||ox>sx+3||oy<sy-3||oy>sy+3) continue;
+          int c=room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]); int cx=c%MW, cy=c/MW; if(cx>=sx-3&&cx<=sx+3&&cy>=sy-3&&cy<=sy+3) continue;
+          o->x=(cx<<16)+0x8000; o->y=(cy<<16)+0x8000; } }
     dungeon_palette();
     obj_palette();
     if(endless && !forge_on && depth_no>best_depth) best_depth=depth_no;
