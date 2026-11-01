@@ -30,15 +30,14 @@ const char *const cr_diet_name[6] = {"PLANTS","FRUIT","MEAT","MIXED","SCAVENGE",
 const char *const cr_temper_name[8] = {"GENTLE","CURIOUS","PROUD","FIERCE","DREAMY","CAREFUL","WILD","WISE"};
 const char *const cr_tech_name[8] = {"FIRE","STONE","BRONZE","IRON","STEAM","ENGINES","ELECTRIC","STAR"};
 const char *const cr_div_name[10] = {"NONE","6 KINDS","12 KINDS","24 KINDS","48 KINDS","96 KINDS","160 KINDS","240 KINDS","320 KINDS","400 KINDS"};
-static const uint16_t sw[CR_NSWATCH] = {
- RGB(20,20,30),RGB(70,70,80),RGB(130,130,140),RGB(200,200,205),RGB(245,245,245),RGB(110,70,40),RGB(170,120,70),RGB(225,185,130),
+static const uint16_t sw[CR_NSWATCH] = {                 // 25 swatches (the palette has 25 free slots, 39..63)
+ RGB(30,30,42),RGB(100,100,112),RGB(170,170,178),RGB(245,245,245),RGB(110,70,40),RGB(170,120,70),RGB(225,185,130),RGB(250,215,170),
  RGB(200,40,50),RGB(235,100,40),RGB(240,200,60),RGB(170,220,60),RGB(60,170,70),RGB(30,120,90),RGB(40,170,170),RGB(80,200,240),
- RGB(50,100,220),RGB(40,50,150),RGB(120,70,200),RGB(190,90,220),RGB(230,90,170),RGB(250,160,190),RGB(250,215,170),RGB(140,40,60),
- RGB(90,100,40),RGB(60,80,60),RGB(180,150,40),RGB(255,230,120),RGB(110,150,230),RGB(20,30,70),RGB(70,20,50),RGB(180,230,210) };
-uint16_t cr_swatch(int i){ return sw[i & 31]; }
+ RGB(50,100,220),RGB(40,50,150),RGB(120,70,200),RGB(190,90,220),RGB(230,90,170),RGB(250,160,190),RGB(140,40,60),RGB(90,100,40),RGB(180,230,210) };
+uint16_t cr_swatch(int i){ return sw[i % CR_NSWATCH]; }
 int cr_height_cm(int h){ static const int hs[8] = {6, 12, 25, 50, 90, 140, 180, 240}; return hs[h & 7]; }
 double cr_pop_count(int p){ double v = 1000.0; for(int i = 0; i < p; i++) v *= 3.4; return v; }       // 1,000 .. about 4e10
-void cr_people_name(const Recipe *r, char *out){
+void cr_people_name(const CrRecipe *r, char *out){
     static const char *const a[] = {"KO","VA","ZE","MI","TOR","SYL","BRA","NU","QUI","DRA","ELO","FAR","GOR","HAL","IX","JUN"};
     static const char *const b[] = {"RA","LU","NE","SA","KO","VI","MON","TAR"};
     static const char *const c[] = {"I","ANS","ENE","IN","OLK","ARI","UM","ESH"};
@@ -52,30 +51,30 @@ const char *cr_trait_name(int id){ return trait_name(id); }
 int cr_trait_cat(int id){ return trait_cat(id); }
 int cr_theme_count(void){ return theme_count(); }
 const char *cr_theme_name(int id){ return theme_get(id)->name; }
-int cr_trait_ok(const Recipe *r, int cat, int id){
+int cr_trait_ok(const CrRecipe *r, int cat, int id){
     if(id < 0 || id >= trait_count() || trait_cat(id) != cat) return 0;
     for(int c = 0; c < CR_NCAT; c++) if(c != cat && r->trait[c] != CR_NONE && r->trait[c] < trait_count() && traits_conflict(id, r->trait[c]) && trait_cat(r->trait[c]) != cat) return 0;
     return 1;
 }
-int cr_theme_ok(const Recipe *r, int slot, int id){ int o = r->theme[slot ^ 1]; return id < theme_count() && (o == 255 || theme_pair_ok(id, o)); }
+int cr_theme_ok(const CrRecipe *r, int slot, int id){ int o = r->theme[slot ^ 1]; return id < theme_count() && (o == 255 || theme_pair_ok(id, o)); }
 static int tid(const char *n){ for(int i = 0; i < trait_count(); i++) if(!strcmp(trait_name(i), n)) return i; return CR_NONE; }
 static int thid(const char *n){ for(int i = 0; i < theme_count(); i++) if(!strcmp(theme_get(i)->name, n)) return i; return 255; }
 
 // ------------------------------------------------------------------ fix: clamp everything, zero the unused, drop clashing traits
-void cr_fix(Recipe *r){
+void cr_fix(CrRecipe *r){
     int i, n = (int)strlen(r->name);
     for(i = 0; i < CR_NAME; i++){ char c = i < n ? r->name[i] : 0; if(c >= 'a' && c <= 'z') c -= 32;
         if(c && !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' || c == '-' || c == '.' || c == '\'')) c = ' ';
         r->name[i] = c; }
     r->name[CR_NAME] = 0; for(i = (int)strlen(r->name); i > 0 && r->name[i - 1] == ' '; i--) r->name[i - 1] = 0; n = (int)strlen(r->name); for(i = n; i <= CR_NAME; i++) r->name[i] = 0;
     r->cls %= 16; r->size = (uint8_t)clampi(r->size, 0, 5); r->sea = (uint8_t)clampi(r->sea, 0, 100); r->land &= 7; r->rough &= 3; r->hour %= 3; r->weather &= 3;
-    r->sky &= 31; r->ground &= 31; r->climate = (int8_t)clampi(r->climate, -8, 8);
+    r->sky %= CR_NSWATCH; r->ground %= CR_NSWATCH; r->climate = (int8_t)clampi(r->climate, -8, 8);
     for(i = 0; i < CR_NCAT; i++){ if(r->trait[i] != CR_NONE && (r->trait[i] >= trait_count() || trait_cat(r->trait[i]) != i)) r->trait[i] = CR_NONE; }
     for(i = 0; i < CR_NCAT; i++) if(r->trait[i] != CR_NONE && !cr_trait_ok(r, i, r->trait[i])) r->trait[i] = CR_NONE;
     for(i = 0; i < 2; i++) if(r->theme[i] != 255 && r->theme[i] >= theme_count()) r->theme[i] = 255;
     if(r->theme[0] != 255 && r->theme[1] != 255 && !theme_pair_ok(r->theme[0], r->theme[1])) r->theme[1] = 255;
     r->body &= 15; r->limbs = (uint8_t)clampi(r->limbs, 0, 5); r->height &= 7;
-    for(i = 0; i < 3; i++) r->col[i] &= 31;
+    for(i = 0; i < 3; i++) r->col[i] %= CR_NSWATCH;
     for(i = 0; i < 3; i++) r->gift[i] %= 24;
     for(i = 1; i < 3; i++) for(int j = 0; j < i; j++) if(r->gift[i] == r->gift[j]){ r->gift[i] = (uint8_t)((r->gift[i] + 1) % 24); j = -1; }
     r->calling &= 15; r->cstyle &= 15; r->diet %= 6; r->temper &= 7; r->pop &= 15; r->tech &= 7;
@@ -87,9 +86,9 @@ void cr_fix(Recipe *r){
 }
 
 // ------------------------------------------------------------------ defaults
-static void set_name(Recipe *r, const char *n){ memset(r->name, 0, sizeof r->name); strncpy(r->name, n, CR_NAME); }
-static void add_cre(Recipe *r, int role, int salt, int amount){ if(r->ncre < CR_MAXCRE){ r->cre[r->ncre].species = (uint16_t)cr_kind_find(role, salt); r->cre[r->ncre].amount = (uint8_t)amount; r->ncre++; } }
-void cr_default(Recipe *r, uint32_t n){
+static void set_name(CrRecipe *r, const char *n){ memset(r->name, 0, sizeof r->name); strncpy(r->name, n, CR_NAME); }
+static void add_cre(CrRecipe *r, int role, int salt, int amount){ if(r->ncre < CR_MAXCRE){ r->cre[r->ncre].species = (uint16_t)cr_kind_find(role, salt); r->cre[r->ncre].amount = (uint8_t)amount; r->ncre++; } }
+void cr_default(CrRecipe *r, uint32_t n){
     memset(r, 0, sizeof *r); for(int i = 0; i < CR_NCAT; i++) r->trait[i] = CR_NONE; r->theme[0] = r->theme[1] = 255;
     r->salt = 0x5EED0000u + n * 7919u;
     switch(n % 4){
@@ -107,9 +106,9 @@ void cr_default(Recipe *r, uint32_t n){
         r->trait[TC_GRAVITY] = (uint16_t)tid("EARTHLIKE GRAVITY"); r->trait[TC_SURFACE] = (uint16_t)tid("GIANT TREES"); r->trait[TC_LIFE] = (uint16_t)tid("BUG GARDEN"); r->trait[TC_WEATHER] = (uint16_t)tid("STORMY");
         r->body = 7; r->limbs = 2; r->height = 2; r->col[0] = 12; r->col[1] = 10; r->col[2] = 11; r->gift[0] = 11; r->gift[1] = 16; r->gift[2] = 4; r->calling = 3; r->cstyle = 4; r->diet = 3; r->temper = 0; r->pop = 10; r->tech = 1;
         r->cover = 95; r->div = 8; add_cre(r, ROLE_BROWSER, 21, 7); add_cre(r, ROLE_NECTAR, 22, 5); add_cre(r, ROLE_GRAZER, 23, 7); add_cre(r, ROLE_HUNTER, 24, 4); add_cre(r, ROLE_AMBUSHER, 25, 3); add_cre(r, ROLE_SCAVENGER, 26, 3); add_cre(r, ROLE_FILTER, 27, 5); break;
-    case 3: set_name(r, "FROST CROWN"); r->cls = 5; r->size = 1; r->sea = 30; r->land = 6; r->rough = 3; r->hour = 2; r->weather = 2; r->sky = 29; r->ground = 4; r->climate = -4;
+    case 3: set_name(r, "FROST CROWN"); r->cls = 5; r->size = 1; r->sea = 30; r->land = 6; r->rough = 3; r->hour = 2; r->weather = 2; r->sky = 17; r->ground = 3; r->climate = -4;
         r->trait[TC_GRAVITY] = (uint16_t)tid("LIGHT GRAVITY"); r->trait[TC_SKY] = (uint16_t)tid("RINGS"); r->trait[TC_AIR] = (uint16_t)tid("GLOW AURORA");
-        r->body = 5; r->limbs = 1; r->height = 5; r->col[0] = 4; r->col[1] = 15; r->col[2] = 17; r->gift[0] = 2; r->gift[1] = 12; r->gift[2] = 21; r->calling = 9; r->cstyle = 5; r->diet = 2; r->temper = 7; r->pop = 8; r->tech = 4;
+        r->body = 5; r->limbs = 1; r->height = 5; r->col[0] = 3; r->col[1] = 15; r->col[2] = 17; r->gift[0] = 2; r->gift[1] = 12; r->gift[2] = 21; r->calling = 9; r->cstyle = 5; r->diet = 2; r->temper = 7; r->pop = 8; r->tech = 4;
         r->cover = 25; r->div = 3; add_cre(r, ROLE_BROWSER, 31, 4); add_cre(r, ROLE_HUNTER, 32, 3); add_cre(r, ROLE_APEX, 33, 1); add_cre(r, ROLE_SCAVENGER, 34, 2); break;
     }
     r->name[CR_NAME] = 0; cr_fix(r);
@@ -120,7 +119,7 @@ void cr_default(Recipe *r, uint32_t n){
 static int trait_light(int id){ const char *n = trait_name(trait_base(id));
     static const struct { const char *n; int l; } t[] = { {"TWIN SUNS",150},{"RED GIANT SKY",120},{"DEAD SUN",8},{"ENDLESS FOG",60},{"DUST VEIL",75},{"AMBER HAZE",85},{"LONG NIGHT",45},{"NEARBY NEBULA",90},{"ACID CLOUDS",55},{"ASH FALL",65} };
     for(unsigned i = 0; i < sizeof t / sizeof t[0]; i++) if(!strcmp(n, t[i].n)) return t[i].l; return 100; }
-void cr_env(const Recipe *r, CrEnv *e){
+void cr_env(const CrRecipe *r, CrEnv *e){
     static const int8_t ctemp[16] = {0,-8,0,-4,10,-35,10,5,3,0,45,30,8,8,18,-45};
     uint16_t ids[CR_NCAT]; int n = 0, light = 100;
     for(int c = 0; c < CR_NCAT; c++) if(r->trait[c] != CR_NONE){ ids[n++] = r->trait[c]; int l = trait_light(r->trait[c]); light = light * l / 100; }
@@ -131,7 +130,7 @@ void cr_env(const Recipe *r, CrEnv *e){
 // ------------------------------------------------------------------ world: what the game needs
 static const uint8_t cbase[16][3] = {{110,150,70},{150,125,105},{140,215,95},{70,180,130},{235,195,110},{215,232,255},{40,160,50},{130,30,22},{150,150,165},{235,150,205},{200,70,25},{200,190,40},{40,35,60},{225,215,190},{150,15,35},{70,120,190}};
 static uint16_t rgb15c(int r, int g, int b){ r = clampi(r, 0, 255); g = clampi(g, 0, 255); b = clampi(b, 0, 255); return RGB(r, g, b); }
-void cr_world(const Recipe *r, CrWorld *w){
+void cr_world(const CrRecipe *r, CrWorld *w){
     CrEnv e; cr_env(r, &e); memset(w, 0, sizeof *w);
     w->cls = r->cls; w->psz = r->size; w->style = r->land; w->rough = r->rough; w->hour = r->hour; w->weather = r->weather;
     w->grav = e.gravity_pct <= 70 ? 0 : e.gravity_pct <= 130 ? 1 : e.gravity_pct <= 200 ? 2 : 3;
@@ -158,8 +157,8 @@ void cr_world(const Recipe *r, CrWorld *w){
 }
 
 // ------------------------------------------------------------------ the planet seed: every field of the recipe, in a fixed order
-uint64_t cr_seed(const Recipe *r){
-    Recipe q = *r; cr_fix(&q);
+uint64_t cr_seed(const CrRecipe *r){
+    CrRecipe q = *r; cr_fix(&q);
     uint64_t h = 0xC4EA70A5EEDull;
 #define MIXV(v) h = mix64(h ^ (uint64_t)(v) ^ ((uint64_t)__LINE__ << 50))
     for(int i = 0; i < CR_NAME; i++) MIXV(q.name[i]);
@@ -174,38 +173,38 @@ uint64_t cr_seed(const Recipe *r){
     return mix64(h);
 }
 
-int cr_equal(const Recipe *a, const Recipe *b){ Recipe x = *a, y = *b; cr_fix(&x); cr_fix(&y); return !memcmp(&x, &y, sizeof x); }
+int cr_equal(const CrRecipe *a, const CrRecipe *b){ CrRecipe x = *a, y = *b; cr_fix(&x); cr_fix(&y); return !memcmp(&x, &y, sizeof x); }
 
 // ------------------------------------------------------------------ randomise
-static void rnd_world(Recipe *r, uint64_t *s){
+static void rnd_world(CrRecipe *r, uint64_t *s){
     r->cls = (uint8_t)rn(s, 10); if(rn(s, 8) == 0) r->cls = (uint8_t)(10 + rn(s, 6));
     r->size = (uint8_t)rn(s, 6); r->sea = (uint8_t)(r->cls == 3 ? 78 + rn(s, 20) : r->cls == 4 ? rn(s, 15) : r->cls == 5 ? 10 + rn(s, 60) : 10 + rn(s, 85));
     r->land = (uint8_t)rn(s, 8); r->rough = (uint8_t)rn(s, 4); r->hour = (uint8_t)(rn(s, 3) == 0 ? 1 + rn(s, 2) : 0); r->weather = (uint8_t)rn(s, 4);
-    r->sky = (uint8_t)rn(s, 32); r->ground = (uint8_t)(rn(s, 3) ? 0 : 1 + rn(s, 31)); r->climate = (int8_t)((int)rn(s, 13) - 6); r->salt = (uint32_t)(mix64(*s) >> 11);
+    r->sky = (uint8_t)rn(s, CR_NSWATCH); r->ground = (uint8_t)(rn(s, 3) ? 0 : 1 + rn(s, CR_NSWATCH - 1)); r->climate = (int8_t)((int)rn(s, 13) - 6); r->salt = (uint32_t)(mix64(*s) >> 11);
 }
-static void rnd_traits(Recipe *r, uint64_t *s){
+static void rnd_traits(CrRecipe *r, uint64_t *s){
     for(int c = 0; c < CR_NCAT; c++) r->trait[c] = CR_NONE;
     int nt = trait_count(), want = 3 + (int)rn(s, 4);
     for(int tries = 0, got = 0; tries < 200 && got < want; tries++){ int id = (int)rn(s, nt), cat = trait_cat(id); if(r->trait[cat] != CR_NONE) continue; if(!cr_trait_ok(r, cat, id)) continue; r->trait[cat] = (uint16_t)id; got++; }
     r->theme[0] = r->theme[1] = 255; if(rn(s, 2)) { r->theme[0] = (uint8_t)rn(s, theme_count()); if(rn(s, 2)) for(int t = 0; t < 20; t++){ int b = (int)rn(s, theme_count()); if(theme_pair_ok(b, r->theme[0])){ r->theme[1] = (uint8_t)b; break; } } }
 }
-static void rnd_people(Recipe *r, uint64_t *s){
-    r->body = (uint8_t)rn(s, 16); r->limbs = (uint8_t)rn(s, 6); r->height = (uint8_t)rn(s, 8); for(int i = 0; i < 3; i++){ r->col[i] = (uint8_t)rn(s, 32); r->gift[i] = (uint8_t)rn(s, 24); }
+static void rnd_people(CrRecipe *r, uint64_t *s){
+    r->body = (uint8_t)rn(s, 16); r->limbs = (uint8_t)rn(s, 6); r->height = (uint8_t)rn(s, 8); for(int i = 0; i < 3; i++){ r->col[i] = (uint8_t)rn(s, CR_NSWATCH); r->gift[i] = (uint8_t)rn(s, 24); }
     r->calling = (uint8_t)rn(s, 16); r->cstyle = (uint8_t)rn(s, 16); r->diet = (uint8_t)rn(s, 6); r->temper = (uint8_t)rn(s, 8); r->pop = (uint8_t)(4 + rn(s, 11)); r->tech = (uint8_t)rn(s, 8);
 }
-static void rnd_life(Recipe *r, uint64_t *s){
+static void rnd_life(CrRecipe *r, uint64_t *s){
     r->cover = (uint8_t)(20 + rn(s, 80)); r->div = (uint8_t)(2 + rn(s, 8)); r->ncre = (uint8_t)(3 + rn(s, 6));
     int ns = cr_species_count();
     for(int i = 0; i < CR_MAXCRE; i++){ if(i < r->ncre){ int sp = (int)rn(s, ns); r->cre[i].species = (uint16_t)sp; r->cre[i].amount = (uint8_t)(1 + rn(s, 8)); } else { r->cre[i].species = 0; r->cre[i].amount = 0; } }
     r->npin = (uint8_t)rn(s, 4); for(int i = 0; i < CR_MAXPIN; i++){ if(i < r->npin){ r->pin[i].id = flora_catalogue(mix64(*s), (uint32_t)rn(s, 100000)); r->pin[i].amount = (uint8_t)(1 + rn(s, 9)); } else { r->pin[i].id = 0; r->pin[i].amount = 0; } }
 }
-static void rnd_name(Recipe *r, uint64_t *s){
+static void rnd_name(CrRecipe *r, uint64_t *s){
     static const char *const a[] = {"KO","VA","ZE","MI","TOR","SYL","BRA","NU","QUI","DRA","ELO","FAR","GOR","HAL","IX","JUN"};
     static const char *const b[] = {"RA","LU","NE","SA","KO","VI","MON","TAR","LEX","DAN","PHI","ZUN"};
     static const char *const c[] = {"X","N","S","TH","R","M","DE","K"};
     char buf[24]; snprintf(buf, sizeof buf, "%s%s%s", a[rn(s, 16)], b[rn(s, 12)], rn(s, 2) ? c[rn(s, 8)] : ""); set_name(r, buf);
 }
-void cr_randomize(Recipe *r, int section, uint64_t *rng){
+void cr_randomize(CrRecipe *r, int section, uint64_t *rng){
     if(section < 0 || section == CRS_WORLD) rnd_world(r, rng);
     if(section < 0 || section == CRS_TRAITS) rnd_traits(r, rng);
     if(section < 0 || section == CRS_PEOPLE) rnd_people(r, rng);
@@ -221,8 +220,8 @@ static uint32_t get(Bits *r, int bits, int *bad){ uint32_t v = 0; for(int i = 0;
 static const char b32[] = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 static const char chars[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.'";
 static uint32_t sum12(const uint8_t *b, int nbits){ uint32_t h = 2166136261u; for(int i = 0; i < (nbits + 7) / 8; i++){ h ^= b[i]; h *= 16777619u; } h ^= (uint32_t)nbits; h *= 16777619u; return (h ^ (h >> 12) ^ (h >> 24)) & 0xFFF; }
-int cr_encode(const Recipe *r0, char *out, int cap){
-    Recipe q = *r0; cr_fix(&q); const Recipe *r = &q; Bits w; memset(&w, 0, sizeof w);
+int cr_encode(const CrRecipe *r0, char *out, int cap){
+    CrRecipe q = *r0; cr_fix(&q); const CrRecipe *r = &q; Bits w; memset(&w, 0, sizeof w);
     put(&w, 1, 4);                                                    // version
     int nl = (int)strlen(r->name); put(&w, (uint32_t)nl, 5);
     for(int i = 0; i < nl; i++){ const char *p = strchr(chars, r->name[i]); put(&w, p ? (uint32_t)(p - chars) : 0, 6); }
@@ -243,12 +242,12 @@ int cr_encode(const Recipe *r0, char *out, int cap){
     for(int i = 0; i < chs; i++){ if(i % 5 == 0) *p++ = '-'; uint32_t v = 0; for(int k = 0; k < 5; k++){ int bi = i * 5 + k; v = (v << 1) | (bi < w.n ? ((w.b[bi >> 3] >> (7 - (bi & 7))) & 1) : 0); } *p++ = b32[v]; }
     *p = 0; return (int)(p - out);
 }
-int cr_decode(const char *code, Recipe *r){
+int cr_decode(const char *code, CrRecipe *r){
     Bits rd; memset(&rd, 0, sizeof rd); int n = 0, bad = 0;
     if(!code || (code[0] | 32) != 'p' || (code[1] | 32) != 'l' || code[2] != '1') return 0;
     for(const char *p = code + 3; *p; p++){ char c = *p; if(c == '-' || c == ' ') continue; if(c >= 'a' && c <= 'z') c -= 32; if(c == 'O') c = '0'; if(c == 'I' || c == 'L') c = '1';
         const char *q = strchr(b32, c); if(!q || !c) return 0; int v = (int)(q - b32); if(n + 5 > 2040) return 0; for(int k = 0; k < 5; k++, n++) if((v >> (4 - k)) & 1) rd.b[n >> 3] |= 0x80 >> (n & 7); }
-    rd.n = 0; Recipe q; memset(&q, 0, sizeof q);
+    rd.n = 0; CrRecipe q; memset(&q, 0, sizeof q);
     if(get(&rd, 4, &bad) != 1) return 0;
     int nl = (int)get(&rd, 5, &bad); if(nl > CR_NAME) return 0;
     for(int i = 0; i < nl; i++){ uint32_t c = get(&rd, 6, &bad); if(c >= sizeof chars - 1) return 0; q.name[i] = chars[c]; }
@@ -269,8 +268,8 @@ int cr_decode(const char *code, Recipe *r){
 }
 
 // ------------------------------------------------------------------ files
-int cr_save(const Recipe *r0, const char *path){
-    Recipe q = *r0; cr_fix(&q); const Recipe *r = &q; FILE *f = fopen(path, "w"); if(!f) return 0;
+int cr_save(const CrRecipe *r0, const char *path){
+    CrRecipe q = *r0; cr_fix(&q); const CrRecipe *r = &q; FILE *f = fopen(path, "w"); if(!f) return 0;
     fprintf(f, "crp 1\nname %s\ncls %d\nsize %d\nsea %d\nland %d\nrough %d\nhour %d\nweather %d\nsky %d\nground %d\nclimate %d\nsalt %u\n", r->name, r->cls, r->size, r->sea, r->land, r->rough, r->hour, r->weather, r->sky, r->ground, r->climate, r->salt);
     for(int c = 0; c < CR_NCAT; c++) if(r->trait[c] != CR_NONE) fprintf(f, "trait %d %s\n", r->trait[c], trait_name(r->trait[c]));
     for(int i = 0; i < 2; i++) if(r->theme[i] != 255) fprintf(f, "theme %s\n", theme_get(r->theme[i])->name);
@@ -281,8 +280,8 @@ int cr_save(const Recipe *r0, const char *path){
     char code[400]; if(cr_encode(r, code, sizeof code)) fprintf(f, "code %s\n", code);
     fclose(f); return 1;
 }
-int cr_load(Recipe *r, const char *path){
-    FILE *f = fopen(path, "r"); if(!f) return 0; char line[200]; Recipe q; cr_default(&q, 0); memset(q.cre, 0, sizeof q.cre); q.ncre = 0; q.npin = 0; memset(q.pin, 0, sizeof q.pin);
+int cr_load(CrRecipe *r, const char *path){
+    FILE *f = fopen(path, "r"); if(!f) return 0; char line[200]; CrRecipe q; cr_default(&q, 0); memset(q.cre, 0, sizeof q.cre); q.ncre = 0; q.npin = 0; memset(q.pin, 0, sizeof q.pin);
     for(int c = 0; c < CR_NCAT; c++) q.trait[c] = CR_NONE; q.theme[0] = q.theme[1] = 255; int ok = 0, nt = 0;
     while(fgets(line, sizeof line, f)){
         size_t L = strlen(line); while(L && (line[L - 1] == '\n' || line[L - 1] == '\r')) line[--L] = 0;
@@ -308,12 +307,12 @@ int cr_load(Recipe *r, const char *path){
 }
 
 // ------------------------------------------------------------------ undo and redo
-void cr_hist_init(CrHist *h, const Recipe *r){ h->n = 1; h->at = 0; h->snap[0] = *r; }
-void cr_hist_push(CrHist *h, const Recipe *r){
+void cr_hist_init(CrHist *h, const CrRecipe *r){ h->n = 1; h->at = 0; h->snap[0] = *r; }
+void cr_hist_push(CrHist *h, const CrRecipe *r){
     if(cr_equal(&h->snap[h->at], r)) return;
     h->n = h->at + 1;                                                         // a new edit drops the redo list
-    if(h->n == CR_HIST){ memmove(&h->snap[0], &h->snap[1], sizeof(Recipe) * (CR_HIST - 1)); h->n--; }
+    if(h->n == CR_HIST){ memmove(&h->snap[0], &h->snap[1], sizeof(CrRecipe) * (CR_HIST - 1)); h->n--; }
     h->at = h->n; h->snap[h->n++] = *r;
 }
-int cr_hist_undo(CrHist *h, Recipe *r){ if(h->at <= 0) return 0; h->at--; *r = h->snap[h->at]; return 1; }
-int cr_hist_redo(CrHist *h, Recipe *r){ if(h->at + 1 >= h->n) return 0; h->at++; *r = h->snap[h->at]; return 1; }
+int cr_hist_undo(CrHist *h, CrRecipe *r){ if(h->at <= 0) return 0; h->at--; *r = h->snap[h->at]; return 1; }
+int cr_hist_redo(CrHist *h, CrRecipe *r){ if(h->at + 1 >= h->n) return 0; h->at++; *r = h->snap[h->at]; return 1; }

@@ -61,8 +61,8 @@ static const struct { double farm, smoke, fuel, city, protect; } cl[16] = {
  {1.3,1,1,1,1},{1.1,1,1,1,1},{0.5,0.9,0.9,1,1},{0.4,0.8,0.8,0.8,1},{1,1.1,1.2,1.3,1},{1,1.4,1.4,1,1},{1,1,1,1.2,1},{0.9,0.9,1,1,1},{1,0.8,1,1,1},{0.9,0.9,0.9,1,1},{0.8,0.8,0.8,0.9,1},{0.5,0.8,0.8,0.5,1},{1,0.9,0.7,1,0.4},{1,1.4,1.5,1,1},{0.8,1,1,1,1},{0.9,0.8,0.8,0.9,1} };
 
 // ------------------------------------------------------------------ the report
-void cr_bio(const Recipe *r0, BioReport *b){
-    Recipe q = *r0; cr_fix(&q); const Recipe *r = &q; memset(b, 0, sizeof *b);
+void cr_bio(const CrRecipe *r0, BioReport *b){
+    CrRecipe q = *r0; cr_fix(&q); const CrRecipe *r = &q; memset(b, 0, sizeof *b);
     CrEnv env; cr_env(r, &env);
     // ---- the world
     static const int8_t wet_cls[16] = {0,0,10,30,-50,10,35,-20,-10,20,-40,-30,-20,-45,20,0};
@@ -270,3 +270,20 @@ void cr_bio(const Recipe *r0, BioReport *b){
     if(nfa > 0 && !scav && n < BIO_WARN) b->warn[n++] = "NO ONE CLEARS THE DEAD";
     b->nwarn = n;
 }
+
+// ------------------------------------------------------------------ plants for the screen
+int cr_swatch_near(uint16_t rgb){
+    int r = rgb & 31, g = (rgb >> 5) & 31, b = (rgb >> 10) & 31, best = 0, bd = 1 << 30;
+    for(int i = 0; i < CR_NSWATCH; i++){ uint16_t s = cr_swatch(i); int dr = r - (s & 31), dg = g - ((s >> 5) & 31), db = b - ((s >> 10) & 31), d = dr * dr * 3 + dg * dg * 4 + db * db * 2; if(d < bd){ bd = d; best = i; } }
+    return best;
+}
+void cr_plant(uint32_t id, CrPlant *p){
+    Flora f; flora_make(id, &f); memset(p, 0, sizeof *p);
+    snprintf(p->name, sizeof p->name, "%s", f.name); flora_about(&f, p->about, sizeof p->about);
+    snprintf(p->form, sizeof p->form, "%s", flora_form_name(f.form)); snprintf(p->use, sizeof p->use, "%s", flora_use_name(f.use));
+    snprintf(p->habitat, sizeof p->habitat, "%s", flora_habitat_name(f.habitat)); snprintf(p->size, sizeof p->size, "%s", flora_size_name(f.size));
+    p->sw_leaf = (uint8_t)cr_swatch_near(f.leaf_rgb); p->sw_flower = (uint8_t)cr_swatch_near(f.flower_rgb);
+    p->o2 = f.o2; p->food = f.food; p->shelter = f.shelter; p->medicine = f.medicine; p->fuel = f.fuel; p->woody = f.woody; p->height_cm = f.height_cm;
+}
+uint32_t cr_plant_nth(uint64_t seed, uint32_t n){ return flora_catalogue(seed, n); }
+uint32_t cr_plant_count(void){ return FL_TOTAL; }

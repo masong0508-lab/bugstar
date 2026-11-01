@@ -52,5 +52,12 @@ typedef struct {
     // the flora list used (first 400 kinds), for the screen
     int nlist; uint32_t list[400];
 } BioReport;
-void cr_bio(const Recipe *r, BioReport *b);
+void cr_bio(const CrRecipe *r, BioReport *b);
+
+// ---- plants, for the screen (the game's own code must not include flora.h)
+typedef struct { char name[40], about[200], form[16], use[16], habitat[16], size[8]; uint8_t sw_leaf, sw_flower, o2, food, shelter, medicine, fuel, woody; uint16_t height_cm; } CrPlant;
+void     cr_plant(uint32_t id, CrPlant *p);
+uint32_t cr_plant_nth(uint64_t seed, uint32_t n);        // the n-th plant of a catalogue seed (every plant once)
+uint32_t cr_plant_count(void);                           // 536,870,912
+int      cr_swatch_near(uint16_t rgb);                   // the swatch that looks most like this colour
 #endif
