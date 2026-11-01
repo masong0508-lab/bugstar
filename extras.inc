@@ -2,9 +2,9 @@
 // Every line is one thing that really sits behind a flag: UNLOCKED or LOCKED, and when it is locked, what you need to do (plain words).
 // A opens it from here when that is safe (HOW BIG IS IT?, the options for INSANE-SECT, the Kart Club on a planet); otherwise it says where to go.
 // Nothing here is saved: every line is worked out from flags the game already keeps, so old saves just work.
-enum { EX_BIG, EX_KARTW, EX_KCLS, EX_INSANE, EX_STARS, EX_FAR, EX_FORGE, EX_TECH, EX_SHAPE, EX_CHART, EX_MAP, EX_FOLD };   // (EX_N lines, see ui.inc)
+enum { EX_BIG, EX_KARTW, EX_KCLS, EX_INSANE, EX_STARS, EX_FAR, EX_FORGE, EX_TECH, EX_SHAPE, EX_CHART, EX_MAP, EX_FOLD, EX_COIL };   // (EX_N lines, see ui.inc)
 #define EX_VIS 8                                                        // lines on show at once
-static const char *const ex_name[EX_N]={"HOW BIG IS IT?","KART WORLD","KART CLASSES","INSANE-SECT","STORY STARS","FAR WORLDS","DUNGEON FORGE","TECH CORES","OTHER SHAPES","LONG-RANGE CHART","MAP COMPUTER","FOLD DRIVE"};
+static const char *const ex_name[EX_N]={"HOW BIG IS IT?","KART WORLD","KART CLASSES","INSANE-SECT","STORY STARS","FAR WORLDS","DUNGEON FORGE","TECH CORES","OTHER SHAPES","LONG-RANGE CHART","MAP COMPUTER","FOLD DRIVE","STORMCLOCK COIL"};
 
 static int ex_kart_world(void){ KWSave keep=kw; int u=kw_unlocked(); kw=keep; return u; }       // (the same check as the title screen; it must not disturb the Kart World data in memory)
 static int ex_shapes(void){ int n=0; for(int k=0;k<3;k++) n+=(forms_open>>k)&1; return n; }
@@ -25,6 +25,7 @@ static int ex_info(int i, char *req, char *tag){
     case EX_CHART:  if(ant_king){ scpy(tag,"ON THE GALAXY MAP"); return 1; } scpy(req,"BEAT THE ANT KING FIRST"); return 0;
     case EX_MAP:    if(map_lv>0){ scpy(tag,"MK"); ncat(tag,map_lv); scat(tag," OF 5"); return 1; }
                     scpy(req, ant_king ? "BUY MK1 AT A STATION" : "BEAT THE ANT KING FIRST"); return 0;
+    case EX_COIL:   if(coil_avail()){ scpy(tag,coil_own?"A: QUEST LOG":"LENT BY A CHEAT"); return 1; } scpy(req, coil_quest_done() ? "SHOOT DOWN THE RIGHT ENEMY" : "A: QUEST LOG"); return 0;
     default:        if(fold_lv>0){ scpy(tag,"MK"); ncat(tag,fold_lv); scat(tag," OF 6"); return 1; }
                     if(!ant_king) scpy(req,"BEAT THE ANT KING FIRST"); else if(warp_lv<1) scpy(req,"NEEDS WARP DRIVE MK1 FIRST"); else scpy(req,"BUY MK1 AT A STATION"); return 0;
     }
@@ -45,6 +46,7 @@ static void ex_lines(int i, int open, char *b1, char *b2){
     case EX_SHAPE:  scpy(b1,"SHAPES YOU HAVE BEEN: "); ncat(b1,ex_shapes()); scat(b1," OF 3"); scpy(b2,"SWITCH AT YOUR SHIP: YOUR SHAPE"); break;
     case EX_CHART:  scpy(b1,"SEE FAR PLACES AND FOLD THERE"); scpy(b2,"ON THE GALAXY MAP: START, THEN L"); break;
     case EX_MAP:    scpy(b1,"THE CHART SEES FARTHER AT EACH LEVEL"); scpy(b2,"BUY IT AT A STATION: NAV TAB"); break;
+    case EX_COIL:   scpy(b1,"A SHIP PART: FLIES FASTER THAN LIGHT. VERY RARE"); scpy(b2,"A: THE QUEST LOG (THE STEPS AND THE HINTS)"); break;
     default:        scpy(b1,"FOLD FARTHER OUT AT EACH LEVEL"); scpy(b2,"BUY IT AT A STATION: NAV TAB"); break;
     }
 }
@@ -73,7 +75,7 @@ static void extras_page(volatile u16 *pg, int cur, int *top, const char **foot){
     rect(pg,9,123,222,1,U_RAISE);
     ex_lines(cur,open,b,b2);
     text(pg,10,126,b,C_WHITE,1); text(pg,10,135,b2,open?C_GREEN:U_SOFT,1);
-    *foot = cur==EX_BIG ? (open?"A: OPEN IT":"A: WHAT YOU NEED") : cur==EX_KCLS ? "A: KART CLUB" : cur==EX_INSANE ? (open?"A: OPTIONS":"A: WHAT YOU NEED") : open ? "A: WHERE TO GO" : "A: WHAT YOU NEED";
+    *foot = cur==EX_BIG ? (open?"A: OPEN IT":"A: WHAT YOU NEED") : cur==EX_KCLS ? "A: KART CLUB" : cur==EX_COIL ? "A: QUEST LOG" : cur==EX_INSANE ? (open?"A: OPTIONS":"A: WHAT YOU NEED") : open ? "A: WHERE TO GO" : "A: WHAT YOU NEED";
 }
 // A on line cur. Returns 1 if the pause screen should close (the Kart Club is next, see planet.inc)
 static int extras_press(volatile u16 *pg, int cur){
@@ -81,6 +83,7 @@ static int extras_press(volatile u16 *pg, int cur){
     if(cur==EX_KCLS){                                                  // the Kart Club works from the start: only more classes are locked
         if(scene==0 && !kr_mode){ kart_req=1; return 1; }
         scpy(menu_msg,"THE KART CLUB IS AT YOUR SHIP"); return 0; }
+    if(cur==EX_COIL){ coil_log(pg); oam_hide_all(); oam_flush(); hud_now(); return 0; }
     if(!open){ scpy(m,"LOCKED: "); scat(m,rq); scpy(menu_msg,m); sfx(12); return 0; }
     if(cur==EX_BIG){ oam_hide_all(); oam_flush(); size_screen(pg,0); hud_now(); return 0; }
     if(cur==EX_INSANE){ options_screen(pg); return 0; }

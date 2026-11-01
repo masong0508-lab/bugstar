@@ -1,5 +1,7 @@
 // ================================================================= SOUND: effects and chiptune music on the GBA's sound chip
 #define SND(o) (*(volatile u16*)(0x04000060+(o)))
+static int fx_pw=0;                                              // the speed glitches bend the pitch of the music with this (coil.inc); 0 = normal
+static int fxf(int f){ if(!fx_pw) return f; f+=fx_pw; return f<0?0:f>2047?2047:f; }
 #define REG_IE   (*(volatile u16*)0x04000200)
 #define REG_IF   (*(volatile u16*)0x04000202)
 #define REG_IME  (*(volatile u16*)0x04000208)
@@ -176,9 +178,9 @@ __attribute__((noinline)) static void mus_gen(void){
     }
     if(mn==0 && kd!=1) { /* a held note rings on */ }
     else if(mn==0) SND(0x08)=0;
-    else if(mn>1 && vol>0){ SND(0x08)=(vol<<12)|((kd==1||classic?1:menv[kd%6])<<8)|((kd==1||classic?2:mduty[kd%6])<<6); SND(0x0C)=0x8000|sq_freq[mn&127]; }
+    else if(mn>1 && vol>0){ SND(0x08)=(vol<<12)|((kd==1||classic?1:menv[kd%6])<<8)|((kd==1||classic?2:mduty[kd%6])<<6); SND(0x0C)=0x8000|fxf(sq_freq[mn&127]); }
     if(bn==0 && kd==1) SND(0x12)=0;
-    else if(bn>1 && bcode>0){ SND(0x12)=(bcode<<13); SND(0x14)=0x8000|wv_freq[bn&127]; }
+    else if(bn>1 && bcode>0){ SND(0x12)=(bcode<<13); SND(0x14)=0x8000|fxf(wv_freq[bn&127]); }
     else if(bcode==0) SND(0x12)=0;
     if(!classic && lay){
         // arpeggio layer on channel 1 (steps the sound effects need are left alone)

@@ -15,10 +15,10 @@ static const char *const hg_hull_ds[NHULL]={"A BALANCED ALL-ROUNDER","A WIDE FLA
 static const char *const hg_wing_ds[NWING]={"NO WINGS: SLOW TO TURN","STEADY AND EASY TO FLY","SWEPT BACK: FAST AND SHARP","DELTA: BEST OF THE CLASSIC WINGS","FOUR WINGS: QUICK AND LIGHT","FORWARD SWEPT: QUICKEST TURNS","BENT WINGS: GOOD, SMOOTH TURNS"};
 static const char *const hg_gun_ds[NCANNON]={"NO EXTRA LASER DAMAGE","+2 LASER DAMAGE","+4 LASER DAMAGE FROM THE WINGS","+8 LASER DAMAGE BUT HEAVY","+5 LASER DAMAGE FROM THE NOSE","+3 LASER DAMAGE. A LIGHT TURRET","+9 LASER DAMAGE BUT VERY HEAVY"};
 static const char *const hg_pod_ds[4]={"NO PODS","MISSILE PODS. THEY ONLY LOOK FIERCE","SCOOPS ON THE SIDES. LOOK ONLY","FUEL TANKS: +30 FUEL"};
-static const char *const hg_mod_ds[NMODULE]={"NOTHING EXTRA FITTED","ARMOUR: 15% LESS DAMAGE. HEAVY","CARGO RACK: +10 HOLD","GYRO RING: SHARPER TURNS","TARGET DISH: +3 LASER DAMAGE","BOOSTERS: MORE THRUST"};
+static const char *const hg_mod_ds[NMODULE]={"NOTHING EXTRA FITTED","ARMOUR: 15% LESS DAMAGE. HEAVY","CARGO RACK: +10 HOLD","GYRO RING: SHARPER TURNS","TARGET DISH: +3 LASER DAMAGE","BOOSTERS: MORE THRUST","STORMCLOCK COIL: FASTER THAN LIGHT"};
 static u8 *hg_field(int r, int *m){ *m=3;       // which byte a row changes, and how many choices it has
     switch(r){ case R_HULL: *m=NHULL; return &ship.hull; case R_LEN: return &ship.len; case R_WID: return &ship.wid; case R_NOSE: return &ship.nose; case R_WINGS: *m=NWING; return &ship.wings; case R_WSIZE: return &ship.wsize; case R_WPOS: return &ship.wpos; case R_DIHED: return &ship.dihed;
-        case R_FINS: return &ship.fins; case R_ENG: *m=4; return &ship.engines; case R_ESIZE: return &ship.esize; case R_GUN: *m=NCANNON; return &ship.cannon; case R_PODS: *m=4; return &ship.pods; case R_MODULE: *m=NMODULE; return &shpx.module; case R_TOPPER: *m=NTOPPER; return &shpx.topper;
+        case R_FINS: return &ship.fins; case R_ENG: *m=4; return &ship.engines; case R_ESIZE: return &ship.esize; case R_GUN: *m=NCANNON; return &ship.cannon; case R_PODS: *m=4; return &ship.pods; case R_MODULE: *m=coil_avail()?NMODULE:NMODULE-1; return &shpx.module; case R_TOPPER: *m=NTOPPER; return &shpx.topper;
         case R_COCK: *m=NCOCK; return &ship.cockpit; case R_DECAL: *m=NDECAL; return &ship.decal; case R_SCHEME: *m=NSCHEME; return &shpx.scheme; case R_FINISH: *m=NFINISH; return &shpx.finish; default: break; }
     return 0; }
 static const char *hg_opt(int r){
@@ -72,7 +72,7 @@ static int make_ship(volatile u16 *pg, int first){
         { int sh=!editing && HELD(K_SEL); if(sh && !selp){ selused=0; dirty=1; }
           if(!sh && selp){ dirty=1; if(!selused && !editing){                                                                                                  // a quick tap of SELECT: surprise me
               ship.hull=rndi(NHULL); ship.len=rndi(3); ship.wid=rndi(3); ship.nose=rndi(3); ship.wings=rndi(NWING); ship.wsize=rndi(3); ship.wpos=rndi(3); ship.dihed=rndi(3); ship.engines=rndi(4); ship.esize=rndi(3); ship.fins=rndi(3); ship.cannon=rndi(NCANNON); ship.pods=rndi(4); ship.cockpit=rndi(NCOCK); ship.decal=rndi(NDECAL);
-              shpx.module=rndi(NMODULE); shpx.topper=rndi(NTOPPER); shpx.scheme=rndi(NSCHEME); shpx.finish=rndi(NFINISH);
+              shpx.module=rndi(coil_avail()?NMODULE:NMODULE-1); shpx.topper=rndi(NTOPPER); shpx.scheme=rndi(NSCHEME); shpx.finish=rndi(NFINISH);
               ship.paint=preset_col[rndi(NPRESET)]; ship.trim=preset_col[rndi(NPRESET)]; ship.glow=preset_col[rndi(NPRESET)]; pre=-1; ship_build_model(); sfx(6); } }
           selp=sh; }
         if(editing){

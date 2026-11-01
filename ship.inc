@@ -9,7 +9,7 @@ enum { WG_NONE, WG_STRAIGHT, WG_SWEPT, WG_DELTA, WG_X, WG_FORWARD, WG_GULL, NWIN
 enum { CN_NONE, CN_NOSE, CN_WING, CN_BIG, CN_TWIN, CN_TURRET, CN_QUAD, NCANNON };
 enum { CK_BUBBLE, CK_SLIT, CK_DOME, CK_VISOR, CK_NONE, NCOCK };
 enum { SD_NONE, SD_STRIPE, SD_LINES, SD_SPIKES, SD_CHEVRON, SD_PANELS, SD_TEETH, NDECAL };
-enum { MD_NONE, MD_ARMOUR, MD_RACK, MD_GYRO, MD_DISH, MD_BOOST, NMODULE };
+enum { MD_NONE, MD_ARMOUR, MD_RACK, MD_GYRO, MD_DISH, MD_BOOST, MD_COIL, NMODULE };   // MD_COIL: the STORMCLOCK COIL (coil.inc): only when you own it
 enum { TP_NONE, TP_ANTENNA, TP_MASTS, TP_BEACON, NTOPPER };
 enum { SC_CLASSIC, SC_TWO, SC_INVERT, SC_MONO, NSCHEME };
 enum { FN_GLOSS, FN_MATTE, FN_METAL, FN_PEARL, NFINISH };
@@ -22,7 +22,7 @@ static const char *const cockpit_name[NCOCK]={"BUBBLE","SLIT","DOME","VISOR","NO
 static const char *const len_name[3]={"SHORT","NORMAL","LONG"}, *const wid_name[3]={"SLIM","NORMAL","WIDE"}, *const nose_name[3]={"POINT","BLUNT","FORK"};
 static const char *const wpos_name[3]={"FORWARD","MIDDLE","BACK"}, *const dihed_name[3]={"DOWN","FLAT","UP"}, *const esize_name[3]={"SMALL","NORMAL","HUGE"};
 static const char *const pods_name[4]={"NONE","MISSILE PODS","SCOOPS","FUEL TANKS"}, *const decal_name[NDECAL]={"NONE","RACING STRIPE","GLOW LINES","SPIKES","CHEVRONS","PANELS","SHARK TEETH"};
-static const char *const module_name[NMODULE]={"NONE","ARMOUR PLATES","CARGO RACK","GYRO RING","TARGET DISH","BOOSTERS"}, *const topper_name[NTOPPER]={"NONE","ANTENNA","TWIN MASTS","BEACON"};
+static const char *const module_name[NMODULE]={"NONE","ARMOUR PLATES","CARGO RACK","GYRO RING","TARGET DISH","BOOSTERS","STORMCLOCK COIL"}, *const topper_name[NTOPPER]={"NONE","ANTENNA","TWIN MASTS","BEACON"};
 static const char *const scheme_name[NSCHEME]={"CLASSIC","TWO-TONE","INVERTED","ONE COLOUR"}, *const finish_name[NFINISH]={"GLOSS","MATTE","METAL","PEARL"};
 static void ship_default(void){ scpy(ship.name,"MOTH"); ship.hull=HL_DART; ship.wings=WG_SWEPT; ship.wsize=1; ship.engines=1; ship.fins=1; ship.cannon=1; ship.cockpit=0; ship.paint=rgb15(150,156,176); ship.trim=rgb15(232,80,72);
     ship.len=1; ship.wid=1; ship.nose=0; ship.wpos=1; ship.dihed=1; ship.esize=1; ship.pods=0; ship.decal=0; ship.glow=rgb15(110,200,255); shpx.scheme=shpx.finish=shpx.module=shpx.topper=0; }
@@ -34,7 +34,7 @@ static int ship_turn(void){ static const u8 w[NWING]={75,100,115,130,120,138,108
 static int ship_damp(void){ return ship.fins==0 ? 3 : ship.fins==1 ? 4 : 6; }                                  // how fast turning settles
 static int ship_gun(void){ static const u8 g[NCANNON]={0,2,4,8,5,3,9}; return g[ship.cannon%NCANNON] + (shpx.module==MD_DISH ? 3 : 0) + sp_n[1]*2; }                           // extra laser damage
 static int ship_hold_bonus(void){ static const u8 h[NHULL]={0,4,8,0,0,2,10,6}; return h[ship.hull%NHULL] + ship.len*2 + ship.wid*2 + (shpx.module==MD_RACK ? 10 : 0); }
-static int ship_mass(void){ static const u8 hm[NHULL]={10,11,16,9,7,8,15,13}, cm[NCANNON]={0,1,2,3,2,2,5}, mm[NMODULE]={0,4,2,3,1,3}; return hm[ship.hull%NHULL] + ship.len*2 + ship.wid*2 + (ship.wings?1+ship.wsize:0) + (ship.engines+1)*(1+ship.esize) + cm[ship.cannon%NCANNON] + (ship.pods?2:0) + mm[shpx.module%NMODULE]; }
+static int ship_mass(void){ static const u8 hm[NHULL]={10,11,16,9,7,8,15,13}, cm[NCANNON]={0,1,2,3,2,2,5}, mm[NMODULE]={0,4,2,3,1,3,2}; return hm[ship.hull%NHULL] + ship.len*2 + ship.wid*2 + (ship.wings?1+ship.wsize:0) + (ship.engines+1)*(1+ship.esize) + cm[ship.cannon%NCANNON] + (ship.pods?2:0) + mm[shpx.module%NMODULE]; }
 static int ship_thrust(void){ static const u8 es[3]={7,10,14}; return (ship.engines+1)*es[ship.esize] + (shpx.module==MD_BOOST ? 8 : 0) + sp_n[0]*4; }
 static int ship_fuel_bonus(void){ return (ship.pods==3 ? 30 : 0) + (ship.hull==HL_CAPSULE ? 20 : 0); }                         // fuel tanks and the capsule's big belly: a bigger tank
 static int ship_accel16(void){ int a=ship_thrust()*24/ship_mass(); if(a<4) a=4; if(a>96) a=96; return a; }        // per-frame push, in 1/16
@@ -139,7 +139,7 @@ static void ship_build_model(void){
       if(ship.decal==SD_LINES){ for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*hw,2,nose-15), b=sv_add(sx*hw,2,tail+6); se_add(a,b,6); } } }
     if(shpx.module==MD_ARMOUR && room(16,12)){ int ph=hh*2/3; if(ph<5) ph=5; for(int sx=-1;sx<=1;sx+=2) sbox(sx*(hw+3),0,tail+LX(34),3,ph,LX(14),1); }                      // armour plates on both flanks
     else if(shpx.module==MD_RACK && room(8,6)){ sbox(0,hh+2,tail+LX(34),WX(11),3,LX(15),1); }                                                                         // a cargo rack on the back
-    else if(shpx.module==MD_GYRO && room(20,8)){ int Ro=(hw>hh?hw:hh)+12; if(Ro>64) Ro=64; int Ri=Ro-5, o=snv; for(int k=0;k<8;k++){ int a=k*32; sv_add((cosx(a)*Ro)>>14,(sinx(a)*Ro)>>14,LX(-8)); }
+    else if((shpx.module==MD_GYRO||shpx.module==MD_COIL) && room(20,8)){ int Ro=(hw>hh?hw:hh)+(shpx.module==MD_COIL?18:12); if(Ro>64) Ro=64; int Ri=Ro-5, o=snv; for(int k=0;k<8;k++){ int a=k*32; sv_add((cosx(a)*Ro)>>14,(sinx(a)*Ro)>>14,LX(-8)); }
         int in=snv; for(int k=0;k<8;k++){ int a=k*32; sv_add((cosx(a)*Ri)>>14,(sinx(a)*Ri)>>14,LX(-8)); } for(int k=0;k<8;k++) QUAD(2,1,o+k,o+((k+1)&7),in+((k+1)&7),in+k);
         for(int sx=-1;sx<=1;sx+=2){ int a=sv_add(sx*(hw>Ri-2?Ri-2:hw),0,LX(-8)), b=sv_add(sx*Ri,0,LX(-8)); se_add(a,b,5); } }                                  // a glowing gyro ring round the hull
     else if(shpx.module==MD_DISH && room(10,1)){ int cz=LX(-10), cy=hh+12, v[6]; int a0=sv_add(0,hh,cz), a1=sv_add(0,cy,cz); se_add(a0,a1,5);

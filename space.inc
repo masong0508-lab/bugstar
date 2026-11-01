@@ -358,8 +358,9 @@ static void ship_dies(Pirate *p, int by_you){
     p->alive=0; boom(p->x,p->y,p->z,24,50);
     if(p->team==0){ if(wing_n>0) wing_n--; space_say("WINGMAN DOWN! HIRE MORE AT A STATION"); sfx(4); return; }
     int g = by_you ? 30+space_danger()*15 : 10+space_danger()*5; gold+=g; if(by_you) gain_xp(10+space_danger()*3); else gain_xp(3+space_danger());
+    if(by_you && battle_on) coil_try_drop();
     if(battle_on) battle_kills++;
-    if(battle_on && team_count(1)==0){ battle_on=0; int bonus=100+battle_kills*(20+space_danger()*4); gold+=bonus; fame+=10+battle_kills; char b[40]; scpy(b,"BATTLE WON! BONUS +"); ncat(b,bonus); scat(b,"G"); space_say(b); sfx(6); return; }
+    if(battle_on && team_count(1)==0){ battle_on=0; coil_win(); int bonus=100+battle_kills*(20+space_danger()*4); gold+=bonus; fame+=10+battle_kills; char b[40]; scpy(b,"BATTLE WON! BONUS +"); ncat(b,bonus); scat(b,"G"); space_say(b); sfx(6); return; }
     if(by_you){ char b[32]; scpy(b,"ENEMY DOWN! +"); ncat(b,g); scat(b,"G"); space_say(b); }
     else if(lr(2)==0){ static const char *const wq[6]={"WINGMAN: GOT ONE!","WINGMAN: SPLASH ONE!","WINGMAN: THAT ONE WAS RUDE.","WINGMAN: FOR THE BUG!","WINGMAN: TOO EASY.","WINGMAN: DID YOU SEE THAT?"}; space_say(wq[lr(6)]); }
     if(lr(3)==0) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].good=255; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; }
@@ -636,6 +637,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
       if(best>=0){ s32 az=rz>200?rz:200; if(rz<200) keys|=K_RIGHT; else { if(rx*8>az) keys|=K_RIGHT; else if(rx*8<-az) keys|=K_LEFT; if(ry*8>az) keys|=K_DOWN; else if(ry*8<-az) keys|=K_UP; }          // (DOWN lifts the nose)
           if(rz>200 && rx*5<az && rx*5>-az && ry*5<az && ry*5>-az) keys|=K_A; if(rz>(in_lair?6000:2500)) keys|=K_B; } }
 #endif
+    coil_sel_eaten=0; coil_ctl();                                                   // the STORMCLOCK COIL (coil2.inc): engage, drop out, ramp
     // steer, throttle
     // the ship has weight: turning ramps up and settles, it banks into turns, and it drifts before the engines catch up
     // ---- flight: real momentum. engines push along the nose, mass resists, fins settle the turn, wings bite in air
@@ -657,10 +659,10 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
           svx_ -= svx_/48; svy_ -= svy_/48; svz_ -= svz_/48; }
       else { svx_ -= svx_/512; svy_ -= svy_/512; svz_ -= svz_/512; if(!HELD(K_B)&&!HELD(K_R)){ int g=ship.fins+1; s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
           svx_ += ((((bf[0]*sp3)>>14) - svx_)*g)>>9; svy_ += ((((bf[1]*sp3)>>14) - svy_)*g)>>9; svz_ += ((((bf[2]*sp3)>>14) - svz_)*g)>>9; } }
-      s32 vmax = ship_top_speed()*3*(burn?5:4)/4; s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
+      s32 vmax = coil_vmax(ship_top_speed()*3*(burn?5:4)/4); s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
       if(sp3>vmax){ svx_=svx_*vmax/sp3; svy_=svy_*vmax/sp3; svz_=svz_*vmax/sp3; sp3=vmax; }
       speed = sp3/3; }
-    shx+=svx_; shy+=svy_; shz+=svz_;
+    shx+=svx_; shy+=svy_; shz+=svz_; coil_bounds();
     if(crash_cd) crash_cd--; if(sshake) sshake--;
     pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
     { s32 lim = in_lair ? 2400 : PR+300;                       // the planet's air, or the beast's hull: you bounce off
@@ -702,7 +704,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     if(++sh_regen>=20){ sh_regen=0; if(shield<shield_max()) shield++; }
     if(lair_out){ lair_out=0; lair_leave(); return 0; }
     if(ambush_t && !in_lair && --ambush_t==0){ hyperspace(); lair_enter(); return 0; }
-    if(HIT(K_SEL)){ if(in_lair){ lair_leave(); return 0; } return 2; }
+    if(HIT(K_SEL) && !coil_sel_eaten){ if(in_lair){ lair_leave(); return 0; } return 2; }
     if(HIT(K_START)){ chase_cam^=1; char b[40]; scpy(b, chase_cam?"CHASE VIEW. ":"COCKPIT VIEW. "); int n=0; for(int i=0;i<8;i++) n+=cargo[i]; scat(b,"CARGO "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); space_say(b); }
     // A: land, dock, or fire
     if(laser_cool) laser_cool--;
@@ -884,7 +886,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
 
 // ---------------------------------------------------------------- hyperspace
 static void hyperspace(void){
-    sfx(3);
+    coil_fx_end(); sfx(3);
     for(int f=0;f<70;f++){
         volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
         for(int i=0;i<120*128;i++) pg[i]=0;
@@ -919,6 +921,7 @@ static void digits_named(char *out, const char *d, int k){          // the first
 static void tv_log(const u32 *t10, u32 hours){ big_add(tv_ly,t10,LYW); tv_trips++; tv_hours = tv_hours+hours<tv_hours ? 0xFFFFFFFFu : tv_hours+hours; if(big_cmp(t10,tv_best)>0) for(int i=0;i<LYW;i++) tv_best[i]=t10[i]; }
 EW static s16 vsa[40], vsr[40], vsv[40];                              // the streaking stars of a voyage (the fold drive's voyage uses them too)
 static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, int kind){   // kind: 0 a star in this cluster, 1 the next cluster, 2 a warp, 3 into the beast's lair, 4 out of it, 5 to another universe
+    coil_fx_end(); hours=coil_hours(hours,t10);
     char tot[40], ds[144]; ly_fmt(tot,t10); int n; { u32 t[LYW]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); n=big_dec(ds,t); }
     int big = n>6, T = kind==0 ? 110+(int)((t10[1]||t10[0]>2400?2400:t10[0])/20) : (kind==3||kind==4) ? 120 : 170+n*7; if(T>400) T=400;   // how long it takes, in 60ths: longer trips take longer
     tv_log(t10,hours);

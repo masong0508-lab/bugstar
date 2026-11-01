@@ -654,7 +654,7 @@ static void sys_action(volatile u16 *pg, int cur){
 }
 
 static void map_page(volatile u16 *pg); static void size_screen(volatile u16 *pg, int from_title); static int big_unlocked(void);
-#define EX_N 12                                                  // lines on the EXTRAS page (extras.inc)
+#define EX_N 13                                                  // lines on the EXTRAS page (extras.inc)
 static void extras_page(volatile u16 *pg, int cur, int *top, const char **foot); static int extras_press(volatile u16 *pg, int cur);
 // ---------------------------------------------------------------- the pause screen: nine pages with picture tabs, your bug in a frame, where you are, what you have done
 static void world_page(volatile u16 *pg, int y); static void relic_shelf(volatile u16 *pg, int y); static int fav_add_here(void); static int me_oam(int slot, int cx, int feet, int frame);

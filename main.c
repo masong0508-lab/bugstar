@@ -217,7 +217,7 @@ enum { XO_DMGIN, XO_DMGOUT, XO_CRIT, XO_BITESPD, XO_BITERNG, XO_KNOCK, XO_HITSTO
        XO_HUNGER, XO_REGEN, XO_HEAL, XO_MANA, XO_MAXH, XO_FUEL,
        XO_MOVE, XO_DODGEI, XO_DODGED, XO_FLOORS,
        XO_XP, XO_GOLD, XO_DROPS, XO_UNIQUE, XO_XPNEED,
-       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, XO_GFX, XO_RUMBLE, XO_RUMEV, XO_RUMHUM, XO_MUSVAR, XO_MUSL, XO_MUSBAL, NXOPT };
+       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, XO_GFX, XO_RUMBLE, XO_RUMEV, XO_RUMHUM, XO_MUSVAR, XO_MUSL, XO_MUSBAL, XO_FSAFE, XO_GLITCH, NXOPT };
 XL(xl_dmgin,"NONE","1/4","1/2","NORMAL","X2","X4","X10")           XV(xl_dmgin,0,25,50,100,200,400,1000)
 XL(xl_dmgout,"1/4","1/2","NORMAL","X2","X5","X10","X100","X1000")  XV(xl_dmgout,25,50,100,200,500,1000,10000,100000)
 XL(xl_crit,"NORMAL","+10%","+25%","+50%","ALWAYS")                   XV(xl_crit,0,10,25,50,100)
@@ -236,6 +236,7 @@ XL(xl_musv,"CLASSIC LOOP","DYNAMIC")                                XV(xl_musv,0
 XL(xl_musl,"NONE","DRUMS","ARPEGGIOS","DRUMS+ARP","AMBIENCE","DRUMS+AMB","ARP+AMB","ALL")   XV(xl_musl,0,1,2,3,4,5,6,7)
 XL(xl_musb,"BALANCED","MELODY UP","BASS UP")                       XV(xl_musb,0,1,2)
 XL(xl_yn,"OFF","ON")                                                XV(xl_yn,0,1)
+XL(xl_gl,"ON","OFF")                                                XV(xl_gl,0,1)
 XL(xl_espd,"FROZEN","1/2","3/4","NORMAL","X1.5","X2","X3")          XV(xl_espd,0,50,75,100,150,200,300)
 XL(xl_bud,"ALL","NONE","1","2","3","5","7")                    XV(xl_bud,9,0,1,2,3,5,7)
 XL(xl_ehp,"1/4","1/2","NORMAL","X2","X5","X10")                     XV(xl_ehp,25,50,100,200,500,1000)
@@ -303,6 +304,8 @@ static const XOpt XOT[NXOPT]={
   [XO_MUSVAR] =XR("MUSIC STYLE","DYNAMIC: NEW VERSES, CHORUSES AND KEYS FROM EACH WORLD. CLASSIC: THE OLD SHORT LOOPS",xl_musv,1,XG_EXTRA),
   [XO_MUSL]   =XR("MUSIC LAYERS","EXTRA PARTS THAT JOIN IN: DRUMS IN FIGHTS, ARPEGGIOS, RAIN AND CAVE DRIPS",xl_musl,7,XG_EXTRA),
   [XO_MUSBAL] =XR("MUSIC MIX","BALANCE BETWEEN THE MELODY AND THE BASS",xl_musb,0,XG_EXTRA),
+  [XO_FSAFE]  =XR("FLASH-SAFE MODE","SPEED GLITCHES WITHOUT STROBING, NOISE OR FAST COLOUR FLASHES. SMALLER SHAKES. TURN IT ON IF FLASHING LIGHTS BOTHER YOU",xl_yn,0,XG_EXTRA),
+  [XO_GLITCH] =XR("SPEED GLITCHES","THE SCREEN GLITCHES OF THE STORMCLOCK COIL AND THE SPEED CHEATS. OFF: THE SPEED READOUT STAYS, THE GLITCHES GO",xl_gl,0,XG_EXTRA),
   [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),
 };
 _Static_assert(NXOPT<=NXO, "the extra options must fit the NXO bytes");
@@ -334,6 +337,7 @@ static int xo_fuel(int n){ return (n*xo_v(XO_FUEL)+99)/100; }
 static void ore_reset(void); static void ore_save(void); static void ore_load(void);   // (ore.inc, after save.inc)
 #include "game.inc"
 #include "ship.inc"
+#include "coil.inc"
 #include "save.inc"
 #include "ore.inc"
 static void title_restore(volatile u16 *pg, int y0, int y1); static void twinkle(volatile u16 *pg, int t);
@@ -358,6 +362,7 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 #include "sizes.inc"
 #include "deep.inc"
 #include "extras.inc"
+#include "coil2.inc"
 #include "debug.inc"
 #ifdef TEST_LAUNCH
 #include "film.inc"
@@ -1429,8 +1434,10 @@ static void run_game(void){
         if(sys_req){ int rq=sys_req; sys_req=0; if(rq==2) return; start_game(1); continue; }
         rng_s += keys;
         if(scene!=1) pet_away_tick();
+        coil_tick();                                                                         // (the Stormclock Coil quest, coil2.inc)
         if(scene==2){
             int r=space_frame();
+            if(r==0) coil_fx_post((volatile u16*)(0x06000000 + (page_back?0xA000:0))); else coil_fx_end();
             vsync();
             REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1;
             if(r==2) galaxy_map();

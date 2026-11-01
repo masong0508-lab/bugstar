@@ -3,6 +3,7 @@
 static s64 maxh=30; static int zone=0, zone_cleared=0, food=100, bugs_freed=0, scene=0;
 static s64 level, xp;
 static void ach_check(void);
+static void coil_reset(void);
 static void scpy(char *d, const char *s); static void scat(char *d, const char *s); static void gain_xp(int n); static s64 xp_next(void);
 static void hud_now(void); static void say(const char *s); static void show_msg(const char *s); static void sfx(int n);
 static int have_bug[6];
@@ -666,7 +667,7 @@ static void ach_check(void){
     for(int i=0;i<NACH;i++) if(!(ach_done>>i&1) && ach_have(i)>=ach[i].goal){ ach_done|=1u<<i; gold+=ach[i].gold; fame+=ach[i].fame;
         char b[40]; scpy(b,"FEAT: "); scat(b,ach[i].name); scat(b," +"); ncat(b,ach[i].gold); scat(b,"G"); say(b); sfx(6); hud_now(); }
 }
-static void new_game(void){ ore_reset();
+static void new_game(void){ ore_reset(); coil_reset();
     for(int i=0;i<12;i++) tiers[i]=0; for(int i=0;i<11;i++) st_kills[i]=0; st_fish=st_barrels=st_mined=st_dodges=st_planets=st_uniq=st_tiers=st_floors=0; ach_done=0; pet_xp=0; pet_lv=0; base_mask=0; data_cores=0; outposts_done=0; base_mode=0;
     shuffle(berry_map,8); shuffle(seed_map,6);
     for(int i=0;i<8;i++) berry_known[i]=0; for(int i=0;i<6;i++) seed_known[i]=0;

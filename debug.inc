@@ -60,7 +60,7 @@ static void dbg_start2(void){                                  // ...and the tar
 // ---------------------------------------------------------------- live cheats: the flags the game reads (declared in main.c), applied once a frame
 #define DBG_GOLD_FLOOR 1000000000LL
 static const char *const dbg_spd_nm[5]={"NORMAL","+50%","+100%","+200%","+400%"}; static const u16 dbg_spd_v[5]={0,50,100,200,400};
-static int dbg_ncheats(void){ return (dbg_god||xo_i(XO_GOD))+dbg_mp+dbg_food+dbg_gold+dbg_fuel+dbg_ohk+dbg_noclip+(dbg_spd>0); }
+static int dbg_ncheats(void){ return (dbg_god||xo_i(XO_GOD))+dbg_mp+dbg_food+dbg_gold+dbg_fuel+dbg_ohk+dbg_noclip+(dbg_spd>0)+(dbg_coil>0)+(dbg_sm>0)+dbg_force+dbg_qdone; }
 static void dbg_hex(char *b, u32 v){ int n=textlen(b); for(int i=7;i>=0;i--){ int x=(v>>(i*4))&15; b[n++]=(char)(x<10?'0'+x:'A'+x-10); } b[n]=0; }
 static void dbg_overlay(void){                                 // INFO > OVERLAY: a line along the bottom of the picture
     if(!dbg_info) return; char b[56]; b[0]=0; volatile u16 *pg=VISPG;
@@ -79,7 +79,7 @@ static void dbg_tick(void){                                    // every frame of
     if(dbg_fuel){ fuel=fuel_max(); hull=100; shield=shield_max(); }
     dbg_overlay();
 }
-static void dbg_all_off(void){ dbg_god=dbg_mp=dbg_food=dbg_gold=dbg_fuel=dbg_ohk=dbg_noclip=dbg_spd=0; dbg.spdi=0; dbg_info=0; }
+static void dbg_all_off(void){ dbg_god=dbg_mp=dbg_food=dbg_gold=dbg_fuel=dbg_ohk=dbg_noclip=dbg_spd=0; dbg.spdi=0; dbg_info=0; dbg_sm=dbg_sshow=dbg_force=dbg_qdone=0; if(dbg_coil){ dbg_coil=0; if(!coil_own && shpx.module==MD_COIL){ shpx.module=0; ship_build_model(); coil_cur=0; coil_tier=0; } } }
 
 // ---------------------------------------------------------------- the menu: pages, rows, what each row shows and does
 enum { DPG_GAME, DPG_CHEAT, DPG_ITEMS, DPG_WORLD, DPG_SHIP, DPG_GO, DPG_INFO, DPG_TOOLS, NDPG };
@@ -88,7 +88,7 @@ enum { DR_NEW, DR_CONT, DR_UNLOCK, DR_SLOT, DR_SAVENOW, DR_UNLOCKALL, DR_DIFF, D
        DR_GOD, DR_INFMP, DR_NOFOOD, DR_INFGOLD, DR_INFFUEL, DR_OHK, DR_NOCLIP, DR_SPEED, DR_ALLOFF, DR_HEAL, DR_LEVEL, DR_ADDGOLD, DR_ADDXP, DR_STATS, DR_POINTS,
        DR_GKIND, DR_GRAR, DR_GLVL, DR_GIVE, DR_GIVE5, DR_GIVEUQ, DR_CONS, DR_GIVEC, DR_CLEARBAG, DR_SPELLS, DR_BUDDIES, DR_RELICS, DR_TOOLS, DR_CORES, DR_SCRAP, DR_ORE,
        DR_HOUR, DR_WEATHER, DR_CLASS, DR_WEIRD, DR_WLV, DR_KILLALL, DR_KILLBOSS, DR_REVEAL, DR_STAIRS,
-       DR_FUEL, DR_REPAIR, DR_FTANK, DR_WARP, DR_FOLD, DR_MAPC, DR_LASER, DR_SHIELD, DR_HOLD, DR_WING, DR_TECH,
+       DR_COIL, DR_SPDX, DR_SSHOW, DR_FORCE, DR_QDONE, DR_FUZZ, DR_FUEL, DR_REPAIR, DR_FTANK, DR_WARP, DR_FOLD, DR_MAPC, DR_LASER, DR_SHIELD, DR_HOLD, DR_WING, DR_TECH,
        DR_ZONE, DR_FLOOR, DR_GOPLANET, DR_GOFLOOR, DR_GOBOSS, DR_GOSPACE, DR_FLEET, DR_GOFLEET, DR_BEAST, DR_GOBEAST, DR_GOFAR, DR_GOMAP, DR_KART, DR_LAPS, DR_GOKART, DR_GOKW, DR_GARAGE, DR_CREDITS,
        DR_INFO, DR_FPS, DR_HUD, DR_REPORT,
        DR_BUG, DR_MIRROR, DR_HANGAR, DR_SIZE, DR_MUS, DR_SFX, DR_QUIET, NDR };
@@ -149,6 +149,12 @@ static const DRow dm_row[NDR]={
  [DR_KILLBOSS]={DPG_WORLD,DL,'A',"KILL THE BOSS","THE BOSS ON THIS FLOOR DIES, THE STORY MOVES ON"},
  [DR_REVEAL]={DPG_WORLD,DL,'A',"REVEAL THE FLOOR MAP","THE WHOLE FLOOR GOES ON YOUR MAP"},
  [DR_STAIRS]={DPG_WORLD,DL,'A',"TELEPORT TO THE STAIRS","STAND ON THE STAIRS YOU ARE LOOKING FOR. PRESS A THERE"},
+ [DR_COIL]={DPG_SHIP,DL,'V',"CHEAT: STORMCLOCK COIL","LEND YOURSELF THE COIL FOR THIS SESSION ONLY. FIT IT AT THE HANGAR. NEVER SAVED"},
+ [DR_SPDX]={DPG_SHIP,DB,'V',"CHEAT: SHIP SPEED","MULTIPLIES YOUR SPEED, WITH OR WITHOUT THE COIL: X2 TO X1 MILLION (PAST THE COIL'S LIMIT). MARKED CHEAT"},
+ [DR_SSHOW]={DPG_SHIP,DB,'V',"CHEAT: SPEED READOUT","SHOW YOUR SPEED AS TIMES THE SPEED OF LIGHT, WITH TRAVEL TIMES"},
+ [DR_FORCE]={DPG_SHIP,DL,'V',"CHEAT: FORCE THE RARE ROLL","THE COIL DROP IS CERTAIN, BUT STILL ONLY WHEN THE QUEST IS DONE AND ALL SIX CONDITIONS HOLD"},
+ [DR_QDONE]={DPG_SHIP,DL,'V',"CHEAT: QUEST DONE","COUNT THE COIL QUEST AS DONE FOR THIS SESSION. NEVER SAVED"},
+ [DR_FUZZ]={DPG_SHIP,DL,'A',"TEST: GLITCH FUZZ","FLY ON RANDOM KEYS THROUGH EVERY SPEED TIER. ONLY IN SPACE"},
  [DR_FUEL]={DPG_SHIP,DL,'A',"REFUEL","FUEL TO THE TOP"},
  [DR_REPAIR]={DPG_SHIP,DL,'A',"REPAIR THE SHIP","HULL AND SHIELD TO FULL"},
  [DR_FTANK]={DPG_SHIP,DL,'V',"FUEL TANK","SHIPYARD LEVEL, 0 TO 8"},
@@ -194,6 +200,7 @@ static int dm_wrap(int v, int d, int lo, int hi){ v+=d; if(v<lo) return hi; if(v
 static int dm_saveable(void){ return !(scene==2 || (scene==1 && (forge_on || base_mode))); }
 static const char *dm_need(int id){                            // why a row cannot be used right now (0 = it can)
     switch(id){
+    case DR_FUZZ: return scene==2 ? 0 : "ONLY IN SPACE";
     case DR_KILLALL: case DR_KILLBOSS: case DR_REVEAL: case DR_STAIRS: return scene==1 ? 0 : "ONLY DOWN IN A DUNGEON";
     case DR_GOFLOOR: case DR_GOBOSS: case DR_GOSPACE: return dbg_live_ctx && scene!=0 ? "ONLY ON A PLANET" : 0;
     case DR_SAVENOW: return dm_saveable() ? 0 : "YOU CAN'T SAVE HERE. TRY ON A PLANET";
@@ -225,6 +232,7 @@ static int dm_val(int id, char *b){
     case DR_GOD: on=dbg_god; break;   case DR_INFMP: on=dbg_mp; break;   case DR_NOFOOD: on=dbg_food; break;   case DR_INFGOLD: on=dbg_gold; break;
     case DR_INFFUEL: on=dbg_fuel; break;   case DR_OHK: on=dbg_ohk; break;   case DR_NOCLIP: on=dbg_noclip; break;
     case DR_SPEED: scpy(b,dbg_spd_nm[dbg.spdi]); return dbg.spdi?C_GREEN:C_GREY;
+    case DR_COIL: on=dbg_coil; break;   case DR_SPDX: scpy(b,dbg_sm_nm[dbg_sm]); return dbg_sm?C_GOLD:C_GREY;   case DR_SSHOW: on=dbg_sshow; break;   case DR_FORCE: on=dbg_force; break;   case DR_QDONE: on=dbg_qdone; break;
     case DR_LEVEL: ncat(b,level); return C_GOLD;
     case DR_ADDGOLD: scpy(b,dbg_ga_nm[dbg.ga]); return C_GOLD;   case DR_ADDXP: scpy(b,dbg_xa_nm[dbg.xa]); return C_GOLD;
     case DR_GKIND: scpy(b,dbg_gk_nm[dbg.gk]); return C_GOLD;   case DR_GRAR: scpy(b,dbg_gr_nm[dbg.gr]); return C_GOLD;   case DR_GLVL: ncat(b,dbg.gl); return C_GOLD;
@@ -254,6 +262,8 @@ static void dm_change(int id, int dd, int mul){
     case DR_GOD: dbg_god^=1; break;   case DR_INFMP: dbg_mp^=1; break;   case DR_NOFOOD: dbg_food^=1; break;   case DR_INFGOLD: dbg_gold^=1; break;
     case DR_INFFUEL: dbg_fuel^=1; break;   case DR_OHK: dbg_ohk^=1; break;   case DR_NOCLIP: dbg_noclip^=1; break;
     case DR_SPEED: dbg.spdi=(dbg.spdi+dd+5)%5; dbg_spd=dbg_spd_v[dbg.spdi]; break;
+    case DR_COIL: dbg_coil^=1; if(dbg_coil){ shpx.module=MD_COIL; ship_build_model(); } else if(!coil_own && shpx.module==MD_COIL){ shpx.module=0; ship_build_model(); coil_cur=0; coil_tier=0; } break;
+    case DR_SPDX: dbg_sm=(dbg_sm+dd+6)%6; break;   case DR_SSHOW: dbg_sshow^=1; break;   case DR_FORCE: dbg_force^=1; break;   case DR_QDONE: dbg_qdone^=1; break;
     case DR_LEVEL: { s64 nl=level+(s64)dd*mul; if(nl<1) nl=1; if(nl>99999) nl=99999; if(nl>level) stat_pts=sadd(stat_pts,(nl-level)*5);
         level=nl; xp=0; recalc(); hearts=maxh; mp=maxmp; hud_now(); } break;
     case DR_ADDGOLD: dbg.ga=(dbg.ga+dd+6)%6; break;   case DR_ADDXP: dbg.xa=(dbg.xa+dd+5)%5; break;
@@ -288,6 +298,7 @@ static int dm_act(volatile u16 *vis, int id, int live, char *note){
     case DR_SAVENOW: do_save(); scpy(note,"SAVED TO SLOT "); ncat(note,cur_slot+1); break;
     case DR_UNLOCKALL: dbg_unlock_game(); dbg_unlock_modes(); hud_now(); scpy(note,"EVERYTHING IS OPEN. SAVE NOW TO KEEP IT"); break;
     case DR_ALLOFF: dbg_all_off(); scpy(note,"ALL CHEATS OFF"); break;
+    case DR_FUZZ: { int n=coil_fuzz(500); scpy(note,"FUZZ OK: "); ncat(note,n); scat(note," FRAMES"); } break;
     case DR_HEAL: recalc(); hearts=maxh; mp=maxmp; food=100; pet_hp=pet_maxhp; hud_now(); scpy(note,"FULLY RESTORED"); break;
     case DR_ADDGOLD: gold=sadd(gold,dbg_ga_v[dbg.ga]); hud_now(); scpy(note,"GOLD: "); ncat(note,gold); break;
     case DR_ADDXP: gain_xp(dbg_xa_v[dbg.xa]); scpy(note,"LEVEL "); ncat(note,level); break;
