@@ -14,4 +14,6 @@ void pc_render(uint8_t *rgb);                       // 240x160 RGB of what the s
 int  pc_write_ppm(const char *path, int scale);     // the same, scaled up with sharp pixels
 uint64_t pc_hash_screen(void);
 uint64_t pc_hash_sram(void);
+extern int pc_time_pct;              // game speed in percent (100 = normal)
+const char *pc_sav_path(void);       // the save file path, or NULL
 #endif

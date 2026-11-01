@@ -62,6 +62,8 @@ static int save_write(const char *path){            // write to a temp file, the
     return 1;
 }
 void pc_set_save_path(const char *path){ g_sav=path; }
+int pc_time_pct=100;                                    // the game speed in percent (UNIVERSE LAWS: GAME SPEED); only the window front end paces by it
+const char *pc_sav_path(void){ return g_sav; }          // the save file, for the files kept beside it (laws, recipes)
 void pc_save_flush(int force){
     if(!g_sav) return;
     uint64_t h=pc_hash_sram();

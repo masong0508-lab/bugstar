@@ -103,6 +103,7 @@ typedef struct {                       // what the game does to the planet (ever
     int water_pct;                     // water level multiplier in percent for new_planet (100 = keep)
     int aurora, meteor, badair;        // levels of the game's AURORA, METEORS and BAD AIR traits (0 = keep what the world has)
     int hunger_pct;                    // hunger speed in percent (100 = as is)
+    int day_pct;                       // how fast the sky turns in percent (100 = as is): a long day turns the sun slowly
     int danger_add;                    // levels added to the world's danger
     int node_add[4];                   // extra resource nodes: tree, rock, web, flower
 } LwApply;

@@ -232,7 +232,7 @@ void lw_eval(const LawSet *s, const LwEnv *e, LwResult *r){
 static int roundi(double x){ return (int)(x < 0 ? x - 0.5 : x + 0.5); }
 static int ci(int v, int lo, int hi){ return v < lo ? lo : v > hi ? hi : v; }
 void lw_apply(const LawSet *s, const LwEnv *e, LwApply *a){
-    memset(a, 0, sizeof *a); a->tw = 128; a->psz = e->psz; a->grav = e->grav; a->hunger_pct = 100; a->water_pct = 100;
+    memset(a, 0, sizeof *a); a->tw = 128; a->psz = e->psz; a->grav = e->grav; a->hunger_pct = 100; a->water_pct = 100; a->day_pct = 100;
     a->hour = a->weather = a->snow = a->sand = a->cls = a->city = a->ruins = a->fauna = a->beetles = a->rough = a->hs = a->mood = a->snowl = -1;
     int ps = e->psz < 0 ? 0 : e->psz > 5 ? 5 : e->psz; a->k16 = 16 * (int[]){ 12, 7, 4, 3, 2, 1 }[ps];
     if(lw_is_default(s)) return;
@@ -255,6 +255,7 @@ void lw_apply(const LawSet *s, const LwEnv *e, LwApply *a){
     if(grel > 1.4) a->slow = ci(roundi(lw_lg2(grel / 1.4) * 768.0), 0, 0x1000);
     if(grel < 0.2) a->zerog = ci(1 + (int)(lw_lg2(0.2 / (grel + 1e-30)) * 0.8), 1, 8);
     a->changed = a->size_q != 0 || a->grav != e->grav || a->slow || a->zerog;
+    { double d0 = f[LO_P_DAY], d1 = c[LO_P_DAY]; if(d0 > 0 && d1 > 0){ a->day_pct = ci(roundi(100.0 * lw_pw2(0.6 * lw_lg2(d0 / d1))), 5, 1500); if(a->day_pct != 100) a->changed = 1; } }
     if(e->story) return;
     // ---- the rest follows only on the endless galaxy's planets
     double Tc = c[LO_P_TEMP], Tr = f[LO_P_TEMP], lc = c[LO_P_LIFE], lr0 = f[LO_P_LIFE] > 1e-6 ? f[LO_P_LIFE] : 1e-6;

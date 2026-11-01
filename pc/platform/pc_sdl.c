@@ -376,7 +376,7 @@ void plat_frame(void){
     if(g_fast ? (fr&15)==0 : (!late || (fr&7)==0)) present_game(1);
     fps_n++; if(now-fps_t0>=t_freq){ fps_show=fps_n*(double)t_freq/(now-fps_t0); fps_n=0; fps_t0=now; }
     // ---- pace: the game steps at exactly 60 a second, whatever the screen's refresh rate is
-    t_next += t_freq/60;
+    { extern int pc_time_pct; int tp = pc_time_pct < 10 ? 10 : pc_time_pct > 2000 ? 2000 : pc_time_pct; t_next += tp == 100 ? t_freq/60 : t_freq*100/(60*(uint64_t)tp); }   // (the UNIVERSE LAWS' GAME SPEED)
     now=SDL_GetPerformanceCounter();
     if(now > t_next + t_freq/8) t_next = now;                  // way behind (the window was dragged, a long load): do not try to catch up
     else if(!g_fast) wait_until(t_next);
