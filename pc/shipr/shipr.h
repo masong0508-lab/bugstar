@@ -28,6 +28,8 @@ void sr_ships(const SrShip *s, int n);                                     // ma
 void sr_beam(const float a[3], const float b[3], uint32_t col, float width);
 void sr_boom(const float p[3], float radius, float t, uint32_t seed);      // an explosion, t = 0 (start) .. 1 (gone): fireball, shock ring, debris
 void sr_mesh(const SrMesh *m, const float p[3], const float f[3], const float u[3], float scale, uint32_t col);   // a big hull
+void sr_poly2d(const float *x, const float *y, int n, float depth, uint32_t col);   // a face already projected (game pixels, depth < 60 = in front of every ship)
+void sr_glow2d(float x, float y, float r, uint32_t col, float a);                 // a soft light at a game-pixel spot
 void sr_armada(int n, uint32_t seed, long frame, float dist);             // a distant battle of n ships (decoration, from a seed and the frame number)
 int  sr_count(void);
 void sr_commit(int tag);                                                   // the frame is complete: it becomes the one sr_render draws (tag: which screen page it belongs to)

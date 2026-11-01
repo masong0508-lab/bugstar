@@ -76,7 +76,8 @@ sed -i 's/if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug/if(s2
 # --- the PC ship renderer (pc/shipr, pc/pc_ships.inc): the space ships go to it when it is on (pc_ships_mode >= 0, the window build's SHIPS option)
 sed -i -e 's|^    int crowd=0; for(int i=0;i<NPIR;i++) if(pir\[i\].alive) crowd++;$|    if(pc_sr_on()){ pc_sr_space(pg); goto pc_sr_done; }\n&|' \
        -e 's|^    for(int k=0;k<4;k++) if(cans\[k\].alive){ int sx,sy; s32 z; if(sproj|    pc_sr_done: pc_sr_mark(pg);\n&|' space.inc
-sed -i '1i static int pc_sr_on(void); static void pc_sr_space(volatile u16 *pg), pc_sr_mark(volatile u16 *pg);' space.inc
+sed -i 's|ship_draw(pg, scx, scy, scs, syw, spt, 0,0, 0,0,240,128); sh_flame=0;|if(pc_sr_on() \&\& pc_ships_mode>0) pc_sr_player(scx,scy,scs,syw,spt); else ship_draw(pg, scx, scy, scs, syw, spt, 0,0, 0,0,240,128); sh_flame=0;|' space.inc
+sed -i '1i static int pc_sr_on(void); static void pc_sr_space(volatile u16 *pg), pc_sr_mark(volatile u16 *pg), pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_); extern int pc_ships_mode;' space.inc
 echo '#include "../pc_ships.inc"' >> main.c
 echo '#include "../pc_laws.inc"' >> main.c
 # --- the side game (pc/sim, DEPTH_PLAN): hooks into the copies in pc/gen, never the repo root. Each hook must find its anchor exactly once or the build fails.

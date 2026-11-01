@@ -21,6 +21,9 @@ static double now_ms(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t
 typedef struct { float a[3], b[3]; uint32_t col; float w; int far; } Beam; static int beam_far;
 typedef struct { float p[3], r, t; uint32_t seed; } Boom;
 typedef struct { const SrMesh *m; float p[3], f[3], u[3], s; uint32_t col; } MeshI;
+typedef struct { float x[8], y[8]; int n; float z; uint32_t col; } Poly2;          // a face already on the screen (game pixels): the player's own ship
+typedef struct { float x, y, r, a; uint32_t col; } Glow2;
+static Poly2 P2[256]; static int nP2; static Glow2 G2[32]; static int nG2;
 static SrShip *S; static int nS, capS;
 static Beam *Bm; static int nB, capB;
 static Boom *Bo; static int nBo, capBo;
@@ -31,7 +34,7 @@ static void (*PAR)(int, int, void (*)(void*, int, int), void*); static int NTH =
 void sr_set_par(void (*par)(int, int, void (*)(void*, int, int), void*), int nthreads){ PAR = par; NTH = nthreads < 1 ? 1 : nthreads; }
 static __thread int YL, YH;                       // this thread's band of rows
 // the lists being built (sr_begin .. sr_commit) and the lists on show (what sr_render draws): the game draws the next frame while the last one is shown
-typedef struct { SrShip *S; int nS, capS; Beam *Bm; int nB, capB; Boom *Bo; int nBo, capBo; MeshI Mi[64]; int nM; int mode, tag; float E[3], R[3], U[3], F[3], FOC, CX, CY, VB, SUN[3]; } Set;
+typedef struct { SrShip *S; int nS, capS; Beam *Bm; int nB, capB; Boom *Bo; int nBo, capBo; MeshI Mi[64]; int nM; Poly2 P2[256]; int nP2; Glow2 G2[32]; int nG2; int mode, tag; float E[3], R[3], U[3], F[3], FOC, CX, CY, VB, SUN[3]; } Set;
 static Set shownv[2]; static int have_v[2], sel_tag; 
 #define shown shownv[sel_tag]
 #define have_shown have_v[sel_tag]
@@ -42,21 +45,23 @@ static void cp_arr(void **dst, int *cap, const void *src, int n, size_t sz){ if(
 void sr_commit(int tag){
     sel_tag = tag & 1;
     cp_arr((void**)&shown.S, &shown.capS, S, nS, sizeof(SrShip)); shown.nS = nS; cp_arr((void**)&shown.Bm, &shown.capB, Bm, nB, sizeof(Beam)); shown.nB = nB;
-    cp_arr((void**)&shown.Bo, &shown.capBo, Bo, nBo, sizeof(Boom)); shown.nBo = nBo; memcpy(shown.Mi, Mi, sizeof Mi); shown.nM = nM;
+    cp_arr((void**)&shown.Bo, &shown.capBo, Bo, nBo, sizeof(Boom)); shown.nBo = nBo; memcpy(shown.Mi, Mi, sizeof Mi); shown.nM = nM; memcpy(shown.P2, P2, nP2 * sizeof(Poly2)); shown.nP2 = nP2; memcpy(shown.G2, G2, nG2 * sizeof(Glow2)); shown.nG2 = nG2;
     shown.mode = mode; shown.tag = tag; memcpy(shown.E, E, 12); memcpy(shown.R, R, 12); memcpy(shown.U, U, 12); memcpy(shown.F, F, 12); memcpy(shown.SUN, SUN, 12);
     shown.FOC = FOC; shown.CX = CX; shown.CY = CY; shown.VB = VB; have_shown = 1; }
 int sr_shown_tag(void){ return have_shown ? shown.tag : -1; }
 int sr_select(int tag){ sel_tag = tag & 1; return have_shown; }
 static void use_shown(void){   // sr_render draws the committed lists: swap them into the working names for the draw
-    S = shown.S; nS = shown.nS; Bm = shown.Bm; nB = shown.nB; Bo = shown.Bo; nBo = shown.nBo; memcpy(Mi, shown.Mi, sizeof Mi); nM = shown.nM; mode = shown.mode;
+    S = shown.S; nS = shown.nS; Bm = shown.Bm; nB = shown.nB; Bo = shown.Bo; nBo = shown.nBo; memcpy(Mi, shown.Mi, sizeof Mi); nM = shown.nM; mode = shown.mode; memcpy(P2, shown.P2, shown.nP2 * sizeof(Poly2)); nP2 = shown.nP2; memcpy(G2, shown.G2, shown.nG2 * sizeof(Glow2)); nG2 = shown.nG2;
     memcpy(E, shown.E, 12); memcpy(R, shown.R, 12); memcpy(U, shown.U, 12); memcpy(F, shown.F, 12); memcpy(SUN, shown.SUN, 12); FOC = shown.FOC; CX = shown.CX; CY = shown.CY; VB = shown.VB; }
 
 #define GROW(arr, n, cap, T) do { if((n) >= (cap)){ (cap) = (cap) ? (cap) * 2 : 256; arr = (T*)realloc(arr, sizeof(T) * (cap)); } } while(0)
 void sr_begin(int m, const float eye[3], const float r[3], const float u[3], const float f[3], float focal, float cx, float cy, float vb, const float sun[3]){
     mode = m; memcpy(E, eye, 12); memcpy(R, r, 12); memcpy(U, u, 12); memcpy(F, f, 12); FOC = focal; CX = cx; CY = cy; VB = vb;
     float l = sqrtf(sun[0]*sun[0] + sun[1]*sun[1] + sun[2]*sun[2]); if(l < 1e-6f) l = 1; for(int k = 0; k < 3; k++) SUN[k] = sun[k] / l;
-    nS = nB = nBo = nM = 0;
+    nS = nB = nBo = nM = 0; nP2 = nG2 = 0;
 }
+void sr_poly2d(const float *x, const float *y, int n, float depth, uint32_t col){ if(nP2 >= 256 || n < 3) return; Poly2 *p = &P2[nP2++]; if(n > 8) n = 8; for(int i = 0; i < n; i++){ p->x[i] = x[i]; p->y[i] = y[i]; } p->n = n; p->z = depth; p->col = col; }
+void sr_glow2d(float x, float y, float r, uint32_t col, float a){ if(nG2 >= 32) return; Glow2 *g = &G2[nG2++]; g->x = x; g->y = y; g->r = r; g->col = col; g->a = a; }
 void sr_ship(const SrShip *s){ GROW(S, nS, capS, SrShip); S[nS++] = *s; }
 void sr_ships(const SrShip *s, int n){ for(int i = 0; i < n; i++) sr_ship(&s[i]); }
 void sr_beam(const float a[3], const float b[3], uint32_t col, float w){ GROW(Bm, nB, capB, Beam); Beam *q = &Bm[nB++]; memcpy(q->a, a, 12); memcpy(q->b, b, 12); q->col = col; q->w = w; q->far = beam_far; }
@@ -252,6 +257,9 @@ static void sr_band(void *vd, int lo, int hi){
             for(int j = 0; j < n; j++){ float a = j * 6.2832f / n, wob = 1.15f + 0.05f * sinf(a * 7 + s->hit * 20); (void)sd;
                 glow(sx + cosf(a) * rp * wob, sy + sinf(a) * rp * wob * .8f, ultra ? 1.0f : .7f, 0x80D0FF, .22f * s->hit); } } }
     bgonly = 0;
+    for(int i = 0; i < nP2; i++){ const Poly2 *p = &P2[i]; for(int k = 1; k + 1 < p->n; k++)        // the player's ship: its own faces at the window's resolution, in front of everything
+        tri(p->x[0] / GX, p->y[0] / GY, p->z, p->x[k] / GX, p->y[k] / GY, p->z, p->x[k+1] / GX, p->y[k+1] / GY, p->z, p->col); }
+    for(int i = 0; i < nG2; i++) glow(G2[i].x / GX, G2[i].y / GY, G2[i].r / GX, G2[i].col, G2[i].a);
     // beams (after the hulls: light)
     for(int i = 0; i < nB; i++){ float ax, ay, az, bx, by, bz; bgonly = Bm[i].far; if(!proj(Bm[i].a, &ax, &ay, &az) || !proj(Bm[i].b, &bx, &by, &bz)) continue;
         float w = Bm[i].w * (ultra ? 9.f : 6.f) * FOC * 2 / (az + bz) / GX; if(w > 5) w = 5; if(w < .5f) w = .5f; lineadd(ax, ay, bx, by, Bm[i].col, w, ultra ? .6f : .8f); if(ultra) lineadd(ax, ay, bx, by, 0xFFFFFF, 1, .35f); }
@@ -269,10 +277,10 @@ static void sr_band(void *vd, int lo, int hi){
 static int sr_render_(uint32_t *out, int w, int h, const uint8_t *mask, int fade);
 int sr_render(uint32_t *out, int w, int h, const uint8_t *mask, int fade){
     if(!have_shown) return 0;
-    SrShip *s0 = S; int n0 = nS, c0 = capS; Beam *b0 = Bm; int nb0 = nB, cb0 = capB; Boom *o0 = Bo; int no0 = nBo, co0 = capBo; static MeshI mi0[64]; memcpy(mi0, Mi, sizeof Mi); int nm0 = nM, md0 = mode;
+    SrShip *s0 = S; int n0 = nS, c0 = capS; Beam *b0 = Bm; int nb0 = nB, cb0 = capB; Boom *o0 = Bo; int no0 = nBo, co0 = capBo; static MeshI mi0[64]; memcpy(mi0, Mi, sizeof Mi); int nm0 = nM, md0 = mode; static Poly2 p20[256]; static Glow2 g20[32]; int np20 = nP2, ng20 = nG2; memcpy(p20, P2, nP2 * sizeof(Poly2)); memcpy(g20, G2, nG2 * sizeof(Glow2));
     float e0[3], r0[3], u0[3], f0[3], sn0[3], fo = FOC, cx = CX, cy = CY, vb = VB; memcpy(e0, E, 12); memcpy(r0, R, 12); memcpy(u0, U, 12); memcpy(f0, F, 12); memcpy(sn0, SUN, 12);
     use_shown(); int d = sr_render_(out, w, h, mask, fade);
-    S = s0; nS = n0; capS = c0; Bm = b0; nB = nb0; capB = cb0; Bo = o0; nBo = no0; capBo = co0; memcpy(Mi, mi0, sizeof Mi); nM = nm0; mode = md0;
+    S = s0; nS = n0; capS = c0; Bm = b0; nB = nb0; capB = cb0; Bo = o0; nBo = no0; capBo = co0; memcpy(Mi, mi0, sizeof Mi); nM = nm0; mode = md0; memcpy(P2, p20, np20 * sizeof(Poly2)); nP2 = np20; memcpy(G2, g20, ng20 * sizeof(Glow2)); nG2 = ng20;
     memcpy(E, e0, 12); memcpy(R, r0, 12); memcpy(U, u0, 12); memcpy(F, f0, 12); memcpy(SUN, sn0, 12); FOC = fo; CX = cx; CY = cy; VB = vb; return d; }
 static int sr_render_(uint32_t *out, int w, int h, const uint8_t *mask, int fade){
     double t0 = now_ms();
