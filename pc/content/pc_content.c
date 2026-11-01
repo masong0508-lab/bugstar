@@ -8,6 +8,7 @@ static uint64_t mix64(uint64_t z){ z += 0x9E3779B97F4A7C15ull; z = (z ^ (z >> 30
 static uint64_t fold(uint64_t h, const uint32_t *w, int n, uint64_t salt){ for(int i = 0; i < n; i++) h = mix64(h ^ ((uint64_t)w[i] << 7) ^ ((uint64_t)i * 0x100000001B3ull) ^ salt); return h; }
 uint64_t uni_seed(const uint32_t *uni){ return fold(0x1234ABCD5678EF01ull, uni, UNI_WORDS, 0x55); }
 uint64_t addr_seed(const Addr *a){
+    if(a->uni[0] == CREATOR_MARK && a->uni[1] == (CREATOR_MARK ^ 0x5EEDC0DEu ^ a->uni[2] ^ a->uni[3])) return ((uint64_t)a->uni[2] << 32) | a->uni[3];     // a planet made in the creator
     uint64_t h = uni_seed(a->uni);
     h = fold(h, a->cx, AX_WORDS, 0xA1); h = fold(h, a->cy, AX_WORDS, 0xB2);
     return mix64(h ^ ((uint64_t)a->star << 8) ^ a->planet);
@@ -222,3 +223,11 @@ void universe_themes(uint64_t useed, int out[2]){
 }
 
 #include "pc_beings.inc"
+// the sums of planet_make for traits chosen by hand (the planet creator): gravity and day length from their traits, the rest added up
+void planet_from_traits(const uint16_t *ids, int n, PlanetInfo *p){
+    memset(p, 0, sizeof *p); p->gravity_pct = 100; p->day_hours = 24; p->temp_c = 15;
+    for(int k = 0; k < n; k++){ int id = ids[k]; if(id < 0 || id >= NTRV) continue; const Trait *t = &tr[id % TR_BASE];
+        if(t->cat == TC_GRAVITY) p->gravity_pct = t->val; else if(t->cat == TC_DAY) p->day_hours = t->val;
+        p->temp_c += t->dt; p->danger += t->dg; p->loot += t->lt; p->price += t->pr; p->life += t->lf; }
+    if(p->danger < -3) p->danger = -3; if(p->danger > 8) p->danger = 8; if(p->life < -3) p->life = -3; if(p->life > 6) p->life = 6;
+}

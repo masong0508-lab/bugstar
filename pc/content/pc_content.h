@@ -41,6 +41,7 @@ int  trait_cat(int id);
 const char *cat_name(int c);
 int  traits_conflict(int a, int b);                // 1 when two traits cannot be on one planet (same category, same classic trait, or a forbidden pair)
 void planet_make(uint64_t seed, PlanetInfo *p);
+void planet_from_traits(const uint16_t *ids, int n, PlanetInfo *p);   // the same sums as planet_make, for traits you picked yourself (the planet creator)
 void planet_name(uint64_t seed, char *out);        // e.g. "KORAX-7"
 int  stat_count(void);                             // 112
 const char *stat_name(int s);                      // e.g. "DANGER IN RUINS" (rotating buffers like trait_name)
@@ -93,4 +94,7 @@ const char *rarity_name(int r);                    // COMMON .. MYTHIC (6)
 void creature_kind(int id, Creature *out);         // id = variant * 66 + plan
 void creature_indiv(const Indiv *iv, CreatureInd *out);
 void indiv_from_seed(uint64_t seed, Indiv *iv);    // any individual from a seed
+// ---- created planets (pc/creator): an address whose universe words 0..3 are the marker CREATOR_MARK, a check word and the recipe seed is a planet made by hand.
+// addr_seed() returns that recipe seed itself, so the game lands on exactly the planet the creator showed.
+#define CREATOR_MARK 0x43524541u
 #endif
