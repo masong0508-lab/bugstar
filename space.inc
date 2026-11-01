@@ -439,7 +439,8 @@ static void cockpit(volatile u16 *pg){
     if(!in_lair) for(int i=0;i<nast;i++) if(ast[i].alive) blip(pg,ast[i].x,ast[i].y,ast[i].z,56);
     // bars on the left: shield, hull, fuel; speed on the right
     static const char *const lab[3]={"SHLD","HULL","FUEL"}; int val[3]={shield,hull,fuel}, mx[3]={shield_max(),100,fuel_max()}, col[3]={55,53,50};
-    for(int k=0;k<3;k++){ text(pg,4,131+k*9,lab[k],58,1); rect(pg,24,132+k*9,40,3,56); int w=val[k]*40/mx[k]; if(w<0) w=0; if(w>40) w=40; rect(pg,24,132+k*9,w,3,col[k]); }
+    static LBar sb[3] EW; static int sv; int dt=vbl_count-sv; sv=vbl_count; if(dt<1) dt=1; if(dt>8) dt=8;     // living bars (game.inc): a hit leaves a trail, a refill glides in, low ones pulse
+    for(int k=0;k<3;k++){ text(pg,4,131+k*9,lab[k],58,1); lb_to(&sb[k],lb_px(val[k],mx[k],40),40,0); lb_step(&sb[k],dt); lb_draw(pg,24,132+k*9,40,3,&sb[k],col[k],51,54,56,49,val[k]*4<mx[k]); }
     text(pg,180,131,HELD(K_L)&&fuel>0?"BURN!":"SPEED",HELD(K_L)&&fuel>0?53:58,1); rect(pg,180,140,52,3,56); { int w=speed*52/ship_top_speed(); if(w>52) w=52; rect(pg,180,140,w,3,52); }
     char b[24]; sys_name(cur_sys,b); b[12]=0; text(pg,180,148,b,54,1);
 }

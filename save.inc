@@ -118,14 +118,14 @@ static void xo_load(void){
 }
 static void settings_save(void){
     Settings s; memset(&s,0,sizeof(s)); s.magic=0x53544553;
-    s.music=opt_music; s.sfx=opt_sfx; s.autosave=opt_autosave; s.shake=opt_shake; s.last=last_slot; s.pad[0]=opt_diff; s.pad[1]=(opt_minimap)|(opt_nums<<1)|(opt_hints<<2)|(opt_arrow<<3)|(opt_insane<<4); s.pad[2]=opt_cam|(opt_baby<<1)|((!opt_hunger)<<2)|((!opt_faintloss)<<3)|(opt_xpm<<4)|(opt_goldm<<6);
+    s.music=opt_music; s.sfx=opt_sfx; s.autosave=opt_autosave; s.shake=opt_shake; s.last=last_slot; s.pad[0]=opt_diff; s.pad[1]=(opt_minimap)|(opt_nums<<1)|(opt_hints<<2)|(opt_arrow<<3)|(opt_insane<<4)|(opt_minibars<<5); s.pad[2]=opt_cam|(opt_baby<<1)|((!opt_hunger)<<2)|((!opt_faintloss)<<3)|(opt_xpm<<4)|(opt_goldm<<6);
     s.sum=fnv(&s,sizeof(s)-4); sram_write(SET_OFF,&s,sizeof(s)); xo_save(); dd_save();
 }
 static void settings_load(void){
     xo_load(); xo_apply(); dd_load();
     Settings s; sram_read(SET_OFF,&s,sizeof(s));
     if(s.magic!=0x53544553 || s.sum!=fnv(&s,sizeof(s)-4) || s.music>2 || s.last>=NSLOT) return;   // first run: keep the defaults
-    opt_music=s.music; opt_sfx=s.sfx&1; opt_autosave=s.autosave&1; opt_shake=s.shake&1; last_slot=s.last; opt_insane=(s.pad[1]>>4)&1; opt_diff=s.pad[0]%6; if(opt_diff==5 && !opt_insane) opt_diff=4; opt_easy=(opt_diff==0); opt_minimap=s.pad[1]&1; opt_nums=(s.pad[1]>>1)&1; opt_hints=(s.pad[1]>>2)&1; opt_arrow=(s.pad[1]>>3)&1; opt_cam=s.pad[2]&1; opt_baby=(s.pad[2]>>1)&1; opt_hunger=!((s.pad[2]>>2)&1); opt_faintloss=!((s.pad[2]>>3)&1); opt_xpm=(s.pad[2]>>4)&3; if(opt_xpm>2) opt_xpm=2; opt_goldm=(s.pad[2]>>6)&3; if(opt_goldm>2) opt_goldm=2;
+    opt_music=s.music; opt_sfx=s.sfx&1; opt_autosave=s.autosave&1; opt_shake=s.shake&1; last_slot=s.last; opt_insane=(s.pad[1]>>4)&1; opt_diff=s.pad[0]%6; if(opt_diff==5 && !opt_insane) opt_diff=4; opt_easy=(opt_diff==0); opt_minimap=s.pad[1]&1; opt_nums=(s.pad[1]>>1)&1; opt_hints=(s.pad[1]>>2)&1; opt_arrow=(s.pad[1]>>3)&1; opt_minibars=(s.pad[1]>>5)&1; opt_cam=s.pad[2]&1; opt_baby=(s.pad[2]>>1)&1; opt_hunger=!((s.pad[2]>>2)&1); opt_faintloss=!((s.pad[2]>>3)&1); opt_xpm=(s.pad[2]>>4)&3; if(opt_xpm>2) opt_xpm=2; opt_goldm=(s.pad[2]>>6)&3; if(opt_goldm>2) opt_goldm=2;
 }
 static void music_apply(void){ if(opt_music==0){ SND(0x08)=0; SND(0x12)=0; } }
 
@@ -411,9 +411,9 @@ static void dif_details(volatile u16 *pg, int ts, int tt){       // ts: the row 
 }
 // ---------------------------------------------------------------- the options screen
 static void options_screen(volatile u16 *pg){
-    enum { OP_DIFF, OP_HUNGER, OP_FAINT, OP_XP, OP_GOLD, OP_CAM, OP_MUSIC, OP_SFX, OP_AUTO, OP_SHAKE, OP_MAP, OP_NUMS, OP_HINTS, OP_ARROW, NOPT };
-    static const char *const nm[NOPT]={"DIFFICULTY","HUNGER","LOSE STUFF WHEN YOU FAINT","XP SPEED","GOLD","PLANET CAMERA","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE","MINIMAP","DAMAGE NUMBERS","BUTTON HINTS","GUIDE ARROW"};
-    static const char *const hlp[NOPT]={"BABY: 1 DAMAGE, NO HUNGER, NOTHING LOST, 2X GOLD AND XP. EASY: HALF DAMAGE. HARD UP: MORE DAMAGE, MORE GOLD","OFF: NOBODY EVER STARVES","OFF: FAINTING COSTS NO GOLD AND NO BAG","HOW FAST YOU LEVEL UP","HOW MUCH GOLD EVERYTHING PAYS","WHICH VIEW A NEW GAME STARTS WITH","THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT","THE LITTLE MAP IN THE DUNGEON CORNER","NUMBERS THAT FLY OFF THINGS YOU BITE","THE 'A: ...' LINES THAT SAY WHAT A DOES","THE YELLOW ARROW ON PLANETS"};
+    enum { OP_DIFF, OP_HUNGER, OP_FAINT, OP_XP, OP_GOLD, OP_CAM, OP_MUSIC, OP_SFX, OP_AUTO, OP_SHAKE, OP_MAP, OP_MINI, OP_NUMS, OP_HINTS, OP_ARROW, NOPT };
+    static const char *const nm[NOPT]={"DIFFICULTY","HUNGER","LOSE STUFF WHEN YOU FAINT","XP SPEED","GOLD","PLANET CAMERA","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE","MINIMAP","MINI STAT BARS","DAMAGE NUMBERS","BUTTON HINTS","GUIDE ARROW"};
+    static const char *const hlp[NOPT]={"BABY: 1 DAMAGE, NO HUNGER, NOTHING LOST, 2X GOLD AND XP. EASY: HALF DAMAGE. HARD UP: MORE DAMAGE, MORE GOLD","OFF: NOBODY EVER STARVES","OFF: FAINTING COSTS NO GOLD AND NO BAG","HOW FAST YOU LEVEL UP","HOW MUCH GOLD EVERYTHING PAYS","WHICH VIEW A NEW GAME STARTS WITH","THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT","THE LITTLE MAP IN THE DUNGEON CORNER","THE 3 LITTLE HP/MP/FOOD BARS IN THE DUNGEON CORNER","NUMBERS THAT FLY OFF THINGS YOU BITE","THE 'A: ...' LINES THAT SAY WHAT A DOES","THE YELLOW ARROW ON PLANETS"};
     static const char *const dif[7]={"BABY","EASY","NORMAL","HARD","BRUTAL","NIGHTMARE","INSANE-SECT"}, *const cam[2]={"3RD PERSON","1ST PERSON"}, *const mv[3]={"OFF","LOW","FULL"}, *const yn[2]={"OFF","ON"}, *const mx[3]={"X1","X2","X5"};
     int sel=0, top=0, dirty=1, ts=-1, tt=0, hold=0, hdir=0; oam_hide_all(); oam_flush(); if(in_game) rect(pg,0,18,240,142,0); wait_release();
     while(1){
@@ -421,7 +421,7 @@ static void options_screen(volatile u16 *pg){
         if(dirty){ dirty=0; char b[20];
             panel(pg,12,20,216,136,"OPTIONS");
             for(int r=0;r<10;r++){ int i=top+r; if(sel==OP_DIFF && r>0) break;       // (on DIFFICULTY the rows under it give way to its details)
-                int y=37+r*9; int dsel = opt_baby ? 0 : opt_diff+1; int *pv = i==OP_DIFF?&dsel : i==OP_HUNGER?&opt_hunger : i==OP_FAINT?&opt_faintloss : i==OP_XP?&opt_xpm : i==OP_GOLD?&opt_goldm : i==OP_CAM?&opt_cam : i==OP_MUSIC?&opt_music : i==OP_SFX?&opt_sfx : i==OP_AUTO?&opt_autosave : i==OP_SHAKE?&opt_shake : i==OP_MAP?&opt_minimap : i==OP_NUMS?&opt_nums : i==OP_HINTS?&opt_hints : &opt_arrow;
+                int y=37+r*9; int dsel = opt_baby ? 0 : opt_diff+1; int *pv = i==OP_DIFF?&dsel : i==OP_HUNGER?&opt_hunger : i==OP_FAINT?&opt_faintloss : i==OP_XP?&opt_xpm : i==OP_GOLD?&opt_goldm : i==OP_CAM?&opt_cam : i==OP_MUSIC?&opt_music : i==OP_SFX?&opt_sfx : i==OP_AUTO?&opt_autosave : i==OP_SHAKE?&opt_shake : i==OP_MAP?&opt_minimap : i==OP_MINI?&opt_minibars : i==OP_NUMS?&opt_nums : i==OP_HINTS?&opt_hints : &opt_arrow;
                 int v=*pv, on=(i==sel && ts<0); if(on) rect(pg,18,y-2,204,10,6);
                 text(pg,26,y,nm[i],on?C_WHITE:C_GREY,1);
                 scpy(b,"< "); scat(b, i==OP_DIFF?dif[v] : i==OP_CAM?cam[v] : i==OP_MUSIC?mv[v] : (i==OP_XP||i==OP_GOLD)?mx[v] : yn[v]); if(i==OP_DIFF && !opt_baby && dp_edited(opt_diff)) scat(b,"*"); scat(b," >");
@@ -462,7 +462,7 @@ static void options_screen(volatile u16 *pg){
             else if(sel==OP_CAM) opt_cam^=1;
             else if(sel==OP_MUSIC){ opt_music=(opt_music+d+3)%3; music_apply(); }
             else if(sel==OP_SFX) opt_sfx^=1; else if(sel==OP_AUTO) opt_autosave^=1; else if(sel==OP_SHAKE) opt_shake^=1;
-            else if(sel==OP_MAP) opt_minimap^=1; else if(sel==OP_NUMS) opt_nums^=1; else if(sel==OP_HINTS) opt_hints^=1; else opt_arrow^=1;
+            else if(sel==OP_MAP) opt_minimap^=1; else if(sel==OP_MINI) opt_minibars^=1; else if(sel==OP_NUMS) opt_nums^=1; else if(sel==OP_HINTS) opt_hints^=1; else opt_arrow^=1;
             sfx(2);
         }
         if(HIT(K_SEL)){ options_more(pg); dirty=1; }

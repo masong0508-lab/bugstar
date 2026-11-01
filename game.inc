@@ -749,16 +749,76 @@ static int item_value(const Gear *g){
     }
 }
 
+// ---------------------------------------------------------------- living bars
+// Every stat bar keeps a little state, so it answers the same frame its number changes and then moves like a real gauge:
+// a hit drops the bar at once and leaves the lost part behind as a trail (white for a moment, then dark) that drains away;
+// healing shows the part on its way in as a pale stripe and the bar fills up to it; a big change (a fifth of the bar or more)
+// blinks it; a low bar pulses. The fill comes from ratio() on the full 64-bit numbers, so 8.58B of 17.1B is half a bar like 5 of 10,
+// and anything above 0 shows at least 1 pixel (and anything below full is never drawn quite full).
+// Positions are in 16ths of a pixel. It costs a few compares a frame; a bar is drawn again only when what it shows changes.
+typedef struct { s16 cur, tgt, trail; u8 hold, flash, on; } LBar;
+#define LB_HOLD 22        // 60ths the lost part waits before it drains...
+#define LB_WHITE 14       // ...white while hold is above this, then dark
+#define LB_FLASH 16
+static int lb_px(s64 v, s64 m, int w){ if(m<=0||v<=0) return 0; if(v>=m) return w; int f=ratio(v,m,w); if(f<1) f=1; if(f>w-1) f=w-1; return f; }
+static void lb_to(LBar *b, int px, int w, int wrap){      // a new value, in whole pixels. wrap=1: a counter that starts again (XP: a drop is a level up, so it refills from empty)
+    int t=px<<4;
+    if(!b->on){ b->on=1; b->cur=b->tgt=b->trail=(s16)t; b->hold=b->flash=0; return; }
+    if(t==b->tgt) return;
+    int d=t-b->tgt; if(d<0) d=-d;
+    if(t<b->cur){ if(wrap){ b->cur=b->trail=0; b->hold=0; d=w<<4; } else { if(b->trail<b->cur) b->trail=b->cur; b->cur=(s16)t; b->hold=LB_HOLD; } }
+    b->tgt=(s16)t;
+    if(d*5>=(w<<4)) b->flash=LB_FLASH;
+}
+static void lb_step(LBar *b, int dt){                     // dt = 60ths since the last step
+    if(b->cur<b->tgt){ int s=(b->tgt-b->cur)*dt/5; if(s<5*dt) s=5*dt; b->cur=(s16)(b->cur+s); if(b->cur>b->tgt) b->cur=b->tgt; }
+    else b->cur=b->tgt;
+    if(b->trail>b->cur){ if(b->hold>dt) b->hold-=dt; else { b->hold=0; int s=(b->trail-b->cur)*dt/7; if(s<3*dt) s=3*dt; b->trail=(s16)(b->trail-s); if(b->trail<b->cur) b->trail=b->cur; } }
+    else { b->trail=b->cur; b->hold=0; }
+    b->flash = b->flash>dt ? b->flash-dt : 0;
+}
+static int lb_fill(const LBar *b, int col, int dark, int low){ return (b->flash&4) ? C_WHITE : (low && (vbl_count&16)) ? dark : col; }
+static u32 lb_key(const LBar *b, int low){ return (u32)(b->cur>>4) | (u32)(b->trail>>4)<<7 | (u32)(b->tgt>>4)<<14 | (u32)(b->hold>LB_WHITE)<<21 | (u32)((b->flash>>2)&1)<<22 | (u32)(low && (vbl_count&16))<<23; }
+static void lb_draw(volatile u16 *pg, int x, int y, int w, int h, const LBar *b, int col, int dark, int glint, int trough, int white, int low){
+    int c=b->cur>>4, t=b->trail>>4, g=b->tgt>>4;
+    rect(pg,x,y,w,h,trough);
+    if(g>c) rect(pg,x+c,y,g-c,h,glint);                                  // healing: the part on its way in
+    if(t>c) rect(pg,x+c,y,t-c,h,b->hold>LB_WHITE?white:dark);            // a hit: the part just lost
+    if(c) rect(pg,x,y,c,h,(b->flash&4)?white:(low && (vbl_count&16))?dark:col);
+}
+// the top bar's four: HP (red), MP (blue) and FOOD (green) beside the numbers, XP (gold) under the level
+static LBar lb_hp EW, lb_mp EW, lb_fd EW, lb_xp EW; static u32 lb_seen; static int lb_dirty, lb_vbl;      // (EW: kept out of the fast memory)
+static int hud_xp_px(void){ int xb = ratio(xp,xp_next(),16); return xb; }
+static void hud_bars_sync(void){ lb_to(&lb_hp,lb_px(hearts,maxh,30),30,0); lb_to(&lb_mp,lb_px(mp,maxmp,30),30,0); lb_to(&lb_fd,lb_px(food,100,30),30,0); lb_to(&lb_xp,hud_xp_px(),16,1); }
+static int hud_hp_low(void){ return hearts<(maxh>>2); }
+static void hud_bars_draw(volatile u16 *pg){
+    lb_draw(pg,52,4,30,3,&lb_hp,C_RED,C_DRED,U_GLRED,C_DGREY,C_WHITE,hud_hp_low());
+    lb_draw(pg,52,10,30,2,&lb_mp,C_CYAN,C_GREY,U_GLCYAN,C_DGREY,C_WHITE,0);
+    lb_draw(pg,52,13,30,2,&lb_fd,food>25?C_GREEN:C_RED,C_DRED,U_GLGREEN,C_DGREY,C_WHITE,food<=25);
+    lb_draw(pg,86,11,16,2,&lb_xp,C_GOLD,C_GREY,U_GLGOLD,C_DGREY,C_WHITE,0);
+}
+static void hud_live(volatile u16 *pg){                  // once a drawn frame of play: step the bars, and draw them when they look different (on both pages, one a frame)
+    if(FILM || kw_mode) return;
+    int dt=vbl_count-lb_vbl; lb_vbl=vbl_count; if(dt<1) dt=1; if(dt>8) dt=8;
+    hud_bars_sync(); lb_step(&lb_hp,dt); lb_step(&lb_mp,dt); lb_step(&lb_fd,dt); lb_step(&lb_xp,dt);
+    u32 k=lb_key(&lb_hp,hud_hp_low()); k=k*31u^lb_key(&lb_mp,0); k=k*31u^lb_key(&lb_fd,food<=25)^(u32)(food>25)<<30; k=k*31u^lb_key(&lb_xp,0);
+    if(k!=lb_seen){ lb_seen=k; lb_dirty=2; }
+    if(lb_dirty){ lb_dirty--; hud_bars_draw(pg); }
+}
+static void lv_wide(char *lv){                             // a level of a million or more: the number with its decimals (8.58B, not L8B) when the top bar's 5 letters allow
+    char t[16]; scpy(t,"L"); ncatx(t,level,1); if(level<1000000) return;
+    for(int i=0;;i++){ if(t[i]!=lv[i]) return; if(!t[i]) break; }              // (something else already wrote it its own way)
+    t[0]=0; ncatx(t,level,0); if(textlen(t)<=5) scpy(lv,t);
+}
+
 // ---------------------------------------------------------------- the status bar
 static void draw_hud(volatile u16 *pg, const char *l1){
     rect(pg,0,0,240,17,0); rect(pg,0,17,240,1,6); if(FILM) return;                   // (filming, or the debug menu's HIDE THE HUD: a plain black bar)
     char b[32]; b[0]=0;
-    scpy(b,"HP "); ncat(b,hearts<0?0:hearts); scat(b,"/"); ncat(b,maxh); if(textlen(b)>12){ scpy(b,"HP "); ncat(b,maxh); } text(pg,3,3,b,C_RED,1);
-    b[0]=0; scpy(b,"MP "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); if(textlen(b)>12){ scpy(b,"MP "); ncat(b,maxmp); } text(pg,3,10,b,C_CYAN,1);
-    rect(pg,52,4,30,3,C_DGREY); rect(pg,52,4,ratio(hearts,maxh,30),3,C_RED);
-    rect(pg,52,11,30,3,C_DGREY); rect(pg,52,11,food*30/100,3, food>25?C_GREEN:C_RED);
-    { char lv[16]; scpy(lv, level<1000 ? "LV" : "L"); ncatx(lv,level,1); text(pg,86,3,lv,C_GOLD,1); }
-    { int xb = ratio(xp,xp_next(),16); rect(pg,86,11,16,2,C_DGREY); rect(pg,86,11,xb,2,C_GOLD); }
+    scpy(b,"HP "); ncat(b,hearts<0?0:hearts); scat(b,"/"); ncat(b,maxh); if(textlen(b)>12){ scpy(b,"HP "); ncat(b,hearts<0?0:hearts); } text(pg,3,3,b,C_RED,1);     // (no room for both: the one you have now; the bar shows the share)
+    b[0]=0; scpy(b,"MP "); ncat(b,mp); scat(b,"/"); ncat(b,maxmp); if(textlen(b)>12){ scpy(b,"MP "); ncat(b,mp); } text(pg,3,10,b,C_CYAN,1);
+    hud_bars_sync(); hud_bars_draw(pg);                                                   // the bars as they stand this very frame (hud_live moves them on)
+    { char lv[16]; scpy(lv, level<1000 ? "LV" : "L"); ncatx(lv,level,1); lv_wide(lv); text(pg,textlen(lv)>=5?84:86,3,lv,C_GOLD,1); }     // (5 letters: two pixels left, so they clear the name)
     text(pg,106,3,l1,C_WHITE,1);
     if(bag_n){ char nm[40]; gear_name(&bag[bag_sel],nm); b[0]='0'+(bag_sel+1)%10; b[1]=' '; b[2]=0; scat(b,nm); b[25]=0; text(pg,106,10,b,rar_color(&bag[bag_sel]),1); }
     else text(pg,106,10,"BAG EMPTY",C_GREY,1);

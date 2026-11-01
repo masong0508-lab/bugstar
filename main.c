@@ -78,7 +78,7 @@ static s64 sdiv(s64 n, u32 d){ int neg = n<0; u64 un = neg ? (u64)(-(n+1))+1 : (
     for(int i=31;i>=0;i--){ u32 top=r>>31; r=(r<<1)|((lo>>i)&1); ql<<=1; if(top||r>=d){ r-=d; ql|=1; } }
     u64 q=((u64)qh<<32)|ql; return neg ? -(s64)q : (s64)q; }
 static int clampi(s64 v){ return v>1000000000LL ? 1000000000 : v<-1000000000LL ? -1000000000 : (int)v; }
-static int ratio(s64 a, s64 b, int scale){ if(b<=0||a<=0) return 0; if(a>=b) return scale; while(b>0x3FFFFFFLL){ a>>=1; b>>=1; } if(b<1) b=1; return (int)(((u32)a*(u32)scale)/(u32)b); }
+static int ratio(s64 a, s64 b, int scale){ if(b<=0||a<=0) return 0; if(a>=b) return scale; while(b>0xFFFFFFLL){ a>>=1; b>>=1; } if(b<1) b=1; return (int)(((u32)a*(u32)scale)/(u32)b); }   // (any 64-bit pair: both shrink together until a*scale fits 32 bits, for scales up to 255)
 static int sinx(int a){ return sin_tab[a&255]; }
 static int cosx(int a){ return sin_tab[(a+64)&255]; }
 
@@ -89,7 +89,7 @@ static int page_back=0;
 // options, save slots and menu requests (see save.inc)
 static volatile int opt_music=2;   // 0 off, 1 low, 2 full
 static volatile int opt_sfx=1;
-static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1, opt_baby=0, opt_hunger=1, opt_faintloss=1, opt_xpm=0, opt_goldm=0;
+static int opt_autosave=1, opt_shake=1, opt_easy=0, opt_diff=1, opt_insane=0, opt_cam=0, opt_minimap=1, opt_nums=1, opt_hints=1, opt_arrow=1, opt_baby=0, opt_hunger=1, opt_faintloss=1, opt_xpm=0, opt_goldm=0, opt_minibars=0;   // opt_minibars: the three little HP/MP/FOOD bars in the dungeon corner (off: the top bar shows them)
 // ---- the difficulty numbers: each difficulty has its own set, and the options screen can change every one (kept in SRAM, see save.inc)
 enum { P_DMG, P_HP, P_HPZ, P_SPD, P_SEE, P_ATK, P_AI, P_BITE, P_MORE, P_CHAMP, P_BOSS, P_HUN, P_GOLD, NDP };
 typedef struct { s16 lo, st; u8 n; } DPS;                    // each number goes from lo in steps of st, n steps in all (at most 254)
@@ -391,13 +391,15 @@ static void compass(volatile u16 *pg, s32 dirx, s32 diry){
     for(int k=-3;k<=3;k++){ int x=cx+ax*k, y=cy+ay*k*2; for(int j=0;j<2;j++) pg[(y+j)*120+x]=C_CYAN|(C_CYAN<<8); }
     int hx=cx+ax*4, hy=cy+ay*8; for(int j=-2;j<=2;j++) for(int i=-1;i<=1;i++){ int y=hy+j, x=hx+i; if(x>=0&&x<120&&y>=18&&y<160) pg[y*120+x]=C_WHITE|(C_WHITE<<8); }
 }
-static void bar(volatile u16 *pg, int c0, s64 val, s64 max, int col){
-    int h=34, f = ratio(val,max,h); if(f>h) f=h; if(f<0) f=0;
+static void bar(volatile u16 *pg, int c0, const LBar *b, int col, int dark, int glint, int low){     // a little upright bar in the dungeon corner (MINI STAT BARS), from a living bar's state
+    int h=34, c=b->cur>>4, t=b->trail>>4, g=b->tgt>>4, fc=lb_fill(b,col,dark,low), tc=b->hold>LB_WHITE?C_WHITE:dark;
     for(int y=0;y<h+2;y++){ int yy=124+y; u16 e=6|(6<<8); pg[yy*120+c0]=e; pg[yy*120+c0+2]=e; }
-    for(int y=0;y<h;y++){ int yy=125+y; int ci = (h-y<=f) ? col : 0; pg[yy*120+c0+1]=ci|(ci<<8); }
+    for(int y=0;y<h;y++){ int yy=125+y, k=h-y; int ci = k<=c ? fc : k<=t ? tc : k<=g ? glint : 0; pg[yy*120+c0+1]=ci|(ci<<8); }
 }
 static void hud3d(volatile u16 *pg){
-    bar(pg,1,hearts,maxh,C_RED); bar(pg,4,mp,maxmp,C_CYAN); bar(pg,7,food,100,C_GREEN);
+    if(opt_minibars){ static LBar mh EW, mm EW, mf EW; static int lv; int dt=vbl_count-lv; lv=vbl_count; if(dt<1) dt=1; if(dt>8) dt=8;     // (off by default: the top bar already shows all three)
+        lb_to(&mh,lb_px(hearts,maxh,34),34,0); lb_to(&mm,lb_px(mp,maxmp,34),34,0); lb_to(&mf,lb_px(food,100,34),34,0); lb_step(&mh,dt); lb_step(&mm,dt); lb_step(&mf,dt);
+        bar(pg,1,&mh,C_RED,C_DRED,U_GLRED,hearts<(maxh>>2)); bar(pg,4,&mm,C_CYAN,C_GREY,U_GLCYAN,0); bar(pg,7,&mf,food>25?C_GREEN:C_RED,C_DRED,U_GLGREEN,food<=25); }
     int c0=86, c1=117, y0=20, y1=31;          // the compass sits at the top now, out of the way of your jaws
     u16 rim=C_GOLD|(C_GOLD<<8), in=(R_CHEST+3)|((R_CHEST+3)<<8);
     for(int c=c0;c<=c1;c++){ pg[y0*120+c]=rim; pg[y1*120+c]=rim; for(int y=y0+1;y<y1;y++) pg[y*120+c]=in; }
@@ -683,7 +685,7 @@ static void fish_draw(volatile u16 *pg){
 #define TURN_MAX   9           // ...holding speeds up to this
 #define TURN_RAMP  16          // 60ths of holding to reach TURN_MAX
 
-static int skip_draw=0, wtick=1, turn_held=0, hud_f=0, dt_last=0, wacc=0, mv_now=0, near_cage_p=-1, atk_len=9;
+static int skip_draw=0, wtick=1, turn_held=0, dt_last=0, wacc=0, mv_now=0, near_cage_p=-1, atk_len=9;
 static DObj *named_p=0; static u32 dhud_sig=0; static int lock_ahead=0;
 // is there something to bite right in front of you? (same box the bite uses)
 static int foe_ahead(s32 dirx, s32 diry){
@@ -1135,8 +1137,9 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     else if(water_ahead(dirx,diry)){ char fb[24]; int p=pool_at(dirx,diry); int sk=pool_stock(p); scpy(fb,"A: FISH "); if(sk){ scat(fb,"("); ncat(fb,sk); scat(fb,")"); } else scat(fb,"(EMPTY)"); text(pg,120-textlen(fb)*4,24,fb,C_CYAN,2); }
     if(shield_t && (frames&16)){ for(int c=0;c<120;c+=6){ pg[18*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); pg[159*120+c]=(R_CRYSTAL+6)|((R_CRYSTAL+6)<<8); } }
     if(hurt_flash){ for(int y=18;y<22;y++) for(int x=0;x<120;x++) pg[y*120+x]=C_RED|(C_RED<<8); } }
-    if(frames-hud_f>=15){ hud_f=frames; u32 hs=hud_sig(); if(hs!=dhud_sig){ dhud_sig=hs; dungeon_hud(); } }
+    { u32 hs=hud_sig(); if(hs!=dhud_sig){ dhud_sig=hs; dungeon_hud(); } }                        // every frame: the top bar answers the same frame a number changes
     if(hud_dirty){ char lb[40]; dungeon_label(lb); draw_hud(pg,lb); hud_dirty--; }
+    hud_live(pg);                                                                                  // ...and its bars glide, trail and flash (game.inc)
     oam_hide_all();
     // your jaws: they sway as you walk, snap shut when you bite, and jolt when you are hit
     if(!(invuln && (frames&4))){

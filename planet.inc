@@ -384,8 +384,8 @@ IWRAM static void render_planet(volatile u16 *pg){
 static u32 phud_sig=0;
 static void kw_topbar(void);
 static void planet_hud(void){
-    if(kw_mode){ kw_topbar(); return; }
-    phud_sig=hud_sig(); char b[28]; scpy(b,world_name());
+    phud_sig=hud_sig(); if(kw_mode){ kw_topbar(); return; }
+    char b[28]; scpy(b,world_name());
 #ifdef TEST_HASH
     scpy(b,th_str);
 #endif if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[TZ]+1); } else if(hellw()){ scat(b," H"); ncat(b,hell_tier()); }
@@ -648,7 +648,8 @@ static void planet_frame(void){
     escape_flag=call_flag=blast_flag=0; cast_flag=-1;
     if(hearts<=0){ hearts=maxh; food=60; int nolose=!opt_faintloss||opt_baby; if(!nolose) gold=sdiv(gold,2); if(!nolose && !opt_easy){ bag_n=0; bag_sel=0; } show_msg(nolose?"YOU FAINTED. NOTHING LOST. NAP TIME":opt_easy?"YOU FAINTED. HALF YOUR GOLD IS GONE":"YOU FAINTED. YOU LOST YOUR BAG"); planet_hud(); }
     if(msg_timer){ msg_timer-=n; if(msg_timer<0) msg_timer=0; }
-    if(frames%30==0 && hud_sig()!=phud_sig) planet_hud();
+    if(hud_sig()!=phud_sig) planet_hud();                                              // every frame: the top bar answers the same frame a number changes
+    hud_live(m7_on ? (volatile u16*)0x06000000 : pg);                                  // ...and its bars glide, trail and flash (game.inc; a race keeps the top bar on page 0)
     if(opt_autosave && frames%6000==5999){ save_game(); show_msg("GAME SAVED"); }          // a quiet save every few minutes on the surface
     // ---- draw the world
     weird_frame(n); hell_frame(n); rock_frame();
