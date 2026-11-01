@@ -35,3 +35,25 @@ static void pc_world_screen(volatile u16 *pg){
     }
     wait_release();
 }
+
+// ---- the MEANING LAYER in play. Called at the end of make_world (build.sh): on endless-galaxy planets the planet's whole make-up (traits, stats, universe themes, peoples, city,
+// creatures, plants, edited universe laws) is added up by pc/meaning into channels, and these follow: hunger (FOOD), enemy count (DANGER), gold (TRADE, LUCK), resource nodes
+// (ORE, GROWTH, CRAFT), walking speed (SPEED), light (LIGHT), weather (WEATHER) and the sky and building colours (TINT, GLOW, MOOD, BEAUTY). Off: BUGSTAR_MEANING=0 in the environment.
+extern char *getenv(const char *);
+static int pc_mn_cl(int v, int lo, int hi){ return v < lo ? lo : v > hi ? hi : v; }
+static u16 pc_mn_tint(u16 c, int dr, int dg, int db){ int r = (c & 31) + dr / 8, g = ((c >> 5) & 31) + dg / 8, b = ((c >> 10) & 31) + db / 8; return (u16)(pc_mn_cl(r, 0, 31) | (pc_mn_cl(g, 0, 31) << 5) | (pc_mn_cl(b, 0, 31) << 10)); }
+static void pc_mn_dna(void){
+    pc_gold_pct = 100;
+    if(!pc_applied) return;
+    { const char *e = getenv("BUGSTAR_MEANING"); if(e && e[0] == '0') return; }
+    u32 cx[5], cy[5]; for(int i = 0; i < 5; i++){ cx[i] = clus[i]; cy[i] = clus[UAX + i]; }
+    pcx_law_clear(); for(int i = 0; i < plw_count(); i++) if(plw_is_edited(i)) pcx_law_set(i, plw_value(i));
+    PcxMeaning m; pcx_meaning(uni_w, cx, cy, cur_sys, cur_pl, cur_moon, &m);
+    wd.fauna = (u8)pc_mn_cl(wd.fauna + m.fauna_add, 0, 5); wd.beetles = (u8)pc_mn_cl(wd.beetles + m.beetle_add, 0, 3);
+    pc_hun_pct = pc_hun_pct * m.hunger_pct / 100; pc_gold_pct = m.gold_pct;
+    pc_slow = pc_mn_cl(pc_slow - m.speed_add, -0x600, 0xE00);
+    if(m.hour >= 0) wd.hour = (u8)m.hour; if(m.weather >= 0) wd.weather = (u8)m.weather;
+    for(int i = 0; i < 4; i++) pc_node[i] += m.node[i];
+    wd.sky = pc_mn_tint(wd.sky, m.sky_r, m.sky_g, m.sky_b);
+    if(m.lift > 0) wd.bld = lift15(wd.bld, m.lift); else if(m.lift < 0) wd.bld = shade15(wd.bld, 16 + m.lift);
+}

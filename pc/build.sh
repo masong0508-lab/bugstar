@@ -35,8 +35,11 @@ sed -i -e 's|^static void world_page(volatile u16 \*pg, int y); |static void pc_
        -e 's|^\( *\)if(HIT(K_SEL) \&\& page==7){|\1if(HIT(K_B) \&\& page==7){ pc_lab_screen(pg); dirty=1; if(sys_req) break; }\n&|' \
        -e 's|foot = big_unlocked() ? "A: FAVOURITE  SEL: HOW BIG IS IT?" : "A: SAVE AS A FAVOURITE";|foot = big_unlocked() ? "A: FAV  SEL: HOW BIG  B: PC LAB" : "A: FAVOURITE  B: PC LAB";|' ui.inc
 # traits really change the endless galaxy's planets (gravity, light, weather); the six story worlds keep their own rules
-sed -i '1i static void pc_apply_traits(void); static int pc_applied;' game.inc
+sed -i '1i static void pc_apply_traits(void), pc_mn_dna(void); static int pc_applied, pc_gold_pct=100; static int pc_gold(int g){ return pc_gold_pct==100 ? g : g*pc_gold_pct/100; }' game.inc
 sed -i 's|^\( *\)// a weird world: one planet in 111, only out in the galaxy.*|\1pc_applied=0; if(gal \&\& !hellw() \&\& !cur_moon) pc_apply_traits();\n&|' game.inc
+# --- the MEANING LAYER (pc/meaning, pc_info.inc pc_mn_dna): the planet's whole make-up adds up to channels; food/hunger, enemies, gold, ore, speed, light, weather and sky colour follow (endless-galaxy planets only)
+sed -i 's/^    pc_laws_dna(0);$/    pc_laws_dna(0); pc_mn_dna();/' game.inc
+sed -i -e 's/gold+=5; show_msg("SQUASH/gold+=pc_gold(5); show_msg("SQUASH/' -e 's/gold+=12+dlv()\*3; gain_xp(8+dlv()\*2); st_kills\[2\]++;/gold+=pc_gold(12+dlv()*3); gain_xp(8+dlv()*2); st_kills[2]++;/' -e 's/else { gold+=2+dlv(); show_msg("A SHINY PEBBLE/else { gold+=pc_gold(2+dlv()); show_msg("A SHINY PEBBLE/' planet.inc
 # --- the UNIVERSE LAWS (pc/laws, pc/pc_laws.inc): hooks. At the default laws every hook returns the game's own number (tests/seeds.golden proves it).
 # the world wraps every pc_tw cells (128; 64, 32, 16 or 8 on tiny worlds), the horizon bend is in sixteenths (pc_k16 = -1: the size class decides)
 sed -i -e 's/(TW<<16)-1/(pc_tw<<16)-1/g' *.inc
@@ -89,9 +92,9 @@ fi
 CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}; OBJD=../obj${PC_WIN:+win}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../laws/lawx.h ../content/pcx.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
-for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../meaning/meaning.c ../sim/god.c ../sim/lv.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH $OBJS $SDLL -lm -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"
