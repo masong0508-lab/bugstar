@@ -115,7 +115,7 @@ Asked for: multiply the galaxies, stars and planets in ONE universe by 2^256; ma
 | galaxies, all universes | 2.2e158 | 2.9e312 |
 | stars, all universes | 7.7e171 | 1.0e326 |
 | planets, all universes (max) | 1.2e173 | 1.7e327 |
-| trip to a neighbour universe (width x U^2) | 1.5e229 ly | 6.2e357 ly |
+| trip to a neighbour universe (width x U^2) | 1.5e202 ly | 6.2e357 ly |
 
 Notes:
 - The per-universe counts (`2^270`, `2^315`) come from the code's own address sizes: 155 bits per axis,
