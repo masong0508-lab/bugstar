@@ -32,7 +32,7 @@ static void coil_num(char *b, u64 v){                        // "950", "12,345",
     u64 d=1000000ULL; int k=0; while(k<4 && v/d>=1000){ d*=1000; k++; }
     ncat(b,(int)(v/d)); u64 fr=(v%d)/(d/10); if(fr){ scat(b,"."); ncat(b,(int)fr); } scat(b," "); scat(b,nm[k]); }
 static void coil_fmt(char *b, u64 w, int milli){            // the speed, in friendly words: "0.42 C", "950 X LIGHT", "13 TRILLION X LIGHT"
-    if(w==0){ scpy(b,"0."); int h=milli/10; if(h<10) scat(b,"0"); ncat(b,h); scat(b," X LIGHT"); return; }
+    if(w==0){ scpy(b,"0."); int h=milli/10; if(h<10){ scat(b,"0"); } ncat(b,h); scat(b," X LIGHT"); return; }
     coil_num(b,w); scat(b," X LIGHT"); }
 static const char *const coil_unit[7]={"SECONDS","MILLISECONDS","MICROSECONDS","NANOSECONDS","PICOSECONDS","FEMTOSECONDS","ATTOSECONDS"};
 // how long n units (u = 0 seconds, 1 ms, 2 us ... 6 as) take at M times the speed of light, said simply. n is how long light itself would take.
@@ -41,6 +41,7 @@ static void coil_time(char *b, u64 n, int u, u64 M){
     while(n/M==0 && u<6){ if(M>=1000) M/=1000; else n*=1000; u++; }                   // (a smaller unit until the number is at least 1)
     u64 v=n/M;
     if(v==0){ scpy(b,"LESS THAN AN ATTOSECOND"); return; }
+    while(u>0 && v>=1000){ if(M<=0xFFFFFFFFFFFFFFFFULL/1000ULL) M*=1000; else n/=1000; u--; v=n/M; }          // (1,000 ms is a second)
     if(u==0 && v>=60){ u64 yr=v/31557600ULL; if(yr>=1){ coil_num(b,yr); scat(b,yr==1?" YEAR":" YEARS"); return; }
         u64 dy=v/86400; if(dy>=1){ ncat(b,(int)dy); scat(b,dy==1?" DAY":" DAYS"); return; }
         u64 hr=v/3600; if(hr>=1){ ncat(b,(int)hr); scat(b,hr==1?" HOUR":" HOURS"); return; }

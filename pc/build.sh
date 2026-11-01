@@ -70,6 +70,7 @@ sed -i 's/if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug/if(s2
 echo '#include "../pc_laws.inc"' >> main.c
 echo '#include "../pc_info.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
+echo '#include "../coil_test.inc"' >> main.c
 # --- compile -----------------------------------------------------------------------------------------------------------
 # -funsigned-char: the GBA compiler's char is unsigned. -fwrapv: ARM integers wrap. -no-pie: all addresses stay below 4 GB.
 # SDL: with the window front end (default) the game links the system SDL2 (libSDL2-2.0.so.0); PC_SDL=0 builds the headless-only program.

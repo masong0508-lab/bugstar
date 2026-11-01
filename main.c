@@ -1316,6 +1316,20 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_ARRIVE
     cur_sys=TEST_ARRIVE; fade(0); arrive_on_planet(); return;
 #endif
+#ifdef TEST_COIL
+    fade(0); scene=2; page_back=1; space_enter(1); music(3); coil_own=1; coil_warned=1; shpx.module=MD_COIL; ship_build_model(); fuel=fuel_max(); hull=100; shx=0; shy=0; shz=-PR*14; svx_=svy_=svz_=0; yaw=512;
+#ifdef TEST_COILSM
+    dbg_sm=TEST_COILSM;
+#endif
+#ifdef TEST_COILFUZZ
+    { int sr=coil_sramtest(); int n=coil_fuzz(TEST_COILFUZZ); char b[40]; scpy(b,sr?"SAVE TEST FAILED":"FUZZ OK "); if(!sr) ncat(b,n);
+#ifdef PC_COILREPORT
+      { extern void pc_coil_report(int,int); pc_coil_report(n,sr); }
+#endif
+      volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); rect(pg,0,0,240,160,0); text(pg,20,60,b,C_WHITE,2); for(;;) vsync(); }
+#endif
+    return;
+#endif
 #ifdef TEST_SPACE
     fade(0); scene=2; page_back=1; space_enter(1); music(3); return;                  // (filming: straight up into space)
 #endif
