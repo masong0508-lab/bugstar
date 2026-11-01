@@ -107,6 +107,9 @@ int  col_help_build(SimColony *c);                       // you carry wood and b
 int  col_carry_food(SimColony *c, int amount);           // you bring food from your bag: amount points (2 colony food each)
 int  col_help_guard(SimColony *c);                       // you stand guard for 3 days: defence +10
 int  col_god_help(SimColony *c, int kind);               // a god power: 0 feast (food), 1 heal, 2 shield (defence for the next fight)
+int  col_carry_wood(SimColony *c, int cell);             // map: carry wood to an empty cell, plan the plan there, +12 progress (4 if the store is short)
+int  col_burnt(const SimColony *c);                      // 1 for a destroyed planet: kept in the records for good, never resettled (settle another world)
+int  col_invade(SimColony *c, uint32_t size, int diff, uint32_t day, ColAway *aw, uint64_t *reward);   // a real raid now: 1 won, -1 lost, 0 no colony to attack. The reward lands in reward_due
 int  col_resettle(SimColony *c, uint32_t day);           // ruins become a tent with 2 settlers again
 int  col_evacuate(SimColony *from, SimColony *to);       // settlers move to another colony (as many as it can house)
 

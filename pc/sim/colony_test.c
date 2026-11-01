@@ -112,6 +112,14 @@ int main(void){
     { SimColony k; col_init(&k, 9, 0); ColGift g; CHECK(col_collect(&k, 50, &g) == 0);
       col_update(&k, 0x3); k.food = 41; k.goods = 3; k.ore = 2; CHECK(col_collect(&k, 100, &g) == 1); CHECK(g.food_pts == 20 && k.food == 1 && g.gold == 21 && !g.heal);
       col_update(&k, 0x9); CHECK(col_collect(&k, 0, &g) == 1 && g.heal == 1); }
+    // ---- the map, the invasion hook, burnt worlds stay
+    { SimColony a; col_init(&a, 77, 0); col_update(&a, 0x1FF); a.wood = 100; int p0 = a.progress; a.progress = 0; CHECK(col_carry_wood(&a, 3) && (a.grid[3] || (a.plan_cell == 3 && a.progress > 0))); (void)p0;
+      CHECK(!col_carry_wood(&a, 99)); a.grid[5] = 1; CHECK(!col_carry_wood(&a, 5));
+      SimColony b; col_init(&b, 78, 0); CHECK(col_invade(&b, 5, COLD_NORMAL, 1, 0, 0) == 0);
+      col_update(&b, 0x1FF); b.world_ok = 1; b.bld[COLB_TOWER] = 9; uint64_t rw = 0; int r = col_invade(&b, 2, COLD_NORMAL, 5, 0, &rw); CHECK(r == 1 && rw > 0 && b.reward_due >= rw && b.raids_won == 1);
+      SimColony d; col_init(&d, 79, 0); col_update(&d, 0x1FF); d.world_ok = 1; CHECK(col_invade(&d, 5000, COLD_HARSH, 5, 0, &rw) == -1 && col_burnt(&d) && !col_resettle(&d, 9) && !col_invade(&d, 5, COLD_NORMAL, 6, 0, 0));
+      ColList L; memset(&L, 0, sizeof L); for(uint32_t q = 0; q < COL_MAX; q++) col_find(&L, 200 + q, 1, q + 5); L.c[7].state = COLS_DEAD_WORLD; L.c[7].last_day = 0; col_find(&L, 999, 1, 90); CHECK(col_find(&L, 207, 0, 0) && col_find(&L, 999, 0, 0));
+      col_update(&d, 0xFF); col_catchup_d(&d, 500, 28, COLD_NORMAL, 0); CHECK(col_burnt(&d) && d.nset == 0); }
     char t[300]; CHECK(col_dump(&c, t, sizeof t) > 20);
     printf("colony_test: %d checks, %d failed\n", checks, fails); return fails != 0;
 }

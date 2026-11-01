@@ -167,7 +167,7 @@ static void raid_fight(SimColony *c, uint32_t day, int diff, ColAway *aw, int ca
         kill(c, lost, day, aw);
         uint32_t limit = diff == COLD_HARSH ? 60 : 200;                                    // the extreme path: the planet itself is lost
         if(c->world_ok && diff != COLD_CALM && size >= limit && (was_dying || diff == COLD_HARSH)){
-            c->state = COLS_DEAD_WORLD; c->nset = 0; ev(aw, COLE_WORLDEND, size, 0, day); if(aw) aw->world_end = 1; }
+            c->state = COLS_DEAD_WORLD; c->nset = 0; c->raid_eta = 0; c->food = c->wood = c->goods = 0; c->hungry_days = 0; ev(aw, COLE_WORLDEND, size, 0, day); if(aw) aw->world_end = 1; }
     }
     c->god_used = 0;
 }
@@ -309,6 +309,25 @@ int col_resettle(SimColony *c, uint32_t day){
     c->state = COLS_ALIVE; c->nset = 2; c->health = 70; c->morale = 60; c->hungry_days = 0; c->raid_eta = 0; c->founded = day; c->last_day = day;
     memset(c->job, 0xFF, sizeof c->job); return 1;
 }
+int col_carry_wood(SimColony *c, int cell){            // the map: you carry wood to a cell and build there
+    if(c->state != COLS_ALIVE || !(c->mask & (1u << COLR_TENT)) || cell < 0 || cell >= COL_GRID_W * COL_GRID_H || c->grid[cell]) return 0;
+    if(!col_bld_ok(c, c->plan)) auto_plan(c);
+    if(!col_bld_ok(c, c->plan)) return 0;
+    c->plan_cell = (uint8_t)cell;
+    uint32_t add = 4; if(c->wood >= 8){ c->wood -= 8; add = 12; }
+    c->progress = (uint16_t)(c->progress + add); if(c->progress >= (uint32_t)col_bld_cost(c, c->plan)) finish_building(c, c->last_day, 0);
+    return 1;
+}
+int col_burnt(const SimColony *c){ return c->state == COLS_DEAD_WORLD; }
+int col_invade(SimColony *c, uint32_t size, int diff, uint32_t day, ColAway *aw, uint64_t *reward){   // a real raid now (warship DEFEND missions)
+    if(reward) *reward = 0;
+    if(c->state != COLS_ALIVE || !(c->mask & (1u << COLR_TENT)) || !c->nset) return 0;
+    if(size < 1) size = 1; if(size > 60000) size = 60000;
+    uint64_t before = c->reward_due, won = c->raids_won;
+    c->raid_size = (uint16_t)size; raid_fight(c, day, diff, aw, 0);
+    if(reward) *reward = c->reward_due - before;
+    return c->raids_won > won ? 1 : -1;
+}
 int col_evacuate(SimColony *from, SimColony *to){
     if(from == to || from->state != COLS_ALIVE || to->state != COLS_ALIVE || !(to->mask & (1u << COLR_TENT))) return 0;
     int room = col_cap(to->mask) - to->nset; if(room <= 0) return 0;
@@ -340,7 +359,8 @@ SimColony *col_find(ColList *l, uint32_t town, int make, uint32_t day){
     for(int i = 0; i < l->n; i++) if(l->c[i].town == town) return &l->c[i];
     if(!make) return 0;
     int at = l->n;
-    if(l->n >= COL_MAX){ at = 0; for(int i = 1; i < l->n; i++) if(l->c[i].last_day < l->c[at].last_day) at = i; }
+    if(l->n >= COL_MAX){ at = 0; for(int i = 1; i < l->n; i++){ int bi = l->c[i].state == COLS_DEAD_WORLD, ba = l->c[at].state == COLS_DEAD_WORLD;     // burnt worlds are kept for good: they go last
+            if(bi < ba || (bi == ba && l->c[i].last_day < l->c[at].last_day)) at = i; } }
     else l->n++;
     col_init(&l->c[at], town, day); return &l->c[at];
 }
