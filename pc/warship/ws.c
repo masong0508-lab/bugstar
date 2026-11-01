@@ -184,7 +184,7 @@ static void fill_numbers(WsCraft *c){
     c->hp_hull=wn_muld(c->mass, mt->hard/1e5);
     c->layers=1+c->cls/3; if(c->layers>6) c->layers=6;
     c->hp_shield=wn_muld(c->hp_hull,0.04);
-    double d=lg+9; if(d<0) d=0; if(d>100) d=100; c->dps=0.5+0.12*d;
+    double d=lg+9; if(d<0) d=0; if(d>100) d=100; c->dps=0.5+0.2*d;
     c->wave=2+c->cls/2; if(c->wave>12) c->wave=12;
     (void)cost_K_cached;
 }
@@ -262,8 +262,8 @@ void ws_threat(const WsCraft *c, double attack, int ehp, int wing, int kits, int
     t->need_attack = need_lg>300 ? 1e300 : pow(10.0,need_lg); if(t->need_attack<1) t->need_attack=1;
     double my_dps_lg=log10(60.0)+3*log10(attack<1?1:attack);
     double ttk_lg = log10(pow(10.0,hul-lay)+c->layers)+lay-my_dps_lg; t->ttk_s = ttk_lg>300?1e300:pow(10.0,ttk_lg);
-    double tt = t->ttk_s<60?60:t->ttk_s>900?900:t->ttk_s;
-    t->need_ehp=(int)(120+c->dps*tt*0.30); t->need_wing = c->cls<WC_FRIGATE?0 : c->cls/2>10?10:c->cls/2; t->need_kits=(int)(c->dps*tt*0.3/60); t->need_fuel=(int)(tt*0.25+20);
+    double tt = t->ttk_s<5?5:t->ttk_s>900?900:t->ttk_s;
+    t->need_ehp=(int)(60+c->dps*tt*0.30); t->need_wing = c->cls<WC_FRIGATE?0 : c->cls/2>10?10:c->cls/2; t->need_kits=(int)(c->dps*tt*0.3/60); t->need_fuel=(int)(tt*0.25+20);
     double ra=attack/t->need_attack, eff=ehp+kits*50.0+wing*25.0, re=eff/(t->need_ehp+t->need_kits*50.0+t->need_wing*25.0); if(fuel<t->need_fuel) re*=0.8;
     double r = ra<1 ? ra*ra*ra : (re<ra?re:ra); if(ra>=1 && re<1) r=re;
     t->tier = r>=4?0 : r>=1.6?1 : r>=1?2 : r>=0.6?3 : r>=0.25?4 : 5; t->word=thr_w[t->tier];
