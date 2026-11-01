@@ -45,8 +45,7 @@ sed -i -e 's/^    wd\.psz=2;$/    wd.psz=2; pc_laws_dna(1);/' \
        -e 's/^    if(cur_rock){ wlv\[MW_ZEROG\]=6; wd\.hour=2; }/    pc_laws_dna(0);\n&/' \
        -e 's/(int)(hh%100u)<hp/pc_hell((int)(hh%100u),hp)/' \
        -e 's/((F%111u)==0 \&\& gal)/(pc_weird(F) \&\& gal)/' \
-       -e 's/^    every=every\*100\/xo_v(XO_HUNGER); if(every<1) every=1;/&\n    if(pc_hun_pct!=100){ if(pc_hun_pct<=0) return; every=every*100\/pc_hun_pct; if(every<1) every=1; }/' \
-       -e 's/xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed; uni_load();/& pc_laws_slot_load(cur_slot);/' game.inc
+       -e 's/^    every=every\*100\/xo_v(XO_HUNGER); if(every<1) every=1;/&\n    if(pc_hun_pct!=100){ if(pc_hun_pct<=0) return; every=every*100\/pc_hun_pct; if(every<1) every=1; }/' game.inc
 sed -i -e 's/^#define ULY 25 .*/#define ULY pc_uly()/' -e 's/^#define GAL_SHIFT 20 .*/#define GAL_SHIFT pc_galbits()/' \
        -e 's/{ return 20+3\*digits; }/{ return pc_warp(20+3*digits); }/' \
        -e 's/return hmix(h^0xD3A5E000u^gsk(110))%DENSE_ODDS==0; }/return pc_dense(hmix(h^0xD3A5E000u^gsk(110)),DENSE_ODDS); }/' \
@@ -65,6 +64,7 @@ sed -i -e 's/^static int curv_k(void){ static const u8 ks\[6\]={12,7,4,3,2,1}; i
        -e 's/ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;/& pc_tiny_fix();/' \
        -e 's/int sun_az = (int)((s\&127) + T\/64);/int sun_az = (int)((s\&127) + (u32)((u64)T*(u32)pc_day_pct\/6400u));/' planet.inc
 sed -i -e 's/^static void slot_erase(int i){/static void slot_erase(int i){ pc_laws_slot_erase(i);/' -e 's/^static void slot_copy(int from, int to){/static void slot_copy(int from, int to){ pc_laws_slot_copy(from,to);/' \
+       -e 's/xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed; uni_load();/& pc_laws_slot_load(cur_slot);/' \
        -e 's/^\(    sram_write(slot_base(cur_slot), s, sizeof(Save));\)$/\1 pc_laws_slot_save(cur_slot);/' save.inc
 sed -i 's/if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug/if(s2>=0){ cur_slot=s2; pc_laws_slot_new(s2); oam_hide_all(); oam_flush(); if(make_bug/' main.c
 echo '#include "../pc_laws.inc"' >> main.c
@@ -86,7 +86,7 @@ CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing -no-pie -m64
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj
 STAMP=$(cat *.inc main.c assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../laws/lawx.h ../content/pcx.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
-if [ "$(cat ../obj/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f ../obj/game.o ]; then gcc $CF -c main.c -o ../obj/game.o && echo "$STAMP" > ../obj/game.stamp; fi
+if [ "$(cat ../obj/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f ../obj/game.o ]; then rm -f ../obj/game.stamp; gcc $CF -c main.c -o ../obj/game.o || exit 1; echo "$STAMP" > ../obj/game.stamp; fi
 OBJS="../obj/game.o"
 for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=../obj/$(basename $f .c).o; gcc $CF -c $f -o $o; OBJS="$OBJS $o"; done
 gcc -no-pie -m64 $OBJS $SDLL -lm -o ../bugstar_pc

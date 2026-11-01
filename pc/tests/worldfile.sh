@@ -1,5 +1,5 @@
 #!/bin/bash
-# The PC WORLD FILE screen, in the real game: pause (START), WORLD page (R x4), B opens the file, R turns its pages, B closes it. Two runs must match,
+# The PC WORLD FILE screen, in the real game: pause (START), WORLD page (R x4), B opens the PC LAB, A the file, R turns its pages, B closes it. Two runs must match,
 # the pictures of the six file pages must all differ from each other and from the WORLD page, and the game must still be running after it closed.
 cd "$(dirname "$0")/.."; mkdir -p out; rm -f out/w1.sav out/w2.sav
 B=./bugstar_pc; S=tests/worldfile.txt

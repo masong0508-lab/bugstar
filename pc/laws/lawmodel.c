@@ -116,7 +116,7 @@ static void core(const LawSet *s, const LwEnv *e, LwResult *r, const LwResult *r
     if(sc <= SC_K && sage > life){ if(sage < life * 1.12) sc = SC_GIANT; else if(sc <= SC_B && um < 0.6) sc = SC_NS; else sc = SC_WD; }
     r->sclass = sc;
     double lumf = lw_pw2((um - 0.5) * 0.6 * RR(s, LW_S_MASS));
-    double L = SC_LUM[sc] * lumf * bright * fus * fus * lpow(G, 1.5), M = SC_MASS[sc], Tcol = SC_TEMP[sc] * RR(s, LW_S_TEMP);
+    double L = SC_LUM[sc] * lumf * bright * fus * fus * lpow(G, 1.0), M = SC_MASS[sc], Tcol = SC_TEMP[sc] * RR(s, LW_S_TEMP);
     double Rs = lsqrt(L) / ((Tcol / 5772.0) * (Tcol / 5772.0) + 1e-30) * RR(s, LW_S_RADIUS); if(sc == SC_NS) Rs = 1.4e-5; if(sc == SC_WD) Rs = 0.012;
     double Tsurf = sc == SC_NS ? Tcol : 5772.0 * lpow(L / (Rs * Rs + 1e-30), 0.25);
     int nsuns = 1; if(u01(st, 24) < VV(s, LW_S_BIN) / 100.0){ nsuns = 2; if(u01(st, 25) < VV(s, LW_S_TRIPLE) / 100.0) nsuns = 3; }
