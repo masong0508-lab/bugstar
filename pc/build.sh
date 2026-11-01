@@ -94,6 +94,7 @@ H ui.inc 'vbar(pg,30,75,90,xp,xp_next(),C_GOLD,"XP")' 'vbar(pg,30,75,90,sim_xpv(
 echo '#include "../sim/sim_glue.inc"' >> main.c
 echo '#include "../pc_info.inc"' >> main.c
 echo '#include "../creator/creator_ui.inc"' >> main.c
+echo '#include "../pc_giant.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 echo '#include "../coil_test.inc"' >> main.c
 # --- compile -----------------------------------------------------------------------------------------------------------
@@ -113,9 +114,9 @@ fi
 CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/sim_proto.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_giant.inc ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/sim_proto.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
-for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+for f in ../pc_main.c ../pc_hw.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../meaning/meaning.c ../giant/giant.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH $OBJS $SDLL -lm -o ../$OUT
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"

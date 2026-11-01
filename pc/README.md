@@ -277,3 +277,9 @@ SELECT rolls the dice for the tab, START undoes. The planet and the footprint pa
   to the .sav (`<sav>.<NAME>.crp`, `<sav>.seed_<HEX>.crp`) and lands there; `make_world` calls `pc_cr_apply` for that address. The share code is `PL2-...`; `<sav>.code` is read by IMPORT CODE.
 - Tests: `pc/creator/test.sh` (recipe to seed, share code round trip, files, undo, footprint, flora names unique) and `pc/tests/creator.sh` (the screen in the real game, landing through
   `bugstar_pc --view --crcode CODE`).
+
+## GIANT NUMBERS and BUGSTARILLION v3
+
+PC LAB (pause, WORLD page, B) then GIANT NUMBERS: a viewer for 2^(2^32) (1,292,913,987 digits), the counting number 1..123,456,790 (1,000,000,008 digits),
+the complete name of BUGSTARILLION v3 (6,376,476,945,538,615,314 letters), a namer for any typed number, and a scale ladder. Details, definitions, the record research
+and the tests: `pc/giant/README.md`. The 646 MB digit file is built once by `pc/giant/mkpow.py` and is not in git (`pc/giant/cache/`); the counting number needs no file.

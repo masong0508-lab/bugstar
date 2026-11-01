@@ -22,6 +22,14 @@ int main(int argc, char **argv){
         FILE *f = fopen(argv[3], "r"); unsigned long long p; int n; static char b[1 << 20];
         while(fscanf(f, "%llu %d", &p, &n) == 2){ int g = gi_read(which, p, n, b); printf("%.*s\n", g, b); }
         return 0; }
+    if(!strcmp(c, "modcheck")){                   // modcheck pow|count P... : the number's value modulo each P (Horner over the digits, 9 at a time)
+        if(gi_open(which)){ fprintf(stderr, "not ready\n"); return 1; } static char b[9 << 16]; gu64 D = gi_digits(which);
+        for(int a = 3; a < argc; a++){ unsigned long long p = strtoull(argv[a], 0, 10); unsigned __int128 r = 0; gu64 pos = 0;
+            while(pos < D){ int n = (int)((D - pos) < sizeof b ? (D - pos) : sizeof b); gi_read(which, pos, n, b); int i = 0;
+                for(; i + 9 <= n; i += 9){ unsigned long long v = 0; for(int k = 0; k < 9; k++) v = v * 10 + (unsigned)(b[i + k] - '0'); r = (r * 1000000000ull + v) % p; }
+                for(; i < n; i++) r = (r * 10 + (unsigned)(b[i] - '0')) % p; pos += (gu64)n; }
+            printf("%llu %llu\n", p, (unsigned long long)r); }
+        return 0; }
     if(!strcmp(c, "export")){ if(gi_open(which)){ fprintf(stderr, "not ready\n"); return 1; } char hx[65]; gu64 by; double t = now(); int rc = gi_export(which, argv[3], prog, 0, hx, &by); printf("%d %llu %s %.1fs\n", rc, by, hx, now() - t); return rc; }
     if(!strcmp(c, "seek")){                       // seek count|pow N : N random reads of 600 digits, time
         if(gi_open(which)){ fprintf(stderr, "not ready\n"); return 1; } int N = atoi(argv[3]); static char b[700]; unsigned long long x = 88172645463325252ull; double t = now(); unsigned long long sum = 0;
