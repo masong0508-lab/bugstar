@@ -318,7 +318,7 @@ static void present_game(int with_overlay){
     if(g_autoshot_path && g_autoshot_frame>=0 && pc_frames()>=g_autoshot_frame){
         SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,dw_,dh_,32,SDL_PIXELFORMAT_ARGB8888);
         if(s && SDL_RenderReadPixels(ren,NULL,SDL_PIXELFORMAT_ARGB8888,s->pixels,s->pitch)==0){ plat_write_png(g_autoshot_path,s->pixels,dw_,dh_); fprintf(stderr,"window shot %dx%d (draw %dx%d) -> %s\n",dw_,dh_,W,H,g_autoshot_path); }
-        if(s) SDL_FreeSurface(s); g_autoshot_frame=-1; g_autoshot_path=0; if(g_stop_after>=0 && menu_open) pc_quit_now(); }
+        if(s) SDL_FreeSurface(s); g_autoshot_frame=-1; g_autoshot_path=0; if(g_stop_after>=0 && (menu_open || pc_frames()>=g_stop_after)) pc_quit_now(); }
     SDL_RenderPresent(ren);
 }
 // ------------------------------------------------------------------------------------------------ input
@@ -434,7 +434,7 @@ void plat_frame(void){
     if(pc_script_keys(&k)) pc_set_keys(k); else { k=read_keys(); pc_set_keys(k); if(getenv("BUGSTAR_FAKEPAD") && k) fprintf(stderr,"fakepad: frame %ld keys=%03x pad=%s\n",fr,k,pad?SDL_GameControllerName(pad):"none"); }
     rumble_frame();
     { static long saved_at; if(fr-saved_at>=120){ saved_at=fr; pc_save_flush(0); } }
-    if(g_stop_after>=0 && fr>=g_stop_after) pc_quit_now();
+    if(g_stop_after>=0 && fr>=g_stop_after && !(g_autoshot_path && g_autoshot_frame>=0)) pc_quit_now();   // (a screenshot still waiting is taken first)
 }
 void plat_close(void){ pc_save_flush(1); cfg_save(); wav_close(); if(adev) SDL_CloseAudioDevice(adev); if(pad) SDL_GameControllerClose(pad); if(ren) SDL_DestroyRenderer(ren); if(win) SDL_DestroyWindow(win); SDL_Quit(); }
 
