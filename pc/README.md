@@ -125,3 +125,46 @@ Notes:
 - Old GBA addresses still map to the same worlds: they sit at the start of the bigger range. The PC build never changes the GBA game.
 - Nothing is stored for this. Every place is made from its address when you arrive.
 - These are counts of PLACES THAT CAN EXIST. Nobody can visit them all, and the numbers say nothing about how deep each place is.
+
+## Scale update 2: eight times the bits (PC port only, a plan, not wired in yet)
+
+Asked for: "oct-rice (8x) as many bits", with new content, planet traits and anything that helps content, replayability and feasibility.
+This **replaces the 2^256 multipliers above**: instead of multiplying the counts by 2^256, the address itself gets 8x as many bits.
+
+| | GBA rules | scale update 1 | **now (8x bits)** |
+|---|---|---|---|
+| bits for the universe number | 256 | 512 | **2048** |
+| bits per axis inside a universe | 155 | 283 | **1240** |
+| universes | 1.16e77 | 1.34e154 | **3.232e616** |
+| clusters per universe | 2^310 | 2^566 | **3.584e746** |
+| galaxies per universe (2^20 x 2^20 clusters each) | 1.90e81 | 2.20e158 | **3.260e734** |
+| stars per universe (32 per cluster) | 6.7e94 | 7.7e171 | **1.147e748** |
+| planets per universe (up to 16 per star) | 1.07e96 | 1.24e173 | **1.835e749** |
+| width of one universe (25 ly x 2^axis x 30) | 1.14e48 ly | 3.4e49 ly | **1.420e376 ly** |
+| galaxies, all universes | 2.2e158 | 2.9e312 | **1.053e1351** |
+| stars, all universes | 7.7e171 | 1.0e326 | **3.707e1364** |
+| planets, all universes (max) | 1.2e173 | 1.7e327 | **5.930e1365** |
+| trip to a neighbour universe (width x universes^2) | 1.5e202 ly | 6.2e357 ly | **1.483e1609 ly** |
+
+Notes:
+- Address size: 1240 bits per axis is 39 words of 32 bits (38.75, so 39), the universe number is 64 words. `amix()` still hashes every word.
+- The old GBA addresses still map to the same worlds (they sit at the start of the bigger range). The PC build never changes the GBA game or its saves.
+- Nothing is stored for this. Every place is made from its address when you arrive. Big numbers are only addresses, never lists.
+- Distances need big-number math (a small fixed-size bignum, no library) for the trip length, warp cost and fuel. Everything near you stays 64-bit float.
+- These are counts of places that CAN exist. Nobody can visit them all, and the numbers say nothing about how deep each place is. That is what the content list below is for.
+
+### More content to go with the bigger universe (the plan for the PC worker)
+
+Rule-made, so it grows with the address instead of by hand:
+- **Planet traits** (new, rolled from the planet seed, 3 to 6 per planet, some pairs forbidden): gravity, day length, tilt and seasons, tidal locking,
+  ring system, moons, atmosphere mix, weather set (storms, ash, aurora, acid rain, meteor showers), magnetic field, volcanism, ocean depth, glass dunes,
+  crystal fields, fungus forests, ruins age, ancient machines, hive worlds, ghost worlds (no life, loud ruins), rogue planets (no sun), binary-star light.
+  Each trait changes the terrain tables, the lighting, the monsters that spawn, the loot, the quests and the shop prices.
+- **Universe themes** (new): each universe gets 2 rule changes (low gravity, no magic, huge bugs, endless night, double gold, fragile, hunger-free,
+  mirror world...). Universe number picks them. Rifts show the theme before you go.
+- **Biomes and life**: more bug families from parts (body, legs, head, element, trait), herds, nests, bosses per biome, rare "named" creatures per planet.
+- **Quests**: hand-written templates with slots (who, where, what, why, reward), chained into arcs. Planet traits feed the slots.
+- **Gear**: more prefixes, suffixes, sets and uniques, tied to planet traits and universe themes.
+- **Towns and ships**: more town layouts, shops, rumours, factions, ship parts, wingmen and outposts from the grammar tables.
+- **Feasibility**: a seed viewer for the new fields, a world sampler that checks thousands of random addresses (no crashes, no impossible trait pairs),
+  a soak test for rifts, and an address/bignum test suite. A one-switch "small universe" mode for slow PCs.
