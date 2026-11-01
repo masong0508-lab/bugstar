@@ -928,7 +928,9 @@ static void gain_xp(int n){ { long long q=(long long)n*xpx(); n = q>1000000000LL
         if(lv5) stat_pts=sadd(stat_pts,5);
         if(lv10){ stat_pts=sadd(stat_pts,10); earn(100+(int)(level>100000?100000:level)*10); }
         recalc(); hearts=maxh; mp=maxmp; pet_maxhp+=4; pet_hp=pet_maxhp;
-        char b[40]; scpy(b, lv10?"MILESTONE! LV " : lv5?"BONUS LEVEL! LV " : "LEVEL UP! LV "); ncat(b,level); scat(b,". START: SPEND POINTS"); say(b); sfx(6);
+        char b[40]; scpy(b, lv10?"MILESTONE! LV " : lv5?"BONUS LEVEL! LV " : "LEVEL UP! LV "); ncat(b,level); scat(b,". START: SPEND POINTS");
+        { s64 q100=sdiv(level,100); if(q100>=1 && q100<=NBUD && q100*100==level){ scpy(b,"LV "); ncat(b,level); scat(b,"! NEW LADYBUG BUDDY"); } }          // a new Buddy every 100 levels
+        say(b); sfx(6);
     }
     if(ups>=3){ char b[40]; scpy(b,"SURGE! +"); ncat(b,ups); scat(b," LEVELS"); say(b); }
     ach_check(); hud_now();

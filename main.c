@@ -221,7 +221,7 @@ XL(xl_musl,"NONE","DRUMS","ARPEGGIOS","DRUMS+ARP","AMBIENCE","DRUMS+AMB","ARP+AM
 XL(xl_musb,"BALANCED","MELODY UP","BASS UP")                       XV(xl_musb,0,1,2)
 XL(xl_yn,"OFF","ON")                                                XV(xl_yn,0,1)
 XL(xl_espd,"FROZEN","1/2","3/4","NORMAL","X1.5","X2","X3")          XV(xl_espd,0,50,75,100,150,200,300)
-XL(xl_bud,"1","2","3","5","10")                                   XV(xl_bud,1,2,3,5,10)
+XL(xl_bud,"ALL","NONE","1","2","3","5","7")                    XV(xl_bud,9,0,1,2,3,5,7)
 XL(xl_ehp,"1/4","1/2","NORMAL","X2","X5","X10")                     XV(xl_ehp,25,50,100,200,500,1000)
 XL(xl_ecnt,"NONE","1/4","1/2","NORMAL","X2","X3","X5","X7","X10")  XV(xl_ecnt,0,25,50,100,200,300,500,700,1000)
 XL(xl_eawr,"SHORT","NORMAL","LONG","VERY LONG","EVERYWHERE")        XV(xl_eawr,50,100,200,400,1000)
@@ -261,7 +261,7 @@ static const XOpt XOT[NXOPT]={
   [XO_ECOUNT] =XR("MONSTER COUNT","HOW MANY MONSTERS FILL EACH ROOM (NEXT FLOOR)",xl_ecnt,3,XG_ENEMY),
   [XO_EAWARE] =XR("MONSTER SIGHT","HOW FAR AWAY MONSTERS NOTICE YOU AND COME",xl_eawr,1,XG_ENEMY),
   [XO_ESTR]   =XR("MONSTER STRENGTH","HOW HARD MONSTERS HIT, BEFORE YOUR ARMOUR",xl_estr,2,XG_ENEMY),
-  [XO_BUDDY]  =XR("LADYBUG BUDDIES","HOW MANY BUDDIES FIGHT BY YOUR SIDE IN DUNGEONS. UP TO 10",xl_bud,0,XG_ENEMY),
+  [XO_BUDDY]  =XR("LADYBUG BUDDIES","ONE NEW LADYBUG JOINS YOU EVERY 100 LEVELS. THIS IS THE MOST YOU BRING INTO A DUNGEON",xl_bud,0,XG_ENEMY),
   [XO_BOSSES] =XR("EXTRA BOSSES","MORE BOSSES AT THE BOTTOM OF EVERY ZONE (NEXT FLOOR)",xl_boss,0,XG_ENEMY),
   [XO_HUNGER] =XR("HUNGER SPEED","HOW FAST YOU GET HUNGRY (IF HUNGER IS ON)",xl_hung,2,XG_SURV),
   [XO_REGEN]  =XR("HEAL TIMER","HOW OFTEN SLOW HEALING AND MANA TICK",xl_regn,0,XG_SURV),
@@ -300,11 +300,13 @@ static int xo_hp(int h){ long long v=(long long)h*xo_v(XO_EHP)/100; v=v*(dif_hp[
 #define NBUD 9                                                   // the extra Buddies (LADYBUG BUDDIES): they bite, they never get hurt
 typedef struct { s32 x, y; s16 cool; u8 flash, pad; } Bud;
 static Bud bud[NBUD]; static s32 bud_dd[NBUD];
+static s64 level;                                                // (defined for real in game.inc)
+static int bud_unlocked(void){ s64 n=sdiv(level,100); return n>NBUD ? NBUD : n<0 ? 0 : (int)n; }   // ONE extra Buddy for every 100 player levels
 static int nbud(void){
 #ifdef TEST_BUD
     return NBUD;
 #endif
-    return xo_v(XO_BUDDY)-1; }
+    int c=xo_v(XO_BUDDY), u=bud_unlocked(); return c<u ? c : u; }   // (what you bring: your choice, but never more than you have unlocked)
 static int xo_n(int c){ int v=xo_v(XO_ECOUNT); if(v==100) return c; c=c*v/100; if(v && c<1) c=1; return c; }
 static int xo_fuel(int n){ return (n*xo_v(XO_FUEL)+99)/100; }
 
@@ -1304,6 +1306,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
         card(VISPG,"BUGSTAR",t,6); bolt_story(VISPG,0); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
 #ifdef TEST_DUNGEON
     enter_dungeon_flag=1;
+#endif
+#ifdef TEST_LEVEL
+    level=TEST_LEVEL; recalc(); hearts=maxh;
 #endif
     dbg_start2();
 #ifdef TEST_CREDITS
