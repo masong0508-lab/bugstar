@@ -1551,6 +1551,9 @@ static void run_game(void){
 #ifdef TEST_KSWEEP
 volatile u32 sweep_n;
 #endif
+#ifdef TEST_KFUZZ
+static void kfz_run(void);
+#endif
 int main(void){
 #ifdef TEST_STACK
     { extern u32 __bss_end; u32 *p=&__bss_end; u32 sp_now; __asm__ volatile("mov %0, sp":"=r"(sp_now)); while((u32)p<sp_now-0x100) *p++=0xA5A5A5A5u; }   // (testing: paint the free stack so its deepest use can be seen)
@@ -1577,6 +1580,9 @@ int main(void){
     kw.driver=TEST_KDRV;
 #endif
     kw_start_planet_race(kw.seed,kw.track,NRC,0); kw_run();      // (straight into a race on a chosen planet and track)
+#endif
+#ifdef TEST_KFUZZ
+    kfz_run();
 #endif
 #ifdef TEST_KSWEEP
     {   // the crash hunt: race after race on different planets, tracks, classes, mirrored or backwards, with every stunt on, the test driver at the wheel
