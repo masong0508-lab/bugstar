@@ -31,24 +31,24 @@ static const uint8_t gun_dmg[SY_NGUN] = {0, 4, 7, 10, 12, 3}, gun_rng[SY_NGUN] =
                      gun_mass[SY_NGUN] = {0, 1, 3, 2, 3, 2}, gun_cost[SY_NGUN] = {0, 15, 20, 35, 60, 15}, gun_crew[SY_NGUN] = {0, 0, 1, 1, 1, 1};
 static const uint8_t wing_turn[SY_NWING] = {0, 25, 32, 38, 34, 44, 30};
 
-static int sec_vol(const SySec *s){ int v = s->len * s->wid * s->hgt; if(s->shape == SH_FLAT) v /= 2; else if(s->shape == SH_WEDGE) v = v * 3 / 4; else if(s->shape == SH_ROUND) v = v * 4 / 5; return v; }
+static int sec_vol(const SySec *s){ int v = s->len * s->wid * s->hgt; if(s->shape == SYSH_FLAT) v /= 2; else if(s->shape == SYSH_WEDGE) v = v * 3 / 4; else if(s->shape == SYSH_ROUND) v = v * 4 / 5; return v; }
 static int sec_area(const SySec *s){ return s->len * (s->wid + s->hgt); }
-static int gun_mult(const SyDesign *d, const SyGun *g){ return (d->sym && (g->pos == GP_LEFT || g->pos == GP_RIGHT)) ? 2 : 1; }
+static int gun_mult(const SyDesign *d, const SyGun *g){ return (d->sym && (g->pos == SYGP_LEFT || g->pos == SYGP_RIGHT)) ? 2 : 1; }
 
 static void part_sec(const SyDesign *d, int i, SyPart *p){ const SySec *s = &d->sec[i]; int v = sec_vol(s); p->mass = 2 + v / 12; p->power = 0; p->heat = 0; p->cost = 5 + v / 6; p->crew = 0; }
 static void part_arm(const SyDesign *d, int i, SyPart *p){ const SySec *s = &d->sec[i]; memset(p, 0, sizeof *p); p->mass = s->armour * sec_area(s) / 20; p->cost = s->armour * sec_area(s) / 4; }
 static void part_eng(const SyDesign *d, SyPart *p){ int k = d->eng, m = d->neng * (2 + d->esize); p->mass = eng_mass[k] * m / 2; p->power = eng_pow[k] * m / 2; p->heat = eng_heat[k] * m / 2; p->cost = eng_cost[k] * m / 2; p->crew = d->neng / 2; }
 static void part_gun(const SyDesign *d, int i, SyPart *p){ const SyGun *g = &d->gun[i]; int m = (1 + g->size) * gun_mult(d, g); p->mass = gun_mass[g->kind] * m; p->power = gun_pow[g->kind] * m; p->heat = gun_heat[g->kind] * m; p->cost = gun_cost[g->kind] * m; p->crew = gun_crew[g->kind] * gun_mult(d, g); }
-static void part_wing(const SyDesign *d, SyPart *p){ memset(p, 0, sizeof *p); if(d->wing == WK_NONE) return; int a = (d->wspan + 2) * (4 + d->wsweep / 3) * (d->wing == WK_X ? 2 : 1); p->mass = 1 + a / 10; p->cost = 5 + a / 3; }
+static void part_wing(const SyDesign *d, SyPart *p){ memset(p, 0, sizeof *p); if(d->wing == SYWK_NONE) return; int a = (d->wspan + 2) * (4 + d->wsweep / 3) * (d->wing == SYWK_X ? 2 : 1); p->mass = 1 + a / 10; p->cost = 5 + a / 3; }
 static void part_reactor(const SyDesign *d, SyPart *p){ p->mass = 3 + d->reactor * 4; p->power = -(12 + d->reactor * 10); p->heat = d->reactor * 2; p->cost = d->reactor * 40; p->crew = d->reactor / 2; }
 
 void sy_stats(const SyDesign *d0, SyStats *s){
     SyDesign dd = *d0; sy_fix(&dd); const SyDesign *d = &dd; SyPart p; memset(s, 0, sizeof *s);
     int32_t mass = 0, gen = 0, use = 0, heat = 0, cost = 0, crew = 1, vol = 0, armour = 0, fire = 0, range = 0, beds = 2, cool = 12, thirst, shield, turnb = 0, hold, fuel;
     for(int i = 0; i < d->nsec; i++){ part_sec(d, i, &p); mass += p.mass; cost += p.cost; vol += sec_vol(&d->sec[i]);
-        part_arm(d, i, &p); mass += p.mass; cost += p.cost; armour += d->sec[i].armour * sec_area(&d->sec[i]) / 6; if(d->sec[i].shape == SH_BOX) armour += d->sec[i].len * 2; }
+        part_arm(d, i, &p); mass += p.mass; cost += p.cost; armour += d->sec[i].armour * sec_area(&d->sec[i]) / 6; if(d->sec[i].shape == SYSH_BOX) armour += d->sec[i].len * 2; }
     armour += vol / 40; beds += vol / 150;
-    if(d->nose == NO_RAM){ armour += 20; mass += 4; cost += 15; } else if(d->nose == NO_POINT) turnb += 4;
+    if(d->nose == SYNO_RAM){ armour += 20; mass += 4; cost += 15; } else if(d->nose == SYNO_POINT) turnb += 4;
     part_wing(d, &p); mass += p.mass; cost += p.cost;
     if(d->wing){ turnb += wing_turn[d->wing] * (d->wspan + 4) / 8; cool += (d->wspan + 2) * (4 + d->wsweep / 3) / 12; }
     mass += d->fins * 2; cost += d->fins * 5; cool += d->fins * 3; turnb += d->fins * 3;
@@ -58,28 +58,28 @@ void sy_stats(const SyDesign *d0, SyStats *s){
     mass += d->tanks * 2; cost += d->tanks * 8; mass += d->radiators * 2; cost += d->radiators * 12; cool += d->radiators * 6;
     int guns = 0;
     for(int i = 0; i < d->ngun; i++){ const SyGun *g = &d->gun[i]; if(!g->kind) continue; part_gun(d, i, &p); mass += p.mass; use += p.power; heat += p.heat; cost += p.cost; crew += p.crew;
-        fire += gun_dmg[g->kind] * (1 + g->size) * gun_mult(d, g); int r = gun_rng[g->kind] * 10 + g->size * 3; if(r > range) range = r; if(g->kind == GK_FLAK) armour += 5 * (1 + g->size); guns++; }
+        fire += gun_dmg[g->kind] * (1 + g->size) * gun_mult(d, g); int r = gun_rng[g->kind] * 10 + g->size * 3; if(r > range) range = r; if(g->kind == SYGK_FLAK) armour += 5 * (1 + g->size); guns++; }
     shield = d->shield * 25; use += d->shield * 3; heat += d->shield; mass += d->shield * 2; cost += d->shield * 40; crew += d->shield / 2;
-    switch(d->cockpit){ case CP_BUBBLE: turnb += 5; break; case CP_SLIT: armour += 10; break; case CP_DOME: range += 5; break; case CP_VISOR: range += 10; break; case CP_BRIDGE: beds += 4; fire += 2; mass += 4; cost += 30; break; }
+    switch(d->cockpit){ case SYCP_BUBBLE: turnb += 5; break; case SYCP_SLIT: armour += 10; break; case SYCP_DOME: range += 5; break; case SYCP_VISOR: range += 10; break; case SYCP_BRIDGE: beds += 4; fire += 2; mass += 4; cost += 30; break; }
     fire += d->bays * 6; mass += d->bays * 5; crew += d->bays * 3; use += d->bays; cost += d->bays * 50; if(d->bays && range < 80) range = 80;
     hold = 10 + d->cargo * 8 + vol / 100; mass += d->cargo * 2; cost += d->cargo * 10;
     beds += d->quarters * 4; mass += d->quarters * 2; cost += d->quarters * 10;
     fuel = 60 + d->tanks * 20 + vol / 80;
     // the trade-offs: too little power or too much heat weakens guns, shields and engines
     int warn = 0, pf = 100, hf = 100;
-    if(use > gen){ warn |= WN_POWER; pf = (int)(gen * 100 / (use ? use : 1)); }
-    if(heat > cool){ warn |= WN_HEAT; hf = (int)(cool * 100 / heat); }
+    if(use > gen){ warn |= SYWN_POWER; pf = (int)(gen * 100 / (use ? use : 1)); }
+    if(heat > cool){ warn |= SYWN_HEAT; hf = (int)(cool * 100 / heat); }
     int32_t thr_e = thrust * (pf < 100 ? (100 + pf) / 2 : 100) / 100;
     int32_t speed = 12 + thr_e * 80 / (mass + 10); speed = CL(speed, 0, 100);
     int32_t turn = (40 + turnb) * 60 / (mass / 2 + 30); turn = turn * 100 / 55; turn = CL(turn, 0, 200);
     fire = fire * pf / 100 * hf / 100; shield = shield * pf / 100;
-    if(crew > beds){ warn |= WN_CREW; fire = fire * 3 / 4; }
-    if(speed < 25) warn |= WN_HEAVY;
-    if(!guns && !d->bays) warn |= WN_NOGUN;
-    if(fuel < thirst * 5) warn |= WN_FUEL;
+    if(crew > beds){ warn |= SYWN_CREW; fire = fire * 3 / 4; }
+    if(speed < 25) warn |= SYWN_HEAVY;
+    if(!guns && !d->bays) warn |= SYWN_NOGUN;
+    if(fuel < thirst * 5) warn |= SYWN_FUEL;
     int32_t threat = fire * (range + 20) / 40 + armour / 3 + shield / 2 + speed + turn / 4 + d->bays * 10;
-    s->v[ST_SPEED] = speed; s->v[ST_TURN] = turn; s->v[ST_ARMOUR] = CL(armour, 0, 9999); s->v[ST_SHIELD] = CL(shield, 0, 9999); s->v[ST_FIRE] = CL(fire, 0, 9999);
-    s->v[ST_RANGE] = CL(range, 0, 9999); s->v[ST_HOLD] = CL(hold, 0, 9999); s->v[ST_FUEL] = CL(fuel, 0, 9999); s->v[ST_CREW] = CL(crew, 0, 9999); s->v[ST_COST] = CL(cost, 0, 9999); s->v[ST_THREAT] = CL(threat, 0, 9999);
+    s->v[SYST_SPEED] = speed; s->v[SYST_TURN] = turn; s->v[SYST_ARMOUR] = CL(armour, 0, 9999); s->v[SYST_SHIELD] = CL(shield, 0, 9999); s->v[SYST_FIRE] = CL(fire, 0, 9999);
+    s->v[SYST_RANGE] = CL(range, 0, 9999); s->v[SYST_HOLD] = CL(hold, 0, 9999); s->v[SYST_FUEL] = CL(fuel, 0, 9999); s->v[SYST_CREW] = CL(crew, 0, 9999); s->v[SYST_COST] = CL(cost, 0, 9999); s->v[SYST_THREAT] = CL(threat, 0, 9999);
     s->mass = mass; s->power_gen = gen; s->power_use = use; s->heat = heat; s->cooling = cool; s->thrust = thrust; s->crew_need = crew; s->beds = beds; s->warn = warn;
 }
 
@@ -98,13 +98,13 @@ int sy_warn_text(int warn, int i, char *out, int n){
 
 void sy_game(const SyDesign *d, SyGame *g){
     SyStats s; sy_stats(d, &s);
-    g->speed = CL(28 + s.v[ST_SPEED] * 62 / 80, 28, 90);
-    g->turn = CL(40 + s.v[ST_TURN] * 130 / 200, 40, 170);
-    g->armour = CL(115 - (s.v[ST_ARMOUR] + s.v[ST_SHIELD]) / 4, 40, 130);
-    g->gun = CL(s.v[ST_FIRE] / 2, 0, 24);
-    g->hold = CL((s.v[ST_HOLD] - 10) / 2, 0, 60);
-    g->fuel = CL(s.v[ST_FUEL] - 60, 0, 200);
-    g->accel = CL(s.v[ST_SPEED] * 24 / 55, 4, 96);
+    g->speed = CL(28 + s.v[SYST_SPEED] * 62 / 80, 28, 90);
+    g->turn = CL(40 + s.v[SYST_TURN] * 130 / 200, 40, 170);
+    g->armour = CL(115 - (s.v[SYST_ARMOUR] + s.v[SYST_SHIELD]) / 4, 40, 130);
+    g->gun = CL(s.v[SYST_FIRE] / 2, 0, 24);
+    g->hold = CL((s.v[SYST_HOLD] - 10) / 2, 0, 60);
+    g->fuel = CL(s.v[SYST_FUEL] - 60, 0, 200);
+    g->accel = CL(s.v[SYST_SPEED] * 24 / 55, 4, 96);
     g->damp = d->fins == 0 ? 3 : d->fins == 1 ? 4 : 6;
 }
 
@@ -129,13 +129,13 @@ void sy_fix(SyDesign *d){
 }
 void sy_default(SyDesign *d){
     memset(d, 0, sizeof *d); strcpy(d->name, "MOTH");
-    d->nsec = 3; d->sec[0] = (SySec){4, 4, 3, SH_ROUND, 0}; d->sec[1] = (SySec){6, 6, 4, SH_ROUND, 1}; d->sec[2] = (SySec){4, 5, 4, SH_ROUND, 1};
-    d->sym = 1; d->nose = NO_POINT; d->wing = WK_SWEPT; d->wspan = 6; d->wsweep = 6; d->wsec = 1; d->wtilt = 1; d->fins = 1;
-    d->eng = EK_PLASMA; d->neng = 2; d->esize = 1; d->reactor = 1; d->tanks = 1; d->radiators = 1;
-    d->ngun = 1; d->gun[0] = (SyGun){GK_LASER, 0, 0, GP_NOSE};
-    d->shield = 1; d->cockpit = CP_BUBBLE; d->bays = 0; d->cargo = 1; d->quarters = 1;
+    d->nsec = 3; d->sec[0] = (SySec){4, 4, 3, SYSH_ROUND, 0}; d->sec[1] = (SySec){6, 6, 4, SYSH_ROUND, 1}; d->sec[2] = (SySec){4, 5, 4, SYSH_ROUND, 1};
+    d->sym = 1; d->nose = SYNO_POINT; d->wing = SYWK_SWEPT; d->wspan = 6; d->wsweep = 6; d->wsec = 1; d->wtilt = 1; d->fins = 1;
+    d->eng = SYEK_PLASMA; d->neng = 2; d->esize = 1; d->reactor = 1; d->tanks = 1; d->radiators = 1;
+    d->ngun = 1; d->gun[0] = (SyGun){SYGK_LASER, 0, 0, SYGP_NOSE};
+    d->shield = 1; d->cockpit = SYCP_BUBBLE; d->bays = 0; d->cargo = 1; d->quarters = 1;
     d->paint = C15(150, 156, 176); d->trim = C15(232, 80, 72); d->glow = C15(90, 200, 255); d->light = C15(255, 230, 140); d->emcol = C15(255, 210, 60);
-    d->pattern = PT_STRIPE; d->finish = FI_GLOSS; d->ingame = 1;
+    d->pattern = SYPT_STRIPE; d->finish = SYFI_GLOSS; d->ingame = 1;
     static const uint8_t em[8] = {0x18, 0x3C, 0x7E, 0xFF, 0x18, 0x18, 0x24, 0x42}; memcpy(d->emblem, em, 8);
     static const uint8_t dc[8] = {0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81}; memcpy(d->decal, dc, 8);
 }
@@ -145,45 +145,45 @@ void sy_preset(SyDesign *d, int i){
     char nm[SY_NAME + 1]; memcpy(nm, d->name, sizeof nm); int ig = d->ingame; uint8_t em[8], dc[8]; memcpy(em, d->emblem, 8); memcpy(dc, d->decal, 8);
     sy_default(d); i = ((i % SY_NPRESET) + SY_NPRESET) % SY_NPRESET;
     switch(i){
-    case 1: d->nsec = 3; d->sec[0] = (SySec){5, 2, 2, SH_ROUND, 0}; d->sec[1] = (SySec){5, 3, 2, SH_WEDGE, 0}; d->sec[2] = (SySec){3, 3, 2, SH_FLAT, 0}; d->wing = WK_DELTA; d->wspan = 7; d->wsweep = 10;
-        d->eng = EK_FUSION; d->neng = 1; d->esize = 1; d->reactor = 1; d->shield = 0; d->quarters = 0; d->cargo = 0; d->paint = C15(220, 220, 230); d->trim = C15(40, 120, 255); d->pattern = PT_EDGE; break;
-    case 2: d->nsec = 4; for(int k = 0; k < 4; k++) d->sec[k] = (SySec){5, 9, 7, SH_BOX, 1}; d->sec[0].wid = 6; d->nose = NO_BLUNT; d->wing = WK_STRAIGHT; d->wspan = 3; d->wsweep = 0; d->wsec = 2;
-        d->eng = EK_ION; d->neng = 4; d->esize = 2; d->cargo = 8; d->quarters = 2; d->tanks = 4; d->reactor = 2; d->radiators = 2; d->paint = C15(200, 150, 60); d->trim = C15(60, 60, 70); d->pattern = PT_CHECKS; d->cockpit = CP_BRIDGE; break;
-    case 3: d->nsec = 3; d->sec[0] = (SySec){4, 5, 4, SH_BOX, 2}; d->sec[1] = (SySec){6, 7, 5, SH_BOX, 3}; d->sec[2] = (SySec){4, 6, 5, SH_BOX, 2}; d->nose = NO_RAM; d->wing = WK_NONE; d->fins = 2;
-        d->eng = EK_FUSION; d->neng = 2; d->esize = 2; d->reactor = 4; d->radiators = 4; d->shield = 2; d->quarters = 3; d->ngun = 4;
-        d->gun[0] = (SyGun){GK_CANNON, 2, 0, GP_NOSE}; d->gun[1] = (SyGun){GK_LASER, 1, 1, GP_LEFT}; d->gun[2] = (SyGun){GK_MISSILE, 1, 1, GP_TOP}; d->gun[3] = (SyGun){GK_FLAK, 0, 2, GP_BELOW};
-        d->paint = C15(80, 100, 70); d->trim = C15(200, 180, 60); d->pattern = PT_TIGER; d->cockpit = CP_SLIT; break;
-    case 4: d->nsec = 2; d->sec[0] = (SySec){7, 2, 2, SH_ROUND, 0}; d->sec[1] = (SySec){5, 3, 2, SH_ROUND, 0}; d->wing = WK_FORWARD; d->wspan = 8; d->wsweep = 8; d->wsec = 1; d->fins = 2;
-        d->eng = EK_WARP; d->neng = 1; d->esize = 1; d->reactor = 1; d->radiators = 0; d->shield = 0; d->quarters = 0; d->cargo = 0; d->tanks = 0; d->ngun = 1; d->gun[0] = (SyGun){GK_LASER, 1, 0, GP_LEFT};
-        d->paint = C15(30, 30, 40); d->trim = C15(255, 60, 40); d->glow = C15(255, 120, 40); d->pattern = PT_STRIPE; d->cockpit = CP_VISOR; break;
-    case 5: d->nsec = 5; for(int k = 0; k < 5; k++) d->sec[k] = (SySec){6, 10, 5, SH_FLAT, 1}; d->sec[0] = (SySec){5, 6, 4, SH_WEDGE, 1}; d->nose = NO_BLUNT; d->wing = WK_STRAIGHT; d->wspan = 4; d->wsec = 3;
-        d->eng = EK_FUSION; d->neng = 3; d->esize = 2; d->reactor = 4; d->radiators = 3; d->bays = 4; d->shield = 3; d->quarters = 6; d->ngun = 2; d->gun[0] = (SyGun){GK_FLAK, 1, 1, GP_LEFT}; d->gun[1] = (SyGun){GK_FLAK, 1, 3, GP_TOP};
-        d->paint = C15(120, 130, 150); d->trim = C15(240, 240, 255); d->pattern = PT_SPLIT; d->cockpit = CP_BRIDGE; break;
-    case 6: d->nsec = 2; d->sec[0] = (SySec){5, 7, 6, SH_BOX, 5}; d->sec[1] = (SySec){5, 8, 6, SH_BOX, 5}; d->nose = NO_RAM; d->wing = WK_NONE; d->eng = EK_ION; d->neng = 3; d->esize = 3; d->reactor = 3; d->radiators = 2;
-        d->shield = 4; d->ngun = 1; d->gun[0] = (SyGun){GK_CANNON, 2, 0, GP_TOP}; d->paint = C15(90, 90, 100); d->trim = C15(200, 60, 40); d->pattern = PT_PLAIN; d->finish = FI_METAL; d->cockpit = CP_SLIT; break;
-    case 7: d->nsec = 4; d->sec[0] = (SySec){4, 4, 4, SH_ROUND, 0}; d->sec[1] = (SySec){5, 5, 5, SH_ROUND, 0}; d->sec[2] = (SySec){5, 5, 5, SH_ROUND, 0}; d->sec[3] = (SySec){3, 4, 4, SH_ROUND, 0};
-        d->wing = WK_GULL; d->wspan = 9; d->wsec = 2; d->eng = EK_PLASMA; d->neng = 2; d->esize = 2; d->tanks = 6; d->cargo = 4; d->quarters = 2; d->reactor = 2; d->cockpit = CP_DOME;
-        d->paint = C15(240, 240, 235); d->trim = C15(40, 160, 120); d->pattern = PT_TWOTONE; d->finish = FI_PEARL; break;
-    case 8: d->nsec = 4; d->sec[0] = (SySec){5, 4, 3, SH_WEDGE, 1}; d->sec[1] = (SySec){6, 6, 4, SH_WEDGE, 2}; d->sec[2] = (SySec){6, 6, 4, SH_BOX, 2}; d->sec[3] = (SySec){4, 5, 4, SH_BOX, 1};
-        d->wing = WK_SWEPT; d->wspan = 5; d->wsweep = 9; d->wsec = 2; d->eng = EK_FUSION; d->neng = 2; d->esize = 2; d->reactor = 3; d->radiators = 2; d->shield = 2; d->quarters = 3; d->ngun = 3;
-        d->gun[0] = (SyGun){GK_BEAM, 0, 0, GP_NOSE}; d->gun[1] = (SyGun){GK_LASER, 1, 2, GP_RIGHT}; d->gun[2] = (SyGun){GK_MISSILE, 0, 1, GP_TOP}; d->paint = C15(60, 70, 120); d->trim = C15(255, 200, 60); break;
-    case 9: d->nsec = 6; d->sec[0] = (SySec){6, 6, 5, SH_WEDGE, 3}; for(int k = 1; k < 6; k++) d->sec[k] = (SySec){7, 10, 7, SH_BOX, 3}; d->sec[5].wid = 8; d->nose = NO_RAM; d->wing = WK_X; d->wspan = 5; d->wsec = 4;
-        d->eng = EK_WARP; d->neng = 6; d->esize = 3; d->reactor = 5; d->radiators = 5; d->shield = 5; d->bays = 2; d->quarters = 6; d->ngun = 6; d->fins = 2;
-        d->gun[0] = (SyGun){GK_BEAM, 2, 0, GP_NOSE}; d->gun[1] = (SyGun){GK_CANNON, 2, 1, GP_TOP}; d->gun[2] = (SyGun){GK_MISSILE, 2, 2, GP_LEFT}; d->gun[3] = (SyGun){GK_LASER, 2, 3, GP_RIGHT}; d->gun[4] = (SyGun){GK_FLAK, 1, 4, GP_BELOW}; d->gun[5] = (SyGun){GK_CANNON, 1, 5, GP_TOP};
-        d->paint = C15(40, 40, 50); d->trim = C15(220, 30, 30); d->glow = C15(255, 60, 60); d->pattern = PT_TIGER; d->finish = FI_METAL; d->cockpit = CP_BRIDGE; break;
+    case 1: d->nsec = 3; d->sec[0] = (SySec){5, 2, 2, SYSH_ROUND, 0}; d->sec[1] = (SySec){5, 3, 2, SYSH_WEDGE, 0}; d->sec[2] = (SySec){3, 3, 2, SYSH_FLAT, 0}; d->wing = SYWK_DELTA; d->wspan = 7; d->wsweep = 10;
+        d->eng = SYEK_FUSION; d->neng = 1; d->esize = 1; d->reactor = 1; d->shield = 0; d->quarters = 0; d->cargo = 0; d->paint = C15(220, 220, 230); d->trim = C15(40, 120, 255); d->pattern = SYPT_EDGE; break;
+    case 2: d->nsec = 4; for(int k = 0; k < 4; k++) d->sec[k] = (SySec){5, 9, 7, SYSH_BOX, 1}; d->sec[0].wid = 6; d->nose = SYNO_BLUNT; d->wing = SYWK_STRAIGHT; d->wspan = 3; d->wsweep = 0; d->wsec = 2;
+        d->eng = SYEK_ION; d->neng = 4; d->esize = 2; d->cargo = 8; d->quarters = 2; d->tanks = 4; d->reactor = 2; d->radiators = 2; d->paint = C15(200, 150, 60); d->trim = C15(60, 60, 70); d->pattern = SYPT_CHECKS; d->cockpit = SYCP_BRIDGE; break;
+    case 3: d->nsec = 3; d->sec[0] = (SySec){4, 5, 4, SYSH_BOX, 2}; d->sec[1] = (SySec){6, 7, 5, SYSH_BOX, 3}; d->sec[2] = (SySec){4, 6, 5, SYSH_BOX, 2}; d->nose = SYNO_RAM; d->wing = SYWK_NONE; d->fins = 2;
+        d->eng = SYEK_FUSION; d->neng = 2; d->esize = 2; d->reactor = 4; d->radiators = 4; d->shield = 2; d->quarters = 3; d->ngun = 4;
+        d->gun[0] = (SyGun){SYGK_CANNON, 2, 0, SYGP_NOSE}; d->gun[1] = (SyGun){SYGK_LASER, 1, 1, SYGP_LEFT}; d->gun[2] = (SyGun){SYGK_MISSILE, 1, 1, SYGP_TOP}; d->gun[3] = (SyGun){SYGK_FLAK, 0, 2, SYGP_BELOW};
+        d->paint = C15(80, 100, 70); d->trim = C15(200, 180, 60); d->pattern = SYPT_TIGER; d->cockpit = SYCP_SLIT; break;
+    case 4: d->nsec = 2; d->sec[0] = (SySec){7, 2, 2, SYSH_ROUND, 0}; d->sec[1] = (SySec){5, 3, 2, SYSH_ROUND, 0}; d->wing = SYWK_FORWARD; d->wspan = 8; d->wsweep = 8; d->wsec = 1; d->fins = 2;
+        d->eng = SYEK_WARP; d->neng = 1; d->esize = 1; d->reactor = 1; d->radiators = 0; d->shield = 0; d->quarters = 0; d->cargo = 0; d->tanks = 0; d->ngun = 1; d->gun[0] = (SyGun){SYGK_LASER, 1, 0, SYGP_LEFT};
+        d->paint = C15(30, 30, 40); d->trim = C15(255, 60, 40); d->glow = C15(255, 120, 40); d->pattern = SYPT_STRIPE; d->cockpit = SYCP_VISOR; break;
+    case 5: d->nsec = 5; for(int k = 0; k < 5; k++) d->sec[k] = (SySec){6, 10, 5, SYSH_FLAT, 1}; d->sec[0] = (SySec){5, 6, 4, SYSH_WEDGE, 1}; d->nose = SYNO_BLUNT; d->wing = SYWK_STRAIGHT; d->wspan = 4; d->wsec = 3;
+        d->eng = SYEK_FUSION; d->neng = 3; d->esize = 2; d->reactor = 4; d->radiators = 3; d->bays = 4; d->shield = 3; d->quarters = 6; d->ngun = 2; d->gun[0] = (SyGun){SYGK_FLAK, 1, 1, SYGP_LEFT}; d->gun[1] = (SyGun){SYGK_FLAK, 1, 3, SYGP_TOP};
+        d->paint = C15(120, 130, 150); d->trim = C15(240, 240, 255); d->pattern = SYPT_SPLIT; d->cockpit = SYCP_BRIDGE; break;
+    case 6: d->nsec = 2; d->sec[0] = (SySec){5, 7, 6, SYSH_BOX, 5}; d->sec[1] = (SySec){5, 8, 6, SYSH_BOX, 5}; d->nose = SYNO_RAM; d->wing = SYWK_NONE; d->eng = SYEK_ION; d->neng = 3; d->esize = 3; d->reactor = 3; d->radiators = 2;
+        d->shield = 4; d->ngun = 1; d->gun[0] = (SyGun){SYGK_CANNON, 2, 0, SYGP_TOP}; d->paint = C15(90, 90, 100); d->trim = C15(200, 60, 40); d->pattern = SYPT_PLAIN; d->finish = SYFI_METAL; d->cockpit = SYCP_SLIT; break;
+    case 7: d->nsec = 4; d->sec[0] = (SySec){4, 4, 4, SYSH_ROUND, 0}; d->sec[1] = (SySec){5, 5, 5, SYSH_ROUND, 0}; d->sec[2] = (SySec){5, 5, 5, SYSH_ROUND, 0}; d->sec[3] = (SySec){3, 4, 4, SYSH_ROUND, 0};
+        d->wing = SYWK_GULL; d->wspan = 9; d->wsec = 2; d->eng = SYEK_PLASMA; d->neng = 2; d->esize = 2; d->tanks = 6; d->cargo = 4; d->quarters = 2; d->reactor = 2; d->cockpit = SYCP_DOME;
+        d->paint = C15(240, 240, 235); d->trim = C15(40, 160, 120); d->pattern = SYPT_TWOTONE; d->finish = SYFI_PEARL; break;
+    case 8: d->nsec = 4; d->sec[0] = (SySec){5, 4, 3, SYSH_WEDGE, 1}; d->sec[1] = (SySec){6, 6, 4, SYSH_WEDGE, 2}; d->sec[2] = (SySec){6, 6, 4, SYSH_BOX, 2}; d->sec[3] = (SySec){4, 5, 4, SYSH_BOX, 1};
+        d->wing = SYWK_SWEPT; d->wspan = 5; d->wsweep = 9; d->wsec = 2; d->eng = SYEK_FUSION; d->neng = 2; d->esize = 2; d->reactor = 3; d->radiators = 2; d->shield = 2; d->quarters = 3; d->ngun = 3;
+        d->gun[0] = (SyGun){SYGK_BEAM, 0, 0, SYGP_NOSE}; d->gun[1] = (SyGun){SYGK_LASER, 1, 2, SYGP_RIGHT}; d->gun[2] = (SyGun){SYGK_MISSILE, 0, 1, SYGP_TOP}; d->paint = C15(60, 70, 120); d->trim = C15(255, 200, 60); break;
+    case 9: d->nsec = 6; d->sec[0] = (SySec){6, 6, 5, SYSH_WEDGE, 3}; for(int k = 1; k < 6; k++) d->sec[k] = (SySec){7, 10, 7, SYSH_BOX, 3}; d->sec[5].wid = 8; d->nose = SYNO_RAM; d->wing = SYWK_X; d->wspan = 5; d->wsec = 4;
+        d->eng = SYEK_WARP; d->neng = 6; d->esize = 3; d->reactor = 5; d->radiators = 5; d->shield = 5; d->bays = 2; d->quarters = 6; d->ngun = 6; d->fins = 2;
+        d->gun[0] = (SyGun){SYGK_BEAM, 2, 0, SYGP_NOSE}; d->gun[1] = (SyGun){SYGK_CANNON, 2, 1, SYGP_TOP}; d->gun[2] = (SyGun){SYGK_MISSILE, 2, 2, SYGP_LEFT}; d->gun[3] = (SyGun){SYGK_LASER, 2, 3, SYGP_RIGHT}; d->gun[4] = (SyGun){SYGK_FLAK, 1, 4, SYGP_BELOW}; d->gun[5] = (SyGun){SYGK_CANNON, 1, 5, SYGP_TOP};
+        d->paint = C15(40, 40, 50); d->trim = C15(220, 30, 30); d->glow = C15(255, 60, 60); d->pattern = SYPT_TIGER; d->finish = SYFI_METAL; d->cockpit = SYCP_BRIDGE; break;
     default: break; }
     memcpy(d->name, nm, sizeof nm); d->ingame = ig; memcpy(d->emblem, em, 8); memcpy(d->decal, dc, 8); tame(d);
 }
 void sy_balance(SyDesign *d){       // enough reactor, cooling, beds and fuel for the parts (a fix-up loop; it never removes parts)
     sy_fix(d);
-    for(int k = 0; k < 40; k++){ SyStats s; sy_stats(d, &s); if(s.warn & WN_POWER && d->reactor < 5) d->reactor++; else if(s.warn & WN_HEAT && d->radiators < 5) d->radiators++; else if(s.warn & WN_HEAT && d->fins < 2) d->fins++;
-        else if(s.warn & WN_CREW && d->quarters < 6) d->quarters++; else if(s.warn & WN_FUEL && d->tanks < 6) d->tanks++; else if(s.warn & WN_HEAVY && d->neng < 6) d->neng++; else break; }
+    for(int k = 0; k < 40; k++){ SyStats s; sy_stats(d, &s); if(s.warn & SYWN_POWER && d->reactor < 5) d->reactor++; else if(s.warn & SYWN_HEAT && d->radiators < 5) d->radiators++; else if(s.warn & SYWN_HEAT && d->fins < 2) d->fins++;
+        else if(s.warn & SYWN_CREW && d->quarters < 6) d->quarters++; else if(s.warn & SYWN_FUEL && d->tanks < 6) d->tanks++; else if(s.warn & SYWN_HEAVY && d->neng < 6) d->neng++; else break; }
 }
 static void tame(SyDesign *d){      // the dice and presets: if it still runs hot or short of power, make the hungriest parts smaller
     sy_balance(d);
-    for(int k = 0; k < 40; k++){ SyStats s; sy_stats(d, &s); if(!(s.warn & (WN_POWER | WN_HEAT))) break;
+    for(int k = 0; k < 40; k++){ SyStats s; sy_stats(d, &s); if(!(s.warn & (SYWN_POWER | SYWN_HEAT))) break;
         int bi = -1, bw = 0; for(int i = 0; i < d->ngun; i++){ int w = (gun_pow[d->gun[i].kind] + gun_heat[d->gun[i].kind]) * (1 + d->gun[i].size); if(w > bw){ bw = w; bi = i; } }
-        if(bi >= 0 && d->gun[bi].size) d->gun[bi].size--; else if(bi >= 0 && d->gun[bi].kind == GK_BEAM) d->gun[bi].kind = GK_LASER;
+        if(bi >= 0 && d->gun[bi].size) d->gun[bi].size--; else if(bi >= 0 && d->gun[bi].kind == SYGK_BEAM) d->gun[bi].kind = SYGK_LASER;
         else if(d->esize > 0) d->esize--; else if(d->eng > 0) d->eng--; else if(d->shield > 0) d->shield--; else if(d->neng > 1) d->neng--; else break;
         sy_balance(d); }
 }
@@ -273,148 +273,148 @@ int sy_rows(int tab, const SyDesign *d, const SyCursor *c, int *ids){
     int n = 0, a = c->advanced;
     #define R(x) ids[n++] = (x)
     switch(tab){
-    case TB_SHIP: R(R_PRESET); R(R_DICE); R(R_MODE); R(R_INGAME); R(R_UNDO); R(R_REDO); if(a) R(R_SNAP); break;
-    case TB_HULL: R(R_SEC); R(R_LEN); R(R_WID); R(R_HGT); R(R_SHAPE); R(R_NOSE); R(R_ADDSEC); R(R_DELSEC); R(R_SYM); if(a){ R(R_COPYSEC); R(R_STRETCH); } break;
-    case TB_WINGS: R(R_WING); R(R_WSPAN); R(R_WSWEEP); R(R_FINS); if(a){ R(R_WSEC); R(R_WTILT); } break;
-    case TB_POWER: R(R_ENG); R(R_NENG); R(R_ESIZE); R(R_REACTOR); R(R_RADS); R(R_TANKS); break;
-    case TB_GUNS: R(R_GUN); if(d->ngun){ R(R_GKIND); R(R_GSIZE); R(R_GPOS); } R(R_ADDGUN); if(d->ngun) R(R_DELGUN); if(a && d->ngun){ R(R_GSEC); R(R_COPYGUN); } break;
-    case TB_GUARD: R(R_SHIELD); R(R_ARMALL); if(a) for(int i = 0; i < d->nsec; i++) R(R_ARM0 + i); break;
-    case TB_ROOMS: R(R_COCK); R(R_BAYS); R(R_CARGO); R(R_QUART); break;
-    case TB_PAINT: R(R_PAINTC); R(R_TRIMC); R(R_GLOWC); R(R_PATTERN); if(a){ R(R_LIGHTC); R(R_FINISH); } break;
-    case TB_BADGE: R(R_NAME); R(R_EMBLEM); R(R_EMCOL); R(R_DECAL); break;
-    case TB_FILE: R(R_SAVE); R(R_LOAD); R(R_CODE); R(R_IMPORT); R(R_CLASSIC); R(R_DONE); break; }
+    case SYT_SHIP: R(SYR_PRESET); R(SYR_DICE); R(SYR_MODE); R(SYR_INGAME); R(SYR_UNDO); R(SYR_REDO); if(a) R(SYR_SNAP); break;
+    case SYT_HULL: R(SYR_SEC); R(SYR_LEN); R(SYR_WID); R(SYR_HGT); R(SYR_SHAPE); R(SYR_NOSE); R(SYR_ADDSEC); R(SYR_DELSEC); R(SYR_SYM); if(a){ R(SYR_COPYSEC); R(SYR_STRETCH); } break;
+    case SYT_WINGS: R(SYR_WING); R(SYR_WSPAN); R(SYR_WSWEEP); R(SYR_FINS); if(a){ R(SYR_WSEC); R(SYR_WTILT); } break;
+    case SYT_POWER: R(SYR_ENG); R(SYR_NENG); R(SYR_ESIZE); R(SYR_REACTOR); R(SYR_RADS); R(SYR_TANKS); break;
+    case SYT_GUNS: R(SYR_GUN); if(d->ngun){ R(SYR_GKIND); R(SYR_GSIZE); R(SYR_GPOS); } R(SYR_ADDGUN); if(d->ngun) R(SYR_DELGUN); if(a && d->ngun){ R(SYR_GSEC); R(SYR_COPYGUN); } break;
+    case SYT_GUARD: R(SYR_SHIELD); R(SYR_ARMALL); if(a) for(int i = 0; i < d->nsec; i++) R(SYR_ARM0 + i); break;
+    case SYT_ROOMS: R(SYR_COCK); R(SYR_BAYS); R(SYR_CARGO); R(SYR_QUART); break;
+    case SYT_PAINT: R(SYR_PAINTC); R(SYR_TRIMC); R(SYR_GLOWC); R(SYR_PATTERN); if(a){ R(SYR_LIGHTC); R(SYR_FINISH); } break;
+    case SYT_BADGE: R(SYR_NAME); R(SYR_EMBLEM); R(SYR_EMCOL); R(SYR_DECAL); break;
+    case SYT_FILE: R(SYR_SAVE); R(SYR_LOAD); R(SYR_CODE); R(SYR_IMPORT); R(SYR_CLASSIC); R(SYR_DONE); break; }
     #undef R
     return n;
 }
 const char *sy_row_label(int id){
     static char armb[12];
-    if(id >= R_ARM0 && id <= R_ARM_END){ snprintf(armb, sizeof armb, "PLATES %d", id - R_ARM0 + 1); return armb; }
+    if(id >= SYR_ARM0 && id <= SYR_ARM_END){ snprintf(armb, sizeof armb, "PLATES %d", id - SYR_ARM0 + 1); return armb; }
     switch(id){
-    case R_PRESET: return "START FROM"; case R_DICE: return "SURPRISE ME"; case R_MODE: return "MODE"; case R_SNAP: return "SNAP"; case R_INGAME: return "FLY IT"; case R_UNDO: return "UNDO"; case R_REDO: return "REDO";
-    case R_SEC: return "SECTION"; case R_LEN: return "LENGTH"; case R_WID: return "WIDTH"; case R_HGT: return "HEIGHT"; case R_SHAPE: return "SHAPE"; case R_NOSE: return "NOSE"; case R_SYM: return "SYMMETRY";
-    case R_ADDSEC: return "ADD SECTION"; case R_COPYSEC: return "COPY SECTION"; case R_DELSEC: return "REMOVE SECTION"; case R_STRETCH: return "STRETCH ALL";
-    case R_WING: return "WINGS"; case R_WSPAN: return "SPAN"; case R_WSWEEP: return "SWEEP"; case R_WSEC: return "WING SPOT"; case R_WTILT: return "TILT"; case R_FINS: return "FINS";
-    case R_ENG: return "ENGINE"; case R_NENG: return "ENGINES"; case R_ESIZE: return "ENGINE SIZE"; case R_REACTOR: return "REACTOR"; case R_TANKS: return "FUEL TANKS"; case R_RADS: return "RADIATORS";
-    case R_GUN: return "MOUNT"; case R_GKIND: return "WEAPON"; case R_GSIZE: return "SIZE"; case R_GSEC: return "ON SECTION"; case R_GPOS: return "PLACE"; case R_ADDGUN: return "ADD MOUNT"; case R_COPYGUN: return "MIRROR COPY"; case R_DELGUN: return "REMOVE MOUNT";
-    case R_SHIELD: return "SHIELD"; case R_ARMALL: return "ARMOUR";
-    case R_COCK: return "COCKPIT"; case R_BAYS: return "HANGAR BAYS"; case R_CARGO: return "CARGO PODS"; case R_QUART: return "CREW ROOMS";
-    case R_PAINTC: return "PAINT"; case R_TRIMC: return "TRIM"; case R_GLOWC: return "ENGINE GLOW"; case R_LIGHTC: return "LIGHTS"; case R_PATTERN: return "PATTERN"; case R_FINISH: return "FINISH";
-    case R_NAME: return "NAME"; case R_EMBLEM: return "EMBLEM"; case R_EMCOL: return "EMBLEM COLOUR"; case R_DECAL: return "DECAL";
-    case R_SAVE: return "SAVE DESIGN"; case R_LOAD: return "LOAD DESIGN"; case R_CODE: return "SHARE CODE"; case R_IMPORT: return "IMPORT CODE"; case R_CLASSIC: return "OLD HANGAR"; case R_DONE: return "DONE"; }
+    case SYR_PRESET: return "START FROM"; case SYR_DICE: return "SURPRISE ME"; case SYR_MODE: return "MODE"; case SYR_SNAP: return "SNAP"; case SYR_INGAME: return "FLY IT"; case SYR_UNDO: return "UNDO"; case SYR_REDO: return "REDO";
+    case SYR_SEC: return "SECTION"; case SYR_LEN: return "LENGTH"; case SYR_WID: return "WIDTH"; case SYR_HGT: return "HEIGHT"; case SYR_SHAPE: return "SHAPE"; case SYR_NOSE: return "NOSE"; case SYR_SYM: return "SYMMETRY";
+    case SYR_ADDSEC: return "ADD SECTION"; case SYR_COPYSEC: return "COPY SECTION"; case SYR_DELSEC: return "REMOVE SECTION"; case SYR_STRETCH: return "STRETCH ALL";
+    case SYR_WING: return "WINGS"; case SYR_WSPAN: return "SPAN"; case SYR_WSWEEP: return "SWEEP"; case SYR_WSEC: return "WING SPOT"; case SYR_WTILT: return "TILT"; case SYR_FINS: return "FINS";
+    case SYR_ENG: return "ENGINE"; case SYR_NENG: return "ENGINES"; case SYR_ESIZE: return "ENGINE SIZE"; case SYR_REACTOR: return "REACTOR"; case SYR_TANKS: return "FUEL TANKS"; case SYR_RADS: return "RADIATORS";
+    case SYR_GUN: return "MOUNT"; case SYR_GKIND: return "WEAPON"; case SYR_GSIZE: return "SIZE"; case SYR_GSEC: return "ON SECTION"; case SYR_GPOS: return "PLACE"; case SYR_ADDGUN: return "ADD MOUNT"; case SYR_COPYGUN: return "MIRROR COPY"; case SYR_DELGUN: return "REMOVE MOUNT";
+    case SYR_SHIELD: return "SHIELD"; case SYR_ARMALL: return "ARMOUR";
+    case SYR_COCK: return "COCKPIT"; case SYR_BAYS: return "HANGAR BAYS"; case SYR_CARGO: return "CARGO PODS"; case SYR_QUART: return "CREW ROOMS";
+    case SYR_PAINTC: return "PAINT"; case SYR_TRIMC: return "TRIM"; case SYR_GLOWC: return "ENGINE GLOW"; case SYR_LIGHTC: return "LIGHTS"; case SYR_PATTERN: return "PATTERN"; case SYR_FINISH: return "FINISH";
+    case SYR_NAME: return "NAME"; case SYR_EMBLEM: return "EMBLEM"; case SYR_EMCOL: return "EMBLEM COLOUR"; case SYR_DECAL: return "DECAL";
+    case SYR_SAVE: return "SAVE DESIGN"; case SYR_LOAD: return "LOAD DESIGN"; case SYR_CODE: return "SHARE CODE"; case SYR_IMPORT: return "IMPORT CODE"; case SYR_CLASSIC: return "OLD HANGAR"; case SYR_DONE: return "DONE"; }
     return "";
 }
 const char *sy_row_help(int id){
-    if(id >= R_ARM0 && id <= R_ARM_END) return "ARMOUR PLATES ON THIS SECTION ONLY. TOUGHER BUT HEAVIER";
+    if(id >= SYR_ARM0 && id <= SYR_ARM_END) return "ARMOUR PLATES ON THIS SECTION ONLY. TOUGHER BUT HEAVIER";
     switch(id){
-    case R_PRESET: return "A READY SHIP TO START FROM. KEEPS YOUR NAME AND BADGE";
-    case R_DICE: return "A: ROLL A RANDOM SHIP THAT WORKS. UNDO BRINGS YOURS BACK";
-    case R_MODE: return "SIMPLE SHOWS THE MAIN PARTS. ADVANCED SHOWS EVERY PART";
-    case R_SNAP: return "SNAP ON: DRAGGING MOVES IN STEPS OF 2. OFF: STEPS OF 1";
-    case R_INGAME: return "YES: YOU FLY THIS DESIGN IN SPACE. NO: THE OLD SHIP";
-    case R_UNDO: return "A: TAKE BACK THE LAST CHANGE (ALSO START, RIGHT CLICK)"; case R_REDO: return "A: PUT BACK WHAT YOU TOOK BACK";
-    case R_SEC: return "PICK A HULL SECTION. 1 IS THE NOSE. CLICK ONE IN THE PLAN";
-    case R_LEN: return "LONGER: ROOMIER BUT HEAVIER. DRAG IN THE PLAN TOO";
-    case R_WID: return "WIDER: MORE ROOM AND ARMOUR, MORE MASS";
-    case R_HGT: return "TALLER: MORE ROOM, A BIGGER TARGET";
-    case R_SHAPE: return "ROUND IS LIGHT. BOX IS TOUGH. WEDGE AND FLAT ARE LEAN";
-    case R_NOSE: return "POINT TURNS BETTER. RAM ADDS ARMOUR. LOOKS CHANGE TOO";
-    case R_SYM: return "ON: SIDE GUNS ARE MIRRORED, SO YOU GET TWO";
-    case R_ADDSEC: return "A: ADD A SECTION BEHIND THIS ONE (8 AT MOST)";
-    case R_COPYSEC: return "A: COPY THIS SECTION RIGHT BEHIND IT";
-    case R_DELSEC: return "A: REMOVE THIS SECTION (1 IS ALWAYS KEPT)";
-    case R_STRETCH: return "LEFT RIGHT: MAKE EVERY SECTION LONGER OR SHORTER";
-    case R_WING: return "WINGS TURN THE SHIP AND SHED HEAT. NONE IS LIGHTEST";
-    case R_WSPAN: return "WIDER WINGS TURN AND COOL BETTER BUT WEIGH MORE";
-    case R_WSWEEP: return "HOW FAR BACK THE TIPS GO. MORE AREA, MORE COOLING";
-    case R_WSEC: return "WHICH SECTION THE WINGS SIT ON"; case R_WTILT: return "WING TILT: LOOK ONLY";
-    case R_FINS: return "FINS STEADY TURNS AND SHED A LITTLE HEAT";
-    case R_ENG: return "ION IS LIGHT AND COOL. WARP IS FAST BUT HOT AND HUNGRY";
-    case R_NENG: return "MORE ENGINES: MORE PUSH, MORE POWER AND HEAT";
-    case R_ESIZE: return "BIGGER ENGINES PUSH HARDER AND WEIGH MORE";
-    case R_REACTOR: return "MAKES POWER FOR ENGINES, GUNS AND SHIELDS. ADDS HEAT";
-    case R_TANKS: return "MORE FUEL FOR LONG TRIPS. 20 EACH";
-    case R_RADS: return "COOLING PLATES. THEY STOP OVERHEATING";
-    case R_GUN: return "PICK A WEAPON MOUNT. ADD UP TO 6";
-    case R_GKIND: return "LASER ALL ROUND. CANNON HITS HARD. MISSILES REACH FAR";
-    case R_GSIZE: return "BIGGER GUNS HIT HARDER BUT NEED MORE POWER";
-    case R_GSEC: return "WHICH SECTION THIS MOUNT SITS ON";
-    case R_GPOS: return "TOP, SIDES, BELOW OR NOSE. SIDES DOUBLE WITH SYMMETRY";
-    case R_ADDGUN: return "A: ADD A NEW WEAPON MOUNT"; case R_COPYGUN: return "A: COPY THIS MOUNT TO THE OTHER SIDE"; case R_DELGUN: return "A: REMOVE THIS MOUNT";
-    case R_SHIELD: return "SHIELDS SOAK HITS FIRST. THEY NEED LOTS OF POWER";
-    case R_ARMALL: return "ARMOUR PLATES ON EVERY SECTION. ADVANCED: ONE BY ONE";
-    case R_COCK: return "SLIT IS SAFE. VISOR SEES FAR. BRIDGE HAS BEDS";
-    case R_BAYS: return "FIGHTERS LAUNCH FROM BAYS. THEY NEED CREW AND ROOM";
-    case R_CARGO: return "MORE HOLD FOR ORE AND GOODS. 8 EACH";
-    case R_QUART: return "BEDS FOR THE CREW. GUNS AND BAYS NEED PEOPLE";
-    case R_PAINTC: return "THE MAIN COLOUR. LEFT RIGHT: NEXT. A: MIX YOUR OWN";
-    case R_TRIMC: return "THE SECOND COLOUR FOR STRIPES AND WINGS";
-    case R_GLOWC: return "THE COLOUR OF THE ENGINE FLAMES";
-    case R_LIGHTC: return "THE COLOUR OF THE WINDOWS AND RUNNING LIGHTS";
-    case R_PATTERN: return "WHERE THE TRIM COLOUR GOES ON THE HULL";
-    case R_FINISH: return "HOW THE PAINT CATCHES THE LIGHT";
-    case R_NAME: return "A: TYPE A NAME (12 LETTERS). LEFT RIGHT: RANDOM NAME";
-    case R_EMBLEM: return "A: DRAW YOUR EMBLEM ON AN 8 BY 8 GRID";
-    case R_EMCOL: return "THE EMBLEM'S COLOUR";
-    case R_DECAL: return "A: DRAW THE DECAL PAINTED ON THE WINGS";
-    case R_SAVE: return "A: SAVE THIS DESIGN NEXT TO YOUR SAVE (A SMALL FILE)";
-    case R_LOAD: return "A: OPEN A DESIGN YOU SAVED";
-    case R_CODE: return "A: MAKE A SHARE CODE (WRITTEN TO THE .SHIPCODE FILE)";
-    case R_IMPORT: return "A: READ A SHARE CODE FROM THE .SHIPCODE FILE";
-    case R_CLASSIC: return "A: THE GAME'S OLD HANGAR SCREEN";
-    case R_DONE: return "A: FINISH AND FLY. START ALSO UNDOES, B LEAVES"; }
+    case SYR_PRESET: return "A READY SHIP TO START FROM. KEEPS YOUR NAME AND BADGE";
+    case SYR_DICE: return "A: ROLL A RANDOM SHIP THAT WORKS. UNDO BRINGS YOURS BACK";
+    case SYR_MODE: return "SIMPLE SHOWS THE MAIN PARTS. ADVANCED SHOWS EVERY PART";
+    case SYR_SNAP: return "SNAP ON: DRAGGING MOVES IN STEPS OF 2. OFF: STEPS OF 1";
+    case SYR_INGAME: return "YES: YOU FLY THIS DESIGN IN SPACE. NO: THE OLD SHIP";
+    case SYR_UNDO: return "A: TAKE BACK THE LAST CHANGE (ALSO START, RIGHT CLICK)"; case SYR_REDO: return "A: PUT BACK WHAT YOU TOOK BACK";
+    case SYR_SEC: return "PICK A HULL SECTION. 1 IS THE NOSE. CLICK ONE IN THE PLAN";
+    case SYR_LEN: return "LONGER: ROOMIER BUT HEAVIER. DRAG IN THE PLAN TOO";
+    case SYR_WID: return "WIDER: MORE ROOM AND ARMOUR, MORE MASS";
+    case SYR_HGT: return "TALLER: MORE ROOM, A BIGGER TARGET";
+    case SYR_SHAPE: return "ROUND IS LIGHT. BOX IS TOUGH. WEDGE AND FLAT ARE LEAN";
+    case SYR_NOSE: return "POINT TURNS BETTER. RAM ADDS ARMOUR. LOOKS CHANGE TOO";
+    case SYR_SYM: return "ON: SIDE GUNS ARE MIRRORED, SO YOU GET TWO";
+    case SYR_ADDSEC: return "A: ADD A SECTION BEHIND THIS ONE (8 AT MOST)";
+    case SYR_COPYSEC: return "A: COPY THIS SECTION RIGHT BEHIND IT";
+    case SYR_DELSEC: return "A: REMOVE THIS SECTION (1 IS ALWAYS KEPT)";
+    case SYR_STRETCH: return "LEFT RIGHT: MAKE EVERY SECTION LONGER OR SHORTER";
+    case SYR_WING: return "WINGS TURN THE SHIP AND SHED HEAT. NONE IS LIGHTEST";
+    case SYR_WSPAN: return "WIDER WINGS TURN AND COOL BETTER BUT WEIGH MORE";
+    case SYR_WSWEEP: return "HOW FAR BACK THE TIPS GO. MORE AREA, MORE COOLING";
+    case SYR_WSEC: return "WHICH SECTION THE WINGS SIT ON"; case SYR_WTILT: return "WING TILT: LOOK ONLY";
+    case SYR_FINS: return "FINS STEADY TURNS AND SHED A LITTLE HEAT";
+    case SYR_ENG: return "ION IS LIGHT AND COOL. WARP IS FAST BUT HOT AND HUNGRY";
+    case SYR_NENG: return "MORE ENGINES: MORE PUSH, MORE POWER AND HEAT";
+    case SYR_ESIZE: return "BIGGER ENGINES PUSH HARDER AND WEIGH MORE";
+    case SYR_REACTOR: return "MAKES POWER FOR ENGINES, GUNS AND SHIELDS. ADDS HEAT";
+    case SYR_TANKS: return "MORE FUEL FOR LONG TRIPS. 20 EACH";
+    case SYR_RADS: return "COOLING PLATES. THEY STOP OVERHEATING";
+    case SYR_GUN: return "PICK A WEAPON MOUNT. ADD UP TO 6";
+    case SYR_GKIND: return "LASER ALL ROUND. CANNON HITS HARD. MISSILES REACH FAR";
+    case SYR_GSIZE: return "BIGGER GUNS HIT HARDER BUT NEED MORE POWER";
+    case SYR_GSEC: return "WHICH SECTION THIS MOUNT SITS ON";
+    case SYR_GPOS: return "TOP, SIDES, BELOW OR NOSE. SIDES DOUBLE WITH SYMMETRY";
+    case SYR_ADDGUN: return "A: ADD A NEW WEAPON MOUNT"; case SYR_COPYGUN: return "A: COPY THIS MOUNT TO THE OTHER SIDE"; case SYR_DELGUN: return "A: REMOVE THIS MOUNT";
+    case SYR_SHIELD: return "SHIELDS SOAK HITS FIRST. THEY NEED LOTS OF POWER";
+    case SYR_ARMALL: return "ARMOUR PLATES ON EVERY SECTION. ADVANCED: ONE BY ONE";
+    case SYR_COCK: return "SLIT IS SAFE. VISOR SEES FAR. BRIDGE HAS BEDS";
+    case SYR_BAYS: return "FIGHTERS LAUNCH FROM BAYS. THEY NEED CREW AND ROOM";
+    case SYR_CARGO: return "MORE HOLD FOR ORE AND GOODS. 8 EACH";
+    case SYR_QUART: return "BEDS FOR THE CREW. GUNS AND BAYS NEED PEOPLE";
+    case SYR_PAINTC: return "THE MAIN COLOUR. LEFT RIGHT: NEXT. A: MIX YOUR OWN";
+    case SYR_TRIMC: return "THE SECOND COLOUR FOR STRIPES AND WINGS";
+    case SYR_GLOWC: return "THE COLOUR OF THE ENGINE FLAMES";
+    case SYR_LIGHTC: return "THE COLOUR OF THE WINDOWS AND RUNNING LIGHTS";
+    case SYR_PATTERN: return "WHERE THE TRIM COLOUR GOES ON THE HULL";
+    case SYR_FINISH: return "HOW THE PAINT CATCHES THE LIGHT";
+    case SYR_NAME: return "A: TYPE A NAME (12 LETTERS). LEFT RIGHT: RANDOM NAME";
+    case SYR_EMBLEM: return "A: DRAW YOUR EMBLEM ON AN 8 BY 8 GRID";
+    case SYR_EMCOL: return "THE EMBLEM'S COLOUR";
+    case SYR_DECAL: return "A: DRAW THE DECAL PAINTED ON THE WINGS";
+    case SYR_SAVE: return "A: SAVE THIS DESIGN NEXT TO YOUR SAVE (A SMALL FILE)";
+    case SYR_LOAD: return "A: OPEN A DESIGN YOU SAVED";
+    case SYR_CODE: return "A: MAKE A SHARE CODE (WRITTEN TO THE .SHIPCODE FILE)";
+    case SYR_IMPORT: return "A: READ A SHARE CODE FROM THE .SHIPCODE FILE";
+    case SYR_CLASSIC: return "A: THE GAME'S OLD HANGAR SCREEN";
+    case SYR_DONE: return "A: FINISH AND FLY. START ALSO UNDOES, B LEAVES"; }
     return "";
 }
 static int colidx(uint16_t c){ for(int i = 0; i < 32; i++) if(sy_swatch[i] == c) return i; return -1; }
 void sy_row_value(int id, const SyDesign *d, const SyCursor *c, char *o, int n){
     const SySec *s = &d->sec[c->sec < d->nsec ? c->sec : 0]; const SyGun *g = &d->gun[c->gun < d->ngun ? c->gun : 0]; o[0] = 0;
-    if(id >= R_ARM0 && id <= R_ARM_END){ snprintf(o, n, "%d", d->sec[id - R_ARM0].armour); return; }
+    if(id >= SYR_ARM0 && id <= SYR_ARM_END){ snprintf(o, n, "%d", d->sec[id - SYR_ARM0].armour); return; }
     switch(id){
-    case R_PRESET: snprintf(o, n, "PICK"); break; case R_MODE: snprintf(o, n, "%s", c->advanced ? "ADVANCED" : "SIMPLE"); break;
-    case R_SNAP: snprintf(o, n, "%s", c->snap ? "ON" : "OFF"); break; case R_INGAME: snprintf(o, n, "%s", d->ingame ? "YES" : "NO"); break;
-    case R_SEC: snprintf(o, n, "%d OF %d", c->sec + 1, d->nsec); break;
-    case R_LEN: snprintf(o, n, "%d", s->len); break; case R_WID: snprintf(o, n, "%d", s->wid); break; case R_HGT: snprintf(o, n, "%d", s->hgt); break;
-    case R_SHAPE: snprintf(o, n, "%s", shape_nm[s->shape % SY_NSHAPE]); break; case R_NOSE: snprintf(o, n, "%s", nose_nm[d->nose % SY_NNOSE]); break;
-    case R_SYM: snprintf(o, n, "%s", d->sym ? "MIRRORED" : "OFF"); break;
-    case R_STRETCH: { int t = 0; for(int i = 0; i < d->nsec; i++) t += d->sec[i].len; snprintf(o, n, "LENGTH %d", t); break; }
-    case R_WING: snprintf(o, n, "%s", wing_nm[d->wing % SY_NWING]); break; case R_WSPAN: snprintf(o, n, "%d", d->wspan); break; case R_WSWEEP: snprintf(o, n, "%d", d->wsweep); break;
-    case R_WSEC: snprintf(o, n, "SECTION %d", d->wsec + 1); break; case R_WTILT: snprintf(o, n, "%s", tilt_nm[d->wtilt % 3]); break; case R_FINS: snprintf(o, n, "%d", d->fins); break;
-    case R_ENG: snprintf(o, n, "%s", eng_nm[d->eng % SY_NENG]); break; case R_NENG: snprintf(o, n, "%d", d->neng); break; case R_ESIZE: snprintf(o, n, "%s", size_nm[d->esize & 3]); break;
-    case R_REACTOR: snprintf(o, n, "LEVEL %d", d->reactor); break; case R_TANKS: snprintf(o, n, "%d", d->tanks); break; case R_RADS: snprintf(o, n, "%d", d->radiators); break;
-    case R_GUN: if(d->ngun) snprintf(o, n, "%d OF %d", c->gun + 1, d->ngun); else snprintf(o, n, "NONE"); break;
-    case R_GKIND: snprintf(o, n, "%s", gun_nm[g->kind % SY_NGUN]); break; case R_GSIZE: snprintf(o, n, "%s", size_nm[g->size % 3]); break;
-    case R_GSEC: snprintf(o, n, "SECTION %d", g->sec + 1); break;
-    case R_GPOS: snprintf(o, n, "%s%s", gpos_nm[g->pos % SY_NGPOS], d->sym && (g->pos == GP_LEFT || g->pos == GP_RIGHT) ? " X2" : ""); break;
-    case R_SHIELD: snprintf(o, n, "%d", d->shield); break;
-    case R_ARMALL: { int a = d->sec[0].armour, same = 1; for(int i = 1; i < d->nsec; i++) if(d->sec[i].armour != a) same = 0; if(same) snprintf(o, n, "%d", a); else snprintf(o, n, "MIXED"); break; }
-    case R_COCK: snprintf(o, n, "%s", cock_nm[d->cockpit % SY_NCOCK]); break; case R_BAYS: snprintf(o, n, "%d", d->bays); break; case R_CARGO: snprintf(o, n, "%d", d->cargo); break; case R_QUART: snprintf(o, n, "%d", d->quarters); break;
-    case R_PAINTC: case R_TRIMC: case R_GLOWC: case R_LIGHTC: case R_EMCOL: { uint16_t v = id == R_PAINTC ? d->paint : id == R_TRIMC ? d->trim : id == R_GLOWC ? d->glow : id == R_LIGHTC ? d->light : d->emcol; int k = colidx(v); if(k >= 0) snprintf(o, n, "COLOUR %d", k + 1); else snprintf(o, n, "MIXED"); break; }
-    case R_PATTERN: snprintf(o, n, "%s", pat_nm[d->pattern % SY_NPAT]); break; case R_FINISH: snprintf(o, n, "%s", fin_nm[d->finish % SY_NFIN]); break;
-    case R_NAME: snprintf(o, n, "%s", d->name); break; case R_EMBLEM: case R_DECAL: snprintf(o, n, "DRAW"); break;
+    case SYR_PRESET: snprintf(o, n, "PICK"); break; case SYR_MODE: snprintf(o, n, "%s", c->advanced ? "ADVANCED" : "SIMPLE"); break;
+    case SYR_SNAP: snprintf(o, n, "%s", c->snap ? "ON" : "OFF"); break; case SYR_INGAME: snprintf(o, n, "%s", d->ingame ? "YES" : "NO"); break;
+    case SYR_SEC: snprintf(o, n, "%d OF %d", c->sec + 1, d->nsec); break;
+    case SYR_LEN: snprintf(o, n, "%d", s->len); break; case SYR_WID: snprintf(o, n, "%d", s->wid); break; case SYR_HGT: snprintf(o, n, "%d", s->hgt); break;
+    case SYR_SHAPE: snprintf(o, n, "%s", shape_nm[s->shape % SY_NSHAPE]); break; case SYR_NOSE: snprintf(o, n, "%s", nose_nm[d->nose % SY_NNOSE]); break;
+    case SYR_SYM: snprintf(o, n, "%s", d->sym ? "MIRRORED" : "OFF"); break;
+    case SYR_STRETCH: { int t = 0; for(int i = 0; i < d->nsec; i++) t += d->sec[i].len; snprintf(o, n, "LENGTH %d", t); break; }
+    case SYR_WING: snprintf(o, n, "%s", wing_nm[d->wing % SY_NWING]); break; case SYR_WSPAN: snprintf(o, n, "%d", d->wspan); break; case SYR_WSWEEP: snprintf(o, n, "%d", d->wsweep); break;
+    case SYR_WSEC: snprintf(o, n, "SECTION %d", d->wsec + 1); break; case SYR_WTILT: snprintf(o, n, "%s", tilt_nm[d->wtilt % 3]); break; case SYR_FINS: snprintf(o, n, "%d", d->fins); break;
+    case SYR_ENG: snprintf(o, n, "%s", eng_nm[d->eng % SY_NENG]); break; case SYR_NENG: snprintf(o, n, "%d", d->neng); break; case SYR_ESIZE: snprintf(o, n, "%s", size_nm[d->esize & 3]); break;
+    case SYR_REACTOR: snprintf(o, n, "LEVEL %d", d->reactor); break; case SYR_TANKS: snprintf(o, n, "%d", d->tanks); break; case SYR_RADS: snprintf(o, n, "%d", d->radiators); break;
+    case SYR_GUN: if(d->ngun) snprintf(o, n, "%d OF %d", c->gun + 1, d->ngun); else snprintf(o, n, "NONE"); break;
+    case SYR_GKIND: snprintf(o, n, "%s", gun_nm[g->kind % SY_NGUN]); break; case SYR_GSIZE: snprintf(o, n, "%s", size_nm[g->size % 3]); break;
+    case SYR_GSEC: snprintf(o, n, "SECTION %d", g->sec + 1); break;
+    case SYR_GPOS: snprintf(o, n, "%s%s", gpos_nm[g->pos % SY_NGPOS], d->sym && (g->pos == SYGP_LEFT || g->pos == SYGP_RIGHT) ? " X2" : ""); break;
+    case SYR_SHIELD: snprintf(o, n, "%d", d->shield); break;
+    case SYR_ARMALL: { int a = d->sec[0].armour, same = 1; for(int i = 1; i < d->nsec; i++) if(d->sec[i].armour != a) same = 0; if(same) snprintf(o, n, "%d", a); else snprintf(o, n, "MIXED"); break; }
+    case SYR_COCK: snprintf(o, n, "%s", cock_nm[d->cockpit % SY_NCOCK]); break; case SYR_BAYS: snprintf(o, n, "%d", d->bays); break; case SYR_CARGO: snprintf(o, n, "%d", d->cargo); break; case SYR_QUART: snprintf(o, n, "%d", d->quarters); break;
+    case SYR_PAINTC: case SYR_TRIMC: case SYR_GLOWC: case SYR_LIGHTC: case SYR_EMCOL: { uint16_t v = id == SYR_PAINTC ? d->paint : id == SYR_TRIMC ? d->trim : id == SYR_GLOWC ? d->glow : id == SYR_LIGHTC ? d->light : d->emcol; int k = colidx(v); if(k >= 0) snprintf(o, n, "COLOUR %d", k + 1); else snprintf(o, n, "MIXED"); break; }
+    case SYR_PATTERN: snprintf(o, n, "%s", pat_nm[d->pattern % SY_NPAT]); break; case SYR_FINISH: snprintf(o, n, "%s", fin_nm[d->finish % SY_NFIN]); break;
+    case SYR_NAME: snprintf(o, n, "%s", d->name); break; case SYR_EMBLEM: case SYR_DECAL: snprintf(o, n, "DRAW"); break;
     default: break; }
 }
 int sy_row_is_value(int id){
-    switch(id){ case R_DICE: case R_UNDO: case R_REDO: case R_ADDSEC: case R_COPYSEC: case R_DELSEC: case R_ADDGUN: case R_COPYGUN: case R_DELGUN: case R_EMBLEM: case R_DECAL:
-        case R_SAVE: case R_LOAD: case R_CODE: case R_IMPORT: case R_CLASSIC: case R_DONE: return 0; }
+    switch(id){ case SYR_DICE: case SYR_UNDO: case SYR_REDO: case SYR_ADDSEC: case SYR_COPYSEC: case SYR_DELSEC: case SYR_ADDGUN: case SYR_COPYGUN: case SYR_DELGUN: case SYR_EMBLEM: case SYR_DECAL:
+        case SYR_SAVE: case SYR_LOAD: case SYR_CODE: case SYR_IMPORT: case SYR_CLASSIC: case SYR_DONE: return 0; }
     return 1;
 }
 int sy_row_part(int id, const SyDesign *d, const SyCursor *c, SyPart *p){
     memset(p, 0, sizeof *p); int s = c->sec < d->nsec ? c->sec : 0;
-    if(id >= R_ARM0 && id <= R_ARM_END){ if(id - R_ARM0 >= d->nsec) return 0; part_arm(d, id - R_ARM0, p); return 1; }
+    if(id >= SYR_ARM0 && id <= SYR_ARM_END){ if(id - SYR_ARM0 >= d->nsec) return 0; part_arm(d, id - SYR_ARM0, p); return 1; }
     switch(id){
-    case R_SEC: case R_LEN: case R_WID: case R_HGT: case R_SHAPE: case R_ADDSEC: case R_COPYSEC: case R_DELSEC: part_sec(d, s, p); return 1;
-    case R_WING: case R_WSPAN: case R_WSWEEP: case R_WSEC: case R_WTILT: part_wing(d, p); return 1;
-    case R_FINS: p->mass = d->fins * 2; p->heat = -d->fins * 3; p->cost = d->fins * 5; return 1;
-    case R_ENG: case R_NENG: case R_ESIZE: part_eng(d, p); return 1;
-    case R_REACTOR: part_reactor(d, p); return 1;
-    case R_TANKS: p->mass = d->tanks * 2; p->cost = d->tanks * 8; return 1;
-    case R_RADS: p->mass = d->radiators * 2; p->heat = -d->radiators * 6; p->cost = d->radiators * 12; return 1;
-    case R_GUN: case R_GKIND: case R_GSIZE: case R_GSEC: case R_GPOS: case R_COPYGUN: case R_DELGUN: if(!d->ngun) return 0; part_gun(d, c->gun < d->ngun ? c->gun : 0, p); return 1;
-    case R_SHIELD: p->mass = d->shield * 2; p->power = d->shield * 3; p->heat = d->shield; p->cost = d->shield * 40; p->crew = d->shield / 2; return 1;
-    case R_ARMALL: for(int i = 0; i < d->nsec; i++){ SyPart q; part_arm(d, i, &q); p->mass += q.mass; p->cost += q.cost; } return 1;
-    case R_BAYS: p->mass = d->bays * 5; p->crew = d->bays * 3; p->power = d->bays; p->cost = d->bays * 50; return 1;
-    case R_CARGO: p->mass = d->cargo * 2; p->cost = d->cargo * 10; return 1;
-    case R_QUART: p->mass = d->quarters * 2; p->cost = d->quarters * 10; p->crew = -d->quarters * 4; return 1;
-    case R_COCK: p->crew = 1; p->mass = d->cockpit == CP_BRIDGE ? 4 : 0; p->cost = d->cockpit == CP_BRIDGE ? 30 : 0; return 1; }
+    case SYR_SEC: case SYR_LEN: case SYR_WID: case SYR_HGT: case SYR_SHAPE: case SYR_ADDSEC: case SYR_COPYSEC: case SYR_DELSEC: part_sec(d, s, p); return 1;
+    case SYR_WING: case SYR_WSPAN: case SYR_WSWEEP: case SYR_WSEC: case SYR_WTILT: part_wing(d, p); return 1;
+    case SYR_FINS: p->mass = d->fins * 2; p->heat = -d->fins * 3; p->cost = d->fins * 5; return 1;
+    case SYR_ENG: case SYR_NENG: case SYR_ESIZE: part_eng(d, p); return 1;
+    case SYR_REACTOR: part_reactor(d, p); return 1;
+    case SYR_TANKS: p->mass = d->tanks * 2; p->cost = d->tanks * 8; return 1;
+    case SYR_RADS: p->mass = d->radiators * 2; p->heat = -d->radiators * 6; p->cost = d->radiators * 12; return 1;
+    case SYR_GUN: case SYR_GKIND: case SYR_GSIZE: case SYR_GSEC: case SYR_GPOS: case SYR_COPYGUN: case SYR_DELGUN: if(!d->ngun) return 0; part_gun(d, c->gun < d->ngun ? c->gun : 0, p); return 1;
+    case SYR_SHIELD: p->mass = d->shield * 2; p->power = d->shield * 3; p->heat = d->shield; p->cost = d->shield * 40; p->crew = d->shield / 2; return 1;
+    case SYR_ARMALL: for(int i = 0; i < d->nsec; i++){ SyPart q; part_arm(d, i, &q); p->mass += q.mass; p->cost += q.cost; } return 1;
+    case SYR_BAYS: p->mass = d->bays * 5; p->crew = d->bays * 3; p->power = d->bays; p->cost = d->bays * 50; return 1;
+    case SYR_CARGO: p->mass = d->cargo * 2; p->cost = d->cargo * 10; return 1;
+    case SYR_QUART: p->mass = d->quarters * 2; p->cost = d->quarters * 10; p->crew = -d->quarters * 4; return 1;
+    case SYR_COCK: p->crew = 1; p->mass = d->cockpit == SYCP_BRIDGE ? 4 : 0; p->cost = d->cockpit == SYCP_BRIDGE ? 30 : 0; return 1; }
     return 0;
 }
 void sy_cursor_fix(const SyDesign *d, SyCursor *c){ if(c->sec >= d->nsec) c->sec = d->nsec - 1; if(c->sec < 0) c->sec = 0; if(c->gun >= d->ngun) c->gun = d->ngun ? d->ngun - 1 : 0; if(c->gun < 0) c->gun = 0; }
@@ -424,33 +424,33 @@ static int colstep(uint16_t *v, int d){ int k = colidx(*v); k = k < 0 ? (d > 0 ?
 int sy_change(SyDesign *d, SyCursor *c, int id, int delta){
     if(!delta) return 0; int dir = delta > 0 ? 1 : -1, st = (delta > 1 || delta < -1) ? 4 : 1; if(c->sec >= d->nsec) c->sec = d->nsec - 1; if(c->sec < 0) c->sec = 0; if(c->gun >= d->ngun) c->gun = d->ngun ? d->ngun - 1 : 0; if(c->gun < 0) c->gun = 0;
     SySec *s = &d->sec[c->sec]; SyGun *g = &d->gun[c->gun]; int ch = 0, us = c->snap ? 2 : 1;
-    if(id >= R_ARM0 && id <= R_ARM_END){ if(id - R_ARM0 < d->nsec) ch = clampstep(&d->sec[id - R_ARM0].armour, dir, 0, 5); return ch; }
+    if(id >= SYR_ARM0 && id <= SYR_ARM_END){ if(id - SYR_ARM0 < d->nsec) ch = clampstep(&d->sec[id - SYR_ARM0].armour, dir, 0, 5); return ch; }
     switch(id){
-    case R_PRESET: { static int p; p = cyc(p, dir, SY_NPRESET); sy_preset(d, p); return 1; }
-    case R_DICE: return 0;
-    case R_MODE: c->advanced ^= 1; return 0; case R_SNAP: c->snap ^= 1; return 0;
-    case R_INGAME: d->ingame ^= 1; return 1;
-    case R_SEC: c->sec = cyc(c->sec, dir, d->nsec); return 0;
-    case R_LEN: return clampstep(&s->len, dir * st * us, 1, SY_UNIT_MAX); case R_WID: return clampstep(&s->wid, dir * st * us, 1, SY_UNIT_MAX); case R_HGT: return clampstep(&s->hgt, dir * st * us, 1, SY_UNIT_MAX);
-    case R_SHAPE: s->shape = (uint8_t)cyc(s->shape, dir, SY_NSHAPE); return 1; case R_NOSE: d->nose = (uint8_t)cyc(d->nose, dir, SY_NNOSE); return 1;
-    case R_SYM: d->sym ^= 1; return 1;
-    case R_STRETCH: for(int i = 0; i < d->nsec; i++) ch |= clampstep(&d->sec[i].len, dir, 1, SY_UNIT_MAX); return ch;
-    case R_WING: d->wing = (uint8_t)cyc(d->wing, dir, SY_NWING); return 1; case R_WSPAN: return clampstep(&d->wspan, dir * st, 0, 15); case R_WSWEEP: return clampstep(&d->wsweep, dir * st, 0, 15);
-    case R_WSEC: d->wsec = (uint8_t)cyc(d->wsec, dir, d->nsec); return 1; case R_WTILT: d->wtilt = (uint8_t)cyc(d->wtilt, dir, 3); return 1; case R_FINS: return clampstep(&d->fins, dir, 0, 2);
-    case R_ENG: d->eng = (uint8_t)cyc(d->eng, dir, SY_NENG); return 1; case R_NENG: return clampstep(&d->neng, dir, 1, 6); case R_ESIZE: return clampstep(&d->esize, dir, 0, 3);
-    case R_REACTOR: return clampstep(&d->reactor, dir, 0, 5); case R_TANKS: return clampstep(&d->tanks, dir, 0, 6); case R_RADS: return clampstep(&d->radiators, dir, 0, 5);
-    case R_GUN: if(d->ngun) c->gun = cyc(c->gun, dir, d->ngun); return 0;
-    case R_GKIND: if(!d->ngun) return 0; g->kind = (uint8_t)cyc(g->kind, dir, SY_NGUN); return 1;
-    case R_GSIZE: if(!d->ngun) return 0; return clampstep(&g->size, dir, 0, 2);
-    case R_GSEC: if(!d->ngun) return 0; g->sec = (uint8_t)cyc(g->sec, dir, d->nsec); return 1;
-    case R_GPOS: if(!d->ngun) return 0; g->pos = (uint8_t)cyc(g->pos, dir, SY_NGPOS); return 1;
-    case R_SHIELD: return clampstep(&d->shield, dir, 0, 5);
-    case R_ARMALL: { int a = CL(d->sec[c->sec].armour + dir, 0, 5); for(int i = 0; i < d->nsec; i++){ if(d->sec[i].armour != a) ch = 1; d->sec[i].armour = (uint8_t)a; } return ch; }
-    case R_COCK: d->cockpit = (uint8_t)cyc(d->cockpit, dir, SY_NCOCK); return 1;
-    case R_BAYS: return clampstep(&d->bays, dir, 0, 4); case R_CARGO: return clampstep(&d->cargo, dir, 0, 8); case R_QUART: return clampstep(&d->quarters, dir, 0, 6);
-    case R_PAINTC: return colstep(&d->paint, dir); case R_TRIMC: return colstep(&d->trim, dir); case R_GLOWC: return colstep(&d->glow, dir); case R_LIGHTC: return colstep(&d->light, dir); case R_EMCOL: return colstep(&d->emcol, dir);
-    case R_PATTERN: d->pattern = (uint8_t)cyc(d->pattern, dir, SY_NPAT); return 1; case R_FINISH: d->finish = (uint8_t)cyc(d->finish, dir, SY_NFIN); return 1;
-    case R_NAME: { static const char *const a[] = {"MOTH","WASP","HORNET","BEETLE","CRICKET","MANTIS","LOCUST","CICADA","FIREFLY","SCARAB","DRAGONFLY","STAG"}, *const b[] = {"","II","ONE","PRIME","RED","STAR","NOVA","MK 3"};
+    case SYR_PRESET: { static int p; p = cyc(p, dir, SY_NPRESET); sy_preset(d, p); return 1; }
+    case SYR_DICE: return 0;
+    case SYR_MODE: c->advanced ^= 1; return 0; case SYR_SNAP: c->snap ^= 1; return 0;
+    case SYR_INGAME: d->ingame ^= 1; return 1;
+    case SYR_SEC: c->sec = cyc(c->sec, dir, d->nsec); return 0;
+    case SYR_LEN: return clampstep(&s->len, dir * st * us, 1, SY_UNIT_MAX); case SYR_WID: return clampstep(&s->wid, dir * st * us, 1, SY_UNIT_MAX); case SYR_HGT: return clampstep(&s->hgt, dir * st * us, 1, SY_UNIT_MAX);
+    case SYR_SHAPE: s->shape = (uint8_t)cyc(s->shape, dir, SY_NSHAPE); return 1; case SYR_NOSE: d->nose = (uint8_t)cyc(d->nose, dir, SY_NNOSE); return 1;
+    case SYR_SYM: d->sym ^= 1; return 1;
+    case SYR_STRETCH: for(int i = 0; i < d->nsec; i++) ch |= clampstep(&d->sec[i].len, dir, 1, SY_UNIT_MAX); return ch;
+    case SYR_WING: d->wing = (uint8_t)cyc(d->wing, dir, SY_NWING); return 1; case SYR_WSPAN: return clampstep(&d->wspan, dir * st, 0, 15); case SYR_WSWEEP: return clampstep(&d->wsweep, dir * st, 0, 15);
+    case SYR_WSEC: d->wsec = (uint8_t)cyc(d->wsec, dir, d->nsec); return 1; case SYR_WTILT: d->wtilt = (uint8_t)cyc(d->wtilt, dir, 3); return 1; case SYR_FINS: return clampstep(&d->fins, dir, 0, 2);
+    case SYR_ENG: d->eng = (uint8_t)cyc(d->eng, dir, SY_NENG); return 1; case SYR_NENG: return clampstep(&d->neng, dir, 1, 6); case SYR_ESIZE: return clampstep(&d->esize, dir, 0, 3);
+    case SYR_REACTOR: return clampstep(&d->reactor, dir, 0, 5); case SYR_TANKS: return clampstep(&d->tanks, dir, 0, 6); case SYR_RADS: return clampstep(&d->radiators, dir, 0, 5);
+    case SYR_GUN: if(d->ngun) c->gun = cyc(c->gun, dir, d->ngun); return 0;
+    case SYR_GKIND: if(!d->ngun) return 0; g->kind = (uint8_t)cyc(g->kind, dir, SY_NGUN); return 1;
+    case SYR_GSIZE: if(!d->ngun) return 0; return clampstep(&g->size, dir, 0, 2);
+    case SYR_GSEC: if(!d->ngun) return 0; g->sec = (uint8_t)cyc(g->sec, dir, d->nsec); return 1;
+    case SYR_GPOS: if(!d->ngun) return 0; g->pos = (uint8_t)cyc(g->pos, dir, SY_NGPOS); return 1;
+    case SYR_SHIELD: return clampstep(&d->shield, dir, 0, 5);
+    case SYR_ARMALL: { int a = CL(d->sec[c->sec].armour + dir, 0, 5); for(int i = 0; i < d->nsec; i++){ if(d->sec[i].armour != a) ch = 1; d->sec[i].armour = (uint8_t)a; } return ch; }
+    case SYR_COCK: d->cockpit = (uint8_t)cyc(d->cockpit, dir, SY_NCOCK); return 1;
+    case SYR_BAYS: return clampstep(&d->bays, dir, 0, 4); case SYR_CARGO: return clampstep(&d->cargo, dir, 0, 8); case SYR_QUART: return clampstep(&d->quarters, dir, 0, 6);
+    case SYR_PAINTC: return colstep(&d->paint, dir); case SYR_TRIMC: return colstep(&d->trim, dir); case SYR_GLOWC: return colstep(&d->glow, dir); case SYR_LIGHTC: return colstep(&d->light, dir); case SYR_EMCOL: return colstep(&d->emcol, dir);
+    case SYR_PATTERN: d->pattern = (uint8_t)cyc(d->pattern, dir, SY_NPAT); return 1; case SYR_FINISH: d->finish = (uint8_t)cyc(d->finish, dir, SY_NFIN); return 1;
+    case SYR_NAME: { static const char *const a[] = {"MOTH","WASP","HORNET","BEETLE","CRICKET","MANTIS","LOCUST","CICADA","FIREFLY","SCARAB","DRAGONFLY","STAG"}, *const b[] = {"","II","ONE","PRIME","RED","STAR","NOVA","MK 3"};
         static unsigned k = 7; k = k * 1103515245u + 12345u; snprintf(d->name, sizeof d->name, "%s%s%s", a[(k >> 8) % 12], ((k >> 16) & 1) ? " " : "", ((k >> 16) & 1) ? b[(k >> 20) % 8] : ""); sy_fix(d); return 1; }
     }
     return 0;
@@ -458,20 +458,20 @@ int sy_change(SyDesign *d, SyCursor *c, int id, int delta){
 int sy_action(SyDesign *d, SyCursor *c, int id){
     if(c->sec >= d->nsec) c->sec = d->nsec - 1; if(c->sec < 0) c->sec = 0;
     switch(id){
-    case R_ADDSEC: case R_COPYSEC: if(d->nsec >= SY_MAXSEC) return 0;
+    case SYR_ADDSEC: case SYR_COPYSEC: if(d->nsec >= SY_MAXSEC) return 0;
         for(int i = d->nsec; i > c->sec + 1; i--) d->sec[i] = d->sec[i - 1];
-        d->sec[c->sec + 1] = d->sec[c->sec]; if(id == R_ADDSEC){ d->sec[c->sec + 1].len = 4; }
+        d->sec[c->sec + 1] = d->sec[c->sec]; if(id == SYR_ADDSEC){ d->sec[c->sec + 1].len = 4; }
         for(int i = 0; i < d->ngun; i++) if(d->gun[i].sec > c->sec) d->gun[i].sec++;
         if(d->wsec > c->sec) d->wsec++;
         d->nsec++; c->sec++; return 1;
-    case R_DELSEC: if(d->nsec <= 1) return 0;
+    case SYR_DELSEC: if(d->nsec <= 1) return 0;
         for(int i = c->sec; i < d->nsec - 1; i++) d->sec[i] = d->sec[i + 1];
         for(int i = 0; i < d->ngun; i++){ if(d->gun[i].sec > c->sec) d->gun[i].sec--; else if(d->gun[i].sec == c->sec && d->gun[i].sec >= d->nsec - 1) d->gun[i].sec = (uint8_t)(d->nsec - 2); }
         if(d->wsec > c->sec || d->wsec >= d->nsec - 1) d->wsec = d->wsec ? d->wsec - 1 : 0;
         d->nsec--; memset(&d->sec[d->nsec], 0, sizeof(SySec)); if(c->sec >= d->nsec) c->sec = d->nsec - 1; sy_fix(d); return 1;
-    case R_ADDGUN: if(d->ngun >= SY_MAXGUN) return 0; d->gun[d->ngun] = (SyGun){GK_LASER, 0, (uint8_t)c->sec, GP_TOP}; c->gun = d->ngun++; return 1;
-    case R_COPYGUN: if(!d->ngun || d->ngun >= SY_MAXGUN) return 0; { SyGun g = d->gun[c->gun]; if(g.pos == GP_LEFT) g.pos = GP_RIGHT; else if(g.pos == GP_RIGHT) g.pos = GP_LEFT; else if(g.pos == GP_TOP) g.pos = GP_BELOW; else if(g.pos == GP_BELOW) g.pos = GP_TOP; d->gun[d->ngun] = g; c->gun = d->ngun++; } return 1;
-    case R_DELGUN: if(!d->ngun) return 0; for(int i = c->gun; i < d->ngun - 1; i++) d->gun[i] = d->gun[i + 1]; d->ngun--; memset(&d->gun[d->ngun], 0, sizeof(SyGun)); if(c->gun >= d->ngun) c->gun = d->ngun ? d->ngun - 1 : 0; return 1;
+    case SYR_ADDGUN: if(d->ngun >= SY_MAXGUN) return 0; d->gun[d->ngun] = (SyGun){SYGK_LASER, 0, (uint8_t)c->sec, SYGP_TOP}; c->gun = d->ngun++; return 1;
+    case SYR_COPYGUN: if(!d->ngun || d->ngun >= SY_MAXGUN) return 0; { SyGun g = d->gun[c->gun]; if(g.pos == SYGP_LEFT) g.pos = SYGP_RIGHT; else if(g.pos == SYGP_RIGHT) g.pos = SYGP_LEFT; else if(g.pos == SYGP_TOP) g.pos = SYGP_BELOW; else if(g.pos == SYGP_BELOW) g.pos = SYGP_TOP; d->gun[d->ngun] = g; c->gun = d->ngun++; } return 1;
+    case SYR_DELGUN: if(!d->ngun) return 0; for(int i = c->gun; i < d->ngun - 1; i++) d->gun[i] = d->gun[i + 1]; d->ngun--; memset(&d->gun[d->ngun], 0, sizeof(SyGun)); if(c->gun >= d->ngun) c->gun = d->ngun ? d->ngun - 1 : 0; return 1;
     }
     return 0;
 }
@@ -484,8 +484,8 @@ static void addf(SyMesh *m, int n, int a, int b, int c, int dd, int col, int two
 static int ring(SyMesh *m, int w, int h, int shape, int z, int dy){
     int b = m->nv; if(m->nv + 8 > SY_MAXV) return -1;
     for(int k = 0; k < 8; k++){ int x, y;
-        if(shape == SH_BOX){ x = BX[k] * w / 100; y = BY[k] * h / 100; }
-        else { x = RX[k] * w / 100; y = RY[k] * h / 100; if(shape == SH_WEDGE && y > 0) x = x * 45 / 100; if(shape == SH_FLAT) y /= 2; }
+        if(shape == SYSH_BOX){ x = BX[k] * w / 100; y = BY[k] * h / 100; }
+        else { x = RX[k] * w / 100; y = RY[k] * h / 100; if(shape == SYSH_WEDGE && y > 0) x = x * 45 / 100; if(shape == SYSH_FLAT) y /= 2; }
         addv(m, x, y + dy, z); }
     return b;
 }
@@ -498,13 +498,13 @@ static void box(SyMesh *m, int cx, int cy, int cz, int dx, int dy, int dz, int c
 }
 static int patcol(const SyDesign *d, int sec, int k, int seg, int nseg){
     switch(d->pattern){
-    case PT_STRIPE: return (k == 5 || k == 6) ? 1 : 0;              // y negative = top in screen terms is drawn as up
-    case PT_TWOTONE: return (k >= 1 && k <= 3) ? 1 : 0;
-    case PT_CHECKS: return ((seg + k) & 1);
-    case PT_TIGER: return ((seg * 3 + k) % 4) == 0;
-    case PT_SPLIT: return seg * 2 < nseg;
-    case PT_EDGE: return k == 0 || k == 4;
-    case PT_DOTS: return (seg % 2 == 0) && (k % 4 == 2);
+    case SYPT_STRIPE: return (k == 5 || k == 6) ? 1 : 0;              // y negative = top in screen terms is drawn as up
+    case SYPT_TWOTONE: return (k >= 1 && k <= 3) ? 1 : 0;
+    case SYPT_CHECKS: return ((seg + k) & 1);
+    case SYPT_TIGER: return ((seg * 3 + k) % 4) == 0;
+    case SYPT_SPLIT: return seg * 2 < nseg;
+    case SYPT_EDGE: return k == 0 || k == 4;
+    case SYPT_DOTS: return (seg % 2 == 0) && (k % 4 == 2);
     } (void)sec; return 0;
 }
 void sy_mesh(const SyDesign *d0, SyMesh *m){
@@ -525,24 +525,24 @@ void sy_mesh(const SyDesign *d0, SyMesh *m){
         for(int k = 0; k < 8; k++){ int k2 = (k + 1) & 7; int col = patcol(d, sec, k, r, nr - 1); if(arm >= 3 && (k == 0 || k == 4 || k == 3 || k == 7)) col = 2; addf(m, 4, rg[r] + k, rg[r] + k2, rg[r + 1] + k2, rg[r + 1] + k, col, 0, sec); } }
     // nose
     { int f = rg[0], len0 = d->sec[0].len * U; if(f >= 0){
-        if(d->nose == NO_FORK){ int a = addv(m, HW(0) / 2, 0, zs[0] - len0 * 7 / 10), b = addv(m, -HW(0) / 2, 0, zs[0] - len0 * 7 / 10);
+        if(d->nose == SYNO_FORK){ int a = addv(m, HW(0) / 2, 0, zs[0] - len0 * 7 / 10), b = addv(m, -HW(0) / 2, 0, zs[0] - len0 * 7 / 10);
             for(int k = 0; k < 8; k++){ int k2 = (k + 1) & 7; int t = (k <= 1 || k >= 6) ? a : b; addf(m, 3, t, f + k2, f + k, 0, 0, 0, 0); } }
-        else { int tz = d->nose == NO_POINT ? zs[0] - len0 * 9 / 10 : d->nose == NO_BLUNT ? zs[0] - len0 / 4 : zs[0] - len0 / 3;
-            int t = addv(m, 0, 0, tz); for(int k = 0; k < 8; k++){ int k2 = (k + 1) & 7; addf(m, 3, t, f + k2, f + k, d->nose == NO_RAM ? 2 : 0, 0, 0, 0); } } } }
+        else { int tz = d->nose == SYNO_POINT ? zs[0] - len0 * 9 / 10 : d->nose == SYNO_BLUNT ? zs[0] - len0 / 4 : zs[0] - len0 / 3;
+            int t = addv(m, 0, 0, tz); for(int k = 0; k < 8; k++){ int k2 = (k + 1) & 7; addf(m, 3, t, f + k2, f + k, d->nose == SYNO_RAM ? 2 : 0, 0, 0, 0); } } } }
     // tail cap
     { int b = rg[nr - 1]; if(b >= 0){ int t = addv(m, 0, 0, zs[d->nsec] + 2); for(int k = 0; k < 8; k++){ int k2 = (k + 1) & 7; addf(m, 3, t, b + k, b + k2, 2, 0, 0, d->nsec - 1); } } }
     int last = d->nsec - 1;
     // wings (both sides), with the decal side shown in trim
     if(d->wing){ int s = d->wsec, za = zs[s], zb = zs[s + 1], w = HW(s), span = (d->wspan + 2) * U, sw = d->wsweep * U / 2, ty = d->wtilt == 0 ? span / 3 : d->wtilt == 2 ? -span / 3 : 0;
-        int pairs = d->wing == WK_X ? 2 : 1;
+        int pairs = d->wing == SYWK_X ? 2 : 1;
         for(int pp = 0; pp < pairs; pp++){ int yo = pairs == 2 ? (pp ? span / 3 : -span / 3) : ty;
             for(int side = -1; side <= 1; side += 2){ int rx = side * (w - 1), tx = side * (w + span);
                 int r0, r1, t0, t1, rz0 = za, rz1 = zb, tz0, tz1;
                 switch(d->wing){
-                case WK_STRAIGHT: tz0 = za + sw / 2; tz1 = zb - (zb - za) / 4 + sw / 2; break;
-                case WK_DELTA: rz0 = za - (zb - za) / 2; tz0 = zb + sw / 2 - 4; tz1 = zb + sw / 2; break;
-                case WK_FORWARD: tz0 = za - sw; tz1 = za - sw + (zb - za) / 2; break;
-                case WK_GULL: { int mx = side * (w + span / 2), my = -span / 5, mz = (za + zb) / 2 + sw / 2;
+                case SYWK_STRAIGHT: tz0 = za + sw / 2; tz1 = zb - (zb - za) / 4 + sw / 2; break;
+                case SYWK_DELTA: rz0 = za - (zb - za) / 2; tz0 = zb + sw / 2 - 4; tz1 = zb + sw / 2; break;
+                case SYWK_FORWARD: tz0 = za - sw; tz1 = za - sw + (zb - za) / 2; break;
+                case SYWK_GULL: { int mx = side * (w + span / 2), my = -span / 5, mz = (za + zb) / 2 + sw / 2;
                     int a = addv(m, rx, 0, za), b = addv(m, rx, 0, zb), c = addv(m, mx, my, mz + 6), e = addv(m, mx, my, mz - 6);
                     addf(m, 4, a, b, c, e, 1, 1, s);
                     int f2 = addv(m, tx, span / 6, mz + sw / 2 + 4), g2 = addv(m, tx, span / 6, mz + sw / 2 - 2);
@@ -565,16 +565,16 @@ void sy_mesh(const SyDesign *d0, SyMesh *m){
             addf(m, 4, g, g + 1, g + 2, g + 3, 3, 1, s); } }
     // weapons
     for(int i = 0; i < d->ngun; i++){ const SyGun *g = &d->gun[i]; if(!g->kind) continue; int s = g->sec, zc = (zs[s] + zs[s + 1]) / 2, w = HW(s), h = HH(s), bl = 6 + g->size * 4, bw = 1 + g->size;
-        int sides = (g->pos == GP_LEFT || g->pos == GP_RIGHT) && d->sym ? 2 : 1;
+        int sides = (g->pos == SYGP_LEFT || g->pos == SYGP_RIGHT) && d->sym ? 2 : 1;
         for(int k = 0; k < sides; k++){ int x = 0, y = 0, z = zc;
-            switch(g->pos){ case GP_TOP: y = -h - bw; break; case GP_BELOW: y = h + bw; break; case GP_LEFT: x = (k ? 1 : -1) * (w + bw); break; case GP_RIGHT: x = (k ? -1 : 1) * (w + bw); break; case GP_NOSE: z = zs[0] - 2; y = HH(0) / 3; s = 0; break; }
-            if(g->kind == GK_MISSILE) box(m, x, y, z, bw + 2, bw + 1, bl / 2 + 2, 2, s);
-            else { box(m, x, y, z + 2, bw + 1, bw + 1, 3, 2, s); box(m, x, y, z - bl / 2, g->kind == GK_BEAM ? bw + 1 : bw, g->kind == GK_BEAM ? bw + 1 : bw, bl / 2 + 1, 5, s); } } }
+            switch(g->pos){ case SYGP_TOP: y = -h - bw; break; case SYGP_BELOW: y = h + bw; break; case SYGP_LEFT: x = (k ? 1 : -1) * (w + bw); break; case SYGP_RIGHT: x = (k ? -1 : 1) * (w + bw); break; case SYGP_NOSE: z = zs[0] - 2; y = HH(0) / 3; s = 0; break; }
+            if(g->kind == SYGK_MISSILE) box(m, x, y, z, bw + 2, bw + 1, bl / 2 + 2, 2, s);
+            else { box(m, x, y, z + 2, bw + 1, bw + 1, 3, 2, s); box(m, x, y, z - bl / 2, g->kind == SYGK_BEAM ? bw + 1 : bw, g->kind == SYGK_BEAM ? bw + 1 : bw, bl / 2 + 1, 5, s); } } }
     // cockpit
     { int s = d->nsec > 1 ? 0 : 0, h = HH(s), z = (zs[s] + zs[s + 1]) / 2, cw = 3 + d->sec[s].wid / 3;
-        switch(d->cockpit){ case CP_BUBBLE: box(m, 0, -h, z, cw, 3, 6, 4, s); break; case CP_SLIT: box(m, 0, -h, z, cw + 2, 1, 3, 4, s); break;
-        case CP_DOME: box(m, 0, -h - 1, z, cw + 1, 4, cw + 1, 4, s); break; case CP_VISOR: box(m, 0, -h + 2, zs[0] + 3, cw + 2, 2, 3, 4, s); break;
-        case CP_BRIDGE: { int sb = d->nsec > 2 ? d->nsec / 2 : 0, hb = HH(sb), zb = (zs[sb] + zs[sb + 1]) / 2; box(m, 0, -hb - 4, zb, cw + 2, 4, 6, 2, sb); box(m, 0, -hb - 7, zb - 4, cw + 1, 1, 2, 4, sb); break; } } }
+        switch(d->cockpit){ case SYCP_BUBBLE: box(m, 0, -h, z, cw, 3, 6, 4, s); break; case SYCP_SLIT: box(m, 0, -h, z, cw + 2, 1, 3, 4, s); break;
+        case SYCP_DOME: box(m, 0, -h - 1, z, cw + 1, 4, cw + 1, 4, s); break; case SYCP_VISOR: box(m, 0, -h + 2, zs[0] + 3, cw + 2, 2, 3, 4, s); break;
+        case SYCP_BRIDGE: { int sb = d->nsec > 2 ? d->nsec / 2 : 0, hb = HH(sb), zb = (zs[sb] + zs[sb + 1]) / 2; box(m, 0, -hb - 4, zb, cw + 2, 4, 6, 2, sb); box(m, 0, -hb - 7, zb - 4, cw + 1, 1, 2, 4, sb); break; } } }
     // hangar bays, cargo pods, fuel tanks, the emblem plate
     for(int k = 0; k < d->bays; k++){ int s = (d->nsec * (k + 1)) / (d->bays + 1); if(s > last) s = last; int z = (zs[s] + zs[s + 1]) / 2; box(m, 0, HH(s), z, HW(s) * 2 / 3, 1, d->sec[s].len * U / 3, 2, s); }
     for(int k = 0; k < d->cargo; k++){ int s = d->nsec / 2, side = (k & 1) ? 1 : -1, z = zs[s] + 4 + (k / 2) * 7; if(z > zs[d->nsec]) break; box(m, side * (HW(s) + 3), 2, z, 3, 3, 3, 1, s); }

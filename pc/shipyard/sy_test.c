@@ -35,7 +35,7 @@ int main(void){
     // determinism: the dice from the same seed give the same ship, and hashes are stable
     { uint64_t a = 77, b = 77; SyDesign x = d, y = d; for(int i = 0; i < 50; i++){ sy_random(&x, &a); sy_random(&y, &b); CHECK(sy_same(&x, &y) && sy_hash(&x) == sy_hash(&y), "dice not deterministic"); bounds(&x, "dice"); trip(&x, "dice"); } }
     // the dice make sensible ships (mostly without warnings about power or heat)
-    { uint64_t r = 5; int bad = 0; for(int i = 0; i < 200; i++){ SyDesign x = d; sy_random(&x, &r); SyStats s; sy_stats(&x, &s); if(s.warn & (WN_POWER | WN_HEAT)) bad++; } printf("dice: %d of 200 with power or heat warnings\n", bad); CHECK(bad < 40, "dice too often unbalanced"); }
+    { uint64_t r = 5; int bad = 0; for(int i = 0; i < 200; i++){ SyDesign x = d; sy_random(&x, &r); SyStats s; sy_stats(&x, &s); if(s.warn & (SYWN_POWER | SYWN_HEAT)) bad++; } printf("dice: %d of 200 with power or heat warnings\n", bad); CHECK(bad < 40, "dice too often unbalanced"); }
     // random bytes: decode must not crash; random structs: fix makes them valid
     { uint64_t r = 99; for(int i = 0; i < 20000; i++){ uint8_t b[SY_RECIPE_MAX]; int n = 6 + (int)(sy_rng(&r) % (SY_RECIPE_MAX - 6)); for(int k = 0; k < n; k++) b[k] = (uint8_t)sy_rng(&r); if(i & 1){ b[0] = 0x53; b[1] = 1; }
         SyDesign x; if(sy_decode(b, n, &x)){ bounds(&x, "random bytes"); } }
@@ -55,14 +55,14 @@ int main(void){
           if(fails > 20) break; }
       printf("fuzz: 200000 random edits (%ld changed the ship), no crash\n", edits); }
     // undo / redo
-    { SyDesign x = d; SyHist *h = malloc(sizeof *h); sy_hist_init(h, &x); SyCursor c = {0, 0, 0, 0}; sy_change(&x, &c, R_LEN, 1); sy_hist_push(h, &x); sy_change(&x, &c, R_WING, 1); sy_hist_push(h, &x);
+    { SyDesign x = d; SyHist *h = malloc(sizeof *h); sy_hist_init(h, &x); SyCursor c = {0, 0, 0, 0}; sy_change(&x, &c, SYR_LEN, 1); sy_hist_push(h, &x); sy_change(&x, &c, SYR_WING, 1); sy_hist_push(h, &x);
       SyDesign y; CHECK(sy_hist_undo(h, &y) && y.wing == d.wing && y.sec[0].len == d.sec[0].len + 1, "undo 1"); CHECK(sy_hist_undo(h, &y) && sy_same(&y, &d), "undo 2"); CHECK(!sy_hist_undo(h, &y), "undo past start");
       CHECK(sy_hist_redo(h, &y) && sy_hist_redo(h, &y) && sy_same(&y, &x), "redo"); free(h); }
     // stats move the right way: armour plates make it tougher and slower; more engines faster; more reactor fixes underpowered
-    { SyDesign a = d, b = d; SyCursor c = {0, 0, 0, 0}; for(int i = 0; i < 5; i++) sy_change(&b, &c, R_ARMALL, 1); SyStats sa, sb; sy_stats(&a, &sa); sy_stats(&b, &sb);
-      CHECK(sb.v[ST_ARMOUR] > sa.v[ST_ARMOUR] && sb.v[ST_SPEED] < sa.v[ST_SPEED] && sb.mass > sa.mass, "armour trade-off"); SyGame ga, gb; sy_game(&a, &ga); sy_game(&b, &gb); CHECK(gb.armour < ga.armour && gb.speed <= ga.speed, "game: armour plates (dmg %d->%d speed %d->%d)", ga.armour, gb.armour, ga.speed, gb.speed);
-      SyDesign e = d; e.neng = 6; e.reactor = 5; SyStats se; sy_stats(&e, &se); CHECK(se.v[ST_SPEED] > sa.v[ST_SPEED], "more engines faster");
-      SyDesign u = d; u.ngun = 6; for(int i = 0; i < 6; i++) u.gun[i] = (SyGun){GK_BEAM, 2, 0, GP_TOP}; u.reactor = 0; SyStats su; sy_stats(&u, &su); CHECK(su.warn & WN_POWER && su.warn & WN_HEAT, "beams with no reactor warn");
+    { SyDesign a = d, b = d; SyCursor c = {0, 0, 0, 0}; for(int i = 0; i < 5; i++) sy_change(&b, &c, SYR_ARMALL, 1); SyStats sa, sb; sy_stats(&a, &sa); sy_stats(&b, &sb);
+      CHECK(sb.v[SYST_ARMOUR] > sa.v[SYST_ARMOUR] && sb.v[SYST_SPEED] < sa.v[SYST_SPEED] && sb.mass > sa.mass, "armour trade-off"); SyGame ga, gb; sy_game(&a, &ga); sy_game(&b, &gb); CHECK(gb.armour < ga.armour && gb.speed <= ga.speed, "game: armour plates (dmg %d->%d speed %d->%d)", ga.armour, gb.armour, ga.speed, gb.speed);
+      SyDesign e = d; e.neng = 6; e.reactor = 5; SyStats se; sy_stats(&e, &se); CHECK(se.v[SYST_SPEED] > sa.v[SYST_SPEED], "more engines faster");
+      SyDesign u = d; u.ngun = 6; for(int i = 0; i < 6; i++) u.gun[i] = (SyGun){SYGK_BEAM, 2, 0, SYGP_TOP}; u.reactor = 0; SyStats su; sy_stats(&u, &su); CHECK(su.warn & SYWN_POWER && su.warn & SYWN_HEAT, "beams with no reactor warn");
       char w[100]; CHECK(sy_warn_text(su.warn, 0, w, sizeof w) && strstr(w, "UNDERPOWERED"), "warning words"); }
     // files next to a save
     { const char *sv = "/tmp/sy_test_dir/x.sav"; system("rm -rf /tmp/sy_test_dir; mkdir -p /tmp/sy_test_dir"); SyDesign x = d, y; sy_preset(&x, 3); strcpy(x.name, "TEST SHIP");

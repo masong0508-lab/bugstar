@@ -317,3 +317,27 @@ a close dogfight of 40 plus a middle cloud plus a far armada; one core of a busy
 `sr_ship()` / `sr_ships()` for any number of ships (`SrShip`: position, forward and up, half length, colour, kind, team, firing, shield hit,
 thrust, `far`), `sr_mesh()` for a big hull (`SrMesh`: vertices, triangles, optional colour per triangle; up to 64 hulls a frame, lit by the sun),
 `sr_beam()`, `sr_boom()` and `sr_armada()`. The colossal warships (`pc/warship`) can register their draw this way. See `pc/shipr/shipr.h`.
+
+## The ship editor (PC only, `pc/shipyard`)
+
+On the PC the hangar opens the **SHIP EDITOR** (new game, and SHIP > HANGAR). The old hangar is still there: FILE > OLD HANGAR.
+
+- **Tabs**: SHIP (start from 10 presets, SURPRISE ME dice, SIMPLE / ADVANCED, FLY IT, undo, redo, snap), HULL (1 to 8 sections: length,
+  width, height, shape; nose; add, copy, remove, stretch all; symmetry), WINGS (kind, span, sweep, spot, tilt, fins), POWER (engine kind,
+  count, size, reactor, radiators, fuel tanks), GUNS (6 mounts: weapon, size, section, place; add, mirror copy, remove), GUARD (shield,
+  armour on all or each section), ROOMS (cockpit, hangar bays, cargo pods, crew rooms), PAINT (paint, trim, engine glow, lights, pattern,
+  finish), BADGE (name, an 8x8 emblem and wing decal drawn in the editor), FILE (save, load, share code, import, old hangar, done).
+- **Live**: a rotating 3D preview of the design itself, 11 numbers (speed, turn, armour, shield, fire, range, hold, fuel, crew, cost,
+  THREAT) green when better / red when worse than when you came in, mass, power used/made, heat/cooling, the selected part's cost
+  line, and warnings in plain words (underpowered, overheating, too heavy, not enough beds, no guns, small fuel tank).
+- **Controls**: UP DOWN row, LEFT RIGHT change (hold for big steps), A open/do, L R tab, SELECT tap = surprise me, SELECT held + arrows =
+  turn the view, START or right click = undo, B = done. Mouse: click tabs and rows, wheel scrolls rows or zooms the view, drag the view
+  to turn it, drag a section in the HULL plan to stretch it (snap: steps of 2). Gamepad works through the same keys.
+- **Files** next to the save: `<save>.slot<N>.ship` (the design for that slot, about 50 bytes), `<save>.<NAME>.shp` (saved designs),
+  `<save>.shipcode` (share code `SHIP-...`, or the PC_SHIP_CODE variable). No `.ship` file = the game's own ship, so old saves are unchanged.
+- **In play**: `build.sh` renames the 8 ship number functions in ship.inc to `*_g` and wraps them with `pc_sy_stat` (top speed, turn,
+  damage taken, turn settling, laser, hold, fuel, push). Smelter hull plates, engine tunes and laser lenses still add on top. The
+  game's own ship model gets the nearest look (space chase view). FLY IT: NO keeps the design but flies the old numbers.
+- Tests: `pc/shipyard/test.sh` (recipe and share code round trips, determinism, stats bounds, 200,000 random edits, random bytes,
+  files) and `pc/tests/shipyard.sh` (all 10 tabs in the real game, two runs match, the design file, and a TANK really takes less damage
+  and an INTERCEPTOR really flies faster in the game). Not done yet: designs for allied/enemy ships and boarding interiors.

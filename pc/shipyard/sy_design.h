@@ -11,15 +11,15 @@
 #define SY_UNIT_MAX 15       // a section's length, width and height are 1..15 grid units
 #define SY_VERSION 1
 
-enum { SH_ROUND, SH_BOX, SH_WEDGE, SH_FLAT, SY_NSHAPE };                         // section shapes
-enum { NO_POINT, NO_BLUNT, NO_FORK, NO_RAM, SY_NNOSE };
-enum { WK_NONE, WK_STRAIGHT, WK_SWEPT, WK_DELTA, WK_X, WK_FORWARD, WK_GULL, SY_NWING };
-enum { EK_ION, EK_PLASMA, EK_FUSION, EK_WARP, SY_NENG };
-enum { GK_NONE, GK_LASER, GK_CANNON, GK_MISSILE, GK_BEAM, GK_FLAK, SY_NGUN };
-enum { GP_TOP, GP_LEFT, GP_RIGHT, GP_BELOW, GP_NOSE, SY_NGPOS };                 // where a mount sits (LEFT/RIGHT: both sides when symmetry is on)
-enum { CP_BUBBLE, CP_SLIT, CP_DOME, CP_VISOR, CP_BRIDGE, SY_NCOCK };
-enum { PT_PLAIN, PT_STRIPE, PT_TWOTONE, PT_CHECKS, PT_TIGER, PT_SPLIT, PT_EDGE, PT_DOTS, SY_NPAT };
-enum { FI_GLOSS, FI_MATTE, FI_METAL, FI_PEARL, SY_NFIN };
+enum { SYSH_ROUND, SYSH_BOX, SYSH_WEDGE, SYSH_FLAT, SY_NSHAPE };                         // section shapes
+enum { SYNO_POINT, SYNO_BLUNT, SYNO_FORK, SYNO_RAM, SY_NNOSE };
+enum { SYWK_NONE, SYWK_STRAIGHT, SYWK_SWEPT, SYWK_DELTA, SYWK_X, SYWK_FORWARD, SYWK_GULL, SY_NWING };
+enum { SYEK_ION, SYEK_PLASMA, SYEK_FUSION, SYEK_WARP, SY_NENG };
+enum { SYGK_NONE, SYGK_LASER, SYGK_CANNON, SYGK_MISSILE, SYGK_BEAM, SYGK_FLAK, SY_NGUN };
+enum { SYGP_TOP, SYGP_LEFT, SYGP_RIGHT, SYGP_BELOW, SYGP_NOSE, SY_NGPOS };                 // where a mount sits (LEFT/RIGHT: both sides when symmetry is on)
+enum { SYCP_BUBBLE, SYCP_SLIT, SYCP_DOME, SYCP_VISOR, SYCP_BRIDGE, SY_NCOCK };
+enum { SYPT_PLAIN, SYPT_STRIPE, SYPT_TWOTONE, SYPT_CHECKS, SYPT_TIGER, SYPT_SPLIT, SYPT_EDGE, SYPT_DOTS, SY_NPAT };
+enum { SYFI_GLOSS, SYFI_MATTE, SYFI_METAL, SYFI_PEARL, SY_NFIN };
 
 typedef struct { uint8_t len, wid, hgt, shape, armour; } SySec;                  // armour: plates 0..5 on this section
 typedef struct { uint8_t kind, size, sec, pos; } SyGun;                          // size 0..2, sec = which section it sits on
@@ -40,8 +40,8 @@ typedef struct {
 } SyDesign;
 
 // ---- stats
-enum { ST_SPEED, ST_TURN, ST_ARMOUR, ST_SHIELD, ST_FIRE, ST_RANGE, ST_HOLD, ST_FUEL, ST_CREW, ST_COST, ST_THREAT, SY_NSTAT };
-enum { WN_POWER = 1, WN_HEAT = 2, WN_HEAVY = 4, WN_CREW = 8, WN_NOGUN = 16, WN_FUEL = 32, WN_SLOW = 64 };
+enum { SYST_SPEED, SYST_TURN, SYST_ARMOUR, SYST_SHIELD, SYST_FIRE, SYST_RANGE, SYST_HOLD, SYST_FUEL, SYST_CREW, SYST_COST, SYST_THREAT, SY_NSTAT };
+enum { SYWN_POWER = 1, SYWN_HEAT = 2, SYWN_HEAVY = 4, SYWN_CREW = 8, SYWN_NOGUN = 16, SYWN_FUEL = 32, SYWN_SLOW = 64 };
 typedef struct {
     int32_t v[SY_NSTAT];                                                         // each 0..9999
     int32_t mass, power_gen, power_use, heat, cooling, thrust, crew_need, beds;
@@ -87,19 +87,19 @@ int  sy_hist_undo(SyHist *h, SyDesign *d);
 int  sy_hist_redo(SyHist *h, SyDesign *d);
 
 // ---- the editor's rows: every edit goes through sy_change, so the fuzz test and the screen do exactly the same thing
-enum { TB_SHIP, TB_HULL, TB_WINGS, TB_POWER, TB_GUNS, TB_GUARD, TB_ROOMS, TB_PAINT, TB_BADGE, TB_FILE, SY_NTAB };
+enum { SYT_SHIP, SYT_HULL, SYT_WINGS, SYT_POWER, SYT_GUNS, SYT_GUARD, SYT_ROOMS, SYT_PAINT, SYT_BADGE, SYT_FILE, SY_NTAB };
 extern const char *const sy_tab_name[SY_NTAB];
 enum {
-    R_PRESET, R_DICE, R_MODE, R_SNAP, R_INGAME, R_UNDO, R_REDO,
-    R_SEC, R_LEN, R_WID, R_HGT, R_SHAPE, R_NOSE, R_SYM, R_ADDSEC, R_COPYSEC, R_DELSEC, R_STRETCH,
-    R_WING, R_WSPAN, R_WSWEEP, R_WSEC, R_WTILT, R_FINS,
-    R_ENG, R_NENG, R_ESIZE, R_REACTOR, R_TANKS, R_RADS,
-    R_GUN, R_GKIND, R_GSIZE, R_GSEC, R_GPOS, R_ADDGUN, R_COPYGUN, R_DELGUN,
-    R_SHIELD, R_ARMALL, R_ARM0, R_ARM_END = R_ARM0 + SY_MAXSEC - 1,
-    R_COCK, R_BAYS, R_CARGO, R_QUART,
-    R_PAINTC, R_TRIMC, R_GLOWC, R_LIGHTC, R_PATTERN, R_FINISH,
-    R_NAME, R_EMBLEM, R_EMCOL, R_DECAL,
-    R_SAVE, R_LOAD, R_CODE, R_IMPORT, R_CLASSIC, R_DONE,
+    SYR_PRESET, SYR_DICE, SYR_MODE, SYR_SNAP, SYR_INGAME, SYR_UNDO, SYR_REDO,
+    SYR_SEC, SYR_LEN, SYR_WID, SYR_HGT, SYR_SHAPE, SYR_NOSE, SYR_SYM, SYR_ADDSEC, SYR_COPYSEC, SYR_DELSEC, SYR_STRETCH,
+    SYR_WING, SYR_WSPAN, SYR_WSWEEP, SYR_WSEC, SYR_WTILT, SYR_FINS,
+    SYR_ENG, SYR_NENG, SYR_ESIZE, SYR_REACTOR, SYR_TANKS, SYR_RADS,
+    SYR_GUN, SYR_GKIND, SYR_GSIZE, SYR_GSEC, SYR_GPOS, SYR_ADDGUN, SYR_COPYGUN, SYR_DELGUN,
+    SYR_SHIELD, SYR_ARMALL, SYR_ARM0, SYR_ARM_END = SYR_ARM0 + SY_MAXSEC - 1,
+    SYR_COCK, SYR_BAYS, SYR_CARGO, SYR_QUART,
+    SYR_PAINTC, SYR_TRIMC, SYR_GLOWC, SYR_LIGHTC, SYR_PATTERN, SYR_FINISH,
+    SYR_NAME, SYR_EMBLEM, SYR_EMCOL, SYR_DECAL,
+    SYR_SAVE, SYR_LOAD, SYR_CODE, SYR_IMPORT, SYR_CLASSIC, SYR_DONE,
     SY_NROW
 };
 typedef struct { int sec, gun, advanced, snap; } SyCursor;                       // editor state the rows depend on
