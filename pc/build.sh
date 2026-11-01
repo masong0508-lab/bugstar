@@ -80,7 +80,11 @@ sed -i 's|ship_draw(pg, scx, scy, scs, syw, spt, 0,0, 0,0,240,128); sh_flame=0;|
 sed -i '1i static int pc_sr_on(void); static void pc_sr_space(volatile u16 *pg), pc_sr_mark(volatile u16 *pg), pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_); extern int pc_ships_mode;' space.inc
 echo '#include "../pc_ships.inc"' >> main.c
 # --- the native dungeon (pc/pc_dnative.inc): after the game's own 3D pass, a second picture at the window's size; the compositor shows it where the page is unchanged
-sed -i 's|^    if(terr_on) render_terrace(pg,dirx,diry,plx,ply); else render_view(pg,dirx,diry,plx,ply);|&\n    if(!terr_on) pc_dn_native(pg,dirx,diry,plx,ply);|' main.c
+sed -i 's|^    if(terr_on) render_terrace(pg,dirx,diry,plx,ply); else render_view(pg,dirx,diry,plx,ply);|&\n    pc_dn_native(pg,dirx,diry,plx,ply);|' main.c
+sed -i 's|^    for(int i=0;i<NPROJ;i++){ Proj \*p=&proj\[i\]; if(!p->alive) continue;|    pc_dn_sprites_done(pg);\n&|' main.c
+sed -i 's|^    spr_bar(pg,o,scx,top,wcols,tY);|    pc_dn_spr(art,aw,ah,x0,wcols,top,bot,tY,tint,dark,o->flash);\n&|' dungeon.inc
+sed -i '1i static void pc_dn_spr(const unsigned char *art, int aw, int ah, int x0, int wcols, int top, int bot, int tY, int tint, int dark, int flash);' dungeon.inc
+sed -i '1i static void pc_dn_sprites_done(volatile unsigned short *pg);' main.c
 sed -i '1i static void pc_dn_native(volatile unsigned short *pg, int dirx, int diry, int plx, int ply);' main.c
 echo '#include "../pc_dnative.inc"' >> main.c
 echo '#include "../pc_laws.inc"' >> main.c

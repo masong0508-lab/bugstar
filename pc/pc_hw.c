@@ -22,7 +22,7 @@
 
 void (*pc_irq_fn)(void);
 int pc_ships_mode=-1, pc_armada_n=0;   // the ship renderer: -1 off (the game draws its own ships), 0 CLASSIC, 1 NATIVE, 2 ULTRA; ships in the far battle (PC_SHIPS / PC_ARMADA for tests)
-int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h; uint32_t *pc_dn_buf; long pc_dn_f[2]={-100,-100}; uint8_t pc_dn_snap[2][240*160];   // the native dungeon (pc_dnative.inc): the picture, its size, the page snapshot it belongs to
+int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h; uint32_t *pc_dn_buf, *pc_dn_spl; int pc_dn_spl_on; long pc_dn_f[2]={-100,-100}; uint8_t pc_dn_snap[2][240*160], pc_dn_snap2[2][240*160];   // the native dungeon (pc_dnative.inc): the picture, its size, the page snapshot it belongs to
 static uint8_t sr_snap[2][240*128]; static long sr_snap_f[2]={-100,-100};
 void pc_sr_snapshot(const volatile void *pg){ int t=((uintptr_t)pg)>=0x0600A000u ? 1 : 0; memcpy(sr_snap[t],(const void*)pg,240*128); sr_snap_f[t]=pc_frames(); }
 int pc_vid3d;                   // 3D views: 0 AUTO, 1 NATIVE, 2 CLASSIC (set by the window front end; PC_V3D=0..2 in the environment for tests)
@@ -424,9 +424,11 @@ static void nv_rows(void *vc, int lo, int hi){
         }
     }
 }
+double pc_now_ms(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec*1e3+t.tv_nsec/1e6; }
+void pc_dn_report(double ms,int W,int H){ static int on=-1; static double acc; static int n; if(on<0) on=getenv("PC_TIMING")!=0; if(!on) return; acc+=ms; if(++n==200){ fprintf(stderr,"dungeon native %dx%d: %.2f ms per frame\n",W,H,acc/n); n=0; acc=0; } }
 int pc_v3d_classic(void);
 static int nv_v3(void){ int v3=pc_vid3d; static int env=-2; if(env==-2){ const char *e=getenv("PC_V3D"); env=e?atoi(e):-1; } if(env>=0) v3=env; return v3; }
-int pc_v3d_classic(void){ return nv_v3()==2; }
+int pc_v3d_classic(void){ return nv_v3()==2 || pc_ships_mode==0; }   // CLASSIC in either switch (3D VIEWS, or SHIPS: the one the ship renderer uses) keeps the GBA picture
 static int spr_tex(int tile,int tx,int ty,int w,int h,int one_d,int is8,int pal,uint16_t *col){    // one texel of a sprite: 0 = transparent
     if(tx<0||ty<0||tx>=w||ty>=h) return 0; int units=is8?2:1; int t=tile + (ty>>3)*(one_d ? (w>>3)*units : 32) + (tx>>3)*units;
     uint32_t addr=VRAMB+0x10000+(uint32_t)t*32 + (ty&7)*(is8?8:4) + ((tx&7)>>(is8?0:1)); if(addr>=VRAMB+0x18000) return 0;
@@ -528,10 +530,14 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
         int t=(dc>>4)&1; if(g_frame-pc_dn_f[t]<=4){ const uint8_t *pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0)); int Y0=(18*H+159)/160; uint32_t pal[256];
             for(int i=0;i<256;i++){ uint16_t c=R16(PALRAM+i*2); pal[i]=(uint32_t)((c&31)<<3|(c&31)>>2)<<16 | (uint32_t)(((c>>5)&31)<<3|((c>>5)&31)>>2)<<8 | (uint32_t)(((c>>10)&31)<<3|((c>>10)&31)>>2); }
             int fadeop = (bmode>=2 && ev>0 && (bldcnt&4)) ? bmode : 0;
-            for(int Y=Y0;Y<H;Y++){ int gy=(int)((Y+0.5)*sy); if(gy>159) gy=159; const uint32_t *src=pc_dn_buf+(size_t)(Y-Y0)*W;
+            const uint32_t *spl=pc_dn_spl_on?pc_dn_spl:0; const uint8_t *sn1=pc_dn_snap[t], *sn2=pc_dn_snap2[t];
+            for(int Y=Y0;Y<H;Y++){ int gy=(int)((Y+0.5)*sy); if(gy>159) gy=159; const uint32_t *src=pc_dn_buf+(size_t)(Y-Y0)*W; const uint32_t *sp=spl?spl+(size_t)(Y-Y0)*W:0;
                 for(int X=0;X<W;X++){ int gx=(int)((X+0.5)*sx); if(gx>239) gx=239; int gi=gy*240+gx; size_t q=(size_t)Y*W+X;
-                    if(gy<18 || pgb[gi]!=pc_dn_snap[t][gi] || (nv_op[q]&7)<4) continue;
-                    uint32_t v=src[X], a=pal[v&255], b=pal[(v>>8)&255]; int f=(v>>16)&255; uint32_t rb=((a&0xFF00FF)*(256-f)+(b&0xFF00FF)*f)>>8, g=((a&0xFF00)*(256-f)+(b&0xFF00)*f)>>8; uint32_t c=(rb&0xFF00FF)|(g&0xFF00);
+                    if(gy<18 || (nv_op[q]&7)<4) continue;
+                    uint32_t v=src[X], sv=sp?sp[X]:0;
+                    if(sv){ if(pgb[gi]!=sn2[gi]) continue; if(sv&0x80000000u) v=sv; else if(v&0x20000000u) continue; }         // a thing drawn natively: its own pixel (or the world behind it), while the page still holds what the sprite pass left
+                    else if(pgb[gi]!=sn1[gi] || (v&0x20000000u)) continue;
+                    uint32_t a=pal[v&255], b=pal[(v>>8)&255]; int f=(v>>16)&255; uint32_t rb=((a&0xFF00FF)*(256-f)+(b&0xFF00FF)*f)>>8, g=((a&0xFF00)*(256-f)+(b&0xFF00)*f)>>8; uint32_t c=(rb&0xFF00FF)|(g&0xFF00);
                     if(fadeop==2){ uint32_t r2=(c>>16&255)+((255-(c>>16&255))*ev>>4), g2=(c>>8&255)+((255-(c>>8&255))*ev>>4), b2=(c&255)+((255-(c&255))*ev>>4); c=r2<<16|g2<<8|b2; }
                     else if(fadeop==3){ uint32_t r2=(c>>16&255)*(16-ev)>>4, g2=(c>>8&255)*(16-ev)>>4, b2=(c&255)*(16-ev)>>4; c=r2<<16|g2<<8|b2; }
                     out[q]=c; } } } }
