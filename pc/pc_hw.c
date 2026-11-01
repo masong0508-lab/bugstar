@@ -439,3 +439,5 @@ uint16_t pc_vcount(void){
     if(g_line==160) vblank();
     return (uint16_t)g_line;
 }
+
+int pc_mouse_x = -1, pc_mouse_y = -1, pc_mouse_b, pc_mouse_wheel;

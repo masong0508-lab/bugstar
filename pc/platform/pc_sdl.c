@@ -10,6 +10,7 @@
 #include <math.h>
 #include <time.h>
 #include "pc_plat.h"
+extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;
 
 int pc_motor(void);                 // pc_hw.c: is the (cartridge) rumble motor on right now
 int pc_script_keys(uint16_t *k);    // pc_hw.c: keys from a --script file, if one was given (for tests)
@@ -345,6 +346,10 @@ static void pump_events(void){
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST && C.pause_unfocus) g_paused_focus=1;
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_GAINED) g_paused_focus=0;
             break;
+        case SDL_MOUSEMOTION: case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP: { int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth); int ex = e.type==SDL_MOUSEMOTION ? e.motion.x : e.button.x, ey = e.type==SDL_MOUSEMOTION ? e.motion.y : e.button.y;
+            int mx=(ex-dst.x)*240/(dst.w?dst.w:1), my=(ey-dst.y)*160/(dst.h?dst.h:1); if(mx<0||my<0||mx>=240||my>=160){ pc_mouse_x=-1; pc_mouse_y=-1; } else { pc_mouse_x=mx; pc_mouse_y=my; }
+            if(e.type!=SDL_MOUSEMOTION){ int bit = e.button.button==SDL_BUTTON_LEFT ? 1 : e.button.button==SDL_BUTTON_RIGHT ? 2 : 0; if(e.type==SDL_MOUSEBUTTONDOWN) pc_mouse_b|=bit; else pc_mouse_b&=~bit; } break; }
+        case SDL_MOUSEWHEEL: pc_mouse_wheel += e.wheel.y; break;
         case SDL_CONTROLLERDEVICEADDED: pad_open(); break;
         case SDL_CONTROLLERDEVICEREMOVED: if(pad && e.cdevice.which==SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad))){ SDL_GameControllerClose(pad); pad=0; say_toast("GAMEPAD REMOVED"); pad_open(); } break;
         case SDL_CONTROLLERBUTTONDOWN:

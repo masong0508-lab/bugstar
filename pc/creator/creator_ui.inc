@@ -453,20 +453,27 @@ static void pc_creator_screen(volatile u16 *pg, int from_game){
         else if(cu_tab != TB_BIO && (cu_clock % 3) == 0){ if(cu_tab == TB_PEOPLE) ; else cu_planet(pg, 134, 14, 104, 64); }
         vsync(); read_keys(); cu_clock++; if(cu_note_t > 0 && --cu_note_t == 0) dirty = 1;
         int hr = pc_lw_rep(K_RIGHT, &cu_hold[0]), hl = pc_lw_rep(K_LEFT, &cu_hold[1]), hu = pc_lw_rep(K_UP, &cu_hold[2]), hd = pc_lw_rep(K_DOWN, &cu_hold[3]);
-        int changed = 0, id = cu_tab == TB_BIO ? -1 : rows[cu_row[cu_tab]];
+        int changed = 0, id = cu_tab == TB_BIO ? -1 : rows[cu_row[cu_tab]], mopen = 0, mundo = 0;
+        { static int mb_old; int mb = pc_mouse_b, mx = pc_mouse_x, my = pc_mouse_y, click = (mb & 1) && !(mb_old & 1), rclick = (mb & 2) && !(mb_old & 2); mb_old = mb; int wh = pc_mouse_wheel; pc_mouse_wheel = 0;
+          if(rclick) mundo = 1;
+          if(click && mx >= 0){
+              if(my < 12){ int t = (mx - 1) / 34; if(t >= 0 && t < TB_N && t != cu_tab){ cu_tab = t; dirty = 1; sfx(7); } }
+              else if(cu_tab == TB_BIO){ cu_sub = (cu_sub + 1) % 5; dirty = 1; sfx(7); }
+              else if(mx >= 2 && mx < 132 && my >= 17 && my < 17 + 12 * 9){ int r2 = cu_top[cu_tab] + (my - 17) / 9; if(r2 < nrows){ if(r2 == cu_row[cu_tab]) mopen = 1; else { cu_row[cu_tab] = r2; dirty = 1; sfx(7); } } } }
+          if(wh && mx >= 0 && cu_tab != TB_BIO){ if(mx < 132){ int r2 = cu_row[cu_tab] - wh; if(r2 >= 0 && r2 < nrows){ cu_row[cu_tab] = r2; dirty = 1; } } else if(id >= 0 && id < UR_DICE){ changed = cu_change(id, wh > 0 ? 1 : -1, 0); dirty = 1; } } }
         if(HIT(K_L)){ cu_tab = (cu_tab + TB_N - 1) % TB_N; dirty = 1; sfx(7); } if(HIT(K_R)){ cu_tab = (cu_tab + 1) % TB_N; dirty = 1; sfx(7); }
         if(cu_tab == TB_BIO){ if(hr){ cu_sub = (cu_sub + 1) % 5; dirty = 1; sfx(7); } if(hl){ cu_sub = (cu_sub + 4) % 5; dirty = 1; sfx(7); } }
         else {
             if(hu){ cu_row[cu_tab] = (cu_row[cu_tab] + nrows - 1) % nrows; dirty = 1; sfx(7); } if(hd){ cu_row[cu_tab] = (cu_row[cu_tab] + 1) % nrows; dirty = 1; sfx(7); }
             if((hr || hl) && id < UR_DICE){ changed = cu_change(id, hr ? 1 : -1, hr == 2 || hl == 2); dirty = 1; if(changed) sfx(7); }
             else if((hr || hl) && id == UR_EX){ changed = cu_change(id, hr ? 1 : -1, 0); dirty = 1; }
-            if(HIT(K_A)){ int lv = 0; changed = cu_open(pg, id, &lv); if(lv) leave = lv; dirty = 1; sfx(2); wait_release(); }
+            if(HIT(K_A) || mopen){ int lv = 0; changed |= cu_open(pg, id, &lv); if(lv) leave = lv; dirty = 1; sfx(2); wait_release(); }
             if(HIT(K_SEL)){ if((id >= UR_CRE0 && id < UR_CRE0 + CR_MAXCRE)){ int s = id - UR_CRE0; for(int i = s; i < cu_r.ncre - 1; i++) cu_r.cre[i] = cu_r.cre[i + 1]; cu_r.ncre--; changed = 1; }
                 else if(id >= UR_PIN0 && id < UR_PIN0 + CR_MAXPIN){ int s = id - UR_PIN0; for(int i = s; i < cu_r.npin - 1; i++) cu_r.pin[i] = cu_r.pin[i + 1]; cu_r.npin--; changed = 1; }
                 else if(id == UR_NAMEDICE){ cu_name_dice(); changed = 1; sfx(6); }
                 else if(cu_tab != TB_FILE && cu_tab != TB_FLORA){ cu_dice(); changed = 1; sfx(6); cu_say("DICE ROLLED. START TAKES IT BACK."); } dirty = 1; }
         }
-        if(HIT(K_START)){ if(cr_hist_undo(&cu_h, &cu_r)){ cr_bio(&cu_r, &cu_b); cu_say("UNDONE (FILE TAB: REDO)"); } else cu_say("NOTHING TO UNDO"); dirty = 1; sfx(4); }
+        if(HIT(K_START) || mundo){ if(cr_hist_undo(&cu_h, &cu_r)){ cr_bio(&cu_r, &cu_b); cu_say("UNDONE (FILE TAB: REDO)"); } else cu_say("NOTHING TO UNDO"); dirty = 1; sfx(4); }
         if(changed){ cu_commit(); dirty = 1; }
         if(HIT(K_B)) leave = 1;
     }
