@@ -91,6 +91,7 @@ typedef struct {
 } WsCraft;
 enum { WK_MAT, WK_CREW, WK_AIR, WK_WPN, WK_POW, WK_TOTAL };
 void ws_make(WsCraft *c, uint32_t seed, int z, int cheat);
+void ws_scale(WsCraft *c, int z, int cheat);   // the same design (shape, culture, material, name) at another size
 void ws_make_ref(WsCraft *c);            // THE REFERENCE STATION: 160 km grey steel sphere, the calibration point
 uint32_t ws_signature(const WsCraft *c); // a hash of the hull grammar choices (for variety counts)
 double ws_K(void);                       // the calibration constant (gold per credit)
@@ -109,7 +110,7 @@ typedef struct { WN cost; double A, Fm, Fw, inside, precision; WN reward; int ch
 double ws_attack(double level, int laser_lv, int gun, int tech_lv);   // levels' worth: level + 5 x laser + gun + 25 x tech (at least 1)
 double ws_A(double attack);              // the attack-power factor: (attack)^-ALPHA, ALPHA = log10(4.07e23 / 1e11) / 3
 double ws_Fm(double inside, double precision);   // method factor: 1 - 0.45 x inside + 0.15 x inside x precision
-double ws_Fw(const WsKill *k);           // weapon factor: the damage-weighted mean of (weapon multiplier)^-1/2
+double ws_Fw(const WsKill *k);           // weapon factor: the damage-weighted mean of (weapon multiplier)^-0.4
 void ws_pay(const WsCraft *c, const WsKill *k, WsPay *p);
 #define WS_ALPHA 4.2032113
 #define WS_CAL_GOLD 4.07e23

@@ -77,7 +77,7 @@ void ws_len_text(int z, char *out, int cap){
     double lg=z/100.0; char v[64]; const char *u; double sh;
     if(lg<-6){ u="NM"; sh=-9; } else if(lg<-3){ u="MICROMETRES"; sh=-6; } else if(lg<0){ u="MM"; sh=-3; } else if(lg<3){ u="M"; sh=0; }
     else if(lg<10.5){ u="KM"; sh=3; } else if(lg<14.976){ u="AU"; sh=11.17493; } else if(lg<24.944){ u="LY"; sh=15.97598; } else { u="UNIVERSES"; sh=log10(WS_UNIVERSE_M); }
-    wn_text(wn_p10(lg-sh),v,sizeof v,0); snprintf(out,cap,"%s %s",v,u);
+    WN q=wn_p10(lg-sh); wn_text(q,v,sizeof v,0); if(strlen(v)>26) snprintf(v,sizeof v,"%.2f X 10^%lld",q.m,(long long)q.e); snprintf(out,cap,"%s %s",v,u);
 }
 
 // ================================================================= the hull grammar
@@ -154,7 +154,6 @@ static void build_prims(WsCraft *c, Rng *r){
     if(G>1 && c->shape!=WS_RING){ int n=c->nprim<WS_MAXPRIM-G ? G : 0; for(int g=0;g<n;g++) P(c,2,0,0,-0.45f+0.9f*g/(G-1),0.2f+0.02f*g,0.01f,0,0,1.5708f); }   // segment bands
 }
 
-static double cost_K_cached=0;
 #define WS_K 52500.636                       // gold per credit: set so that the reference station pays 4.07 x 10^23 (tested)
 double ws_K(void){ return WS_K; }
 
@@ -186,7 +185,6 @@ static void fill_numbers(WsCraft *c){
     c->hp_shield=wn_muld(c->hp_hull,0.04);
     double d=lg+9; if(d<0) d=0; if(d>100) d=100; c->dps=0.5+0.2*d;
     c->wave=2+c->cls/2; if(c->wave>12) c->wave=12;
-    (void)cost_K_cached;
 }
 static const char *const sec_nm[8]={"OUTER ARMOUR","GUN DECKS","HANGAR RING","PLATING BELT","MID HULL","INNER BULWARK","REACTOR CORE","COMMAND CORE"};
 static void build_sections(WsCraft *c, Rng *r){
@@ -221,6 +219,11 @@ void ws_make(WsCraft *c, uint32_t seed, int z, int cheat){
     snprintf(c->title,sizeof c->title,"%s %s",ws_shape_name(c->shape),ws_class_name(c->cls));
     fill_numbers(c); build_sections(c,&r); build_prims(c,&r);
 }
+void ws_scale(WsCraft *c, int z, int cheat){                      // the same design at another size
+    if(z<WS_ZMIN) z=WS_ZMIN; if(z>WS_ZMAX) z=WS_ZMAX; c->z=z; c->cheat = cheat || z>WS_ZMAX_FAIR; c->cls=ws_class_of(z);
+    Rng r={c->seed*0x2545F491u ^ 0xC0105A1u ^ 0x5CA1Eu}; snprintf(c->title,sizeof c->title,"%s %s",ws_shape_name(c->shape),ws_class_name(c->cls));
+    fill_numbers(c); build_sections(c,&r); Rng r2={c->seed^0xB00Fu}; build_prims(c,&r2);
+}
 void ws_make_ref(WsCraft *c){
     memset(c,0,sizeof *c); Rng r={0x5EF0u}; c->seed=0; c->z=WS_ZREF; c->cls=ws_class_of(WS_ZREF);
     c->shape=WS_SPHERE; c->sym=1; c->segs=1; c->adds=0; c->surf=2; c->cult=0; c->mat=0;
@@ -237,9 +240,9 @@ double ws_wpn_mult(int w){ return wpn_mu[(unsigned)w%WW_N]; }
 double ws_attack(double level, int laser_lv, int gun, int tech_lv){ double a=level+5.0*laser_lv+gun+25.0*tech_lv; return a<1?1:a; }
 double ws_A(double a){ if(a<1) a=1; return pow(a,-WS_ALPHA); }
 double ws_Fm(double in, double pr){ if(in<0) in=0; if(in>1) in=1; if(pr<0) pr=0; if(pr>1) pr=1; return 1.0-0.45*in+0.15*in*pr; }
-double ws_Fw(const WsKill *k){ double tot=0, f=0; for(int w=0;w<WW_N;w++){ double d=wn_log10(k->out_dmg[w]); if(d<-1e299) continue; tot+=0; }
+double ws_Fw(const WsKill *k){ double tot=0, f=0;
     WN sum=wn(0); for(int w=0;w<WW_N;w++) sum=wn_add(sum,k->out_dmg[w]); if(wn_is_zero(sum)) return 1.0;
-    for(int w=0;w<WW_N;w++){ double sh=wn_to_d(wn_div(k->out_dmg[w],sum)); f+=sh/sqrt(wpn_mu[w]); tot+=sh; }
+    for(int w=0;w<WW_N;w++){ double sh=wn_to_d(wn_div(k->out_dmg[w],sum)); f+=sh*pow(wpn_mu[w],-0.4); tot+=sh; }
     return tot>0 ? f/tot : 1.0; }
 void ws_pay(const WsCraft *c, const WsKill *k, WsPay *p){
     memset(p,0,sizeof *p); p->cost=c->cost[WK_TOTAL]; p->A=ws_A(k->attack);

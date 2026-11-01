@@ -49,7 +49,8 @@ static int add_room(WdDeck *d, R *r, int kind, int sub){
     int w=rk_w[kind][0], h=rk_w[kind][1]; if(d->band==WB_SMALL||d->band<=WB_MICRO){ w=w*7/10; h=h*7/10; } else if(d->band>=WB_VAST){ w=w*13/10; h=h*13/10; }
     if(w<3) w=3; if(h<3) h=3; if(kind==WR_TRENCH && ri(r,2)){ int t=w; w=h; h=t; }
     w+=ri(r,3); h+=ri(r,3); if(w>30) w=30; if(h>30) h=30;
-    for(int tries=0;tries<120;tries++){
+    for(int tries=0;tries<360;tries++){
+        if(tries==120||tries==240){ w=w*2/3; h=h*2/3; if(w<3) w=3; if(h<3) h=3; }
         int x0=3+ri(r,WD_W-6-w), y0=3+ri(r,WD_W-6-h), x1=x0+w-1, y1=y0+h-1, ok=1;
         for(int i=1;i<d->nroom && ok;i++){ WdRoom *o=&d->room[i]; if(x0<=o->x1+4 && x1>=o->x0-4 && y0<=o->y1+4 && y1>=o->y0-4) ok=0; }
         if(!ok) continue;
@@ -134,9 +135,9 @@ static void furnish(WdDeck *d, R *r, int ri_){
     case WR_GARDEN: for(float x=x0+1;x<x1-0.5f;x+=1.4f) for(float y=y0+1;y<y1-0.5f;y+=2.2f) prop(d,WP_PLANT,x,y,0,1.0f,1.2f+rf(r)*1.4f,ri(r,4)); for(float x=x0+2;x<x1;x+=4) prop(d,WP_LAMP,x,cy,hc-2,1.2f,0.4f,2); break;
     case WR_WORKSHOP: for(float x=x0+1.5f;x<x1-1;x+=2.5f){ prop(d,WP_BENCH,x,y0+1.0f,0,1.8f,0.9f,1); prop(d,WP_CRATE,x,y1-0.8f,0,0.9f,0.9f,ri(r,3)); } prop(d,WP_PIPE,x0+0.3f,cy,0,0.4f,hc,0); break;
     case WR_TRENCH: for(float t=0;t<(W>H?W:H);t+=3) prop(d,WP_PIPE, W>H ? x0+t+0.5f : x0+0.3f, W>H ? y0+0.3f : y0+t+0.5f, -8,0.35f,(float)hc+8,0); break;
-    case WR_TRAM: { for(int y=m->y0;y<=m->y1;y++) for(int x=m->x0;x<=m->x1;x++){ if(y>=m->y0+(m->y1-m->y0)/2+1){ C(d,x,y).kind=WDC_PIT; C(d,x,y).floor=-6; } else if(y==m->y0+(m->y1-m->y0)/2) C(d,x,y).kind=WDC_TRAM; }
+    case WR_TRAM: { for(int y=m->y0;y<=m->y1;y++) for(int x=m->x0;x<=m->x1;x++){ if(y>=m->y0+(m->y1-m->y0)/2+1 && y<m->y1 && x>m->x0 && x<m->x1){ C(d,x,y).kind=WDC_PIT; C(d,x,y).floor=-6; } else if(y==m->y0+(m->y1-m->y0)/2) C(d,x,y).kind=WDC_TRAM; }
         prop(d,WP_TRAMCAR,cx,y0+H*0.78f,-6,W*0.7f,5.5f,0); for(float x=x0+1;x<x1;x+=3) prop(d,WP_LAMP,x,y0+0.5f,hc-2,0.6f,0.4f,0); break; }
-    case WR_SECURITY: prop(d,WP_CONSOLE,x0+1,y0+1,0,1,1,3); prop(d,WP_CONSOLE,x0+2.2f,y0+1,0,1,1,2); if(m->key) prop(d,WP_KEY,cx,cy,0.0f,0.5f,0.9f,m->key); prop(d,WP_CRATE,x1-1,y1-1,0,0.9f,0.9f,0); break;
+    case WR_SECURITY: prop(d,WP_CONSOLE,x0+1,y0+1,0,1,1,3); prop(d,WP_CONSOLE,x0+2.2f,y0+1,0,1,1,2); prop(d,WP_CRATE,x1-1,y1-1,0,0.9f,0.9f,0); break;
     default: break;
     }
 }
@@ -192,20 +193,37 @@ void wd_make(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, int ns
     for(int n=2;n<d->nroom;n++){ int ba=-1,bb=-1,bd=1<<30;
         for(int a=1;a<d->nroom;a++) if(joined[a]) for(int b=1;b<d->nroom;b++) if(!joined[b]){ const WdRoom *A=&d->room[a],*B=&d->room[b]; int dx=(A->x0+A->x1)-(B->x0+B->x1), dy=(A->y0+A->y1)-(B->y0+B->y1); int dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; ba=a; bb=b; } }
         if(bb<0) break; joined[bb]=1; if(carve(d,ba,bb,cw,cc)){ deg[ba]++; deg[bb]++; } }
-    int lockr=-1; for(int i=1;i<d->nroom;i++) if(d->room[i].sub!=255 && deg[i]==1 && i!=hang_entry && d->band>=WB_SMALL && (leaf>>5)%3!=0){ lockr=i; break; }
-    for(int k=0;k<2;k++){ int a=1+ri(&r,d->nroom-1), b=1+ri(&r,d->nroom-1); if(a!=b && a!=lockr && b!=lockr) carve(d,a,b,cw,cc); }
-    if(lockr>0 && sec>0){ WdRoom *L=&d->room[lockr]; L->locked=1; L->key=(uint8_t)(1+ri(&r,3)); d->room[sec].key=L->key;
+    for(int k=0;k<2;k++){ int a=1+ri(&r,d->nroom-1), b=1+ri(&r,d->nroom-1); if(a!=b && deg[a]>1 && deg[b]>1 && carve(d,a,b,cw,cc)){ deg[a]++; deg[b]++; } }
+    for(int i=1;i<d->nroom;i++) furnish(d,&r,i);
+    // ---- every room must be reachable: any room a corridor could not reach gets a straight one, through whatever is in the way
+    int sr0 = from_hangar && hang_entry>0 ? hang_entry : tram>0 ? tram : 1;
+    for(int pass=0;pass<WD_MAXROOM;pass++){ int sx0=(d->room[sr0].x0+d->room[sr0].x1)/2, sy0=d->room[sr0].y0;
+        while(!wd_walkable(d,sx0,sy0,1) && sy0<d->room[sr0].y1) sy0++;
+        int cut=-1; for(int i=1;i<d->nroom;i++) if(wd_path_len(d,sx0,sy0,i,1,1)<0){ cut=i; break; } if(cut<0) break;
+        int best=-1, bd=1<<30; for(int i=1;i<d->nroom;i++){ if(i==cut || wd_path_len(d,sx0,sy0,i,1,1)<0) continue; int dx=(d->room[i].x0+d->room[i].x1)-(d->room[cut].x0+d->room[cut].x1), dy=(d->room[i].y0+d->room[i].y1)-(d->room[cut].y0+d->room[cut].y1); if(dx*dx+dy*dy<bd){ bd=dx*dx+dy*dy; best=i; } }
+        if(best<0) break; deg[cut]+=2; deg[best]+=2;
+        int x=(d->room[cut].x0+d->room[cut].x1)/2, y=(d->room[cut].y0+d->room[cut].y1)/2, tx=(d->room[best].x0+d->room[best].x1)/2, ty=(d->room[best].y0+d->room[best].y1)/2;
+        while(x!=tx || y!=ty){ if(x!=tx) x+= tx>x?1:-1; else y+= ty>y?1:-1; WdCell *cl=&C(d,x,y);
+            if(cl->kind==WDC_SOLID){ int ring=0; for(int i=1;i<d->nroom;i++){ const WdRoom *o=&d->room[i]; if(x>=o->x0-1&&x<=o->x1+1&&y>=o->y0-1&&y<=o->y1+1) ring=1; } cl->kind = ring?WDC_DOOR:WDC_OPEN; cl->room=0; cl->floor=0; cl->ceil=cc; }
+            else if(cl->kind==WDC_PIT){ cl->kind=WDC_OPEN; cl->floor=d->room[cl->room].floor; cl->flags|=WF_RAIL; } }
+    }
+    // ---- one target room with a single way in can be locked: its keycard is in SECURITY, and a crawl vent is the other way in
+    int lockr=-1; for(int i=1;i<d->nroom;i++) if(d->room[i].sub!=255 && deg[i]==1 && i!=hang_entry && i!=sr0 && d->band>=WB_SMALL && (leaf>>5)%3!=0){ lockr=i; break; }
+    if(lockr>0 && sec>0){ WdRoom *L=&d->room[lockr]; int saved[WD_W*WD_W/8], ns=0; static uint8_t before[WD_W*WD_W]; for(int i=0;i<WD_W*WD_W;i++) before[i]=d->cell[i].kind; (void)saved; (void)ns;
         for(int y=L->y0-1;y<=L->y1+1;y++) for(int x=L->x0-1;x<=L->x1+1;x++) if(inb(x,y) && C(d,x,y).kind==WDC_DOOR) C(d,x,y).kind=WDC_LOCK;
-        // the other way in: a crawl vent from the nearest room, through the walls (slow, and a drone watches it)
-        int best=-1, bd=1<<30; for(int i=1;i<d->nroom;i++){ if(i==lockr||d->room[i].locked) continue; int dx=(d->room[i].x0+d->room[i].x1)-(L->x0+L->x1), dy=(d->room[i].y0+d->room[i].y1)-(L->y0+L->y1); if(dx*dx+dy*dy<bd){ bd=dx*dx+dy*dy; best=i; } }
+        int best=-1, bd=1<<30; for(int i=1;i<d->nroom;i++){ if(i==lockr) continue; int dx=(d->room[i].x0+d->room[i].x1)-(L->x0+L->x1), dy=(d->room[i].y0+d->room[i].y1)-(L->y0+L->y1); if(dx*dx+dy*dy<bd){ bd=dx*dx+dy*dy; best=i; } }
         if(best>0){ static int16_t prev[WD_W*WD_W]; static int q[WD_W*WD_W]; int h=0,t=0, goal=-1; for(int i=0;i<WD_W*WD_W;i++) prev[i]=-2;
             for(int i=0;i<WD_W*WD_W;i++) if(d->cell[i].room==best && d->cell[i].kind==WDC_OPEN){ prev[i]=-1; q[t++]=i; }
             while(h<t && goal<0){ int c=q[h++], x=c%WD_W, y=c/WD_W; static const int DX[4]={1,-1,0,0}, DY[4]={0,0,1,-1};
                 for(int k=0;k<4;k++){ int nx=x+DX[k], ny=y+DY[k]; if(nx<1||ny<1||nx>=WD_W-1||ny>=WD_W-1) continue; int j=ny*WD_W+nx; if(prev[j]!=-2) continue; const WdCell *cl=&d->cell[j];
                     if(cl->room==lockr && cl->kind==WDC_OPEN){ prev[j]=(int16_t)c; goal=j; break; }
-                    if(cl->kind!=WDC_SOLID) continue; prev[j]=(int16_t)c; q[t++]=j; } }
-            for(int j=goal; j>=0 && prev[j]>=0; j=prev[j]){ WdCell *cl=&d->cell[j]; if(cl->kind==WDC_SOLID){ cl->kind=WDC_VENT; cl->room=0; cl->floor=0; cl->ceil=4; } } } }
-    for(int i=1;i<d->nroom;i++) furnish(d,&r,i);
+                    if(!(cl->kind==WDC_SOLID || (cl->kind==WDC_OPEN && cl->room==0))) continue; prev[j]=(int16_t)c; q[t++]=j; } }
+            for(int j=goal; j>=0 && prev[j]>=0; j=prev[j]){ WdCell *cl=&d->cell[j]; if(cl->kind==WDC_SOLID){ cl->kind=WDC_VENT; cl->room=0; cl->floor=0; cl->ceil=4; } } }
+        // keep the lock only if everything else is still open without the key, the keycard room too, and the vent gets you in
+        int sx0=(d->room[sr0].x0+d->room[sr0].x1)/2, sy0=d->room[sr0].y0; while(!wd_walkable(d,sx0,sy0,0) && sy0<d->room[sr0].y1) sy0++;
+        int ok = wd_path_len(d,sx0,sy0,lockr,0,0)<0 && wd_path_len(d,sx0,sy0,lockr,0,1)>=0; for(int i=1;i<d->nroom && ok;i++) if(i!=lockr && wd_path_len(d,sx0,sy0,i,0,0)<0) ok=0;
+        if(ok){ L->locked=1; L->key=(uint8_t)(1+ri(&r,3)); d->room[sec].key=L->key; if(d->nprop<WD_MAXPROP){ const WdRoom *S=&d->room[sec]; prop(d,WP_KEY,(S->x0+S->x1+1)/2.0f,(S->y0+S->y1+1)/2.0f,0,0.5f,0.9f,L->key); } }
+        else for(int i=0;i<WD_W*WD_W;i++) if(d->cell[i].kind!=before[i]){ d->cell[i].kind=before[i]; if(before[i]==WDC_SOLID){ d->cell[i].room=0; } } }
     for(int i=0;i<d->nroom;i++) light_room(d,i,d->cult);
     for(int i=0;i<WD_W*WD_W;i++){ WdCell *cl=&d->cell[i]; if(cl->kind==WDC_SOLID) continue; const WdRoom *m=&d->room[cl->room]; cl->ftex=(uint8_t)m->kind; cl->ctex=(uint8_t)m->kind; if(m->sub!=255) cl->flags|=WF_TARGET; }
     build_light(d);

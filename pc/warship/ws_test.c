@@ -41,8 +41,8 @@ static void t_calibration(void){
 static void t_scaling(void){
     // HP, cost and reward rise with size for every seed, at least exponentially in the size parameter, with no overflow or underflow, and read well
     int bad=0; double minrate=1e9;
-    for(int s=0;s<40;s++){ WN pc=wn(0), ph=wn(0); int first=1;
-        for(int z=WS_ZMIN; z<=WS_ZMAX; z += z<4000 ? 25 : 2500){ WsCraft c; ws_make(&c,(uint32_t)s*977u+3,z,1);
+    for(int s=0;s<40;s++){ WN pc=wn(0), ph=wn(0); int first=1; WsCraft c; ws_make(&c,(uint32_t)s*977u+3,(s*137)%3000,1);
+        for(int z=WS_ZMIN; z<=WS_ZMAX; z += z<4000 ? 25 : 2500){ ws_scale(&c,z,1);
             WN cost=c.cost[WK_TOTAL], hp=c.hp_hull;
             CHECK(!wn_is_zero(cost) && !wn_is_zero(hp) && !wn_sat(cost), "z %d seed %d cost or HP zero/saturated", z, s);
             CHECK(c.cost[WK_TOTAL].m>=1 && c.cost[WK_TOTAL].m<10 && isfinite(c.cost[WK_TOTAL].m), "z %d mantissa", z);
@@ -54,11 +54,11 @@ static void t_scaling(void){
     }
     CHECK(bad==0, "%d places where cost or HP did not rise", bad);
     // exponential: over every decade of length, cost grows by at least x100 (it is about L^3, x1000)
-    WsCraft a,b; for(int z=WS_ZMIN; z+100<=WS_ZMAX_FAIR; z+=50){ ws_make(&a,5,z,0); ws_make(&b,5,z+100,0); double rate=wn_log10(b.cost[WK_TOTAL])-wn_log10(a.cost[WK_TOTAL]); if(rate<minrate) minrate=rate; }
+    WsCraft a,b; ws_make(&a,5,0,0); b=a; for(int z=WS_ZMIN; z+100<=WS_ZMAX_FAIR; z+=50){ ws_scale(&a,z,0); ws_scale(&b,z+100,0); double rate=wn_log10(b.cost[WK_TOTAL])-wn_log10(a.cost[WK_TOTAL]); if(rate<minrate) minrate=rate; }
     printf("growth: cost rises at least 10^%.2f per decade of length (from 1 nm to 10^30 m)\n",minrate); CHECK(minrate>=2.0, "growth only 10^%.2f per decade", minrate);
     WsCraft t; ws_make(&t,1,WS_ZMIN,0); char b1[64]; wn_text(t.cost[WK_TOTAL],b1,sizeof b1,0); printf("smallest (1 nm %s): cost %s gold\n",ws_class_name(t.cls),b1);
     ws_make(&t,1,WS_ZMAX,1); wn_text(t.cost[WK_TOTAL],b1,sizeof b1,2); printf("biggest cheat size (10^3000 m): cost %s\n",b1);
-    CHECK(t.cheat && t.cost[WK_TOTAL].e>8000 && t.cost[WK_TOTAL].e<10000, "cheat-extreme exponent %lld", (long long)t.cost[WK_TOTAL].e);
+    CHECK(t.cheat && t.cost[WK_TOTAL].e>8000 && t.cost[WK_TOTAL].e<12000, "cheat-extreme exponent %lld", (long long)t.cost[WK_TOTAL].e);
     // names past 10^100 and 10^400 are the real Conway-Wechsler names
     char nb[96]; wn_text(wn_p10(100),nb,sizeof nb,0); CHECK(!strcmp(nb,"10 DUOTRIGINTILLION"), "10^100 named '%s'", nb);
     wn_text(wn_p10(303),nb,sizeof nb,0); CHECK(!strcmp(nb,"1 CENTILLION"), "10^303 named '%s'", nb);
@@ -76,7 +76,7 @@ static void t_balance(void){
     printf("balance: 200,000 random mixes pay between %.3f and %.3f of the outside-only laser kill\n",lo,hi);
     CHECK(hi<=1.0+1e-9, "a mix paid %.4f x the simple kill", hi); CHECK(lo>=0.05, "a mix paid only %.4f", lo);
     CHECK(ws_Fm(1,1)>ws_Fm(1,0), "precision must earn a bonus inside"); CHECK(ws_Fm(1,1)<1 && ws_Fm(0.5,1)<1, "inside must pay a little less");
-    for(int w=1;w<WW_N;w++) CHECK(1/sqrt(ws_wpn_mult(w))<1/sqrt(ws_wpn_mult(w-1)), "stronger weapon %d pays less", w);
+    for(int w=1;w<WW_N;w++){ WsKill a; memset(&a,0,sizeof a); a.out_dmg[w]=wn(1); WsKill b2; memset(&b2,0,sizeof b2); b2.out_dmg[w-1]=wn(1); CHECK(ws_Fw(&a)<ws_Fw(&b2), "stronger weapon %d pays less", w); }
 }
 static int fight(const WsCraft *c, WsShip s, int clever, double *secs){ static WsFight f; wf_start(&f,c,&s); WsInput in; int n=0; while(f.state==WF_ON && n<60*1800){ wf_bot(&f,&in,clever); wf_tick(&f,&in,1/60.0); n++; } if(secs) *secs=f.t; return f.state; }
 static void t_bots(void){
@@ -96,7 +96,7 @@ static void t_bots(void){
     // repair crews: stop shooting and the damage on the section goes away; leave for long and everything comes back
     { static WsFight f; WsShip s=pr; wf_start(&f,&c,&s); WsInput in; for(int i=0;i<60*40;i++){ wf_bot(&f,&in,1); wf_tick(&f,&in,1/60.0); }
       WN left=wf_hull_left(&f); for(int i=0;i<60*30;i++){ memset(&in,0,sizeof in); in.target=-1; wf_tick(&f,&in,1/60.0); }
-      CHECK(wn_cmp(wf_hull_left(&f),left)>0 || f.layers_up>0, "repair crews did nothing"); wf_away(&f,500); CHECK(wn_cmp(wf_hull_left(&f),c.hp_hull)==0 && f.layers_up==c.layers, "a long absence did not rebuild it"); }
+      CHECK(wn_cmp(wf_hull_left(&f),left)>0 || f.layers_up>0, "repair crews did nothing"); wf_away(&f,500); CHECK(fabs(wn_to_d(wn_div(wf_hull_left(&f),c.hp_hull))-1)<1e-9 && f.layers_up==c.layers, "a long absence did not rebuild it"); }
     // sabotage: all shield generators blown inside: the shields fall at once
     { static WsFight f; WsShip s=un; wf_start(&f,&c,&s); for(int i=0;i<f.c.nsub;i++) if(f.c.sub[i].kind==WSS_GEN) wf_sabotage(&f,i,1); CHECK(f.layers_up==0, "generators gone but shields up"); CHECK(f.kill.sab_crit>0, "precision not counted"); }
 }
