@@ -37,7 +37,7 @@ static void coil_fmt(char *b, u64 w, int milli){            // the speed, in fri
 static const char *const coil_unit[7]={"SECONDS","MILLISECONDS","MICROSECONDS","NANOSECONDS","PICOSECONDS","FEMTOSECONDS","ATTOSECONDS"};
 // how long n units (u = 0 seconds, 1 ms, 2 us ... 6 as) take at M times the speed of light, said simply. n is how long light itself would take.
 static void coil_time(char *b, u64 n, int u, u64 M){
-    if(M<1) M=1; b[0]=0;
+    if(M<1){ M=1; } b[0]=0;
     while(n/M==0 && u<6){ if(M>=1000) M/=1000; else n*=1000; u++; }                   // (a smaller unit until the number is at least 1)
     u64 v=n/M;
     if(v==0){ scpy(b,"LESS THAN AN ATTOSECOND"); return; }

@@ -19,7 +19,7 @@ static int cq_prog(int i, int *h, int *n){                  // how far step i is
     case 5: v=tv_trips>1000?1000:(int)tv_trips; g=100; break;
     case 6: v=(int)best_depth; g=60; break;
     default: v=(int)st_uniq; g=12; break; }
-    if(v>g) v=g; if(v<0) v=0; *h=v; *n=g; return v>=g; }
+    if(v>g){ v=g; } if(v<0){ v=0; } *h=v; *n=g; return v>=g; }
 static int coil_quest_done(void){ return coil_qstep>=NQS || dbg_qdone; }
 // the six conditions for the drop, one bit each (bit set = true right now)
 static const char *const cd_hint[6]={"A FLEET FALLS AROUND YOU, FIVE DOWN","FAR FROM HOME, OUT IN THE WILD GALAXY","AMONG THE ROCKS OF A BELT","SHIELD GONE, HULL NEARLY DEAD","YOUR TANK NEARLY EMPTY","FLYING AT FULL SPEED"};
@@ -55,7 +55,7 @@ static void coil_tick(void){                                // every frame of th
     if(coil_toast_t>0 && scene==0){ coil_toast_draw(VISPG); }
     if(forge_on || (t&31)) return;
     while(coil_qstep<NQS){ int h,n; if(!cq_prog(coil_qstep,&h,&n)) break; char b[44]; scpy(b,"QUEST: "); scat(b,cq_nm[coil_qstep]); scat(b," DONE"); coil_qstep++;
-        if(coil_qstep>=NQS) scpy(b,"THE COIL CAN NOW FALL: SEE EXTRAS"); coil_toast(b); sfx(6); coil_save(); }
+        if(coil_qstep>=NQS){ scpy(b,"THE COIL CAN NOW FALL: SEE EXTRAS"); } coil_toast(b); sfx(6); coil_save(); }
 }
 // ---------------------------------------------------------------- the glitch engine's own random numbers (never the game's: a glitch must not change the world)
 static u32 fx_s=0x1D872B41u;
@@ -147,7 +147,9 @@ static void coil_fx_end(void){
         fx_pw=0; }
     fx_dirty=0; fx_gt=0; fx_ev=0; fx_evt=0; fx_mir=0; fx_tearT=0; fx_pal=0; }
 IWRAM static void fx_shift(volatile u16 *row, int d){        // rotate one row of the picture by d halfwords (2 pixels each)
-    if(d==0) return; if(d<0) d+=120; if(d<=0||d>=120) return;
+    if(d==0) return;
+    if(d<0){ d+=120; }
+    if(d<=0||d>=120) return;
     for(int i=0;i<120-d;i++) fx_row[i+d]=row[i];
     for(int i=120-d;i<120;i++) fx_row[i+d-120]=row[i];
     for(int i=0;i<120;i++) row[i]=fx_row[i]; }
@@ -164,7 +166,7 @@ static void fx_event(volatile u16 *pg, int gt, int S){
         rect(pg,0,0,240,160,S?57:0); scpy(b,"MEMORY ERROR AT 0X"); fx_hex(b,0x02000000u+((fx_rnd()&0x3FFFFu)&~3u)); text(pg,6,6,b,C_RED,1);
         for(int r=0;r<14;r++){ scpy(b,"0X"); fx_hex(b,0x02000000u+((fx_rnd()&0x3FFFFu)&~3u)); scat(b,"  "); fx_hex(b,fx_rnd()); scat(b," "); fx_hex(b,fx_rnd()); text(pg,6,20+r*8,b,r&1?C_GREEN:C_GREY,1); }
         text(pg,6,140,"CHECKSUM FAILED. (NOT REAL)",C_GOLD,1);
-        if(++fx_evt>(S?30:14)) fx_ev=0; break; }
+        if(++fx_evt>(S?30:14)){ fx_ev=0; } break; }
     case 2: {                                                // FAKE CRASH: blue screen, then it goes away
         rect(pg,0,0,240,160,57); rect(pg,0,0,240,10,C_WHITE); text(pg,6,2,"BUGSTAR.GBA",U_BG0,1);
         scpy(b,"FATAL ERROR 0X"); fx_hex(b,0xC0DE0000u|(fx_rnd()&0xFFFF)); text(pg,8,18,b,C_WHITE,1);
@@ -172,17 +174,17 @@ static void fx_event(volatile u16 *pg, int gt, int S){
         text(pg,8,56,"DUMPING MEMORY",C_GREY,1); rect(pg,8,66,160,5,U_TROUGH); rect(pg,8,66,160*fx_evt/(S?150:90),5,C_GREEN);
         for(int r=0;r<5;r++){ scpy(b,"  "); fx_hex(b,fx_rnd()); scat(b,"  "); fx_hex(b,fx_rnd()); text(pg,8,80+r*9,b,C_GREY,1); }
         text(pg,8,138,"IT IS A SHOW. YOU ARE STILL FLYING.",C_GOLD,1); text(pg,8,148,"R OR SELECT: SLOW DOWN",C_CYAN,1);
-        if(++fx_evt>(S?150:90)) fx_ev=0; break; }
+        if(++fx_evt>(S?150:90)){ fx_ev=0; } break; }
     case 3: {                                                // FAKE SAVE SCARE: the real save is never touched, and it says so at the end
         int t=fx_evt; rect(pg,10,40,220,64,57); frame1(pg,10,40,220,64,t<110?C_RED:C_GREEN);
         if(t<60){ text(pg,20,48,"SAVE DATA CORRUPTED",C_RED,1); text(pg,20,60,"SLOT 1: CHECKSUM MISMATCH",C_WHITE,1); scpy(b,"ERROR 0X"); fx_hex(b,0x5A170000u|(fx_rnd()&0xFFFF)); text(pg,20,72,b,C_GREY,1); }
         else if(t<110){ text(pg,20,48,"TRYING TO REBUILD THE SAVE...",C_GOLD,1); rect(pg,20,64,200,6,U_TROUGH); rect(pg,20,64,200*(t-60)/50,6,C_GOLD); text(pg,20,76,"DO NOT TURN OFF THE POWER",C_WHITE,1); }
         else { text(pg,20,48,"JUST KIDDING.",C_GREEN,1); text(pg,20,60,"YOUR SAVE WAS NEVER TOUCHED.",C_WHITE,1); text(pg,20,72,"THE COIL ONLY PRETENDS.",C_GREY,1); }
-        if(++fx_evt>(S?190:160)) fx_ev=0; break; }
+        if(++fx_evt>(S?190:160)){ fx_ev=0; } break; }
     case 4: {                                                // THE WORLD AS GARBAGE, then it snaps back
         if(S) fx_noise(pg,0,128,1); else fx_noise(pg,0,128,0);
         fx_text_scatter(pg,"WHERE DID THE STARS GO",C_WHITE,6);
-        if(++fx_evt>(S?26:12)) fx_ev=0; break; }
+        if(++fx_evt>(S?26:12)){ fx_ev=0; } break; }
     case 5: {                                                // REALITY BREAK: the full sequence, 6 seconds
         int t=fx_evt;
         if(t<90){ fx_bars(pg,S?4:10+t/6,200,8); for(int k=0;k<(S?2:4);k++) fx_shift(pg+((fx_rnd()%128)*120),(int)(fx_rnd()%(t/3+3))-(t/6)); fx_text_scatter(pg,"REALITY INTEGRITY FAILING",C_RED,t/12); }
@@ -241,7 +243,9 @@ static void coil_fx_post(volatile u16 *pg){
                 if(i<fx_nsp){ o[0]=(u16)((fx_rnd()%140)|0); o[1]=(u16)((fx_rnd()%232)|(1<<14)); o[2]=(u16)((512+fx_rnd()%500)|((fx_rnd()&15)<<12)); } else o[0]=0x200; } fx_dirty|=1; } }
     // ---- tier 4+: the world tilts, mirrors and zooms; bands tear sideways; the music's pitch wobbles; a memory-error screen
     if(gt>=4){ int tilt = (sinx(fx_t*3)*(S?10:(gt>=6?60:30)))>>14, zoom = 256+((sinx(fx_t*5+40)*(S?6:(gt>=6?50:24)))>>14);
-        if(!S && (fx_t%90)==0 && (fx_rnd()&1)) fx_mir=1; if(!S && (fx_t%90)==45) fx_mir=0; if(S && (fx_t%240)==0) fx_mir=!fx_mir;    // (flash-safe: at most one flip every 4 seconds)
+        if(!S && (fx_t%90)==0 && (fx_rnd()&1)) fx_mir=1;
+        if(!S && (fx_t%90)==45) fx_mir=0;
+        if(S && (fx_t%240)==0) fx_mir=!fx_mir;    // (flash-safe: at most one flip every 4 seconds)
         if(fx_ev>=1 && fx_ev<=3){ tilt=0; zoom=256; fx_mir=0; }                                             // (the error and save screens stay upright so they can be read)
         s32 ca=cosx(tilt)*zoom>>14, sa=sinx(tilt)*zoom>>14; int pa=fx_mir?-ca:ca, pb=sa, pc=-sa, pd=ca;
         s32 X=(120<<8)-(pa*120+pb*80), Y=(80<<8)-(pc*120+pd*80); FX_BG2(pa,pb,pc,pd,X,Y);
@@ -311,7 +315,7 @@ static void coil_log(volatile u16 *pg){
     }
     wait_release(); }
 // a check of the cartridge block (the tests call it): save, forget, load; then a damaged block must load as "nothing". Returns 0 when all is well.
-static int coil_sramtest(void){
+__attribute__((unused)) static int coil_sramtest(void){
     u8 o=coil_own, q=coil_qstep, w=coil_warned; u32 r=coil_rolls, wi=coil_wins, b=coil_best; int bad=0;
     coil_own=1; coil_qstep=5; coil_warned=1; coil_rolls=12345; coil_wins=77; coil_best=6; coil_save();
     coil_reset(); coil_load(); if(!(coil_own==1 && coil_qstep==5 && coil_warned==1 && coil_rolls==12345 && coil_wins==77 && coil_best==6)) bad|=1;
