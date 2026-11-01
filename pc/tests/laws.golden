@@ -2,39 +2,39 @@
 world: LIMSPI PRIME
 class: TEMPERATE WORLD  mood: THE LOCALS DO NOT CARE.
 size: 3  gravity: 1  water: 83%  hour: DAY  weather: DUST
-view0 screen=8e78b055d548a717
+view0 screen=5bda5401e8cad0f3
 == --law P_SIZE=-112
 world: LIMSPI PRIME
 class: TEMPERATE WORLD  mood: THE LOCALS DO NOT CARE.
 size: 0  gravity: 0  water: 0%  hour: DAY  weather: CLEAR SKIES
-view0 screen=05b72f1e66fb5430
+view0 screen=83bab14451730044
 == --law P_SIZE=-60
 world: LIMSPI PRIME
 class: TEMPERATE WORLD  mood: THE LOCALS DO NOT CARE.
 size: 0  gravity: 0  water: 0%  hour: DAY  weather: CLEAR SKIES
-view0 screen=23268f348070aaf6
+view0 screen=7cacb837ff262f62
 == --law P_SIZE=40
 world: LIMSPI PRIME
 class: DESERT WORLD  mood: THE LOCALS DO NOT CARE.
 size: 5  gravity: 3  water: 0%  hour: DAY  weather: DUST
-view0 screen=6f26da3e3b63078d
+view0 screen=c6b2740843cfe901
 == --law P_SIZE=100
 world: LIMSPI PRIME
 class: DESERT WORLD  mood: THE LOCALS DO NOT CARE.
 size: 5  gravity: 3  water: 0%  hour: DAY  weather: DUST
-view0 screen=6f26da3e3b63078d
+view0 screen=c6b2740843cfe901
 == --preset 4
 world: LIMSPI PRIME
 class: TEMPERATE WORLD  mood: THE LOCALS DO NOT CARE.
 size: 3  gravity: 3  water: 83%  hour: DAY  weather: DUST
-view0 screen=38fa550ef592da6b
+view0 screen=2891ad4dfb53253f
 == --preset 9
 world: LIMSPI PRIME
 class: TEMPERATE WORLD  mood: THE LOCALS DO NOT CARE.
 size: 3  gravity: 1  water: 83%  hour: DAY  weather: DUST
-view0 screen=8e78b055d548a717
+view0 screen=5bda5401e8cad0f3
 == --law U_LIGHT=10 --law P_PERSTAR=300
 world: LIMSPI PRIME
 class: TEMPERATE WORLD  mood: THE LOCALS DO NOT CARE.
 size: 3  gravity: 1  water: 83%  hour: DAY  weather: DUST
-view0 screen=8e78b055d548a717
+view0 screen=5bda5401e8cad0f3
