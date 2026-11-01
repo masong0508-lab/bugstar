@@ -89,6 +89,11 @@ sed -i '1i static void pc_dn_spr(const unsigned char *art, int aw, int ah, int x
 sed -i '1i static void pc_dn_sprites_done(volatile unsigned short *pg);' main.c
 sed -i '1i static void pc_dn_native(volatile unsigned short *pg, int dirx, int diry, int plx, int ply);' main.c
 echo '#include "../pc_dnative.inc"' >> main.c
+# --- the native planet (pc/pc_pnative.inc, pc_pncomp.inc in pc_hw.c)
+sed -i 's|else render_planet(pg); u32 t_r1=TMR();|else { render_planet(pg); pc_pn_native(pg); } u32 t_r1=TMR();|' planet.inc
+sed -i 's|^    int ad=dd<0?-dd:dd, t=ad\*2\*rc/60-rc;|    if(pc_pn_disc(cx,cy,rc,dd,lit,dark,sunmode)) return;\n&|' planet.inc
+sed -i '1i static void pc_pn_native(volatile unsigned short *pg); static int pc_pn_disc(int cx, int cy, int rc, int dd, int lit, int dark, int sunmode);' main.c
+echo '#include "../pc_pnative.inc"' >> main.c
 echo '#include "../pc_laws.inc"' >> main.c
 # --- the side game (pc/sim, DEPTH_PLAN): hooks into the copies in pc/gen, never the repo root. Each hook must find its anchor exactly once or the build fails.
 H() { python3 ../sim/hook.py "$@"; }
@@ -181,7 +186,7 @@ fi
 CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_pnative.inc ../pc_pncomp.inc ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
 for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done

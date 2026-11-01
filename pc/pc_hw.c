@@ -476,6 +476,7 @@ static void nv_sprites(void *vc, int lo, int hi){
             }
         }
     }
+#include "pc_pncomp.inc"
 void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(W<240||H<160){ W=240; H=160; }
     if(W>240 && H>160){ pc_nat_w=W; pc_nat_h=H; }       // (the game's own native renderers, e.g. the dungeon, make their picture at this size)
@@ -541,6 +542,7 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
                     if(fadeop==2){ uint32_t r2=(c>>16&255)+((255-(c>>16&255))*ev>>4), g2=(c>>8&255)+((255-(c>>8&255))*ev>>4), b2=(c&255)+((255-(c&255))*ev>>4); c=r2<<16|g2<<8|b2; }
                     else if(fadeop==3){ uint32_t r2=(c>>16&255)*(16-ev)>>4, g2=(c>>8&255)*(16-ev)>>4, b2=(c&255)*(16-ev)>>4; c=r2<<16|g2<<8|b2; }
                     out[q]=c; } } } }
+    if(mode==4 && !lst_dma) pn_compose(out,W,H,dc,bmode,ev,bldcnt);
     if(pc_ships_mode>=0 && mode==4 && !(bmode>=2 && ev>=12)){                 // the ship renderer, under whatever the game drew after its ships (cockpit, HUD, sparks)
         int t=(dc>>4)&1; if(getenv("SR_DBG")) fprintf(stderr,"sr: page %d tag %d snapf %ld/%ld frame %ld n=%d\n",t,sr_shown_tag(),sr_snap_f[0],sr_snap_f[1],g_frame,sr_count());
         if(sr_select(t) && g_frame-sr_snap_f[t]<=4){
