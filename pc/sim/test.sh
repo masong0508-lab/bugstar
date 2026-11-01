@@ -7,6 +7,8 @@ $CC lv_test.c lv.c -o out/lv_test
 ./out/lv_test
 $CC god_test.c god.c lv.c -o out/god_test
 ./out/god_test
+$CC lvxp_test.c lvxp.c lv.c -o out/lvxp_test
+./out/lvxp_test
 $CC sim_test.c sim_core.c god.c lv.c -o out/sim_test
 [ -f sim.golden ] || ./out/sim_test --make-golden
 ./out/sim_test
@@ -58,4 +60,47 @@ for c, r in zip(cases, res):
         if bad < 6: print("MISMATCH", op, a if a < 10**40 else "big", b, "want", str(want[0])[:50], want[1], "got", got[0][:50], got[1])
 print("lv vs python bigint: %d cases, %d mismatches" % (len(cases), bad))
 sys.exit(1 if bad or len(res) < len(cases) else 0)
+PY
+# xp to level against Python (exact formula, binary search done in Python's own integers)
+python3 - <<'PY'
+import random, subprocess, sys
+random.seed(99)
+CAP = 1 << 1536
+def cost(L, n, pct):
+    S = 18*n*L*L + 18*L*n*(n-1) + 3*n*(n-1)*(2*n-1) + 12*n
+    if S > CAP: return None
+    T = S*pct//100
+    return None if T > CAP else T
+def gain(L, X, pct):
+    if L >= CAP: return CAP, 0, 0
+    lo, hi = 0, CAP - L
+    while lo < hi:
+        mid = lo + (hi - lo + 1)//2
+        c = cost(L, mid, pct)
+        if c is not None and c <= X: lo = mid
+        else: hi = mid - 1
+    gained = lo
+    if lo == 0 and X == CAP and cost(L, 1, pct) is None: gained = 1; L += 1; X = 0
+    elif lo: X -= cost(L, lo, pct); L += lo
+    if L >= CAP: L, X = CAP, 0
+    return L, X, gained
+cases = []
+for i in range(2500):
+    bits = random.choice([1, 5, 20, 31, 32, 63, 64, 65, 100, 255, 400, 511, 512, 513, 700, 765, 766, 767, 800, 1000, 1400, 1535, 1536])
+    L = max(1, random.getrandbits(bits)); L = min(L, CAP)
+    xb = random.choice([1, 10, 40, 64, 100, 128, 300, 700, 1000, 1500, 1536])
+    X = min(random.getrandbits(xb), CAP)
+    if random.random() < .05: X = CAP
+    if random.random() < .05: L = CAP - random.randrange(0, 3)
+    cases.append((L, X, random.choice([100, 100, 100, 25, 50, 150, 200, 400])))
+inp = "".join("%d %d %d\n" % c for c in cases)
+out = subprocess.run(["./out/lvxp_test", "--batch"], input=inp, capture_output=True, text=True).stdout.split("\n")
+bad = 0
+for c, line in zip(cases, out):
+    L, X, g = gain(*c); want = "%d %d %d" % (L, X, g)
+    if line != want:
+        bad += 1
+        if bad < 4: print("MISMATCH L bits", c[0].bit_length(), "X bits", c[1].bit_length(), "pct", c[2], "\n want", want[:80], "\n got ", line[:80])
+print("lvxp vs python: %d cases, %d mismatches" % (len(cases), bad))
+sys.exit(1 if bad or len(out) < len(cases) else 0)
 PY
