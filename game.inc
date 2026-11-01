@@ -273,6 +273,31 @@ enum { MOOD_LOVE, MOOD_MEH, MOOD_HATE };
 static const char *const mood_name[3]={"THE LOCALS ADORE YOU.","THE LOCALS DO NOT CARE.","THE LOCALS HATE YOU."};
 static int hellw(void){ return wd.cls>=PC_INFERNO && wd.cls<NPC; }                              // one of the six HELL WORLDS (only out in the galaxy)
 static int hell_tier(void){ int t=1+w_dlv/4; return t>10?10:t; }                                 // T1..T10: grows the further out you fly (4 danger per tier, like the zone tiers)
+// ---- MUSIC LOOKS AT THE WORLD (called by the music engine in sound.inc, once when a tune starts and once per bar)
+static void mus_gather(int n, int full){
+    int o=(n==0||n==1);
+    mus.low = (hearts>0 && hearts*4 < maxh) ? 1 : 0;
+    mus.night = (n==0 && wd.hour==2) ? 1 : 0;
+    mus.tadj = (n==0 && wd.hour==1) ? 1 : 0;
+    mus.amb = 0; mus.drumsf = 0;
+    if(n==0){ if(wd.weather==1) mus.amb=2; else if(wd.weather==3) mus.amb=3; else if(wd.cls==PC_OCEAN || wd.cls==PC_BLOODSEA) mus.amb=1; }
+    else if(n==1) mus.amb=2;
+    else if(n==4) mus.drumsf=1;
+    if(full){
+        u32 s=wd.tseed*2654435761u + (u32)(endless?world_no:zone)*40503u + (u32)galaxy_seed*0x9E3779B1u;
+        if(n==1) s += (u32)depth_no*7919u + 0x51ED;
+        if(n==2||n==5) mus.lock=1;
+        mus.seed ^= s;
+        if(o){ int c=wd.cls; mus.mforce=-1;
+            if(hellw() || c==PC_DEATH) mus.mforce = (c==PC_INFERNO||c==PC_BRIMSTONE) ? 3 : 6;
+            else if(c==PC_PARADISE||c==PC_MEADOW) mus.mforce = 4;
+            else if(c==PC_ICE) mus.mforce = 2;
+            else if(c==PC_DESERT) mus.mforce = 3;
+            else if(c==PC_ECUMENOPOLIS) mus.mforce = 5;
+            if(n==1 && mus.mforce<0) mus.mforce = 1;
+            if(n==1 && depth_no>=3 && !hellw() && c!=PC_DEATH) mus.mforce = 3; }
+    }
+}
 static int deadly(void){ return wd.cls==PC_DEATH || hellw(); }
 static int deadly_mul(void){ return wd.cls==PC_DEATH ? 2 : hellw() ? 2+hell_tier()/4 : 1; }     // how many times harder everything bites: x2 at T1-3, x3 at T4-7, x4 at T8-10
 // ---- WEIRD TRAITS: 40 kinds of weirdness x 25 strengths = 1000 traits, each with its own name. A weird world (one in 111, out in the

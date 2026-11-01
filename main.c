@@ -198,7 +198,7 @@ enum { XO_DMGIN, XO_DMGOUT, XO_CRIT, XO_BITESPD, XO_BITERNG, XO_KNOCK, XO_HITSTO
        XO_HUNGER, XO_REGEN, XO_HEAL, XO_MANA, XO_MAXH, XO_FUEL,
        XO_MOVE, XO_DODGEI, XO_DODGED, XO_FLOORS,
        XO_XP, XO_GOLD, XO_DROPS, XO_UNIQUE, XO_XPNEED,
-       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, XO_GFX, XO_RUMBLE, XO_RUMEV, XO_RUMHUM, NXOPT };
+       XO_VOL, XO_FPS, XO_MSGT, XO_BUDDY, XO_GFX, XO_RUMBLE, XO_RUMEV, XO_RUMHUM, XO_MUSVAR, XO_MUSL, XO_MUSBAL, NXOPT };
 XL(xl_dmgin,"NONE","1/4","1/2","NORMAL","X2","X4","X10")           XV(xl_dmgin,0,25,50,100,200,400,1000)
 XL(xl_dmgout,"1/4","1/2","NORMAL","X2","X5","X10","X100","X1000")  XV(xl_dmgout,25,50,100,200,500,1000,10000,100000)
 XL(xl_crit,"NORMAL","+10%","+25%","+50%","ALWAYS")                   XV(xl_crit,0,10,25,50,100)
@@ -213,6 +213,9 @@ XL(xl_invt,"SHORT","NORMAL","LONG","2 SEC","5 SEC")                 XV(xl_invt,1
 XL(xl_gfx,"FAST","BALANCED","SMOOTH")                               XV(xl_gfx,0,1,2)
 XL(xl_rum,"OFF","LOW","MEDIUM","HIGH","MAX","EXTREME")                  XV(xl_rum,0,1,2,3,4,5)
 XL(xl_rumev,"ALL EVENTS","FIGHTS AND BIG","BIG ONLY")                  XV(xl_rumev,0,1,2)
+XL(xl_musv,"CLASSIC LOOP","DYNAMIC")                                XV(xl_musv,0,1)
+XL(xl_musl,"NONE","DRUMS","ARPEGGIOS","DRUMS+ARP","AMBIENCE","DRUMS+AMB","ARP+AMB","ALL")   XV(xl_musl,0,1,2,3,4,5,6,7)
+XL(xl_musb,"BALANCED","MELODY UP","BASS UP")                       XV(xl_musb,0,1,2)
 XL(xl_yn,"OFF","ON")                                                XV(xl_yn,0,1)
 XL(xl_espd,"FROZEN","1/2","3/4","NORMAL","X1.5","X2","X3")          XV(xl_espd,0,50,75,100,150,200,300)
 XL(xl_bud,"1","2","3","5","10")                                   XV(xl_bud,1,2,3,5,10)
@@ -278,6 +281,9 @@ static const XOpt XOT[NXOPT]={
   [XO_RUMBLE] =XR("RUMBLE","STRENGTH OF THE RUMBLE CARTRIDGE MOTOR. DOES NOTHING WITHOUT ONE",xl_rum,2,XG_EXTRA),
   [XO_RUMEV]  =XR("RUMBLE EVENTS","ALL: PICKUPS AND STEPS TOO. FIGHTS: HITS, KILLS, HURT. BIG: ONLY HURT, CRASHES, QUAKES",xl_rumev,1,XG_EXTRA),
   [XO_RUMHUM] =XR("RUMBLE HUM","A STEADY RUMBLE FROM SHIP ENGINES, KART BOOSTS AND DRIFTS",xl_yn,1,XG_EXTRA),
+  [XO_MUSVAR] =XR("MUSIC STYLE","DYNAMIC: NEW VERSES, CHORUSES AND KEYS FROM EACH WORLD. CLASSIC: THE OLD SHORT LOOPS",xl_musv,1,XG_EXTRA),
+  [XO_MUSL]   =XR("MUSIC LAYERS","EXTRA PARTS THAT JOIN IN: DRUMS IN FIGHTS, ARPEGGIOS, RAIN AND CAVE DRIPS",xl_musl,7,XG_EXTRA),
+  [XO_MUSBAL] =XR("MUSIC MIX","BALANCE BETWEEN THE MELODY AND THE BASS",xl_musb,0,XG_EXTRA),
   [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),
 };
 _Static_assert(NXOPT<=NXO, "the extra options must fit the NXO bytes");
@@ -409,7 +415,7 @@ static void kill_mon(DObj *o){
         for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=K_SLIME; b->sub=1; b->alive=1; b->hp=b->maxhp=o->maxhp/3+1; b->x=o->x+((k?1:-1)<<14); b->y=o->y+(1<<14); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } b->kvx=(k?1:-1)*0x1400; b->kvy=0x0800; } }
     int ilvl=dlv()*3+depth_no;
     if(boss && nbo){ char t[32]; scpy(t,"BOSS DOWN! "); ncat(t,nbo); scat(t," LEFT"); say(t); xpv+=30+dlv()*10; }
-    else if(boss){ music(1); if(!endless||forge_on){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
+    else if(boss){ music(1); music_sting(0); if(!endless||forge_on){ tgt_x=up_x; tgt_y=up_y; } if(!endless && !zone_cleared) zone_card=1+zone;      // the way out is back up the stairs: point the arrow there
        
         if(endless && hive_boss_floor()){ hive_kill(); say("OVERLORD DOWN! THE HIVE DIES"); xpv+=200+dlv()*20; } else if(endless && cur_moon){ int mt=moon_tier(); char mb[40]; scpy(mb,"MOON GUARDIAN DOWN! +"); ncat(mb,200*mt); scat(mb,"G"); say(mb); earn(200*mt); } else if(endless) say("GUARDIAN BEATEN!"); else if(zone_cleared){ if(tiers[TZ]<(opt_diff==5?53:9)) tiers[TZ]++; st_tiers++; char tb[40]; scpy(tb,"TIER "); ncat(tb,tiers[TZ]); scat(tb," CLEARED! LOOT GETS BETTER"); say(tb); }
               else { zone_cleared=1; story_boss_beaten(); say(zone==5?"THE ANT KING FALLS! THE GALAXY OPENS":"BOSS BEATEN! NEXT STAR OPEN"); } xpv+=30+dlv()*10; }
@@ -1410,7 +1416,7 @@ static void run_game(void){
             if(r){ fade(1); oam_hide_all(); oam_flush(); scene=0; tier_lock=-1; msg_timer=0; fish_state=0;
                    char mb[40];
                    if(forge_on) forge_end(r,mb);
-                   else if(r==2){ recalc(); hearts=maxh; food=60; int nolose=!opt_faintloss||opt_baby; if(!endless && !nolose) gold=sdiv(gold,2); loot=0; if(!opt_easy && !nolose){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, (opt_easy||nolose) ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
+                   else if(r==2){ music_sting(1); recalc(); hearts=maxh; food=60; int nolose=!opt_faintloss||opt_baby; if(!endless && !nolose) gold=sdiv(gold,2); loot=0; if(!opt_easy && !nolose){ bag_n=0; bag_sel=0; } portal_depth=0; scpy(mb, (opt_easy||nolose) ? "YOU FAINTED. BUDDY DRAGGED YOU OUT" : endless ? "YOU FAINTED. LOOT AND BAG LOST" : "YOU FAINTED. YOU LOST YOUR BAG"); }
                    else if(endless){ s64 bonus = sdiv(smul(loot,100+depth_no*15),100); gold=sadd(gold,bonus); loot=0; scpy(mb,"ESCAPED B"); ncat(mb,depth_no); scat(mb,": +"); ncat(mb,bonus); scat(mb,"G"); }
                    else if(base_mode && base_card) scpy(mb,"THE OUTPOST IS DEAD");
                    else if(base_mode) scpy(mb,"BACK ON THE SURFACE");
