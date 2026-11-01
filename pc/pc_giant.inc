@@ -136,7 +136,6 @@ static void gv_draw(volatile u16 *pg, int w, gull top, int msg_t, const char *ms
     scpy(b, w == GV_V3 ? "LETTER " : "DIGIT "); gv_comma(b, p0 + 1); scat(b, " OF "); gv_comma(b, T); text(pg, 3, 3, b, C_GOLD, 1);
     { char pc[16]; gull pm = (gull)((long double)p0 * 1000.0L / (long double)T); scpy(pc, ""); ncat(pc, (s64)(pm / 10)); scat(pc, "."); ncat(pc, (s64)(pm % 10)); scat(pc, "%"); rtext(pg, 236, 3, pc, C_CYAN); }
     if(w == GV_V3){ V3Info vi; if(gv3_info(p0, &vi) == 0){ scpy(b, "TERM "); gv_comma(b, vi.j); scat(b, " OF "); gv_comma(b, gv3_parts()); scat(b, "  VALUE "); ncat(b, vi.coef); text(pg, 3, 11, b, C_GREEN, 1); } }
-    else { scpy(b, gi_digits(w) % 3 ? "" : ""); scpy(b, w == GV_POW ? "2^(2^32)" : "1 2 3 ... 123456790"); rtext(pg, 236, 11, b, C_DGREY); }
     static char buf[40 * 64 + 8]; int want = l.rows * l.rw; if(want > (int)sizeof buf - 8) want = (int)sizeof buf - 8;
     gv_fetch(w, p0, want, buf);
     int k = 0;                                                   // k = index in buf
