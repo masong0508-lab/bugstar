@@ -169,7 +169,9 @@ static void sim_dump_all(void){
     { Lv l; sim_level_lv(&l); char d[LV_DEC_MAX]; lv_to_dec(&l,d,sizeof d); scpy(t,"level "); scat(t,d); scat(t," powers "); ncat(t,god_unlocked_count(&l,sim_w.god.sandbox)); scat(t,"\n"); sim_io_append(path,t); }
     sim_io_append(path,"--\n");
 }
+static int sim_open_gods(void){ if(!sim_is_on()) return 0; Lv l; sim_level_lv(&l); return god_unlocked_count(&l,sim_f.sandbox); }
 static void sim_frame(int n){
+    pc_land_note();
     if(!sim_is_on()) return;
     u64 ws=sim_world_seed(); if(!sim_have_w || ws!=sim_w.seed) sim_bind();
     sim_env_once();

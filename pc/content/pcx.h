@@ -28,6 +28,7 @@ typedef struct { int hunger_pct, gold_pct, fauna_add, beetle_add, speed_add, hou
 void pcx_meaning(const uint32_t *uni8, const uint32_t *cx5, const uint32_t *cy5, int star, int planet, int moon, PcxMeaning *out);
 void pcx_law_clear(void);                 // the edited universe laws count as items in the profile: clear, then set each edited law (id, value)
 void pcx_law_set(int id, int value);
+void pcx_means_line(const uint32_t *uni8, const uint32_t *cx5, const uint32_t *cy5, int star, int planet, int moon, char *out, int n);   // one short line: "MEANS: WARM AND LOUD."
 void pcx_gods(int n);                     // how many god powers are open (they count as items too)
 void pcx_counts(int *traits, int *stats, int *peoples, int *cities, int *creature_kinds, int *themes);
 #endif

@@ -14,4 +14,6 @@ static void sim_lv_fix(char *lv);                 // the top bar: swap the numbe
 static void sim_ncat_level(char *d);              // appends the level (compact when it is beyond 64 bits)
 static long long sim_xpv(long long v), sim_xpm(long long v);   // xp bar values: unchanged, or per-mille when the big level is on
 static void sim_lab(volatile unsigned short *pg);   // PC LAB > SIDE GAME: the side-game menu from anywhere
+static int  sim_open_gods(void);                 // how many god powers are open at this level (0 with the side game off)
+static void pc_land_note(void);                   // the MEANS line after landing
 #endif

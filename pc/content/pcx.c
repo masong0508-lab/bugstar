@@ -66,6 +66,13 @@ static MnExtra mx; static void profile_of(const PlanetInfo *pi, uint64_t seed, c
 void pcx_law_clear(void){ mx.lawn = 0; }
 void pcx_law_set(int id, int v){ if(mx.lawn < 160){ mx.law_id[mx.lawn] = id; mx.law_val[mx.lawn] = v; mx.lawn++; } }
 void pcx_gods(int n){ mx.gods = n < 0 ? 0 : n; }
+void pcx_means_line(const uint32_t *uni8, const uint32_t *cx5, const uint32_t *cy5, int star, int planet, int moon, char *out, int n){
+    static Addr a; PlanetInfo pi; int th[2]; MnProfile p; static MnRef refs[400]; int k; char b[160]; const char *s;
+    make_addr(&a, uni8, cx5, cy5, star, planet, moon); uint64_t seed = addr_seed(&a); planet_make(seed, &pi); universe_themes(uni_seed(a.uni), th);
+    profile_of(&pi, seed, th, &p, refs, &k, 0); mn_flavour(&p, b, sizeof b); s = b;
+    if(!strncmp(s, "A PLACE THAT IS ", 16)) s += 16;
+    snprintf(out, n, "MEANS: %s", s);
+}
 void pcx_meaning(const uint32_t *uni8, const uint32_t *cx5, const uint32_t *cy5, int star, int planet, int moon, PcxMeaning *o){
     static Addr a; PlanetInfo pi; int th[2]; MnProfile p; static MnRef refs[400]; int n; MnHooks h;
     make_addr(&a, uni8, cx5, cy5, star, planet, moon); uint64_t seed = addr_seed(&a); planet_make(seed, &pi); universe_themes(uni_seed(a.uni), th);

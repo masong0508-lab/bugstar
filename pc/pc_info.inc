@@ -6,6 +6,7 @@
 static PcxWorld pcw;
 static void pc_world_make(void){
     u32 cx[5], cy[5]; for(int i = 0; i < 5; i++){ cx[i] = clus[i]; cy[i] = clus[UAX + i]; }
+    pcx_gods(sim_open_gods());
     pcx_world(uni_w, cx, cy, cur_sys, cur_pl, cur_moon, pc_applied, &pcw);
 }
 // called by make_world (build.sh puts the call in) on the planets of the endless galaxy: the PC traits set the gravity, the light and the weather
@@ -42,12 +43,16 @@ static void pc_world_screen(volatile u16 *pg){
 extern char *getenv(const char *);
 static int pc_mn_cl(int v, int lo, int hi){ return v < lo ? lo : v > hi ? hi : v; }
 static u16 pc_mn_tint(u16 c, int dr, int dg, int db){ int r = (c & 31) + dr / 8, g = ((c >> 5) & 31) + dg / 8, b = ((c >> 10) & 31) + db / 8; return (u16)(pc_mn_cl(r, 0, 31) | (pc_mn_cl(g, 0, 31) << 5) | (pc_mn_cl(b, 0, 31) << 10)); }
+static int pc_land_pend; static char pc_land_txt[48];
 static void pc_mn_dna(void){
-    pc_gold_pct = 100;
+    pc_gold_pct = 100; pc_land_pend = 0;
     if(!pc_applied) return;
     { const char *e = getenv("BUGSTAR_MEANING"); if(e && e[0] == '0') return; }
     u32 cx[5], cy[5]; for(int i = 0; i < 5; i++){ cx[i] = clus[i]; cy[i] = clus[UAX + i]; }
     pcx_law_clear(); for(int i = 0; i < plw_count(); i++) if(plw_is_edited(i)) pcx_law_set(i, plw_value(i));
+    pcx_gods(sim_open_gods());
+    { PcxMeaning m; (void)m; }
+    pcx_means_line(uni_w, cx, cy, cur_sys, cur_pl, cur_moon, pc_land_txt, sizeof pc_land_txt); pc_land_pend = 1;
     PcxMeaning m; pcx_meaning(uni_w, cx, cy, cur_sys, cur_pl, cur_moon, &m);
     wd.fauna = (u8)pc_mn_cl(wd.fauna + m.fauna_add, 0, 5); wd.beetles = (u8)pc_mn_cl(wd.beetles + m.beetle_add, 0, 3);
     pc_hun_pct = pc_hun_pct * m.hunger_pct / 100; pc_gold_pct = m.gold_pct;
@@ -57,3 +62,6 @@ static void pc_mn_dna(void){
     wd.sky = pc_mn_tint(wd.sky, m.sky_r, m.sky_g, m.sky_b);
     if(m.lift > 0) wd.bld = lift15(wd.bld, m.lift); else if(m.lift < 0) wd.bld = shade15(wd.bld, 16 + m.lift);
 }
+
+// once, a moment after landing on an endless-galaxy planet: the planet's look in a few words (called from sim_frame, so only with the planet running)
+static void pc_land_note(void){ if(pc_land_pend && frames > 90){ pc_land_pend = 0; say(pc_land_txt); } }
