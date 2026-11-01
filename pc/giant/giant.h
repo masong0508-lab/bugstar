@@ -54,6 +54,19 @@ void gsha256_buf(const unsigned char *d, gu64 n, unsigned char out[32]);
 typedef struct { unsigned int h[8]; unsigned char buf[64]; gu64 len; int nb; } GiSha;
 void gsha_init(GiSha *s); void gsha_add(GiSha *s, const void *d, gu64 n); void gsha_end(GiSha *s, char hex[65]);
 
+// ---- 2^(2^32) needs no file: any digit is worked out exactly on the spot (pc/giant/gpow.inc) and checked against block checksums.
+#define GI_MODE_LIVE 0      // worked out on the spot, kept in memory (at most about 100 MB of RAM)
+#define GI_MODE_CACHE 1     // and the FAST CACHE file (100 MB on disk, the 240 million digits around the middle)
+#define GI_MODE_FILE 2      // the whole digit file from mkpow.py (646 MB; for tests and developers)
+int gi_mode(void);
+int gi_have(gu64 pos);                       // is this digit kept (no work needed to show it)?
+void gi_set_hook(gi_progress_fn pr, void *ud);   // called while digits are worked out (return nonzero to cancel)
+const char *gi_error(void);
+gu64 gi_ram_bytes(void);
+gu64 gi_cache_bytes(void);
+int gi_cache_open(void); int gi_cache_build(gi_progress_fn pr, void *ud); int gi_cache_delete(void); int gi_cache_present(void);
+int gi_window(gu64 pos, gu64 n, int (*emit)(const char *d, gu64 n, void *ud), void *ud, gi_progress_fn pr, void *pud);
+void gi_forget(void); void gi_use_file(int on);
 // ---- BUGSTARILLION v3: V3 = sum over j = 1..L of c(j) x 1000^(n(j)+1), L = 1,292,913,987 = the digits of 2^(2^32),
 //      n(j) = the number made by the first j digits of 2^(2^32), c(j) = 100 + hash(j) mod 900. Each term is said "COEFFICIENT n(j)-ILLION".
 //      The stream is the whole name, biggest term first: "NNN WORDS NAME, NNN WORDS NAME, ... ." (separator ", ", the last ends with ".")
@@ -69,7 +82,9 @@ typedef struct {
     int seg;           // 0 coefficient words, 1 space, 2 the -illion name, 3 the separator
     gu64 chunk;        // when seg == 2: which chunk (0 = first) holds the letter
 } V3Info;
-int gv3_open(void);                         // needs GI_POW ready; builds (about 10 s) or loads the index file. 0 ok
+int gv3_open(void);                         // 1: the index (0.7 MB) is not made yet: gv3_build_index makes it
+int gv3_have_index(void);
+int gv3_build_index(gi_progress_fn pr, void *ud);   // from the digits worked out on the spot (two passes), saved next to the cache                         // needs GI_POW ready; builds (about 10 s) or loads the index file. 0 ok
 int gv3_ready(void);
 gu64 gv3_parts(void);                       // L
 gu64 gv3_chars(void);                       // letters in the whole name

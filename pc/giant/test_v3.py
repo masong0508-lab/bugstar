@@ -83,7 +83,7 @@ def term_window(g, j, off, n):               # letters off .. off+n-1 of the tex
         out += acc[:need]
         # if the place name finished and more is needed, the separator follows
         full = len(acc) < need
-        if full: out += (", " if j > 1 else ".")[:need - len(out)]
+        if full: out += (", " if j > 1 else ".")[:n - len(out)]
     return out[:n]
 
 def run_all(ok, run, win_file, POWFILE, TMP):
@@ -118,6 +118,7 @@ def run_all(ok, run, win_file, POWFILE, TMP):
             if off < ln: want.append((j, off, 60)); pairs.append((st + off, 60))
     pairs.append((0, 100)); want.append((L, 0, 100)); pairs.append((tot - 100, 100)); want.append((1, None, 100))
     pairs = [(p, n) for p, n in pairs]
+    def ref_len(jj): return int(run("v3", "term", jj).split()[2].split("=")[1]) if jj not in res else res[jj][1] - (1 if jj == 1 else 0)
     out = run("v3", "read", win_file(pairs, "v3w.txt")).split("\n"); bad = 0; nchk = 0
     for (p, n), w, line in zip(pairs, want, out):
         j, off, nn = w
@@ -127,8 +128,9 @@ def run_all(ok, run, win_file, POWFILE, TMP):
         if off is None:
             j1 = 1; ln1 = res[1][1] - 1; exp = term_window(g, 1, ln1 - 100 if ln1 > 100 else 0, 100)
         else:
-            exp = term_window(g, j, off, n); ln = res[j][1] - (1 if j == 1 else 0)
-            if off + n > ln and j > 1: exp = term_window(g, j, off, ln - off) + term_window(g, j - 1, 0, n - (ln - off))
+            exp = ""; jj = j; oo = off          # the window may run on through several (short) terms
+            while len(exp) < n and jj >= 1:
+                lj = ref_len(jj); exp += term_window(g, jj, oo, min(n - len(exp), lj - oo)); jj -= 1; oo = 0
         nchk += 1
         if line != exp: bad += 1; print("bad v3 window", p, j, off, "\n  C:", line[:80], "\n  R:", (exp or "")[:80])
     ok(bad == 0, "%d windows of the name (term starts and ends, middles of the longest names, the first and last 100 letters) equal the reference" % nchk)
