@@ -586,3 +586,9 @@ Take the ideas, not the content:
 - Powers are the gentle list in section 12 (bless a field, calm a storm, call rain, spark an idea, raise a hill, plant a forest, seed a species, ...) and grow to as many as the creature, trait and theme catalogues allow. The side game's spirit cost still applies; the level only unlocks the power.
 - The sandbox mode opens every power at once (kept apart from the campaign ladder).
 - Every unlock shows a plain message and is saved in the `.sim` file.
+
+## 14. Planet creator (Spore-like, user, 2026-11-01)
+
+- A PC-only CREATOR screen: make your own planet with its people, with the right tools. Pick or paint the traits, theme, size, sky, seas, land, climate, name; design the people (body, colours, gifts, calling, cities); place creatures. Live preview as you change things.
+- BIOFOOTPRINT: a panel that shows the planet's life signature: biomass, species count, food web (who eats whom), energy balance, how big the footprint of your people is (cities, farms, smoke, forest lost), and a health score. The tools change the footprint live.
+- The created planet is a saved recipe (the traits, theme, people and creatures chosen) and turns into a real planet seed, so you can land on it in the game and the colony side game can use it. Share code: a short text code per planet.
