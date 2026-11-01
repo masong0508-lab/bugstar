@@ -188,19 +188,24 @@ static void cline(int x0, int y0, int x1, int y1, uint32_t c){
 }
 static int gproj(const float w[3], int *x, int *y, float *z){ float d[3] = { w[0]-E[0], w[1]-E[1], w[2]-E[2] }; float cx = d[0]*R[0]+d[1]*R[1]+d[2]*R[2], cy = d[0]*U[0]+d[1]*U[1]+d[2]*U[2], cz = d[0]*F[0]+d[1]*F[1]+d[2]*F[2];
     if(cz <= 20) return 0; *x = (int)lrintf(CX + cx * FOC / cz); *y = (int)lrintf(CY - cy * FOC / cz); *z = cz; return 1; }
+static uint16_t cdn[240 * 160]; static int16_t cdt[240 * 160];   // far crowds: how many ships fell on a game pixel, and red minus blue
 static int render_classic(void){
-    memset(cgs, 0, sizeof cgs); int drawn = 0;
+    memset(cgs, 0, sizeof cgs); memset(cdn, 0, sizeof cdn); memset(cdt, 0, sizeof cdt); int drawn = 0; int crowd = nS > 600;
     static const float mdl[6][3] = {{0,0,110},{-110,0,-50},{110,0,-50},{0,35,-50},{0,-18,-50},{0,0,-70}};
     static const uint8_t pe[] = {0,1,0,2,0,3,0,4,1,3,2,3,1,4,2,4,3,5,4,5,1,5,2,5}, pel[] = {0,1,0,2,1,5,2,5,3,5};
     for(int i = 0; i < nB; i++){ int ax, ay, bx, by; float z; cfar = Bm[i].far; if(gproj(Bm[i].a, &ax, &ay, &z) && gproj(Bm[i].b, &bx, &by, &z)) cline(ax, ay, bx, by, Bm[i].col); }
     for(int i = 0; i < nS; i++){ const SrShip *s = &S[i]; int sx, sy; float z; cfar = s->far; if(!gproj(s->p, &sx, &sy, &z)) continue;
         float rp = s->size * 1.3f * FOC / z; if(sx + rp < 0 || sx - rp > 239 || sy + rp < 0 || sy - rp > VB) continue; drawn++;
+        if(crowd && s->far && rp < 3.5f && sx >= 0 && sy >= 0 && sx < 240 && sy < (int)VB){ int q = sy * 240 + sx; if(cdn[q] < 65535) cdn[q]++; cdt[q] += s->team ? 1 : -1; continue; }   // a crowd is a density map (below), not a pile of marks
         if(rp < 3.5f){ cpx(sx, sy, s->col); if(nS < 600 || rp > 2){ cpx(sx - 1, sy, s->col); cpx(sx + 1, sy, s->col); cpx(sx, sy - 1, s->col); } continue; }   // the game's far mark (a crowd: one pixel)   // the game's far mark
         float r3[3] = { s->f[1]*s->u[2] - s->f[2]*s->u[1], s->f[2]*s->u[0] - s->f[0]*s->u[2], s->f[0]*s->u[1] - s->f[1]*s->u[0] };
         int vx[6], vy[6], okv[6]; float k = s->size / 110.0f;
         for(int v = 0; v < 6; v++){ float w[3]; for(int a = 0; a < 3; a++) w[a] = s->p[a] + k * (-mdl[v][0] * r3[a] + mdl[v][1] * s->u[a] + mdl[v][2] * s->f[a]); okv[v] = gproj(w, &vx[v], &vy[v], &z); }
         const uint8_t *e = rp < 9 ? pel : pe; int ne = rp < 9 ? 5 : 12;
         for(int j = 0; j < ne; j++){ int a = e[j*2], b = e[j*2+1]; if(okv[a] && okv[b]) cline(vx[a], vy[a], vx[b], vy[b], s->col); } }
+    cfar = 1;
+    for(int q = 0; q < 240 * 160; q++) if(cdn[q]){ int n = cdn[q]; uint32_t h = hsh((uint32_t)q * 2654435761u + (uint32_t)n) & 1023;   // dots: the chance a pixel shows one grows with how many ships are there (never a solid block)
+        if((int)h < (n >= 8 ? 600 : n * 75)){ uint32_t c = cdt[q] > 0 ? 0xD84A3A : cdt[q] < 0 ? 0x4A9AF0 : 0xA070A0; cpx(q % 240, q / 240, c); } }
     cfar = 0;
     for(int i = 0; i < nBo; i++){ int sx, sy; float z; if(!gproj(Bo[i].p, &sx, &sy, &z)) continue; uint32_t sd = Bo[i].seed; int n = 10;
         for(int j = 0; j < n; j++){ float a = frnd(&sd) * 6.2832f, d = Bo[i].r * Bo[i].t * (0.4f + frnd(&sd)) * FOC / z; cpx(sx + (int)(cosf(a) * d), sy + (int)(sinf(a) * d), Bo[i].t < .4f ? 0xFFFFC0 : 0xFF8030); } }
