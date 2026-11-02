@@ -106,6 +106,8 @@ echo '#include "../pc_laws.inc"' >> main.c
 sed -i 's|^static void m7_present(void){|static void pc_kn_snapshot(void);\nstatic void m7_present(void){ pc_kn_snapshot();|' m7.inc
 sed -i -e 's|^    for(int i=0;i<ksh_n;i++){ for(int y=-1;y<=1;y++){|    if(!pc_kn_on()) for(int i=0;i<ksh_n;i++){ for(int y=-1;y<=1;y++){|' -e 's|^    if(!cam_fp \&\& !kair \&\& !kloop_on){ for(int y=-1;y<=1;y++){ int w=19|    if(!pc_kn_on() \&\& !cam_fp \&\& !kair \&\& !kloop_on){ for(int y=-1;y<=1;y++){ int w=19|' kart.inc
 sed -i 's|if(!kart_glow() \&\& !kloop_on \&\& slot<120){ shadow_oam\[slot\].a0=((bug_sy-6)|if(!pc_kn_on() \&\& !kart_glow() \&\& !kloop_on \&\& slot<120){ shadow_oam[slot].a0=((bug_sy-6)|' planet.inc
+sed -i 's|^\(        \)s32 sc=8+m\*4; |\1s32 sc=8+m*4; if(kr_mode==1 \&\& ((o->kind>=O_PLANT \&\& o->kind<=O_FLOWER) \|\| o->kind==O_FOSSIL \|\| o->kind==O_TUFT)){ extern void pc_kn_obj(int,int,int,int); pc_kn_obj(sx,sy,w_of[o->kind],(int)sc); }  |' planet.inc
+grep -q 'pc_kn_obj' planet.inc || { echo "build.sh: pc_kn_obj hook anchor not found in planet.inc"; exit 1; }
 echo '#include "../pc_kartnat.inc"' >> main.c
 # --- the side game (pc/sim, DEPTH_PLAN): hooks into the copies in pc/gen, never the repo root. Each hook must find its anchor exactly once or the build fails.
 H() { python3 ../sim/hook.py "$@"; }
