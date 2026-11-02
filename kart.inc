@@ -79,6 +79,8 @@ EW static u8 kpx[KP_MAX], kpy[KP_MAX];             // its path, in texels
 EW static u8 kmmx[KMM_N], kmmy[KMM_N];             // the same, shrunk to the minimap
 EW static u16 kgate_pi[KG_MAX];                    // where each gate falls on the path
 static int krev=0, kpaint_rev=0;                                  // krev 1: the circuit is driven the other way round (set before kart_go; the path is built backwards)
+#define KGX(i) (kt.gx[krev ? (kt.n-(i))%kt.n : (i)])                  // gate i in the order you drive them (backwards, from the first gate, when you race the other way)
+#define KGY(i) (kt.gy[krev ? (kt.n-(i))%kt.n : (i)])
 static u16 kter_avg=0;                                              // the land round the road, for the outer kerb's soft edge
 static int knp=0, kt_len=0, kt_painted=0, kmm_w=40, kmm_h=40;
 static const char *const ksurf_name[6]={"ASPHALT","DIRT","ICE","NEON","CANDY","GOLD"};
@@ -167,17 +169,17 @@ static void kt_official(int idx, KTrack *t){                       // this plane
 
 // ---------------------------------------------------------------- the path: a smooth loop through the gates (Catmull-Rom)
 static void kt_build(void){
-    int n=kt.n, tot=0; s16 ugx[KG_MAX], ugy[KG_MAX]; ugx[0]=kt.gx[0]; ugy[0]=kt.gy[0];
-    for(int i=0;i<n;i++){ int j=(i+1)%n; int dx=kwrap8(kt.gx[j]-kt.gx[i]), dy=kwrap8(kt.gy[j]-kt.gy[i]); tot+=isqrt((u32)(dx*dx+dy*dy)); if(i+1<n){ ugx[i+1]=ugx[i]+dx; ugy[i+1]=ugy[i]+dy; } }
+    int n=kt.n, tot=0; s16 ugx[KG_MAX], ugy[KG_MAX]; ugx[0]=KGX(0); ugy[0]=KGY(0);
+    for(int i=0;i<n;i++){ int j=(i+1)%n; int dx=kwrap8(KGX(j)-KGX(i)), dy=kwrap8(KGY(j)-KGY(i)); tot+=isqrt((u32)(dx*dx+dy*dy)); if(i+1<n){ ugx[i+1]=ugx[i]+dx; ugy[i+1]=ugy[i]+dy; } }
     int mnx=9999, mxx=-9999, mny=9999, mxy=-9999; for(int i=0;i<n;i++){ if(ugx[i]<mnx) mnx=ugx[i]; if(ugx[i]>mxx) mxx=ugx[i]; if(ugy[i]<mny) mny=ugy[i]; if(ugy[i]>mxy) mxy=ugy[i]; }
     mnx-=4; mny-=4; mxx+=4; mxy+=4; int span=mxx-mnx>mxy-mny ? mxx-mnx : mxy-mny; if(span<8) span=8; int sc=(40<<12)/span;
     kmm_w=((mxx-mnx)*sc)>>12; kmm_h=((mxy-mny)*sc)>>12;
     int stride=1; while(tot/stride > KP_MAX-2*n) stride++;
     knp=0;
     for(int i=0;i<n;i++){
-        int i0=(i+n-1)%n, i2=(i+1)%n, i3=(i+2)%n, x1=kt.gx[i], y1=kt.gy[i];
-        int p0x=kwrap8(kt.gx[i0]-x1), p0y=kwrap8(kt.gy[i0]-y1), p2x=kwrap8(kt.gx[i2]-x1), p2y=kwrap8(kt.gy[i2]-y1);
-        int p3x=p2x+kwrap8(kt.gx[i3]-kt.gx[i2]), p3y=p2y+kwrap8(kt.gy[i3]-kt.gy[i2]);
+        int i0=(i+n-1)%n, i2=(i+1)%n, i3=(i+2)%n, x1=KGX(i), y1=KGY(i);
+        int p0x=kwrap8(KGX(i0)-x1), p0y=kwrap8(KGY(i0)-y1), p2x=kwrap8(KGX(i2)-x1), p2y=kwrap8(KGY(i2)-y1);
+        int p3x=p2x+kwrap8(KGX(i3)-KGX(i2)), p3y=p2y+kwrap8(KGY(i3)-KGY(i2));
         int L=isqrt((u32)(p2x*p2x+p2y*p2y)), steps=L/stride; if(steps<1) steps=1;
         kgate_pi[i]=knp;
         for(int s=0;s<steps && knp<KP_MAX;s++){
@@ -187,9 +189,6 @@ static void kt_build(void){
             if(!(knp&1) && (knp>>1)<KMM_N){ int ux=ugx[i]+((qx+8)>>4), uy=ugy[i]+((qy+8)>>4); kmmx[knp>>1]=(u8)(((ux-mnx)*sc)>>12); kmmy[knp>>1]=(u8)(((uy-mny)*sc)>>12); }
             knp++; } }
     kt_len=(tot+1)/2;
-    if(krev){ for(int j=1,k=knp-1;j<k;j++,k--){ u8 q=kpx[j]; kpx[j]=kpx[k]; kpx[k]=q; q=kpy[j]; kpy[j]=kpy[k]; kpy[k]=q; }                  // the other way round: the same ring, run backwards from the same start
-        int nm=(knp+1)>>1; if(nm>KMM_N) nm=KMM_N; for(int j=1,k=nm-1;j<k;j++,k--){ u8 q=kmmx[j]; kmmx[j]=kmmx[k]; kmmx[k]=q; q=kmmy[j]; kmmy[j]=kmmy[k]; kmmy[k]=q; }
-        u16 og[KG_MAX]; for(int g=0;g<kt.n;g++) og[g]=kgate_pi[g]; for(int g=0;g<kt.n;g++) kgate_pi[g]=(u16)((knp-og[(kt.n-g)%kt.n])%knp); }
     kpaint_rev=krev;
     if(!kt.laps){ int l=(360+kt_len/2)/(kt_len?kt_len:1); kt.laps = l<2?2:l>5?5:l; }
 }
@@ -262,19 +261,19 @@ static int kjump_z(int pi){                        // how high a rival flies ove
     for(int j=0;j<nkj;j++){ int d=(pi-kjl[j]+knp)%knp, span=(kjr[j]-kjl[j]+knp)%knp+3; if(d<span){ int t=(d<<8)/span; return span*44*t/256*(256-t)/64; } } return 0; }
 static int kgap_at(int pi){ return kpf[pi%knp]&KPF_GAP; }
 static void kt_resid(s8 *rx, s8 *ry){                              // where the smooth road really runs: the path points are whole texels, this is what they were rounded from (1/16 texel)
-    int n=kt.n, tot=0; for(int i=0;i<n;i++){ int j=(i+1)%n; int dx=kwrap8(kt.gx[j]-kt.gx[i]), dy=kwrap8(kt.gy[j]-kt.gy[i]); tot+=isqrt((u32)(dx*dx+dy*dy)); }
+    int n=kt.n, tot=0; for(int i=0;i<n;i++){ int j=(i+1)%n; int dx=kwrap8(KGX(j)-KGX(i)), dy=kwrap8(KGY(j)-KGY(i)); tot+=isqrt((u32)(dx*dx+dy*dy)); }
     int stride=1; while(tot/stride > KP_MAX-2*n) stride++;
     int m=0;
     for(int i=0;i<n;i++){
-        int i0=(i+n-1)%n, i2=(i+1)%n, i3=(i+2)%n, x1=kt.gx[i], y1=kt.gy[i];
-        int p0x=kwrap8(kt.gx[i0]-x1), p0y=kwrap8(kt.gy[i0]-y1), p2x=kwrap8(kt.gx[i2]-x1), p2y=kwrap8(kt.gy[i2]-y1);
-        int p3x=p2x+kwrap8(kt.gx[i3]-kt.gx[i2]), p3y=p2y+kwrap8(kt.gy[i3]-kt.gy[i2]);
+        int i0=(i+n-1)%n, i2=(i+1)%n, i3=(i+2)%n, x1=KGX(i), y1=KGY(i);
+        int p0x=kwrap8(KGX(i0)-x1), p0y=kwrap8(KGY(i0)-y1), p2x=kwrap8(KGX(i2)-x1), p2y=kwrap8(KGY(i2)-y1);
+        int p3x=p2x+kwrap8(KGX(i3)-KGX(i2)), p3y=p2y+kwrap8(KGY(i3)-KGY(i2));
         int L=isqrt((u32)(p2x*p2x+p2y*p2y)), steps=L/stride; if(steps<1) steps=1;
         for(int s=0;s<steps && m<KP_MAX;s++){
             int t=(s<<8)/steps, t2=(t*t)>>8, t3=(t2*t)>>8;
             int qx=((p2x-p0x)*t + (2*p0x+4*p2x-p3x)*t2 + (p3x-p0x-3*p2x)*t3)*16>>9, qy=((p2y-p0y)*t + (2*p0y+4*p2y-p3y)*t2 + (p3y-p0y-3*p2y)*t3)*16>>9;
             int vx=x1*16+qx, vy=y1*16+qy; rx[m]=(s8)(vx-(((vx+8)>>4)<<4)); ry[m]=(s8)(vy-(((vy+8)>>4)<<4)); m++; } }
-    if(krev) for(int j=1,k=m-1;j<k;j++,k--){ s8 t=rx[j]; rx[j]=rx[k]; rx[k]=t; t=ry[j]; ry[j]=ry[k]; ry[k]=t; } }
+    (void)m; }
 static int kcov(int d, int invw){ int c=128+((d*invw)>>8); return c<0?0:c>256?256:c; }   // how much of a texel lies inside an edge that is d (8.8 texels) from its centre
 static void kt_paint(void){
     u8 raw[KP_MAX]; for(int i=0;i<knp;i++) raw[i]=(u8)(hm_bil(kp_cx(i),kp_cy(i))>>8);
@@ -489,7 +488,8 @@ static void kpath_track(int r){                                    // the path p
     if(r && best<k->pi-knp/2) k->lap++;                                                       // a rival came round past the line
     k->pi=(s16)best; }
 static void kfinish(int r){
-    Racer *k=&rc[r]; if(k->fin) return; k->fin=1; { int pl=1; for(int j=0;j<nrc;j++) if(j!=r && rc[j].fin) pl++; k_finished=pl; k->place=(u8)pl; }   // (the place is counted from who has really finished: never two the same) k->ftime=(u16)(k_clock>65000?65000:k_clock);
+    Racer *k=&rc[r]; if(k->fin) return; k->fin=1; { int pl=1; for(int j=0;j<nrc;j++) if(j!=r && rc[j].fin) pl++; k_finished=pl; k->place=(u8)pl; }   // (the place is counted from who has really finished: never two the same)
+    k->ftime=(u16)(k_clock>65000?65000:k_clock);
     if(r==0){ ks_state=KS_DONE; k_end_t=0; char b[40]; scpy(b,k->place==1?"YOU WIN! ":"FINISHED "); if(k->place>1) scat(b,kplace_s(k->place)); else { char t[12]; kfmt_time(t,k_clock); scat(b,t); }
         show_msg(b); sfx(6); music(5); } }
 
@@ -498,7 +498,8 @@ static void kart_place_grid(int r, int slot){
     int row=slot/2, side=(slot&1)?1:-1, pi=(knp-2-row*3+knp*4)%knp, dir=kp_dir(pi), nd=(dir+256)&1023;
     Racer *k=&rc[r]; k->pi=(s16)pi; k->hd=(s16)dir; k->lap=0; k->nextg=0;
     k->x=(kp_cx(pi)+((sinx(nd>>2)*side*9)>>1))&((TW<<16)-1); k->y=(kp_cy(pi)+((cosx(nd>>2)*side*9)>>1))&((TW<<16)-1); }   // two columns, 1.1 cells either side
-static void kart_go(int riders, int grid_me, int keep, int repaint){   // paint the track, line everyone up and start the countdown
+static void kart_go(int riders, int grid_me, int keep, int repaint){
+    if(kw_mode) krev=0;   // paint the track, line everyone up and start the countdown
     if(!kr_mode){ kret_x=ppx; kret_y=ppy; kret_h=heading; }
     kgive_back(); katan_init(); kloop_on=0; kloop_ph=0; kla=0; kloop_prev=-1; kdraft=0; kstuck=0; kbr_cur=0; kstar=0; kroul=0; for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; kloop_hide=0;
     if(repaint || !kt_painted || kpaint_rev!=krev){ kt_unpaint(); kt_build(); kt_paint(); }
@@ -899,7 +900,7 @@ static void kart_tick(int n){
     if(nkl && !kloop_on && !kair){ int p=rc[0].pi;                                                // driving onto a loop-de-loop
         if(kloop_prev>=0) for(int j=0;j<nkl;j++){ int d0=(klp[j]-kloop_prev+knp)%knp, d1=(klp[j]-p+knp)%knp; if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ if(kroad(cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)])) kloop_begin(j); break; } }
         kloop_prev=rc[0].pi; }
-    if(!rc[0].fin){ int g=rc[0].nextg; s32 gx=((s32)kt.gx[g]<<15)+(1<<14), gy=((s32)kt.gy[g]<<15)+(1<<14), dx=wrapd(gx-ppx), dy=wrapd(gy-ppy);
+    if(!rc[0].fin){ int g=rc[0].nextg; s32 gx=((s32)KGX(g)<<15)+(1<<14), gy=((s32)KGY(g)<<15)+(1<<14), dx=wrapd(gx-ppx), dy=wrapd(gy-ppy);
         if((dx<0?-dx:dx)+(dy<0?-dy:dy) < 0x36000){ if(g==0){ for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; rc[0].lap++; if(rc[0].lap>1){ int lt=k_clock-k_lap_t0; if(!k_best_lap || lt<k_best_lap) k_best_lap=lt; } k_lap_t0=k_clock;
             if(rc[0].lap>kt.laps) kfinish(0); else if(rc[0].lap>1){ if(rc[0].lap==kt.laps){ show_msg("FINAL LAP!"); sfx(6); music(7); } else { char b[24]; scpy(b,"LAP "); ncat(b,rc[0].lap); scat(b," OF "); ncat(b,kt.laps); show_msg(b); sfx(7); } } }
             rc[0].nextg=(u8)((g+1)%kt.n); }

@@ -24,7 +24,7 @@ static int kbest_find(u32 key, KBest *out){ for(int i=0;i<NKBEST;i++){ KBest b; 
 static void kbest_put(u32 key, int t, int medal){
     KBest b; int i=kbest_find(key,&b); if(i<0){ i=(int)(key%NKBEST); for(int j=0;j<NKBEST;j++){ KBest q; int k=(int)((key+j)%NKBEST); sram_read(slot_base(cur_slot)+KREC_OFF+k*8,&q,8); if(q.chk!=kbest_chk(&q) || !q.key){ i=k; break; } } b.key=key; b.best=0xFFFF; b.medal=0; }
     if(t<b.best) b.best=(u16)(t>65000?65000:t); if(medal>b.medal) b.medal=(u8)medal; b.chk=kbest_chk(&b); sram_write(slot_base(cur_slot)+KREC_OFF+i*8,&b,8); }
-static u32 kt_key(int idx){ return hmix(wd.tseed^((u32)idx*0x9E3779B1u)^0x5245434Fu)|1; }
+static u32 kt_key(int idx){ return (hmix(wd.tseed^((u32)idx*0x9E3779B1u)^0x5245434Fu)|1)^(krev?0x52455645u&~1u:0); }
 static int kw_best_get(int trk, KBest *b); static void kw_best_set(int trk, int t, int medal);
 static int kbest_get(int trk, KBest *b){ if(kw_mode) return kw_best_get(trk,b); return kbest_find(kt_key(trk),b)>=0; }
 static void kbest_set(int trk, int t, int medal){ if(kw_mode) kw_best_set(trk,t,medal); else kbest_put(kt_key(trk),t,medal); }
@@ -179,7 +179,7 @@ static void kart_cup_next(void){
 
 // ---------------------------------------------------------------- the track maker: drive, drop gates, close the loop
 EW static u8 kbeac[KG_MAX];
-static void kbuild_begin(void){
+static void kbuild_begin(void){ krev=0;
     const char *ln[5]={"DRIVE ANYWHERE ON THIS PLANET.","A: DROP A GATE WHERE YOU ARE.","SELECT: TAKE THE LAST ONE BACK.","START: CLOSE THE LOOP AND FINISH.","4 TO 24 GATES. THE ROAD JOINS THEM UP."};
     card(VISPG,"BUILD A TRACK",ln,5);
     kret_x=ppx; kret_y=ppy; kret_h=heading; kgive_back(); kt_unpaint(); memset(&kt,0,sizeof kt); kt.riv=7; kt.cls=(u8)(k_cls<kcls_open?k_cls:0); kt.flags=KF_ITEMS|KF_PADS;
@@ -391,23 +391,24 @@ static void kcam_menu(volatile u16 *pg, int live){
         if(HIT(K_B) || HIT(K_START) || (HIT(K_A) && sel==C_DONE)) break; }
     in_menu--; if(kr_mode) kcam_apply(); else kfovk=kcam_fov[kcam[3]&3]; kart_save(); wait_release(); }
 // ---------------------------------------------------------------- the kart club (the race post, or your ship)
-static u8 kc_opt[10]; static int kc_n, kc_post;
+static u8 kc_opt[11]; static int kc_n, kc_post;
 static void kc_row(int i, char *b, int *c){
-    static const char *const nm[10]={"QUICK RACE","GRAND PRIX (A CUP OF 4 RACES)","TIME TRIAL","YOUR TRACKS","BUILD A TRACK HERE","KART GARAGE","FOOT RACE (FLAGS)","YOUR RECORD","LEAVE","KART CAMERA"};
-    int o=kc_opt[i]; scpy(b,nm[o]); if(o==1 && !kc_post){ scat(b,"  (AT A RACE POST)"); *c=C_DGREY; } if(o==3){ int n=0; KRec r; for(int k=0;k<NKREC;k++) if(krec_get(k,&r)) n++; scat(b," ("); ncat(b,n); scat(b,")"); } }
+    static const char *const nm[11]={"QUICK RACE","GRAND PRIX (A CUP OF 4 RACES)","TIME TRIAL","YOUR TRACKS","BUILD A TRACK HERE","KART GARAGE","FOOT RACE (FLAGS)","YOUR RECORD","LEAVE","KART CAMERA","DIRECTION"};
+    int o=kc_opt[i]; scpy(b,nm[o]); if(o==10) scat(b, krev ? ":  < REVERSE >" : ":  < FORWARD >"); if(o==1 && !kc_post){ scat(b,"  (AT A RACE POST)"); *c=C_DGREY; } if(o==3){ int n=0; KRec r; for(int k=0;k<NKREC;k++) if(krec_get(k,&r)) n++; scat(b," ("); ncat(b,n); scat(b,")"); } }
 static void kc_desc(int i, char *b, int *c){ int k = i<0 ? -1-i : i; int o=kc_opt[k];
-    static const char *const d1[10]={"YOU AND 7 RIVALS ON ONE OF THIS PLANET'S TRACKS.","FOUR RACES. POINTS FOR EVERY PLACE. WIN A TROPHY.","JUST YOU AND THE CLOCK. GOLD, SILVER, BRONZE.","RACE YOUR OWN TRACKS. FLY BACK TO ONES FAR AWAY.",
-        "DRIVE ROUND AND DROP GATES. THE ROAD JOINS THEM.","16 BODIES, ANY COLOURS, WHEELS, SPOILERS, TOPPERS...","THE OLD FLAG RACE, ON FOOT.","WINS, CUPS, MEDALS AND TRACKS.","BACK TO THE PLANET.","DISTANCE, HEIGHT, FIELD OF VIEW, SWING, COCKPIT..."};
-    static const char *const d2[10]={"UP: GO  B: BOOST  R: DRIFT  A: ITEM  L: HORN","BEAT A CUP TO OPEN THE NEXT CLASS.","","THEY ARE KEPT ON THE CART. ALL SLOTS SHARE THEM.","4 TO 24 GATES, ON ANY PLANET OF ANY SIZE.","LEFT/RIGHT TO TRY THINGS ON. BUY WHAT YOU LOVE.","","","","IN A RACE, PAUSE AND PICK CAMERA TO SEE IT LIVE."};
+    static const char *const d1[11]={"YOU AND 7 RIVALS ON ONE OF THIS PLANET'S TRACKS.","FOUR RACES. POINTS FOR EVERY PLACE. WIN A TROPHY.","JUST YOU AND THE CLOCK. GOLD, SILVER, BRONZE.","RACE YOUR OWN TRACKS. FLY BACK TO ONES FAR AWAY.",
+        "DRIVE ROUND AND DROP GATES. THE ROAD JOINS THEM.","16 BODIES, ANY COLOURS, WHEELS, SPOILERS, TOPPERS...","THE OLD FLAG RACE, ON FOOT.","WINS, CUPS, MEDALS AND TRACKS.","BACK TO THE PLANET.","DISTANCE, HEIGHT, FIELD OF VIEW, SWING, COCKPIT...","EVERY TRACK IS A CLOSED LOOP: RACE IT BOTH WAYS."};
+    static const char *const d2[11]={"UP: GO  B: BOOST  R: DRIFT  A: ITEM  L: HORN","BEAT A CUP TO OPEN THE NEXT CLASS.","","THEY ARE KEPT ON THE CART. ALL SLOTS SHARE THEM.","4 TO 24 GATES, ON ANY PLANET OF ANY SIZE.","LEFT/RIGHT TO TRY THINGS ON. BUY WHAT YOU LOVE.","","","","IN A RACE, PAUSE AND PICK CAMERA TO SEE IT LIVE.","PRESS A. BEST TIMES ARE KEPT FOR EACH WAY ROUND."};
     scpy(b, i<0 ? d2[o] : d1[o]); (void)c; }
 static void kart_menu(int at_post){
-    volatile u16 *pg=VISPG; kc_post=at_post; kc_n=0; static const u8 all[10]={0,1,2,3,4,5,9,6,7,8};
-    for(int i=0;i<10;i++){ if(all[i]==6 && !at_post) continue; kc_opt[kc_n++]=all[i]; }
+    volatile u16 *pg=VISPG; kc_post=at_post; kc_n=0; static const u8 all[11]={0,1,2,10,3,4,5,9,6,7,8};
+    for(int i=0;i<11;i++){ if(all[i]==6 && !at_post) continue; kc_opt[kc_n++]=all[i]; }
     oam_hide_all(); oam_flush(); in_menu++; int sel=0;
     while(1){
         list_desc=kc_desc; char ttl[40]; scpy(ttl,at_post?"THE RACE POST":"KART CLUB"); scat(ttl,"   "); scat(ttl,kpsize_name[wd.psz]); scat(ttl," PLANET");
         int k=list_pick(pg,ttl,kc_n,kc_row,&sel,"A: PICK   B: LEAVE"); list_desc=0; if(k<0) break; int o=kc_opt[k];
         if(o==8) break;
+        if(o==10){ krev^=1; sfx(7); continue; }
         if(o==0){ int t=kpick_track(pg,"QUICK RACE: PICK A TRACK",1); if(t==-1) continue; int c=kpick_class(pg); if(c<0) continue; k_cls=c; k_type=0;
             if(t>=0){ k_trk=t; k_rec=-1; kt_official(t,&kt); } else { KRec r; k_rec=-2-t; k_trk=-1; krec_get(k_rec,&r); krec_to_kt(&r); k_type=4; }
             in_menu--; kart_go(t>=0?NRC:kt.riv+1,-1,0,1); return; }

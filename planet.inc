@@ -64,7 +64,7 @@ static u16 gbase[16], skybase[8];                          // the ground and sky
 // how fast the horizon falls away: the planet's size, and TINY PLANET
 static int curv_k(void){ static const u8 ks[6]={12,7,4,3,2,1}; int k=ks[wd.psz%6]; if(WL(MW_TINY)){ int t=8<<(WL(MW_TINY)/7); if(t>k) k=t; }
     return k; }
-static int curv_sh(void){ return kr_mode==1 && !kloop_on ? 5 : 3; }   // racing: the world bends away a quarter as fast, so the road ahead stays in view
+static int curv_sh(void){ return kr_mode==1 && !kloop_on ? 7 : 3; }   // racing: the world bends away a quarter as fast, so the road ahead stays in view
 static s32 curv(s32 z){ return (((z*z)>>14)*curv_k())>>curv_sh(); }                          // how far the ground has dropped out of sight at distance z (8.8 cells); 4 is the old z*z/32768
 static s32 tiny_sub(void){ return curv_k()>4 ? curv(cam_back()>>8) : 0; }
 static void pknock(s32 dx, s32 dy, int k){                    // push the bug away along (dx,dy) (map direction, bug minus enemy), in walk-input terms

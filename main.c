@@ -1397,6 +1397,9 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     zone=TEST_ZONE; portal_depth=2+TEST_ZONE; st_str=300; st_vit=300; recalc(); hearts=maxh;     // (filming: a floor in another zone)
 #endif
 #ifdef TEST_KART
+#ifdef TEST_KREV
+    krev=TEST_KREV;
+#endif
     k_cls=1; k_type=0; k_trk=TEST_KART%kt_count(); k_rec=-1; kt_official(k_trk,&kt);
 #ifdef TEST_KSTUNT
     k_stunts=TEST_KSTUNT;
