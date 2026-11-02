@@ -4,7 +4,7 @@
 // sub-pixel place, the sun as a smooth disc with glow, planets and moons shaded per window pixel from the game's own sphere tables. It only READS the game.
 // pc_sncomp.inc (in pc_hw.c) shows it where the page still holds what was drawn at that moment (ships, rocks, station, HUD, cockpit stay the game's own).
 #include <stdlib.h>
-typedef struct { int w,h,hn; uint32_t *buf; long f[2]; uint8_t snap[2][240*128]; uint8_t ok[256]; int sunx,suny; } PcSNat;
+typedef struct { int w,h,hn; uint32_t *buf; long f[2]; uint8_t snap[2][240*128]; uint8_t ok[256]; int sunx,suny; uint8_t snap2[2][240*128]; uint8_t *msk; long f2[2]; } PcSNat;
 extern PcSNat pc_sn; extern int pc_nat_w, pc_nat_h; extern int pc_v3d_classic(void); extern long pc_frames(void);
 typedef void (*PcParFn3)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn3 fn, void *ctx);
 typedef struct { int cx,cy,r,Lx,Ly,Lz,rot; const u8 *noise; } SnCall;
@@ -49,7 +49,7 @@ static void sn_rows(void *vc, int lo, int hi){
 }
 static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk){
     int W=pc_nat_w, H=pc_nat_h; pc_sn.w=0; if(W<=240 || H<=160 || pc_v3d_classic()) return;
-    int hn=(128*H+159)/160; if(hn>H) hn=H; static unsigned long bcap; unsigned long need=(unsigned long)W*hn; if(need>bcap){ free(pc_sn.buf); pc_sn.buf=malloc(need*4); bcap=need; }
+    int hn=(128*H+159)/160; if(hn>H) hn=H; static unsigned long bcap; unsigned long need=(unsigned long)W*hn; if(need>bcap){ free(pc_sn.buf); free(pc_sn.msk); pc_sn.buf=malloc(need*4); pc_sn.msk=malloc(need); bcap=need; } memset(pc_sn.msk,0,need);
     for(int i=0;i<256;i++){ u16 c=BG_PAL[i]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; sn_pal[i]=(uint32_t)(r<<3|r>>2)<<16|(uint32_t)(g<<3|g>>2)<<8|(uint32_t)(b<<3|b>>2); }
     double sx=W/240.0, sy=H/160.0; uint32_t *buf=pc_sn.buf; uint32_t bk=sn_pal[0]; for(size_t i=0;i<need;i++) buf[i]=bk;
     // stars: exact sub-pixel places, soft dots, streaks when fast
@@ -76,4 +76,39 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
         pc_par_chunk(y1-y0,8,sn_rows,&k); }
     memset(pc_sn.ok,0,256); static const unsigned char okv[]={0,3,4,5,40,41,42,43,44,45,46,47,48,49,50}; for(unsigned i=0;i<sizeof okv;i++) pc_sn.ok[okv[i]]=1;
     int t=((uintptr_t)pg)>=0x0600A000u?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames();
+}
+
+// the rest of the space view's wireframes (dust, station, rocks) at window resolution: drawn onto the same picture as the background (anti-aliased), and a mask
+// marks where the game's blocky copy is hidden. Called right after the game drew them (a second page copy is kept: pc_sn.snap2).
+static void sn_mseg(uint8_t *m, int W, int H, double x0, double y0, double x1, double y1, double rad){
+    int xa=(int)((x0<x1?x0:x1)-rad-1), xb=(int)((x0<x1?x1:x0)+rad+1)+1, ya=(int)((y0<y1?y0:y1)-rad-1), yb=(int)((y0<y1?y1:y0)+rad+1)+1; if(xa<0) xa=0; if(ya<0) ya=0; if(xb>W) xb=W; if(yb>H) yb=H;
+    double dx=x1-x0, dy=y1-y0, l2=dx*dx+dy*dy;
+    for(int Y=ya;Y<yb;Y++) for(int X=xa;X<xb;X++){ double px=X+0.5-x0, py=Y+0.5-y0, t= l2>1e-9 ? (px*dx+py*dy)/l2 : 0; if(t<0) t=0; if(t>1) t=1; double ex=px-t*dx, ey=py-t*dy; if(ex*ex+ey*ey<=rad*rad) m[(size_t)Y*W+X]=1; }
+}
+static int so_proj(s32 x,s32 y,s32 z,double *fx,double *fy){ s32 cx,cy,cz; if(!cam3(x,y,z,&cx,&cy,&cz)) return 0; double X=120.5+(double)cx*FOCS/cz, Y=VCY+0.5-(double)cy*FOCS/cz; if(X<-4000||X>4000||Y<-4000||Y>4000) return 0; *fx=X; *fy=Y; return 1; }
+static void so_line(double x0,double y0,double x1,double y1,int ci){
+    if(!pc_sn.w) return; int W=pc_sn.w, H=pc_sn.hn; double sx=W/240.0, sy=pc_nat_h/160.0;
+    sn_seg(pc_sn.buf,W,H,x0*sx,y0*sy,x1*sx,y1*sy,0.5*sx+0.15,sn_pal[ci],1.0,1.0); sn_mseg(pc_sn.msk,W,H,x0*sx,y0*sy,x1*sx,y1*sy,1.1*sx+0.5);
+}
+static void so_wire(const s32 *v,int nv,const u8 *e,int ne,int c){ double X[16],Y[16]; u8 ok[16]; for(int i=0;i<nv;i++) ok[i]=so_proj(v[i*3],v[i*3+1],v[i*3+2],&X[i],&Y[i]);
+    for(int i=0;i<ne;i++){ int a=e[i*2], b=e[i*2+1]; if(ok[a]&&ok[b]) so_line(X[a],Y[a],X[b],Y[b],c); } }
+static void pc_so_native(volatile unsigned short *pg){
+    if(!pc_sn.w || !pc_sn.msk) return; int t=((uintptr_t)pg)>=0x0600A000u?1:0; memcpy(pc_sn.snap2[t],(const void*)pg,240*128); pc_sn.f2[t]=pc_frames();
+    for(int i=0;i<20;i++){ s32 *d=&dust[i*3]; double X,Y,X2,Y2; if(so_proj(d[0],d[1],d[2],&X,&Y)){
+        if(speed>14 && so_proj(d[0]-((bf[0]*speed*4)>>14),d[1]-((bf[1]*speed*4)>>14),d[2]-((bf[2]*speed*4)>>14),&X2,&Y2)) so_line(X,Y,X2,Y2,56); else so_line(X,Y,X,Y,56); } }
+    if(in_lair) return;
+    { s32 v[12*3]; int a=frames*3; s32 S=420, c_=cosx(a>>2), s_=sinx(a>>2);
+      static const s8 cube[8][3]={{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
+      for(int i=0;i<8;i++){ s32 x=cube[i][0]*S, z=cube[i][2]*S; v[i*3]=stx_+((x*c_-z*s_)>>14); v[i*3+1]=sty_+cube[i][1]*S; v[i*3+2]=stz_+((x*s_+z*c_)>>14); }
+      static const s8 slot[4][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
+      for(int i=0;i<4;i++){ s32 x=slot[i][0]*140, z=-S; v[(8+i)*3]=stx_+((x*c_-z*s_)>>14); v[(8+i)*3+1]=sty_+slot[i][1]*70; v[(8+i)*3+2]=stz_+((x*s_+z*c_)>>14); }
+      static const u8 ce[]={0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7}; static const u8 se[]={8,9,9,10,10,11,11,8};
+      so_wire(v,12,ce,12,54); so_wire(v,12,se,4,(frames&16)?55:56); }
+    for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue;
+        static const s8 oc[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+        s32 v[6*3]; int ang=(frames*2+a->seed*4)&1023; s32 c=cosx(ang>>2), s_=sinx(ang>>2);
+        for(int k=0;k<6;k++){ int rr=a->r*(10+((a->seed>>k)&3)*2)/14; s32 x=oc[k][0]*rr, y=oc[k][1]*rr*3/4, z=oc[k][2]*rr;
+            v[k*3]=a->x+((x*c-z*s_)>>14); v[k*3+1]=a->y+y; v[k*3+2]=a->z+((x*s_+z*c)>>14); }
+        static const u8 ae[]={0,2,0,3,0,4,0,5,1,2,1,3,1,4,1,5,2,4,2,5,3,4,3,5};
+        so_wire(v,6,ae,12,a->flash?49 : sys[cur_sys].kind==6 ? rock_col[rock_type_of(rock_h(i))-1] : (a->seed&1)?56:51); }
 }

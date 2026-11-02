@@ -77,7 +77,7 @@ sed -i -e 's/^static void slot_erase(int i){/static void slot_erase(int i){ pc_l
 sed -i 's/if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug/if(s2>=0){ cur_slot=s2; pc_laws_slot_new(s2); oam_hide_all(); oam_flush(); if(make_bug/' main.c
 # --- the PC ship renderer (pc/shipr, pc/pc_ships.inc): the space ships go to it when it is on (pc_ships_mode >= 0, the window build's SHIPS option)
 sed -i -e 's|^    int crowd=0; for(int i=0;i<NPIR;i++) if(pir\[i\].alive) crowd++;$|    if(pc_sr_on()){ pc_sr_space(pg); goto pc_sr_done; }\n&|' \
-       -e 's|^    for(int k=0;k<4;k++) if(cans\[k\].alive){ int sx,sy; s32 z; if(sproj|    pc_sr_done: pc_sr_mark(pg);\n&|' space.inc
+       -e 's|^    for(int k=0;k<4;k++) if(cans\[k\].alive){ int sx,sy; s32 z; if(sproj|    pc_sr_done: pc_sr_mark(pg); pc_so_native(pg);\n&|' space.inc
 sed -i 's|ship_draw(pg, scx, scy, scs, syw, spt, 0,0, 0,0,240,128); sh_flame=0;|if(pc_sr_on() \&\& pc_ships_mode>0) pc_sr_player(scx,scy,scs,syw,spt); else ship_draw(pg, scx, scy, scs, syw, spt, 0,0, 0,0,240,128); sh_flame=0;|' space.inc
 sed -i '1i static int pc_sr_on(void); static void pc_sr_space(volatile u16 *pg), pc_sr_mark(volatile u16 *pg), pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_); extern int pc_ships_mode;' space.inc
 echo '#include "../pc_ships.inc"' >> main.c
@@ -99,7 +99,7 @@ sed -i 's|^IWRAM static void planet_fill(\(.*\)const u8 \*noise){|&\n    pc_sn_r
 sed -i 's|^    orbit_draw(pg,0); |    orbit_draw(pg,0); pc_sn_native(pg,vpx,vpy,stk); |' space.inc
 sed -i 's|int vpx=120, vpy=VCY, vdrift=0, stk=0;|pc_sn_begin(); &|' space.inc
 grep -c "pc_sn_rec(cx" space.inc | grep -qx 1 && grep -c "pc_sn_native(pg" space.inc | grep -qx 1 && grep -c "pc_sn_begin()" space.inc | grep -qx 1 || { echo "build: native space hooks did not apply"; exit 1; }
-sed -i '1i static void pc_sn_begin(void), pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk), pc_sn_rec(int cx,int cy,int r,int Lx,int Ly,int Lz,int rot,const unsigned char *noise);' main.c
+sed -i '1i static void pc_sn_begin(void), pc_so_native(volatile unsigned short *pg), pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk), pc_sn_rec(int cx,int cy,int r,int Lx,int Ly,int Lz,int rot,const unsigned char *noise);' main.c
 echo '#include "../pc_snative.inc"' >> main.c
 echo '#include "../pc_laws.inc"' >> main.c
 # --- the kart race NATIVE extras (pc/pc_kartnat.inc, pc_kartnat_r.inc in pc_hw.c): banking, hills, soft shadows. The game's own dithered shadows are skipped when the window picture makes its own.
