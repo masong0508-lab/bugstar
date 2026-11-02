@@ -427,21 +427,22 @@ static void kart_menu(int at_post){
 static void kart_pause_back(volatile u16 *pg){                       // behind a pause box in a hardware-ground race: the ground half of the page holds the map's flat texture (the road itself is drawn by the hardware lines, which a menu turns off), so lay a dim hatch there
     int y0=g_phz+3; if(y0<50) y0=50; if(y0>110) y0=110; rect(pg,0,y0,240,160-y0,0);
     for(int y=y0;y<160;y++) for(int x=(y&1);x<240;x+=2) pix(pg,x,y,C_DGREY); }
+static int kpause_menu(const char *title, const char *const *o, int bsel){   // a steady pause box: the hardware ground is switched off first (so everything is drawn on the page that is shown), the box is drawn once and again only when the arrow moves
+    oam_hide_all(); oam_flush(); in_menu++; int was=m7_on; if(was){ m7_end(); vsync(); } volatile u16 *pg=VISPG; if(was) kart_pause_back(pg);
+    int sel=0, last=-1;
+    while(1){
+        if(sel!=last){ last=sel; box(pg,50,46,140,62); rect(pg,51,47,138,12,6); ctext(pg,120,50,title,C_GOLD); for(int i=0;i<4;i++){ if(i==sel) text(pg,60,64+i*10,">",C_CYAN,1); text(pg,68,64+i*10,o[i],i==sel?C_WHITE:C_GREY,1); } }
+        vsync(); read_keys(); if(HIT(K_UP)){ sel=(sel+3)%4; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%4; sfx(7); } if(HIT(K_B)||(bsel>=0 && HIT(K_START))){ sel=bsel<0?1:bsel; break; } if(HIT(K_A)) break; }
+    wait_release(); in_menu--; return sel; }
 static int kart_buttons(void){                                     // A, SELECT and START in a kart; 1 = a menu was open (the frame starts over)
     if(kr_mode==2){
         if(HIT(K_A)) kbuild_drop(); if(HIT(K_SEL)) kbuild_undo();
-        if(HIT(K_START)){ oam_hide_all(); oam_flush(); in_menu++; static const char *const o[4]={"FINISH THE TRACK","KEEP BUILDING","CAMERA","THROW IT AWAY"}; int sel=0; volatile u16 *pg=VISPG; if(m7_on) kart_pause_back(pg);
-            while(1){ box(pg,50,46,140,62); rect(pg,51,47,138,12,6); ctext(pg,120,50,"BUILDING",C_GOLD); for(int i=0;i<4;i++){ if(i==sel) text(pg,60,64+i*10,">",C_CYAN,1); text(pg,68,64+i*10,o[i],i==sel?C_WHITE:C_GREY,1); }
-                vsync(); read_keys(); if(HIT(K_UP)) sel=(sel+3)%4; if(HIT(K_DOWN)) sel=(sel+1)%4; if(HIT(K_B)){ sel=1; break; } if(HIT(K_A)) break; }
-            wait_release(); in_menu--;
+        if(HIT(K_START)){ static const char *const o[4]={"FINISH THE TRACK","KEEP BUILDING","CAMERA","THROW IT AWAY"}; int sel=kpause_menu("BUILDING",o,1); volatile u16 *pg=VISPG;
             if(sel==0) kbuild_finish(); else if(sel==2) kcam_menu(pg,1); else if(sel==3) kart_stop();
             planet_hud(); p_last=vbl_count; return 1; }
         return 0; }
     if(HIT(K_A) && rc[0].item && !kroul && ks_state==KS_RACE && !rc[0].spin) kuse_item(0);
-    if(HIT(K_START)){ oam_hide_all(); oam_flush(); in_menu++; static const char *const o[4]={"KEEP RACING","START AGAIN","CAMERA","QUIT THE RACE"}; int sel=0; volatile u16 *pg=VISPG; if(m7_on) kart_pause_back(pg);
-        while(1){ box(pg,50,46,140,62); rect(pg,51,47,138,12,6); ctext(pg,120,50,"PAUSED",C_GOLD); for(int i=0;i<4;i++){ if(i==sel) text(pg,60,64+i*10,">",C_CYAN,1); text(pg,68,64+i*10,o[i],i==sel?C_WHITE:C_GREY,1); }
-            vsync(); read_keys(); if(HIT(K_UP)) sel=(sel+3)%4; if(HIT(K_DOWN)) sel=(sel+1)%4; if(HIT(K_B)||HIT(K_START)){ sel=0; break; } if(HIT(K_A)) break; }
-        wait_release(); in_menu--;
+    if(HIT(K_START)){ static const char *const o[4]={"KEEP RACING","START AGAIN","CAMERA","QUIT THE RACE"}; int sel=kpause_menu("PAUSED",o,0); volatile u16 *pg=VISPG;
         if(sel==2){ kcam_menu(pg,1); sel=0; }
         if(sel==1) kart_go(nrc, nrc>1?-1:0, k_type==1, 0);
         else if(sel==3){ if(k_type==3){ kgive_back(); kr_mode=2; ks_state=0; nrc=1; ppx=kret_x; ppy=kret_y; heading=kret_h; heading_rays(); kbuild_menu(); } else kart_stop(); }

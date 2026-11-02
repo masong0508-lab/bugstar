@@ -11,8 +11,8 @@
 #define KT(r) ((r)<8 ? (r) : 1+((r)-8)%7)            // whose kart tiles and colours racer r uses (sprite memory holds 8 karts: the last 4 rivals drive copies)
 #define NKREC 50                                   // your tracks kept on the cartridge
 static void thump(int big); static int kw_quit; static int kw_driver_on(void); static int kw_draw_driver(int slot, int cx, int feet, int inv, int flip); static int kw_draw_driver_rot(int slot, int cx, int cy, int qa, int qb, int qc, int qd);
-enum { KRC_A=96, KRC_B, KRC_KR, KRC_KW, KRC_LINE, KRC_CK0, KRC_CK1, KRC_PAD, KRC_GLOW, KRC_RAMP, KRC_RAMP2 };   // BG palette: the road, your underglow, the ramps
-static int kroad(int c){ return (c>=KRC_A && c<=KRC_PAD) || c==KRC_RAMP || c==KRC_RAMP2; }
+enum { KRC_A=96, KRC_B, KRC_KR, KRC_KW, KRC_LINE, KRC_CK0, KRC_CK1, KRC_PAD, KRC_GLOW, KRC_RAMP, KRC_RAMP2, KRC_AY1=112, KRC_AY2, KRC_AR1, KRC_AR2, KRC_AW1, KRC_AW2, KRC_KRM, KRC_KWM };   // BG palette: the road, your underglow, the ramps
+static int kroad(int c){ return (c>=KRC_A && c<=KRC_PAD) || c==KRC_RAMP || c==KRC_RAMP2 || (c>=KRC_AY1 && c<=KRC_KWM); }
 _Static_assert(T_KDYN+8*16 <= 1024, "the karts built at run time must fit in sprite memory");
 
 // ---------------------------------------------------------------- the parts of a kart
@@ -78,6 +78,8 @@ EW static KTrack kt;                               // the track being raced
 EW static u8 kpx[KP_MAX], kpy[KP_MAX];             // its path, in texels
 EW static u8 kmmx[KMM_N], kmmy[KMM_N];             // the same, shrunk to the minimap
 EW static u16 kgate_pi[KG_MAX];                    // where each gate falls on the path
+static int krev=0, kpaint_rev=0;                                  // krev 1: the circuit is driven the other way round (set before kart_go; the path is built backwards)
+static u16 kter_avg=0;                                              // the land round the road, for the outer kerb's soft edge
 static int knp=0, kt_len=0, kt_painted=0, kmm_w=40, kmm_h=40;
 static const char *const ksurf_name[6]={"ASPHALT","DIRT","ICE","NEON","CANDY","GOLD"};
 static const u16 ksurf_col[6][5]={{C15(70,70,78),C15(84,84,92),C15(220,50,50),C15(240,240,240),C15(250,230,120)},{C15(130,96,60),C15(146,110,70),C15(90,64,40),C15(200,170,120),C15(220,200,150)},
@@ -185,6 +187,10 @@ static void kt_build(void){
             if(!(knp&1) && (knp>>1)<KMM_N){ int ux=ugx[i]+((qx+8)>>4), uy=ugy[i]+((qy+8)>>4); kmmx[knp>>1]=(u8)(((ux-mnx)*sc)>>12); kmmy[knp>>1]=(u8)(((uy-mny)*sc)>>12); }
             knp++; } }
     kt_len=(tot+1)/2;
+    if(krev){ for(int j=1,k=knp-1;j<k;j++,k--){ u8 q=kpx[j]; kpx[j]=kpx[k]; kpx[k]=q; q=kpy[j]; kpy[j]=kpy[k]; kpy[k]=q; }                  // the other way round: the same ring, run backwards from the same start
+        int nm=(knp+1)>>1; if(nm>KMM_N) nm=KMM_N; for(int j=1,k=nm-1;j<k;j++,k--){ u8 q=kmmx[j]; kmmx[j]=kmmx[k]; kmmx[k]=q; q=kmmy[j]; kmmy[j]=kmmy[k]; kmmy[k]=q; }
+        u16 og[KG_MAX]; for(int g=0;g<kt.n;g++) og[g]=kgate_pi[g]; for(int g=0;g<kt.n;g++) kgate_pi[g]=(u16)((knp-og[(kt.n-g)%kt.n])%knp); }
+    kpaint_rev=krev;
     if(!kt.laps){ int l=(360+kt_len/2)/(kt_len?kt_len:1); kt.laps = l<2?2:l>5?5:l; }
 }
 static s32 kp_cx(int i){ return ((s32)kpx[i]<<15)+(1<<14); }       // a path point, in 16.16 cells
@@ -195,7 +201,10 @@ static int kp_dir(int i){ int a=(i+knp-2)%knp, b=(i+2)%knp; return iatan2(kwrap8
 static void kart_palette(void){
     const u16 *s=ksurf_col[kt.surf%6]; for(int i=0;i<5;i++) BG_PAL[KRC_A+i]=s[i];
     BG_PAL[KRC_CK0]=C15(20,20,24); BG_PAL[KRC_CK1]=C15(240,240,240); BG_PAL[KRC_PAD]=C15(255,170,30); BG_PAL[KRC_GLOW]=kglow_col[kl.part[KP_GLOW]&7]; BG_PAL[KRC_RAMP]=C15(255,220,40); BG_PAL[KRC_RAMP2]=C15(40,30,24);
-    if(wd.hour==2) for(int i=KRC_A;i<=KRC_RAMP2;i++){ if(i!=KRC_GLOW) BG_PAL[i]=dim15(BG_PAL[i],9); } else if(wd.hour==1) for(int i=KRC_A;i<=KRC_RAMP2;i++){ if(i!=KRC_GLOW) BG_PAL[i]=lerp15(BG_PAL[i],rgb15(255,140,60),3); } }
+    { u16 A=BG_PAL[KRC_A], L=BG_PAL[KRC_LINE], R=BG_PAL[KRC_KR], W=BG_PAL[KRC_KW];                          // the soft edges: asphalt into line, asphalt into kerb, kerb into the land
+      BG_PAL[KRC_AY1]=lerp15(A,L,5); BG_PAL[KRC_AY2]=lerp15(A,L,11); BG_PAL[KRC_AR1]=lerp15(A,R,5); BG_PAL[KRC_AR2]=lerp15(A,R,11); BG_PAL[KRC_AW1]=lerp15(A,W,5); BG_PAL[KRC_AW2]=lerp15(A,W,11);
+      BG_PAL[KRC_KRM]=lerp15(R,kter_avg,7); BG_PAL[KRC_KWM]=lerp15(W,kter_avg,7); }
+    if(wd.hour==2) for(int i=KRC_A;i<=KRC_KWM;i++){ if(i!=KRC_GLOW && (i<=KRC_RAMP2 || i>=KRC_AY1)) BG_PAL[i]=dim15(BG_PAL[i],9); } else if(wd.hour==1) for(int i=KRC_A;i<=KRC_KWM;i++){ if(i!=KRC_GLOW && (i<=KRC_RAMP2 || i>=KRC_AY1)) BG_PAL[i]=lerp15(BG_PAL[i],rgb15(255,140,60),3); } }
 #define KW_IN 1408                                 // asphalt half-width: 5.5 texels (8.8): room for three karts side by side
 #define KW_OUT 1700                                // kerbs out to 6.6 texels
 #define KPF_GAP 1                                  // no road here: you jump it
@@ -252,9 +261,26 @@ static void kt_features(const u8 *raw){
 static int kjump_z(int pi){                        // how high a rival flies over a jump (8.8 cells)
     for(int j=0;j<nkj;j++){ int d=(pi-kjl[j]+knp)%knp, span=(kjr[j]-kjl[j]+knp)%knp+3; if(d<span){ int t=(d<<8)/span; return span*44*t/256*(256-t)/64; } } return 0; }
 static int kgap_at(int pi){ return kpf[pi%knp]&KPF_GAP; }
+static void kt_resid(s8 *rx, s8 *ry){                              // where the smooth road really runs: the path points are whole texels, this is what they were rounded from (1/16 texel)
+    int n=kt.n, tot=0; for(int i=0;i<n;i++){ int j=(i+1)%n; int dx=kwrap8(kt.gx[j]-kt.gx[i]), dy=kwrap8(kt.gy[j]-kt.gy[i]); tot+=isqrt((u32)(dx*dx+dy*dy)); }
+    int stride=1; while(tot/stride > KP_MAX-2*n) stride++;
+    int m=0;
+    for(int i=0;i<n;i++){
+        int i0=(i+n-1)%n, i2=(i+1)%n, i3=(i+2)%n, x1=kt.gx[i], y1=kt.gy[i];
+        int p0x=kwrap8(kt.gx[i0]-x1), p0y=kwrap8(kt.gy[i0]-y1), p2x=kwrap8(kt.gx[i2]-x1), p2y=kwrap8(kt.gy[i2]-y1);
+        int p3x=p2x+kwrap8(kt.gx[i3]-kt.gx[i2]), p3y=p2y+kwrap8(kt.gy[i3]-kt.gy[i2]);
+        int L=isqrt((u32)(p2x*p2x+p2y*p2y)), steps=L/stride; if(steps<1) steps=1;
+        for(int s=0;s<steps && m<KP_MAX;s++){
+            int t=(s<<8)/steps, t2=(t*t)>>8, t3=(t2*t)>>8;
+            int qx=((p2x-p0x)*t + (2*p0x+4*p2x-p3x)*t2 + (p3x-p0x-3*p2x)*t3)*16>>9, qy=((p2y-p0y)*t + (2*p0y+4*p2y-p3y)*t2 + (p3y-p0y-3*p2y)*t3)*16>>9;
+            int vx=x1*16+qx, vy=y1*16+qy; rx[m]=(s8)(vx-(((vx+8)>>4)<<4)); ry[m]=(s8)(vy-(((vy+8)>>4)<<4)); m++; } }
+    if(krev) for(int j=1,k=m-1;j<k;j++,k--){ s8 t=rx[j]; rx[j]=rx[k]; rx[k]=t; t=ry[j]; ry[j]=ry[k]; ry[k]=t; } }
+static int kcov(int d, int invw){ int c=128+((d*invw)>>8); return c<0?0:c>256?256:c; }   // how much of a texel lies inside an edge that is d (8.8 texels) from its centre
 static void kt_paint(void){
     u8 raw[KP_MAX]; for(int i=0;i<knp;i++) raw[i]=(u8)(hm_bil(kp_cx(i),kp_cy(i))>>8);
     kt_features(raw);
+    s8 *rx=(s8*)(void*)gen_acc, *ry=rx+KP_MAX; kt_resid(rx,ry);
+    { int r=0,g=0,b=0,n=0; for(int i=0;i<knp;i+=7){ for(int s=-1;s<=1;s+=2){ int t=((kpy[i]+s*9)&255)*HW+((kpx[i]+s*9)&255); u16 c=BG_PAL[cmap[t]]; r+=c&31; g+=(c>>5)&31; b+=(c>>10)&31; n++; } } if(!n) n=1; kter_avg=(u16)((r/n)|((g/n)<<5)|((b/n)<<10)); }
     int line = kt.surf!=1 && kt.surf!=2, rise = 300/(g_hs?g_hs:3); if(rise>110) rise=110;
     for(int i=0;i<knp;i++){
         int f=kpf[i]; if(f&KPF_GAP) continue;                                                 // the gap stays water: fly over it
@@ -264,22 +290,30 @@ static void kt_paint(void){
             int s0=0; for(int j=-4;j<=4;j++) s0+=raw[(a+j+knp)%knp]; int hb=s0/9; if(hb<water_lv+2) hb=water_lv+2; int wj = (e+1<knp && (kpf[e+1]&KPF_GAP)) ? rise*6/5 : rise;
             hp = hb + wj*(i-a+1)/(e-a+1); }
         if(hp>255) hp=255;
-        int a=(i+knp-1)%knp, b=(i+1)%knp, tx=kwrap8(kpx[b]-kpx[a]), ty=kwrap8(kpy[b]-kpy[a]), L=isqrt((u32)(tx*tx+ty*ty)); if(!L) L=1;
-        int ux=(tx<<8)/L, uy=(ty<<8)/L, cx=kpx[i], cy=kpy[i];
-        int start = i<=1 || i>=knp-1, pad=f&KPF_PAD, ramp=f&KPF_RAMP, kerb = ((i/6)&1) ? KRC_KR : KRC_KW;
-        for(int dy=-8;dy<=8;dy++) for(int dx=-8;dx<=8;dx++){
-            int al=dx*ux+dy*uy, la=dy*ux-dx*uy, aal=al<0?-al:al, ala=la<0?-la:la;
-            if(ala>(8<<8) || aal>256+(ala>>2)) continue;                                      // only the texels across the road from this point
+        int a=(i+knp-1)%knp, b=(i+1)%knp;
+        int pax=kwrap8(kpx[a]-kpx[i])*16+rx[a]-rx[i], pay=kwrap8(kpy[a]-kpy[i])*16+ry[a]-ry[i], pbx=kwrap8(kpx[b]-kpx[i])*16+rx[b]-rx[i], pby=kwrap8(kpy[b]-kpy[i])*16+ry[b]-ry[i];
+        int tx=pbx-pax, ty=pby-pay, L=isqrt((u32)(tx*tx+ty*ty)); if(!L) L=1;
+        int ux=(tx<<8)/L, uy=(ty<<8)/L, cx=kpx[i], cy=kpy[i], ox=rx[i], oy=ry[i];
+        int nw=(ux<0?-ux:ux)+(uy<0?-uy:uy); if(nw<256) nw=256; int invw=65536/nw;           // how wide a texel looks across the road (8.8)
+        int start = i<=1 || i>=knp-1, pad=f&KPF_PAD, ramp=f&KPF_RAMP, kw=((i/6)&1)==0;       // (kerb: red on odd stretches, white on even)
+        int dash=(i>>2)&1;
+        for(int dy=-9;dy<=9;dy++) for(int dx=-9;dx<=9;dx++){
+            int vx=dx*16-ox, vy=dy*16-oy, di=vx*vx+vy*vy, ax=vx-pax, ay=vy-pay, bx=vx-pbx, by=vy-pby;
+            if(ax*ax+ay*ay<di || bx*bx+by*by<=di) continue;                                   // a texel belongs to the nearest path point: painted once, never over-painted
+            int la=(vy*ux-vx*uy)>>4, ala=la<0?-la:la; if(ala>(8<<8)) continue;
             int t=((cy+dy)&255)*HW+((cx+dx)&255);
-            if(ala>KW_OUT){ if(!ramp) hfine[t]=(u8)((hfine[t]+hp+1)>>1); continue; }           // the shoulder eases into the land
-            int c;
-            if(ramp) c = ala>KW_IN ? KRC_RAMP2 : (i&1) ? KRC_RAMP : KRC_RAMP2;                 // a ramp: warning stripes across it
-            else if(ala>KW_IN) c = kerb;                                                       // red and white kerbs
-            else if(start) c = ((((la+1024)>>8)+i)&1) ? KRC_CK0 : KRC_CK1;                    // the chequered start line
-            else if(pad && ala<1100) c = ((((i*256-ala)>>7))&3)<2 ? KRC_PAD : KRC_A;             // boost chevrons
-            else if(line && ala<150 && ((i>>2)&1)) c=KRC_LINE;                                // the dashed centre line
-            else if(line && ala>KW_IN-200 && ala<KW_IN-60) c=KRC_LINE;                         // solid edge lines, so the road reads at a glance
-            else c = ((cx+dx)*7+(cy+dy)*13)&7 ? KRC_A : KRC_B;                  // clean asphalt, a few specks
+            int covK=kcov(KW_OUT-ala,invw);
+            if(covK<56){ if(!ramp){ hfine[t]=(u8)(ala<(4<<8) ? (hfine[t]+hp*3+2)>>2 : (hfine[t]+hp+1)>>1); } continue; }   // the shoulder eases into the land
+            int covA=kcov(KW_IN-ala,invw), c;
+            int inner = ramp ? ((i&1) ? KRC_RAMP : KRC_RAMP2) : start ? ((((la+1024)>>8)+i)&1) ? KRC_CK0 : KRC_CK1 : (pad && ala<1100) ? ((((i*256-ala)>>7)&3)<2 ? KRC_PAD : KRC_A) : KRC_A;
+            if(ramp && ala>KW_IN) inner=KRC_RAMP2;
+            if(covA>=128){                                                                    // the asphalt
+                if(inner==KRC_A){
+                    int cl=0; if(line){ int c1=kcov(KW_IN-60-ala,invw), c0=kcov(KW_IN-330-ala,invw); cl=c1-c0; if(cl<0) cl=0;       // the solid edge lines: a whole texel wide
+                        if(dash){ int d=kcov(128-ala,invw); if(d>cl) cl=d; } }
+                    c = cl>=128 ? KRC_LINE : (((i/5)&1) ? KRC_A : KRC_B); }
+                else c=inner; }
+            else c = covK>=200 ? (kw?KRC_KW:KRC_KR) : (kw?KRC_KWM:KRC_KRM);                    // the kerb, its outer edge soft
             cmap[t]=(u8)c; hfine[t]=(u8)hp; } }
     kt_painted=1; }
 static void land_colour(void);
@@ -467,7 +501,7 @@ static void kart_place_grid(int r, int slot){
 static void kart_go(int riders, int grid_me, int keep, int repaint){   // paint the track, line everyone up and start the countdown
     if(!kr_mode){ kret_x=ppx; kret_y=ppy; kret_h=heading; }
     kgive_back(); katan_init(); kloop_on=0; kloop_ph=0; kla=0; kloop_prev=-1; kdraft=0; kstuck=0; kbr_cur=0; kstar=0; kroul=0; for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; kloop_hide=0;
-    if(repaint || !kt_painted){ kt_unpaint(); kt_build(); kt_paint(); }
+    if(repaint || !kt_painted || kpaint_rev!=krev){ kt_unpaint(); kt_build(); kt_paint(); }
     khide_road(); kart_palette();
     nrc=riders<1?1:riders>NRC?NRC:riders; int used=0;
     { u16 pts=rc[0].pts; memset(&rc[0],0,sizeof(Racer)); rc[0].look=kl; scpy(rc[0].name,look.name); rc[0].skill=100; if(keep) rc[0].pts=pts; }
