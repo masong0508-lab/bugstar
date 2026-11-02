@@ -76,7 +76,9 @@ static int g_no_audio; static int dw_, dh_;                // drawable size in r
 static long g_stop_after=-1; static const char *g_wav_path; static FILE *g_wav; static long g_wav_n;
 static int g_paused_focus, g_fast;
 
-static void say_toast(const char *s){ snprintf(toast,sizeof toast,"%s",s); toast_until=SDL_GetTicks64()+2000; }
+static int g_first_run;
+static void say_toast_ms(const char *s,int ms){ snprintf(toast,sizeof toast,"%s",s); toast_until=SDL_GetTicks64()+ms; }
+static void say_toast(const char *s){ say_toast_ms(s,2000); }
 
 // ------------------------------------------------------------------------------------------------ PNG (stored, no compression library needed)
 static uint32_t crc_t[256]; static void crc_init(void){ for(uint32_t n=0;n<256;n++){ uint32_t c=n; for(int k=0;k<8;k++) c=c&1?0xEDB88320u^(c>>1):c>>1; crc_t[n]=c; } }
@@ -430,6 +432,7 @@ void plat_frame(void){
     }
     if(!menu_open && now){ t_next=SDL_GetPerformanceCounter(); }
     { const char *mp=getenv("BUGSTAR_MENU"); if(mp && fr==30 && !menu_open){ open_menu(); menu_page=atoi(mp); if(getenv("BUGSTAR_MENUSEL")) menu_sel=atoi(getenv("BUGSTAR_MENUSEL")); } }   // (test hook: open the options screen on a page)
+    if(g_first_run && fr==45){ g_first_run=0; say_toast_ms("ARROWS/WASD MOVE  X/SPACE=A  Z/K=B  ENTER=START  ESC=OPTIONS",9000); }
     uint16_t k; fakepad_frame(fr);
     if(pc_script_keys(&k)) pc_set_keys(k); else { k=read_keys(); pc_set_keys(k); if(getenv("BUGSTAR_FAKEPAD") && k) fprintf(stderr,"fakepad: frame %ld keys=%03x pad=%s\n",fr,k,pad?SDL_GameControllerName(pad):"none"); }
     rumble_frame();
@@ -466,7 +469,7 @@ int plat_paths(int argc, char **argv){            // finds the folders; call bef
     return 0;
 }
 int plat_open(int argc, char **argv){
-    cfg_defaults(); cfg_load();
+    cfg_defaults(); { FILE *tf=fopen(g_cfgpath,"r"); if(tf) fclose(tf); else g_first_run=1; } cfg_load();
     int force_fs=-1; const char *drv=NULL;
     for(int i=1;i<argc;i++){
         if(!strcmp(argv[i],"--fullscreen")) force_fs=1; else if(!strcmp(argv[i],"--windowed")) force_fs=0;
@@ -487,7 +490,7 @@ int plat_open(int argc, char **argv){
     SDL_SetHint(SDL_HINT_APP_NAME,"BUGSTAR");
     if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){
         if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){ fprintf(stderr,"SDL: %s\n",SDL_GetError()); return 1; } g_no_audio=1; }
-    win=SDL_CreateWindow("BUGSTAR",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,C.win_w,C.win_h,SDL_WINDOW_RESIZABLE|SDL_WINDOW_ALLOW_HIGHDPI|(C.fullscreen?SDL_WINDOW_FULLSCREEN_DESKTOP:0));
+    win=SDL_CreateWindow("BUGSTAR   ARROWS/WASD MOVE   X/SPACE=A   Z/K=B   ENTER=START   ESC=OPTIONS",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,C.win_w,C.win_h,SDL_WINDOW_RESIZABLE|SDL_WINDOW_ALLOW_HIGHDPI|(C.fullscreen?SDL_WINDOW_FULLSCREEN_DESKTOP:0));
     if(!win){ fprintf(stderr,"window: %s\n",SDL_GetError()); return 1; }
     SDL_SetWindowMinimumSize(win,240,160);
     ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_ACCELERATED|(C.vsync?SDL_RENDERER_PRESENTVSYNC:0));
