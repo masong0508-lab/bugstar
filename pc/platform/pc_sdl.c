@@ -328,9 +328,10 @@ static void pad_open(void){
     if(pad) return;
     for(int i=0;i<SDL_NumJoysticks();i++) if(SDL_IsGameController(i)){ pad=SDL_GameControllerOpen(i); if(pad){ pad_rumble_ok=SDL_GameControllerHasRumble(pad); fprintf(stderr,"gamepad: %s\n",SDL_GameControllerName(pad)); say_toast("GAMEPAD CONNECTED"); break; } }
 }
+static uint8_t kst[512]; static uint16_t g_lastkeys;
 static uint16_t read_keys(void){
     uint16_t down=0; const Uint8 *ks=SDL_GetKeyboardState(NULL);
-    for(int b=0;b<NB;b++){ if((C.kb[b][0]&&ks[C.kb[b][0]])||(C.kb[b][1]&&ks[C.kb[b][1]])) down|=1<<b; }
+    for(int b=0;b<NB;b++){ for(int sl=0;sl<2;sl++){ int c=C.kb[b][sl]; if(c&&c<512&&(ks[c]||kst[c])) down|=1<<b; else if(c>=512&&ks[c]) down|=1<<b; } }
     if(pad){
         for(int b=0;b<NB;b++) if(SDL_GameControllerGetButton(pad,C.pad[b])) down|=1<<b;
         int dz=C.deadzone*32767/100; int lx=SDL_GameControllerGetAxis(pad,SDL_CONTROLLER_AXIS_LEFTX), ly=SDL_GameControllerGetAxis(pad,SDL_CONTROLLER_AXIS_LEFTY);
@@ -348,13 +349,15 @@ static void rumble_frame(void){
     if(s>0 && !menu_open){ int lo=s*8000, hi2=s*5000; if(lo>65535)lo=65535; SDL_GameControllerRumble(pad,(Uint16)lo,(Uint16)hi2,60); }
 }
 static void open_menu(void){ menu_open=1; menu_page=P_MAIN; menu_sel=0; menu_wait=0; mp_choice=0; for(int i=0;i<7;i++) if(mp_val(i)==C.max_mp) mp_choice=i; }
+static void inject_step(void);
 static void pump_events(void){
-    SDL_Event e;
+    SDL_Event e; inject_step();
     while(SDL_PollEvent(&e)){
         switch(e.type){
         case SDL_QUIT: cfg_save(); pc_quit_now(); break;
         case SDL_WINDOWEVENT:
             if(e.window.event==SDL_WINDOWEVENT_SIZE_CHANGED && !C.fullscreen && !(SDL_GetWindowFlags(win)&SDL_WINDOW_MINIMIZED)){ int w,h; SDL_GetWindowSize(win,&w,&h); if(w>=240&&h>=160){ C.win_w=w; C.win_h=h; } }
+            if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST) memset(kst,0,sizeof kst);
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST && C.pause_unfocus) g_paused_focus=1;
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_GAINED) g_paused_focus=0;
             break;
@@ -380,7 +383,9 @@ static void pump_events(void){
             else if(e.cbutton.button==SDL_CONTROLLER_BUTTON_GUIDE) open_menu();
             else if((e.cbutton.button==SDL_CONTROLLER_BUTTON_START && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_BACK)) || (e.cbutton.button==SDL_CONTROLLER_BUTTON_BACK && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_START))) open_menu();
             break;
+        case SDL_KEYUP: if(e.key.keysym.scancode<512) kst[e.key.keysym.scancode]=0; break;
         case SDL_KEYDOWN:
+            if(e.key.keysym.scancode<512) kst[e.key.keysym.scancode]=1;
             if(e.key.repeat && !menu_open) break;
             if(e.key.keysym.sym==SDLK_F11 || (e.key.keysym.sym==SDLK_RETURN && (e.key.keysym.mod&KMOD_ALT))){ toggle_fullscreen(); break; }
             if(e.key.keysym.sym==SDLK_F12){ shot_pending=1; break; }
@@ -392,6 +397,34 @@ static void pump_events(void){
     }
 }
 
+
+// ---- test hook (BUGSTAR_EVENTS=file): events pushed into SDL's own queue (dummy video driver works), to test keyboard, mouse, gamepad, Esc options, F11, F12, rebinding.
+//   each line: "<pumps to wait> <command>"; commands: key down|up NAME | pad attach | pad button NAME 0|1 | pad axis NAME VALUE | mouse X Y | click L|R 0|1 | wheel N | dump | quit
+static FILE *inj_f; static int inj_wait=-1, inj_mx, inj_my; static char inj_cmd[200]; static int inj_vid=-1; static int inj_init;
+static void inj_dump(void){ fprintf(stderr,"EV dump: menu=%d page=%d sel=%d wait=%d fs=%d keys=%03x mouse=%d,%d b=%d pad=%s vol=%d shots=%d kb_A=%s/%s pad_A=%s\n",menu_open,menu_page,menu_sel,menu_wait,C.fullscreen,g_lastkeys,pc_mouse_x,pc_mouse_y,pc_mouse_b,pad?"yes":"no",C.volume,
+    (int)(shot_pending),C.kb[0][0]?SDL_GetScancodeName(C.kb[0][0]):"-",C.kb[0][1]?SDL_GetScancodeName(C.kb[0][1]):"-",SDL_GameControllerGetStringForButton(C.pad[0])); }
+static void inject_step(void){
+    if(!inj_init){ inj_init=1; const char *e=getenv("BUGSTAR_EVENTS"); if(e&&*e) inj_f=fopen(e,"r"); }
+    if(!inj_f) return;
+    if(inj_wait<0){ char ln[200]; if(!fgets(ln,sizeof ln,inj_f)){ fclose(inj_f); inj_f=0; return; } if(ln[0]=='#'||ln[0]=='\n'){ inj_wait=0; snprintf(inj_cmd,sizeof inj_cmd,"nop"); return; } int w=0,n=0; if(sscanf(ln,"%d %n",&w,&n)<1){ inj_wait=0; snprintf(inj_cmd,sizeof inj_cmd,"nop"); return; } inj_wait=w; snprintf(inj_cmd,sizeof inj_cmd,"%s",ln+n); }
+    if(inj_wait>0){ inj_wait--; return; }
+    inj_wait=-1; char a[64]="",b[64]="",c[64]=""; int x=0,y=0,k; SDL_Event e; SDL_zero(e);
+    if(sscanf(inj_cmd,"key %63s %63s",a,b)==2){ SDL_Scancode sc=SDL_GetScancodeFromName(b); if(sc==SDL_SCANCODE_UNKNOWN){ fprintf(stderr,"EV bad key %s\n",b); return; } e.type=!strcmp(a,"down")?SDL_KEYDOWN:SDL_KEYUP; e.key.keysym.scancode=sc; e.key.keysym.sym=SDL_GetKeyFromScancode(sc); e.key.state=e.type==SDL_KEYDOWN; SDL_PushEvent(&e); }
+    else if(!strncmp(inj_cmd,"pad attach",10)){
+        #if SDL_VERSION_ATLEAST(2,0,16)
+        SDL_VirtualJoystickDesc d; SDL_zero(d); d.version=SDL_VIRTUAL_JOYSTICK_DESC_VERSION; d.type=SDL_JOYSTICK_TYPE_GAMECONTROLLER; d.naxes=SDL_CONTROLLER_AXIS_MAX; d.nbuttons=SDL_CONTROLLER_BUTTON_MAX; d.name="BUGSTAR TEST PAD";
+        inj_vid=SDL_JoystickAttachVirtualEx(&d); fprintf(stderr,"EV pad attach -> %d\n",inj_vid); if(inj_vid>=0) SDL_JoystickOpen(inj_vid);
+        #endif
+    }
+    else if(sscanf(inj_cmd,"pad button %63s %d",a,&k)==2){ SDL_Joystick *j=inj_vid>=0?SDL_JoystickFromInstanceID(SDL_JoystickGetDeviceInstanceID(inj_vid)):0; int bt=SDL_GameControllerGetButtonFromString(a); if(j&&bt>=0) SDL_JoystickSetVirtualButton(j,bt,k); else fprintf(stderr,"EV pad button failed %s\n",a); }
+    else if(sscanf(inj_cmd,"pad axis %63s %d",a,&k)==2){ SDL_Joystick *j=inj_vid>=0?SDL_JoystickFromInstanceID(SDL_JoystickGetDeviceInstanceID(inj_vid)):0; int ax=SDL_GameControllerGetAxisFromString(a); if(j&&ax>=0) SDL_JoystickSetVirtualAxis(j,ax,k); else fprintf(stderr,"EV pad axis failed %s\n",a); }
+    else if(sscanf(inj_cmd,"mouse %d %d",&x,&y)==2){ inj_mx=x; inj_my=y; e.type=SDL_MOUSEMOTION; e.motion.x=x; e.motion.y=y; SDL_PushEvent(&e); }
+    else if(sscanf(inj_cmd,"click %63s %d",a,&k)==2){ e.type=k?SDL_MOUSEBUTTONDOWN:SDL_MOUSEBUTTONUP; e.button.button=a[0]=='R'?SDL_BUTTON_RIGHT:SDL_BUTTON_LEFT; e.button.x=inj_mx; e.button.y=inj_my; e.button.state=k; SDL_PushEvent(&e); }
+    else if(sscanf(inj_cmd,"wheel %d",&k)==1){ e.type=SDL_MOUSEWHEEL; e.wheel.y=k; SDL_PushEvent(&e); }
+    else if(!strncmp(inj_cmd,"dump",4)) inj_dump();
+    else if(!strncmp(inj_cmd,"quit",4)){ pc_quit_now(); }
+    (void)b; (void)c;
+}
 // ---- test hook (BUGSTAR_FAKEPAD=1): a virtual gamepad that is plugged in, pressed, unplugged and plugged in again, to test hot-plug, reading and rebinding without hardware
 static int fake_id=-1, fake_idx=-1;
 static void fakepad_frame(long fr){
@@ -435,7 +468,7 @@ void plat_frame(void){
     if(g_first_run && fr==45){ g_first_run=0; say_toast_ms("ARROWS/WASD MOVE  X/SPACE=A  Z/K=B  ENTER=START  ESC=OPTIONS",9000); }
     uint16_t k; fakepad_frame(fr);
     if(pc_script_keys(&k)) pc_set_keys(k); else { k=read_keys(); pc_set_keys(k); if(getenv("BUGSTAR_FAKEPAD") && k) fprintf(stderr,"fakepad: frame %ld keys=%03x pad=%s\n",fr,k,pad?SDL_GameControllerName(pad):"none"); }
-    rumble_frame();
+    g_lastkeys=k; rumble_frame();
     { static long saved_at; if(fr-saved_at>=120){ saved_at=fr; pc_save_flush(0); } }
     if(g_stop_after>=0 && fr>=g_stop_after && !(g_autoshot_path && g_autoshot_frame>=0)) pc_quit_now();   // (a screenshot still waiting is taken first)
 }

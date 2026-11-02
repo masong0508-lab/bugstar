@@ -1,0 +1,90 @@
+# injected SDL events (see inject_step in platform/pc_sdl.c). "<pumps to wait> <command>"
+90 dump
+2 key down X
+3 dump
+1 key up X
+3 key down D
+3 dump
+1 key down A
+3 dump
+1 key up A
+1 key up D
+2 key down Return
+3 dump
+1 key up Return
+2 pad attach
+15 pad button A 1
+5 dump
+1 pad button A 0
+2 pad axis LEFTX 32000
+5 dump
+1 pad axis LEFTX 0
+1 pad axis LEFTY -32000
+5 dump
+1 pad axis LEFTY 0
+1 mouse 480 320
+2 click L 1
+5 dump
+1 click L 0
+2 wheel 1
+5 dump
+5 key down F12
+2 key up F12
+10 key down Escape
+2 key up Escape
+10 dump
+2 key down Down
+1 key up Down
+2 key down Down
+1 key up Down
+2 key down Return
+1 key up Return
+5 dump
+2 key down Right
+1 key up Right
+5 dump
+2 key down Escape
+1 key up Escape
+3 dump
+2 key down Down
+1 key up Down
+2 key down Down
+1 key up Down
+2 key down Down
+1 key up Down
+2 key down Down
+1 key up Down
+2 key down Return
+1 key up Return
+3 dump
+2 key down Return
+1 key up Return
+3 dump
+2 key down J
+1 key up J
+3 dump
+2 key down Escape
+1 key up Escape
+2 key down Escape
+1 key up Escape
+10 dump
+10 key down F11
+2 key up F11
+10 dump
+10 key down F11
+2 key up F11
+10 dump
+10 pad button BACK 1
+2 pad button START 1
+10 dump
+2 pad button BACK 0
+1 pad button START 0
+2 pad button B 1
+2 pad button B 0
+10 dump
+5 key down Escape
+1 key up Escape
+5 key down Escape
+1 key up Escape
+5 dump
+5 quit
