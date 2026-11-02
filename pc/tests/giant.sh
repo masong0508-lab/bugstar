@@ -8,11 +8,15 @@ run(){ # name script frames [env]
     rm -f out/gt_$1_* out/gt_$1.sav*
     env $4 ./bugstar_pc --script tests/$2 --out out/gt_$1 --sav out/gt_$1.sav --frames $3 > out/gt_$1.log 2>&1 || { echo "giant: $1 CRASHED"; fail=1; return; }
     n=$(grep -c "^shot" out/gt_$1.log); u=$(grep "^shot" out/gt_$1.log | sed 's/.*screen=//' | sort -u | wc -l)
-    [ "$n" -ge 4 ] && [ "$u" -ge $((n - 1)) ] || { echo "giant: $1: $u different pictures of $n shots"; fail=1; }
+    [ "$n" -ge 4 ] && [ "$u" -ge "${MINU:-$((n - 1))}" ] || { echo "giant: $1: $u different pictures of $n shots"; fail=1; }
     python3 tests/ppm2png.py --sheet out/giant_$1.png out/gt_$1_*.ppm 2>/dev/null
     echo "giant: $1: $n shots, $u different"
 }
-run live giant_pow.txt 5960 "BUGSTAR_GIANT_DIR=$(pwd)/out/gt_nodir"
-run count giant_count.txt 5800
-if [ -n "$BUGSTAR_GIANT_DIR" ]; then run v3 giant_v3.txt 6600 "BUGSTAR_GIANT_DIR=$BUGSTAR_GIANT_DIR"; else echo "giant: v3 screens skipped (set BUGSTAR_GIANT_DIR to a folder with the V3 index)"; fi
+G="BUGSTAR_WS_AT=650 BUGSTAR_WS_TEST=giant,0,0"      # the hook opens GIANT NUMBERS (the PC LAB entry) once the game runs; the scripts press keys in the hub
+run live giant_pow.txt 5400 "BUGSTAR_GIANT_DIR=$(pwd)/out/gt_nodir $G"
+run count giant_count.txt 5000 "$G"
+run misc giant_misc.txt 5200 "$G"
+# the V3 name with NO digit folder: the row says INDEX NEEDED, opening it must not crash
+MINU=3 run v3none giant_v3.txt 4500 "BUGSTAR_GIANT_DIR=$(pwd)/out/gt_nodir $G"
+if [ -n "$BUGSTAR_GIANT_DIR" ]; then run v3 giant_v3.txt 6600 "BUGSTAR_GIANT_DIR=$BUGSTAR_GIANT_DIR $G"; else echo "giant: v3 with the index skipped (set BUGSTAR_GIANT_DIR to a folder with the V3 index)"; fi
 [ $fail = 0 ] && echo "giant: OK" || exit 1

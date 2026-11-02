@@ -403,8 +403,15 @@ static void pc_ws_autotest(void){
     static int done=0; if(in_game) pcm_tick(); if(done || !in_game) return; const char *e=getenv("BUGSTAR_WS_TEST"); if(!e){ done=1; return; }
     const char *at=getenv("BUGSTAR_WS_AT"); if(frames < (at?atoi(at):0) || scene!=0) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
     char mode[16]={0}; int z=WS_ZREF; unsigned seed=0; sscanf(e,"%15[a-z],%d,%u",mode,&z,&seed);
-    if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)0x06000000); return; }
-    if(!strcmp(mode,"missions")){ pc_ms_board((volatile u16*)0x06000000,MP_STATION); return; }
+    if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)0x06000000); fprintf(stderr,"screen lab returned\n"); return; }
+    { const char *g=getenv("BUGSTAR_AFT_GOLD"); if(g) gold=atoll(g); }
+    if(!strcmp(mode,"pclab")){ pc_lab_screen((volatile u16*)0x06000000); fprintf(stderr,"screen pclab returned\n"); return; }
+    if(!strcmp(mode,"shop")){ shop_menu(); fprintf(stderr,"screen shop returned\n"); return; }                                  // (screens test) the ship's shop menu (supplies, gear, sell, quest board, heal...)
+    if(!strcmp(mode,"spshop")){ spell_shop((volatile u16*)0x06000000); fprintf(stderr,"screen spshop returned\n"); return; }
+    if(!strcmp(mode,"bench")){ workbench((volatile u16*)0x06000000); fprintf(stderr,"screen bench returned\n"); return; }
+    if(!strcmp(mode,"colony")){ sim_ship_colony((volatile u16*)0x06000000); fprintf(stderr,"screen colony returned\n"); return; }
+    if(!strcmp(mode,"giant")){ pc_giant_hub((volatile u16*)0x06000000); fprintf(stderr,"screen giant returned\n"); return; }
+    if(!strcmp(mode,"missions")){ pc_ms_board((volatile u16*)0x06000000,MP_STATION); fprintf(stderr,"screen missions returned\n"); return; }
     if(!strcmp(mode,"hell")){ pcm_enc_mode=3; pcm_test_hell(); return; }               // (aftermath test) the surface burns now
     if(!strcmp(mode,"dun")){ pcm_enc_mode=3; enter_dungeon_flag=1; return; }                            // (aftermath test) go through the door; BUGSTAR_AFT_DUN=seal|inv|board says what happens down there
     if(!strcmp(mode,"encounter")){ pcm_enc_mode=3; pcm_clk=3599; pcm_enc_force=1; return; }
