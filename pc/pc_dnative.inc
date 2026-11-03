@@ -21,6 +21,7 @@ static inline int dn_bil(const u8 *tab, int base, s32 fx, s32 fy, int *rmp, int 
     int a=tab[base|(y0<<5)|x0], b=tab[base|(y0<<5)|x1], c=tab[base|(y1<<5)|x0], d=tab[base|(y1<<5)|x1];
     if((a>>5)==(b>>5) && (a>>5)==(c>>5) && (a>>5)==(d>>5)){ *rmp=a>>5; return (((a&31)*(32-fu)+(b&31)*fu)*(32-fv)+((c&31)*(32-fu)+(d&31)*fu)*fv)>>1; }   // (31*32*32 = 31744, in 1/512 of a shade step... see below)
     int t=(fv>=16)?((fu>=16)?d:c):((fu>=16)?b:a); *rmp=t>>5; return (t&31)<<9; }
+static int dn_low;      // 1 = cheap mode (nearest texel instead of the 4-texel blend on floors and ceilings); switched on by pc_dn_native when frames cost too much
 static void dn_rows(void *vc, int lo, int hi){
     DnCtx *c=(DnCtx*)vc; int W=c->W; double sy=c->sy, hz=c->hzf;
     for(int Y=lo+c->Y0;Y<hi+c->Y0;Y++){ double yg=(Y+0.5)/sy; uint32_t *row=c->buf+(unsigned long)(Y-c->Y0)*W;
@@ -28,7 +29,7 @@ static void dn_rows(void *vc, int lo, int hi){
         if(fl || yg<hz){ double dd=fl?yg-hz:hz-yg; if(dd<0.5) dd=0.5; if(dd>98.5) dd=98.5; d0=(int)dd; d1=d0+1; fr=dd-d0; if(d0<1){ d0=1; fr=0; }
             if(fl){ rd=(double)(FOC<<15)/dd; sl=(int)(rl_rel[d0]+(rl_rel[d1]-rl_rel[d0])*fr); fg=(int)(rf_rel[d0]+(rf_rel[d1]-rf_rel[d0])*fr); }
             else { rd=(double)(FOC<<16)/dd; sl=(int)(cl_rel[d0]+(cl_rel[d1]-cl_rel[d0])*fr); fg=(int)(cf_rel[d0]+(cf_rel[d1]-cf_rel[d0])*fr); }
-            { double dx=rd*(c->rxc[W>1?W-1:0]-c->rxc[0])/65536.0/(W>1?W-1:1); if(dx<0) dx=-dx; bil = dx<3000.0; { double m=2048.0/(dx>1?dx:1); bm=(int)(m*16); if(bm>256) bm=256; if(bm<16) bm=16; } } }      // (one pixel covers less than 1.5 texels: blend the texels)
+            { double dx=rd*(c->rxc[W>1?W-1:0]-c->rxc[0])/65536.0/(W>1?W-1:1); if(dx<0) dx=-dx; bil = !dn_low && dx<3000.0; { double m=2048.0/(dx>1?dx:1); bm=(int)(m*16); if(bm>256) bm=256; if(bm<16) bm=16; } } }      // (one pixel covers less than 1.5 texels: blend the texels)
         for(int X=0;X<W;X++){ const DnCol *k=&c->col[X];
             if(yg>=k->top && yg<k->bot){                                                             // the wall
                 if(k->edge || Y==k->yt || Y==k->yb){ row[X]=dn_pk(k->rp[0]&0xFF,0); continue; }
@@ -106,5 +107,7 @@ static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply)
     { int step=W/120>1?W/120:1; for(int X=0;X<W;X++){ int p=col[X].edge, e=0; if(X>=step && col[X-step].edge-p>0x400) e=1; if(X+step<W && col[X+step].edge-p>0x400) e=1; col[X].L|=e<<16; } for(int X=0;X<W;X++){ col[X].edge=col[X].L>>16; col[X].L&=0xFFFF; } }
     DnCtx c={W,H,Y0,sy,hzf,col,rxc,ryc,pc_dn_buf,px_,py_}; pc_par_chunk(H-Y0,8,dn_rows,&c);
     int t=((uintptr_t)pg)>=0x0600A000u?1:0; pc_dn_w=W; pc_dn_h=H; memcpy(pc_dn_snap[t],(const void*)pg,240*160); pc_dn_f[t]=pc_frames(); dn_active=1;      // (the page as render_view left it: what changes after is the game's own)
-    pc_dn_report(pc_now_ms()-a0,W,H);
+    { double ms=pc_now_ms()-a0; static double ema; static int n, env=-1; if(env<0){ const char *e=getenv("PC_DN_LOW"); env=e?atoi(e):0; }
+      ema = n++ ? ema*0.92+ms*0.08 : ms; if(n>30){ if(!dn_low && ema>12.0) dn_low=1; else if(dn_low && ema<3.5) dn_low=0; } if(env) dn_low=env>0;      // slow machine: drop to the cheap mode (an average above 12 ms a frame); back when it is cheap again
+      pc_dn_report(ms,W,H); }
 }

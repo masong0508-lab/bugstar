@@ -7,10 +7,18 @@
 - Compiles cleanly (pc/build.sh, ~100 s). Checked in the classic viewer (headless city screenshot): nearby buildings show floors and
   windows, far ones stay plain blocks (detail cutoff ~8 cells). The native window renderer was NOT looked at, NOT run on Windows.
 
+## Patch 03 (dungeon lag) - what was found and done
+- Could NOT reproduce a multi-second stall on entering a dungeon. Headless (1 core), no frame over 40 ms in game logic: floor generation is not the culprit.
+- Native dungeon renderer (pc_dnative.inc) costs ~9 ms/frame at 960x640 on one core (~30 ms estimated at 1920x1080 on one core); threads help on multi-core.
+- Added: adaptive CHEAP MODE (nearest texel instead of the 4-texel blend on floors/ceilings). Switches on when the 30-frame average passes 12 ms,
+  off again under 3.5 ms. Measured saving only ~17% (9.0 -> 7.6 ms). Force it with env PC_DN_LOW=1 (off with 0). Real Windows gain: unmeasured.
+- Still open: the real cause of the Windows blank stall. Ideas: win64 memory mapping on first dungeon frame, compositor path (pc_hw.c ~line 540),
+  a stronger cheap level (render fewer rows / lower internal size), a per-frame timing log written to a file (the Windows exe has no console).
+
 ## NOT done
 1. Tune buildings further: look at the native (window) renderer, tune floor height (32), window ranges, glass tint choice.
    Camera is 4 cells up and buildings only ~0.7-2.2 cells tall: consider taller towers in town.inc city_stamp (hfine is capped at 255).
-2. DUNGEON LAG - not diagnosed. Video: blank stall of a few seconds right after entering a dungeon.
+2. DUNGEON LAG - partly addressed by patch 03 (see above), cause of the stall still unknown. Video: blank stall of a few seconds right after entering a dungeon.
    Suspects: (a) pc/pc_dnative.inc native renderer, per-pixel double maths at full window size -> cap internal resolution / skip rows;
    (b) floor generation on entry (make_floor / fm_make in dungeon.inc).
    Measure: PC_TIMING=1 prints ms per frame. Headless entry: BUGSTAR_WS_TEST=dun,0,0 BUGSTAR_AFT_DUN=seal BUGSTAR_AFT_TOPUP=1
