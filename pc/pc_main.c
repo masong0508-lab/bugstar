@@ -15,6 +15,34 @@
 #endif
 #include "pc_hw.h"
 #include "platform/pc_plat.h"
+#ifdef _WIN32
+// Windows: the exe is a window program (no console), so every error used to vanish. Now: a log file next to the exe and an error box.
+#include <windows.h>
+extern unsigned pc_map_fail_addr; extern unsigned long pc_map_fail_err;
+static char g_logpath[MAX_PATH];
+static void win_fatal(const char *what){
+    char tail[800]; tail[0]=0; fflush(stderr);
+    { FILE *f=fopen(g_logpath,"rb"); if(f){ fseek(f,0,SEEK_END); long sz=ftell(f); long st=sz>799?sz-799:0; fseek(f,st,SEEK_SET); size_t r=fread(tail,1,799,f); tail[r]=0; fclose(f); } }
+    char msg[1800]; snprintf(msg,sizeof msg,"%s\n\nLog file: %s\n\n%s",what,g_logpath,tail);
+    MessageBoxA(0,msg,"BUGSTAR",MB_OK|MB_ICONERROR);
+}
+static LONG WINAPI win_crash(EXCEPTION_POINTERS *e){
+    fprintf(stderr,"CRASH code=%08lx at %p (touched %p)\n",(unsigned long)e->ExceptionRecord->ExceptionCode,e->ExceptionRecord->ExceptionAddress,e->ExceptionRecord->NumberParameters>1?(void*)e->ExceptionRecord->ExceptionInformation[1]:(void*)0);
+    win_fatal("BUGSTAR crashed.");
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+static void win_setup(void){
+    char exe[MAX_PATH]; const char *mode=getenv("PC_RETRY")?"a":"w";
+    GetModuleFileNameA(0,exe,MAX_PATH); { char *s=strrchr(exe,'\\'); if(s) *s=0; }
+    snprintf(g_logpath,sizeof g_logpath,"%s\\bugstar_log.txt",exe);
+    if(!freopen(g_logpath,mode,stderr)){ char t[MAX_PATH]; GetTempPathA(MAX_PATH,t); snprintf(g_logpath,sizeof g_logpath,"%sbugstar_log.txt",t); freopen(g_logpath,mode,stderr); }
+    setvbuf(stderr,0,_IONBF,0);
+    fprintf(stderr,"BUGSTAR PC log (retry=%s)\n",getenv("PC_RETRY")?getenv("PC_RETRY"):"0");
+    SetUnhandledExceptionFilter(win_crash);
+}
+#else
+#define win_fatal(x) ((void)0)
+#endif
 #ifdef PC_SDL
 int plat_paths(int argc, char **argv); const char *plat_save_path(void);
 #endif
@@ -31,6 +59,9 @@ static void game_entry(void){ if(g_view) pc_view_main(g_argc,g_argv); else bugst
 
 int main(int argc, char **argv){
     const char *script=0, *out="pc_out", *sav=0; long frames=-1; int want_window=-1;
+#ifdef _WIN32
+    win_setup();
+#endif
     for(int i=1;i<argc;i++){
         if(!strcmp(argv[i],"--script")&&i+1<argc) script=argv[++i];
         else if(!strcmp(argv[i],"--out")&&i+1<argc) out=argv[++i];
@@ -52,10 +83,18 @@ int main(int argc, char **argv){
         // rare: the system put a library or the stack on a low address the fake GBA needs; start over (the layout is random each time)
         { const char *r=getenv("PC_RETRY"); int n=r?atoi(r):0; if(n<8){ char b[8]; snprintf(b,8,"%d",n+1); setenv("PC_RETRY",b,1); execv("/proc/self/exe",argv); } }
 #endif
+#ifdef _WIN32
+        // the system put something (a stack, the heap, a library) on an address the fake GBA needs: start the program again (the layout is random each time)
+        { const char *r=getenv("PC_RETRY"); int n=r?atoi(r):0; fprintf(stderr,"cannot map the GBA memory at %08x (windows error %lu), attempt %d\n",pc_map_fail_addr,pc_map_fail_err,n);
+          if(n<12){ char b[16]; snprintf(b,16,"%d",n+1); SetEnvironmentVariableA("PC_RETRY",b);
+            STARTUPINFOA si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si;
+            if(CreateProcessA(0,GetCommandLineA(),0,0,FALSE,0,0,0,&si,&pi)){ CloseHandle(pi.hThread); CloseHandle(pi.hProcess); return 0; } }
+          win_fatal("BUGSTAR could not set up its memory."); }
+#endif
         return 2; }
     pc_script(script,out,frames);
 #ifdef PC_SDL
-    if(want_window){ pc_set_window_mode(1); if(plat_open(argc,argv)) return 2; }
+    if(want_window){ pc_set_window_mode(1); if(plat_open(argc,argv)){ win_fatal("BUGSTAR could not open its window."); return 2; } }
 #endif
     g_argc=argc; g_argv=argv;
     // The game stores some addresses in 32-bit numbers (for DMA). Run it on a stack below 4 GB so those still point at the right place.
