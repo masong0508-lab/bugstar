@@ -48,17 +48,12 @@ about no window, no sound and wrong kart ground are history; the window, sound, 
 
 ## Not done (the limits)
 
-- **No window, sound or controller yet.** SDL is not installed here and the network is closed, so the front end could not be built or
-  tested. `pc_render()` already gives a 240x160 RGB frame; an SDL window is a small step on top. Sound registers are written to
-  memory and the music code runs, but nothing is played.
-- **Kart races: the ground is wrong or missing.** It uses a DMA per scanline (HBlank DMA). `pc_dma3` only does "start now" copies.
-- Not drawn: windows, mosaic, tile backgrounds, object-window sprites. A search of the game's code finds no use of them (only the boot
-  logo uses tile layers, and the PC build skips the logo).
-- The dungeon, space and kart screens were not played through by me on this build. They compile and link, nothing crashed in the
-  title / creators / planet scene, but I have no evidence for the rest yet.
-- The native 3D "POLY" look is **not started** (see below). The seed viewer shows the CLASSIC look only.
-- This is 64-bit. The saved layout matches the GBA's (see above), so the saved structs held up; other 64-bit surprises are possible
-  (the build hides compiler warnings with `-w`; I did not review them).
+- **Windows exe** is cross-compiled and has never been run on real Windows.
+- **Native-resolution 3D** for the dungeon, planet and space views is not done: they still draw at 240x160 and are scaled (see NATIVE_PLAN.md, Seam 6).
+- **Not drawn:** windows, mosaic, tile backgrounds, object-window sprites (the game's code does not use them; only the skipped boot logo uses tile layers).
+- **Kart NATIVE view** is about 34 to 44 ms a frame at 1200x800 on a 2-core box (target 60 fps).
+- The build hides compiler warnings with `-w`; 64-bit surprises beyond the saved layout are possible.
+- Window, sound, gamepad, mouse, kart ground and the native dungeon exist now (see ROADMAP_NEXT.md).
 
 ## The universe the game already has (names for the code that does it)
 

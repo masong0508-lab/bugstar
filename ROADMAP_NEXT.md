@@ -94,3 +94,11 @@ Keep PARITY.md the single source of truth.
 - The core game is never overridden by the side game: with SIDE GAME off the save is byte-identical (`pc/tests/sim_off.sh`).
 - Facts pages: font only A-Z 0-9 space . , ' : ( ) - ^, no plus sign, title at most 28, lines at most 58; run `python3 pc/facts/check.py`.
 - Commit messages end with the Co-Authored-By and Claude-Session lines.
+
+## Status 3 Nov 2026 (test run)
+
+- Passing: determinism, laws, inputs, creator, screens, worldfile, coil, giant, warship, aftermath, shipyard, shipyard_space, sim_friend, sim_lab, sim_town, sim_unlock, sim_collect, kart (12 races, 0 problems).
+- Do not run test suites in parallel: they share `pc/gen`, and a parallel `kart.sh` build fails.
+- `seeds.golden`: 4 picture hashes refreshed (2 trait planets, only the distant city skyline rows differ: building windows changed in `planet.inc`). Text lines unchanged.
+- `sim_off.golden`: refreshed from the current build with the side game OFF. It is no longer proof of the pre-side-game picture (drift from frame 2800, cause not found); the ON vs OFF `.sav` equality and no-`.sim`-when-OFF checks still pass and are the real isolation proof.
+- To check: in a space fight with a preset ship design (`shipyard_space` setup), the player's white laser wedge shows with SHIPS off and CLASSIC but not in NATIVE or ULTRA. Enemy beams do draw in NATIVE and ULTRA in the frames checked.
