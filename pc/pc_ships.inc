@@ -60,6 +60,18 @@ static void pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_){
         uint32_t col=pc_sr_rgb(base+sh); if(half) col=pc_sr_mixc(col,pc_sr_rgb(base+sh+1));
         float X[8], Y[8]; for(int k=0;k<F->n;k++){ X[k]=px[F->v[k]]; Y[k]=py[F->v[k]]; }
         sr_poly2d(X,Y,F->n,2.0f+zs/1000.0f,col); }
+    if(sh_flame) for(int e=0;e<sh_en;e++){                                                                         // the game's flame: two crossed cones per engine (as ship.inc sh_flames), white-hot inside, at window resolution
+        float ex=sh_eng[e][0], ey=sh_eng[e][1], bz=sh_eng[e][2]+2, R=sh_eng[e][3]; int len=(16+(int)R*4)*(3+sh_flame)/4; len=len*(10+((frames*3+e)&3))/12;
+        #define PCFP(ox,oy,oz,X_,Y_,Z_) { float x_=(ox), y_=(oy), z_=(oz); float rx=x_*cyw+z_*syw, rz=-x_*syw+z_*cyw, ry=y_*cp+rz*sp; rz=-y_*sp+rz*cp; float d=400+rz; if(d<60) d=60; float f=sc*25600.0f/d/16384.0f, X=rx*f, Y=-ry*f; X_=X*rc-Y*rs+cx; Y_=X*rs+Y*rc+cy; Z_=rz; }
+        float bX,bY,bZ,tX,tY,tZ,aX,aY,aZ,cX,cY,cZ,dX,dY,dZ,fX,fY,fZ;
+        PCFP(ex,ey,bz,bX,bY,bZ) PCFP(ex,ey,bz-len,tX,tY,tZ) PCFP(ex+R,ey,bz,aX,aY,aZ) PCFP(ex-R,ey,bz,cX,cY,cZ) PCFP(ex,ey+R,bz,dX,dY,dZ) PCFP(ex,ey-R,bz,fX,fY,fZ)
+        #undef PCFP
+        float dep = tZ>=bZ ? 2.6f : 1.4f; uint32_t oc=pc_sr_rgb(SHP_GLOW+4+((frames+e)&1)), ic=pc_sr_rgb(SHP_GLOW+7);
+        float mX=bX+(tX-bX)*0.6f, mY=bY+(tY-bY)*0.6f, X3[3], Y3[3];
+        X3[0]=aX; Y3[0]=aY; X3[1]=cX; Y3[1]=cY; X3[2]=tX; Y3[2]=tY; sr_poly2d(X3,Y3,3,dep,oc);
+        X3[0]=dX; Y3[0]=dY; X3[1]=fX; Y3[1]=fY; sr_poly2d(X3,Y3,3,dep,oc);
+        X3[0]=bX+(aX-bX)/2; Y3[0]=bY+(aY-bY)/2; X3[1]=bX+(cX-bX)/2; Y3[1]=bY+(cY-bY)/2; X3[2]=mX; Y3[2]=mY; sr_poly2d(X3,Y3,3,dep-0.1f,ic);
+        X3[0]=bX+(dX-bX)/2; Y3[0]=bY+(dY-bY)/2; X3[1]=bX+(fX-bX)/2; Y3[1]=bY+(fY-bY)/2; sr_poly2d(X3,Y3,3,dep-0.1f,ic); }
     if(sh_flame) for(int e=0;e<sh_en;e++){ float ex=sh_eng[e][0], ey=sh_eng[e][1], ez=sh_eng[e][2]-8;          // the engines: a hot glow at each nozzle
         float rx=ex*cyw+ez*syw, rz=-ex*syw+ez*cyw, ry=ey*cp+rz*sp; rz=-ey*sp+rz*cp; float d=400+rz; if(d<60) d=60; float f=sc*25600.0f/d/16384.0f, X=rx*f, Y=-ry*f;
         float gx=X*rc-Y*rs+cx, gy=X*rs+Y*rc+cy, r=sh_eng[e][3]*f*0.9f+1; sr_glow2d(gx,gy,r*(0.8f+0.25f*sh_flame),pc_sr_rgb(SHP_GLOW+5),0.8f); sr_glow2d(gx,gy,r*0.45f,0xFFFFFF,0.6f); }
