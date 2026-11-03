@@ -363,9 +363,14 @@ IWRAM static void render_planet(volatile u16 *pg){
                 if(ix<GND_B && ((((c+sparkle)*7+i*3)&31)==0)) ix=WAT_B+7;              // sparkles on the water
                 u16 p2=ix|(ix<<8);
                 int y0 = y<18 ? 18 : y;
-                if(ix>=BLD_B && ix<BLD_B+8 && ytop-y0>3){                                // a building: a roof line, then a wall with window columns
-                    int roof=76+((ix-BLD_B)>>1); col[y0*120]=roof|(roof<<8); int win=(ix&1);
-                    for(int yy=y0+1; yy<ytop; yy++){ int c2 = (win && ((yy-y0)&3)>=2) ? 72+(((yy*3+c)&7)==0) : ix; col[yy*120]=c2|(c2<<8); } }
+                if(ix>=BLD_B && ix<BLD_B+8 && ytop-y0>3){                                // a building: roof ledge, slab lines, floors of real height with windows (glass ribbons on the odd tints)
+                    int t=(ix-BLD_B)>>1, wall=BLD_B+t*2, shd=wall+1, roof=76+t, glass=t&1; int u4=((mx+my)>>14)&3, uc=(mx+my)>>16; s32 zz=z;
+                    for(int yy=y0; yy<ytop; yy++){ int hd=(((yy-y)*zz)/FOCP), c2=wall;
+                        if(hd<5) c2=roof; else if(hd<8) c2=shd;
+                        else if(zz>(32*FOCP*2/5)*1) c2=wall;                                   // too far for floors to show
+                        else { int fl=hd>>5, fr=hd&31; if(fr<2) c2=shd; else { int in = glass ? (fr>=7 && fr<24 && u4!=0) : (fr>=9 && fr<24 && (u4==1||u4==2));
+                            if(in){ u32 hh=(u32)(fl*2654435761u)^(u32)((uc+t*7)*2246822519u); hh^=hh>>13; hh*=2246822519u; c2 = (hh>>15&3)==0 ? 72 : 73; } } }
+                        col[yy*120]=c2|(c2<<8); } }
                 else for(int yy=y0; yy<ytop; yy++) col[yy*120]=p2;
                 ytop=y0;
                 if(ytop<=18) break;

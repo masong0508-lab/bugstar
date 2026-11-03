@@ -15,6 +15,22 @@ static inline uint32_t pn_bil(double u, double v){ u-=0.5; v-=0.5; double fu=__b
 static inline double pn_hgt(double u, double v){ u-=0.5; v-=0.5; double fu=__builtin_floor(u), fv=__builtin_floor(v); int x0=((int)fu)&HMASK, y0=((int)fv)&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK; double a=u-fu, b=v-fv;
     return (hfine[y0*HW+x0]*(1-a)+hfine[y0*HW+x1]*a)*(1-b)+(hfine[y1*HW+x0]*(1-a)+hfine[y1*HW+x1]*a)*b; }
 static inline uint32_t pn_sky(double yg){ double t=(yg-18)*8.0/(PHZ+30-18)-0.5; if(t<0) t=0; if(t>7) t=7; int i=(int)t; if(i>6) i=6; return pn_mix(pn_pal[SKY_B+i],pn_pal[SKY_B+i+1],(int)((t-i)*256)); }
+// a building's wall: floors every 32 units of real height (so they shrink with distance like real floors), a roof ledge, slab lines, punched windows or glass ribbons
+// (by tint), some windows lit. hd = height below the roof edge; u = distance along the wall (mx+my: one of them is constant on any face).
+static inline uint32_t pn_bld(int ix, double dy, int z, double u, double gc){
+    int t=(ix-BLD_B)>>1; uint32_t base=pn_pal[BLD_B+t*2], shd=pn_pal[BLD_B+t*2+1], roof=pn_pal[76+t];
+    double hd=dy*z/(double)FOCP, pxf=32.0*FOCP/z;
+    if(hd<5) return roof; if(hd<8) return pn_mix(base,0x000000,90);
+    if(pxf<2.5) return pn_mix(base,pn_pal[73],(int)(40*(1.0-(pxf-1.0)/1.5>0?(1.0-(pxf-1.0)/1.5):0)));
+    int fl=(int)(hd/32.0); double fr=hd-fl*32.0; double uf=u-__builtin_floor(u); int uc=(int)__builtin_floor(u);
+    if(fr<2) return shd;                                         // slab edge
+    uint32_t hh=(uint32_t)(fl*2654435761u)^(uint32_t)((uc+t*7)*2246822519u); hh^=hh>>13; hh*=2246822519u; hh^=hh>>15;
+    int glass=(t&1); int inwin = glass ? (fr>=7 && fr<24 && uf>0.06) : (fr>=9 && fr<24 && uf>=0.22 && uf<0.78);
+    if(!inwin){ if(!glass && fr>=24 && fr<27 && uf>=0.18 && uf<0.82) return roof; return base; }     // sill under a punched window
+    int lit=(hh&3)==0; uint32_t g=lit?pn_pal[72]:pn_mix(pn_pal[73],pn_pal[72],(int)((hh>>8)&63));
+    if(glass && uf<0.5) g=pn_mix(g,base,50);                     // glass ribbon: a bit of sheen
+    if(fr<10.5 && !lit) g=pn_mix(g,0x000000,60);                 // reveal shadow at the top of the opening
+    return g; }
 static void pn_cols(void *vc, int lo, int hi){
     PnCtx *c=(PnCtx*)vc; int W=c->W, H=c->H, ya=c->ya; double sy=c->sy; uint32_t hz=pn_pal[SKY_B+7];
     for(int X=lo;X<hi;X++){
@@ -32,8 +48,7 @@ static void pn_cols(void *vc, int lo, int hi){
             double iz0=1.0/z, iz1=1.0/zref; double span=ytopf-yi; if(span<1e-6) span=1e-6;
             double hazek=(double)j/total; if(hazek>1) hazek=1;
             for(int r=r0;r<rtop;r++){ double yg=(r+0.5)/sy; uint32_t col;
-                if(bld){ int rr=(int)((yg-yi)); uint32_t base=pn_pal[ix];
-                    if(sp>3){ if(rr==0) col=pn_pal[76+((ix-BLD_B)>>1)]; else if((ix&1) && (rr&3)>=2 && (((int)gc)&3)!=3) col=pn_pal[72+(((rr*3+(int)gc)&7)==0)]; else col=base; } else col=base; }
+                if(bld) col=pn_bld(ix,yg-yi,z,mx+my,gc);
                 else { double t=(yg-yi)/span; if(t>1) t=1; double izz=iz0+(iz1-iz0)*t; double zz=1.0/izz; double zcc=zz/256.0; double px=c->camx+vx*zcc, py=c->camy+vy*zcc;
                     col=pn_bil(px*2,py*2); int ci=cmap[(((int)__builtin_floor(py*2))&HMASK)*HW+(((int)__builtin_floor(px*2))&HMASK)];
                     if(ci<GND_B){ double w=__builtin_sin(px*47+frames*0.06)*__builtin_sin(py*53-frames*0.05); if(w>0.96 && zcc<20) col=pn_mix(col,0xFFFFFF,(int)((w-0.96)*25*128)); }
