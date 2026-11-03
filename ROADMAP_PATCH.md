@@ -37,3 +37,10 @@ Termux command for patch 02 (clone first if needed: `gh repo clone masong0508-la
     cd ~/bugstar && git pull --ff-only && rm -rf ~/tmp_patch_02 && mkdir -p ~/tmp_patch_02 && unzip -o ~/storage/downloads/bugstar-patch-02-buildings.zip -d ~/tmp_patch_02 && sh ~/tmp_patch_02/apply.sh && rm -rf ~/tmp_patch_02 && git add -A && git commit -m "patch 02: buildings with floors, windows, roof ledges" && git push
 
 For patch 03 swap the two 02 names and the commit message for the 03 ones above.
+
+## Patch 04 - frame log (diagnostic for the Windows dungeon stall)
+- Create an EMPTY file named `slowlog.on` in the same folder as BUGSTAR.exe, play, enter a dungeon, quit. `slowlog.txt` appears there:
+  a line for every frame over 33 ms (with the dungeon renderer's share in ms) and an average line every 300 frames. Delete `slowlog.on` to turn it off.
+- NEXT after you send slowlog.txt: if the slow frames show "dungeon renderer" high -> add a stronger cheap level (lower internal size / fewer rows);
+  if they are slow with the renderer low -> the cause is elsewhere (compositor pc_hw.c ~line 540, win64 memory mapping, or the game's own code).
+- Patch 04 names: zip `bugstar-patch-04-framelog.zip`, temp `~/tmp_patch_04`, commit `patch 04: frame log`.

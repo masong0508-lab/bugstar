@@ -431,7 +431,7 @@ static void nv_rows(void *vc, int lo, int hi){
     }
 }
 double pc_now_ms(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec*1e3+t.tv_nsec/1e6; }
-void pc_dn_report(double ms,int W,int H){ static int on=-1; static double acc; static int n; if(on<0) on=getenv("PC_TIMING")!=0; if(!on) return; acc+=ms; if(++n==200){ fprintf(stderr,"dungeon native %dx%d: %.2f ms per frame\n",W,H,acc/n); n=0; acc=0; } }
+static double pc_dn_last_ms; void pc_dn_report(double ms,int W,int H){ pc_dn_last_ms=ms; static int on=-1; static double acc; static int n; if(on<0) on=getenv("PC_TIMING")!=0; if(!on) return; acc+=ms; if(++n==200){ fprintf(stderr,"dungeon native %dx%d: %.2f ms per frame\n",W,H,acc/n); n=0; acc=0; } }
 int pc_v3d_classic(void);
 static int nv_v3(void){ int v3=pc_vid3d; static int env=-2; if(env==-2){ const char *e=getenv("PC_V3D"); env=e?atoi(e):-1; } if(env>=0) v3=env; return v3; }
 int pc_v3d_classic(void){ return nv_v3()==2 || pc_ships_mode==0; }   // CLASSIC in either switch (3D VIEWS, or SHIPS: the one the ship renderer uses) keeps the GBA picture
@@ -594,6 +594,9 @@ void pc_set_keys(uint16_t down){ R16(IOREG+0x130)=(uint16_t)(~down & 0x3FF); }
 static void irq_now(void){ if((R16(IOREG+0x200)&1) && R16(IOREG+0x208)&1 && pc_irq_fn){ R16(IOREG+0x202)|=1; pc_irq_fn(); R16(IOREG+0x202)&=~1; } }
 #endif
 static void vblank(void){
+    { static double lt, sum; static int on=-1, nf; static FILE *lf;             // FRAME LOG: put an empty file slowlog.on next to the exe; slowlog.txt then lists every frame over 33 ms (and an average line every 300 frames)
+      if(on<0){ FILE *t=fopen("slowlog.on","rb"); on=t!=0; if(t) fclose(t); if(on) lf=fopen("slowlog.txt","a"); if(!lf) on=0; if(on) fprintf(lf,"--- start, window %dx%d\n",pc_nat_w,pc_nat_h); }
+      if(on){ double nw=pc_now_ms(); if(lt){ double d=nw-lt; sum+=d; if(d>33) { fprintf(lf,"frame %ld: %.0f ms (dungeon renderer %.1f ms)\n",(long)g_frame,d,pc_dn_last_ms); fflush(lf); } if(++nf==300){ fprintf(lf,"frame %ld: average %.1f ms over 300 frames\n",(long)g_frame,sum/300); fflush(lf); nf=0; sum=0; } } lt=nw; } }
     g_frame++;
     for(int i=0;i<nshot;i++) if(shots[i]==g_frame){ char n[600]; snprintf(n,sizeof n,"%s_%06ld.ppm",outpre,g_frame); pc_write_ppm(n,getenv("PC_SCALE")?atoi(getenv("PC_SCALE")):1);
         printf("shot %ld screen=%016llx\n",g_frame,(unsigned long long)pc_hash_screen()); }
