@@ -27,6 +27,24 @@ jobs:
         run: |
           export PC_WIN=/mingw64 PC_WIN64=1 PC_OUT=BUGSTAR.exe PC_OBJ=64
           bash pc/build.sh
+      - name: Check the exe header (64-bit, not large-address-aware, low base)
+        run: |
+          python3 - <<'PY'
+          import struct
+          d=open('pc/BUGSTAR.exe','rb').read(); pe=struct.unpack_from('<I',d,0x3c)[0]; o=pe+24
+          print('machine %04x characteristics %04x dllchar %04x imagebase %x size %x' % (struct.unpack_from('<H',d,pe+4)[0],struct.unpack_from('<H',d,pe+22)[0],struct.unpack_from('<H',d,o+70)[0],struct.unpack_from('<Q',d,o+24)[0],struct.unpack_from('<I',d,o+56)[0]))
+          assert struct.unpack_from('<H',d,pe+4)[0]==0x8664 and not struct.unpack_from('<H',d,pe+22)[0]&0x20
+          PY
+      - name: Smoke test - start the exe headless on the runner (this is the step that failed with error 487)
+        run: |
+          cd pc
+          printf 'shot 30\n' > /tmp/smoke.txt
+          ./BUGSTAR.exe --headless --script /tmp/smoke.txt --out /tmp/smoke --frames 60 > /tmp/smoke_out.txt 2>&1 || true
+          sleep 25
+          echo "--- stdout"; cat /tmp/smoke_out.txt || true
+          echo "--- bugstar_log.txt"; cat bugstar_log.txt || true
+          if grep -q "cannot map" bugstar_log.txt 2>/dev/null; then echo "MEMORY MAPPING FAILED"; exit 1; fi
+          grep -q "end frame" /tmp/smoke_out.txt || { echo "game did not run to the end of the script"; exit 1; }
       - name: Package
         run: |
           d=BUGSTAR-PC-windows64
@@ -37,6 +55,12 @@ jobs:
           echo "saves go here" > $d/data/readme.txt
           cp pc/README.md $d/README.md
           zip -r $d.zip $d
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bugstar-log
+          path: pc/bugstar_log.txt
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: BUGSTAR-PC-windows64

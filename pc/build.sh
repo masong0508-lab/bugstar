@@ -190,10 +190,10 @@ OPT=${PC_OPT:--O2}
 SDLF=""; SDLL=""
 CC=${PC_CC:-gcc}; ARCH=${PC_ARCH:--m64 -no-pie}; OUT=${PC_OUT:-bugstar_pc}
 if [ -n "$PC_WIN" ]; then   # Windows 32-bit cross build (llvm-mingw): 32-bit pointers make the game's "address in a u32" code just work
-  if [ -n "$PC_WIN64" ]; then   # real 64-bit Windows exe (MSYS2 mingw64). The game keeps addresses in 32-bit numbers, so the exe is NOT large-address-aware and sits at a low base:
+  if [ -n "$PC_WIN64" ]; then   # real 64-bit Windows exe (MSYS2 mingw64). The game keeps addresses in 32-bit numbers, so the exe is NOT large-address-aware and sits at a low base (the flag is cleared after linking by tools/pe_lowaddr.py):
     # Windows then keeps its stack, heap and DLLs below 2 GB, which is the same trick the 32-bit build used.
     ARCH="-m64"; CC=${PC_CC:-gcc}
-    SDLF="-DPC_SDL -D_WIN32_CROSS -I../platform/sdl2/include"; SDLL="-L$PC_WIN/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -Wl,--image-base=0x10000000 -Wl,--disable-dynamicbase -Wl,--disable-high-entropy-va -Wl,--disable-large-address-aware -Wl,--nxcompat -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
+    SDLF="-DPC_SDL -D_WIN32_CROSS -I../platform/sdl2/include"; SDLL="-L$PC_WIN/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -Wl,--image-base=0x10000000 -Wl,--nxcompat -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
   else
   SDLF="-DPC_SDL -D_WIN32_CROSS -I../platform/sdl2/include"; SDLL="-L$PC_WIN/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -Wl,--disable-dynamicbase -Wl,--nxcompat -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
   fi
@@ -211,4 +211,5 @@ if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o 
 OBJS="$OBJD/game.o"
 for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH $OBJS $SDLL -lm -lpthread -o ../$OUT
+if [ -n "$PC_WIN64" ]; then python3 tools/pe_lowaddr.py ../$OUT || exit 1; fi
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"
