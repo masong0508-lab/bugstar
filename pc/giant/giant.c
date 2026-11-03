@@ -179,7 +179,7 @@ static void find_dir(void){
     if(n > 0){ snprintf(g_dir, sizeof g_dir, "%s/giant/cache", exe); }
 }
 #ifdef _WIN32_CROSS
-extern int __attribute__((stdcall)) CreateDirectoryA(const char *, void *);
+// CreateDirectoryA comes from <windows.h> (gpow.inc includes it on Windows); declaring it again here clashes with the real one
 static void gi_mkdir(void){ char t[700]; if(!g_dir[0]) find_dir(); snprintf(t, sizeof t, "%s", g_dir);
     for(char *c = t + 1; ; c++){ char k = *c; if(k == '/' || k == '\\' || k == 0){ *c = 0; CreateDirectoryA(t, 0); *c = k; if(!k) break; } } }
 #else
