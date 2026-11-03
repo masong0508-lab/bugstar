@@ -190,7 +190,13 @@ OPT=${PC_OPT:--O2}
 SDLF=""; SDLL=""
 CC=${PC_CC:-gcc}; ARCH=${PC_ARCH:--m64 -no-pie}; OUT=${PC_OUT:-bugstar_pc}
 if [ -n "$PC_WIN" ]; then   # Windows 32-bit cross build (llvm-mingw): 32-bit pointers make the game's "address in a u32" code just work
+  if [ -n "$PC_WIN64" ]; then   # real 64-bit Windows exe (MSYS2 mingw64). The game keeps addresses in 32-bit numbers, so the exe is NOT large-address-aware and sits at a low base:
+    # Windows then keeps its stack, heap and DLLs below 2 GB, which is the same trick the 32-bit build used.
+    ARCH="-m64"; CC=${PC_CC:-gcc}
+    SDLF="-DPC_SDL -D_WIN32_CROSS -I../platform/sdl2/include"; SDLL="-L$PC_WIN/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -Wl,--image-base=0x10000000 -Wl,--disable-dynamicbase -Wl,--disable-high-entropy-va -Wl,--disable-large-address-aware -Wl,--nxcompat -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
+  else
   SDLF="-DPC_SDL -D_WIN32_CROSS -I../platform/sdl2/include"; SDLL="-L$PC_WIN/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -Wl,--disable-dynamicbase -Wl,--nxcompat -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
+  fi
 elif [ "${PC_SDL:-1}" != "0" ]; then
   SDLF="-DPC_SDL -I../platform/sdl2/include -Wl,-rpath,\$ORIGIN/lib -Wl,-rpath,\$ORIGIN"
   if [ -n "$SDL_LIB" ]; then SDLL="$SDL_LIB"; else SDLL=$(ldconfig -p 2>/dev/null | awk '/libSDL2-2.0.so.0 /{print $NF; exit}'); fi

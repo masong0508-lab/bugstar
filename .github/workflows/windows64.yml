@@ -1,0 +1,43 @@
+name: Windows 64-bit build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  win64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-numpy
+            make
+            zip
+      - name: Build BUGSTAR.exe (64-bit)
+        run: |
+          export PC_WIN=/mingw64 PC_WIN64=1 PC_OUT=BUGSTAR.exe PC_OBJ=64
+          bash pc/build.sh
+      - name: Package
+        run: |
+          d=BUGSTAR-PC-windows64
+          mkdir -p $d/data
+          cp pc/BUGSTAR.exe $d/
+          cp /mingw64/bin/SDL2.dll $d/
+          echo portable > $d/portable.txt
+          echo "saves go here" > $d/data/readme.txt
+          cp pc/README.md $d/README.md
+          zip -r $d.zip $d
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BUGSTAR-PC-windows64
+          path: BUGSTAR-PC-windows64.zip

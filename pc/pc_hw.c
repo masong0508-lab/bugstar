@@ -48,7 +48,7 @@ int  pc_window_mode(void){ return g_window; }
 unsigned pc_map_fail_addr; unsigned long pc_map_fail_err;       // Windows: which fake-GBA address could not be mapped (shown in the error box and the log)
 static int map_at(uint32_t a, size_t n){
 #ifdef _WIN32
-    { void *p=VirtualAlloc((void*)(uintptr_t)a,n,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE); if(!p||(uintptr_t)p!=a){ pc_map_fail_addr=a; pc_map_fail_err=GetLastError(); fprintf(stderr,"pc_hw: cannot map %08x (windows error %lu)\n",a,pc_map_fail_err); return 0; } return 1; }
+    { void *p=VirtualAlloc((void*)(uintptr_t)a,n,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE); if(!p||(uintptr_t)p!=a){ pc_map_fail_addr=a; pc_map_fail_err=GetLastError(); fprintf(stderr,"pc_hw: cannot map %08x (windows error %lu)\n",a,pc_map_fail_err); { MEMORY_BASIC_INFORMATION mi; if(VirtualQuery((void*)(uintptr_t)a,&mi,sizeof mi)) fprintf(stderr,"  there: base %p alloc-base %p size %lx state %lx type %lx\n",mi.BaseAddress,mi.AllocationBase,(unsigned long)mi.RegionSize,(unsigned long)mi.State,(unsigned long)mi.Type); } return 0; } return 1; }
 #else
     void *p = mmap((void*)(uintptr_t)a, n, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE, -1, 0);
     if(p==MAP_FAILED || (uintptr_t)p!=a){ fprintf(stderr,"pc_hw: cannot map %08x (%zu bytes)\n",a,n); return 0; }

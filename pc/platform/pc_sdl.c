@@ -475,6 +475,11 @@ void plat_frame(void){
 void plat_close(void){ pc_save_flush(1); cfg_save(); wav_close(); if(adev) SDL_CloseAudioDevice(adev); if(pad) SDL_GameControllerClose(pad); if(ren) SDL_DestroyRenderer(ren); if(win) SDL_DestroyWindow(win); SDL_Quit(); }
 
 // ------------------------------------------------------------------------------------------------ start-up
+#ifdef _WIN32
+extern int __stdcall CreateDirectoryA(const char *, void *);
+static void pc_mkdir_p(const char *path){ char t[1300]; size_t n=strlen(path); if(n>=sizeof t) return; memcpy(t,path,n+1);
+    for(size_t i=1;i<=n;i++){ if(t[i]=='/'||t[i]=='\\'||t[i]==0){ char c=t[i]; t[i]=0; if(i>2||t[1]!=':') CreateDirectoryA(t,0); t[i]=c; if(!c) break; } } }
+#endif
 static void mkdirs(const char *p){ (void)p; }
 const char *plat_save_path(void){ return g_savepath; }
 int plat_paths(int argc, char **argv){            // finds the folders; call before the fake GBA starts (it loads the save)
@@ -490,13 +495,13 @@ int plat_paths(int argc, char **argv){            // finds the folders; call bef
     }
     if(pp) SDL_free(pp);
 #ifdef _WIN32
-    { char cmd[1300]; snprintf(cmd,sizeof cmd,"mkdir \"%s\" >nul 2>&1",g_pref); for(char*c=cmd;*c;c++) if(*c=='/') *c='\\'; system(cmd); }
+    pc_mkdir_p(g_pref);
 #else
     { char cmd[1300]; snprintf(cmd,sizeof cmd,"mkdir -p '%s' '%sscreenshots' 2>/dev/null",g_pref,g_pref); if(system(cmd)){} }
 #endif
     snprintf(g_savepath,sizeof g_savepath,"%sbugstar.sav",g_pref); snprintf(g_cfgpath,sizeof g_cfgpath,"%ssettings.ini",g_pref); snprintf(g_shotdir,sizeof g_shotdir,"%sscreenshots/",g_pref);
 #ifdef _WIN32
-    { char cmd[1300]; snprintf(cmd,sizeof cmd,"mkdir \"%sscreenshots\" >nul 2>&1",g_pref); for(char*c=cmd;*c;c++) if(*c=='/') *c='\\'; system(cmd); }
+    { char d[1300]; snprintf(d,sizeof d,"%sscreenshots",g_pref); pc_mkdir_p(d); }
 #endif
     (void)mkdirs;
     return 0;
