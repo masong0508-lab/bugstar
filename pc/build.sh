@@ -30,6 +30,8 @@ sed -i \
  *.inc main.c
 # the HOW BIG screen sorts every page in a scratch area: the GBA keeps it in the world builder's 32 KB; the PC has far more pages, so it gets its own
 sed -i -e 's|^extern const u8 fact_bin\[\];|extern const u8 fact_bin[] __asm__("fact_bin");|' sizes.inc
+# Windows (COFF) GNU as has no .pushsection/.popsection (ELF only): embed facts.bin in a COFF read-only section instead
+if [ -n "$PC_WIN" ]; then sed -i -e 's|\.pushsection \.rodata|.section .rdata,\\"dr\\"|' -e 's|\.popsection|.text|' sizes.inc; fi
 sed -i -e 's|^#define SZ_SCR .*|#define SZ_SCR pc_szscr|' -e '/^#define NSIZE /a static u32 pc_szscr[4*NSIZE+64];' sizes.inc
 sed -i '1i #include "pc_hw.h"\nstatic void pc_creator_screen(volatile unsigned short *pg, int from_game); static void pc_cr_apply(void); static int pc_cr_water(int w);' main.c
 # the PC content library is a separate translation unit (pc/content/pcx.c): the game's own code has names like trait_name, so it only sees pcx.h
