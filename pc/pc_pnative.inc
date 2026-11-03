@@ -21,7 +21,7 @@ static inline uint32_t pn_bld(int ix, double dy, int z, double u, double gc){
     int t=(ix-BLD_B)>>1; uint32_t base=pn_pal[BLD_B+t*2], shd=pn_pal[BLD_B+t*2+1], roof=pn_pal[76+t];
     double hd=dy*z/(double)FOCP, pxf=32.0*FOCP/z;
     if(hd<5) return roof; if(hd<8) return pn_mix(base,0x000000,90);
-    if(pxf<2.5) return pn_mix(base,pn_pal[73],(int)(40*(1.0-(pxf-1.0)/1.5>0?(1.0-(pxf-1.0)/1.5):0)));
+    if(pxf<1.5) return pn_mix(base,pn_pal[73],25);
     int fl=(int)(hd/32.0); double fr=hd-fl*32.0; double uf=u-__builtin_floor(u); int uc=(int)__builtin_floor(u);
     if(fr<2) return shd;                                         // slab edge
     uint32_t hh=(uint32_t)(fl*2654435761u)^(uint32_t)((uc+t*7)*2246822519u); hh^=hh>>13; hh*=2246822519u; hh^=hh>>15;
