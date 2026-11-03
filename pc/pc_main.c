@@ -31,13 +31,34 @@ static LONG WINAPI win_crash(EXCEPTION_POINTERS *e){
     win_fatal("BUGSTAR crashed.");
     return EXCEPTION_EXECUTE_HANDLER;
 }
+
+// The fake GBA needs fixed low addresses (02000000 ... 0E010000). Windows loads DLLs (random order and place, below 2 GB for this exe) BEFORE main() runs,
+// and one of them often lands on 02000000 (windows error 487). So the first copy of the program is only a launcher: it starts a second copy of itself
+// SUSPENDED (only ntdll and the exe are loaded then), reserves the GBA ranges in it, and resumes it. The loader then places every DLL around them.
+static int win_launch(int *rc){
+    static const struct { unsigned a, n; } R[]={{0x02000000,0x40000},{0x03000000,0x10000},{0x04000000,0x10000},{0x05000000,0x10000},{0x06000000,0x20000},{0x07000000,0x10000},{0x08000000,0x10000},{0x0E000000,0x10000}};
+    char tmp[8];
+    if(GetEnvironmentVariableA("PC_CHILD",tmp,sizeof tmp)) return 0;          // we are the child: run the game
+    SetEnvironmentVariableA("PC_CHILD","1");
+    STARTUPINFOA si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si; memset(&pi,0,sizeof pi);
+    si.dwFlags=STARTF_USESTDHANDLES; si.hStdInput=GetStdHandle(STD_INPUT_HANDLE); si.hStdOutput=GetStdHandle(STD_OUTPUT_HANDLE); si.hStdError=GetStdHandle(STD_ERROR_HANDLE);
+    if(!CreateProcessA(0,GetCommandLineA(),0,0,TRUE,CREATE_SUSPENDED,0,0,&si,&pi)) return 0;   // cannot launch: just run here, as before
+    int ok=1;
+    for(unsigned i=0;i<sizeof R/sizeof R[0];i++) if(!VirtualAllocEx(pi.hProcess,(void*)(uintptr_t)R[i].a,R[i].n,MEM_RESERVE,PAGE_READWRITE)) ok=0;
+    if(!ok){ TerminateProcess(pi.hProcess,1); CloseHandle(pi.hThread); CloseHandle(pi.hProcess); SetEnvironmentVariableA("PC_CHILD",0); return 0; }
+    ResumeThread(pi.hThread);
+    WaitForSingleObject(pi.hProcess,INFINITE);
+    DWORD code=0; GetExitCodeProcess(pi.hProcess,&code); *rc=(int)code;
+    CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
+    return 1;
+}
 static void win_setup(void){
     char exe[MAX_PATH]; const char *mode=getenv("PC_RETRY")?"a":"w";
     GetModuleFileNameA(0,exe,MAX_PATH); { char *s=strrchr(exe,'\\'); if(s) *s=0; }
     snprintf(g_logpath,sizeof g_logpath,"%s\\bugstar_log.txt",exe);
     if(!freopen(g_logpath,mode,stderr)){ char t[MAX_PATH]; GetTempPathA(MAX_PATH,t); snprintf(g_logpath,sizeof g_logpath,"%sbugstar_log.txt",t); freopen(g_logpath,mode,stderr); }
     setvbuf(stderr,0,_IONBF,0);
-    fprintf(stderr,"BUGSTAR PC log (retry=%s)\n",getenv("PC_RETRY")?getenv("PC_RETRY"):"0");
+    fprintf(stderr,"BUGSTAR PC log (retry=%s, launcher=%s)\n",getenv("PC_RETRY")?getenv("PC_RETRY"):"0",getenv("PC_CHILD")?"yes":"no");
     SetUnhandledExceptionFilter(win_crash);
 }
 #else
@@ -60,6 +81,7 @@ static void game_entry(void){ if(g_view) pc_view_main(g_argc,g_argv); else bugst
 int main(int argc, char **argv){
     const char *script=0, *out="pc_out", *sav=0; long frames=-1; int want_window=-1;
 #ifdef _WIN32
+    { int lrc=0; if(win_launch(&lrc)) return lrc; }
     win_setup();
 #endif
     for(int i=1;i<argc;i++){
@@ -86,7 +108,7 @@ int main(int argc, char **argv){
 #ifdef _WIN32
         // the system put something (a stack, the heap, a library) on an address the fake GBA needs: start the program again (the layout is random each time)
         { const char *r=getenv("PC_RETRY"); int n=r?atoi(r):0; fprintf(stderr,"cannot map the GBA memory at %08x (windows error %lu), attempt %d\n",pc_map_fail_addr,pc_map_fail_err,n);
-          if(n<12){ char b[16]; snprintf(b,16,"%d",n+1); SetEnvironmentVariableA("PC_RETRY",b);
+          if(n<12){ char b[16]; snprintf(b,16,"%d",n+1); SetEnvironmentVariableA("PC_RETRY",b); SetEnvironmentVariableA("PC_CHILD",0);
             STARTUPINFOA si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si;
             if(CreateProcessA(0,GetCommandLineA(),0,0,FALSE,0,0,0,&si,&pi)){ CloseHandle(pi.hThread); CloseHandle(pi.hProcess); return 0; } }
           win_fatal("BUGSTAR could not set up its memory."); }
