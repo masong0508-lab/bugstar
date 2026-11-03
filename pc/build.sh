@@ -203,7 +203,8 @@ elif [ "${PC_SDL:-1}" != "0" ]; then
   [ -z "$SDLL" ] && { echo "SDL2 runtime (libSDL2-2.0.so.0) not found: install it, set SDL_LIB=/path/to/libSDL2-2.0.so.0, or PC_SDL=0 for the headless build"; exit 1; }
 fi
 # the level cap: the PC build lets the character level go far past the GBA's 32-bit limit (the sim worker sets the final value)
-CF="-std=gnu11 $OPT -w -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
+# newer GCC (14+, e.g. MSYS2 GCC 16) makes a call to an undeclared function an error: the game .inc files rely on the libc/libm/pc_plat declarations, so pull them in for every file
+CF="-std=gnu11 $OPT -w -include string.h -include stdio.h -include stdlib.h -include math.h -include pc_plat.h -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
 STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_kartnat.inc ../pc_pnative.inc ../pc_pncomp.inc ../pc_snative.inc ../pc_sncomp.inc ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
