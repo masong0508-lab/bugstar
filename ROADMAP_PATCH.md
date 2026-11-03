@@ -16,7 +16,7 @@
    - dungeon renderer share high -> stronger cheap level (lower internal size / fewer rows) in pc_dnative.inc
    - slow with renderer low -> look at the compositor (pc_hw.c ~line 540), win64 memory mapping on the first dungeon frame, or the game's own code
    Headless dungeon entry: BUGSTAR_WS_TEST=dun,0,0 BUGSTAR_AFT_DUN=seal BUGSTAR_AFT_TOPUP=1 with --script tests/aft_dig.txt; PC_NATIVE=1 PC_SCALE=4 PC_TIMING=1 times the native renderer.
-2. NATIVE (window) RENDERER NEVER LOOKED AT for buildings: pc_pnative.inc has the same facade logic as the classic one (pn_bld) but is only compile-tested. Patch 07 rendered `--view --star 3` in classic and native (PC_NATIVE=2): both draw the same distant skyline, but no close-up city, so the facades are still unseen natively. Send a screenshot taken near a city.
+2. NATIVE (window) RENDERER for buildings: CHECKED (patch 08). With the new test hook `PC_VIEW_NEAR=22 PC_NATIVE=2 PC_SCALE=3 bugstar_pc --view --star 3 --planet 0` (stands 22 cells south of the city centre) the native renderer shows the same facades as classic: roof ledges, slab lines, lit window bands, plain far walls (headless, night scene). Not yet seen by you in the live window.
 3. The Windows exe has never been run on real Windows by me (pc/README.md says the same). README still calls it 32-bit/untested: update once confirmed.
 4. town.inc is shared with the GBA game: patch 05 changes generated cities for the same seed. CHECKED (patch 07): pc/tests/seeds.sh passes against seeds.golden (8 addresses, same on two runs), so the golden does not need regenerating.
 
@@ -26,7 +26,7 @@
 ## Patch naming and the Termux command
 Every zip has its own number, name and temp folder (no "name (1).zip" mix-ups). Each holds apply.sh, bugstar.diff, ROADMAP_PATCH.md.
 Clone first if needed: `gh repo clone masong0508-lab/bugstar` or `git clone git@github.com:masong0508-lab/bugstar.git`.
-Command (NN = patch number, NAME = its zip suffix: 02 buildings, 03 dungeon, 04 framelog, 05 towers, 06 flames, 07 roadmap check; next patch = 08):
+Command (NN = patch number, NAME = its zip suffix: 02 buildings, 03 dungeon, 04 framelog, 05 towers, 06 flames, 07 roadmap check, 08 native city check; next patch = 09):
 
     cd ~/bugstar && git pull --ff-only && rm -rf ~/tmp_patch_NN && mkdir -p ~/tmp_patch_NN && unzip -o ~/storage/downloads/bugstar-patch-NN-NAME.zip -d ~/tmp_patch_NN && sh ~/tmp_patch_NN/apply.sh && rm -rf ~/tmp_patch_NN && git add -A && git commit -m "patch NN: short description" && git push
 

@@ -40,6 +40,7 @@ int pc_view_main(int argc, char **argv){
     if(star<0||star>=NSYS) star=NSYS-1;
     cur_sys=star; cur_pl=planet; cur_moon=moon; cur_rock=0;
     land_on_current(); new_planet(); planet_enter();
+    if(getenv("PC_VIEW_NEAR") && city_r){ int d=atoi(getenv("PC_VIEW_NEAR")); ppx=city_cx<<16; ppy=((city_cy+d)&TMASK)<<16; cam_h=ground_h(ppx,ppy)+CAM_UP; }   // (test: stand d cells south of the city centre, to look at the buildings)
     // ---- the facts
     char nm[40], sn[40], gn[48], hx[80], ux[80], cxs[40], cys[40], dist[96];
     scpy(nm,world_name()); sys_name(cur_sys,sn); gal_name(gn);
