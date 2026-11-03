@@ -44,3 +44,12 @@ For patch 03 swap the two 02 names and the commit message for the 03 ones above.
 - NEXT after you send slowlog.txt: if the slow frames show "dungeon renderer" high -> add a stronger cheap level (lower internal size / fewer rows);
   if they are slow with the renderer low -> the cause is elsewhere (compositor pc_hw.c ~line 540, win64 memory mapping, or the game's own code).
 - Patch 04 names: zip `bugstar-patch-04-framelog.zip`, temp `~/tmp_patch_04`, commit `patch 04: frame log`.
+
+## Patch 05 - buildings vary with the city's tech level (town.inc)
+- city_tech() = 0 huts .. 5 megacity, from the city size (0-3) + the world's economy (farming 0, mining +1, hive +1, tech +2); a city planet (ecumenopolis) is always 5.
+- Higher tech: taller blocks, bigger footprints (2-3 texels at tech 0, up to 6 at tech 5), more towers, taller towers (stepped crown on wide ones), more glass-ribbon blocks.
+  Tech 0 has no glass at all. The city's ground level is capped at 110 (was 150) so towers have room: the height map stops at 255.
+- Looked at 3 cities in the classic viewer: small low-tech town vs dense tall city vs a night city with lit windows. Native window renderer not looked at.
+- This changes the GBA game's generated cities too (town.inc is shared): same seed, different buildings. pc/tests/seeds.golden may need regenerating if it hashes the land.
+- Names: zip `bugstar-patch-05-towers.zip`, temp `~/tmp_patch_05`, commit `patch 05: building size follows tech level`.
+- Ideas left: door band at street level, darker lower floors, per-face shading, tune the tech formula (add the PC meaning layer if it has a tech channel).

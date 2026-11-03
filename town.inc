@@ -244,10 +244,13 @@ static void city_flatten(void){                                                 
     city_r = wd.cls==PC_ECUMENOPOLIS ? 62 : 9 + wd.csize*6;                          // a city planet: the city is the whole world
     int a=wr(256), d = wd.cls==PC_ECUMENOPOLIS ? 0 : city_r+14+wr(6); city_cx=(64+((cosx(a)*d)>>14))&TMASK; city_cy=(64+((sinx(a)*d)>>14))&TMASK;
     int sum=0, n=0; for(int y=-city_r;y<=city_r;y+=3) for(int x=-city_r;x<=city_r;x+=3){ sum+=hmap[((city_cy+y)&TMASK)*TW+((city_cx+x)&TMASK)]; n++; }
-    int L=sum/n; if(L<water_lv+14) L=water_lv+14; if(L>150) L=150;
+    int L=sum/n; if(L<water_lv+14) L=water_lv+14; if(L>110) L=110;
     for(int y=-city_r-4;y<=city_r+4;y++) for(int x=-city_r-4;x<=city_r+4;x++){ int d2=x*x+y*y, r2=city_r*city_r, r3=(city_r+4)*(city_r+4);
         int t = d2<r2 ? 256 : d2>r3 ? 0 : 256-(d2-r2)*256/(r3-r2+1); int i=((city_cy+y)&TMASK)*TW+((city_cx+x)&TMASK); hmap[i]=(hmap[i]*(256-t)+L*t)>>8; }
 }
+static int city_tech(void){                                                          // how advanced the city is, 0 huts .. 5 megacity: its size, its world's economy (tech and mining build tall), a city planet most of all
+    int t = wd.cls==PC_ECUMENOPOLIS ? 5 : wd.csize; int eco = endless ? sys[cur_sys].eco : zone%4; static const u8 eb[4]={0,1,2,1};   // farming, mining, tech, hive
+    t += eb[eco&3]; return t>5 ? 5 : t; }
 static void city_stamp(void){                                                         // after smoothing: streets, blocks, towers, a plaza
     if(!city_r) return;
     int L = hmap[city_cy*TW+city_cx]; int tx0=city_cx*2, ty0=city_cy*2, R=city_r*2;
@@ -261,12 +264,14 @@ static void city_stamp(void){                                                   
         if(sx<2 || sy<2){ cmap[i] = ((sx==0&&(gy&3)==1)||(sy==0&&(gx&3)==1)) ? 75 : 74; continue; }   // streets with a dotted line
         int bx=gx>>3, by=gy>>3; u32 h=hsh(bx+wd.tseed, by); int kind=h&15;
         if(kind<3){ cmap[i]=80; continue; }                                            // an empty lot: a little square
-        int fx=2+((h>>4)&3), fy=2+((h>>6)&3);                                          // footprint, from the block's corner
+        int T=city_tech(); int tower = kind >= 15-(T+1)/2;                              // higher tech: more towers
+        int fx=2+(((h>>4)&3)*(2+T))/5, fy=2+(((h>>6)&3)*(2+T))/5; if(fx>6) fx=6; if(fy>6) fy=6;   // and bigger footprints (huts 2-3 texels, megacity blocks up to 6)
         if(sx-2>=fx || sy-2>=fy){ cmap[i]=80+((h>>8)&1); continue; }                  // the yard around it
-        int cen=R*R-(x*x+y*y); int tall = 60 + ((h>>10)&127)*cen/(R*R+1);             // taller near the middle
-        if(kind>=14) tall=100+((h>>10)&127);                                           // a tower
+        int cen=R*R-(x*x+y*y); int sp=50+T*18, bs=40+T*14; int tall = bs + ((h>>10)&127)*sp/128*(cen/2+R*R/2)/(R*R+1);   // taller near the middle, taller with tech
+        if(tower){ tall = 80 + ((h>>10)&127)*(30+T*20)/128; if(((sx-2)>=1 && (sx-2)<fx-1 && (sy-2)>=1 && (sy-2)<fy-1) && fx>=4 && fy>=4) tall += tall/4; }   // a tower; wide ones step in at the top
         int hh=L+tall; if(hh>255) hh=255; hfine[i]=hh;
-        cmap[i] = BLD_B + ((h>>17)&3)*2 + ((tx^ty)&1); }
+        int tn=(h>>17)&3; if(T==0) tn&=2; else if(T>=3 && ((h>>20)&1)) tn|=1;           // tint: glass (odd) only from a city of some size, more of it with tech
+        cmap[i] = BLD_B + tn*2 + ((tx^ty)&1); }
 }
 static void city_people(int *k){                                                      // doors, locals and stalls on the streets
     if(!city_r) return;
