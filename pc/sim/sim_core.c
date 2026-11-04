@@ -20,7 +20,7 @@ uint32_t sim_rngn(uint64_t seed, uint32_t id, uint32_t purpose, uint64_t tick, u
 }
 
 // purposes (any distinct numbers)
-enum { RP_NAME = 1, RP_JOB, RP_SHIFT, RP_NEED, RP_LAND, RP_WEATHER, RP_CHAT, RP_SPECIES, RP_CAST, RP_NEWFOLK, RP_IDEA, RP_HOME, RP_FRIEND };
+enum { RP_NAME = 1, RP_JOB, RP_SHIFT, RP_NEED, RP_LAND, RP_WEATHER, RP_CHAT, RP_SPECIES, RP_CAST, RP_NEWFOLK, RP_IDEA, RP_HOME, RP_FRIEND, RP_TRAIT, RP_LIFE };
 
 // ---------------------------------------------------------------- names
 static const char *const ON[] = { "P","M","T","B","K","L","N","R","S","V","W","Z","D","G","F","H","J","CH","SH","TH","BR","TR","FL","GR","SN","PL" };
@@ -110,6 +110,15 @@ int sim_event_text(const Sim *s, const SimEvent *e, char *o, size_t n){
     case SIME_COLONY: { ColEvent ce = { (uint8_t)e->a, e->b, e->seed32, e->tick }; char t[52]; col_event_text(&ce, t, sizeof t); at = cat(o, n, at, t); } break;
     case SIME_FRIEND: at = cat(o, n, at, nm); at = cat(o, n, at, e->a >= 100 ? " IS YOUR BEST FRIEND" : e->a >= 50 ? " IS YOUR FRIEND" : " KNOWS YOU NOW"); break;
     case SIME_LETTER: { char t[48]; sim_letter_text(s, e->who, e->a, t, sizeof t); at = cat(o, n, at, "LETTER FROM "); at = cat(o, n, at, nm); at = cat(o, n, at, ": "); at = cat(o, n, at, t); } break;
+    case SIME_BOND:   at = cat(o, n, at, nm); at = cat(o, n, at, " AND "); at = cat(o, n, at, nm2); at = cat(o, n, at, " BECAME CLOSE FRIENDS"); break;
+    case SIME_RIVAL:  at = cat(o, n, at, nm); at = cat(o, n, at, " AND "); at = cat(o, n, at, nm2); at = cat(o, n, at, " CANNOT STAND EACH OTHER"); break;
+    case SIME_COUPLE: at = cat(o, n, at, nm); at = cat(o, n, at, " AND "); at = cat(o, n, at, nm2); at = cat(o, n, at, " FELL IN LOVE"); break;
+    case SIME_BREAKUP: at = cat(o, n, at, nm); at = cat(o, n, at, " AND "); at = cat(o, n, at, nm2); at = cat(o, n, at, " DRIFTED APART"); break;
+    case SIME_QUARREL: at = cat(o, n, at, nm); at = cat(o, n, at, " QUARRELLED WITH "); at = cat(o, n, at, nm2); break;
+    case SIME_SICK:   at = cat(o, n, at, nm); at = cat(o, n, at, " FELL ILL"); break;
+    case SIME_WELL:   at = cat(o, n, at, nm); at = cat(o, n, at, " IS WELL AGAIN"); break;
+    case SIME_BREAK:  at = cat(o, n, at, nm); at = cat(o, n, at, " HAD A BREAKDOWN AND NEEDS A REST"); break;
+    case SIME_CARE:   at = cat(o, n, at, nm2); at = cat(o, n, at, " LOOKED AFTER SICK "); at = cat(o, n, at, nm); break;
     case SIME_SANDBOX: at = cat(o, n, at, e->a ? "SANDBOX: ALL GOD POWERS ARE OPEN" : "SANDBOX IS OFF"); break;
     default: at = cat(o, n, at, "..."); break;
     }
@@ -129,9 +138,17 @@ static int place_of(const SimFolk *f, int task){
     switch(task){ case SIMT_SLEEP: return SIMP_HOME; case SIMT_EAT: return SIMP_EATERY; case SIMT_WORK: return SIMP_WORK; default: return SIMP_PLAZA; }
     (void)f;
 }
-int sim_mood(const SimFolk *f){ int t = 0; for(int i = 0; i < SIMN_N; i++) t += f->need[i]; return t / SIMN_N; }
+int sim_mood(const SimFolk *f){ int t = 0; for(int i = 0; i < SIMN_N; i++) t += f->need[i]; t /= SIMN_N; t -= f->stress / 4 + (f->sick ? 25 : 0); return t < 0 ? 0 : t > 255 ? 255 : t; }
+const char *sim_trait_text(const SimFolk *f){
+    static const char *const hi[4] = { "CHEERFUL", "TIRELESS", "TOUGH", "CALM" }, *const lo[4] = { "SHY", "LAZY", "FRAGILE", "TENSE" };
+    int best = -1, bd = 60, bk = 0; for(int k = 0; k < 4; k++){ int d = f->trait[k] - 128; int a = d < 0 ? -d : d; if(a > bd){ bd = a; best = k; bk = d > 0; } }
+    return best < 0 ? "EVEN" : bk ? hi[best] : lo[best]; }
+int sim_bond(const Sim *s, int a, int b){ if(a < 0 || b < 0 || a >= s->nfolk || b >= s->nfolk) return 0; return s->folk[a].bond[b]; }
+int sim_best_pal(const Sim *s, int k){ if(k < 0 || k >= s->nfolk) return -1; int bj = -1, bv = 19; for(int j = 0; j < s->nfolk; j++) if(j != k && s->folk[k].bond[j] > bv){ bv = s->folk[k].bond[j]; bj = j; } return bj; }
 void sim_status_text(const SimFolk *f, char *o, size_t n){
     size_t at = 0; int any = 0; if(!n) return; o[0] = 0;
+    if(f->sick){ at = cat(o, n, at, "SICK. "); any = 1; }
+    if(f->stress > 190){ at = cat(o, n, at, "STRESSED. "); any = 1; }
     if(f->need[SIMN_REST] < 70){ at = cat(o, n, at, "TIRED. "); any = 1; }
     if(f->need[SIMN_HUNGER] < 70){ at = cat(o, n, at, "HUNGRY. "); any = 1; }
     if(f->need[SIMN_SOCIAL] < 70){ at = cat(o, n, at, "LONELY. "); any = 1; }
@@ -149,10 +166,13 @@ static void new_folk(Sim *s, int i, uint32_t jobmask, uint32_t purpose){
     f->home = (uint8_t)i;
     f->shift = (uint8_t)sim_rngn(s->seed, (uint32_t)i, RP_SHIFT, 0, 3);
     for(int k = 0; k < SIMN_N; k++) f->need[k] = (uint8_t)(150 + sim_rngn(s->seed, (uint32_t)i, RP_NEED, (uint64_t)k, 100));
-    f->pal = 0xFFFF;
+    f->pal = 0xFFFF; f->mate = -1;
+    for(int k = 0; k < 4; k++) f->trait[k] = (uint8_t)sim_rngn(s->seed, (uint32_t)i, RP_TRAIT, (uint64_t)k + purpose, 256);
+    f->stress = (uint8_t)sim_rngn(s->seed, (uint32_t)i, RP_TRAIT, 99, 40);
 }
 static int folk_hour(const Sim *s, const SimFolk *f){ return (sim_hour(s) + 24 - f->shift) % 24; }
 
+static void bond_add(Sim *s, int i, int j, int d);
 static void new_day(Sim *s, int first){
     int day = sim_day(s); s->day_seen = (uint32_t)day;
     uint32_t r = sim_rngn(s->seed, 0, RP_WEATHER, (uint64_t)day, 100);
@@ -170,6 +190,12 @@ static void new_day(Sim *s, int first){
     else if(s->fertility > target) s->fertility = (uint8_t)(s->fertility - (s->fertility - target + 3) / 4);
     if(s->pests < 100 && s->weather != SIMW_STORM) s->pests++;
     s->larder -= s->larder / 10 + s->pests * s->larder / 2000;                       // food spoils, and pests eat it
+    if(!first) for(int i = 0; i < s->nfolk; i++){ SimFolk *f = &s->folk[i];                                       // illness comes and goes by the day
+        if(!f->sick){ int p = 15 + (s->weather == SIMW_STORM || s->weather == SIMW_SNOW ? 25 : 0) + (f->need[SIMN_HUNGER] < 80 ? 30 : 0) + (f->stress > 180 ? 25 : 0) - f->trait[SIMTR_HEARTY] / 16 - s->health / 8; if(p < 2) p = 2;
+            if((int)sim_rngn(s->seed, (uint32_t)i, RP_LIFE, (uint64_t)day + 7000, 1000) < p){ f->sick = (uint8_t)(2 + (255 - f->trait[SIMTR_HEARTY]) / 90); sim_log(s, SIME_SICK, i, 0, 0); } }
+        else{ int dec = 1, nurse = -1; for(int j = 0; j < s->nfolk; j++) if(j != i && !s->folk[j].sick && (f->mate == j || f->bond[j] >= 40)){ nurse = j; break; }
+            if(nurse >= 0 && f->sick > 1){ dec = 2; sim_log(s, SIME_CARE, i, 0, nurse); bond_add(s, i, nurse, 3); }
+            f->sick = (uint8_t)(f->sick > dec ? f->sick - dec : 0); if(!f->sick) sim_log(s, SIME_WELL, i, 0, 0); } }
     int happy = 0; for(int i = 0; i < s->nfolk; i++) if(sim_mood(&s->folk[i]) >= 180) happy++;
     if(!first){ sim_log(s, SIME_DAWN, 0, day, 0); s->spirit = (uint16_t)(s->spirit + happy / 2 > SIM_SPIRIT_MAX ? SIM_SPIRIT_MAX : s->spirit + happy / 2); }
 }
@@ -195,6 +221,27 @@ void sim_init(Sim *s, uint64_t seed, int nfolk, uint32_t jobmask, uint64_t start
 static uint8_t sat8(int v){ return (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v); }
 static void add_need(SimFolk *f, int k, int d){ f->need[k] = sat8(f->need[k] + d); }
 
+// ---------------------------------------------------------------- life v2: who gets on with whom
+static int clampi(int v, int lo, int hi){ return v < lo ? lo : v > hi ? hi : v; }
+static int compat(const SimFolk *a, const SimFolk *b){                          // -20 .. +32: calm, alike bugs get on; two short fuses clash; two sociable ones click
+    int d3 = a->trait[SIMTR_CALM] - b->trait[SIMTR_CALM], d0 = a->trait[SIMTR_SOCIABLE] - b->trait[SIMTR_SOCIABLE]; if(d3 < 0) d3 = -d3; if(d0 < 0) d0 = -d0;
+    int c = 22 - d3 / 6 - d0 / 12; if(a->trait[SIMTR_CALM] < 80 && b->trait[SIMTR_CALM] < 80) c -= 12; if(a->trait[SIMTR_SOCIABLE] > 150 && b->trait[SIMTR_SOCIABLE] > 150) c += 8; return c; }
+static void bond_add(Sim *s, int i, int j, int d){
+    SimFolk *a = &s->folk[i], *b = &s->folk[j]; int old = a->bond[j], nv = clampi(old + d, -100, 100);
+    a->bond[j] = (int8_t)nv; b->bond[i] = (int8_t)nv;
+    if(old < 40 && nv >= 40) sim_log(s, SIME_BOND, i, 0, j);
+    if(old > -40 && nv <= -40) sim_log(s, SIME_RIVAL, i, 0, j);
+    if(nv >= 75 && a->mate < 0 && b->mate < 0 && sim_rngn(s->seed, (uint32_t)i * 31u + (uint32_t)j, RP_LIFE, s->tick, 3) == 0){ a->mate = (int8_t)j; b->mate = (int8_t)i; sim_log(s, SIME_COUPLE, i, 0, j); }
+    if(a->mate == j && nv < 25){ a->mate = -1; b->mate = -1; sim_log(s, SIME_BREAKUP, i, 0, j); }
+}
+static void add_stress(SimFolk *f, int d){ f->stress = (uint8_t)clampi(f->stress + d, 0, 255); }
+static int pick_pal(Sim *s, int i, uint64_t t){                                   // who to talk to: a mate, then a friend, then whoever is about; rivals last
+    const SimFolk *f = &s->folk[i]; int best = -1, bs = -1000;
+    for(int j = 0; j < s->nfolk; j++){ if(j == i || s->folk[j].task != SIMT_SOCIAL) continue;
+        int sc = f->bond[j] + (f->mate == j ? 40 : 0) + (int)sim_rngn(s->seed, (uint32_t)i * 17u + (uint32_t)j, RP_CHAT, t, 20) + f->trait[SIMTR_SOCIABLE] / 32;
+        if(sc > bs){ bs = sc; best = j; } }
+    return best; }
+
 static void folk_tick(Sim *s, int i){
     SimFolk *f = &s->folk[i]; uint64_t t = s->tick; int h = folk_hour(s, f);
     // 1. what should I be doing?
@@ -203,6 +250,9 @@ static void folk_tick(Sim *s, int i){
         if(f->need[SIMN_HUNGER] < 50 && s->larder > 0 && want != SIMT_EAT) want = SIMT_EAT;
         if(f->need[SIMN_REST] < 20) want = SIMT_SLEEP;
         if(want == SIMT_WORK && s->weather == SIMW_STORM && outdoor(f->job)) want = SIMT_LEISURE;
+        int starving = f->need[SIMN_HUNGER] < 50 && s->larder > 0;                                                  // (eating always comes first)
+        if(f->sick && !starving && want != SIMT_EAT) want = f->need[SIMN_REST] < 160 ? SIMT_SLEEP : SIMT_LEISURE;            // the sick stay in and rest
+        if((f->warned & 8) && !starving && want != SIMT_EAT) want = SIMT_SLEEP;                                                                       // a breakdown: sleep it off
     }
     if(want != f->task){
         int old = f->task; f->task = (uint8_t)want; f->place = (uint8_t)place_of(f, want);
@@ -216,7 +266,13 @@ static void folk_tick(Sim *s, int i){
     int asleep = f->task == SIMT_SLEEP;
     if(ph % (asleep ? 60 : 30) == 0) add_need(f, SIMN_HUNGER, -1);
     if(!asleep && ph % 20 == 0) add_need(f, SIMN_REST, -1);
-    if(ph % 40 == 0){ add_need(f, SIMN_SOCIAL, -1); add_need(f, SIMN_FUN, -1); }
+    if(ph % 40 == 0){ add_need(f, SIMN_SOCIAL, -1); add_need(f, SIMN_FUN, -1);
+        int bad = 0; for(int k = 0; k < (asleep ? SIMN_SOCIAL : SIMN_N); k++) if(f->need[k] < 40) bad++;      // (asleep, only food and rest count)                                    // stress: bad needs push it up, a good mood and sleep bring it down
+        if(bad) add_stress(f, bad * (1 + (255 - f->trait[SIMTR_CALM]) / 170)); else if(sim_mood(f) > 110) add_stress(f, -2);
+        if(asleep) add_stress(f, -2); if(f->sick) add_stress(f, 1); if(f->mate >= 0) add_stress(f, -1);
+        if(f->stress >= 230 && !(f->warned & 8)){ f->warned |= 8; sim_log(s, SIME_BREAK, i, 0, 0); }
+        else if((f->warned & 8) && (f->stress <= 120 || f->need[SIMN_REST] >= 235)){ f->warned &= (uint8_t)~8; if(f->stress > 130) f->stress = 130; } }       // rested: it gets up again
+    if(f->sick && !asleep && ph % 20 == 10) add_need(f, SIMN_REST, -1);
     switch(f->task){
     case SIMT_SLEEP: if(ph % 6 == 0) add_need(f, SIMN_REST, 1 + s->comfort / 60); break;
     case SIMT_EAT:
@@ -225,21 +281,24 @@ static void folk_tick(Sim *s, int i){
         if(s->larder > 0) f->warned &= (uint8_t)~4;
         break;
     case SIMT_WORK:
-        if(f->job == SIMJ_FORAGER && ph % 60 == 0){
-            uint32_t gain = 1u + s->fertility / 50u + (s->weather == SIMW_RAIN ? 1u : 0u) + f->skill / 64u;
+        if(f->job == SIMJ_FORAGER && ph % 60 == 0 && !f->sick){
+            uint32_t gain = 1u + s->fertility / 50u + (s->weather == SIMW_RAIN ? 1u : 0u) + f->skill / 64u + f->trait[SIMTR_DILIGENT] / 170u - (f->stress > 200 ? 1u : 0u);
             s->larder += gain; if(s->larder > 9999) s->larder = 9999;
             if(gain >= 4 && ph % 600 == 0) sim_log(s, SIME_HARVEST, i, 0, 0);
         }
-        if(ph % 100 == 0 && f->skill < 60 && f->job != SIMJ_FORAGER) f->skill++;
+        if(ph % (f->trait[SIMTR_DILIGENT] > 170 ? 60 : f->trait[SIMTR_DILIGENT] < 85 ? 150 : 100) == 0 && f->skill < 60 && f->job != SIMJ_FORAGER && !f->sick) f->skill++;
         break;
     case SIMT_LEISURE: if(ph % 5 == 0) add_need(f, SIMN_FUN, 1); if(ph % 20 == 0) add_need(f, SIMN_SOCIAL, 1); break;
     case SIMT_SOCIAL:
         if(ph % 4 == 0) add_need(f, SIMN_SOCIAL, 1);
         if(ph % 20 == 0) add_need(f, SIMN_FUN, 1);
         if(ph % 150 == 0){
-            int off = (int)sim_rngn(s->seed, (uint32_t)i, RP_CHAT, t, (uint32_t)s->nfolk);
-            for(int k = 0; k < s->nfolk; k++){ int j = (off + k) % s->nfolk; if(j != i && s->folk[j].task == SIMT_SOCIAL){
-                sim_log(s, SIME_CHAT, i, 0, j); f->pal = (uint16_t)j; add_need(f, SIMN_SOCIAL, 12); add_need(&s->folk[j], SIMN_SOCIAL, 12); break; } }
+            int j = pick_pal(s, i, t);
+            if(j >= 0){ SimFolk *g = &s->folk[j];
+                if(f->bond[j] < -20 && sim_rngn(s->seed, (uint32_t)i, RP_LIFE, t, 3) == 0){ sim_log(s, SIME_QUARREL, i, 0, j); bond_add(s, i, j, -6); add_stress(f, 10); add_stress(g, 10); f->pal = (uint16_t)j; }
+                else{ int d = compat(f, g) / 8 + (int)sim_rngn(s->seed, (uint32_t)i * 13u + (uint32_t)j, RP_LIFE, t + 5, 4) - 1; if(f->mate == j) d += 2;
+                    sim_log(s, SIME_CHAT, i, 0, j); f->pal = (uint16_t)j; bond_add(s, i, j, d);
+                    int gain = 6 + (f->bond[j] > 0 ? f->bond[j] / 12 : 0) + f->trait[SIMTR_SOCIABLE] / 40; add_need(f, SIMN_SOCIAL, gain); add_need(g, SIMN_SOCIAL, gain); } }
         }
         break;
     }
@@ -327,7 +386,7 @@ uint64_t sim_hash(const Sim *s){
     h64(&x, s->seed); h64(&x, s->tick); h32(&x, s->day_ticks); hb(&x, s->acc); h32(&x, (uint32_t)s->nfolk);
     for(int i = 0; i < s->nfolk; i++){ const SimFolk *f = &s->folk[i];
         for(int k = 0; f->name[k]; k++) hb(&x, (uint8_t)f->name[k]);
-        hb(&x, f->job); hb(&x, f->home); hb(&x, f->task); hb(&x, f->place); hb(&x, f->shift); for(int k = 0; k < SIMN_N; k++) hb(&x, f->need[k]); hb(&x, f->warned); hb(&x, f->skill); h16(&x, f->pal); }
+        hb(&x, f->job); hb(&x, f->home); hb(&x, f->task); hb(&x, f->place); hb(&x, f->shift); for(int k = 0; k < SIMN_N; k++) hb(&x, f->need[k]); hb(&x, f->warned); hb(&x, f->skill); h16(&x, f->pal); hb(&x, f->sick); hb(&x, f->stress); hb(&x, (uint8_t)f->mate); for(int k = 0; k < s->nfolk; k++) hb(&x, (uint8_t)f->bond[k]); }
     hb(&x, s->fertility); hb(&x, s->water); hb(&x, s->shelter); hb(&x, s->comfort); hb(&x, s->health); hb(&x, s->luck); hb(&x, s->pests); hb(&x, s->forest);
     hb(&x, s->hills); hb(&x, s->birds); hb(&x, s->ideas); hb(&x, s->legends); hb(&x, s->nspecies); hb(&x, s->ore); hb(&x, s->weather); h16(&x, s->weather_left);
     h32(&x, s->larder); h16(&x, s->spirit); for(int k = 0; k < SIM_MAXSPECIES; k++) h32(&x, s->species_seed[k]);
@@ -339,13 +398,13 @@ uint64_t sim_hash(const Sim *s){
     return x.h;
 }
 size_t sim_dump(const Sim *s, char *o, size_t n){
-    size_t at = 0; char t[160]; if(!n) return 0; o[0] = 0;
+    size_t at = 0; char t[200]; if(!n) return 0; o[0] = 0;
     snprintf(t, sizeof t, "sim tick %llu day %d hour %d weather %s larder %u spirit %u folk %d log %u\n", (unsigned long long)s->tick, sim_day(s), sim_hour(s), sim_weather_name(s->weather), s->larder, s->spirit, s->nfolk, s->log_n);
     at = cat(o, n, at, t);
     snprintf(t, sizeof t, "land fert %u water %u shelter %u comfort %u health %u luck %u pests %u forest %u hills %u birds %u ideas %u legends %u species %u ore %u\n", s->fertility, s->water, s->shelter, s->comfort, s->health, s->luck, s->pests, s->forest, s->hills, s->birds, s->ideas, s->legends, s->nspecies, s->ore);
     at = cat(o, n, at, t);
     for(int i = 0; i < s->nfolk; i++){ const SimFolk *f = &s->folk[i];
-        snprintf(t, sizeof t, "folk %d %s job %s task %s place %d hunger %u rest %u social %u fun %u skill %u\n", i, f->name, sim_job_name(f->job), sim_task_name(f->task), f->place, f->need[0], f->need[1], f->need[2], f->need[3], f->skill);
+        snprintf(t, sizeof t, "folk %d %s job %s task %s place %d hunger %u rest %u social %u fun %u skill %u sick %u stress %u mate %d trait %s\n", i, f->name, sim_job_name(f->job), sim_task_name(f->task), f->place, f->need[0], f->need[1], f->need[2], f->need[3], f->skill, f->sick, f->stress, f->mate, sim_trait_text(f));
         at = cat(o, n, at, t); }
     uint32_t cnt = sim_log_count(s); if(cnt > 5) cnt = 5;
     for(uint32_t b = 0; b < cnt; b++){ char tx[80]; sim_event_text(s, sim_log_at(s, b), tx, sizeof tx); at = cat(o, n, at, "event "); at = cat(o, n, at, tx); at = cat(o, n, at, "\n"); }

@@ -35,7 +35,8 @@ enum { SIMN_HUNGER, SIMN_REST, SIMN_SOCIAL, SIMN_FUN, SIMN_N };                 
 enum { SIMW_CLEAR, SIMW_CLOUD, SIMW_RAIN, SIMW_STORM, SIMW_SNOW, SIMW_N };                                           // weather
 
 enum { SIME_NONE, SIME_WAKE, SIME_SLEEP, SIME_WORK, SIME_EAT, SIME_CHAT, SIME_HUNGRY, SIME_TIRED, SIME_WEATHER, SIME_DAWN, SIME_CAST,
-       SIME_UNLOCK, SIME_EMPTY, SIME_HARVEST, SIME_NEWFOLK, SIME_SPECIES, SIME_LEGEND, SIME_IDEA, SIME_SANDBOX, SIME_FRIEND, SIME_LETTER, SIME_COLONY, SIME_N };   // SIME_COLONY: a = colony event kind, b = its first number, seed32 = its second
+       SIME_UNLOCK, SIME_EMPTY, SIME_HARVEST, SIME_NEWFOLK, SIME_SPECIES, SIME_LEGEND, SIME_IDEA, SIME_SANDBOX, SIME_FRIEND, SIME_LETTER, SIME_COLONY,
+       SIME_BOND, SIME_RIVAL, SIME_COUPLE, SIME_BREAKUP, SIME_QUARREL, SIME_SICK, SIME_WELL, SIME_BREAK, SIME_CARE, SIME_N };   // v2 life: who/b = the two bugs   // SIME_COLONY: a = colony event kind, b = its first number, seed32 = its second
 
 typedef struct { uint32_t tick; uint16_t kind, who, a, b; uint32_t seed32; } SimEvent;     // 16 bytes
 
@@ -46,7 +47,14 @@ typedef struct {
     uint8_t warned;                             // bit 0: said hungry, bit 1: said tired (so the log does not repeat itself)
     uint8_t skill;
     uint16_t pal;                               // who it chatted with last
+    // life v2 (all derived from the seed or rebuilt as the town runs; nothing here is saved to the .sim file)
+    uint8_t trait[4];                           // 0..255: sociable, diligent, hearty, calm (made from the seed: the same bug is always the same person)
+    uint8_t sick;                               // days of illness left
+    uint8_t stress;                             // 0..255, slow: bad needs raise it, good days and sleep lower it
+    int8_t  mate;                               // the bug it is a couple with, or -1
+    int8_t  bond[SIM_MAXFOLK];                  // how it feels about each other bug: -100 rival .. +100 dear friend
 } SimFolk;
+enum { SIMTR_SOCIABLE, SIMTR_DILIGENT, SIMTR_HEARTY, SIMTR_CALM };
 
 typedef struct {
     uint64_t seed, tick;
@@ -90,7 +98,10 @@ const char *sim_job_name(int j);
 const char *sim_weather_name(int w);
 void sim_name(uint32_t seed32, uint32_t id, char *out);        // a bug's name (3 to 8 letters)
 void sim_species_name(uint32_t seed, char *out);
-int  sim_mood(const SimFolk *f);                // 0..255, the average of the needs
+int  sim_mood(const SimFolk *f);                // 0..255: the average of the needs, less stress and illness
+const char *sim_trait_text(const SimFolk *f);   // "SHY", "CHEERFUL", "LAZY", "TIRELESS", "TOUGH", "FRAGILE", "CALM", "TENSE" or "EVEN": the trait that stands out most
+int  sim_bond(const Sim *s, int a, int b);      // -100..100 (0 for no such bug)
+int  sim_best_pal(const Sim *s, int k);         // the bug k likes most (>= 20), or -1
 void sim_status_text(const SimFolk *f, char *out, size_t n);  // "TIRED. HUNGRY." or "FINE."
 
 // Phase 3: friends and letters. Talking to somebody (once a day each) makes them like you more; at 25, 50, 75 and 100 they write you a letter.

@@ -16,8 +16,8 @@ static int sim_talk(void *po_obj){
     int idx=(int)((PObj*)po_obj-po), k=-1; for(int i=0;i<sim_w.nfolk;i++) if(sim_fpo[i]==idx) k=i;
     if(k<0) return 0;
     const SimFolk *f=&sim_w.folk[k]; char l0[44], l1[44], l2[44];
-    scpy(l0,sim_job_name(f->job)); scat(l0,". "); scat(l0,sim_task_name(f->task)); scat(l0,".");
-    sim_status_text(f,l1,sizeof l1);
+    scpy(l0,sim_job_name(f->job)); scat(l0,". "); scat(l0,sim_task_name(f->task)); scat(l0,". "); scat(l0,sim_trait_text(f)); scat(l0,".");
+    sim_status_text(f,l1,sizeof l1); if(f->mate>=0 && f->mate<sim_w.nfolk){ int n1=0; while(l1[n1]) n1++; if(n1<26){ scat(l1," LOVES "); scat(l1,sim_w.folk[f->mate].name); } }
     scpy(l2,"IT IS "); { int hr=sim_hour(&sim_w); if(hr<10) scat(l2,"0"); ncat(l2,hr); } scat(l2,"H. "); scat(l2,sim_weather_name(sim_w.weather)); scat(l2,".");
     int fr=sim_talk_to(&sim_w,k); int shown = fr>=0 ? 1 : 0; if(fr<0) fr=sim_w.friend[k];
     char l3[44]; scpy(l3, fr ? "FRIENDSHIP " : "WE HAVE NOT MET BEFORE."); if(fr){ ncat(l3,fr); scat(l3,"/100"); if(shown) scat(l3," +"); }
