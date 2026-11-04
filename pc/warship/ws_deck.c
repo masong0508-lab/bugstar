@@ -44,15 +44,18 @@ static int inb(int x,int y){ return x>=0&&y>=0&&x<WD_W&&y<WD_W; }
 static const uint8_t rk_w[WR_NKIND][2]={{0,0},{16,12},{11,11},{8,6},{9,6},{9,7},{8,6},{10,8},{8,6},{3,14},{12,6},{10,10},{8,8},{11,7},{6,5}};
 static const int8_t rk_ceil[WR_NKIND]={8,40,50,10,7,9,9,14,10,22,16,36,24,14,8};
 static int8_t scale_ceil(int c, int band){ int v=c; if(band==WB_SMALL||band<=WB_MICRO) v=c*6/10; else if(band==WB_VAST) v=c*18/10; else if(band==WB_COSMIC) v=c*22/10; if(v<6) v=6; if(v>124) v=124; return (int8_t)v; }
+static int g_tight;      // set only inside wd_make_mix when there is a mix
 static int add_room(WdDeck *d, R *r, int kind, int sub){
     if(d->nroom>=WD_MAXROOM) return -1;
-    int w=rk_w[kind][0], h=rk_w[kind][1]; if(d->band==WB_SMALL||d->band<=WB_MICRO){ w=w*7/10; h=h*7/10; } else if(d->band>=WB_VAST){ w=w*13/10; h=h*13/10; }
+    int w=rk_w[kind][0], h=rk_w[kind][1]; if(d->band==WB_SMALL||d->band<=WB_MICRO){ w=w*7/10; h=h*7/10; } else if(d->band>=WB_VAST){ int k = g_tight ? 11 : 13; w=w*k/10; h=h*k/10; }      // (a mix needs more rooms on the same 64 x 64 floor, so its rooms are a little smaller)
     if(w<3) w=3; if(h<3) h=3; if(kind==WR_TRENCH && ri(r,2)){ int t=w; w=h; h=t; }
     w+=ri(r,3); h+=ri(r,3); if(w>30) w=30; if(h>30) h=30;
     for(int tries=0;tries<360;tries++){
         if(tries==120||tries==240){ w=w*2/3; h=h*2/3; if(w<3) w=3; if(h<3) h=3; }
+        if(g_tight && (tries==300||tries==330||tries==350)){ w=w*3/4; h=h*3/4; if(w<3) w=3; if(h<3) h=3; }      // a room mix needs its rooms: shrink a little more before giving up (the plain builder is unchanged)
         int x0=3+ri(r,WD_W-6-w), y0=3+ri(r,WD_W-6-h), x1=x0+w-1, y1=y0+h-1, ok=1;
-        for(int i=1;i<d->nroom && ok;i++){ WdRoom *o=&d->room[i]; if(x0<=o->x1+4 && x1>=o->x0-4 && y0<=o->y1+4 && y1>=o->y0-4) ok=0; }
+        int gap = (g_tight && tries>=200) ? 3 : 4;        // (mix mode only: when the deck is crowded, rooms may sit one cell closer)
+        for(int i=1;i<d->nroom && ok;i++){ WdRoom *o=&d->room[i]; if(x0<=o->x1+gap && x1>=o->x0-gap && y0<=o->y1+gap && y1>=o->y0-gap) ok=0; }
         if(!ok) continue;
         WdRoom *m=&d->room[d->nroom]; memset(m,0,sizeof *m); m->kind=(uint8_t)kind; m->x0=(uint8_t)x0; m->y0=(uint8_t)y0; m->x1=(uint8_t)x1; m->y1=(uint8_t)y1; m->sub=(uint8_t)sub;
         m->ceil=scale_ceil(rk_ceil[kind],d->band); m->floor = kind==WR_TRENCH ? -8 : 0; snprintf(m->name,sizeof m->name,"%s",wd_room_kind(kind,d->band));
@@ -172,7 +175,54 @@ static void spot_near(const WdDeck *d, R *r, int type, int room_kind, int *sx, i
         for(int k=0;k<9;k++){ int x=bx+o[k][0], y=by+o[k][1]; if(inb(x,y) && C(d,x,y).kind==WDC_OPEN){ *sx=x; *sy=y; return; } } }
     int rm=room_of_kind(d,room_kind); if(rm<0) rm=1+ri(r,d->nroom-1); float fx,fy; free_spot(d,r,rm,&fx,&fy); *sx=(int)fx; *sy=(int)fy;
 }
-void wd_make(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, int nsubs, int from_hangar, int depth){
+// ================================================================= ROOM MIX: a ship design says which rooms and props the deck has (see WdMix in ws_deck.h)
+static int count_kind(const WdDeck *d, int k){ int n=0; for(int i=1;i<d->nroom;i++) if(d->room[i].kind==k) n++; return n; }
+int wd_count_rooms(const WdDeck *d, int kind){ int n=0; for(int i=1;i<d->nroom;i++) if(d->room[i].kind==kind && d->room[i].sub==255) n++; return n; }
+int wd_count_props(const WdDeck *d, int type){ int n=0; for(int p=0;p<d->nprop;p++){ const WdProp *q=&d->prop[p]; if(q->type==type && q->room>0 && q->room<d->nroom && d->room[q->room].sub==255) n++; } return n; }
+static int mix_host(int type, int kind){          // which rooms a mix prop lives in
+    switch(type){ case WP_BUNK: return kind==WR_QUARTERS; case WP_FIGHTER: return kind==WR_HANGAR; case WP_GUN: return kind==WR_TURRET;
+        case WP_CRATE: return kind==WR_HANGAR || kind==WR_WORKSHOP || kind==WR_SECURITY; default: return 0; } }
+static float g_mixk=1;      // prop scale of the deck being made: on a small craft the bunks, crates and fighters are packed closer
+static int mix_slot(const WdRoom *m, int type, int idx, float *x, float *y, float *w, float *h){      // the idx-th place for a bunk, fighter or crate in a room; 0 when the room is full
+    float x0=(float)m->x0, y0=(float)m->y0, x1=(float)m->x1+1, y1=(float)m->y1+1, ox, oy, sx, sy, mx, my; int cm=0, maxcol=99;
+    switch(type){
+    case WP_BUNK:    ox=0.9f; oy=0.6f; sx=1.6f; sy=2.0f; mx=0.5f; my=0.6f; *w=1.2f; *h=1.8f; break;
+    case WP_FIGHTER: ox=2.6f; oy=2.5f; sx=3.4f; sy=3.0f; mx=1.5f; my=1.2f; *w=2.6f; *h=1.6f; break;
+    case WP_CRATE:   ox=0.7f; oy=0.8f; sx=1.2f; sy=1.2f; mx=0.6f; my=0.6f; *w=0.9f; *h=0.9f; cm=1; if(m->kind==WR_HANGAR) maxcol=1; break;     // crates fill from the bottom left, column by column
+    default: return 0; }
+    ox*=g_mixk; oy*=g_mixk; sx*=g_mixk; sy*=g_mixk; mx*=g_mixk; my*=g_mixk; *w*=g_mixk; *h*=g_mixk; if(type==WP_CRATE && m->kind==WR_HANGAR && g_mixk<1) maxcol=2;
+    int nc=0, nr=0; for(float xx=x0+ox; xx<x1-mx && nc<maxcol; xx+=sx) nc++; for(float yy=y0+oy; yy<y1-my; yy+=sy) nr++;
+    if(nc<1 || nr<1 || idx<0 || idx>=nc*nr) return 0;
+    int col = cm ? idx/nr : idx%nc, row = cm ? idx%nr : idx/nc;
+    *x = x0+ox+col*sx; *y = cm ? y1-oy-row*sy : y0+oy+row*sy; return 1; }
+static void mix_fill(WdDeck *d, int type, int target){        // make exactly `target` props of this type in the (non-target) rooms that host them, as many as the floor takes
+    int host[WD_MAXROOM], nh=0; for(int i=1;i<d->nroom;i++) if(d->room[i].sub==255 && mix_host(type,d->room[i].kind)) host[nh++]=i;
+    { int k=0; for(int p=0;p<d->nprop;p++){ const WdProp *q=&d->prop[p]; int rm=q->room; if(q->type==type && rm>0 && rm<d->nroom && d->room[rm].sub==255 && mix_host(type,d->room[rm].kind)) continue; d->prop[k++]=d->prop[p]; } d->nprop=k; }
+    if(!nh || target<=0) return;
+    if(type==WP_GUN){ for(int hi=0;hi<nh;hi++){ const WdRoom *m=&d->room[host[hi]]; int n=target/nh+(hi<target%nh?1:0); float W=(float)(m->x1+1-m->x0), H=(float)(m->y1+1-m->y0), cx=m->x0+W*0.5f, cy=m->y0+H*0.5f, sm=W<H?W:H;
+            for(int k=0;k<n;k++){ if(n<=1) prop(d,WP_GUN,cx,cy,0,W*0.4f,m->ceil*0.7f,0); else { float a=6.2831853f*k/n+0.4f; prop(d,WP_GUN,cx+cosf(a)*sm*0.28f,cy+sinf(a)*sm*0.28f,0,sm*0.26f,m->ceil*0.5f,0); } } }
+        return; }
+    int used[WD_MAXROOM]={0};
+    for(int k=0;k<target;k++){ int placed=0; for(int t=0;t<nh && !placed;t++){ int hi=(k+t)%nh; float x,y,w,h; if(mix_slot(&d->room[host[hi]],type,used[hi],&x,&y,&w,&h)){ prop(d,type,x,y,0,w,h,type==WP_FIGHTER?(hi+k)&3:k%3); used[hi]++; placed=1; } } if(!placed) break; }
+}
+static int mix_cap(const WdDeck *d, int type){      // how many of this prop the free (non-target) rooms can hold
+    int n=0; float x,y,w,h; for(int i=1;i<d->nroom;i++) if(d->room[i].sub==255 && mix_host(type,d->room[i].kind)){ int k=0; while(mix_slot(&d->room[i],type,k,&x,&y,&w,&h)) k++; n+=k; } return n; }
+static void mix_rooms(WdDeck *d, R *r, const WdMix *x){      // the rooms the design has (the craft's own target rooms count for reactor, bridge and shield generator)
+    int nt = x->turret>6 ? 6 : x->turret; if(!nt && x->guns) nt=1;
+    int nh = (x->hangar||x->fighters) ? (x->fighters+9)/10 : 0; if((x->hangar||x->fighters) && nh<1) nh=1; if(nh>3) nh=3;
+    int nq = (x->quarters||x->bunks) ? (x->bunks+11)/12 : 0; if((x->quarters||x->bunks) && nq<1) nq=1; if(nq>4) nq=4;
+    // the rooms that hold props go first (they are the ones the design cannot do without), then the rest
+    struct { int k, n, own; } plan[8]={ {WR_HANGAR,nh,1}, {WR_QUARTERS,nq,1}, {WR_TURRET,nt,1}, {WR_REACTOR,x->reactor?1:0,0}, {WR_BRIDGE,x->bridge?1:0,0}, {WR_SHIELDGEN,x->shieldgen?1:0,0}, {WR_WORKSHOP,x->workshop?1:0,0}, {WR_MESS,x->mess?1:0,0} };
+    for(int i=0;i<8;i++){ int have = plan[i].own ? wd_count_rooms(d,plan[i].k) : count_kind(d,plan[i].k); for(int n=have;n<plan[i].n;n++) if(add_room(d,r,plan[i].k,255)<0) break; }
+    // small decks hold fewer: add hangars and quarters until the floor takes the fighters and bunks (a few more than the plan, never past 6 of a kind)
+    while(x->fighters && mix_cap(d,WP_FIGHTER)<x->fighters && wd_count_rooms(d,WR_HANGAR)<6 && add_room(d,r,WR_HANGAR,255)>=0) ;
+    while(x->bunks && mix_cap(d,WP_BUNK)<x->bunks && wd_count_rooms(d,WR_QUARTERS)<6 && add_room(d,r,WR_QUARTERS,255)>=0) ;
+    if(d->nroom<5) add_room(d,r,WR_CONTROL,255);              // a deck is never just a tram stop and a security desk
+    if(d->nroom<5) add_room(d,r,WR_LOUNGE,255);
+}
+void wd_make(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, int nsubs, int from_hangar, int depth){ wd_make_mix(d,c,leaf,subs,nsubs,from_hangar,depth,0); }
+void wd_make_mix(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, int nsubs, int from_hangar, int depth, const WdMix *mix){
+    g_tight = mix!=0; g_mixk = (mix && wd_band(c)<=WB_SMALL) ? 0.65f : 1.0f;
     memset(d,0,sizeof *d); R r={leaf^0xD3C4u}; d->seed=c->seed; d->leaf=leaf; d->band=wd_band(c); d->cult=c->cult; d->depth=depth;
     d->cell_m = wd_level_m(c,depth)/WD_W; d->nsubs=nsubs; for(int i=0;i<nsubs;i++) d->subs[i]=subs[i];
     d->clock = 6+ (leaf%12);
@@ -186,7 +236,8 @@ void wd_make(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, int ns
     int sec=add_room(d,&r,WR_SECURITY,255);
     static const uint8_t fill[10]={WR_QUARTERS,WR_MESS,WR_LOUNGE,WR_GARDEN,WR_WORKSHOP,WR_QUARTERS,WR_CONTROL,WR_TRENCH,WR_WORKSHOP,WR_QUARTERS};
     int maxr = d->band<=WB_SMALL ? 9 : d->band==WB_NORMAL ? 14 : 16;
-    for(int i=0;i<16 && d->nroom<maxr;i++){ int k = i<10 ? fill[(i+(int)(leaf%3))%10] : fill[ri(&r,10)]; add_room(d,&r,k,255); }
+    if(mix) mix_rooms(d,&r,mix);                                      // a design's room mix replaces the random fill
+    else for(int i=0;i<16 && d->nroom<maxr;i++){ int k = i<10 ? fill[(i+(int)(leaf%3))%10] : fill[ri(&r,10)]; add_room(d,&r,k,255); }
     // ---- corridors: a tree (each room joins the nearest one already joined) plus a few loops; target rooms with one way in can be locked
     int cw = d->band<=WB_SMALL ? 1 : d->band==WB_NORMAL ? 2 : 3; int8_t cc=scale_ceil(rk_ceil[WR_CORRIDOR],d->band);
     int joined[WD_MAXROOM]={0}, deg[WD_MAXROOM]={0}; joined[1]=1;
@@ -195,6 +246,7 @@ void wd_make(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, int ns
         if(bb<0) break; joined[bb]=1; if(carve(d,ba,bb,cw,cc)){ deg[ba]++; deg[bb]++; } }
     for(int k=0;k<2;k++){ int a=1+ri(&r,d->nroom-1), b=1+ri(&r,d->nroom-1); if(a!=b && deg[a]>1 && deg[b]>1 && carve(d,a,b,cw,cc)){ deg[a]++; deg[b]++; } }
     for(int i=1;i<d->nroom;i++) furnish(d,&r,i);
+    if(mix){ mix_fill(d,WP_BUNK,mix->bunks); mix_fill(d,WP_FIGHTER,mix->fighters); mix_fill(d,WP_CRATE,mix->crates); mix_fill(d,WP_GUN,mix->guns); }
     // ---- every room must be reachable: any room a corridor could not reach gets a straight one, through whatever is in the way
     int sr0 = from_hangar && hang_entry>0 ? hang_entry : tram>0 ? tram : 1;
     for(int pass=0;pass<WD_MAXROOM;pass++){ int sx0=(d->room[sr0].x0+d->room[sr0].x1)/2, sy0=d->room[sr0].y0;

@@ -52,6 +52,18 @@ double wd_level_m(const WsCraft *c, int level);         // how big a node of thi
 // the subsystems in the deck at this path (path[0..depth-1]); returns how many, list in subs
 int  wd_subs_at(const WsCraft *c, const uint8_t *path, int depth, int *subs);
 void wd_make(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, int nsubs, int from_hangar, int depth);
+
+// ---- ROOM MIX: let a ship design (pc/shipyard sy_rooms) say which rooms and props a deck has, instead of the builder's own random mix.
+// The fields are the same as the shipyard's SyRooms (same order, same meaning), so the glue is a field-by-field copy; this header does not
+// include the shipyard. The rooms: reactor, hangar, quarters, bridge, shieldgen, workshop, mess are wanted (1) or not (0); turret is how many
+// turret rooms (0..6). The props: bunks, crates, guns, fighters are how many to put in the matching rooms (bunks in QUARTERS, crates in
+// HANGAR / WORKSHOP / SECURITY, guns in TURRET rooms, fighters in HANGAR). A big count gets more rooms (a hangar per 10 fighters, a
+// quarters per 12 bunks), so the number you ask for is the number you get while there is floor for it.
+// The craft's own subsystem rooms (the targets: sub != 255) are never changed, and a target reactor, bridge or shield generator counts as the design's own. Same craft, leaf and mix: the same deck. wd_make is wd_make_mix with no mix, and its decks are exactly what they always were.
+typedef struct { uint8_t reactor, hangar, quarters, bridge, turret, shieldgen, workshop, mess; uint8_t bunks, crates, guns, fighters; } WdMix;
+void wd_make_mix(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, int nsubs, int from_hangar, int depth, const WdMix *mix);
+int  wd_count_props(const WdDeck *d, int type);         // props of this type in rooms that are NOT subsystem targets (what a mix controls)
+int  wd_count_rooms(const WdDeck *d, int kind);         // rooms of this kind that are NOT subsystem targets
 const char *wd_room_kind(int k, int band);              // the room kind's name at this scale ("REACTOR SHAFT", "ATOM CORE" ...)
 int  wd_walkable(const WdDeck *d, int x, int y, int have_key);
 // the shortest walk (in cells) from (x0,y0) to any cell of room r; -1 if there is none. have_key: locked doors open; vents: 1 allowed, 0 not

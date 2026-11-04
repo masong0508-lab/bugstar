@@ -54,7 +54,7 @@ The planet-buster countdown, orbital strikes and troop waves are in. The extreme
 - **CLASSIC far fleets** at 10,000 ships turn into solid blocks; use a density map instead.
 - **Enemy beams** at the player are missing in NATIVE and ULTRA.
 - Capture real window screenshots (the automatic screenshot was not written in window mode).
-- Ship editor: use the renderer for the preview, wire `sy_rooms` into the warship interiors (`wd_make`), make foe designs change stats and fight rules.
+- Ship editor: use the renderer for the preview, `sy_rooms` now drives the warship interior builder (`wd_make_mix`, patch 18; the game does not call it yet), make foe designs change stats and fight rules.
 - Flash-safe and photosensitivity check on the NATIVE glitches.
 
 ## 5. Giant numbers (PC, `pc/giant/`)

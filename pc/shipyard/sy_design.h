@@ -117,9 +117,9 @@ void sy_cursor_fix(const SyDesign *d, SyCursor *c);                             
 extern const uint16_t sy_swatch[32];                                             // the colour steps for LEFT RIGHT on colour rows
 
 // ---- the INTERIOR hook (boarding): what rooms a design has, in the warship interior's room kinds (pc/warship/ws_deck.h WR_*, WP_* props).
-// pc/warship's wd_make can take this list instead of its own mix: one entry per room kind, how many rooms, and how many props of the
-// kinds that belong to the parts (guns in turrets, crates in cargo, bunks in crew rooms). Not wired into wd_make yet: that file is the
-// warship worker's. A design's own ship (no craft seed) is one deck.
+// pc/warship's wd_make_mix takes this list instead of its own random mix (patch 18; the copy into a WdMix is pc/warship/ws_mix_sy.h): one entry per
+// room kind, and how many props of the kinds that belong to the parts (guns in turrets, crates in cargo, bunks in crew rooms). The game does not
+// call it yet (no screen picks which design a boarded ship uses). A design's own ship (no craft seed) is one deck.
 typedef struct { uint8_t reactor, hangar, quarters, bridge, turret, shieldgen, workshop, mess; uint8_t bunks, crates, guns, fighters; } SyRooms;
 void sy_rooms(const SyDesign *d, SyRooms *r);
 
