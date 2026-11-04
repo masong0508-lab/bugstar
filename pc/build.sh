@@ -5,6 +5,7 @@
 # with the fake GBA in pc_hw.c. The game's source in the repo root is never edited by this.
 set -e
 cd "$(dirname "$0")"; PCD=$(pwd); ROOT=$(dirname "$PCD")
+if [ -n "$PC_ANDROID_PREP" ]; then export PC_PIE=1 PC_GBA_TOP=${PC_GBA_TOP:-0x30000000}; fi   # patch 30: Android prep (see below), the same flags the APK build uses
 # assets.h and facts.bin come from the same generators as the GBA build, run in a scratch copy (pc/genroot, not committed) with BUGSTAR_PC=1:
 # that adds the PC version's own HOW BIG IS IT? pages (pc/facts/*.py). The repo root's assets.h and facts.bin are never touched.
 rm -rf genroot; mkdir -p genroot/pc; cp "$ROOT"/*.py genroot/; cp -r facts genroot/pc/facts; rm -rf genroot/pc/facts/__pycache__; mkdir -p genroot/pc/laws; cp laws/laws_def.h laws/laws.c genroot/pc/laws/; mkdir -p genroot/pc/meaning; cp meaning/meaning.c meaning/meaning.h genroot/pc/meaning/     # (the laws pages read the law table)
@@ -223,7 +224,8 @@ CC=${PC_CC:-gcc}; ARCH=${PC_ARCH:--m64 -no-pie}; OUT=${PC_OUT:-bugstar_pc}
 # -ffp-contract=off so arm64 and x86 round the same, and the compiler's pointer-to-int warnings on (every one left that is not a fixed GBA address is a place to fix).
 WARN="-w"
 if [ -n "$PC_PIE" ]; then ARCH=${PC_ARCH-}; PC_CFLAGS="$PC_CFLAGS -DPC_PIE -ffp-contract=off -fPIE"; WARN="-Wpointer-to-int-cast -Wint-to-pointer-cast"; PC_OBJ="${PC_OBJ}_pie"; fi
-if [ -n "$PC_WIN" ]; then   # Windows 32-bit cross build (llvm-mingw): 32-bit pointers make the game's "address in a u32" code just work
+if [ -n "$PC_ANDROID_PREP" ]; then SDLF="-DPC_SDL -DPC_ANDROID -I$PCD/platform/sdl2/include"; SDLL=""; WARN="-w"
+elif [ -n "$PC_WIN" ]; then   # Windows 32-bit cross build (llvm-mingw): 32-bit pointers make the game's "address in a u32" code just work
   if [ -n "$PC_WIN64" ]; then   # real 64-bit Windows exe (MSYS2 mingw64). The game keeps addresses in 32-bit numbers, so the exe is NOT large-address-aware and sits at a low base (the flag is cleared after linking by tools/pe_lowaddr.py):
     # Windows then keeps its stack, heap and DLLs below 2 GB, which is the same trick the 32-bit build used.
     ARCH="-m64"; CC=${PC_CC:-gcc}
@@ -240,11 +242,20 @@ fi
 # newer GCC (14+, e.g. MSYS2 GCC 16) makes a call to an undeclared function an error: the game .inc files rely on the libc/libm/pc_plat declarations, so pull them in for every file
 CF="-std=gnu11 $OPT $WARN -include string.h -include stdio.h -include stdlib.h -include math.h -include pc_plat.h -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
+# --- patch 30 (Android step 3): PC_ANDROID_PREP=1 bash pc/build.sh does NOT compile. It writes pc/gen/sources.txt (every .c file, relative to pc/) and
+# pc/gen/cflags.txt (the flags used here, with absolute include paths) for pc/android/app/jni/src/Android.mk, so the APK build and this script never drift apart.
+SRCS="gen/main.c ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c )"
+if [ -n "$PC_ANDROID_PREP" ]; then
+  sed -i 's|facts\.bin\\"|'"$PCD"'/gen/facts.bin\\"|' sizes.inc          # the NDK compiles from another folder: give .incbin the full path
+  echo "$SRCS" | tr ' ' '\n' | grep -v '^$' | sed -e 's|^\.\./||' > sources.txt
+  echo "$CF" | sed -e "s| -I\. | -I$PCD/gen |" -e "s| -I\.\. | -I$PCD |" -e "s| -I\.\./platform | -I$PCD/platform |" -e "s|-Wa,-I,\.|-Wa,-I,$PCD/gen|" > cflags.txt
+  echo "prepared pc/gen: $(wc -l < sources.txt) sources, flags in pc/gen/cflags.txt"; exit 0
+fi
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
 STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_kartnat.inc ../pc_pnative.inc ../pc_pncomp.inc ../pc_snative.inc ../pc_sncomp.inc ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
-for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
+for f in $SRCS; do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
 $CC $ARCH ${PC_PIE:+-pie} $OBJS $SDLL -lm -lpthread -o ../$OUT
 if [ -n "$PC_WIN64" ]; then python3 "$PCD/tools/pe_lowaddr.py" ../$OUT || exit 1; fi
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"
