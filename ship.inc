@@ -271,12 +271,12 @@ static void ship_draw(volatile u16 *pg, int cx, int cy, int sc, int yaw_, int pi
         s32 mx=shn[fi*3], my=shn[fi*3+1], mz=shn[fi*3+2];                          // the stored normal, turned the same way as the ship
         s32 nx=(mx*cy_ + mz*sy_)>>14, nz0=(-mx*sy_ + mz*cy_)>>14;
         s32 ny=(my*cp + nz0*sp)>>14, nz=(-my*sp + nz0*cp)>>14;
+        if(nz>0){ nx=-nx; ny=-ny; nz=-nz; }                                        // light the side that faces you, whichever way the stored normal points (a hull seen from above is lit on top, never on its belly)
         s32 dot=(-nx*5 + ny*11 - nz*8)>>8;                                         // light from (-0.35, 0.75, -0.55), scaled by 16
-        if(area>=0) dot=-dot;
         int X[8], Y[8]; for(int k=0;k<F->n;k++){ X[k]=px[F->v[k]]; Y[k]=py[F->v[k]]; }
         int base, L;                                                               // L: 0..28 = the 8 palette shades with 4 dither steps between each
         if(F->grp==2){ base=SHP_GLOW; L=20+((frames>>2)&1)*8; }                    // engine glow flickers
-        else { L=11+dot+(dot>>3); if(dot>9) L+=(dot-9)*2;                          // ambient + light, and a glint where a face points at the light
+        else { L=8+dot+(dot>>3); if(dot>9) L+=(dot-9)*2;                          // ambient + light, and a glint where a face points at the light
             L-=fz[fi]>>5;                                                          // far parts a little darker, near parts a little brighter
             if(F->grp==3){ base=SHP_GLOW; L+=6; } else { int g=F->grp; if(shpx.scheme==SC_TWO){ if(!g && (F->two&2)) g=1; } else if(shpx.scheme==SC_INVERT) g^=1; else if(shpx.scheme==SC_MONO) g=0; base = g ? SHP_TRIM : SHP_PAINT; }      // the canopy is glass: lit, never flickering. the paint scheme says which faces wear the trim
             if(L<0) L=0; if(L>28) L=28; }

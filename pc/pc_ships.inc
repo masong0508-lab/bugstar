@@ -50,10 +50,11 @@ static void pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_){
     for(int fi=0;fi<snf;fi++){ const Face *F=&shf[fi]; float zs=0; for(int k=0;k<F->n;k++) zs+=pz[F->v[k]]; zs/=F->n;
         int a=F->v[0], b=F->v[1], c=F->v[2]; float area=(px[b]-px[a])*(py[c]-py[a])-(px[c]-px[a])*(py[b]-py[a]);
         float mx=shn[fi*3], my=shn[fi*3+1], mz=shn[fi*3+2]; float nx=mx*cyw+mz*syw, nz0=-mx*syw+mz*cyw, ny=my*cp+nz0*sp, nz=-my*sp+nz0*cp;
-        int dot=(int)((-nx*5+ny*11-nz*8)/256); if(area>=0) dot=-dot;
+        if(nz>0){ nx=-nx; ny=-ny; nz=-nz; }                              // light the side that faces you (as ship.inc ship_draw)
+        int dot=(int)((-nx*5+ny*11-nz*8)/256);
         if(!(F->two&1) && area>=0 && 0) continue;
         int base, L; if(F->grp==2){ base=SHP_GLOW; L=20+((frames>>2)&1)*8; }
-        else { L=11+dot+(dot>>3); if(dot>9) L+=(dot-9)*2; L-=(int)zs>>5;
+        else { L=8+dot+(dot>>3); if(dot>9) L+=(dot-9)*2; L-=(int)zs>>5;
             if(F->grp==3){ base=SHP_GLOW; L+=6; } else { int g=F->grp; if(shpx.scheme==SC_TWO){ if(!g && (F->two&2)) g=1; } else if(shpx.scheme==SC_INVERT) g^=1; else if(shpx.scheme==SC_MONO) g=0; base = g ? SHP_TRIM : SHP_PAINT; }
             if(L<0) L=0; if(L>28) L=28; }
         int lv=(L+1)>>1, sh=lv>>1; int half=(lv&1); if(sh>=7){ sh=7; half=0; }

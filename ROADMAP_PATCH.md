@@ -26,7 +26,7 @@
 ## Patch naming and the Termux command
 Every zip has its own number, name and temp folder (no "name (1).zip" mix-ups). Each holds apply.sh, bugstar.diff, ROADMAP_PATCH.md.
 Clone first if needed: `gh repo clone masong0508-lab/bugstar` or `git clone git@github.com:masong0508-lab/bugstar.git`.
-Command (NN = patch number, NAME = its zip suffix: 02 buildings, 03 dungeon, 04 framelog, 05 towers, 06 flames, 07 roadmap check, 08 native city check, 09 shipyard overlap fix; next patch = 10):
+Command (NN = patch number, NAME = its zip suffix: 02 buildings, 03 dungeon, 04 framelog, 05 towers, 06 flames, 07 roadmap check, 08 native city check, 09 shipyard overlap fix, 10 ship lighting; next patch = 11):
 
     cd ~/bugstar && git pull --ff-only && rm -rf ~/tmp_patch_NN && mkdir -p ~/tmp_patch_NN && unzip -o ~/storage/downloads/bugstar-patch-NN-NAME.zip -d ~/tmp_patch_NN && sh ~/tmp_patch_NN/apply.sh && rm -rf ~/tmp_patch_NN && git add -A && git commit -m "patch NN: short description" && git push
 
@@ -39,6 +39,9 @@ NATIVE/ULTRA now draw the game's engine flames (two crossed cones per engine, wh
 
 ## Patch 09 (shipyard overlap)
 Your video showed the old BUILD YOUR SHIP / MAKE YOUR BUG screens painted over the new shipyard (its tabs, list and preview still showing around them). The old screens only paint their own panel, so the shipyard now wipes both pages when it hands over (FILE > OLD HANGAR, and every other exit). Checked headless: FILE > OLD HANGAR shows a clean hangar; tests/shipyard.sh still passes. Not seen by you on Windows yet; the ship preview itself looked fine headless.
+
+## Patch 10 (ship lighting)
+The ship models looked lit from below (bright belly, dark top and nose). Cause: ship.inc ship_draw (and pc_sr_player in pc/pc_ships.inc) flipped the light by screen winding, which is backwards for this model. Now each face is lit on the side that faces the camera, and the ambient level is 8 (was 11) so the lit top is not washed out. Changes the GBA ship look too (ship.inc is shared). Checked in the old hangar preview, 6 angles; the native/ULTRA stock-ship path got the same edit but was not looked at.
 
 ## Build notes
 pc/build.sh takes ~100 s and builds pc/bugstar_pc (the source of truth is the repo root; pc/gen is a patched scratch copy). Seed viewer: `bugstar_pc --view --star N --planet 0 --out PREFIX`.
