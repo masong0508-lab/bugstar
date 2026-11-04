@@ -314,6 +314,7 @@ static void present_game(int with_overlay){
         if(C.show_fps){ char b[40]; snprintf(b,sizeof b,"%.0f FPS  %dX%d",fps_show,W,H); rect_fill(gs_,gs_,text_w(b)+2*gs_,8*gs_,0,160); text_at(2*gs_,2*gs_,b,0x60FF80); }
         if(toast[0] && SDL_GetTicks64()<toast_until){ int w=text_w(toast)+6*gs_; rect_fill((dw_-w)/2,dh_-12*gs_,w,9*gs_,0,170); text_at((dw_-w)/2+3*gs_,dh_-12*gs_+gs_*3/2,toast,0xFFFFFF); }
         if(menu_open) menu_draw();
+        touch_draw();
         if(g_paused_focus && !menu_open){ rect_fill(0,0,dw_,dh_,0,120); gs_*=2; const char *s="PAUSED"; text_at((dw_-text_w(s))/2,dh_/2-3*gs_,s,0xFFFFFF); }
     }
     if(shot_pending){ shot_pending=0; char p[1200]; time_t t=time(0); struct tm *tm=localtime(&t); char ts[64]; strftime(ts,sizeof ts,"%Y%m%d_%H%M%S",tm);
@@ -330,6 +331,52 @@ static void pad_open(void){
     for(int i=0;i<SDL_NumJoysticks();i++) if(SDL_IsGameController(i)){ pad=SDL_GameControllerOpen(i); if(pad){ pad_rumble_ok=SDL_GameControllerHasRumble(pad); fprintf(stderr,"gamepad: %s\n",SDL_GameControllerName(pad)); say_toast("GAMEPAD CONNECTED"); break; } }
 }
 static uint8_t kst[512]; static uint16_t g_lastkeys;
+
+// ---- patch 30: on-screen touch pad (Android only). Fingers are tracked here; read_keys ORs touch_keys() in; touch-to-mouse is switched off (hint in plat_open).
+#ifdef PC_ANDROID
+static void open_menu(void);
+typedef struct { SDL_FingerID id; float x, y; int on; } TFing;
+static TFing tfing[10];
+typedef struct { int cx, cy, r, bit; const char *lab; } TBtn;
+static int t_u(void){ int u=dh_/6; return u<40?40:u; }
+static int t_btns(TBtn *b){ int u=t_u(), n=0;
+    b[n++]=(TBtn){dw_-u,       dh_-u*5/2, u*6/10, 1<<0, "A"};
+    b[n++]=(TBtn){dw_-u*5/2,   dh_-u*3/2, u*6/10, 1<<1, "B"};
+    b[n++]=(TBtn){u,           u*7/10,    u*55/100, 1<<9, "L"};
+    b[n++]=(TBtn){dw_-u,       u*7/10,    u*55/100, 1<<8, "R"};
+    b[n++]=(TBtn){dw_/2-u*6/5, dh_-u/2,   u*4/10, 1<<2, "SEL"};
+    b[n++]=(TBtn){dw_/2+u*6/5, dh_-u/2,   u*4/10, 1<<3, "STA"};
+    b[n++]=(TBtn){dw_/2,       u/2,       u*4/10, 1<<15, "MENU"};
+    return n; }
+static uint16_t t_hit(int px, int py){        // what a finger at (px,py) presses: GBA key bits, plus bit 15 = the MENU button
+    int u=t_u(); uint16_t m=0; TBtn b[8]; int n=t_btns(b);
+    int cx=u*2, cy=dh_-u*2, dx=px-cx, dy=py-cy, dz=u/3;
+    if(dx*dx+dy*dy < (long)u*2*u*2 && (abs(dx)>dz || abs(dy)>dz)){
+        if(abs(dx)*10 > abs(dy)*4) m|= dx>0 ? 1<<4 : 1<<5;
+        if(abs(dy)*10 > abs(dx)*4) m|= dy>0 ? 1<<7 : 1<<6; }
+    for(int i=0;i<n;i++){ long ex=px-b[i].cx, ey=py-b[i].cy, r=b[i].r*13/10; if(ex*ex+ey*ey<r*r) m|=b[i].bit; }
+    return m; }
+static uint16_t touch_keys(void){ uint16_t m=0; for(int i=0;i<10;i++) if(tfing[i].on) m|=t_hit((int)(tfing[i].x*dw_),(int)(tfing[i].y*dh_)); return m&0x7FFF; }
+static void touch_event(const SDL_Event *e){
+    int k=-1, fr=-1; for(int i=0;i<10;i++){ if(tfing[i].on && tfing[i].id==e->tfinger.fingerId) k=i; if(!tfing[i].on && fr<0) fr=i; }
+    if(e->type==SDL_FINGERUP){ if(k>=0) tfing[k].on=0; return; }
+    if(k<0){ if(fr<0) return; k=fr; tfing[k].id=e->tfinger.fingerId; tfing[k].on=1; }
+    tfing[k].x=e->tfinger.x; tfing[k].y=e->tfinger.y;
+    if(e->type!=SDL_FINGERDOWN) return;
+    uint16_t m=t_hit((int)(e->tfinger.x*dw_),(int)(e->tfinger.y*dh_));
+    if(menu_open){          // in the options the pad steers the menu: arrows, A = enter, B / MENU = back
+        if(m&(1<<6)) menu_key(SDLK_UP,0); else if(m&(1<<7)) menu_key(SDLK_DOWN,0); else if(m&(1<<5)) menu_key(SDLK_LEFT,0); else if(m&(1<<4)) menu_key(SDLK_RIGHT,0);
+        else if(m&1) menu_key(SDLK_RETURN,0); else if(m&((1<<1)|(1<<15))) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
+    } else if(m&(1<<15)) open_menu(); }
+static void touch_draw(void){
+    int u=t_u(); uint16_t on=touch_keys(); TBtn b[8]; int n=t_btns(b);
+    static const struct { int dx, dy, bit; const char *l; } D[4]={{0,-1,1<<6,"^"},{0,1,1<<7,"V"},{-1,0,1<<5,"<"},{1,0,1<<4,">"}};
+    for(int i=0;i<4;i++){ int x=u*2+D[i].dx*u*7/10, y=dh_-u*2+D[i].dy*u*7/10, h=u*3/10; rect_fill(x-h,y-h,2*h,2*h,0xFFFFFF,(on&D[i].bit)?130:55); text_at(x-text_w(D[i].l)/2,y-5*gs_/2,D[i].l,0xFFFFFF); }
+    for(int i=0;i<n;i++){ int r=b[i].r; int p=b[i].bit<(1<<15) && (on&b[i].bit); rect_fill(b[i].cx-r,b[i].cy-r,2*r,2*r,0xFFFFFF,p?130:55); text_at(b[i].cx-text_w(b[i].lab)/2,b[i].cy-5*gs_/2,b[i].lab,0xFFFFFF); } }
+#else
+static uint16_t touch_keys(void){ return 0; }
+static void touch_draw(void){}
+#endif
 static uint16_t read_keys(void){
     uint16_t down=0; const Uint8 *ks=SDL_GetKeyboardState(NULL);
     for(int b=0;b<NB;b++){ for(int sl=0;sl<2;sl++){ int c=C.kb[b][sl]; if(c&&c<512&&(ks[c]||kst[c])) down|=1<<b; else if(c>=512&&ks[c]) down|=1<<b; } }
@@ -341,6 +388,7 @@ static uint16_t read_keys(void){
     }
     if(C.mouse && !menu_open && pc_mouse_x>=0){ if(pc_mouse_b&1) down|=1; if(pc_mouse_b&2) down|=2; }
     if(C.mouse && !menu_open && pc_mouse_wheel){ if(pc_mouse_wheel>0){ down|=1<<6; pc_mouse_wheel--; } else { down|=1<<7; pc_mouse_wheel++; } }
+    down|=touch_keys();
     if((down&(1<<4))&&(down&(1<<5))) down&=~((1<<4)|(1<<5)); if((down&(1<<6))&&(down&(1<<7))) down&=~((1<<6)|(1<<7));
     return down;
 }
@@ -377,6 +425,9 @@ static void pump_events(void){
             int mx=(ex-dst.x)*240/(dst.w?dst.w:1), my=(ey-dst.y)*160/(dst.h?dst.h:1); if(mx<0||my<0||mx>=240||my>=160){ pc_mouse_x=-1; pc_mouse_y=-1; } else { pc_mouse_x=mx; pc_mouse_y=my; }
             if(e.type!=SDL_MOUSEMOTION){ int bit = e.button.button==SDL_BUTTON_LEFT ? 1 : e.button.button==SDL_BUTTON_RIGHT ? 2 : 0; if(e.type==SDL_MOUSEBUTTONDOWN) pc_mouse_b|=bit; else pc_mouse_b&=~bit; } break; }
         case SDL_MOUSEWHEEL: if(menu_open){ if(e.wheel.y>0) menu_key(SDLK_UP,0); else if(e.wheel.y<0) menu_key(SDLK_DOWN,0); } else pc_mouse_wheel += e.wheel.y; break;
+#ifdef PC_ANDROID
+        case SDL_FINGERDOWN: case SDL_FINGERMOTION: case SDL_FINGERUP: touch_event(&e); break;
+#endif
         case SDL_CONTROLLERDEVICEADDED: pad_open(); break;
         case SDL_CONTROLLERDEVICEREMOVED: if(pad && e.cdevice.which==SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad))){ SDL_GameControllerClose(pad); pad=0; say_toast("GAMEPAD REMOVED"); pad_open(); } break;
         case SDL_CONTROLLERBUTTONDOWN:
@@ -391,8 +442,8 @@ static void pump_events(void){
             if(e.key.keysym.sym==SDLK_F11 || (e.key.keysym.sym==SDLK_RETURN && (e.key.keysym.mod&KMOD_ALT))){ toggle_fullscreen(); break; }
             if(e.key.keysym.sym==SDLK_F12){ shot_pending=1; break; }
             if(e.key.keysym.sym==SDLK_F3){ C.show_fps=!C.show_fps; break; }
-            if(menu_open){ menu_key(e.key.keysym.sym,e.key.keysym.scancode); break; }
-            if(e.key.keysym.sym==SDLK_ESCAPE || e.key.keysym.sym==SDLK_F1){ open_menu(); break; }
+            if(menu_open){ if(e.key.keysym.sym==SDLK_AC_BACK) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE); else menu_key(e.key.keysym.sym,e.key.keysym.scancode); break; }
+            if(e.key.keysym.sym==SDLK_ESCAPE || e.key.keysym.sym==SDLK_F1 || e.key.keysym.sym==SDLK_AC_BACK){ open_menu(); break; }
             break;
         }
     }
@@ -527,6 +578,9 @@ int plat_open(int argc, char **argv){
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS,"permonitorv2"); SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING,"0");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1"); SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER,"0");
     SDL_SetHint(SDL_HINT_APP_NAME,"BUGSTAR");
+#ifdef PC_ANDROID
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS,"0"); SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS,"0");   // the touch pad replaces touch-as-mouse
+#endif
     if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){
         if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){ fprintf(stderr,"SDL: %s\n",SDL_GetError()); return 1; } g_no_audio=1; }
     win=SDL_CreateWindow("BUGSTAR   ARROWS/WASD MOVE   X/SPACE=A   Z/K=B   ENTER=START   ESC=OPTIONS",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,C.win_w,C.win_h,SDL_WINDOW_RESIZABLE|SDL_WINDOW_ALLOW_HIGHDPI|(C.fullscreen?SDL_WINDOW_FULLSCREEN_DESKTOP:0));
