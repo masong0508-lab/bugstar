@@ -20,7 +20,7 @@ uint32_t sim_rngn(uint64_t seed, uint32_t id, uint32_t purpose, uint64_t tick, u
 }
 
 // purposes (any distinct numbers)
-enum { RP_NAME = 1, RP_JOB, RP_SHIFT, RP_NEED, RP_LAND, RP_WEATHER, RP_CHAT, RP_SPECIES, RP_CAST, RP_NEWFOLK, RP_IDEA, RP_HOME, RP_FRIEND, RP_TRAIT, RP_LIFE };
+enum { RP_NAME = 1, RP_JOB, RP_SHIFT, RP_NEED, RP_LAND, RP_WEATHER, RP_CHAT, RP_SPECIES, RP_CAST, RP_NEWFOLK, RP_IDEA, RP_HOME, RP_FRIEND, RP_TRAIT, RP_LIFE, RP_JOBFX };
 
 // ---------------------------------------------------------------- names
 static const char *const ON[] = { "P","M","T","B","K","L","N","R","S","V","W","Z","D","G","F","H","J","CH","SH","TH","BR","TR","FL","GR","SN","PL" };
@@ -175,6 +175,13 @@ static void new_folk(Sim *s, int i, uint32_t jobmask, uint32_t purpose){
 }
 static int folk_hour(const Sim *s, const SimFolk *f){ return (sim_hour(s) + 24 - f->shift) % 24; }
 
+// ---------------------------------------------------------------- patch 41: LIFE v3 (a food economy with seasons, jobs that matter, needs that steer free time)
+static int eff_temp(const Sim *s){ int se = sim_season(s); return s->temp_c + (se == 3 ? -12 : se == 1 ? 8 : 0) * (s->temp_c > -40 ? 1 : 0); }
+static int season_yield(const Sim *s){                      // percent: what a forager brings home. Spring 100, summer 120, autumn 140 (harvest), winter 45; scorched or frozen ground 60 percent of that
+    static const int y[4] = { 100, 120, 140, 35 }; if(!s->env_on) return 100;
+    int p = y[sim_season(s)], t = eff_temp(s); if(t > 45 || t < -25) p = p * 6 / 10; return p; }
+static uint32_t food_cap(const Sim *s){ return 120u + 20u * (uint32_t)s->nfolk + 2u * s->shelter; }   // what the larder holds without rotting faster (more bugs, better shelter: more room)
+static uint32_t dither(const Sim *s, uint32_t tag, uint32_t units){ return (units + sim_rngn(s->seed, 0, RP_JOBFX, s->tick * 8 + tag, 100)) / 100; }   // units/100 as a whole number, the rest by chance (stateless)
 static void bond_add(Sim *s, int i, int j, int d);
 static void add_stress(SimFolk *f, int d);
 static void new_day(Sim *s, int first){
@@ -193,9 +200,11 @@ static void new_day(Sim *s, int first){
     if(s->fertility < target) s->fertility = (uint8_t)(s->fertility + (target - s->fertility + 3) / 4);
     else if(s->fertility > target) s->fertility = (uint8_t)(s->fertility - (s->fertility - target + 3) / 4);
     if(s->pests < 100 && s->weather != SIMW_STORM) s->pests++;
-    s->larder -= s->larder / 10 + s->pests * s->larder / 2000;                       // food spoils, and pests eat it
+    { int sp = 10; if(s->env_on){ int t = eff_temp(s); sp = t <= 0 ? 5 : t > 30 ? 15 : 10; }                       // food spoils (cold keeps it, heat turns it), pests eat it, and what does not fit the larder rots fast
+      uint32_t loss = s->larder * (uint32_t)sp / 100 + s->pests * s->larder / 2000, cap = food_cap(s); if(s->larder > cap) loss += (s->larder - cap) / 3;
+      s->larder -= loss > s->larder ? s->larder : loss; }
     if(!first) for(int i = 0; i < s->nfolk; i++){ SimFolk *f = &s->folk[i];                                       // illness comes and goes by the day
-        if(!f->sick){ int p = 15 + (s->weather == SIMW_STORM || s->weather == SIMW_SNOW ? 25 : 0) + (f->need[SIMN_HUNGER] < 80 ? 30 : 0) + (f->stress > 180 ? 25 : 0) - f->trait[SIMTR_HEARTY] / 16 - s->health / 8; if(p < 2) p = 2;
+        if(!f->sick){ int p = 30 + (s->env_on && sim_season(s) == 3 ? 15 : 0) + (s->weather == SIMW_STORM || s->weather == SIMW_SNOW ? 25 : 0) + (f->need[SIMN_HUNGER] < 80 ? 30 : 0) + (f->stress > 180 ? 25 : 0) - f->trait[SIMTR_HEARTY] / 16 - s->health / 8; if(p < 2) p = 2;
             if((int)sim_rngn(s->seed, (uint32_t)i, RP_LIFE, (uint64_t)day + 7000, 1000) < p){ f->sick = (uint8_t)(2 + (255 - f->trait[SIMTR_HEARTY]) / 90); sim_log(s, SIME_SICK, i, 0, 0); } }
         else{ int dec = 1, nurse = -1; for(int j = 0; j < s->nfolk; j++) if(j != i && !s->folk[j].sick && (f->mate == j || f->bond[j] >= 40)){ nurse = j; break; }
             if(nurse >= 0 && f->sick > 1){ dec = 2; sim_log(s, SIME_CARE, i, 0, nurse); bond_add(s, i, nurse, 3); }
@@ -247,17 +256,26 @@ static int pick_pal(Sim *s, int i, uint64_t t){                                 
         if(sc > bs){ bs = sc; best = j; } }
     return best; }
 
-static void folk_tick(Sim *s, int i){
+static void folk_tick(Sim *s, int i, const int *duty){
     SimFolk *f = &s->folk[i]; uint64_t t = s->tick; int h = folk_hour(s, f);
     // 1. what should I be doing?
     int want = sched(h);
+    if(f->need[SIMN_REST] < 20) f->warned |= 32; else if(f->need[SIMN_REST] >= 90) f->warned &= (uint8_t)~32;           // patch 41: worn out: sleep until properly rested, not just over the line
+    if(f->need[SIMN_HUNGER] < 50 && s->larder > 0) f->warned |= 16; else if(f->need[SIMN_HUNGER] >= 130 || s->larder == 0) f->warned &= (uint8_t)~16;   // patch 41: once hungry, eat until FULL (it used to flip between table and work every few ticks)
     if(want != SIMT_SLEEP){
-        if(f->need[SIMN_HUNGER] < 50 && s->larder > 0 && want != SIMT_EAT) want = SIMT_EAT;
-        if(f->need[SIMN_REST] < 20) want = SIMT_SLEEP;
+        int eating = (f->warned & 16) != 0;                                                                          // (eating always comes first)
+        if(eating && want != SIMT_EAT) want = SIMT_EAT;
+        if(f->warned & 32) want = SIMT_SLEEP;
         if(want == SIMT_WORK && s->weather == SIMW_STORM && outdoor(f->job)) want = SIMT_LEISURE;
-        int starving = f->need[SIMN_HUNGER] < 50 && s->larder > 0;                                                  // (eating always comes first)
-        if(f->sick && !starving && want != SIMT_EAT) want = f->need[SIMN_REST] < 160 ? SIMT_SLEEP : SIMT_LEISURE;            // the sick stay in and rest
-        if((f->warned & 8) && !starving && want != SIMT_EAT) want = SIMT_SLEEP;                                                                       // a breakdown: sleep it off
+        if(f->sick && !eating && want != SIMT_EAT) want = (f->task == SIMT_SLEEP ? f->need[SIMN_REST] < 200 : f->need[SIMN_REST] < 150) ? SIMT_SLEEP : SIMT_LEISURE;   // the sick stay in and rest (patch 41: until well rested; at 160 they used to flip between bed and plaza every few ticks)
+        if((f->warned & 8) && !eating && want != SIMT_EAT) want = SIMT_SLEEP;                                          // a breakdown: sleep it off
+        if((want == SIMT_SOCIAL || want == SIMT_LEISURE) && !f->sick){                                                             // patch 41: free time goes to the need that is lower (a sociable bug counts its loneliness double), and sticks until the other need is clearly lower
+            int ns = f->need[SIMN_SOCIAL] - f->trait[SIMTR_SOCIABLE] / 8, nf = f->need[SIMN_FUN];
+            if(want == SIMT_SOCIAL) ns -= 30;                                                                       // the evening gathering: the schedule leans toward the plaza
+            { int crowd = 0; for(int j = 0; j < s->nfolk; j++) if(j != i && s->folk[j].task == SIMT_SOCIAL) crowd++; ns -= (crowd > 5 ? 5 : crowd) * 8; }   // and a crowd draws a crowd
+            int hourly = (t + (uint64_t)i * 7) % (s->day_ticks / 24 ? s->day_ticks / 24 : 1) == 0;
+            if(f->task == SIMT_SOCIAL && !hourly) want = SIMT_SOCIAL; else if(f->task == SIMT_LEISURE && !hourly) want = SIMT_LEISURE;
+            else want = ns <= nf ? SIMT_SOCIAL : SIMT_LEISURE; }
     }
     if(want != f->task){
         int old = f->task; f->task = (uint8_t)want; f->place = (uint8_t)place_of(f, want);
@@ -269,11 +287,13 @@ static void folk_tick(Sim *s, int i){
     // 2. needs fall and are met (each rule fires on a fixed rhythm, offset by the bug's number)
     uint64_t ph = t + (uint64_t)i * 7;
     int asleep = f->task == SIMT_SLEEP;
-    if(ph % (asleep ? 60 : 30) == 0) add_need(f, SIMN_HUNGER, -1);
+    int cold = s->env_on && sim_season(s) == 3 && eff_temp(s) <= 5;                                            // patch 41: a cold winter burns more food
+    if(ph % (asleep ? 60 : cold ? 24 : 30) == 0) add_need(f, SIMN_HUNGER, -1);
     if(!asleep && ph % 20 == 0) add_need(f, SIMN_REST, -1);
-    if(ph % 40 == 0){ add_need(f, SIMN_SOCIAL, -1); add_need(f, SIMN_FUN, -1);
-        int bad = 0; for(int k = 0; k < (asleep ? SIMN_SOCIAL : SIMN_N); k++) if(f->need[k] < 40) bad++;      // (asleep, only food and rest count)                                    // stress: bad needs push it up, a good mood and sleep bring it down
-        if(bad) add_stress(f, bad * (1 + (255 - f->trait[SIMTR_CALM]) / 170)); else if(sim_mood(f) > 110) add_stress(f, -2);
+    if(ph % (asleep ? 40 : 30) == 0) add_need(f, SIMN_FUN, -1);                                                  // patch 41: time awake is boring faster than time asleep
+    if(ph % 40 == 0){ add_need(f, SIMN_SOCIAL, -1);
+        int bad = 0; for(int k = 0; k < (asleep ? SIMN_SOCIAL : SIMN_N); k++) if(f->need[k] < 70) bad++;      // (asleep, only food and rest count)                                    // stress: bad needs push it up, a good mood and sleep bring it down
+        if(bad) add_stress(f, bad * (1 + (255 - f->trait[SIMTR_CALM]) / 170)); else if(sim_mood(f) > 120) add_stress(f, -1);
         if(asleep) add_stress(f, -2); if(f->sick) add_stress(f, 1); if(f->mate >= 0) add_stress(f, -1);
         if(s->worry && (ph / 40) % (s->worry == 2 ? 1 : 2) == 0) add_stress(f, 1);                  // the colony is in trouble: it weighs on the town (patch 22: was +2 x worry every step, which broke whole towns in 12 days)
         if(f->stress >= 230 && !(f->warned & 8)){ f->warned |= 8; sim_log(s, SIME_BREAK, i, 0, 0); }
@@ -282,22 +302,24 @@ static void folk_tick(Sim *s, int i){
     switch(f->task){
     case SIMT_SLEEP: if(ph % 6 == 0) add_need(f, SIMN_REST, 1 + s->comfort / 60); break;
     case SIMT_EAT:
-        if(s->larder > 0){ if(ph % 5 == 0) add_need(f, SIMN_HUNGER, 4); if(ph % 100 == 0) s->larder--; if(ph % 20 == 0) add_need(f, SIMN_SOCIAL, 1); }
+        if(s->larder > 0){ if(ph % 5 == 0) add_need(f, SIMN_HUNGER, 4); if(ph % (uint64_t)(40 + (duty[SIMJ_COOK] > 200 ? 200 : duty[SIMJ_COOK]) * 20 / 100) == 0) s->larder--; if(ph % 20 == 0) add_need(f, SIMN_SOCIAL, 1); }   // patch 41: a cook on duty stretches the meals
         else if(!(f->warned & 4)){ f->warned |= 4; sim_log(s, SIME_EMPTY, i, 0, 0); }
         if(s->larder > 0) f->warned &= (uint8_t)~4;
         break;
     case SIMT_WORK:
-        if(f->job == SIMJ_FORAGER && ph % 60 == 0 && !f->sick){
-            uint32_t gain = 1u + s->fertility / 50u + (s->weather == SIMW_RAIN ? 1u : 0u) + f->skill / 64u + f->trait[SIMTR_DILIGENT] / 170u - (f->stress > 200 ? 1u : 0u);
+        if(f->job == SIMJ_FORAGER && ph % 100 == 0 && !f->sick){
+            uint32_t base = 1u + s->fertility / 50u + (s->weather == SIMW_RAIN ? 1u : 0u) + (uint32_t)(f->skill > 120 ? 120 : f->skill) / 30u + f->trait[SIMTR_DILIGENT] / 170u - (f->stress > 200 ? 1u : 0u);
+            uint32_t gain = (base * (uint32_t)season_yield(s) + sim_rngn(s->seed, (uint32_t)i, RP_JOBFX, t, 100)) / 100u;     // patch 41: the season decides the harvest (winter 45 percent, autumn 140)
             s->larder += gain; if(s->larder > 9999) s->larder = 9999;
-            if(gain >= 4 && ph % 600 == 0) sim_log(s, SIME_HARVEST, i, 0, 0);
+            if(base >= 4 && ph % 800 == 0) sim_log(s, SIME_HARVEST, i, 0, 0);
         }
-        if(ph % (f->trait[SIMTR_DILIGENT] > 170 ? 60 : f->trait[SIMTR_DILIGENT] < 85 ? 150 : 100) == 0 && f->skill < 60 && f->job != SIMJ_FORAGER && !f->sick) f->skill++;
+        if(ph % (f->trait[SIMTR_DILIGENT] > 170 ? 60 : f->trait[SIMTR_DILIGENT] < 85 ? 150 : 100) == 0 && f->skill < 60 && !f->sick) f->skill++;                                                       // patch 41: foragers learn too (their skill never grew before, and only theirs was ever used)
+        if(ph % 80 == 0 && f->trait[SIMTR_DILIGENT] > 150 && !f->sick) add_need(f, SIMN_FUN, 1);                  // a tireless bug enjoys its work
         break;
     case SIMT_LEISURE: if(ph % 5 == 0) add_need(f, SIMN_FUN, 1); if(ph % 20 == 0) add_need(f, SIMN_SOCIAL, 1); break;
     case SIMT_SOCIAL:
         if(ph % 4 == 0) add_need(f, SIMN_SOCIAL, 1);
-        if(ph % 20 == 0) add_need(f, SIMN_FUN, 1);
+        if(ph % 16 == 0) add_need(f, SIMN_FUN, 1);
         if(ph % 150 == 0){
             int j = pick_pal(s, i, t);
             if(j >= 0){ SimFolk *g = &s->folk[j];
@@ -316,8 +338,17 @@ static void folk_tick(Sim *s, int i){
 void sim_step(Sim *s){
     if((uint32_t)sim_day(s) != s->day_seen) new_day(s, 0);
     if(s->weather_left && --s->weather_left == 0 && s->weather != SIMW_CLEAR){ s->weather = SIMW_CLEAR; sim_log(s, SIME_WEATHER, 0, SIMW_CLEAR, 0); }
-    for(int i = 0; i < s->nfolk; i++) folk_tick(s, i);                       // by number, always in the same order
-    if(s->tick % 100 == 0){ if(s->spirit < SIM_SPIRIT_MAX) s->spirit++; s->larder += 1u + (uint32_t)(s->nfolk / 4); }      // (trade brings a little food too)
+    int duty[SIMJ_N]; for(int j = 0; j < SIMJ_N; j++) duty[j] = 0;                    // who is on duty, 100 per bug at work (plus its skill)
+    for(int i = 0; i < s->nfolk; i++){ const SimFolk *f = &s->folk[i]; int on = f->task == SIMT_WORK || (f->job == SIMJ_COOK && f->task == SIMT_EAT) || (f->job == SIMJ_RACER && (f->task == SIMT_LEISURE || f->task == SIMT_SOCIAL));   // cooks serve the meals they eat with the others, racers put on their show in the evening
+        if(on && !f->sick && !(f->warned & 8)) duty[f->job] += 100 + (f->skill > 100 ? 100 : f->skill); }
+    for(int i = 0; i < s->nfolk; i++) folk_tick(s, i, duty);                 // by number, always in the same order
+    if(s->tick % 100 == 0){ if(s->spirit < SIM_SPIRIT_MAX) s->spirit++;
+        if(s->tick % 300 == 0) s->larder += dither(s, 1, (uint32_t)(duty[SIMJ_STALL] + duty[SIMJ_CLERK]) * 3 / 2);                                     // patch 41: trade is done by the stall keepers and clerks at work (the free trickle is gone)
+        if(s->tick % 300 == 0) s->larder += dither(s, 2, (uint32_t)duty[SIMJ_MINER]);                                    // and the miners' ore sells for food
+        if(s->tick % 200 == 0) s->larder += 1; }                                                                          // (a trader passes by now and then)
+    if(s->tick % 800 == 0 && s->pests) { uint32_t d = dither(s, 3, (uint32_t)duty[SIMJ_GUARD]); s->pests = (uint8_t)(d > s->pests ? 0 : s->pests - d); }   // the guards keep the pests down
+    if(s->tick % 400 == 0 && duty[SIMJ_RACER]){ int fx = (int)dither(s, 4, (uint32_t)duty[SIMJ_RACER] * 2);          // the racers put on a show: everybody at leisure or chatting has fun
+        if(fx > 0) for(int i = 0; i < s->nfolk; i++) if(s->folk[i].task == SIMT_LEISURE || s->folk[i].task == SIMT_SOCIAL) add_need(&s->folk[i], SIMN_FUN, fx); }
     s->tick++; s->steps_done++;
 }
 int sim_feed(Sim *s, int vbl, int maxsteps){
