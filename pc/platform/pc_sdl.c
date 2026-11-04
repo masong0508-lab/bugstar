@@ -302,6 +302,7 @@ static void present_game(int with_overlay){
     SDL_GetRendererOutputSize(ren,&dw_,&dh_);
     int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth);
     tex_ensure(W,H,linear);
+    if(!pix || (size_t)W*H>pix_cap){ free(pix); pix=malloc((size_t)W*H*4); pix_cap=(size_t)W*H; if(!pix){ pix_cap=0; return; } }      // (never write a picture into a buffer made for another size)
     pc_vid3d=C.video3d; pc_compose_native(pix,W,H,smooth);
     if(C.contrast){ for(size_t i=0,n=(size_t)W*H;i<n;i++){ uint32_t c=pix[i]; int r=c>>16&255,g=c>>8&255,b=c&255; int m=(r+g+b)/3; r=m+(r-m)*3/2; g=m+(g-m)*3/2; b=m+(b-m)*3/2;
             r=(r-128)*3/2+128; g=(g-128)*3/2+128; b=(b-128)*3/2+128; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; b=b<0?0:b>255?255:b; pix[i]=(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; } }

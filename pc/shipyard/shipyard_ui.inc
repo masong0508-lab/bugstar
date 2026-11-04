@@ -90,6 +90,8 @@ static void sy_pal(void){
 // ---------------------------------------------------------------- the live 3D preview
 typedef struct { float z; short i; } SyOrd;
 static int sy_ordcmp(const void *a, const void *b){ float x = ((const SyOrd*)a)->z, y = ((const SyOrd*)b)->z; return x < y ? 1 : x > y ? -1 : 0; }
+static int sy_nat_on;
+void pc_sr_snapshot_rect(const volatile void *pg, const volatile void *back, int x0, int y0, int w, int h); void pc_sr_forget(void);
 static void sy_draw3d(volatile u16 *pg, int x0, int y0, int w, int h, int hilite){
     if(!sy_mesh_ok){ sy_mesh(&sy_d, &sy_m); sy_mesh_ok = 1; }
     static float X[SY_MAXV], Y[SY_MAXV], Z[SY_MAXV]; static SyOrd ord[SY_MAXF];
@@ -107,7 +109,11 @@ static void sy_draw3d(volatile u16 *pg, int x0, int y0, int w, int h, int hilite
         float nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx, L = (float)sqrt(nx * nx + ny * ny + nz * nz) + 1e-6f; float l = (-0.45f * nx - 0.65f * ny - 0.6f * nz) / L; if(l < 0) l = -l;
         int sh = (int)(l * 7.4f); if(sh > 7) sh = 7; if(f->col == 3) sh = 4 + (int)((sy_clock >> 2) & 3);
         int c = base[f->col % 7] + sh; if(hilite >= 0 && f->sec == hilite && f->col <= 2 && ((sy_clock >> 4) & 1)) c = SYP_HI + sh;
-        polyfill(pg, px, py, f->n, c, x0 + 1, y0 + 1, x0 + w - 1, y0 + h - 1); }
+        polyfill(pg, px, py, f->n, c, x0 + 1, y0 + 1, x0 + w - 1, y0 + h - 1);
+        if(sy_nat_on){ float fx[4], fy[4]; for(int k = 0; k < f->n && k < 4; k++){ fx[k] = X[f->v[k]]; fy[k] = Y[f->v[k]]; if(fx[k] < x0 + 1) fx[k] = (float)(x0 + 1); if(fx[k] > x0 + w - 1) fx[k] = (float)(x0 + w - 1); if(fy[k] < y0 + 1) fy[k] = (float)(y0 + 1); if(fy[k] > y0 + h - 1) fy[k] = (float)(y0 + h - 1); }
+            float sf = l * 7.4f; if(sf > 7) sf = 7; int s0 = (int)sf, fr = (int)((sf - s0) * 256); uint32_t col = pc_sr_rgb(base[f->col % 7] + s0); if(f->col == 3){ col = pc_sr_rgb(base[3] + sh); fr = 0; } else if(s0 < 7 && fr > 3) col = pc_sr_mixw(col, pc_sr_rgb(base[f->col % 7] + s0 + 1), fr);
+            if(hilite >= 0 && f->sec == hilite && f->col <= 2 && ((sy_clock >> 4) & 1)) col = pc_sr_rgb(SYP_HI + sh);
+            sr_poly2d(fx, fy, f->n > 4 ? 4 : f->n, 2.0f + ord[o].z / 1000.0f, col); } }
     if(sy_d.shield){ int r = (int)(sy_m.rad * sc * 1.08f); for(int k = 0; k < 64; k += (6 - sy_d.shield)){ int a = (k * 16 + (int)sy_clock * 2) & 1023; float t = a * 6.2831853f / 1024.f; int x = (int)(cx + (float)cos(t) * r), y = (int)(ccy + (float)sin(t) * r * 0.55f);
         if(x > x0 && x < x0 + w - 1 && y > y0 && y < y0 + h - 1) pix(pg, x, y, SYP_GLASS + 6); } }
 }
@@ -179,11 +185,16 @@ static void sy_preview(volatile u16 *pg){
     volatile u16 *bp = (volatile u16*)(0x06000000 + ((REG_DISPCNT & 0x10) ? 0 : 0xA000));
     ui_well(bp, SY_PX, SY_PY, SY_PW, SY_PH);
     for(int k = 0; k < 12; k++){ int x = SY_PX + 2 + ((k * 37 + sy_clock / 6) % (SY_PW - 4)), y = SY_PY + 2 + (k * 53) % (SY_PH - 4); pix(bp, x, y, (k & 3) ? U_RAISE : U_SOFT); }
+    sy_nat_on = pc_sr_on() && pc_ships_mode > 0;                                    // NATIVE/ULTRA ships: the same faces are also handed to the window-size renderer
+    if(sy_nat_on){ static const float ez[3] = {0,0,0}, rr[3] = {1,0,0}, uu[3] = {0,1,0}, ff[3] = {0,0,1}; sr_begin(pc_ships_mode, ez, rr, uu, ff, 100.0f, 120.0f, 80.0f, 128.0f, uu); }
     sy_draw3d(bp, SY_PX, SY_PY, SY_PW, SY_PH, (sy_tab == SYT_HULL || sy_tab == SYT_GUARD) ? sy_c.sec : -1);
+    static u16 keep[SY_PH * 120]; for(int y = 0; y < SY_PH; y++) for(int x = 0; x < 120; x++) keep[y * 120 + x] = bp[(SY_PY + y) * 120 + x];       // (the preview before its text, for the compositor)
     { char b[24]; snprintf(b, sizeof b, "THREAT %d", (int)sy_s.v[SYST_THREAT]); text(bp, SY_PX + 3, SY_PY + 3, b, C_GOLD, 1); if(sy_s.warn) rtext(bp, SY_PX + SY_PW - 3, SY_PY + 3, "!", C_RED);
       text(bp, SY_PX + 3, SY_PY + SY_PH - 8, sy_spin ? "DRAG: TURN  WHEEL: ZOOM" : "SEL HELD: TURN", U_RAISE, 1); }
     vsync();
     for(int y = SY_PY; y < SY_PY + SY_PH; y++){ volatile u16 *s = bp + y * 120 + SY_PX / 2, *t = pg + y * 120 + SY_PX / 2; for(int x = 0; x < (SY_PW + 1) / 2; x++) t[x] = s[x]; }
+    if(sy_nat_on){ static u8 back[240 * 128]; for(int y = 0; y < SY_PH; y++) for(int x = 0; x < 240; x++) back[(SY_PY + y) * 240 + x] = ((volatile u8*)keep)[y * 240 + x];
+        sr_commit(((u32)(uintptr_t)pg) >= 0x0600A000u ? 1 : 0); pc_sr_snapshot_rect(pg, back, SY_PX, SY_PY, SY_PW, SY_PH); }
 }
 // ---------------------------------------------------------------- small pop-up editors
 static int sy_name_edit(volatile u16 *pg){
@@ -356,10 +367,11 @@ static int pc_sy_screen(volatile u16 *pg, int first){
         if(changed){ sy_commit(); dirty = 1; }
         if(HIT(K_B)) leave = 1;
     }
+    pc_sr_forget(); sy_nat_on = 0;
     int r = 1;
     // the next screen (the old hangar, the bug maker...) only paints its own panel: wipe both pages first so no shipyard tabs, previews or lists show through it
     for(int i = 0; i < 256; i++) BG_PAL[i] = sy_savepal[i]; REG_DISPCNT = dispcnt; pc_sy_wipe();
-    if(leave == 2){ sy_d.ingame = 0; r = make_ship_g(pg, first); pc_sy_wipe(); }
+    if(leave == 2){ sy_d.ingame = 0; r = make_ship_g(pg, first); pc_sy_wipe(); pc_sr_forget(); }
     int touched = had || (int)sy_hash(&sy_d) != start_hash || getenv("PC_SHIP_PRESET");
     if(touched && leave != 2 && sy_d.ingame) sy_to_look(&sy_d);
     sy_fix(&sy_d); if(touched && pc_sav_path()) sy_slot_save(pc_sav_path(), cur_slot, &sy_d); pc_sy_slot = -1;
