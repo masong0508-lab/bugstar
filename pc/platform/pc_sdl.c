@@ -27,10 +27,14 @@ typedef struct {
 enum { SM_CRISP, SM_SMOOTH, SM_COUNT };
 static Cfg C;
 static char g_pref[1024], g_cfgpath[1100], g_savepath[1100], g_shotdir[1100];
+static int g_a38;      // patch 38: set when the settings file already carries the Android marker
 static void cfg_defaults(void){
     memset(&C,0,sizeof C);
     C.mouse=1; C.ships=1; C.armada=1; C.fullscreen=0; C.scale_mode=SM_CRISP; C.vsync=1; C.show_fps=0; C.volume=80; C.mute=0; C.pause_unfocus=1; C.rumble=1; C.deadzone=30; C.max_mp=0;
     C.win_w=960; C.win_h=640;
+#ifdef PC_ANDROID
+    C.video3d=2;      // patch 38: phones start on CLASSIC (GBA) 3D views; the native renderer is too heavy for them
+#endif
     static const int kb[NB][2]={{SDL_SCANCODE_X,SDL_SCANCODE_SPACE},{SDL_SCANCODE_Z,SDL_SCANCODE_K},{SDL_SCANCODE_BACKSPACE,SDL_SCANCODE_TAB},{SDL_SCANCODE_RETURN,SDL_SCANCODE_KP_ENTER},
         {SDL_SCANCODE_RIGHT,SDL_SCANCODE_D},{SDL_SCANCODE_LEFT,SDL_SCANCODE_A},{SDL_SCANCODE_UP,SDL_SCANCODE_W},{SDL_SCANCODE_DOWN,SDL_SCANCODE_S},
         {SDL_SCANCODE_E,SDL_SCANCODE_PAGEDOWN},{SDL_SCANCODE_Q,SDL_SCANCODE_PAGEUP}};
@@ -43,6 +47,9 @@ static void cfg_defaults(void){
 static void cfg_save(void){
     FILE *f=fopen(g_cfgpath,"w"); if(!f) return;
     fprintf(f,"# BUGSTAR PC settings (edit in the game: press Esc). scale_mode: 0 crisp, 1 smooth\n");
+#ifdef PC_ANDROID
+    fprintf(f,"android38=1\n");      // patch 38
+#endif
     fprintf(f,"ships=%d\narmada=%d\ntextsize=%d\ncontrast=%d\nmouse=%d\nvideo3d=%d\nfullscreen=%d\nscale_mode=%d\nvsync=%d\nshow_fps=%d\nvolume=%d\nmute=%d\npause_unfocus=%d\nrumble=%d\ndeadzone=%d\nmax_mp=%d\nwin_w=%d\nwin_h=%d\n",
         C.ships,C.armada,C.textsize,C.contrast,C.mouse,C.video3d,C.fullscreen,C.scale_mode,C.vsync,C.show_fps,C.volume,C.mute,C.pause_unfocus,C.rumble,C.deadzone,C.max_mp,C.win_w,C.win_h);
     for(int i=0;i<NB;i++){ fprintf(f,"key_%s=%s,%s\n",bname[i],C.kb[i][0]?SDL_GetScancodeName(C.kb[i][0]):"",C.kb[i][1]?SDL_GetScancodeName(C.kb[i][1]):"");
@@ -53,6 +60,7 @@ static void cfg_load(void){
     FILE *f=fopen(g_cfgpath,"r"); if(!f) return; char ln[256];
     while(fgets(ln,sizeof ln,f)){
         char *e=strchr(ln,'='); if(!e||ln[0]=='#') continue; *e++=0; size_t n=strlen(e); while(n&&(e[n-1]=='\n'||e[n-1]=='\r')) e[--n]=0;
+        if(!strcmp(ln,"android38")){ g_a38=1; continue; }      // patch 38
         int v=atoi(e);
         #define I(nm,fld,lo,hi) if(!strcmp(ln,nm)){ C.fld = v<lo?lo:v>hi?hi:v; continue; }
         I("ships",ships,0,2) I("armada",armada,0,3) I("textsize",textsize,0,2) I("contrast",contrast,0,1) I("mouse",mouse,0,1) I("video3d",video3d,0,2) I("fullscreen",fullscreen,0,1) I("scale_mode",scale_mode,0,SM_COUNT-1) I("vsync",vsync,0,1) I("show_fps",show_fps,0,1) I("volume",volume,0,100) I("mute",mute,0,1)
@@ -62,6 +70,9 @@ static void cfg_load(void){
         if(!strncmp(ln,"pad_",4)){ for(int i=0;i<NB;i++) if(!strcmp(ln+4,bname[i])){ int b=SDL_GameControllerGetButtonFromString(e); if(b!=SDL_CONTROLLER_BUTTON_INVALID) C.pad[i]=b; } }
     }
     fclose(f);
+#ifdef PC_ANDROID
+    if(!g_a38) C.video3d=2;      // patch 38: once, for a settings file saved before this patch: back to CLASSIC (you can switch it again in VIDEO > 3D VIEWS)
+#endif
 }
 // ------------------------------------------------------------------------------------------------ state
 static SDL_Window *win; static SDL_Renderer *ren; static SDL_Texture *tex, *fonttex;
