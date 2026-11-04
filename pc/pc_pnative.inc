@@ -25,20 +25,42 @@ static inline double pn_hgtb(double u, double v){
 static inline uint32_t pn_sky(double yg){ double t=(yg-18)*8.0/(PHZ+30-18)-0.5; if(t<0) t=0; if(t>7) t=7; int i=(int)t; if(i>6) i=6; return pn_mix(pn_pal[SKY_B+i],pn_pal[SKY_B+i+1],(int)((t-i)*256)); }
 // a building's wall: floors every 32 units of real height (so they shrink with distance like real floors), a roof ledge, slab lines, punched windows or glass ribbons
 // (by tint), some windows lit. hd = height below the roof edge; u = distance along the wall (mx+my: one of them is constant on any face).
-static inline uint32_t pn_bld(int ix, double dy, int z, double u, double gc){
+static inline uint32_t pn_dim(uint32_t c, int f){ return pn_mix(c,0x000000,f); }
+static inline uint32_t pn_lite(uint32_t c, int f){ return pn_mix(c,0xFFFFFF,f); }
+static inline uint32_t pn_bld(int ix, double dy, int z, double u, double gc, int face, double hag, double sy){
     int t=(ix-BLD_B)>>1; uint32_t base=pn_pal[BLD_B+t*2], shd=pn_pal[BLD_B+t*2+1], roof=pn_pal[76+t];
-    double hd=dy*z/(double)FOCP, pxf=32.0*FOCP/z;
-    if(hd<5) return roof; if(hd<8) return pn_mix(base,0x000000,90);
-    if(pxf<1.5) return pn_mix(base,pn_pal[73],25);
+    double hd=dy*z/(double)FOCP, pxf=32.0*FOCP/z*sy;                          // pxf = screen pixels per floor
+    // each face has its own light: face 0 (x) is the lit side, face 1 (y) is in shade; walls get lighter toward the roof and darker at the street (contact shadow)
+    int fdim = face ? 30 : 0; int ao = hag<40 ? (int)((40-hag)*0.9) : 0; if(ao>38) ao=38; int sky = hag>60 ? (int)((hag-60)*0.12) : 0; if(sky>22) sky=22;
+    if(hd<5){ return face ? pn_dim(roof,12) : pn_lite(roof,16); }                // roof: a bright lip
+    if(hd<5.8) return pn_dim(base,110);                                          // thin shadow line under the lip
+    uint32_t wall=pn_dim(pn_lite(base,sky),fdim);
     int fl=(int)(hd/32.0); double fr=hd-fl*32.0; double uf=u-__builtin_floor(u); int uc=(int)__builtin_floor(u);
-    if(fr<2) return shd;                                         // slab edge
-    uint32_t hh=(uint32_t)(fl*2654435761u)^(uint32_t)((uc+t*7)*2246822519u); hh^=hh>>13; hh*=2246822519u; hh^=hh>>15;
-    int glass=(t&1); int inwin = glass ? (fr>=7 && fr<24 && uf>0.06) : (fr>=9 && fr<24 && uf>=0.22 && uf<0.78);
-    if(!inwin){ if(!glass && fr>=24 && fr<27 && uf>=0.18 && uf<0.82) return roof; return base; }     // sill under a punched window
-    int lit=(hh&3)==0; uint32_t g=lit?pn_pal[72]:pn_mix(pn_pal[73],pn_pal[72],(int)((hh>>8)&63));
-    if(glass && uf<0.5) g=pn_mix(g,base,50);                     // glass ribbon: a bit of sheen
-    if(fr<10.5 && !lit) g=pn_mix(g,0x000000,60);                 // reveal shadow at the top of the opening
-    return g; }
+    uint32_t avg=pn_mix(wall,pn_dim(pn_pal[73],fdim),60);
+    double kq=(pxf-2.5)/9.0; if(kq<0) kq=0; if(kq>1) kq=1; int kf=(int)(kq*256);   // detail fades out with distance instead of aliasing into stripes
+    uint32_t col;
+    if(hag<19){                                                                  // ground floor: a dark shopfront with glass between pillars, an awning ledge above it
+        if(hag>=17.5) col=pn_dim(base,90);
+        else { int pil = (uf<0.10 || uf>0.90 || (uf>0.47 && uf<0.53)); uint32_t hh0=(uint32_t)(uc*2246822519u+(uint32_t)t*977u); hh0^=hh0>>13; hh0*=2654435761u; hh0^=hh0>>15;
+               if(pil) col=pn_dim(wall,40); else { int lit=(hh0&3)!=0; col= lit ? pn_mix(pn_pal[72],wall,90) : pn_dim(pn_pal[73],40); if(hag<3) col=pn_dim(col,50); } }
+        return pn_dim(pn_mix(avg,col,kf),ao/2); }
+    if(fr<2) col=pn_dim(shd,fdim);                                               // slab edge
+    else {
+        uint32_t hh=(uint32_t)(fl*2654435761u)^(uint32_t)((uc+t*7)*2246822519u); hh^=hh>>13; hh*=2246822519u; hh^=hh>>15;
+        int glass=(t&1); int inwin = glass ? (fr>=7 && fr<24 && uf>0.06) : (fr>=9 && fr<24 && uf>=0.22 && uf<0.78);
+        if(!inwin){ col = (!glass && fr>=24 && fr<27 && uf>=0.18 && uf<0.82) ? pn_lite(wall,14) : wall; }   // sill under a punched window
+        else {
+            int lit=(hh&3)==0; uint32_t g=lit?pn_pal[72]:pn_mix(pn_pal[73],pn_pal[72],(int)((hh>>8)&63));
+            double wf=(fr-9)/15.0; if(wf<0) wf=0; if(wf>1) wf=1;
+            if(!lit) g=pn_mix(g,pn_pal[72],(int)(wf*wf*70));                     // the pane reflects the sky toward its bottom edge
+            if(glass){ if(uf<0.5) g=pn_mix(g,base,50); if(((int)(uf*8))==3) g=pn_dim(g,50); }     // ribbon glass: sheen and a mullion every eighth of a floor
+            else if(uf>0.48 && uf<0.52) g=pn_dim(g,45);                         // a mullion down the middle of each punched window
+            if(fr<10.5 && !lit) g=pn_dim(g,60);                                  // reveal shadow at the top of the opening
+            if(face) g=pn_dim(g,22);
+            col=g; }
+    }
+    col = pn_mix(avg,col,kf);
+    return ao ? pn_dim(col,ao) : col; }
 // the town's streets (palette 74 asphalt, 75 lane dash, 80/81 plaza and yards). Smooth colour sampling smeared them into the lots beside them and washed the lane dashes out, so
 // near a street the colour map is sampled "sharp bilinear": the blend between two texels is squeezed into about one screen pixel, so edges stay crisp but never staircase. The
 // asphalt gets a fine grain, and the paving beside a street gets a pale kerb line, so a street reads as a street and not as paint.
@@ -76,9 +98,15 @@ static void pn_cols(void *vc, int lo, int hi){
             double zref; if(first){ zref= yi>PHZ+1 ? z*(yi-PHZ)/(160-PHZ) : zprev; if(zref<16) zref=16; ytopf=160; first=0; } else zref=zl;
             int ti=((int)__builtin_floor(my*2)&HMASK)*HW+((int)__builtin_floor(mx*2)&HMASK); int ix=cmap[ti]; int bld=ix>=BLD_B && ix<BLD_B+8; int sp=(int)((ytopf-yi));
             double iz0=1.0/z, iz1=1.0/zref; double span=ytopf-yi; if(span<1e-6) span=1e-6;
+            int face=0; double ygr=0;
+            if(bld){ int tx=(int)__builtin_floor(mx*2), ty=(int)__builtin_floor(my*2); int sxs=vx>0?-1:1, sys=vy>0?-1:1;
+                int bx=pn_isb(cmap[(ty&HMASK)*HW+((tx+sxs)&HMASK)]), by=pn_isb(cmap[((ty+sys)&HMASK)*HW+(tx&HMASK)]);
+                if(bx!=by) face = bx ? 1 : 0;                                  // the open side is the face we see (0: an x-facing wall, lit; 1: a y-facing wall, shaded)
+                else { double fx=mx*2-tx, fy=my*2-ty, ex= vx>0?fx:1-fx, ey= vy>0?fy:1-fy; face = ex<ey ? 0 : 1; }
+                ygr=PHZ+((double)(cam_h+curve)-pn_L*g_hs)*FOCP/z; }
             double hazek=(double)j/total; if(hazek>1) hazek=1;
             for(int r=r0;r<rtop;r++){ double yg=(r+0.5)/sy; uint32_t col;
-                if(bld) col=pn_bld(ix,yg-yi,z,mx+my,gc);
+                if(bld) { double hag=(ygr-yg)*z/(double)FOCP; col=pn_bld(ix,yg-yi,z,mx+my,gc,face,hag,sy); }
                 else { double t=(yg-yi)/span; if(t>1) t=1; double izz=iz0+(iz1-iz0)*t; double zz=1.0/izz; double zcc=zz/256.0; double px=c->camx+vx*zcc, py=c->camy+vy*zcc;
                     col=pn_gnd(px*2,py*2,zcc); int ci=cmap[(((int)__builtin_floor(py*2))&HMASK)*HW+(((int)__builtin_floor(px*2))&HMASK)];
                     if(ci<GND_B){ double w=__builtin_sin(px*47+frames*0.06)*__builtin_sin(py*53-frames*0.05); if(w>0.96 && zcc<20) col=pn_mix(col,0xFFFFFF,(int)((w-0.96)*25*128)); }
@@ -92,7 +120,7 @@ static void pn_cols(void *vc, int lo, int hi){
         pn_top[X]=(float)rtop; }
 }
 static void pc_pn_native(volatile u16 *pg){
-    pn_roadT = city_r ? city_tech() : 0;
+    pn_roadT = city_r ? city_tech() : 0; pn_L = city_r ? hmap[city_cy*TW+city_cx] : 0;
     int W=pc_nat_w, H=pc_nat_h; pn_active=0; pc_pn.w=0; if(W<=240 || H<=160 || pc_v3d_classic()) return;
     static int cap; static unsigned long bcap; if(W>cap){ free(pn_top); pn_top=malloc(sizeof(float)*W); cap=W; }
     int ya=(18*H+159)/160; unsigned long need=(unsigned long)W*(H-ya); if(need>bcap){ free(pc_pn.buf); pc_pn.buf=malloc(need*4); bcap=need; }
