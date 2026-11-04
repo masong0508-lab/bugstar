@@ -26,7 +26,7 @@
 ## Patch naming and the Termux command
 Every zip has its own number, name and temp folder (no "name (1).zip" mix-ups). Each holds apply.sh, bugstar.diff, ROADMAP_PATCH.md.
 Clone first if needed: `gh repo clone masong0508-lab/bugstar` or `git clone git@github.com:masong0508-lab/bugstar.git`.
-Command (NN = patch number, NAME = its zip suffix: 02 buildings, 03 dungeon, 04 framelog, 05 towers, 06 flames, 07 roadmap check, 08 native city check; next patch = 09):
+Command (NN = patch number, NAME = its zip suffix: 02 buildings, 03 dungeon, 04 framelog, 05 towers, 06 flames, 07 roadmap check, 08 native city check, 09 shipyard overlap fix; next patch = 10):
 
     cd ~/bugstar && git pull --ff-only && rm -rf ~/tmp_patch_NN && mkdir -p ~/tmp_patch_NN && unzip -o ~/storage/downloads/bugstar-patch-NN-NAME.zip -d ~/tmp_patch_NN && sh ~/tmp_patch_NN/apply.sh && rm -rf ~/tmp_patch_NN && git add -A && git commit -m "patch NN: short description" && git push
 
@@ -36,6 +36,9 @@ Ready-made for this patch:
 
 ## Patch 06 (flames)
 NATIVE/ULTRA now draw the game's engine flames (two crossed cones per engine, white-hot core) in pc/pc_ships.inc and, for custom shipyard designs, pc/shipyard/shipyard_ui.inc. Not done: the big white wedge seen only in the lines renderer (tip projects very near the camera) is not reproduced in NATIVE/ULTRA.
+
+## Patch 09 (shipyard overlap)
+Your video showed the old BUILD YOUR SHIP / MAKE YOUR BUG screens painted over the new shipyard (its tabs, list and preview still showing around them). The old screens only paint their own panel, so the shipyard now wipes both pages when it hands over (FILE > OLD HANGAR, and every other exit). Checked headless: FILE > OLD HANGAR shows a clean hangar; tests/shipyard.sh still passes. Not seen by you on Windows yet; the ship preview itself looked fine headless.
 
 ## Build notes
 pc/build.sh takes ~100 s and builds pc/bugstar_pc (the source of truth is the repo root; pc/gen is a patched scratch copy). Seed viewer: `bugstar_pc --view --star N --planet 0 --out PREFIX`.

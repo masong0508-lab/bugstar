@@ -300,6 +300,7 @@ static void pc_sy_autotest(void){
     if(scene != 2){ oam_hide_all(); oam_flush(); scene = 2; page_back = 1; space_enter(1); music(3); }
     if(getenv("BUGSTAR_SY_PIRATES")) spawn_pirates(atoi(getenv("BUGSTAR_SY_PIRATES")));
 }
+static void pc_sy_wipe(void){ for(int p = 0; p < 2; p++){ volatile u16 *q = (volatile u16 *)(0x06000000 + p * 0xA000); for(int i = 0; i < 160 * 120; i++) q[i] = 0; } }     // (both pages of the 240x160 8-bit bitmap, black)
 static int make_ship_g(volatile u16 *pg, int first);
 static int pc_sy_screen(volatile u16 *pg, int first){
     int rows[64], nrows, leave = 0, dirty = 1, selp = 0, selused = 0; u16 dispcnt = REG_DISPCNT;
@@ -347,7 +348,9 @@ static int pc_sy_screen(volatile u16 *pg, int first){
         if(HIT(K_B)) leave = 1;
     }
     int r = 1;
-    if(leave == 2){ sy_d.ingame = 0; for(int i = 0; i < 256; i++) BG_PAL[i] = sy_savepal[i]; REG_DISPCNT = dispcnt; r = make_ship_g(pg, first); }
+    // the next screen (the old hangar, the bug maker...) only paints its own panel: wipe both pages first so no shipyard tabs, previews or lists show through it
+    for(int i = 0; i < 256; i++) BG_PAL[i] = sy_savepal[i]; REG_DISPCNT = dispcnt; pc_sy_wipe();
+    if(leave == 2){ sy_d.ingame = 0; r = make_ship_g(pg, first); pc_sy_wipe(); }
     int touched = had || (int)sy_hash(&sy_d) != start_hash || getenv("PC_SHIP_PRESET");
     if(touched && leave != 2 && sy_d.ingame) sy_to_look(&sy_d);
     sy_fix(&sy_d); if(touched && pc_sav_path()) sy_slot_save(pc_sav_path(), cur_slot, &sy_d); pc_sy_slot = -1;
