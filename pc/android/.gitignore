@@ -1,0 +1,6 @@
+app/jni/SDL/
+app/build/
+.gradle/
+build/
+local.properties
+*.apk

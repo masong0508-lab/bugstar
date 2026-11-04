@@ -105,3 +105,7 @@ Needs `arm64-v8a` in the list. PAGE_SIZE 4096 or 16384 are both fine (step 3 bui
 
 - Is the repo public or private? (GitHub Actions minutes are free for public repos, limited for private ones.)
 - Phone model and Android version (step 0).
+
+## Status
+- 3 Nov 2026, step 0 done: phone SM-S731U, Android 17, arm64-v8a only, 4096-byte pages.
+- patch 21 (step 1): pc/android test app + .github/workflows/android.yml made. NOT yet run on CI or the phone.
