@@ -164,6 +164,7 @@ static void tex_ensure(int w, int h, int linear){
 }
 static int cap_pixels(void){ return C.max_mp ? C.max_mp*1000000 : 2400000; }
 static void present_game(int with_overlay);
+static void touch_draw(void);          // patch 30.1: defined further down (clang refuses an implicit declaration)
 static void frame_geometry(int *W, int *H, SDL_Rect *dst, int *linear, int *smooth){
     int dw=dw_, dh=dh_; if(dw<240)dw=240; if(dh<160)dh=160;
     int cap=cap_pixels();

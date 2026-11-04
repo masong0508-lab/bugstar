@@ -20,6 +20,10 @@
 #endif
 #include "pc_hw.h"
 #include "platform/pc_plat.h"
+#ifdef PC_ANDROID
+#include <SDL.h>          // patch 30.1: turns main() into SDL_main (the APK's SDLActivity calls it); also the error box
+#include <signal.h>
+#endif
 #ifdef _WIN32
 // Windows: the exe is a window program (no console), so every error used to vanish. Now: a log file next to the exe and an error box.
 #include <windows.h>
@@ -66,6 +70,32 @@ static void win_setup(void){
     fprintf(stderr,"BUGSTAR PC log (retry=%s, launcher=%s)\n",getenv("PC_RETRY")?getenv("PC_RETRY"):"0",getenv("PC_CHILD")?"yes":"no");
     SetUnhandledExceptionFilter(win_crash);
 }
+#elif defined(PC_ANDROID)
+// Android (patch 30.1): stderr goes nowhere, so it is sent to bugstar_log.txt in the app's files folder (Android/data/org.bugstar.app/files, a file manager can open it).
+// win_fatal shows the end of that log in a box and copies it to the clipboard (to paste into a chat). A crash (signal) cannot show a box from inside the signal
+// handler, so it writes a "CRASH" line to the log and the NEXT start shows the box.
+static char g_logpath[1100];
+static void win_fatal(const char *what){
+    char tail[1200]; tail[0]=0; fflush(stderr);
+    { FILE *f=fopen(g_logpath,"rb"); if(f){ fseek(f,0,SEEK_END); long sz=ftell(f); long st=sz>1199?sz-1199:0; fseek(f,st,SEEK_SET); size_t r=fread(tail,1,1199,f); tail[r]=0; fclose(f); } }
+    char msg[2600]; snprintf(msg,sizeof msg,"%s\n\nLog file: %s\n\n%s",what,g_logpath,tail);
+    SDL_SetClipboardText(msg);
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"BUGSTAR",msg,NULL);
+}
+static void android_crash(int sig, siginfo_t *si, void *ctx){
+    (void)ctx; fprintf(stderr,"CRASH signal %d at address %p\n",sig,si?si->si_addr:(void*)0); fflush(stderr);
+    signal(sig,SIG_DFL); raise(sig);          // Android's own crash report still happens
+}
+static void android_setup(void){
+    const char *d=SDL_AndroidGetExternalStoragePath(); if(!d) d=SDL_AndroidGetInternalStoragePath(); if(!d) return;
+    snprintf(g_logpath,sizeof g_logpath,"%s/bugstar_log.txt",d);
+    { FILE *f=fopen(g_logpath,"rb"); if(f){ char b[8192]; size_t r=fread(b,1,sizeof b-1,f); b[r]=0; fclose(f); if(strstr(b,"CRASH")) win_fatal("BUGSTAR crashed last time."); } }
+    if(!freopen(g_logpath,"w",stderr)) return;
+    setvbuf(stderr,0,_IONBF,0);
+    fprintf(stderr,"BUGSTAR Android log\n");
+    { struct sigaction sa; int sg[5]={SIGSEGV,SIGBUS,SIGABRT,SIGFPE,SIGILL}; memset(&sa,0,sizeof sa); sa.sa_sigaction=android_crash; sa.sa_flags=SA_SIGINFO|SA_RESETHAND; sigemptyset(&sa.sa_mask);
+      for(int i=0;i<5;i++) sigaction(sg[i],&sa,0); }
+}
 #else
 #define win_fatal(x) ((void)0)
 #endif
@@ -92,6 +122,9 @@ int main(int argc, char **argv){
     { int lrc=0; if(win_launch(&lrc)) return lrc; }
     win_setup();
 #endif
+#ifdef PC_ANDROID
+    android_setup();
+#endif
     for(int i=1;i<argc;i++){
         if(!strcmp(argv[i],"--script")&&i+1<argc) script=argv[++i];
         else if(!strcmp(argv[i],"--out")&&i+1<argc) out=argv[++i];
@@ -109,7 +142,7 @@ int main(int argc, char **argv){
     if(want_window){ plat_paths(argc,argv); if(!sav) sav=plat_save_path(); }
 #endif
     if(!pc_hw_init(sav)){
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(PC_ANDROID)
         // rare: the system put a library or the stack on a low address the fake GBA needs; start over (the layout is random each time)
         { const char *r=getenv("PC_RETRY"); int n=r?atoi(r):0; if(n<8){ char b[8]; snprintf(b,8,"%d",n+1); setenv("PC_RETRY",b,1); execv("/proc/self/exe",argv); } }
 #endif
@@ -121,10 +154,17 @@ int main(int argc, char **argv){
             if(CreateProcessA(0,GetCommandLineA(),0,0,FALSE,0,0,0,&si,&pi)){ CloseHandle(pi.hThread); CloseHandle(pi.hProcess); return 0; } }
           win_fatal("BUGSTAR could not set up its memory."); }
 #endif
+#ifdef PC_ANDROID
+        win_fatal("BUGSTAR could not set up its memory.");
+#endif
         return 2; }
     pc_script(script,out,frames);
 #ifdef PC_SDL
-    if(want_window){ pc_set_window_mode(1); if(plat_open(argc,argv)){ win_fatal("BUGSTAR could not open its window."); return 2; } }
+    if(want_window){ pc_set_window_mode(1); if(plat_open(argc,argv)){
+#ifdef PC_ANDROID
+        fprintf(stderr,"plat_open failed: %s\n",SDL_GetError());
+#endif
+        win_fatal("BUGSTAR could not open its window."); return 2; } }
 #endif
     g_argc=argc; g_argv=argv;
     // The game stores some addresses in 32-bit numbers (for DMA). Run it on a stack below 4 GB so those still point at the right place.
