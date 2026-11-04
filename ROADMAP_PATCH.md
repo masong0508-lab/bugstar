@@ -56,3 +56,9 @@ New `pc/warship/mix_test.c`, `pc/warship/ws_mix_sy.h`; changed `pc/warship/ws_de
 
 ## Patch 19 (room mix in the game)
 Changed `pc/pc_warship.inc`, `pc/tests/warship.sh`, `pc/ROADMAP_TODO.md`, `ROADMAP_PATCH.md`. `pcw_deck_here` now calls `wd_make_mix`. The mix comes from the ship editor's FOES option (the same switch that turns space ships into foe designs): ON = a boarded craft gets a `sy_foe` design (team 1, level = class / 2, capped at 9) made from the craft's seed, and its rooms and props build the deck; OFF = the old random decks, unchanged. Test hook `BUGSTAR_WS_MIX=1` (force on) or `0` (force off). Checked: fresh `pc/build.sh` (built), `pc/tests/warship.sh` (the room mix interior is the same on two runs, its pictures change as you walk, and differ from the plain deck), `pc/tests/aftermath.sh`. Not done: allied craft use a team 0 design; your own hangar deck uses your own design. NOT played by you.
+
+## Patch 35 (Android launch tidy)
+Changed `pc/pc_main.c`, `pc/pc_hw.c`, `pc/platform/pc_crash.c`, `pc/platform/pc_sdl.c`, `pc/build.sh`, `pc/android/**` (Activity, manifest, gradle version 0.35, README), `.github/workflows/android.yml`, `pc/ANDROID_PLAN.md`, `ROADMAP_PATCH.md`.
+Why: the APK installed but could black-screen or die at start. Found by reading, not by running on the phone: the window and GL context were created on the main thread and drawn from the game thread (now opened on the game thread);
+two crash handlers fought (the backtrace file was never written); `build.sh` with `PC_SDL=0` exited silently (`set -e` and a false test inside `$( )`). Checked here (x86-64): the `PC_PIE=1 PC_SDL=0` build now builds and `pc/tests/pie.sh` gives the same hashes;
+`pc_main.c` / `pc_sdl.c` / `pc_crash.c` / `pc_hw.c` compile (syntax) as Android, PIE, headless and normal. NOT run: the APK, arm64, the NDK build, the Java file (no Android SDK here). Patch 33 (`build.sh` skips gen/main.c) and 34 were already in the repo.

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -56,7 +57,11 @@ static int map_at(uint32_t a, size_t n){
       if(!p||(uintptr_t)p!=a) p=VirtualAlloc((void*)(uintptr_t)a,n,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE); if(!p||(uintptr_t)p!=a){ pc_map_fail_addr=a; pc_map_fail_err=GetLastError(); fprintf(stderr,"pc_hw: cannot map %08x (windows error %lu)\n",a,pc_map_fail_err); { MEMORY_BASIC_INFORMATION mi; if(VirtualQuery((void*)(uintptr_t)a,&mi,sizeof mi)) fprintf(stderr,"  there: base %p alloc-base %p size %lx state %lx type %lx\n",mi.BaseAddress,mi.AllocationBase,(unsigned long)mi.RegionSize,(unsigned long)mi.State,(unsigned long)mi.Type); } return 0; } return 1; }
 #else
     void *p = mmap((void*)(uintptr_t)a, n, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE, -1, 0);
-    if(p==MAP_FAILED || (uintptr_t)p!=a){ fprintf(stderr,"pc_hw: cannot map %08x (%zu bytes)\n",a,n); return 0; }
+    if(p!=MAP_FAILED && (uintptr_t)p!=a){ munmap(p,n); p=MAP_FAILED; }      // an old kernel ignores MAP_FIXED_NOREPLACE and may give another address: do not keep it
+    if(p==MAP_FAILED){ fprintf(stderr,"pc_hw: cannot map %08x (%zu bytes): %s\n",a,n,strerror(errno));
+        // patch 35: say what is in the way (the lines of /proc/self/maps that overlap the range), so a log is enough to pick another PC_GBA_TOP
+        FILE *m=fopen("/proc/self/maps","r"); if(m){ char l[320]; int k=0; while(k<12 && fgets(l,sizeof l,m)){ unsigned long lo=0,hi=0; if(sscanf(l,"%lx-%lx",&lo,&hi)==2 && lo<(unsigned long)a+n && hi>(unsigned long)a){ fprintf(stderr,"  in the way: %s",l); k++; } } fclose(m); }
+        return 0; }
     return 1;
 #endif
 }

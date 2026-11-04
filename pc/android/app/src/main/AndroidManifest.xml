@@ -8,7 +8,9 @@
 
     <application
         android:label="BUGSTAR"
+        android:appCategory="game"
         android:allowBackup="true"
+        android:enableOnBackInvokedCallback="false"
         android:hardwareAccelerated="true">
 
         <activity

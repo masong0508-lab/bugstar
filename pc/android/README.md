@@ -15,3 +15,6 @@ Install on the phone, from Termux, after a push (one line):
     sleep 15; id=$(gh run list -w android.yml -L1 --json databaseId -q '.[0].databaseId') && gh run watch $id --exit-status && gh run download $id -n bugstar-apk -D ~/storage/downloads/bugstar-apk && termux-open ~/storage/downloads/bugstar-apk/app-debug.apk
 
 (First time: Android asks to let Termux install apps. If `git push` refuses the workflow file, run `gh auth refresh -s workflow`.)
+
+If the app closes or shows a black screen (patch 35): start it once more, then in Termux `cat ~/storage/downloads/bugstar_log.txt`. It holds the crash backtrace (`pc <offset> libmain.so`),
+the game's own log and the app's logcat. Download the artifact `bugstar-symbols` from the same CI run and run `llvm-addr2line -f -e libmain.so <offset>` (Termux: `pkg install llvm`) to name the line.

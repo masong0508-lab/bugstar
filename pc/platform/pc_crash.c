@@ -8,6 +8,7 @@
 #include <signal.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -42,6 +43,11 @@ static void cr_handler(int sig, siginfo_t *si, void *uc_){
     CrBt b={0}; _Unwind_Backtrace(cr_step,&b);
     if(cr_fd>=0) close(cr_fd);
     sigaction(sig,&cr_old[sig],0); raise(sig); }                                      // then Android's own crash dialog / tombstone as usual
+// patch 35: an alternate signal stack belongs to ONE thread. The constructor below sets one for the thread that loads the library; the game runs on its own
+// thread (pc_main.c), so that thread calls this too, or a stack overflow there would crash again inside the handler and leave no report.
+void pc_crash_thread_init(void){
+    stack_t ss; ss.ss_size=65536; ss.ss_sp=malloc(ss.ss_size); ss.ss_flags=0;
+    if(ss.ss_sp && sigaltstack(&ss,0)!=0) free(ss.ss_sp); }
 __attribute__((constructor)) static void pc_crash_install(void){
     stack_t ss; ss.ss_sp=cr_alt; ss.ss_size=sizeof cr_alt; ss.ss_flags=0; sigaltstack(&ss,0);
     struct sigaction sa; memset(&sa,0,sizeof sa); sa.sa_sigaction=cr_handler; sa.sa_flags=SA_SIGINFO|SA_ONSTACK; sigemptyset(&sa.sa_mask);

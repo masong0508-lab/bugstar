@@ -121,3 +121,11 @@ Needs `arm64-v8a` in the list. PAGE_SIZE 4096 or 16384 are both fine (step 3 bui
   Test: `PC_PIE=1 PC_GBA_TOP=0x30000000 PC_SDL=0 PC_OUT=bugstar_pie ./pc/build.sh && sh pc/tests/pie.sh` gives the same screen and save hashes as the normal build; determinism, warship,
   aftermath and the seed pictures also match the normal build. The normal `-no-pie` build is unchanged. Next: run it in Termux (arm64 + clang), then step 3 (the real game in the APK).
   (Note: `tests/seeds.sh` shows picture hashes ("view") that differ from `seeds.golden` on the x86-64 test machine with or without this patch; the world facts match.)
+- patch 35 (launch tidy, found by reading the code; arm64 / the phone NOT run): (1) the window, GL context and event pump were made on the main thread but used from the
+  game's 16 MB pthread; SDL's GLES renderer cannot move its context between threads, so draws failed (black screen / crash). `pc_main.c` now opens the window ON the game thread
+  (`game_thread`), for every `PC_PTHREAD_STACK` build; the `-no-pie` Linux/Windows path is unchanged. (2) `android_setup()` installed a second set of signal handlers that replaced
+  `pc_crash.c`'s, so `native_crash.txt` was never written: removed; `pc_crash_thread_init()` gives the game thread its own signal stack. (3) `build.sh`: `PC_SDL=0` ended the script
+  silently at the `SRCS=` line (`set -e` + a false `[ ]` in `$( )`), so the headless / pie / Termux test builds died with no message. (4) `pc_hw.c`: a failed map says why and lists what sits
+  on the range (`/proc/self/maps`). (5) `plat_paths` no longer runs `system("mkdir")` on Android. (6) `BugstarActivity`: logcat + Downloads copy on a background thread.
+  (7) CI: fails the build if `libmain.so` / `libSDL2.so` are not in the APK or `SDL_main` is not exported; warns if not 16 KB aligned; uploads `bugstar-symbols` (unstripped libmain.so,
+  for `llvm-addr2line -f -e libmain.so <offset from the crash report>`). Manifest: `appCategory=game`, predictive back off. Version 0.35.

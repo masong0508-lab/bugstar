@@ -534,6 +534,13 @@ static void pc_mkdir_p(const char *path){ char t[1300]; size_t n=strlen(path); i
     for(size_t i=1;i<=n;i++){ if(t[i]=='/'||t[i]=='\\'||t[i]==0){ char c=t[i]; t[i]=0; if(i>2||t[1]!=':') CreateDirectoryA(t,0); t[i]=c; if(!c) break; } } }
 #endif
 static void mkdirs(const char *p){ (void)p; }
+#ifdef PC_ANDROID
+#include <sys/stat.h>
+static void android_mkdir_p(const char *path){
+    char b[1300]; snprintf(b,sizeof b,"%s",path);
+    for(char *q=b+1; *q; q++) if(*q=='/'){ *q=0; mkdir(b,0775); *q='/'; }
+    mkdir(b,0775); }
+#endif
 const char *plat_save_path(void){ return g_savepath; }
 int plat_paths(int argc, char **argv){            // finds the folders; call before the fake GBA starts (it loads the save)
     for(int i=1;i+1<argc;i++) if(!strcmp(argv[i],"--icon-png")){ int S=256; uint32_t *p=malloc((size_t)S*S*4); plat_icon_pixels(p,S); for(size_t k=0;k<(size_t)S*S;k++) if(!(p[k]>>24)) p[k]=0; plat_write_png_rgba(argv[i+1],p,S,S); exit(0); }
@@ -549,6 +556,9 @@ int plat_paths(int argc, char **argv){            // finds the folders; call bef
     if(pp) SDL_free(pp);
 #ifdef _WIN32
     pc_mkdir_p(g_pref);
+#elif defined(PC_ANDROID)
+    // patch 35: no shell on the launch path (system() forks the whole app); mkdir -p done here
+    { char d[1300]; android_mkdir_p(g_pref); snprintf(d,sizeof d,"%sscreenshots",g_pref); android_mkdir_p(d); }
 #else
     { char cmd[1300]; snprintf(cmd,sizeof cmd,"mkdir -p '%s' '%sscreenshots' 2>/dev/null",g_pref,g_pref); if(system(cmd)){} }
 #endif

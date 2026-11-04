@@ -72,8 +72,8 @@ static void win_setup(void){
 }
 #elif defined(PC_ANDROID)
 // Android (patch 30.1): stderr goes nowhere, so it is sent to bugstar_log.txt in the app's files folder (Android/data/org.bugstar.app/files, a file manager can open it).
-// win_fatal shows the end of that log in a box and copies it to the clipboard (to paste into a chat). A crash (signal) cannot show a box from inside the signal
-// handler, so it writes a "CRASH" line to the log and the NEXT start shows the box.
+// win_fatal shows the end of that log in a box and copies it to the clipboard (to paste into a chat). A crash (signal) is handled by platform/pc_crash.c and
+// reported by BugstarActivity on the next start.
 static char g_logpath[1100];
 static void win_fatal(const char *what){
     char tail[1200]; tail[0]=0; fflush(stderr);
@@ -82,19 +82,15 @@ static void win_fatal(const char *what){
     SDL_SetClipboardText(msg);
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"BUGSTAR",msg,NULL);
 }
-static void android_crash(int sig, siginfo_t *si, void *ctx){
-    (void)ctx; fprintf(stderr,"CRASH signal %d at address %p\n",sig,si?si->si_addr:(void*)0); fflush(stderr);
-    signal(sig,SIG_DFL); raise(sig);          // Android's own crash report still happens
-}
+void pc_crash_thread_init(void);          // platform/pc_crash.c: an alternate signal stack for the calling thread
 static void android_setup(void){
+    // patch 35: the signal handlers are installed by platform/pc_crash.c (when libmain.so loads); a second set installed here replaced them, so the
+    // backtrace file was never written. BugstarActivity (Java) shows the "crashed last time" box, so there is nothing to check here either.
     const char *d=SDL_AndroidGetExternalStoragePath(); if(!d) d=SDL_AndroidGetInternalStoragePath(); if(!d) return;
     snprintf(g_logpath,sizeof g_logpath,"%s/bugstar_log.txt",d);
-    { FILE *f=fopen(g_logpath,"rb"); if(f){ char b[8192]; size_t r=fread(b,1,sizeof b-1,f); b[r]=0; fclose(f); if(strstr(b,"CRASH")) win_fatal("BUGSTAR crashed last time."); } }
     if(!freopen(g_logpath,"w",stderr)) return;
     setvbuf(stderr,0,_IONBF,0);
     fprintf(stderr,"BUGSTAR Android log\n");
-    { struct sigaction sa; int sg[5]={SIGSEGV,SIGBUS,SIGABRT,SIGFPE,SIGILL}; memset(&sa,0,sizeof sa); sa.sa_sigaction=android_crash; sa.sa_flags=SA_SIGINFO|SA_RESETHAND; sigemptyset(&sa.sa_mask);
-      for(int i=0;i<5;i++) sigaction(sg[i],&sa,0); }
 }
 #else
 #define win_fatal(x) ((void)0)
@@ -113,7 +109,28 @@ static ucontext_t uc_main, uc_game;
 #endif
 static void game_entry(void){ if(g_view) pc_view_main(g_argc,g_argv); else bugstar_main(); }
 #ifdef PC_PTHREAD_STACK
-static void *game_thread(void *unused){ (void)unused; game_entry(); return 0; }
+// patch 35: the window, its GL context, the textures and the event pump must all belong to the ONE thread that draws the game. They used to be made on the
+// main thread (plat_open) and then used from this one: SDL's GLES renderer cannot take the context over from the other thread (eglMakeCurrent fails),
+// so every draw call failed and the screen stayed black. So the thread opens the window itself, runs the game, and closes the window.
+static int g_open_win, g_thread_rc;
+static void *game_thread(void *unused){
+    (void)unused;
+#ifdef PC_ANDROID
+    pc_crash_thread_init();               // the signal stack of the main thread does not cover this thread
+#endif
+#ifdef PC_SDL
+    if(g_open_win){
+        if(plat_open(g_argc,g_argv)){
+#ifdef PC_ANDROID
+            fprintf(stderr,"plat_open failed: %s\n",SDL_GetError());
+#endif
+            win_fatal("BUGSTAR could not open its window."); g_thread_rc=2; return 0; } }
+#endif
+    game_entry();
+#ifdef PC_SDL
+    if(g_open_win) plat_close();
+#endif
+    return 0; }
 #endif
 
 int main(int argc, char **argv){
@@ -159,14 +176,15 @@ int main(int argc, char **argv){
 #endif
         return 2; }
     pc_script(script,out,frames);
+    g_argc=argc; g_argv=argv;
 #ifdef PC_SDL
+#ifdef PC_PTHREAD_STACK
+    if(want_window){ pc_set_window_mode(1); g_open_win=1; }          // game_thread opens the window (see above)
+#else
     if(want_window){ pc_set_window_mode(1); if(plat_open(argc,argv)){
-#ifdef PC_ANDROID
-        fprintf(stderr,"plat_open failed: %s\n",SDL_GetError());
-#endif
         win_fatal("BUGSTAR could not open its window."); return 2; } }
 #endif
-    g_argc=argc; g_argv=argv;
+#endif
     // The game stores some addresses in 32-bit numbers (for DMA). Run it on a stack below 4 GB so those still point at the right place.
 #ifdef _WIN32
     game_entry();      // 32-bit process: every stack address is already below 4 GB
@@ -174,7 +192,7 @@ int main(int argc, char **argv){
     // patch 25: the DMA code keeps full-width pointers now (pc_dma_sad / pc_dma_dad), so the stack can be anywhere. A big stack on its own thread.
     { pthread_attr_t at; pthread_t th; pthread_attr_init(&at); pthread_attr_setstacksize(&at,16u<<20);
       if(pthread_create(&th,&at,game_thread,0)){ perror("game thread"); return 2; }
-      pthread_join(th,0); }
+      pthread_join(th,0); if(g_thread_rc) return g_thread_rc; }
 #else
     size_t ss=16u<<20; void *stk=mmap(0,ss,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_32BIT,-1,0);
     if(stk==MAP_FAILED){ perror("stack"); return 2; }
@@ -182,7 +200,7 @@ int main(int argc, char **argv){
     makecontext(&uc_game,game_entry,0);
     swapcontext(&uc_main,&uc_game);
 #endif
-#ifdef PC_SDL
+#if defined(PC_SDL) && !defined(PC_PTHREAD_STACK)
     if(want_window) plat_close();
 #endif
     pc_hw_finish();

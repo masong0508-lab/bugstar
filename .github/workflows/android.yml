@@ -7,9 +7,15 @@ on:
       - 'pc/android/**'
       - 'pc/*.c'
       - 'pc/*.h'
+      - 'pc/*.inc'
+      - 'pc/**/*.c'
+      - 'pc/**/*.h'
+      - 'pc/**/*.inc'
       - 'pc/build.sh'
       - 'pc/platform/**'
       - '*.inc'
+      - '*.h'
+      - 'facts.bin'
       - 'main.c'
       - '.github/workflows/android.yml'
   workflow_dispatch:
@@ -17,6 +23,7 @@ on:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -48,8 +55,42 @@ jobs:
       - name: Build the debug APK
         run: gradle -p pc/android assembleDebug --stacktrace
 
+      # patch 35: things that make an APK install fine and then die on launch, found here instead of on the phone
+      - name: Check the APK (libraries inside, SDL_main exported, page alignment)
+        run: |
+          APK=pc/android/app/build/outputs/apk/debug/app-debug.apk
+          ls -l "$APK"
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/' || true
+          for l in libSDL2.so libmain.so; do
+            unzip -l "$APK" | grep -q "lib/arm64-v8a/$l" || { echo "::error::$l is not in the APK: the app would close the moment it starts"; exit 1; }
+          done
+          SO=$(find pc/android/app/build -path '*arm64-v8a*' -name libmain.so | head -1)
+          echo "libmain.so: $SO"
+          NM=$(find "$ANDROID_NDK_HOME" "$ANDROID_NDK_LATEST_HOME" -name llvm-nm 2>/dev/null | head -1)
+          RE=$(find "$ANDROID_NDK_HOME" "$ANDROID_NDK_LATEST_HOME" -name llvm-readelf 2>/dev/null | head -1)
+          if [ -n "$NM" ] && [ -n "$SO" ]; then
+            "$NM" -D --defined-only "$SO" | grep -E ' SDL_main$' || { echo "::error::libmain.so does not export SDL_main: SDL cannot start the game"; exit 1; }
+          else echo "::warning::llvm-nm not found, SDL_main export not checked"; fi
+          if [ -n "$RE" ] && [ -n "$SO" ]; then "$RE" -lW "$SO" | grep -E 'LOAD' || true; fi
+          ZA=$(find "$ANDROID_HOME/build-tools" -name zipalign 2>/dev/null | sort -V | tail -1)
+          if [ -n "$ZA" ]; then "$ZA" -c -P 16 -v 4 "$APK" >/dev/null 2>&1 && echo "16 KB page alignment: ok" || echo "::warning::zipalign -P 16 says the APK is not 16 KB aligned (or this zipalign is too old to check)"; fi
+
       - name: Upload the APK
         uses: actions/upload-artifact@v4
         with:
           name: bugstar-apk
           path: pc/android/app/build/outputs/apk/debug/app-debug.apk
+
+      # the unstripped libmain.so: the crash report lists "pc <offset> libmain.so", and with this file  llvm-addr2line -f -e libmain.so <offset>  names the line
+      - name: Keep the symbols
+        if: always()
+        run: |
+          mkdir -p symbols
+          SO=$(find pc/android/app/build -path '*obj/local/arm64-v8a*' -name libmain.so | head -1)
+          [ -n "$SO" ] && cp "$SO" symbols/libmain.so || echo "no unstripped libmain.so found"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bugstar-symbols
+          path: symbols
+          if-no-files-found: ignore
