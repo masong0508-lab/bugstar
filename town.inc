@@ -238,42 +238,90 @@ static void species_palette(void){                                              
 }
 // ---------------------------------------------------------------- building the city into the land
 static u32 hsh(u32 a, u32 b){ u32 h=a*0x9E3779B1u ^ (b+0x7F4A7C15u)*0x85EBCA6Bu; h^=h>>15; h*=0xC2B2AE35u; h^=h>>13; return h; }
-static int in_city_cell(int x, int y){ if(!city_r) return 0; int dx=((x-city_cx+64)&TMASK)-64, dy=((y-city_cy+64)&TMASK)-64; return dx*dx+dy*dy < city_r*city_r; }
-static void city_flatten(void){                                                       // before smoothing: a level ground for the town
+// patch 40: a city is not a disc. Its border wanders (smooth noise from the world's seed), a wall / ring road / avenue runs along it (by tech), and OUTSKIRTS
+// fade out beyond it: the main avenues carry on as roads, scattered houses thin out, and field plots are fenced by banks. city_depth() > 0 = inside the city.
+static int city_tech(void);
+static int cn_lat(int gx, int gy, int k){ return (int)(hsh(wd.tseed*5u+(u32)k, (u32)((gx+512)*1031+(gy+512)))&255)-128; }
+static int cn_noise(int x, int y, int sh, int k){                                       // smooth value noise, -128..127, lattice cell = 1<<sh texels
+    x+=4096; y+=4096; int gx=x>>sh, gy=y>>sh, m=(1<<sh)-1, ux=((x&m)<<8)>>sh, uy=((y&m)<<8)>>sh;
+    ux=ux*ux*(768-2*ux)>>16; uy=uy*uy*(768-2*uy)>>16;
+    int a=cn_lat(gx,gy,k), b=cn_lat(gx+1,gy,k), c=cn_lat(gx,gy+1,k), d=cn_lat(gx+1,gy+1,k);
+    int t=a+(((b-a)*ux)>>8), u=c+(((d-c)*ux)>>8); return t+(((u-t)*uy)>>8); }
+static int city_depth(int x, int y){                                                  // texels from the border (x,y: texels from the city's centre); + inside, - outside
+    int Rb=city_r*2, dist=isqrt((u32)(x*x+y*y));
+    if(wd.cls==PC_ECUMENOPOLIS) return Rb-dist;                                         // a city planet: the whole world, as before
+    int sh = Rb>=48 ? 5 : 4;
+    return Rb-dist - cn_noise(x,y,sh,1)*Rb*22/12800 - cn_noise(x,y,sh-2,2)*Rb*7/12800; }
+static int city_ow(void){ if(wd.cls==PC_ECUMENOPOLIS) return 0; return 10+city_tech()*3; }        // outskirts width in texels (bigger for a bigger city)
+static int city_bw(void){ if(wd.cls==PC_ECUMENOPOLIS) return 0; int T=city_tech(); return T<=1?4:T<=3?5:6; }   // the border strip: wall + path, ring road + pavement, avenue + pavement
+static int in_city_cell(int x, int y){ if(!city_r) return 0; int dx=((x-city_cx+64)&TMASK)-64, dy=((y-city_cy+64)&TMASK)-64; return city_depth(dx*2,dy*2)>0; }
+static void city_flatten(void){                                                       // before smoothing: a level ground for the town and its outskirts
     if(!wd.city){ city_r=0; return; }
     city_r = wd.cls==PC_ECUMENOPOLIS ? 62 : 9 + wd.csize*6;                          // a city planet: the city is the whole world
     int a=wr(256), d = wd.cls==PC_ECUMENOPOLIS ? 0 : city_r+14+wr(6); city_cx=(64+((cosx(a)*d)>>14))&TMASK; city_cy=(64+((sinx(a)*d)>>14))&TMASK;
     int sum=0, n=0; for(int y=-city_r;y<=city_r;y+=3) for(int x=-city_r;x<=city_r;x+=3){ sum+=hmap[((city_cy+y)&TMASK)*TW+((city_cx+x)&TMASK)]; n++; }
     int L=sum/n; if(L<water_lv+14) L=water_lv+14; if(L>110) L=110;
-    for(int y=-city_r-4;y<=city_r+4;y++) for(int x=-city_r-4;x<=city_r+4;x++){ int d2=x*x+y*y, r2=city_r*city_r, r3=(city_r+4)*(city_r+4);
-        int t = d2<r2 ? 256 : d2>r3 ? 0 : 256-(d2-r2)*256/(r3-r2+1); int i=((city_cy+y)&TMASK)*TW+((city_cx+x)&TMASK); hmap[i]=(hmap[i]*(256-t)+L*t)>>8; }
+    if(wd.cls==PC_ECUMENOPOLIS){
+        for(int y=-city_r-4;y<=city_r+4;y++) for(int x=-city_r-4;x<=city_r+4;x++){ int d2=x*x+y*y, r2=city_r*city_r, r3=(city_r+4)*(city_r+4);
+            int t = d2<r2 ? 256 : d2>r3 ? 0 : 256-(d2-r2)*256/(r3-r2+1); int i=((city_cy+y)&TMASK)*TW+((city_cx+x)&TMASK); hmap[i]=(hmap[i]*(256-t)+L*t)>>8; }
+        return; }
+    int ow=city_ow(), span=city_r*14/10+ow/2+7;
+    for(int y=-span;y<=span;y++) for(int x=-span;x<=span;x++){ int i=((city_cy+y)&TMASK)*TW+((city_cx+x)&TMASK), dd=city_depth(x*2,y*2), t;
+        if(dd>0) t=256;                                                                   // the city itself (water inside it is filled in, as before)
+        else { int o=-dd; if(hmap[i]<water_lv-2) t=0;                                    // the outskirts keep lakes and the sea
+            else if(o<=ow) t=256; else if(o<ow+10) t=256-(o-ow)*256/10; else t=0; }      // level over the outskirts, then a slope back to the land
+        hmap[i]=(hmap[i]*(256-t)+L*t)>>8; }
 }
 static int city_tech(void){                                                          // how advanced the city is, 0 huts .. 5 megacity: its size, its world's economy (tech and mining build tall), a city planet most of all
     int t = wd.cls==PC_ECUMENOPOLIS ? 5 : wd.csize; int eco = endless ? sys[cur_sys].eco : zone%4; static const u8 eb[4]={0,1,2,1};   // farming, mining, tech, hive
     t += eb[eco&3]; return t>5 ? 5 : t; }
-static void city_stamp(void){                                                         // after smoothing: streets, blocks, towers, a plaza
+static void city_stamp(void){                                                         // after smoothing: streets, blocks, towers, a plaza, the border, the outskirts
     if(!city_r) return;
     int L = hmap[city_cy*TW+city_cx]; int tx0=city_cx*2, ty0=city_cy*2, R=city_r*2; int TT=city_tech();   // the roads come from the tech: huts get wandering one-texel tracks, towns a plain two-texel grid, big cities wide avenues every fourth block
-    for(int y=-R;y<=R;y++) for(int x=-R;x<=R;x++){ if(x*x+y*y>=R*R) continue;
+    int eco=wd.cls==PC_ECUMENOPOLIS, OW=city_ow(), BW=city_bw(), E=BW+12, RM=eco?R:R*14/10+OW+2;
+    for(int y=-RM;y<=RM;y++) for(int x=-RM;x<=RM;x++){ int d=city_depth(x,y); if(d<=-OW) continue;
         int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK, i=ty*HW+tx;
         int gx=x+R*4, gy=y+R*4;                                                       // positive grid coordinates
-        int gxs=gx, gys=gy;                                                            // every street snaps to the block grid (huts too: straight tracks)   // huts: the tracks wander
+        int gxs=gx, gys=gy;                                                            // every street snaps to the block grid (huts too: straight tracks)
         int sx=gxs&7, sy=gys&7;                                                       // where in the 8-texel block (4 cells)
+        int wxw = TT<=1 ? 1 : 2, wyw = wxw; if(TT>=4){ if(((gxs>>3)&3)==0) wxw++; if(((gys>>3)&3)==0) wyw++; }    // street widths (an avenue is 3 texels)
+        int lx=((tx-128+128)&HMASK)-128, ly=((ty-128+128)&HMASK)-128, nf=lx*lx+ly*ly;
+        if(d<=0){                                                                      // ---- the outskirts: roads out of town, scattered houses, fenced fields
+            if(hfine[i]<water_lv || nf<18*18) continue;                               // lakes stay lakes; the landing field stays clear
+            int o=-d, frac=(OW-o)*256/OW;                                              // 256 at the border .. 0 at the edge of the outskirts
+            if(((((gxs>>3)&3)==0) && sx<wxw) || ((((gys>>3)&3)==0) && sy<wyw)){ hfine[i]=L; cmap[i]=74; continue; }   // the main avenues carry on as roads
+            u32 h=hsh((u32)(gxs>>3)+wd.tseed*3u+77u,(u32)(gys>>3)); int hv=(h>>8)&255;
+            if(hv < ((frac*(110+TT*14))>>8)){                                          // a house (thinner and thinner outward)
+                int fx=2+((h>>4)&1), fy=2+((h>>6)&1);
+                if(sx>=2 && sx-2<fx && sy>=2 && sy-2<fy){ int tall=26+TT*4+((h>>10)&7)*3, hh=L+tall; if(hh>255) hh=255; hfine[i]=hh; cmap[i]=BLD_B+(((h>>17)&1)*4)+((tx^ty)&1); }
+                continue; }
+            if(((h>>16)&3)!=0 && frac>30){                                             // a field: banks around the plot, the crop is the land's own colour
+                int vb = sx==0 && ((gxs>>3)&1) && ((h>>20)&3)!=0, hb = sy==0;
+                if(vb || hb){ hfine[i]=L; cmap[i]=81; } }
+            continue; }
         hfine[i]=L;
         if(x*x+y*y < 36){ cmap[i]=80; continue; }                                     // the plaza in the middle
-        { int lx=((tx-128+128)&HMASK)-128, ly=((ty-128+128)&HMASK)-128; if(lx*lx+ly*ly < 14*14){ cmap[i]=80; continue; } }   // the landing field stays clear
-        { int wxw = TT<=1 ? 1 : 2, wyw = wxw; if(TT>=4){ if(((gxs>>3)&3)==0) wxw++; if(((gys>>3)&3)==0) wyw++; }    // street widths (an avenue is 3 texels)
-          if(TT>=2){ int cw1 = sx<wxw && sy>=wyw && (sy==wyw || sy==7), cw2 = sy<wyw && sx>=wxw && (sx==wxw || sx==7);   // zebra crossings on both sides of every crossing
+        if(nf < 14*14){ cmap[i]=80; continue; }                                        // the landing field stays clear
+        if(d<BW){                                                                      // ---- the border: a wall with gates (huts, villages), a ring road with a pavement (towns, cities), a wide avenue (big cities)
+            if(TT<=1){ if(sx<2 || sy<2) cmap[i]=74; else if(d<2){ hfine[i]=L+16; cmap[i]=BLD_B+((tx^ty)&1); } else cmap[i]=81; continue; }
+            int rw = TT<=3 ? 3 : 4;
+            if(d<rw){ int dash = d>=1 && (TT<4 ? d==1 : d<=2) && (((tx+ty)>>1)&1); cmap[i]= dash ? 75 : 74; }
+            else cmap[i] = (sx<wxw || sy<wyw) ? 74 : 80;
+            continue; }
+        { int cw1=0, cw2=0;
+          if(TT>=2){ cw1 = sx<wxw && sy>=wyw && (sy==wyw || sy==7), cw2 = sy<wyw && sx>=wxw && (sx==wxw || sx==7);   // zebra crossings on both sides of every crossing
               if(cw1){ cmap[i]=(sx&1)?74:75; continue; } if(cw2){ cmap[i]=(sy&1)?74:75; continue; } }
           if(sx<wxw || sy<wyw){ int dash = (sx==(wxw==3) && sx<wxw && sy>=wyw && (gys&3)==1) || (sy==(wyw==3) && sy<wyw && sx>=wxw && (gxs&3)==1);   // a dotted line down the middle that stops at crossings
               cmap[i] = dash ? 75 : 74; continue; } }
         int bx=gxs>>3, by=gys>>3; u32 h=hsh(bx+wd.tseed, by); int kind=h&15;
         if(kind<3){ cmap[i]=80; continue; }                                            // an empty lot: a little square
-        int T=city_tech(); int tower = kind >= 15-(T+1)/2;                              // higher tech: more towers
+        if(!eco && d<E && (int)((h>>12)&15) < (E-d)*9/12){ cmap[i]=80; continue; }     // toward the edge more lots stand empty
+        int T=TT; int tower = kind >= 15-(T+1)/2; if(!eco && d<E) tower=0;               // higher tech: more towers (none at the edge)
         int fx=2+(((h>>4)&3)*(2+T))/5, fy=2+(((h>>6)&3)*(2+T))/5; if(fx>6) fx=6; if(fy>6) fy=6;   // and bigger footprints (huts 2-3 texels, megacity blocks up to 6)
         if(sx-2>=fx || sy-2>=fy){ cmap[i]=80+((h>>8)&1); continue; }                  // the yard around it
         int cen=R*R-(x*x+y*y); int sp=50+T*18, bs=40+T*14; int tall = bs + ((h>>10)&127)*sp/128*(cen/2+R*R/2)/(R*R+1);   // taller near the middle, taller with tech
         if(tower){ tall = 80 + ((h>>10)&127)*(30+T*20)/128; if(((sx-2)>=1 && (sx-2)<fx-1 && (sy-2)>=1 && (sy-2)<fy-1) && fx>=4 && fy>=4) tall += tall/4; }   // a tower; wide ones step in at the top
+        if(!eco && d<E) tall = 28 + (tall-28)*(d-BW+1)/(E-BW+1);                        // lower toward the edge
         int hh=L+tall; if(hh>255) hh=255; hfine[i]=hh;
         int tn=(h>>17)&3; if(T==0) tn&=2; else if(T>=3 && ((h>>20)&1)) tn|=1;           // tint: glass (odd) only from a city of some size, more of it with tech
         cmap[i] = BLD_B + tn*2 + ((tx^ty)&1); }
@@ -284,12 +332,12 @@ static void city_people(int *k){                                                
     static const u8 want[14]={O_MARKET,O_CANTINA,O_OFFICE,O_RACE,O_HOME,O_HOME,O_MARKET,O_CANTINA,O_HOME,O_OFFICE,O_HOME,O_HOME,O_CANTINA,O_HOME};
     int nwant = wd.cls==PC_ECUMENOPOLIS ? 14 : 4 + wd.csize;
     for(int t=0;t<900 && placed<nwant && *k<NPO-20;t++){                               // a door needs a building behind it and a street in front
-        int x=wr(2*R+1)-R, y=wr(2*R+1)-R; if(x*x+y*y>=(R-4)*(R-4)) continue;
+        int x=wr(2*R+1)-R, y=wr(2*R+1)-R; if(city_depth(x,y)<4) continue;      /* patch 40: inside the wandering border */
         int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK; if(cmap[ty*HW+tx]!=74 && cmap[ty*HW+tx]!=75) continue;
         int ok=0; for(int d=1;d<=4 && !ok;d++){ int c=cmap[((ty-d)&HMASK)*HW+tx]; if(c>=BLD_B && c<BLD_B+8) ok=1; } if(!ok) continue;   // a building just behind
         PObj *o=&po[(*k)++]; o->kind=want[placed<14?placed:13]; o->alive=1; o->hp=1; o->var=wr(2); o->x=(tx<<15)+(1<<14); o->y=(ty<<15)+(1<<14)+(1<<13); placed++; }
     int nloc = wd.cls==PC_ECUMENOPOLIS ? 26 : 3+wd.csize*3;
-    for(int t=0;t<900 && nloc && *k<NPO-20;t++){ int x=wr(2*R+1)-R, y=wr(2*R+1)-R; if(x*x+y*y>=R*R) continue;
+    for(int t=0;t<900 && nloc && *k<NPO-20;t++){ int x=wr(2*R+1)-R, y=wr(2*R+1)-R; if(city_depth(x,y)<=0) continue;      /* patch 40 */
         int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK; int c=cmap[ty*HW+tx]; if(c!=74 && c!=75 && c!=80) continue;
         PObj *o=&po[(*k)++]; o->kind=O_LOCAL; o->alive=1; o->hp=wr(3)==0; o->var=wr(2); o->x=(tx<<15)+(1<<14); o->y=(ty<<15)+(1<<14); nloc--; }
     if(wd.csize>=2){ PObj *o=&po[(*k)++]; o->kind=O_STALL; o->alive=1; o->hp=1; o->x=(tx0<<15)+(3<<16); o->y=(ty0<<15)+(1<<16); }
