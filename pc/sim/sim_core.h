@@ -36,7 +36,8 @@ enum { SIMW_CLEAR, SIMW_CLOUD, SIMW_RAIN, SIMW_STORM, SIMW_SNOW, SIMW_N };      
 
 enum { SIME_NONE, SIME_WAKE, SIME_SLEEP, SIME_WORK, SIME_EAT, SIME_CHAT, SIME_HUNGRY, SIME_TIRED, SIME_WEATHER, SIME_DAWN, SIME_CAST,
        SIME_UNLOCK, SIME_EMPTY, SIME_HARVEST, SIME_NEWFOLK, SIME_SPECIES, SIME_LEGEND, SIME_IDEA, SIME_SANDBOX, SIME_FRIEND, SIME_LETTER, SIME_COLONY,
-       SIME_BOND, SIME_RIVAL, SIME_COUPLE, SIME_BREAKUP, SIME_QUARREL, SIME_SICK, SIME_WELL, SIME_BREAK, SIME_CARE, SIME_N };   // v2 life: who/b = the two bugs   // SIME_COLONY: a = colony event kind, b = its first number, seed32 = its second
+       SIME_BOND, SIME_RIVAL, SIME_COUPLE, SIME_BREAKUP, SIME_QUARREL, SIME_SICK, SIME_WELL, SIME_BREAK, SIME_CARE,
+       SIME_GIFT, SIME_HELP, SIME_WORRY, SIME_N };   // v2 life: who/b = the two bugs   // SIME_COLONY: a = colony event kind, b = its first number, seed32 = its second
 
 typedef struct { uint32_t tick; uint16_t kind, who, a, b; uint32_t seed32; } SimEvent;     // 16 bytes
 
@@ -76,6 +77,9 @@ typedef struct {
     uint8_t env_on, locked; int16_t temp_c;      // Phase 2: set by sim_set_env (the planet's day length and warmth)
     uint32_t day_seen;                          // the day new_day last ran for
     uint32_t steps_done;                        // for tests
+    // patch 15 TIES (runtime only: not in sim_hash, not in the save; the glue sets them again every few seconds)
+    uint32_t helped[SIM_MAXFOLK];               // the day (+1) you last helped each townsperson
+    uint8_t  worry, aid;                        // from the colony: 0..2 how much the town fears for it; 0..2 how well it feeds the town
 } Sim;
 #define SIM_SPIRIT_MAX 100
 
@@ -144,5 +148,24 @@ void   sim_save_friends(const Sim *s, SimSlot *sl);
 void   sim_load_friends(Sim *s, const SimSlot *sl);
 void   sim_save_tail(const Sim *s, SimSlot *sl);
 void   sim_load_tail(Sim *s, const SimSlot *sl);
+
+
+// ---------------------------------------------------------------- patch 15: TIES
+// Friends give gifts that fit their job; sick/stressed/feuding bugs ask for help and helping pays in friendship;
+// friends (50+) lend their trade to the colony; the colony's trouble stresses the town and its surplus feeds it.
+enum { SIMG_NONE, SIMG_FOOD, SIMG_GOLD, SIMG_HEAL, SIMG_ORE, SIMG_N };
+typedef struct { uint8_t kind; uint16_t amt; } SimGift;      // GOLD: amt in units (the game scales). FOOD: hunger points. ORE: pieces.
+int  sim_gift(const Sim *s, int who, int step, SimGift *g);
+const char *sim_gift_name(int kind);
+enum { SIMA_NONE, SIMA_MEAL, SIMA_LISTEN, SIMA_PEACE, SIMA_N };
+int  sim_ask(const Sim *s, int k, int *with);
+void sim_ask_text(int ask, char *out, size_t n);
+int  sim_ask_need(int ask);                                  // friendship needed before you can help (0, 10, 25)
+int  sim_help(Sim *s, int k, int ask);                       // 1 done, 0 nothing to do / already helped today, -1 not close enough yet
+typedef struct { uint8_t guard, food, wood, ore, goods, mood, couples, friends, sick, asks; } SimTies;   // guard..goods 0..6
+void sim_ties(const Sim *s, SimTies *t);
+void sim_ties_text(const SimTies *t, char *out, size_t n);
+void sim_set_outside(Sim *s, int worry, int aid);
+const char *sim_perk_text(const Sim *s, int k);
 
 #endif

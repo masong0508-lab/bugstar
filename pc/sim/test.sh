@@ -16,6 +16,8 @@ $CC env_test.c sim_core.c colony.c god.c lv.c -o out/env_test
 ./out/env_test
 $CC social_test.c sim_core.c colony.c god.c lv.c -o out/social_test
 ./out/social_test
+$CC ties_test.c sim_core.c colony.c god.c lv.c -o out/ties_test
+./out/ties_test
 $CC colony_test.c sim_core.c colony.c god.c lv.c -o out/colony_test
 ./out/colony_test
 # against Python's own big integers: random and edge numbers, all operations, including saturation at 64^256

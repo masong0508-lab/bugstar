@@ -24,6 +24,7 @@ static s32 sim_tgx[SIM_MAXFOLK][SIMP_N], sim_tgy[SIM_MAXFOLK][SIMP_N];   // wher
 static u16 sim_stuck[SIM_MAXFOLK];
 static int sim_nhome;
 static int sim_said_letters, sim_col_cards, sim_col_gifts;   // letter pop-ups and colony cards shown (the tests read them)            // letter pop-ups shown (the tests read it)
+static int sim_gifts_got, sim_helped_n;   // friend gifts received, requests helped (the tests read them)
 static int sim_a_up;                    // 1 once A has been seen up on this planet: keeps a key still held from the title or a menu from opening the quick menu
 
 static int sim_is_on(void){
@@ -164,6 +165,10 @@ static void sim_unlock_msgs(void){
     int c=0, last=0;
     for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_UNLOCK){ c++; last=e->a; } }
     for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_LETTER){ char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_said_letters++; break; } }
+    for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1);                // patch 15: a friend's gift reaches your bag
+        if(e && e->kind==SIME_GIFT){ int a=e->b;
+            if(e->a==SIMG_FOOD) eat(a); else if(e->a==SIMG_GOLD) gold=sadd(gold,(s64)a*(20+(level>1000?1000:(s64)level))); else if(e->a==SIMG_HEAL){ hearts=maxh; mp=maxmp; } else if(e->a==SIMG_ORE) ore_add(0,a);
+            char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_gifts_got++; break; } }
     sim_seen_log=sim_w.log_n;
     if(c>3){ char b[40]; b[0]=0; ncat(b,c); scat(b," NEW GOD POWERS ARE OPEN"); say(b); sfx(6); }
     else if(c>0){ char b[40]; scpy(b,"NEW POWER "); ncat(b,last); scat(b,": "); scat(b,god_power(last)->name); say(b); sfx(6); }
@@ -174,7 +179,7 @@ static void sim_dump_all(void){
     char t[96]; for(int k=0;k<sim_w.nfolk;k++){ scpy(t,"near "); ncat(t,k); scat(t," "); ncat(t,sim_dist10(k)); scat(t,"\n"); sim_io_append(path,t); }
     { int nl=0; for(u32 b=0;b<sim_log_count(&sim_w);b++) if(sim_log_at(&sim_w,b)->kind==SIME_LETTER) nl++;
       scpy(t,"friends"); for(int k=0;k<sim_w.nfolk;k++){ scat(t," "); ncat(t,sim_w.friend[k]); } scat(t," letters "); ncat(t,nl); scat(t," shown "); ncat(t,sim_said_letters); scat(t,"\n"); sim_io_append(path,t); }
-    { static char cb[200]; col_dump(sim_colony(),cb,sizeof cb); sim_io_append(path,cb); scpy(t,"colcards "); ncat(t,sim_col_cards); scat(t," gifts "); ncat(t,sim_col_gifts); scat(t," gold "); ncat(t,gold); scat(t," food "); ncat(t,food); scat(t,"\n"); sim_io_append(path,t); }
+    { static char cb[200]; col_dump(sim_colony(),cb,sizeof cb); sim_io_append(path,cb); scpy(t,"colcards "); ncat(t,sim_col_cards); scat(t," gifts "); ncat(t,sim_col_gifts); scat(t," fgifts "); ncat(t,sim_gifts_got); scat(t," helped "); ncat(t,sim_helped_n); { SimTies ti; sim_ties(&sim_w,&ti); scat(t," ties "); ncat(t,ti.guard); scat(t,"/"); ncat(t,ti.food); scat(t,"/"); ncat(t,ti.goods); scat(t," worry "); ncat(t,sim_w.worry); scat(t," aid "); ncat(t,sim_w.aid); } scat(t," gold "); ncat(t,gold); scat(t," food "); ncat(t,food); scat(t,"\n"); sim_io_append(path,t); }
     { Lv l; sim_level_lv(&l); char d[LV_DEC_MAX]; lv_to_dec(&l,d,sizeof d); scpy(t,"level "); scat(t,d); scat(t," powers "); ncat(t,god_unlocked_count(&l,sim_w.god.sandbox)); scat(t,"\n"); sim_io_append(path,t); }
     sim_io_append(path,"--\n");
 }
@@ -205,6 +210,8 @@ static void sim_colony_tick(void){
     ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony(); u32 today=(u32)sim_day(&sim_w), yd=col_year_days(SIM_SEASON_DAYS);
     co->world_ok = pc_applied ? 1 : 0;                                  // only endless-galaxy planets can ever be destroyed; story worlds never
     if(!co->danger || co->danger==2) co->danger = (u8)(1 + (sim_town32()>>9)%6);
+    { SimTies ti; sim_ties(&sim_w,&ti); col_set_ties(co,ti.guard*6,ti.food*2,ti.wood*2,ti.ore,ti.goods,ti.mood);      // patch 15: friends lend their trade to the colony...
+      int wy, ad; col_outside(co,&wy,&ad); sim_set_outside(&sim_w,wy,ad); }                                         // ...and the colony's trouble or plenty reaches the town
     u16 nw=col_update(co,(u16)(col_mask(&fl)|col_goal_mask(co,&fl,today,yd)));
     { ColAway aw; int nd=col_catchup_d(co,today,yd,sim_f.difficulty,&aw);
       if(nd>=2 && (co->mask&(1u<<COLR_TENT))){ sim_away_n=col_away_text(&aw,co,sim_away,6); sim_away_new=1;     // read on the COLONY screen; one line now

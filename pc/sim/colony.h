@@ -61,7 +61,11 @@ typedef struct {
     uint8_t  help_days, god_used; // days of the player's help left; a god power helped in the coming fight
     uint32_t raids_won, raids_lost;
     uint64_t reward_due, reward_total;   // gold owed to the action game; all gold ever paid
+    // patch 15 TIES (runtime: the glue sets them from the town; not saved, zero = no effect)
+    uint8_t  t_def, t_food, t_wood, t_ore, t_goods, t_mood;   // defence, daily food/wood/ore/goods lent by friends; the town's mood 0..100
 } SimColony;
+void col_set_ties(SimColony *c, int def, int food, int wood, int ore, int goods, int mood);
+void col_outside(const SimColony *c, int *worry, int *aid);   // for the town: 0..2 worry (raid coming), 0..2 aid (food to spare)
 
 typedef struct { uint8_t kind; uint32_t a, b; uint32_t day; } ColEvent;
 typedef struct {                 // what happened over a stretch of days (one tick, or a long catch-up)

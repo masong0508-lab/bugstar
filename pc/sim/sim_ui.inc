@@ -18,10 +18,22 @@ static int sim_talk(void *po_obj){
     const SimFolk *f=&sim_w.folk[k]; char l0[44], l1[44], l2[44];
     scpy(l0,sim_job_name(f->job)); scat(l0,". "); scat(l0,sim_task_name(f->task)); scat(l0,". "); scat(l0,sim_trait_text(f)); scat(l0,".");
     sim_status_text(f,l1,sizeof l1); if(f->mate>=0 && f->mate<sim_w.nfolk){ int n1=0; while(l1[n1]) n1++; if(n1<26){ scat(l1," LOVES "); scat(l1,sim_w.folk[f->mate].name); } }
-    scpy(l2,"IT IS "); { int hr=sim_hour(&sim_w); if(hr<10) scat(l2,"0"); ncat(l2,hr); } scat(l2,"H. "); scat(l2,sim_weather_name(sim_w.weather)); scat(l2,".");
+    int with=-1, ask=sim_ask(&sim_w,k,&with);
+    if(ask!=SIMA_NONE){ scpy(l2,""); sim_ask_text(ask,l2,sizeof l2); scat(l2,"."); }
+    else { scpy(l2,"IT IS "); { int hr=sim_hour(&sim_w); if(hr<10) scat(l2,"0"); ncat(l2,hr); } scat(l2,"H. "); scat(l2,sim_weather_name(sim_w.weather)); scat(l2,"."); }
     int fr=sim_talk_to(&sim_w,k); int shown = fr>=0 ? 1 : 0; if(fr<0) fr=sim_w.friend[k];
     char l3[44]; scpy(l3, fr ? "FRIENDSHIP " : "WE HAVE NOT MET BEFORE."); if(fr){ ncat(l3,fr); scat(l3,"/100"); if(shown) scat(l3," +"); }
     const char *ln[4]={l0,l1,l2,l3}; card(VISPG,f->name,ln,4);
+    if(ask!=SIMA_NONE){                                          // patch 15: a request. Helping costs a little and pays in friendship, gifts and colony help
+        char q1[44], q2[44]; scpy(q1,f->name); scat(q1," "); { char t[32]; sim_ask_text(ask,t,sizeof t); scat(q1,t); }
+        scpy(q2, ask==SIMA_MEAL ? "GIVE 10 FOOD FROM YOUR BAG?" : ask==SIMA_LISTEN ? "SIT AND LISTEN A WHILE?" : "TRY TO MAKE PEACE?");
+        if(ask==SIMA_MEAL && food<10){ show_msg("YOUR BAG HAS TOO LITTLE FOOD"); }
+        else if(confirm(VISPG,q1,q2)){
+            int r=sim_help(&sim_w,k,ask);
+            if(r==1){ if(ask==SIMA_MEAL) food-=10; sim_helped_n++; sfx(6); show_msg(ask==SIMA_MEAL?"FED. FRIENDSHIP UP":ask==SIMA_LISTEN?"THEY FEEL LIGHTER. FRIENDSHIP UP":"PEACE MADE. FRIENDSHIP UP"); }
+            else if(r<0){ show_msg(ask==SIMA_LISTEN?"THEY DO NOT KNOW YOU WELL ENOUGH YET":"NOT FRIENDS ENOUGH YET. TALK MORE"); sfx(4); }
+            else show_msg("YOU HELPED TODAY. COME BACK TOMORROW");
+        } }
     return 0;                                                  // the old talk (gifts, gossip) goes on after the card
 }
 
@@ -63,11 +75,11 @@ static void sim_journal(volatile u16 *pg){
 // ---- PEOPLE: who lives here and how they are
 static void sim_pp_row(int i, char *b, int *c){
     const SimFolk *f=&sim_w.folk[i]; scpy(b,f->name); while(textlen(b)<10) scat(b," "); scat(b,sim_job_name(f->job)); while(textlen(b)<26) scat(b," "); scat(b,sim_task_name(f->task));
-    *c = sim_mood(f)>170 ? C_GREEN : sim_mood(f)>100 ? C_WHITE : C_RED;
+    *c = sim_mood(f)>170 ? C_GREEN : sim_mood(f)>100 ? C_WHITE : C_RED; if(sim_ask(&sim_w,i,0)!=SIMA_NONE){ while(textlen(b)<40) scat(b," "); scat(b,"ASKS"); *c=C_GOLD; }
 }
 static void sim_pp_foot(int i, char *b, int *c){
     b[0]=0; if(i>=0){ const SimFolk *f=&sim_w.folk[i]; sim_status_text(f,b,52); *c=C_WHITE; }
-    else { const SimFolk *f=&sim_w.folk[-1-i]; scpy(b,"FOOD "); ncat(b,f->need[0]); scat(b,"  REST "); ncat(b,f->need[1]); scat(b,"  FRIENDS "); ncat(b,f->need[2]); scat(b,"  FUN "); ncat(b,f->need[3]); *c=C_GREY; }
+else { int k=-1-i; scpy(b,"FRIEND "); ncat(b,sim_w.friend[k]); scat(b,"/100. "); if(sim_w.friend[k]>=50) scat(b,sim_perk_text(&sim_w,k)); else scat(b,"50 TO LEND A HAND"); *c=sim_w.friend[k]>=50?C_GOLD:C_GREY; }
 }
 static void sim_people(volatile u16 *pg){
     int sel=0; if(!sim_w.nfolk){ const char *ln[2]={"NOBODY LIVES HERE.","TRY A TOWN."}; card(pg,"PEOPLE",ln,2); return; }
@@ -198,7 +210,7 @@ static void sim_colony_map(volatile u16 *pg){
             if(co->state==COLS_DEAD_WORLD) text(pg,10,121,"THIS PLANET IS BURNT FOR GOOD. SETTLE ANOTHER WORLD",C_RED,1);
             else if(co->state==COLS_RUINS) text(pg,10,121,"RUINS. OPEN THE COLONY LIST AND SETTLE AGAIN",C_RED,1);
             else if(co->raid_eta){ scpy(b,"RAID OF "); ncat(b,co->raid_size); scat(b," IN "); ncat(b,co->raid_eta); scat(b," DAYS. DEFENCE "); ncat(b,col_defence(co)); text(pg,10,121,b,C_RED,1); }
-            else text(pg,10,121,"A ON A STORE: LIFT WOOD. A ON GROUND: BUILD THERE",C_GREY,1);
+            else { SimTies ti; char tt[60]; sim_ties(&sim_w,&ti); sim_ties_text(&ti,tt,sizeof tt); text(pg,10,121,tt,C_GOLD,1); }
             if(msg[0]) text(pg,10,130,msg,C_GREEN,1);
             ctext(pg,120,146,"L/R: BUILDING  A: DO  B: BACK",C_CYAN);
         }

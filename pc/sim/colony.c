@@ -68,6 +68,7 @@ int col_defence(const SimColony *c){
     for(int i = 0; i < c->nset; i++){ char nm[16]; int j; col_settler(c, i, nm, &j); if(j == COLJ_GUARD) d += 3; }
     if(c->help_days) d += 10;
     if(c->god_used) d += 15;
+    d += c->t_def;
     return d;
 }
 
@@ -189,6 +190,8 @@ void col_day_ex(SimColony *c, uint32_t day, uint32_t year_days, int diff, ColAwa
         case COLJ_TRADER:  if(c->goods >= 2){ c->goods -= 2; c->ore = sat_add(c->ore, 1); c->wood = sat_add(c->wood, 2 + (uint32_t)c->bld[COLB_MARKET]); } break;
         }
     }
+    if(c->nset){ c->food = sat_add(c->food, c->t_food); wood_in += c->t_wood; c->ore = sat_add(c->ore, c->t_ore); c->goods = sat_add(c->goods, c->t_goods);
+                 if(c->t_mood >= 60 && c->morale < 100) c->morale++; }                       // friends in town: a happy town cheers the colony
     c->wood = sat_add(c->wood, wood_in);
     if(c->help_days) c->help_days--;
     // building: wood from the store goes into the plan
@@ -416,4 +419,17 @@ int col_list_read(ColList *l, const uint8_t *in, size_t n){
         if(c->state == COLS_ALIVE && !c->nset && (c->mask & (1u << COLR_TENT))) c->state = COLS_RUINS;
     }
     return 0;
+}
+
+void col_set_ties(SimColony *c, int def, int food, int wood, int ore, int goods, int mood){
+    c->t_def = (uint8_t)(def < 0 ? 0 : def > 40 ? 40 : def); c->t_food = (uint8_t)(food < 0 ? 0 : food > 20 ? 20 : food); c->t_wood = (uint8_t)(wood < 0 ? 0 : wood > 20 ? 20 : wood);
+    c->t_ore = (uint8_t)(ore < 0 ? 0 : ore > 20 ? 20 : ore); c->t_goods = (uint8_t)(goods < 0 ? 0 : goods > 20 ? 20 : goods); c->t_mood = (uint8_t)(mood < 0 ? 0 : mood > 100 ? 100 : mood);
+}
+void col_outside(const SimColony *c, int *worry, int *aid){
+    int w = 0, a = 0;
+    if(c->state == COLS_ALIVE && c->nset){
+        if(c->raid_eta && c->raid_eta <= 12) w = (uint32_t)col_defence(c) < c->raid_size ? 2 : 1; else if(c->hungry_days) w = 1;
+        if(!c->hungry_days && c->food >= c->nset * 30u) a = 2; else if(!c->hungry_days && c->food >= c->nset * 10u) a = 1;
+    }
+    if(worry) *worry = w; if(aid) *aid = a;
 }
