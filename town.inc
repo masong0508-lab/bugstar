@@ -257,12 +257,14 @@ static void city_stamp(void){                                                   
     for(int y=-R;y<=R;y++) for(int x=-R;x<=R;x++){ if(x*x+y*y>=R*R) continue;
         int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK, i=ty*HW+tx;
         int gx=x+R*4, gy=y+R*4;                                                       // positive grid coordinates
-        int gxs=gx, gys=gy; if(TT<=1){ gxs+=(int)(hsh((u32)(gy>>2)+wd.tseed,7)%3u)-1; gys+=(int)(hsh((u32)(gx>>2)+wd.tseed,9)%3u)-1; }   // huts: the tracks wander
+        int gxs=gx, gys=gy;                                                            // every street snaps to the block grid (huts too: straight tracks)   // huts: the tracks wander
         int sx=gxs&7, sy=gys&7;                                                       // where in the 8-texel block (4 cells)
         hfine[i]=L;
         if(x*x+y*y < 36){ cmap[i]=80; continue; }                                     // the plaza in the middle
         { int lx=((tx-128+128)&HMASK)-128, ly=((ty-128+128)&HMASK)-128; if(lx*lx+ly*ly < 14*14){ cmap[i]=80; continue; } }   // the landing field stays clear
         { int wxw = TT<=1 ? 1 : 2, wyw = wxw; if(TT>=4){ if(((gxs>>3)&3)==0) wxw++; if(((gys>>3)&3)==0) wyw++; }    // street widths (an avenue is 3 texels)
+          if(TT>=2){ int cw1 = sx<wxw && sy>=wyw && (sy==wyw || sy==7), cw2 = sy<wyw && sx>=wxw && (sx==wxw || sx==7);   // zebra crossings on both sides of every crossing
+              if(cw1){ cmap[i]=(sx&1)?74:75; continue; } if(cw2){ cmap[i]=(sy&1)?74:75; continue; } }
           if(sx<wxw || sy<wyw){ int dash = (sx==(wxw==3) && sx<wxw && sy>=wyw && (gys&3)==1) || (sy==(wyw==3) && sy<wyw && sx>=wxw && (gxs&3)==1);   // a dotted line down the middle that stops at crossings
               cmap[i] = dash ? 75 : 74; continue; } }
         int bx=gxs>>3, by=gys>>3; u32 h=hsh(bx+wd.tseed, by); int kind=h&15;
