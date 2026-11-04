@@ -1,7 +1,7 @@
 # BUGSTAR: unfinished work, written after patch 15 (4 Nov 2026). READ THIS FIRST when continuing.
 
 Rule for myself: before starting new features, work this list top to bottom. When an item is done, change `[ ]` to `[x]` and add the patch number.
-Patches so far: 14 = life sim TIES (gifts, requests, colony ties), 15 = DUNGEON CALLS (colony trouble sets floor goals). 16 = this file, 17 = WARSHIP BALANCE (part 1 of finishing the warship work), 18 = ROOM MIX (part 2: a shipyard design's rooms and props can drive a warship deck).
+Patches so far: 14 = life sim TIES (gifts, requests, colony ties), 15 = DUNGEON CALLS (colony trouble sets floor goals). 16 = this file, 17 = WARSHIP BALANCE (part 1 of finishing the warship work), 18 = ROOM MIX (part 2: a shipyard design's rooms and props can drive a warship deck), 19 = ROOM MIX in the game (FOES option).
 
 ## A. Never played (all code below compiles and its plain-C tests pass, but nobody has seen it in the game)
 - [ ] Patch 14 in game: talk to a bug that asks for help (meal / listen / peace), confirm prompt, friendship rise, gifts reaching the bag, PEOPLE "ASKS" flag, COLONY MAP footer with friend ties.
@@ -23,7 +23,8 @@ Built and tested: sizes, reward formula, fights, interiors, missions, encounters
 - [x] BALANCE PASS (patch 17): `bash pc/warship/bal.sh` (plain C, `pc/warship/BALANCE.md` has the before and after tables). Tuned: per-minute chance cap, 25 minute quiet time, buster share 1 in 6, buster window at least 5 minutes, hellscape ship/pod roll by armour (it was upside down), DEFEND raid 6 + 4 x class and capped at 6/5 of the colony defence on NORMAL. Left alone on purpose: the 1/5 death loss, the 10 minute board window. NOT played: the three player stages in bal.c are my guesses. A LATE player cannot stop a buster in its window (0 percent): check that in play.
 - [ ] Re-run the skipped suites. DONE in patch 17 (all pass): in-game `pc/tests/warship.sh`, `pc/tests/aftermath.sh`, `pc/warship/test.sh`, `pc/sim/test.sh`. STILL TO RUN: coil.sh, giant.sh, giant/test.sh. Fix stale goldens once, in one commit.
 - [x] Shipyard rooms into warship interiors (patch 18, part 2): `wd_make_mix` (`pc/warship/ws_deck.h`, `WdMix`) builds a deck from a design's rooms and props (bunks, crates, guns, fighters); `wd_make` is the same call with no mix and its decks are byte for byte what they were. Glue: `pc/warship/ws_mix_sy.h` (`wd_mix_from_sy`). Tests: `pc/warship/mix_test.c` (in `pc/warship/test.sh`). A craft with many subsystem rooms of its own (the 8 rooms of a single-deck NORMAL craft) leaves less floor: the mix then gets what fits and never more than it asked.
-- [ ] Call `wd_make_mix` from the game (`pcw_deck_here` in `pc/pc_warship.inc`): it needs a rule for WHICH design a boarded ship uses (your own ship when you board an ally? a foe design from `sy_foe` for enemy craft?). Not decided, so the game still builds decks with the random mix. NOT seen in play.
+- [x] Call `wd_make_mix` from the game (patch 19, `pcw_mix` in `pc/pc_warship.inc`): when the ship editor's FOES option is on, a boarded craft gets a `sy_foe` design (team 1, level from its class) made from its own seed, and that design's rooms and props build the deck. FOES off: decks exactly as before. `BUGSTAR_WS_MIX=1/0` forces it on/off (tests). In-game check in `pc/tests/warship.sh`. NOT seen in play by you.
+- [ ] Boarding an ALLIED craft should use a team 0 design, and your own ship's design for your own hangar deck; today every boarded craft is treated as an enemy design. Foe designs still do not change stats or fight rules.
 - [ ] Foe designs that change stats and fight rules; designs for allied and enemy ships (README says not done).
 - [ ] Extreme end: play a real dead-world path once (colony ruins, burnt planet, resettle elsewhere). Story worlds must never be destroyed for good.
 - [ ] Death penalty check: the save stays byte identical apart from the stated penalty.
@@ -44,5 +45,5 @@ Built and tested: sizes, reward formula, fights, interiors, missions, encounters
 1. `git pull`, read this file, then ROADMAP_PATCH.md (patch table) and ROADMAP_NEXT.md.
 2. Run `bash pc/sim/test.sh` and `bash pc/warship/test.sh` first; they must be 0 failed.
 3. `pc/build.sh` must print `built pc/bugstar_pc`: every `H` hook fails loudly when its anchor moves.
-4. New patch = next number after 18, same Termux command as in ROADMAP_PATCH.md.
+4. New patch = next number after 19, same Termux command as in ROADMAP_PATCH.md.
 5. `bash pc/warship/test.sh` now also runs the balance report (quick); when you change a PCM_* number in `pc/pc_missions.inc`, change it in `pc/warship/bal_rules.h` too.

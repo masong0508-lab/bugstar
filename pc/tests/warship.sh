@@ -19,6 +19,10 @@ grep -q "^kills=1" out/wsk.sav.ws0 || { echo "warship: the kill was not saved"; 
 cp out/wsk.sav out/wsc.sav; cp out/wsk.sav.ws0 out/wsc.sav.ws0; sed -i 's/^kills=.*/kills=1/' out/wsc.sav.ws0
 BUGSTAR_WS_AT=1 BUGSTAR_WS_TEST=save,0,0 $B --script tests/ws_cont.txt --out out/wsc --sav out/wsc.sav --frames 800 > out/wsc.log
 grep -q "^kills=1" out/wsc.sav.ws0 && grep -q "^vault=" out/wsc.sav.ws0 || { echo "warship: CONTINUE did not load the warship file"; fail=1; }
+BUGSTAR_WS_MIX=1 run wsm inside,520,0 tests/ws_inside.txt 3420; BUGSTAR_WS_MIX=1 run wsn inside,520,0 tests/ws_inside.txt 3420
+cmp -s out/wsm.log out/wsn.log || { echo "warship: the room mix interior is DIFFERENT on two runs"; fail=1; }
+n=$(for f in 2880 3000 3060 3200 3230; do h wsm $f; done | sort -u | wc -l); [ "$n" -ge 4 ] || { echo "warship: room mix interior pictures do not change ($n)"; fail=1; }
+[ "$(h wsm 3000)" != "$(h wsi 3000)" ] || echo "warship: note: the room mix picture at frame 3000 equals the plain one"
 run wsl lab,0,0 tests/ws_lab.txt 3300
 n=$(for f in 2900 3000 3200; do h wsl $f; done | sort -u | wc -l); [ "$n" = 3 ] || { echo "warship: the WARSHIPS screens do not change ($n)"; fail=1; }
 for f in wsa_003000 wsi_003000 wsk_003100 wsl_003000; do python3 -c "from PIL import Image; Image.open('out/$f.ppm').resize((720,480)).save('out/$f.png')" 2>/dev/null; done

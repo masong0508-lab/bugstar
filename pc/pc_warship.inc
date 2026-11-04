@@ -5,6 +5,7 @@
 #include "warship/ws_fight.h"
 #include "warship/ws_view.h"
 #include "warship/ms.h"
+#include "warship/ws_mix_sy.h"
 static void pcm_reset(void), pcm_save(FILE *f), pcm_on_win(WsPay *p), pcm_on_sab(int s), pcm_collect(void), pcm_fight_tick(void), pc_ms_board(volatile u16 *pg, int place);
 static int pcm_load_line(const char *ln), pcm_contact(int i, u32 *seed, int *z), pcm_obj_kind(void), pcm_enc_mode, pcm_escort; static void pcm_dwell(int target_room, const char **prompt, char *msg, int *msg_t);
 static u32 pcm_test_setup(int z); static int pcm_cf, pcm_enc_force, pcm_clk, pcm_match_k(const WsCraft *c); static char pcm_note[40]; static unsigned char pcm_mark[8];
@@ -183,9 +184,15 @@ static void pcw_ovl(uint32_t *out, int w, int h){
         if(!here && pcw_D>0 && pcw_deck.tram_room>0){ const WdRoom *t=&pcw_deck.room[pcw_deck.tram_room]; m.x=(t->x0+t->x1+1)*0.5f; m.y=t->y0+1.5f; m.z=10; m.on=1; } }
     wv_render(out,w,h,&pcw_deck,pcw_px,pcw_py,pcw_pa,pcw_t,&m,pcw_hurt);
 }
+// ROOM MIX (patch 18): when the ship editor's FOES option is on (allied and enemy ships built from the same parts), a boarded craft gets a foe design made from its own
+// seed and that design's rooms and props (bunks, crates, guns, fighters) build the deck. Off: the builder's own random mix, exactly as before.
+// Test hook: BUGSTAR_WS_MIX=1 forces it on, 0 forces it off.
+static WdMix pcw_mixv;
+static const WdMix *pcw_mix(void){ const char *e=getenv("BUGSTAR_WS_MIX"); int on = e ? atoi(e)!=0 : (pc_sy_on && pc_sy_foes); if(!on) return 0;
+    SyDesign fd; int lv=ws_class_of(pcw_f.c.z)/2; if(lv>9) lv=9; if(lv<0) lv=0; sy_foe(&fd,pcw_f.c.seed,1,lv); wd_mix_from_sy(&fd,&pcw_mixv); return &pcw_mixv; }
 static void pcw_deck_here(int from_hangar){                           // make the deck at the end of the current path
     u32 h=wd_root(&pcw_f.c); for(int k=0;k<pcw_D;k++){ h=wd_child(h,pcw_path_[k],k); pcw_hash_[k+1]=h; }
-    int subs[WS_MAXSUB]; int n=wd_subs_at(&pcw_f.c,pcw_path_,pcw_D,subs); wd_make(&pcw_deck,&pcw_f.c,h,subs,n,from_hangar,pcw_D);
+    int subs[WS_MAXSUB]; int n=wd_subs_at(&pcw_f.c,pcw_path_,pcw_D,subs); wd_make_mix(&pcw_deck,&pcw_f.c,h,subs,n,from_hangar,pcw_D,pcw_mix());
     for(int i=0;i<pcw_deck.nroom;i++){ int s=pcw_deck.room[i].sub; if(s!=255 && !pcw_f.c.sub[s].alive) pcw_deck.room[i].sub=255; }
     pcw_px=pcw_deck.sx+0.5f; pcw_py=pcw_deck.sy+0.5f; pcw_pa=pcw_deck.sdir; pcw_key=0; pcw_schem=0; pcw_nch=0; pcw_lv=pcw_D; }
 static void pcw_pick_obj(void){ { int mk=pcm_obj_kind(); if(mk>=0){ for(int i=0;i<pcw_f.c.nsub;i++) if(pcw_f.c.sub[i].alive && pcw_f.c.sub[i].kind==mk){ pcw_obj=i; return; } } } static const u8 pri[5]={WSS_GEN,WSS_REACTOR,WSS_BRIDGE,WSS_HANGAR,WSS_TURRET}; pcw_obj=-1;
