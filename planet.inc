@@ -123,8 +123,12 @@ static void planet_palette(void){
       else if(T==4){ a=shade15(rd,9); ln=lift15(rd,28); p0=lift15(rd,10); p1=lift15(rd,7); }                   // smooth dark avenues, crisp white paint
       else { a=shade15(rd,6); ln=rgb15(70,230,255); p0=lift15(rd,11); p1=lift15(rd,8); }                       // megacity: glossy black roads with glowing guide strips
       BG_PAL[74]=a; BG_PAL[75]=ln; BG_PAL[80]=p0; BG_PAL[81]=p1; }
-    BG_PAL[82]=rgb15(220,200,140); BG_PAL[83]=rgb15(236,220,160); BG_PAL[84]=rgb15(250,250,255); BG_PAL[85]=rgb15(210,220,240); BG_PAL[86]=rgb15(236,240,250); BG_PAL[87]=rgb15(200,210,235);
-    if(wd.hour==2) for(int i=64;i<88;i++) BG_PAL[i]=dim15(BG_PAL[i],9);
+    for(int t=0;t<4;t++){ u16 w=BG_PAL[BLD_B+t*2];                                                   // the PC look: each wall has an upper (sky-lit) band, a street-level (dark) band and a shaded face
+        BG_PAL[96+t*3]=lift15(w,3); BG_PAL[97+t*3]=shade15(w,10); BG_PAL[98+t*3]=shade15(w,14); }
+    { u16 a=BG_PAL[74], p0=BG_PAL[80], p1=BG_PAL[81]; int T2=city_tech();                                  // streets: shadowed under the walls and along the kerb; plazas: contact shadow and a pale kerb
+      BG_PAL[112]=shade15(a,7); BG_PAL[113]=shade15(a,11); BG_PAL[114]=shade15(p0,10); BG_PAL[115]=shade15(p1,10); BG_PAL[116]=lift15(p0,T2>=2?4:2);
+      BG_PAL[117]=lerp15(BG_PAL[73],BG_PAL[72],3); BG_PAL[118]=shade15(BG_PAL[73],10); }                 // a pane that mirrors the sky toward its sill, and the dark top of the opening\n    BG_PAL[82]=rgb15(220,200,140); BG_PAL[83]=rgb15(236,220,160); BG_PAL[84]=rgb15(250,250,255); BG_PAL[85]=rgb15(210,220,240); BG_PAL[86]=rgb15(236,240,250); BG_PAL[87]=rgb15(200,210,235);
+    if(wd.hour==2){ for(int i=64;i<88;i++) BG_PAL[i]=dim15(BG_PAL[i],9); for(int i=96;i<108;i++) BG_PAL[i]=dim15(BG_PAL[i],9); for(int i=112;i<117;i++) BG_PAL[i]=dim15(BG_PAL[i],9); }
     if(WL(MW_METAL)) for(int i=0;i<16;i++) BG_PAL[GND_B+i] = i<8 ? shade15(wcol[MW_METAL],4+i) : lift15(wcol[MW_METAL],(i-8)*2);   // METAL GROUND
     if(WL(MW_VOID)){ for(int i=0;i<16;i++) BG_PAL[GND_B+i]= (i&3)==3 ? wcol[MW_VOID] : rgb15(10+i,0,20+i*3); for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=0; }   // VOID: neon in the dark
     if(WL(MW_MIRROR)) for(int i=0;i<8;i++) BG_PAL[SKY_B+i]=BG_PAL[GND_B+15-i*2];                                   // MIRROR SKY: the sky is the ground
@@ -133,8 +137,8 @@ static void planet_palette(void){
     BG_PAL[88]=wcol[MW_SUNS]; BG_PAL[89]=lift15(wcol[MW_SUNS],10); BG_PAL[90]=wcol[MW_RINGS]; BG_PAL[91]=lift15(wcol[MW_MOONS],6); BG_PAL[92]=shade15(wcol[MW_MOONS],9); BG_PAL[93]=lift15(wcol[MW_RINGS],8); BG_PAL[94]=rgb15(255,240,200);
     if(!wd.weird && !hellw()){ BG_PAL[88]=rgb15(255,170,60); BG_PAL[89]=rgb15(255,215,110); BG_PAL[94]=rgb15(255,248,215);       // an ordinary world: a warm sun, pale moons, a blue parent planet
         BG_PAL[91]=rgb15(222,226,238); BG_PAL[92]=rgb15(74,80,108); BG_PAL[90]=rgb15(80,130,215); BG_PAL[93]=rgb15(26,40,96); }
-    if(WL(MW_NEGATIVE)) for(int i=8;i<96;i++) if(i<30||i>=40) BG_PAL[i]=lerp15(BG_PAL[i],BG_PAL[i]^0x7FFF,6+WL(MW_NEGATIVE)/3);       // NEGATIVE: colours turn inside out
-    if(WL(MW_SEPIA)) for(int i=8;i<96;i++){ if(i>=30&&i<40) continue; u16 c=BG_PAL[i]; int gy=((c&31)+((c>>5)&31)+((c>>10)&31))*8/3;        // OLD PHOTO: brown and faded
+    if(WL(MW_NEGATIVE)) for(int i=8;i<128;i++) if(i<30||i>=40) BG_PAL[i]=lerp15(BG_PAL[i],BG_PAL[i]^0x7FFF,6+WL(MW_NEGATIVE)/3);       // NEGATIVE: colours turn inside out
+    if(WL(MW_SEPIA)) for(int i=8;i<128;i++){ if(i>=30&&i<40) continue; u16 c=BG_PAL[i]; int gy=((c&31)+((c>>5)&31)+((c>>10)&31))*8/3;        // OLD PHOTO: brown and faded
         BG_PAL[i]=lerp15(c,rgb15(gy*11/10,gy,gy*7/10),6+WL(MW_SEPIA)/3); }
     for(int i=0;i<16;i++) gbase[i]=BG_PAL[GND_B+i]; for(int i=0;i<8;i++) skybase[i]=BG_PAL[SKY_B+i];
     obj_palette(); species_palette();
@@ -347,12 +351,49 @@ static void planet_tables(void){
     { u32 r=0x2545F491; for(int i=0;i<256;i++){ r^=r<<13; r^=r>>17; r^=r<<5; int v=(r>>4)&7; gtex[i] = v==0?-1 : v==7?1 : 0; } }
     heading_rays();
 }
+// ---------------------------------------------------------------- city looks (the PC version's shading, in 8-bit palette colours)
+__attribute__((noinline)) static int bld_face(int px,int py,int qx,int qy,s32 vx,s32 vy){                       // the ray crossed a texel edge in x (the lit face) or in y (the shaded face)
+    if(px!=qx && py==qy) return 0; if(py!=qy && px==qx) return 1; s32 ax=vx<0?-vx:vx, ay=vy<0?-vy:vy; return ay>ax; }
+__attribute__((noinline)) static int rise_of(int h,int cL){ return ((h-cL)*g_hs)>>8; }
+__attribute__((noinline)) static int street_ix(int ix, s32 mx, s32 my){                                          // streets: shadowed under the walls and along the kerb; a plaza: contact shadow and a pale kerb
+    int tx=(mx>>15)&HMASK, ty=(my>>15)&HMASK, tr=(tx+1)&HMASK, tl=(tx-1)&HMASK, td=(ty+1)&HMASK, tu=(ty-1)&HMASK;
+    int cr=cmap[ty*HW+tr], cl=cmap[ty*HW+tl], cd=cmap[td*HW+tx], cu=cmap[tu*HW+tx], fx=(mx>>11)&15, fy=(my>>11)&15;
+    #define ISB(q) ((q)>=BLD_B && (q)<BLD_B+8)
+    if(ix==74){ int ke=(ISB(cr)&&fx>=12)||(ISB(cl)&&fx<4)||(ISB(cd)&&fy>=12)||(ISB(cu)&&fy<4);
+        int yk=((cr==80||cr==81)&&fx>=14)||((cl==80||cl==81)&&fx<2)||((cd==80||cd==81)&&fy>=14)||((cu==80||cu==81)&&fy<2);
+        return ke ? 112 : yk ? 113 : ix; }
+    if(ix==80||ix==81){ int ke=(ISB(cr)&&fx>=11)||(ISB(cl)&&fx<5)||(ISB(cd)&&fy>=11)||(ISB(cu)&&fy<5);
+        int kb=(city_tech()>=1) && ((cr==74&&fx>=13)||(cl==74&&fx<3)||(cd==74&&fy>=13)||(cu==74&&fy<3));
+        return ke ? (ix==80?114:115) : kb ? 116 : ix; }
+    #undef ISB
+    return ix; }
+// a building's wall, one screen column: lit face and shaded face, roof lip, shopfront, slab lines, floors of real height with punched windows or glass ribbons,
+// sills, mullions, the sky mirrored in the panes. Thumb code in IWRAM (small and fast). hd = height below the roof edge, hag = height above the street.
+__attribute__((section(".iwram"), long_call, noinline)) static void bld_col(volatile u16 *col, int y, int y0, int ytop, int ix, int rise, s32 zz, s32 mx, s32 my, int face){
+    int t=(ix-BLD_B)>>1, wall0=BLD_B+t*2, shd=wall0+1, roof=76+t, glass=t&1, hi=96+t*3, ao=97+t*3, wall1=98+t*3, wallm=face?wall1:wall0;
+    int u=((mx+my)>>11)&15, uc=(mx+my)>>16, near_=zz<=(32*FOCP/3), lastfl=-1, lastuq=-1; u32 hq=0;
+    for(int yy=y0; yy<ytop; yy++){ int hd=(((yy-y)*zz*273)>>15), c2, hag=rise-hd;           // (x273>>15 = divide by FOCP: the ARM7 has no divide)
+        int band = hag<40 ? ao : (hag>60 && !face) ? hi : wallm;                          // dark at the street, lighter toward the sky
+        if(hd<5) c2 = face ? wall0 : roof;                                                // roof lip
+        else if(hd<7) c2 = shd;                                                           // its shadow line
+        else if(!near_) c2 = band;                                                        // too far for floors to show: plain wall, still shaded
+        else if(hag<19){                                                                  // ground floor: dark shopfront, glass between pillars, an awning ledge above
+            if(hag>=17 || hag<0 || u<2 || u>13 || u==7 || u==8) c2=ao;
+            else { int uq=uc*7+t; if(uq!=lastuq){ lastuq=uq; hq=(u32)uq*2654435761u; hq^=hq>>13; } c2 = (hq&3) ? 72 : 118; } }
+        else { int fl=hd>>5, fr=hd&31; if(fl!=lastfl){ lastfl=fl; hq=(u32)(fl*2654435761u)^(u32)((uc+t*7)*2246822519u); hq^=hq>>13; hq*=2246822519u; hq^=hq>>15; }
+            if(fr<2) c2 = face ? ao : shd;                                                // slab edge
+            else { int inwin = glass ? (fr>=7 && fr<24 && u>=1) : (fr>=9 && fr<24 && u>=4 && u<12);
+                if(!inwin) c2 = (!glass && fr>=24 && fr<27 && u>=3 && u<13) ? hi : band;  // sill under a punched window
+                else if(((hq>>3)&3)==0) c2=72;                                            // a lit pane
+                else if(glass ? (u==6||u==7) : (u==7||u==8)) c2=118;                      // a mullion
+                else c2 = fr>=19 ? 117 : fr<11 ? 118 : 73; } }                            // the pane mirrors the sky toward its sill; dark reveal at the top
+        col[yy*120]=c2|(c2<<8); } }
 IWRAM static void render_planet(volatile u16 *pg){
     s32 cb=cam_back(); s32 cam_x = ppx - ((hsn*cb)>>8), cam_y = ppy - ((hcs*cb)>>8);
     int ck = curv_k(); s32 csub = tiny_sub();                                       // small planets: the horizon falls away faster (measured from the bug)
     for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((((z*z)>>14)*ck)>>curv_sh()) - csub;     // the world drops away
         stp_base[i] = ((cam_h + curve) * stp_f[i])>>8; }                             // (8.8 cells) * (8.8 px/cell) >> 8 = 8.8 px
-    u32 sparkle=frames;
+    u32 sparkle=frames; int cL = city_r ? hmap[city_cy*TW+city_cx] : 0;                          // the city's ground level (a building's height above the street = its texel height - this)
     for(int c=0;c<120;c++){
         int ytop=160; s32 vx=rayvx[c], vy=rayvy[c]; int bin=0;
         volatile u16 *col=pg+c;
@@ -368,16 +409,12 @@ IWRAM static void render_planet(volatile u16 *pg){
                 if(i<NEAR_STEPS && ix>=GND_B+1 && ix<GND_B+15) ix += gtex[(((my>>11)&15)<<4)|((mx>>11)&15)];    // grass texture up close
                 if(g_fog && i>=g_nst-6) ix=SKY_B+7-((g_nst-i)>>1);                                // FOG: the far ground fades into the mist
                 if(ix<GND_B && ((((c+sparkle)*7+i*3)&31)==0)) ix=WAT_B+7;              // sparkles on the water
+                if(i<NEAR_STEPS && (ix==74||ix==75||ix==80||ix==81)) ix=street_ix(ix,mx,my);          // the PC look for streets (shadow under walls, kerbs)
                 u16 p2=ix|(ix<<8);
                 int y0 = y<18 ? 18 : y;
-                if(ix>=BLD_B && ix<BLD_B+8 && ytop-y0>3){                                // a building: roof ledge, slab lines, floors of real height with windows (glass ribbons on the odd tints)
-                    int t=(ix-BLD_B)>>1, wall=BLD_B+t*2, shd=wall+1, roof=76+t, glass=t&1; int u4=((mx+my)>>14)&3, uc=(mx+my)>>16; s32 zz=z;
-                    for(int yy=y0; yy<ytop; yy++){ int hd=(((yy-y)*zz)/FOCP), c2=wall;
-                        if(hd<5) c2=roof; else if(hd<8) c2=shd;
-                        else if(zz>(32*FOCP*2/3)) c2=wall;                                   // too far for floors to show
-                        else { int fl=hd>>5, fr=hd&31; if(fr<2) c2=shd; else { int in = glass ? (fr>=7 && fr<24 && u4!=0) : (fr>=9 && fr<24 && (u4==1||u4==2));
-                            if(in){ u32 hh=(u32)(fl*2654435761u)^(u32)((uc+t*7)*2246822519u); hh^=hh>>13; hh*=2246822519u; c2 = (hh>>15&3)==0 ? 72 : 73; } } }
-                        col[yy*120]=c2|(c2<<8); } }
+                if(ix>=BLD_B && ix<BLD_B+8 && ytop-y0>3){                                // a building (the PC look): lit face and shaded face, roof lip, shopfront, slab lines, floors of real height with punched windows or glass ribbons, sills, mullions, sky mirrored in the panes
+                    int face=0; if(i>0){ s32 zp=stp_z[i-1]; face=bld_face(((cam_x+vx*zp)>>15)&HMASK, ((cam_y+vy*zp)>>15)&HMASK, (mx>>15)&HMASK, (my>>15)&HMASK, vx, vy); }   // which wall: lit or shaded
+                    bld_col(col, y, y0, ytop, ix, rise_of(h,cL), z, mx, my, face); }
                 else for(int yy=y0; yy<ytop; yy++) col[yy*120]=p2;
                 ytop=y0;
                 if(ytop<=18) break;
