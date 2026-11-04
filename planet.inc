@@ -115,7 +115,7 @@ static void planet_palette(void){
     for(int t=0;t<4;t++){ u16 w = t==0 ? wd.bld : t==1 ? lift15(wd.bld,5) : t==2 ? shade15(wd.bld,10) : lerp15(wd.bld,wd.sky,6);
         BG_PAL[BLD_B+t*2]=w; BG_PAL[BLD_B+t*2+1]=shade15(w,13); BG_PAL[76+t]=lift15(w,4); }
     BG_PAL[72] = wd.hour==2 ? rgb15(255,230,120) : rgb15(190,220,240); BG_PAL[73]= wd.hour==2 ? rgb15(60,50,20) : rgb15(90,110,140);
-    BG_PAL[74]=wd.road; BG_PAL[75]=lift15(wd.road,8); BG_PAL[80]=lift15(wd.road,5); BG_PAL[81]=lift15(wd.road,3);
+    BG_PAL[74]=shade15(wd.road,11); BG_PAL[75]=lift15(wd.road,22); BG_PAL[80]=lift15(wd.road,9); BG_PAL[81]=lift15(wd.road,6);   // streets: dark asphalt with bright lane dashes, and lighter paving for plazas and yards, so the streets stand apart from the lots (they used to be near-identical greys)
     BG_PAL[82]=rgb15(220,200,140); BG_PAL[83]=rgb15(236,220,160); BG_PAL[84]=rgb15(250,250,255); BG_PAL[85]=rgb15(210,220,240); BG_PAL[86]=rgb15(236,240,250); BG_PAL[87]=rgb15(200,210,235);
     if(wd.hour==2) for(int i=64;i<88;i++) BG_PAL[i]=dim15(BG_PAL[i],9);
     if(WL(MW_METAL)) for(int i=0;i<16;i++) BG_PAL[GND_B+i] = i<8 ? shade15(wcol[MW_METAL],4+i) : lift15(wcol[MW_METAL],(i-8)*2);   // METAL GROUND

@@ -31,6 +31,27 @@ static inline uint32_t pn_bld(int ix, double dy, int z, double u, double gc){
     if(glass && uf<0.5) g=pn_mix(g,base,50);                     // glass ribbon: a bit of sheen
     if(fr<10.5 && !lit) g=pn_mix(g,0x000000,60);                 // reveal shadow at the top of the opening
     return g; }
+// the town's streets (palette 74 asphalt, 75 lane dash, 80/81 plaza and yards). Smooth colour sampling smeared them into the lots beside them and washed the lane dashes out, so
+// near a street the colour map is sampled "sharp bilinear": the blend between two texels is squeezed into about one screen pixel, so edges stay crisp but never staircase. The
+// asphalt gets a fine grain, and the paving beside a street gets a pale kerb line, so a street reads as a street and not as paint.
+static inline int pn_stI(int ix){ return ix==74 || ix==75 || ix==80 || ix==81; }
+static uint32_t pn_gnd(double u, double v, double zcc){
+    int tx=(int)__builtin_floor(u)&HMASK, ty=(int)__builtin_floor(v)&HMASK, xr=(tx+1)&HMASK, xl=(tx-1)&HMASK, yd=(ty+1)&HMASK, yu=(ty-1)&HMASK;
+    int c0=cmap[ty*HW+tx], cr=cmap[ty*HW+xr], cl=cmap[ty*HW+xl], cd=cmap[yd*HW+tx], cu=cmap[yu*HW+tx];
+    if(!(pn_stI(c0)||pn_stI(cr)||pn_stI(cl)||pn_stI(cd)||pn_stI(cu))) return pn_bil(u,v);
+    double k=0.5*FOCP/zcc*(pc_pn.w/240.0); if(k<1) k=1; if(k>8) k=8;                              // screen pixels per texel here: the nearer, the sharper
+    double uu=u-0.5, vv=v-0.5, fu=__builtin_floor(uu), fv=__builtin_floor(vv), a=uu-fu, b=vv-fv;
+    a=0.5+(a-0.5)*k; if(a<0) a=0; if(a>1) a=1; b=0.5+(b-0.5)*k; if(b<0) b=0; if(b>1) b=1;
+    int x0=((int)fu)&HMASK, y0=((int)fv)&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK, wx=(int)(a*256), wy=(int)(b*256);
+    uint32_t col=pn_mix(pn_mix(pn_tex[y0*256+x0],pn_tex[y0*256+x1],wx), pn_mix(pn_tex[y1*256+x0],pn_tex[y1*256+x1],wx), wy);
+    if(zcc<18){
+        double fx=u-__builtin_floor(u), fy=v-__builtin_floor(v);
+        if(c0==74 || c0==75){ uint32_t hh=(uint32_t)((int)__builtin_floor(u*6))*2654435761u ^ (uint32_t)((int)__builtin_floor(v*6))*2246822519u; hh^=hh>>15; hh*=2246822519u; hh^=hh>>13;
+            int d=((int)(hh&7)-3)*(int)(18-zcc)/18; int r=(int)(col>>16&255)+d, g=(int)(col>>8&255)+d, bl=(int)(col&255)+d; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; bl=bl<0?0:bl>255?255:bl; col=(uint32_t)(r<<16|g<<8|bl); }
+        else if(c0==80 || c0==81){ int e = (cr==74&&1-fx<0.16) || (cl==74&&fx<0.16) || (cd==74&&1-fy<0.16) || (cu==74&&fy<0.16); if(e) col=pn_mix(col,0xFFFFFF,48); }   // kerb
+    }
+    return col;
+}
 static void pn_cols(void *vc, int lo, int hi){
     PnCtx *c=(PnCtx*)vc; int W=c->W, H=c->H, ya=c->ya; double sy=c->sy; uint32_t hz=pn_pal[SKY_B+7];
     for(int X=lo;X<hi;X++){
@@ -50,7 +71,7 @@ static void pn_cols(void *vc, int lo, int hi){
             for(int r=r0;r<rtop;r++){ double yg=(r+0.5)/sy; uint32_t col;
                 if(bld) col=pn_bld(ix,yg-yi,z,mx+my,gc);
                 else { double t=(yg-yi)/span; if(t>1) t=1; double izz=iz0+(iz1-iz0)*t; double zz=1.0/izz; double zcc=zz/256.0; double px=c->camx+vx*zcc, py=c->camy+vy*zcc;
-                    col=pn_bil(px*2,py*2); int ci=cmap[(((int)__builtin_floor(py*2))&HMASK)*HW+(((int)__builtin_floor(px*2))&HMASK)];
+                    col=pn_gnd(px*2,py*2,zcc); int ci=cmap[(((int)__builtin_floor(py*2))&HMASK)*HW+(((int)__builtin_floor(px*2))&HMASK)];
                     if(ci<GND_B){ double w=__builtin_sin(px*47+frames*0.06)*__builtin_sin(py*53-frames*0.05); if(w>0.96 && zcc<20) col=pn_mix(col,0xFFFFFF,(int)((w-0.96)*25*128)); }
                     else if(ci>GND_B && ci<GND_B+15 && zcc<14){ uint32_t hh=(uint32_t)((int)__builtin_floor(px*24))*2654435761u ^ (uint32_t)((int)__builtin_floor(py*24))*2246822519u; hh^=hh>>15; hh*=2246822519u; hh^=hh>>13; int d=(int)(hh&15)-8; d=d*(int)(14-zcc)/14; 
                         int rr_=((col>>16)&255)+d, gg_=((col>>8)&255)+d, bb_=(col&255)+d; rr_=rr_<0?0:rr_>255?255:rr_; gg_=gg_<0?0:gg_>255?255:gg_; bb_=bb_<0?0:bb_>255?255:bb_; col=rr_<<16|gg_<<8|bb_; }
