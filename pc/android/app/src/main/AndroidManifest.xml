@@ -12,7 +12,7 @@
         android:hardwareAccelerated="true">
 
         <activity
-            android:name="org.libsdl.app.SDLActivity"
+            android:name="org.bugstar.app.BugstarActivity"
             android:label="BUGSTAR"
             android:exported="true"
             android:alwaysRetainTaskState="true"
