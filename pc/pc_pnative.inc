@@ -14,6 +14,14 @@ static inline uint32_t pn_bil(double u, double v){ u-=0.5; v-=0.5; double fu=__b
     return pn_mix(pn_mix(pn_tex[y0*256+x0],pn_tex[y0*256+x1],wx), pn_mix(pn_tex[y1*256+x0],pn_tex[y1*256+x1],wx), wy); }
 static inline double pn_hgt(double u, double v){ u-=0.5; v-=0.5; double fu=__builtin_floor(u), fv=__builtin_floor(v); int x0=((int)fu)&HMASK, y0=((int)fv)&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK; double a=u-fu, b=v-fv;
     return (hfine[y0*HW+x0]*(1-a)+hfine[y0*HW+x1]*a)*(1-b)+(hfine[y1*HW+x0]*(1-a)+hfine[y1*HW+x1]*a)*b; }
+// heights near a building are point-sampled, not blended: the blend turned every wall into a ramp one texel wide (a roof with sloping sides, like a hill). The classic
+// view takes the nearest texel, so a wall is vertical and a roof flat; here the same rule applies wherever any of the four blend texels is a building.
+static inline int pn_isb(int c){ return c>=BLD_B && c<BLD_B+8; }
+static inline double pn_hgtb(double u, double v){
+    double uu=u-0.5, vv=v-0.5, fu=__builtin_floor(uu), fv=__builtin_floor(vv); int x0=((int)fu)&HMASK, y0=((int)fv)&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK;
+    if(pn_isb(cmap[y0*HW+x0])||pn_isb(cmap[y0*HW+x1])||pn_isb(cmap[y1*HW+x0])||pn_isb(cmap[y1*HW+x1]))
+        return hfine[(((int)__builtin_floor(v))&HMASK)*HW+(((int)__builtin_floor(u))&HMASK)];
+    return pn_hgt(u,v); }
 static inline uint32_t pn_sky(double yg){ double t=(yg-18)*8.0/(PHZ+30-18)-0.5; if(t<0) t=0; if(t>7) t=7; int i=(int)t; if(i>6) i=6; return pn_mix(pn_pal[SKY_B+i],pn_pal[SKY_B+i+1],(int)((t-i)*256)); }
 // a building's wall: floors every 32 units of real height (so they shrink with distance like real floors), a roof ledge, slab lines, punched windows or glass ribbons
 // (by tint), some windows lit. hd = height below the roof edge; u = distance along the wall (mx+my: one of them is constant on any face).
@@ -61,7 +69,7 @@ static void pn_cols(void *vc, int lo, int hi){
         int total=g_nst*3-2;
         for(int j=0;j<total && rtop>ya;j++){
             int i=j/3, s=j%3; double zf = s? stp_z[i]+(stp_z[i+1]-stp_z[i])*s/3.0 : stp_z[i]; s32 z=(s32)zf; if(z<16) z=16;
-            double zc=z/256.0, mx=c->camx+vx*zc, my=c->camy+vy*zc; double h=pn_hgt(mx*2,my*2); if(g_wob){ h+=wob64[(i*3+(int)gc)&63]; if(h<0) h=0; if(h>255) h=255; }
+            double zc=z/256.0, mx=c->camx+vx*zc, my=c->camy+vy*zc; double h=pn_hgtb(mx*2,my*2); if(g_wob){ h+=wob64[(i*3+(int)gc)&63]; if(h<0) h=0; if(h>255) h=255; }
             s32 curve=((((z*z)>>14)*c->ck)>>c->csh)-c->csub; double yi=PHZ+((double)(cam_h+curve)-h*g_hs)*FOCP/z;
             if(yi>=ytopf){ zprev=z; continue; }
             double e=yi*sy; int r0=(int)__builtin_ceil(e-0.5); if(r0<ya) r0=ya; if(r0>=rtop){ ytopf=yi; zprev=z; continue; }
