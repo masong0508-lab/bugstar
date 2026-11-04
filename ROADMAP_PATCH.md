@@ -47,3 +47,6 @@ The ship models looked lit from below (bright belly, dark top and nose). Cause: 
 
 ## Build notes
 pc/build.sh takes ~100 s and builds pc/bugstar_pc (the source of truth is the repo root; pc/gen is a patched scratch copy). Seed viewer: `bugstar_pc --view --star N --planet 0 --out PREFIX`.
+
+## Patch 17 (warship balance)
+New `pc/warship/bal.c`, `bal_rules.h`, `bal.sh`, `BALANCE.md`; changed `pc/pc_missions.inc`, `pc/sim/sim_glue.inc`, `pc/warship/test.sh` (runs the report). The report showed that a LATE player met a planet-buster every 36 to 48 minutes (NORMAL / COMMON), that the hellscape ship roll used armour upside down, and that DEFEND raids were far beyond what a colony can hold. Now: per-minute chance cap (RARE 20, NORMAL 45, COMMON 70 in thousandths), 25 minute quiet time after a severe threat, busters 1 in 6 of the severe rolls, window at least 5 minutes, ship/pod roll by armour, DEFEND raid 6 + 4 x class (capped at 6/5 of the colony defence on NORMAL). Checked: pc/warship/test.sh (78,745 + 25,210 + 65 balance checks), pc/sim/test.sh, in-game pc/tests/warship.sh and aftermath.sh, all pass on a fresh pc/build.sh. Not played by you.

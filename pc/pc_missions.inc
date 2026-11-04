@@ -7,10 +7,16 @@ static WsMission pcm_act[PCM_MAXACT]; static int pcm_nact=0; static u32 pcm_done
 static int pcm_escort=0; static double pcm_dw=0;
 static int pcm_enc_mode=1;                                     // WARSHIP ENCOUNTERS: 0 OFF, 1 RARE (default), 2 NORMAL, 3 COMMON
 static const char *const pcm_enc_nm[4]={"OFF","RARE","NORMAL","COMMON"};
+// BALANCE (patch 17; the measuring program is pc/warship/bal.c, the numbers are in pc/warship/BALANCE.md; keep both in step)
+#define PCM_QUIET_MIN 25        // after a severe threat or a boarding party, no new warship rolls for this many game minutes
+#define PCM_BUSTER_MIN 5        // a planet-buster, strike or troop window is never shorter than this many minutes
+#define PCM_DEFEND_K 4          // a DEFEND mission's raid on the colony is 6 + this x class + bonus/5
+static const int PCM_P_CAP[4]={0,20,45,70};   // the most a minute can roll (thousandths), however high the danger or level
+static int pcm_quiet_until=0;
 typedef struct { int on; u32 seed; int z; u32 sys, gal; int pl, type, cd_end, expire, strikes, next; } PcmEnc;
 static PcmEnc pcm_en; static char pcm_q[3][48]; static int pcm_qn=0;
 static void pcm_aft_reset(void);
-static void pcm_reset(void){ pcm_aft_reset(); pcm_enc_mode=1; pcm_nact=0; pcm_ndone=0; pcm_count=0; pcm_note[0]=0; pcm_escort=0; memset(&pcm_en,0,sizeof pcm_en); pcm_qn=0; }
+static void pcm_reset(void){ pcm_aft_reset(); pcm_quiet_until=0; pcm_enc_mode=1; pcm_nact=0; pcm_ndone=0; pcm_count=0; pcm_note[0]=0; pcm_escort=0; memset(&pcm_en,0,sizeof pcm_en); pcm_qn=0; }
 // ---------------------------------------------------------------- save (inside the .ws file; an old file simply has no such lines)
 static void pcm_burnt_save(FILE *f); static void pcm_burnt_add(u32 k);
 static void pcm_save(FILE *f){ char b[300]; fprintf(f,"menc=%d\nmcount=%d\n",pcm_enc_mode,pcm_count);
@@ -50,7 +56,7 @@ static void pcm_say(const char *s);
 static void pcm_finish(int mi, const WsPay *p, const WsCraft *c, int pay){
     WsMission m=pcm_act[mi]; snprintf(pcm_note,sizeof pcm_note,"%s +%d PERCENT",ms_kind_name(m.kind),m.bonus);
     if(pay){ pcw_pay(p->reward); pcw_kills++; if(wn_cmp(p->reward,pcw_best)>0) pcw_best=p->reward; if(p->cheat){ pcw_cheated=1; plw_set_cheated(1); } }
-    if(m.kind==MK_DEFEND){ unsigned long long rw=0; int r=sim_invasion((unsigned)(6+c->cls*8+m.bonus/5),&rw);      // a DEFEND mission brings a real raid on this planet's colony
+    if(m.kind==MK_DEFEND){ unsigned long long rw=0; int r=sim_invasion((unsigned)(6+c->cls*PCM_DEFEND_K+m.bonus/5),&rw);      // a DEFEND mission brings a real raid on this planet's colony
         if(r>0){ char b[48]; snprintf(b,sizeof b,"COLONY RAID WON: +%llu GOLD AT THE COLONY",rw); pcm_say(b); } else if(r<0) pcm_say("THE COLONY LOST THE RAID. SEE THE COLONY"); }
     fame+=15+c->cls*4+(m.dream?20:0); gain_xp(100+c->cls*200); pcm_count++; if(pcm_ndone<64) pcm_done[pcm_ndone++]=m.id; else { memmove(pcm_done,pcm_done+1,63*sizeof(u32)); pcm_done[63]=m.id; }
     pcm_act[mi]=pcm_act[--pcm_nact]; }
@@ -184,7 +190,7 @@ static void pcm_inv_wave(int cls, int w){ PcmAft *a=&pcm_aft; int f=a->inv_d0-w;
 // --- THE HELLSCAPE
 static void pcm_hell_begin(int quiet){
     PcmAft *a=&pcm_aft; int cls=a->cls; if(a->fire>0) return;
-    u32 h=hmix(pcm_pkey()^(u32)cls*0x9E3779B1u^0x4E11u); int ar=ship_armour(); int dthr=40-ar*3; if(dthr<5) dthr=5; int r=(int)(h%100u), pp=15+ar*4; if(pp>85) pp=85;
+    u32 h=hmix(pcm_pkey()^(u32)cls*0x9E3779B1u^0x4E11u); int ar=ship_armour(); int ex=ar>40?ar-40:0; int dthr=5+ex/4, pp=85-ex/3; int r=(int)(h%100u);   // ar = percent of damage taken (100 none): the ship is lost 5..20 percent of the time, a pod waits 85..65 percent (patch 17: the scale was upside down)
     a->fire=a->fire0=3600*(3+cls/2); a->sec=0; a->resc=0; a->dmg_done=0; a->strand=0; a->ship = r<dthr?2 : r<dthr+35?1 : 0; a->pod=(int)((h>>8)%100u)<pp;
     { const char *e=getenv("BUGSTAR_AFT_SHIP"); if(e) a->ship=atoi(e); e=getenv("BUGSTAR_AFT_POD"); if(e) a->pod=atoi(e); }
     if(endless) pcm_burnt_add(pcm_pkey());
@@ -243,20 +249,21 @@ static void pcm_aft_away(void){ PcmAft *a=&pcm_aft; if(a->warn>0){ a->warn=0; pc
 static void pcm_enc_roll(void){
     static const int P[4]={0,8,22,55};                                   // chance per game minute, in thousandths, before danger and level
     int minute=pcm_clk/3600; u32 h=hmix(sys_id(cur_sys)*0x9E3779B1u ^ gal_hash() ^ (u32)(cur_pl*131+cur_moon)*0x632BE5ABu ^ (u32)minute*0x2545F491u ^ 0xE1C0u);
-    int dg=sys_dlv(cur_sys); int p=P[pcm_enc_mode]*(100+dg*8+(level>2000?200:(int)level/10))/100; if((int)(h%1000u)>=p) return;
+    int dg=sys_dlv(cur_sys); int p=P[pcm_enc_mode]*(100+dg*8+(level>2000?200:(int)level/10))/100; if(p>PCM_P_CAP[pcm_enc_mode]) p=PCM_P_CAP[pcm_enc_mode]; if((int)(h%1000u)>=p) return;
     int zp=pcm_zplayer(); int z=zp-300+(int)((h>>10)%450u); if(z<150) z=150; if(z>WS_ZMAX_FAIR) z=WS_ZMAX_FAIR;
     pcm_en.on=1; pcm_en.seed=hmix(h^1u)|1; pcm_en.z=z; pcm_en.sys=sys_id(cur_sys); pcm_en.gal=gal_hash(); pcm_en.pl=cur_pl+1; pcm_en.type=0; pcm_en.expire=pcm_clk+36000; pcm_en.next=pcm_clk+900; pcm_en.strikes=0; pcm_aft.board_sp=0; pcm_aft.inv_mask=pcm_aft.inv_sp=0;
     WsCraft *c=malloc(sizeof(WsCraft)); ws_make(c,pcm_en.seed,z,0); WsThreat t; ws_threat(c,ws_attack((double)level,laser_lv,ship_gun(),tech_lv),pcw_ehp(),wing_n,pcw_kits,fuel_max(),&t);
     char b[64], l[24]; ws_len_text(z,l,sizeof l); pcm_qn=0;
     pcm_say(scene==1?"THE CEILING SHAKES: A WARSHIP IS OVERHEAD":"A WARSHIP DROPS OUT OF WARP"); snprintf(b,sizeof b,"%s, %s, THREAT: %s",c->name,l,t.word); pcm_say(b);
     int severe = pcm_enc_mode>=2 && c->cls>=WC_CITADEL;
-    if(severe){ pcm_en.type=1+(int)((h>>20)%3u); int mins=15-c->cls; if(mins<3) mins=3; if(mins>12) mins=12;
+    if(severe){ { unsigned sr=(h>>20)%6u; pcm_en.type = sr==0 ? 1 : sr<3 ? 2 : 3; } int mins=15-c->cls; if(mins<PCM_BUSTER_MIN) mins=PCM_BUSTER_MIN; if(mins>12) mins=12;
         if(pcm_en.type==1){ pcm_en.cd_end=pcm_clk+mins*3600; snprintf(b,sizeof b,"PLANET-BUSTER: %d MIN TO LEAVE OR STOP IT",mins); }
         else if(pcm_en.type==2){ pcm_en.cd_end=pcm_clk+mins*3600; snprintf(b,sizeof b,"ORBITAL STRIKES COMING: TAKE COVER"); }
         else { pcm_en.cd_end=pcm_clk+mins*3600; snprintf(b,sizeof b,scene==1?"TROOPS LAND ON THE UPPER FLOORS":"TROOP DROPS ON THE SURFACE"); }
         pcm_say(b); }
     else if(scene==1 && pcm_enc_mode>=2 && (h>>24)%4==0){ pcm_say("A BOARDING PARTY IS IN THE DUNGEON"); pcm_en.type=4; pcm_en.cd_end=pcm_clk+3*3600; }
     else pcm_say("IT SHOWS ON THE MISSION BOARD AND SCANNER");
+    if(pcm_en.type) pcm_quiet_until=pcm_clk+PCM_QUIET_MIN*3600;
     free(c); do_save(); pc_ws_slot_save(cur_slot); }
 static void pcm_tick(void){
     if(pcm_enc_mode==0 && !pcm_en.on && !pcm_aft.fire && !pcm_aft.warn) return;
@@ -266,7 +273,7 @@ static void pcm_tick(void){
     if(in_lair||base_mode||beast_fight||kr_mode||in_menu||pc_ws_on) return;
     if(msg_timer==0 && pcm_qn>0){ show_msg(pcm_q[0]); for(int i=1;i<pcm_qn;i++) memcpy(pcm_q[i-1],pcm_q[i],48); pcm_qn--; }
     pcm_aft_tick();
-    if(!pcm_en.on){ if(pcm_enc_mode && (pcm_clk%3600==0 || pcm_enc_force) && hearts>0){ pcm_enc_force=0; pcm_enc_roll(); } return; }
+    if(!pcm_en.on){ if(pcm_enc_mode && (pcm_clk%3600==0 || pcm_enc_force) && hearts>0 && (pcm_clk>=pcm_quiet_until || pcm_enc_force)){ pcm_enc_force=0; pcm_enc_roll(); } return; }
     if(pcm_en.type && pcm_clk>=pcm_en.next){
         int left=(pcm_en.cd_end-pcm_clk)/60; char b[48]; WsCraft *c=malloc(sizeof(WsCraft)); ws_make(c,pcm_en.seed,pcm_en.z,0); int cls=c->cls; free(c);
         if(pcm_en.type==1){ snprintf(b,sizeof b,"PLANET-BUSTER: %d MIN %d SEC LEFT",left/60,left%60); pcm_say(b); pcm_en.next=pcm_clk+(left>60?1800:600); if(pcm_clk>=pcm_en.cd_end) pcm_planet_lost(cls); }

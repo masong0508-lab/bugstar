@@ -197,6 +197,7 @@ static int sim_invasion(unsigned size, unsigned long long *reward){          // 
     if(!sim_is_on()) return 0;
     if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
     SimColony *co=sim_colony(); ColAway aw; uint64_t r=0; sim_f.difficulty=(u8)xo_i(XO_SIDEDIF);
+    if(sim_f.difficulty==COLD_NORMAL){ unsigned cap=(unsigned)(col_defence(co)*6/5+2); if(size>cap) size=cap; }   // patch 17: on NORMAL a DEFEND raid is never far beyond what the colony can hold (CALM always holds, HARSH keeps the full size)
     int res=col_invade(co,size,sim_f.difficulty,(u32)sim_day(&sim_w),&aw,&r); if(reward) *reward=r;
     return res;
 }

@@ -1,7 +1,7 @@
 # BUGSTAR: unfinished work, written after patch 15 (4 Nov 2026). READ THIS FIRST when continuing.
 
 Rule for myself: before starting new features, work this list top to bottom. When an item is done, change `[ ]` to `[x]` and add the patch number.
-Patches so far: 14 = life sim TIES (gifts, requests, colony ties), 15 = DUNGEON CALLS (colony trouble sets floor goals). 16 = this file.
+Patches so far: 14 = life sim TIES (gifts, requests, colony ties), 15 = DUNGEON CALLS (colony trouble sets floor goals). 16 = this file, 17 = WARSHIP BALANCE (part 1 of finishing the warship work).
 
 ## A. Never played (all code below compiles and its plain-C tests pass, but nobody has seen it in the game)
 - [ ] Patch 14 in game: talk to a bug that asks for help (meal / listen / peace), confirm prompt, friendship rise, gifts reaching the bag, PEOPLE "ASKS" flag, COLONY MAP footer with friend ties.
@@ -20,8 +20,8 @@ Patches so far: 14 = life sim TIES (gifts, requests, colony ties), 15 = DUNGEON 
 
 ## C. Warships and planetary threats (see pc/README.md, ROADMAP_NEXT.md section 2)
 Built and tested: sizes, reward formula, fights, interiors, missions, encounters, buster countdown, orbital strikes, troop waves, hellscape, sealed entrance, portal escape, floor invasions, boarders. `pc/warship/test.sh` 78,745 checks 0 failed; missions 25,210 checks 0 failed; `pc/tests/aftermath.sh` passes.
-- [ ] BALANCE PASS (the one real gap): a bot-driven report per encounter setting (OFF/RARE/NORMAL/COMMON) and side game difficulty (CALM/NORMAL/HARSH): how often threats fire per hour of play, buster survival rate prepared vs unprepared, gold lost per lost buster. Tune the 1/5 loss, the 10 minute board window, the buster timer.
-- [ ] Re-run the in-game `pc/tests/warship.sh` (it was skipped near the end) and the other skipped suites: coil.sh, giant.sh, giant/test.sh, older sim tests. Fix stale goldens once, in one commit.
+- [x] BALANCE PASS (patch 17): `bash pc/warship/bal.sh` (plain C, `pc/warship/BALANCE.md` has the before and after tables). Tuned: per-minute chance cap, 25 minute quiet time, buster share 1 in 6, buster window at least 5 minutes, hellscape ship/pod roll by armour (it was upside down), DEFEND raid 6 + 4 x class and capped at 6/5 of the colony defence on NORMAL. Left alone on purpose: the 1/5 death loss, the 10 minute board window. NOT played: the three player stages in bal.c are my guesses. A LATE player cannot stop a buster in its window (0 percent): check that in play.
+- [ ] Re-run the skipped suites. DONE in patch 17 (all pass): in-game `pc/tests/warship.sh`, `pc/tests/aftermath.sh`, `pc/warship/test.sh`, `pc/sim/test.sh`. STILL TO RUN: coil.sh, giant.sh, giant/test.sh. Fix stale goldens once, in one commit.
 - [ ] Wire shipyard rooms (`sy_rooms`) into warship interiors (`wd_make`).
 - [ ] Foe designs that change stats and fight rules; designs for allied and enemy ships (README says not done).
 - [ ] Extreme end: play a real dead-world path once (colony ruins, burnt planet, resettle elsewhere). Story worlds must never be destroyed for good.
@@ -43,4 +43,5 @@ Built and tested: sizes, reward formula, fights, interiors, missions, encounters
 1. `git pull`, read this file, then ROADMAP_PATCH.md (patch table) and ROADMAP_NEXT.md.
 2. Run `bash pc/sim/test.sh` and `bash pc/warship/test.sh` first; they must be 0 failed.
 3. `pc/build.sh` must print `built pc/bugstar_pc`: every `H` hook fails loudly when its anchor moves.
-4. New patch = next number after 16, same Termux command as in ROADMAP_PATCH.md.
+4. New patch = next number after 17, same Termux command as in ROADMAP_PATCH.md.
+5. `bash pc/warship/test.sh` now also runs the balance report (quick); when you change a PCM_* number in `pc/pc_missions.inc`, change it in `pc/warship/bal_rules.h` too.
