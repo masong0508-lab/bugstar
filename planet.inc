@@ -17,7 +17,7 @@
 #define BLD_B 64                  // 64..87: city walls, windows, roads, roofs, sand, snow (set up by planet_palette)
 enum { O_DOOR, O_SHIP, O_CAGE, O_SLUG, O_PLANT, O_TREE, O_ROCK, O_WEB, O_FLOWER, O_BASE, O_MARKET, O_CANTINA, O_OFFICE, O_RACE, O_HOME, O_LOCAL, O_FOSSIL, O_RUIN, O_BEETLE, O_CRIT, O_SHRINE, O_BEACON, O_STALL, O_PEBBLE, O_TUFT, O_KART, O_IBOX, O_KSHELL, O_KSLIME };   // the last four: kart racing
 #define O_LAST_USE O_SHRINE
-static void city_flatten(void); static void city_stamp(void); static int good_price(int g); static void species_palette(void);
+static int city_tech(void); static void city_flatten(void); static void city_stamp(void); static int good_price(int g); static void species_palette(void);
 static int has_base(int i){ return i>=0 && i<NSYS && !((base_mask>>(i&31))&1) && ((sys[i].kind>=1 && sys[i].kind<=5) || (sys[i].kind==6 && !is_hive(i) && (sys_id(i)%3)==0)); }                                // kinds up to this one react to A
 typedef struct { s32 x,y; u8 kind, alive, hp, var; } PObj;      // x,y: where on the map, 16.16 cells. hp: bites left in a resource node
 #define NPO 160
@@ -115,7 +115,14 @@ static void planet_palette(void){
     for(int t=0;t<4;t++){ u16 w = t==0 ? wd.bld : t==1 ? lift15(wd.bld,5) : t==2 ? shade15(wd.bld,10) : lerp15(wd.bld,wd.sky,6);
         BG_PAL[BLD_B+t*2]=w; BG_PAL[BLD_B+t*2+1]=shade15(w,13); BG_PAL[76+t]=lift15(w,4); }
     BG_PAL[72] = wd.hour==2 ? rgb15(255,230,120) : rgb15(190,220,240); BG_PAL[73]= wd.hour==2 ? rgb15(60,50,20) : rgb15(90,110,140);
-    BG_PAL[74]=shade15(wd.road,11); BG_PAL[75]=lift15(wd.road,22); BG_PAL[80]=lift15(wd.road,9); BG_PAL[81]=lift15(wd.road,6);   // streets: dark asphalt with bright lane dashes, and lighter paving for plazas and yards, so the streets stand apart from the lots (they used to be near-identical greys)
+    { int T=city_tech(); u16 rd=wd.road, a, ln, p0, p1;                                              // ROADS grow with the civilisation (0 huts .. 5 megacity); they are built in city_stamp, worn into the colours here
+      if(T==0){ a=lerp15(rd,rgb15(122,92,62),11); ln=shade15(a,12); p0=lift15(a,5); p1=lift15(a,3); }          // trodden earth tracks, wheel ruts, a trampled square
+      else if(T==1){ a=lerp15(rd,rgb15(140,128,108),9); ln=lift15(a,7); p0=lift15(a,8); p1=lift15(a,5); }      // gravel and cobbles, loose pebbles
+      else if(T==2){ a=shade15(rd,12); ln=lift15(rd,12); p0=lift15(rd,9); p1=lift15(rd,6); }                   // plain worn asphalt, faded lines
+      else if(T==3){ a=shade15(rd,11); ln=lift15(rd,22); p0=lift15(rd,9); p1=lift15(rd,6); }                   // asphalt with bright lane dashes
+      else if(T==4){ a=shade15(rd,9); ln=lift15(rd,28); p0=lift15(rd,10); p1=lift15(rd,7); }                   // smooth dark avenues, crisp white paint
+      else { a=shade15(rd,6); ln=rgb15(70,230,255); p0=lift15(rd,11); p1=lift15(rd,8); }                       // megacity: glossy black roads with glowing guide strips
+      BG_PAL[74]=a; BG_PAL[75]=ln; BG_PAL[80]=p0; BG_PAL[81]=p1; }
     BG_PAL[82]=rgb15(220,200,140); BG_PAL[83]=rgb15(236,220,160); BG_PAL[84]=rgb15(250,250,255); BG_PAL[85]=rgb15(210,220,240); BG_PAL[86]=rgb15(236,240,250); BG_PAL[87]=rgb15(200,210,235);
     if(wd.hour==2) for(int i=64;i<88;i++) BG_PAL[i]=dim15(BG_PAL[i],9);
     if(WL(MW_METAL)) for(int i=0;i<16;i++) BG_PAL[GND_B+i] = i<8 ? shade15(wcol[MW_METAL],4+i) : lift15(wcol[MW_METAL],(i-8)*2);   // METAL GROUND
@@ -560,6 +567,7 @@ static void planet_frame(void){
         s32 sp = 0x1600 + (wd.grav-1)*0x200; if(WL(MW_ZEROG)) sp=sp*(14+WL(MW_ZEROG))/10;   // ZERO-G: you bounce along
         if(WL(MW_STICKY)) sp=sp*10/(12+WL(MW_STICKY)); if(d_spd||dbg_spd) sp=sp*(100+d_spd+dbg_spd)/100;      // STICKY GROUND; your marks and gear                                            // cells per 60th, 16.16: about 5 cells a second (gravity changes it)
         if(kart_on){ sp=sp*9/4; if(HELD(K_B) && kart_boost>0){ sp=sp*7/4; kart_boost--; } else if(!HELD(K_B) && kart_boost<100 && (frames+k)%3==0) kart_boost++; }   // the kart: fast, and B boosts
+        if(city_r){ int ci_=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)]; if(ci_==74||ci_==75){ static const u8 rb[6]={0,5,10,18,28,40}; sp=sp*(100+rb[city_tech()])/100; } }   // a good road is faster: none on a hut village's earth tracks, up to 40% on a megacity's
         if(hm_at(ppx,ppy)<water_lv && !(form==FORM_CREATURE && form_body==2)) sp=sp*2/3;   // wading is slow (flyers don't wade)
         s32 mvx=(pw_h*sp)>>4, mvy=(pw_v*sp)>>4;
         { s32 fwd=-mvy, side=mvx; mvx=((hsn*fwd)>>8)+((hcs*side)>>8); mvy=((hcs*fwd)>>8)-((hsn*side)>>8); }   // UP walks away from the camera (into the screen), in both views

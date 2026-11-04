@@ -34,6 +34,7 @@ static inline uint32_t pn_bld(int ix, double dy, int z, double u, double gc){
 // the town's streets (palette 74 asphalt, 75 lane dash, 80/81 plaza and yards). Smooth colour sampling smeared them into the lots beside them and washed the lane dashes out, so
 // near a street the colour map is sampled "sharp bilinear": the blend between two texels is squeezed into about one screen pixel, so edges stay crisp but never staircase. The
 // asphalt gets a fine grain, and the paving beside a street gets a pale kerb line, so a street reads as a street and not as paint.
+static int pn_roadT;                                         // the city's tech level (0 huts .. 5 megacity), set once a frame
 static inline int pn_stI(int ix){ return ix==74 || ix==75 || ix==80 || ix==81; }
 static uint32_t pn_gnd(double u, double v, double zcc){
     int tx=(int)__builtin_floor(u)&HMASK, ty=(int)__builtin_floor(v)&HMASK, xr=(tx+1)&HMASK, xl=(tx-1)&HMASK, yd=(ty+1)&HMASK, yu=(ty-1)&HMASK;
@@ -47,8 +48,8 @@ static uint32_t pn_gnd(double u, double v, double zcc){
     if(zcc<18){
         double fx=u-__builtin_floor(u), fy=v-__builtin_floor(v);
         if(c0==74 || c0==75){ uint32_t hh=(uint32_t)((int)__builtin_floor(u*6))*2654435761u ^ (uint32_t)((int)__builtin_floor(v*6))*2246822519u; hh^=hh>>15; hh*=2246822519u; hh^=hh>>13;
-            int d=((int)(hh&7)-3)*(int)(18-zcc)/18; int r=(int)(col>>16&255)+d, g=(int)(col>>8&255)+d, bl=(int)(col&255)+d; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; bl=bl<0?0:bl>255?255:bl; col=(uint32_t)(r<<16|g<<8|bl); }
-        else if(c0==80 || c0==81){ int e = (cr==74&&1-fx<0.16) || (cl==74&&fx<0.16) || (cd==74&&1-fy<0.16) || (cu==74&&fy<0.16); if(e) col=pn_mix(col,0xFFFFFF,48); }   // kerb
+            static const u8 amp[6]={5,4,3,2,1,0}; int d=((int)(hh&7)-3)*amp[pn_roadT]*(int)(18-zcc)/36;  /* rough earth, smooth megacity */ int r=(int)(col>>16&255)+d, g=(int)(col>>8&255)+d, bl=(int)(col&255)+d; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; bl=bl<0?0:bl>255?255:bl; col=(uint32_t)(r<<16|g<<8|bl); }
+        else if((c0==80 || c0==81) && pn_roadT>=2){ int e = (cr==74&&1-fx<0.16) || (cl==74&&fx<0.16) || (cd==74&&1-fy<0.16) || (cu==74&&fy<0.16); if(e) col=pn_mix(col,0xFFFFFF,48); }   // kerb
     }
     return col;
 }
@@ -83,6 +84,7 @@ static void pn_cols(void *vc, int lo, int hi){
         pn_top[X]=(float)rtop; }
 }
 static void pc_pn_native(volatile u16 *pg){
+    pn_roadT = city_r ? city_tech() : 0;
     int W=pc_nat_w, H=pc_nat_h; pn_active=0; pc_pn.w=0; if(W<=240 || H<=160 || pc_v3d_classic()) return;
     static int cap; static unsigned long bcap; if(W>cap){ free(pn_top); pn_top=malloc(sizeof(float)*W); cap=W; }
     int ya=(18*H+159)/160; unsigned long need=(unsigned long)W*(H-ya); if(need>bcap){ free(pc_pn.buf); pc_pn.buf=malloc(need*4); bcap=need; }

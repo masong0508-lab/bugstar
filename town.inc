@@ -253,16 +253,19 @@ static int city_tech(void){                                                     
     t += eb[eco&3]; return t>5 ? 5 : t; }
 static void city_stamp(void){                                                         // after smoothing: streets, blocks, towers, a plaza
     if(!city_r) return;
-    int L = hmap[city_cy*TW+city_cx]; int tx0=city_cx*2, ty0=city_cy*2, R=city_r*2;
+    int L = hmap[city_cy*TW+city_cx]; int tx0=city_cx*2, ty0=city_cy*2, R=city_r*2; int TT=city_tech();   // the roads come from the tech: huts get wandering one-texel tracks, towns a plain two-texel grid, big cities wide avenues every fourth block
     for(int y=-R;y<=R;y++) for(int x=-R;x<=R;x++){ if(x*x+y*y>=R*R) continue;
         int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK, i=ty*HW+tx;
         int gx=x+R*4, gy=y+R*4;                                                       // positive grid coordinates
-        int sx=gx&7, sy=gy&7;                                                         // where in the 8-texel block (4 cells)
+        int gxs=gx, gys=gy; if(TT<=1){ gxs+=(int)(hsh((u32)(gy>>2)+wd.tseed,7)%3u)-1; gys+=(int)(hsh((u32)(gx>>2)+wd.tseed,9)%3u)-1; }   // huts: the tracks wander
+        int sx=gxs&7, sy=gys&7;                                                       // where in the 8-texel block (4 cells)
         hfine[i]=L;
         if(x*x+y*y < 36){ cmap[i]=80; continue; }                                     // the plaza in the middle
         { int lx=((tx-128+128)&HMASK)-128, ly=((ty-128+128)&HMASK)-128; if(lx*lx+ly*ly < 14*14){ cmap[i]=80; continue; } }   // the landing field stays clear
-        if(sx<2 || sy<2){ cmap[i] = ((sx==0&&(gy&3)==1)||(sy==0&&(gx&3)==1)) ? 75 : 74; continue; }   // streets with a dotted line
-        int bx=gx>>3, by=gy>>3; u32 h=hsh(bx+wd.tseed, by); int kind=h&15;
+        { int wxw = TT<=1 ? 1 : 2, wyw = wxw; if(TT>=4){ if(((gxs>>3)&3)==0) wxw++; if(((gys>>3)&3)==0) wyw++; }    // street widths (an avenue is 3 texels)
+          if(sx<wxw || sy<wyw){ int dash = (sx==(wxw==3) && sx<wxw && sy>=wyw && (gys&3)==1) || (sy==(wyw==3) && sy<wyw && sx>=wxw && (gxs&3)==1);   // a dotted line down the middle that stops at crossings
+              cmap[i] = dash ? 75 : 74; continue; } }
+        int bx=gxs>>3, by=gys>>3; u32 h=hsh(bx+wd.tseed, by); int kind=h&15;
         if(kind<3){ cmap[i]=80; continue; }                                            // an empty lot: a little square
         int T=city_tech(); int tower = kind >= 15-(T+1)/2;                              // higher tech: more towers
         int fx=2+(((h>>4)&3)*(2+T))/5, fy=2+(((h>>6)&3)*(2+T))/5; if(fx>6) fx=6; if(fy>6) fy=6;   // and bigger footprints (huts 2-3 texels, megacity blocks up to 6)
