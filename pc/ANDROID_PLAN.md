@@ -114,3 +114,10 @@ Needs `arm64-v8a` in the list. PAGE_SIZE 4096 or 16384 are both fine (step 3 bui
   (through `build.sh`, one regex pass over the game's copied sources) every `0x0[2-8E]xxxxxx` in the game use it. `PC_GBA_TOP=0x30000000 ./pc/build.sh` gives the
   same screen and save hashes as the normal build (tests/play.txt, 4501 frames). Unset = +0, so the Windows and Linux builds do not change.
   The test app now searches for a free TOP (30000000 ... 70000000, then 20000000, 10000000, 0) and says which one to build with. Run it on the phone, then step 2.
+- patch 24 result on the phone (SM-S731U, Android 17): the probe app says PASS at TOP 30000000 (all 8 ranges mapped). Build the Android game with `PC_GBA_TOP=0x30000000`.
+- patch 25 (step 2): done on x86-64 (tested), arm64 / clang NOT yet run. `build.sh` turns every DMA-3 source / destination write `*(volatile u32*)0x040000D4=(u32)X;` (and `D8`) into
+  `pc_dma_sad((uintptr_t)(X));` / `pc_dma_dad(...)` (pc_hw.c keeps the full pointer). `pc_main.c` runs the game on a 16 MB pthread when built with `PC_PIE=1` (or on Android): no makecontext.
+  `PC_PIE=1` = normal PIE build, `-ffp-contract=off`, pointer-cast warnings on. The ones left are all fixed GBA addresses (below 2 GB), no real pointer is kept in 32 bits.
+  Test: `PC_PIE=1 PC_GBA_TOP=0x30000000 PC_SDL=0 PC_OUT=bugstar_pie ./pc/build.sh && sh pc/tests/pie.sh` gives the same screen and save hashes as the normal build; determinism, warship,
+  aftermath and the seed pictures also match the normal build. The normal `-no-pie` build is unchanged. Next: run it in Termux (arm64 + clang), then step 3 (the real game in the APK).
+  (Note: `tests/seeds.sh` shows picture hashes ("view") that differ from `seeds.golden` on the x86-64 test machine with or without this patch; the world facts match.)

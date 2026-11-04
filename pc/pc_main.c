@@ -11,7 +11,12 @@
 #ifndef _WIN32
 #include <unistd.h>
 #endif
+#if defined(PC_PIE) || defined(__ANDROID__)
+#include <pthread.h>          // patch 25: no makecontext on Android's libc; the game runs on a pthread with a big stack instead
+#define PC_PTHREAD_STACK 1
+#else
 #include <ucontext.h>
+#endif
 #endif
 #include "pc_hw.h"
 #include "platform/pc_plat.h"
@@ -73,10 +78,13 @@ int bugstar_main(void);
 int pc_view_main(int argc, char **argv);
 
 static int g_argc; static char **g_argv; static int g_view;
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(PC_PTHREAD_STACK)
 static ucontext_t uc_main, uc_game;
 #endif
 static void game_entry(void){ if(g_view) pc_view_main(g_argc,g_argv); else bugstar_main(); }
+#ifdef PC_PTHREAD_STACK
+static void *game_thread(void *unused){ (void)unused; game_entry(); return 0; }
+#endif
 
 int main(int argc, char **argv){
     const char *script=0, *out="pc_out", *sav=0; long frames=-1; int want_window=-1;
@@ -122,6 +130,11 @@ int main(int argc, char **argv){
     // The game stores some addresses in 32-bit numbers (for DMA). Run it on a stack below 4 GB so those still point at the right place.
 #ifdef _WIN32
     game_entry();      // 32-bit process: every stack address is already below 4 GB
+#elif defined(PC_PTHREAD_STACK)
+    // patch 25: the DMA code keeps full-width pointers now (pc_dma_sad / pc_dma_dad), so the stack can be anywhere. A big stack on its own thread.
+    { pthread_attr_t at; pthread_t th; pthread_attr_init(&at); pthread_attr_setstacksize(&at,16u<<20);
+      if(pthread_create(&th,&at,game_thread,0)){ perror("game thread"); return 2; }
+      pthread_join(th,0); }
 #else
     size_t ss=16u<<20; void *stk=mmap(0,ss,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS|MAP_32BIT,-1,0);
     if(stk==MAP_FAILED){ perror("stack"); return 2; }

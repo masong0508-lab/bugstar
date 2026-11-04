@@ -99,12 +99,20 @@ void pc_hw_finish(void){
 void pc_quit_now(void){ pc_hw_finish(); fflush(stdout); exit(0); }
 
 // ---------------------------------------------------------------- DMA channel 3 (immediate copies and fills)
+// the game's DMA source / destination writes go through pc_dma_sad / pc_dma_dad (build.sh, patch 25) so a pointer above 4 GB keeps its top half.
+// The low 32 bits also go into the I/O register, so a write that does not use them (a plain 0x040000D4 = ... store) still works: if the register no longer
+// matches the last full value, the register wins.
+static uintptr_t g_sad, g_dad;
+void pc_dma_sad(uintptr_t a){ g_sad=a; R32(IOREG+0xD4)=(uint32_t)a; }
+void pc_dma_dad(uintptr_t a){ g_dad=a; R32(IOREG+0xD8)=(uint32_t)a; }
 void pc_dma3(uint32_t v){
-    uint32_t sad=R32(IOREG+0xD4), dad=R32(IOREG+0xD8), cnt=v&0xFFFF, ctl=v>>16;
+    uintptr_t sad=R32(IOREG+0xD4), dad=R32(IOREG+0xD8); uint32_t cnt=v&0xFFFF, ctl=v>>16;
+    if((uint32_t)g_sad==(uint32_t)sad) sad=g_sad;
+    if((uint32_t)g_dad==(uint32_t)dad) dad=g_dad;
     if(!(ctl&0x8000)) return;
     if(((ctl>>12)&3)!=0) return;                              // only "start now"; the timed kinds (HBlank/VBlank) are not done here
     if(!cnt) cnt=0x10000;
-    if(sad<0x1000 || dad<0x1000){ fprintf(stderr,"pc_hw: DMA with bad address %08x -> %08x\n",sad,dad); return; }
+    if(sad<0x1000 || dad<0x1000){ fprintf(stderr,"pc_hw: DMA with bad address %llx -> %llx\n",(unsigned long long)sad,(unsigned long long)dad); return; }
     int word=(ctl>>10)&1, dc=(ctl>>5)&3, sc=(ctl>>7)&3, st=word?4:2;
     for(uint32_t i=0;i<cnt;i++){
         if(word) *(volatile uint32_t*)(uintptr_t)dad = *(volatile uint32_t*)(uintptr_t)sad;

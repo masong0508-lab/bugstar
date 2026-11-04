@@ -196,6 +196,9 @@ echo '#include "../pc_warship.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 echo '#include "../coil_test.inc"' >> main.c
 case "$PC_CFLAGS" in *TEST_KFUZZ*) echo '#include "../tests/kart_fuzz.inc"' >> main.c;; esac   # only the fuzz test build (-DTEST_KFUZZ=n) includes the driver
+# --- 64-bit clean DMA (patch 25): the game writes DMA source / destination as "(u32)&something". Above 4 GB that loses the top half, so the two writes
+# become calls that keep the full pointer (pc_hw.c pc_dma_sad / pc_dma_dad). The (u32) cast right after the "=" is dropped.
+sed -i -e 's/\*(volatile u32\*)0x040000D4=(u32)\([^;]*\);/pc_dma_sad((uintptr_t)(\1));/g' -e 's/\*(volatile u32\*)0x040000D8=(u32)\([^;]*\);/pc_dma_dad((uintptr_t)(\1));/g' *.inc main.c
 # --- the fake GBA's address range (pc/platform/pc_gbaaddr.h). PC_GBA_TOP=0x30000000 moves every GBA address up by that much (Android: the Java heap sits on 02000000-12000000).
 # Every 0x0[2-8E]xxxxxx in the game's own code is a GBA address (RAM, I/O, palette, VRAM, OAM, ROM, SRAM): wrap it in GBAA(). With PC_GBA_TOP unset that is +0: the same program.
 # Two numbers look like addresses but are not (a random "memory error" screen, and a bit mask): hidden from the rewrite and put back.
@@ -206,6 +209,9 @@ for f in sys.argv[1:]:
     s=open(f,encoding="latin-1",newline="").read(); t=r.sub(r"GBAA(\1)",s)
     if t!=s: open(f,"w",encoding="latin-1",newline="").write(t)' *.inc main.c
 sed -i -e 's/@@KEEP_A@@/0x02000000u+((fx_rnd/g' -e 's/@@KEEP_B@@/0x07FFFFFFu/g' *.inc main.c
+# the sound-DMA register stores in m7.inc (nothing on the fake GBA reads them) and the debug stack probe keep only 32 bits on purpose: say so, so the PC_PIE warning list stays clean
+sed -i -e 's/=(u32)&\([fdt]\)\[1\];/=(u32)(uintptr_t)\&\1[1];/g' m7.inc
+sed -i 's/(u32)((u32\*)GBAA(0x03000000))/(u32)(uintptr_t)GBAA(0x03000000)/' debug.inc
 if [ -n "$PC_GBA_TOP" ]; then PC_CFLAGS="$PC_CFLAGS -DPC_GBA_TOP=$PC_GBA_TOP"; fi
 # --- compile -----------------------------------------------------------------------------------------------------------
 # -funsigned-char: the GBA compiler's char is unsigned. -fwrapv: ARM integers wrap. -no-pie: all addresses stay below 4 GB.
@@ -213,6 +219,10 @@ if [ -n "$PC_GBA_TOP" ]; then PC_CFLAGS="$PC_CFLAGS -DPC_GBA_TOP=$PC_GBA_TOP"; f
 OPT=${PC_OPT:--O2}
 SDLF=""; SDLL=""
 CC=${PC_CC:-gcc}; ARCH=${PC_ARCH:--m64 -no-pie}; OUT=${PC_OUT:-bugstar_pc}
+# PC_PIE=1 (patch 25, Android step 2): a normal position-independent build, as an APK has it. No -no-pie, no low stack (pc_main.c runs the game on a pthread),
+# -ffp-contract=off so arm64 and x86 round the same, and the compiler's pointer-to-int warnings on (every one left that is not a fixed GBA address is a place to fix).
+WARN="-w"
+if [ -n "$PC_PIE" ]; then ARCH=${PC_ARCH-}; PC_CFLAGS="$PC_CFLAGS -DPC_PIE -ffp-contract=off -fPIE"; WARN="-Wpointer-to-int-cast -Wint-to-pointer-cast"; PC_OBJ="${PC_OBJ}_pie"; fi
 if [ -n "$PC_WIN" ]; then   # Windows 32-bit cross build (llvm-mingw): 32-bit pointers make the game's "address in a u32" code just work
   if [ -n "$PC_WIN64" ]; then   # real 64-bit Windows exe (MSYS2 mingw64). The game keeps addresses in 32-bit numbers, so the exe is NOT large-address-aware and sits at a low base (the flag is cleared after linking by tools/pe_lowaddr.py):
     # Windows then keeps its stack, heap and DLLs below 2 GB, which is the same trick the 32-bit build used.
@@ -228,13 +238,13 @@ elif [ "${PC_SDL:-1}" != "0" ]; then
 fi
 # the level cap: the PC build lets the character level go far past the GBA's 32-bit limit (the sim worker sets the final value)
 # newer GCC (14+, e.g. MSYS2 GCC 16) makes a call to an undeclared function an error: the game .inc files rely on the libc/libm/pc_plat declarations, so pull them in for every file
-CF="-std=gnu11 $OPT -w -include string.h -include stdio.h -include stdlib.h -include math.h -include pc_plat.h -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
+CF="-std=gnu11 $OPT $WARN -include string.h -include stdio.h -include stdlib.h -include math.h -include pc_plat.h -funsigned-char -fwrapv -fno-strict-aliasing $ARCH -DNO_LOGO -DLEVEL_CAP=0x7fffffffffffffffLL ${PC_CFLAGS} $SDLF -I. -I.. -I../platform -Wa,-I,."
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
 STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_kartnat.inc ../pc_pnative.inc ../pc_pncomp.inc ../pc_snative.inc ../pc_sncomp.inc ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
 for f in ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ); do o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
-$CC $ARCH $OBJS $SDLL -lm -lpthread -o ../$OUT
+$CC $ARCH ${PC_PIE:+-pie} $OBJS $SDLL -lm -lpthread -o ../$OUT
 if [ -n "$PC_WIN64" ]; then python3 "$PCD/tools/pe_lowaddr.py" ../$OUT || exit 1; fi
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"
