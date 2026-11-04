@@ -6,9 +6,19 @@ android {
     namespace 'org.bugstar.app'
     compileSdk 34
 
-    // GitHub's Ubuntu runner has the NDK installed; use it instead of letting Gradle download one
-    def ndkHome = System.getenv('ANDROID_NDK_LATEST_HOME')
-    if (ndkHome) { ndkPath ndkHome }
+    // GitHub's Ubuntu runner has an NDK installed; use it instead of letting Gradle download one.
+    // Its path AND its version must be given together: AGP refuses a path whose version differs from ndkVersion (that was the first CI failure).
+    def ndkHome = System.getenv('ANDROID_NDK_HOME') ?: System.getenv('ANDROID_NDK_LATEST_HOME')
+    def ndkProps = ndkHome ? new File(ndkHome, 'source.properties') : null
+    if (ndkProps != null && ndkProps.exists()) {
+        def np = new Properties()
+        ndkProps.withInputStream { np.load(it) }
+        def rev = np.getProperty('Pkg.Revision')
+        if (rev) {
+            ndkVersion rev.trim()
+            ndkPath ndkHome
+        }
+    }
 
     defaultConfig {
         applicationId 'org.bugstar.app'
