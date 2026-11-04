@@ -354,7 +354,7 @@ static void planet_tables(void){
 // ---------------------------------------------------------------- city looks (the PC version's shading, in 8-bit palette colours)
 __attribute__((noinline)) static int bld_face(int px,int py,int qx,int qy,s32 vx,s32 vy){                       // the ray crossed a texel edge in x (the lit face) or in y (the shaded face)
     if(px!=qx && py==qy) return 0; if(py!=qy && px==qx) return 1; s32 ax=vx<0?-vx:vx, ay=vy<0?-vy:vy; return ay>ax; }
-__attribute__((noinline)) static int rise_of(int h,int cL){ return ((h-cL)*g_hs)>>8; }
+__attribute__((noinline)) static int rise_of(int h,int cL){ return (h-cL)*g_hs; }
 __attribute__((noinline)) static int street_ix(int ix, s32 mx, s32 my){                                          // streets: shadowed under the walls and along the kerb; a plaza: contact shadow and a pale kerb
     int tx=(mx>>15)&HMASK, ty=(my>>15)&HMASK, tr=(tx+1)&HMASK, tl=(tx-1)&HMASK, td=(ty+1)&HMASK, tu=(ty-1)&HMASK;
     int cr=cmap[ty*HW+tr], cl=cmap[ty*HW+tl], cd=cmap[td*HW+tx], cu=cmap[tu*HW+tx], fx=(mx>>11)&15, fy=(my>>11)&15;
@@ -371,7 +371,7 @@ __attribute__((noinline)) static int street_ix(int ix, s32 mx, s32 my){         
 // sills, mullions, the sky mirrored in the panes. Thumb code in IWRAM (small and fast). hd = height below the roof edge, hag = height above the street.
 __attribute__((section(".iwram"), long_call, noinline)) static void bld_col(volatile u16 *col, int y, int y0, int ytop, int ix, int rise, s32 zz, s32 mx, s32 my, int face){
     int t=(ix-BLD_B)>>1, wall0=BLD_B+t*2, shd=wall0+1, roof=76+t, glass=t&1, hi=96+t*3, ao=97+t*3, wall1=98+t*3, wallm=face?wall1:wall0;
-    int u=((mx+my)>>11)&15, uc=(mx+my)>>16, near_=zz<=(32*FOCP/3), lastfl=-1, lastuq=-1; u32 hq=0;
+    int u=((mx+my)>>11)&15, uc=(mx+my)>>16, near_=zz<=(32*FOCP*2/3), lastfl=-1, lastuq=-1; u32 hq=0;
     for(int yy=y0; yy<ytop; yy++){ int hd=(((yy-y)*zz*273)>>15), c2, hag=rise-hd;           // (x273>>15 = divide by FOCP: the ARM7 has no divide)
         int band = hag<40 ? ao : (hag>60 && !face) ? hi : wallm;                          // dark at the street, lighter toward the sky
         if(hd<5) c2 = face ? wall0 : roof;                                                // roof lip
