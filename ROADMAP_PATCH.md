@@ -1,3 +1,5 @@
+> UNFINISHED WORK: read pc/ROADMAP_TODO.md first (patches 14-16: life sim ties, dungeon calls, the open list).
+
 # BUGSTAR patch roadmap - state at patch 05 (3 Nov 2026). Read this first when continuing.
 
 ## Status of each patch (apply in order)
