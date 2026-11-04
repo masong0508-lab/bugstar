@@ -33,6 +33,19 @@ int main(void){
     sim_init(&A, 5, 4, 0, 0); sim_init(&B, 5, 4, 0, 0); sim_set_outside(&B, 2, 2);
     sim_run(&A, SIM_DAY_TICKS * 3); sim_run(&B, SIM_DAY_TICKS * 3);
     int sa = 0, sb = 0; for(int k = 0; k < 4; k++){ sa += A.folk[k].stress; sb += B.folk[k].stress; } CHECK(sb > sa); CHECK(B.larder > A.larder);
+    // patch 22: a long warning must not wreck the town. 12 bugs, 12 days, 12 seeds: worry 1 rattles a few, worry 2 a few more, never dozens
+    { static Sim W; double ev[3] = {0, 0, 0}, st[3] = {0, 0, 0}; int nsd = 12;
+      for(int w = 0; w < 3; w++) for(int sd = 1; sd <= nsd; sd++){
+          sim_init(&W, (uint64_t)sd * 7919u, 12, 0, 0); sim_set_outside(&W, w, 0); sim_run(&W, SIM_DAY_TICKS * 12);
+          for(uint32_t i = 0; i < sim_log_count(&W); i++) if(sim_log_at(&W, i)->kind == SIME_BREAK) ev[w] += 1;
+          for(int k = 0; k < W.nfolk; k++) st[w] += W.folk[k].stress; }
+      for(int w = 0; w < 3; w++){ ev[w] /= nsd; st[w] /= nsd * 12.0; }
+      CHECK(ev[0] == 0);                                 // no worry: nobody breaks down
+      CHECK(ev[1] < 15 && ev[2] < 40);                   // was about 68 and 354 breakdown events per town
+      CHECK(st[1] > st[0] + 5 && st[2] > st[1] + 5);     // but it still weighs on them, and more with more worry
+      CHECK(st[2] < 130); }                              // was 177 on average: the whole town was always on the edge
+    // patch 22: a miner's gift is a bag of ore
+    sim_init(&A, 77, 6, 0, 0); for(int k = 0; k < 6; k++) if(A.folk[k].job == SIMJ_MINER){ for(int st2 = 1; st2 <= 4; st2++){ SimGift mg; CHECK(sim_gift(&A, k, st2, &mg) && mg.kind == SIMG_ORE && mg.amt >= st2 * 4); } }
     // determinism with ties
     sim_init(&A, 9, 5, 0, 0); sim_init(&B, 9, 5, 0, 0);
     for(int d = 0; d < 10; d++){ sim_talk_to(&A, d % 5); sim_talk_to(&B, d % 5); sim_set_outside(&A, d % 3, 1); sim_set_outside(&B, d % 3, 1); sim_run(&A, 3000); sim_run(&B, 3000); }

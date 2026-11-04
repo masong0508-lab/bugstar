@@ -275,7 +275,7 @@ static void folk_tick(Sim *s, int i){
         int bad = 0; for(int k = 0; k < (asleep ? SIMN_SOCIAL : SIMN_N); k++) if(f->need[k] < 40) bad++;      // (asleep, only food and rest count)                                    // stress: bad needs push it up, a good mood and sleep bring it down
         if(bad) add_stress(f, bad * (1 + (255 - f->trait[SIMTR_CALM]) / 170)); else if(sim_mood(f) > 110) add_stress(f, -2);
         if(asleep) add_stress(f, -2); if(f->sick) add_stress(f, 1); if(f->mate >= 0) add_stress(f, -1);
-        if(s->worry) add_stress(f, 2 * s->worry);                                                    // the colony is in trouble: it weighs on the town
+        if(s->worry && (ph / 40) % (s->worry == 2 ? 1 : 2) == 0) add_stress(f, 1);                  // the colony is in trouble: it weighs on the town (patch 22: was +2 x worry every step, which broke whole towns in 12 days)
         if(f->stress >= 230 && !(f->warned & 8)){ f->warned |= 8; sim_log(s, SIME_BREAK, i, 0, 0); }
         else if((f->warned & 8) && (f->stress <= 120 || f->need[SIMN_REST] >= 235)){ f->warned &= (uint8_t)~8; if(f->stress > 130) f->stress = 130; } }       // rested: it gets up again
     if(f->sick && !asleep && ph % 20 == 10) add_need(f, SIMN_REST, -1);
@@ -427,7 +427,7 @@ int sim_gift(const Sim *s, int who, int step, SimGift *g){
     switch(f->job){
     case SIMJ_COOK: case SIMJ_FORAGER: g->kind = SIMG_FOOD; g->amt = (uint16_t)(12 * step); break;
     case SIMJ_STALL: case SIMJ_CLERK:  g->kind = SIMG_GOLD; g->amt = (uint16_t)(step * step); break;
-    case SIMJ_MINER:                   g->kind = SIMG_ORE;  g->amt = (uint16_t)step; break;
+    case SIMJ_MINER:                   g->kind = SIMG_ORE;  g->amt = (uint16_t)(step * 4); break;     // patch 22: 4 to 16 amber (was 1 to 4, worth about 4 gold each)
     default:                           g->kind = SIMG_HEAL; g->amt = 1; break;
     }
     if(g->kind != SIMG_HEAL && f->trait[SIMTR_SOCIABLE] > 170) g->amt = (uint16_t)(g->amt + (g->amt + 3) / 4);

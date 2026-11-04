@@ -167,7 +167,7 @@ static void sim_unlock_msgs(void){
     for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_LETTER){ char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_said_letters++; break; } }
     for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1);                // patch 15: a friend's gift reaches your bag
         if(e && e->kind==SIME_GIFT){ int a=e->b;
-            if(e->a==SIMG_FOOD) eat(a); else if(e->a==SIMG_GOLD) gold=sadd(gold,(s64)a*(20+(level>1000?1000:(s64)level))); else if(e->a==SIMG_HEAL){ hearts=maxh; mp=maxmp; } else if(e->a==SIMG_ORE) ore_add(0,a);
+            if(e->a==SIMG_FOOD) eat(a); else if(e->a==SIMG_GOLD) gold=sadd(gold,(s64)a*(20+(level>100?100:(s64)level))); else if(e->a==SIMG_HEAL){ hearts=maxh; mp=maxmp; } else if(e->a==SIMG_ORE) ore_add(0,a);
             char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_gifts_got++; break; } }
     sim_seen_log=sim_w.log_n;
     if(c>3){ char b[40]; b[0]=0; ncat(b,c); scat(b," NEW GOD POWERS ARE OPEN"); say(b); sfx(6); }
