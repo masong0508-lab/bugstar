@@ -166,11 +166,15 @@ static void ship_build_model(void){
 #define SHP_TRIM 208
 #define SHP_GLOW 216
 static u16 sh_mix(u16 c, int r2, int g2, int b2, int w){ int r=c&31, g=(c>>5)&31, b=(c>>10)&31; r+=(r2-r)*w/16; g+=(g2-g)*w/16; b+=(b2-b)*w/16; return (u16)(r|(g<<5)|(b<<10)); }
-static u16 sh_tone(u16 c, int k){
-    if(shpx.finish==FN_MATTE){ if(k<4) return sh_mix(shade15(c,7+k*3),3,4,10,4-k); if(k==4) return c; return sh_mix(c,31,30,26,k-4); }                      // soft: shallow shadows, hardly a glint
-    if(shpx.finish==FN_METAL){ if(k<4) return sh_mix(shade15(c,3+k*3),2,4,12,(4-k)*2); if(k==4) return c; return sh_mix(c,31,31,31,k==5?7:k==6?12:16); }   // deep shadows, hard white glints
-    if(shpx.finish==FN_PEARL){ if(k<4) return sh_mix(shade15(c,8+k*2),14,6,20,(4-k)*3/2+2); if(k==4) return lift15(c,3); return sh_mix(c,22,31,31,k==5?6:k==6?10:14); }   // violet shadows, a cyan sheen
-    if(k<4) return sh_mix(shade15(c,5+k*3),3,4,10,(4-k)*3/2); if(k==4) return c; return sh_mix(c,31,30,26,k==5?5:k==6?10:14); }   // 0 deep cool shadow ... 4 the colour itself ... 7 warm glint
+static u16 sh_lit(u16 c, int boost, int w, int r2, int g2, int b2){                // a lit shade: brighten the paint's OWN colour (never past the brightest channel hitting full, so the hue holds), then a small tinted glint on top
+    int r=c&31, g=(c>>5)&31, b=(c>>10)&31, m=r>g?r:g; if(b>m) m=b; int k=boost; if(m>0 && m*k>31*16) k=31*16/m; if(k<16) k=16;
+    r=r*k/16; g=g*k/16; b=b*k/16; r+=(r2-r)*w/16; g+=(g2-g)*w/16; b+=(b2-b)*w/16; if(r>31) r=31; if(g>31) g=31; if(b>31) b=31; return (u16)(r|(g<<5)|(b<<10)); }
+static u16 sh_tone(u16 c, int k){                                                  // 0 deep cool shadow ... 4 the colour itself ... 7 the brightest lit shade. The lit end keeps the paint's colour: a blue hull gets a lighter blue, not cream
+    static const u8 bo[4][3]={{18,21,24},{17,18,20},{18,20,22},{17,19,21}}, gw[4][3]={{1,2,4},{0,0,1},{2,5,9},{3,5,8}};   // per finish (gloss, matte, metal, pearl): how much brighter, how much glint
+    if(shpx.finish==FN_MATTE){ if(k<4) return sh_mix(shade15(c,7+k*3),3,4,10,4-k); if(k==4) return c; return sh_lit(c,bo[1][k-5],gw[1][k-5],31,30,27); }       // soft: shallow shadows, hardly a glint
+    if(shpx.finish==FN_METAL){ if(k<4) return sh_mix(shade15(c,3+k*3),2,4,12,(4-k)*2); if(k==4) return c; return sh_lit(c,bo[2][k-5],gw[2][k-5],31,31,31); }   // deep shadows, a white-ish glint on the top shade
+    if(shpx.finish==FN_PEARL){ if(k<4) return sh_mix(shade15(c,8+k*2),14,6,20,(4-k)*3/2+2); if(k==4) return lift15(c,3); return sh_lit(c,bo[3][k-5],gw[3][k-5],22,31,31); }   // violet shadows, a cyan sheen
+    if(k<4) return sh_mix(shade15(c,5+k*3),3,4,10,(4-k)*3/2); if(k==4) return c; return sh_lit(c,bo[0][k-5],gw[0][k-5],31,30,27); }
 static void ship_ramps(void){ for(int k=0;k<8;k++){ BG_PAL[SHP_PAINT+k] = sh_tone(ship.paint,k); BG_PAL[SHP_TRIM+k] = sh_tone(ship.trim,k); BG_PAL[SHP_GLOW+k] = k<3 ? shade15(ship.glow,10+k*2) : lift15(ship.glow,(k-3)*3); } }static const u8 *sh_occ=0;                                                     // on a planet: the terrain's top row per column (every 8th byte), so hills and canyon walls hide what is behind them. 0 = nothing hides it
 static void linep(volatile u16 *pg, int x0, int y0, int x1, int y1, int c, int cx0, int cy0, int cx1, int cy1){
     int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(n>300) return;

@@ -39,6 +39,7 @@ static int pc_sr_tag; static void pc_sr_mark(volatile u16 *pg){ pc_sr_tag=((u32)
 // the player's own ship in the chase view: the game's own model (shv/shf/shn) with the same turn, scale and light as ship_draw, but each face is
 // drawn at the window's resolution (no 120-column grid, no checkerboard dither: the two shades are mixed)
 static uint32_t pc_sr_mixc(uint32_t a, uint32_t b){ return ((a>>1)&0x7F7F7F)+((b>>1)&0x7F7F7F); }
+static uint32_t pc_sr_mixw(uint32_t a, uint32_t b, int f){ uint32_t rb=((a&0xFF00FF)*(256-f)+(b&0xFF00FF)*f)>>8, g=((a&0xFF00)*(256-f)+(b&0xFF00)*f)>>8; return (rb&0xFF00FF)|(g&0xFF00); }   // f: 0..256 of the way from a to b
 static void pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_){
     if(pc_sy_player(cx,cy,sc,yaw_,pitch_)) return;                     // (your own design from the ship editor, pc/shipyard)
     ship_ramps(); float rc=cosx(ship_roll>>2)/16384.0f, rs=sinx(ship_roll>>2)/16384.0f, cyw=cosx(yaw_>>2)/16384.0f, syw=sinx(yaw_>>2)/16384.0f, cp=cosx(pitch_>>2)/16384.0f, sp=sinx(pitch_>>2)/16384.0f;
@@ -51,14 +52,15 @@ static void pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_){
         int a=F->v[0], b=F->v[1], c=F->v[2]; float area=(px[b]-px[a])*(py[c]-py[a])-(px[c]-px[a])*(py[b]-py[a]);
         float mx=shn[fi*3], my=shn[fi*3+1], mz=shn[fi*3+2]; float nx=mx*cyw+mz*syw, nz0=-mx*syw+mz*cyw, ny=my*cp+nz0*sp, nz=-my*sp+nz0*cp;
         if(nz>0){ nx=-nx; ny=-ny; nz=-nz; }                              // light the side that faces you (as ship.inc ship_draw)
-        int dot=(int)((-nx*5+ny*11-nz*8)/256);
+        float dotf=(-nx*5+ny*11-nz*8)/256.0f;                           // (kept as a float: the window has the pixels for a smooth gradient, the GBA rounds to 15 steps)
         if(!(F->two&1) && area>=0 && 0) continue;
-        int base, L; if(F->grp==2){ base=SHP_GLOW; L=20+((frames>>2)&1)*8; }
-        else { L=8+dot+(dot>>3); if(dot>9) L+=(dot-9)*2; L-=(int)zs>>5;
+        int base; float L; if(F->grp==2){ base=SHP_GLOW; L=20+((frames>>2)&1)*8; }
+        else { L=8+dotf+dotf*0.125f; if(dotf>9) L+=(dotf-9)*2; L-=zs/32.0f;
             if(F->grp==3){ base=SHP_GLOW; L+=6; } else { int g=F->grp; if(shpx.scheme==SC_TWO){ if(!g && (F->two&2)) g=1; } else if(shpx.scheme==SC_INVERT) g^=1; else if(shpx.scheme==SC_MONO) g=0; base = g ? SHP_TRIM : SHP_PAINT; }
             if(L<0) L=0; if(L>28) L=28; }
-        int lv=(L+1)>>1, sh=lv>>1; int half=(lv&1); if(sh>=7){ sh=7; half=0; }
-        uint32_t col=pc_sr_rgb(base+sh); if(half) col=pc_sr_mixc(col,pc_sr_rgb(base+sh+1));
+        float shf=(L+1)*0.25f; if(shf>7) shf=7; int sh=(int)shf, fr=(int)((shf-sh)*256); if(sh>=7){ sh=7; fr=0; }       // the shade, and how far to the next one
+        if(F->grp==2){ sh=L>20 ? 7 : 5; fr=0; }                          // (the engine glow flickers between two whole shades, as on the GBA)
+        uint32_t col=pc_sr_rgb(base+sh); if(fr>3) col=pc_sr_mixw(col,pc_sr_rgb(base+sh+1),fr);
         float X[8], Y[8]; for(int k=0;k<F->n;k++){ X[k]=px[F->v[k]]; Y[k]=py[F->v[k]]; }
         sr_poly2d(X,Y,F->n,2.0f+zs/1000.0f,col); }
     if(sh_flame) for(int e=0;e<sh_en;e++){                                                                         // the game's flame: two crossed cones per engine (as ship.inc sh_flames), white-hot inside, at window resolution

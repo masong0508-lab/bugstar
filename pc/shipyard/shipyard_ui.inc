@@ -72,8 +72,10 @@ static void sy_to_look(const SyDesign *d){          // the game's own ship model
 static u16 sy_shade(u16 c, int k, int fin);
 static u16 sy_shade(u16 c, int k, int fin){                // k 0..7 dark to light
     int r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31; int lo = fin == SYFI_MATTE ? 45 : fin == SYFI_METAL ? 25 : 35, hi = fin == SYFI_MATTE ? 105 : fin == SYFI_METAL ? 135 : 120;
-    int f = lo + (hi - lo) * k / 7; r = r * f / 100; g = g * f / 100; b = b * f / 100;
-    if(k == 7 && (fin == SYFI_GLOSS || fin == SYFI_METAL)){ r = (r + 31) / 2; g = (g + 31) / 2; b = (b + 31) / 2; }
+    int f = lo + (hi - lo) * k / 7; { int m = r > g ? r : g; if(b > m) m = b; if(m > 0 && m * f > 31 * 100) f = 31 * 100 / m; if(f < lo) f = lo; }   // (never brighter than the colour's own brightest channel at full: the hue holds, it does not wash out to cream)
+    r = r * f / 100; g = g * f / 100; b = b * f / 100;
+    if(k == 7 && fin == SYFI_GLOSS){ r += (31 - r) * 2 / 8; g += (30 - g) * 2 / 8; b += (27 - b) * 2 / 8; }                       // a small warm glint on the top shade
+    if(k == 7 && fin == SYFI_METAL){ r += (31 - r) * 3 / 8; g += (31 - g) * 3 / 8; b += (31 - b) * 3 / 8; }
     if(fin == SYFI_PEARL){ r = (r * 3 + 24) / 4; g = (g * 3 + 22) / 4; b = (b * 3 + 28) / 4; }
     if(r > 31) r = 31; if(g > 31) g = 31; if(b > 31) b = 31; return (u16)(r | (g << 5) | (b << 10));
 }
@@ -256,6 +258,14 @@ static int sy_open(volatile u16 *pg, int id, int *leave){
     }
 }
 
+// one triangle's colour: the paint scaled by the light (0..1), keeping its own hue when it gets bright (the brightest channel stops at full, the others follow),
+// and only the top of the range gets a small finish-coloured glint (gloss warm, metal white, pearl cyan, matte none). Used to clip each channel on its own, which turned light paint cream.
+static uint32_t sy_lit(uint32_t c0, float l, int fin){
+    float k = (fin == SYFI_MATTE ? 0.50f + 0.55f * l : fin == SYFI_METAL ? 0.40f + 0.75f * l : 0.45f + 0.65f * l); float r = (float)(c0 >> 16 & 255), g = (float)(c0 >> 8 & 255), b = (float)(c0 & 255), m = r > g ? r : g; if(b > m) m = b;
+    if(m > 0 && m * k > 255.f) k = 255.f / m; r *= k; g *= k; b *= k;
+    float w = l > 0.78f ? (l - 0.78f) / 0.22f : 0.f; w *= fin == SYFI_METAL ? 0.30f : fin == SYFI_GLOSS ? 0.16f : fin == SYFI_PEARL ? 0.14f : 0.f;
+    if(w > 0){ float tr = fin == SYFI_PEARL ? 190.f : 255.f, tg = fin == SYFI_GLOSS ? 248.f : 255.f, tb = fin == SYFI_GLOSS ? 225.f : 255.f; r += (tr - r) * w; g += (tg - g) * w; b += (tb - b) * w; }
+    int R = (int)r, G = (int)g, B = (int)b; if(R > 255) R = 255; if(G > 255) G = 255; if(B > 255) B = 255; return (uint32_t)(R << 16 | G << 8 | B); }
 // ---- the design DRAWN in space: your ship in the chase view, and allied / enemy ships built from the same parts (when FOE SHIPS is on)
 static int pc_sy_player(int cx, int cy, int sc, int yaw_, int pitch_){
     pc_sy_refresh(); if(!pc_sy_on) return 0; if(!pc_sy_mc_ok){ sy_srmesh(&pc_sy_des, &pc_sy_mc); pc_sy_mc_ok = 1; }
@@ -270,8 +280,7 @@ static int pc_sy_player(int cx, int cy, int sc, int yaw_, int pitch_){
         float ux = o->v[b * 3] - o->v[a * 3], uy = o->v[b * 3 + 1] - o->v[a * 3 + 1], uz = o->v[b * 3 + 2] - o->v[a * 3 + 2], vx = o->v[c * 3] - o->v[a * 3], vy = o->v[c * 3 + 1] - o->v[a * 3 + 1], vz = o->v[c * 3 + 2] - o->v[a * 3 + 2];
         float nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, L = sqrtf(nx * nx + ny * ny + nz * nz) + 1e-6f; nx /= L; ny /= L; nz /= L;
         float mx = nx * cyw + nz * syw, mz0 = -nx * syw + nz * cyw, my = ny * cp + mz0 * sp, mz = -ny * sp + mz0 * cp; float l = (-mx * 0.35f + my * 0.7f - mz * 0.55f); if(l < 0) l = -l * 0.5f; if(l > 1) l = 1;
-        uint32_t c0 = o->tcol[t]; int R = (int)((c0 >> 16 & 255) * (0.45f + 0.65f * l)), G = (int)((c0 >> 8 & 255) * (0.45f + 0.65f * l)), B = (int)((c0 & 255) * (0.45f + 0.65f * l)); if(R > 255) R = 255; if(G > 255) G = 255; if(B > 255) B = 255;
-        float X[3] = { px[a], px[b], px[c] }, Y[3] = { py[a], py[b], py[c] }; sr_poly2d(X, Y, 3, 2.0f + zz[t] / 1000.0f, (uint32_t)(R << 16 | G << 8 | B)); }
+        float X[3] = { px[a], px[b], px[c] }, Y[3] = { py[a], py[b], py[c] }; sr_poly2d(X, Y, 3, 2.0f + zz[t] / 1000.0f, sy_lit(o->tcol[t], l, pc_sy_des.finish)); }
     if(sh_flame) for(int e = 0; e < sh_en; e++){                                                                    // the game's flame (two crossed cones per engine, as ship.inc sh_flames) at window resolution
         float ex = sh_eng[e][0], ey = sh_eng[e][1], bz = sh_eng[e][2] + 2, R = sh_eng[e][3]; int len = (16 + (int)R * 4) * (3 + sh_flame) / 4; len = len * (10 + ((frames * 3 + e) & 3)) / 12;
         #define PCFP(ox,oy,oz,X_,Y_,Z_) { float x_ = (ox), y_ = (oy), z_ = (oz); float rx = x_ * cyw + z_ * syw, rz = -x_ * syw + z_ * cyw, ry = y_ * cp + rz * sp; rz = -y_ * sp + rz * cp; float d = 400 + rz; if(d < 60) d = 60; float f = sc * 25600.0f / d / 16384.0f, X = rx * f, Y = -ry * f; X_ = X * rc - Y * rs + cx; Y_ = X * rs + Y * rc + cy; Z_ = rz; }
