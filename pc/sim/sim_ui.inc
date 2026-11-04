@@ -118,15 +118,24 @@ static void sim_gods(volatile u16 *pg){
     in_menu--; menu_msg[0]=0;
 }
 
-// ---- the quick menu: A on empty ground
+// ---- the quick menu: A on empty ground. patch 42: only the menus your fame has opened are in the list (standing.h); one line under it says what the next one needs.
+static int sim_qm_n, sim_qm_id[STM_N];
+static void sim_qm_build(int all){ uint16_t m = all ? 0x3F : stand_open_mask(sim_st(),fame); sim_qm_n=0; for(int i=0;i<STM_N;i++) if(m>>i&1) sim_qm_id[sim_qm_n++]=i; }   // all: the PC LAB keeps the first six, as before
 static void sim_qm_row(int i, char *b, int *c){
-    static const char *const nm[6]={"JOURNAL","PEOPLE","GOD POWERS","SANDBOX","MY LEVEL","COLONY"}; scpy(b,nm[i]); *c=C_GREY;
-    if(i==2){ Lv l; sim_level_lv(&l); scat(b,"  "); ncat(b,god_unlocked_count(&l,sim_w.god.sandbox)); scat(b,"/"); ncat(b,god_count()); }
-    if(i==3){ scat(b,sim_w.god.sandbox ? ": ON. ALL POWERS OPEN" : ": OFF"); }
+    int id=sim_qm_id[i]; scpy(b,stand_menu_name(id)); *c=C_GREY;
+    if(id==STM_GODS){ Lv l; sim_level_lv(&l); scat(b,"  "); ncat(b,god_unlocked_count(&l,sim_w.god.sandbox)); scat(b,"/"); ncat(b,god_count()); }
+    if(id==STM_SANDBOX){ scat(b,sim_w.god.sandbox ? ": ON. ALL POWERS OPEN" : ": OFF"); }
+    if(id==STM_HALL){ scat(b,"  "); scat(b,sim_st()->home); *c=C_GOLD; }
+    if(id==STM_ARMADA){ scat(b,"  "); ncat(b,(s64)sim_st()->ships); scat(b," SHIPS"); *c=C_GOLD; }
 }
+static int sim_qm_all;
 static void sim_qm_foot(int i, char *b, int *c){
-    static const char *const hp[6]={"WHAT HAPPENED HERE, NEWEST FIRST","WHO LIVES HERE AND HOW THEY FEEL","POWERS OPEN BY LEVEL: 1 POWER PER 1,000 LEVELS","PLAY WITH EVERY POWER OPEN. NO LEVEL NEEDED","YOUR LEVEL IN FULL","YOUR SETTLERS. THEY GROW AS YOU PLAY THE ACTION GAME"};
-    if(i>=0){ scpy(b,hp[i]); *c=C_GREY; } else { b[0]=0; }
+    static const char *const hp[STM_N]={"WHAT HAPPENED HERE, NEWEST FIRST","WHO LIVES HERE AND HOW THEY FEEL","POWERS OPEN BY LEVEL: 1 POWER PER 1,000 LEVELS","PLAY WITH EVERY POWER OPEN. NO LEVEL NEEDED","YOUR LEVEL IN FULL","YOUR SETTLERS. THEY GROW AS YOU PLAY THE ACTION GAME","TAXES FROM YOUR PLANET. THROW A FEAST","SHIPS, NEW WORLDS, NEW GALAXIES"};
+    if(i>=0){ scpy(b,hp[sim_qm_id[i]]); *c=C_GREY; return; }
+    b[0]=0; if(sim_qm_all) return;
+    int nx=stand_next_menu(stand_open_mask(sim_st(),fame)); *c=C_DGREY;
+    if(nx<0){ scpy(b,stand_scale_line(sim_st())); return; }
+    char t[48]; stand_lock_text(sim_st(),nx,fame,t,sizeof t); scpy(b,"NEXT: "); scat(b,stand_menu_name(nx)); scat(b,". "); scat(b,t);
 }
 static void sim_level_full(void);
 // ---- COLONY (Phase 4): the unlock ladder and the settlers
@@ -236,11 +245,16 @@ static void sim_colony_screen(volatile u16 *pg){
     int sel=0; char t[32]; scpy(t,"COLONY  "); ncat(t,co->nset); scat(t," SETTLERS");
     menu_msg[0]=0; in_menu++; sim_rows(pg,t,COLR_N-1+SIM_CO_ACT+co->nset,sim_co_row,sim_co_foot,"A: TAKE/DO  B: BACK",&sel,sim_co_act); in_menu--; menu_msg[0]=0;
 }
+static void sim_hall(volatile u16 *pg);
+static void sim_armada(volatile u16 *pg);
 static int sim_qm_act(int i){
-    if(i==0) sim_journal(VISPG); else if(i==1) sim_people(VISPG); else if(i==2) sim_gods(VISPG);
-    else if(i==3){ Lv l; sim_level_lv(&l); sim_f.sandbox=!sim_f.sandbox; sim_set_sandbox(&sim_w,sim_f.sandbox,&l); sim_seen_log=sim_w.log_n; sfx(2); }
-    else if(i==4) sim_level_full();
-    else sim_colony_screen(VISPG);
+    int id=sim_qm_id[i];
+    if(id==STM_JOURNAL) sim_journal(VISPG); else if(id==STM_PEOPLE) sim_people(VISPG); else if(id==STM_GODS) sim_gods(VISPG);
+    else if(id==STM_SANDBOX){ Lv l; sim_level_lv(&l); sim_f.sandbox=!sim_f.sandbox; sim_set_sandbox(&sim_w,sim_f.sandbox,&l); sim_seen_log=sim_w.log_n; sfx(2); }
+    else if(id==STM_LEVEL) sim_level_full();
+    else if(id==STM_COLONY) sim_colony_screen(VISPG);
+    else if(id==STM_HALL) sim_hall(VISPG);
+    else sim_armada(VISPG);
     return 0;
 }
 static void sim_level_full(void){                          // the level in all its digits, in lines of 36
@@ -254,15 +268,107 @@ static int sim_quick(void){
     sim_a_up=0;
     if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
     volatile u16 *pg=VISPG; oam_hide_all(); oam_flush(); in_menu++;
-    static int sel=0; sim_rows(pg,"SIDE GAME",6,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act);
+    static int sel=0; sim_qm_all=0; sim_qm_build(0); sim_rows(pg,"SIDE GAME",sim_qm_n,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act);
     in_menu--; return 1;
 }
 
-static void sim_lab(volatile u16 *pg){                     // PC LAB > SIDE GAME
+static void sim_lab(volatile u16 *pg){                     // PC LAB > SIDE GAME (a cheat page: it keeps the first six menus open whatever your fame)
     if(!sim_is_on()){ const char *ln[3]={"THE SIDE GAME IS OFF.","TURN SIDE GAME ON IN THE OPTIONS","(MORE OPTIONS)."}; card(pg,"SIDE GAME",ln,3); return; }
     if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
-    static int sel=0; in_menu++; sim_rows(pg,"SIDE GAME",6,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act); in_menu--;
+    static int sel=0; in_menu++; sim_qm_all=1; sim_qm_build(1); sim_rows(pg,"SIDE GAME",sim_qm_n,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act); sim_qm_all=0; in_menu--;
 }
 
 // the ship's COLONY row (GO tab, only with the side game on)
-static void sim_ship_colony(volatile u16 *pg){ if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind(); sim_colony_screen(pg); }
+static void sim_ship_colony(volatile u16 *pg){
+    if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
+    if(!(stand_open_mask(sim_st(),fame)>>STM_COLONY&1)){ char t[48]; stand_lock_text(sim_st(),STM_COLONY,fame,t,sizeof t); const char *ln[3]={t,"SETTLERS TRUST A BUG THE WORLD KNOWS.","KEEP PLAYING. IT OPENS BY ITSELF."}; card(pg,"COLONY",ln,3); return; }
+    sim_colony_screen(pg);
+}
+
+// ---------------------------------------------------------------- patch 42: TOWN HALL and ARMADA (standing.h)
+static void sim_sat8(uint8_t *v, int d){ int x=*v+d; *v=(uint8_t)(x>255 ? 255 : x<0 ? 0 : x); }
+static void sim_g(char *b, uint64_t v){ ncat(b,v>(uint64_t)S64_MAX ? S64_MAX : (s64)v); scat(b,"G"); }
+static void sim_hall_row(int i, char *b, int *c){
+    Standing *st=sim_st(); uint64_t u=sim_unit(); b[0]=0; *c=C_GREY;
+    switch(i){
+    case 0: scpy(b,"> COLLECT TAXES  +"); sim_g(b,stand_tax_due(st,sim_cal,u)); *c=C_GOLD; break;
+    case 1: scpy(b,"> THROW A FEAST  "); sim_g(b,stand_feast_cost(u)); *c=C_GOLD; break;
+    case 2: scpy(b,"HOME  "); scat(b,st->home); *c=C_WHITE; break;
+    case 3: scpy(b,"TAX RATE  "); sim_g(b,st->tax_rate); scat(b," A DAY"); break;
+    case 4: scpy(b,"TRIBUTE  "); sim_g(b,stand_tribute(st,u)); scat(b," A DAY FROM "); ncat(b,(s64)st->worlds_total); scat(b," WORLDS"); break;
+    default: scpy(b,"TAXES WAIT  "); ncat(b,stand_tax_days(st,sim_cal)); scat(b," DAYS (AT MOST "); ncat(b,ST_TAX_DAYS_MAX); scat(b,")"); break; }
+}
+static void sim_hall_foot(int i, char *b, int *c){
+    static const char *const hp[6]={"GOLD FROM YOUR HOME TOWN, A FEW DAYS AT A TIME","FOOD AND FUN FOR EVERY BUG HERE. HAPPY BUGS PAY MORE","THE PLANET THAT NAMED YOU MAYOR","SET WHEN YOU LAST VISITED HOME. HAPPY BUGS PAY MORE","EVERY WORLD YOU SETTLE SENDS GOLD","TAXES PILE UP FOR A MONTH. COLLECT NOW AND THEN"};
+    *c=C_GREY; if(i>=0){ scpy(b,hp[i]); return; }
+    if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; } else scpy(b,stand_scale_line(sim_st()));
+}
+static int sim_hall_act(int i){
+    Standing *st=sim_st(); uint64_t u=sim_unit(); menu_msg[0]=0;
+    if(i==0){ if(sim_town32()==st->mayor_town && sim_w.nfolk>0){ int sum=0; for(int k=0;k<sim_w.nfolk;k++) sum+=sim_mood(&sim_w.folk[k]); st->tax_rate=stand_rate(sim_w.nfolk,sum/sim_w.nfolk,u); }
+        uint64_t g=stand_tax_take(st,sim_cal,u);
+        if(!g){ scpy(menu_msg,"NOTHING TO COLLECT YET. COME BACK LATER"); sfx(4); }
+        else { gold=sadd(gold,g>(uint64_t)S64_MAX ? S64_MAX : (s64)g); scpy(menu_msg,"TAXES: +"); sim_g(menu_msg,g); sfx(6); } }
+    else if(i==1){ uint64_t c=stand_feast_cost(u);
+        if(sim_w.nfolk<1){ scpy(menu_msg,"NOBODY HERE TO FEED"); sfx(4); }
+        else if(gold<0 || (uint64_t)gold<c){ scpy(menu_msg,"NOT ENOUGH GOLD"); sfx(4); }
+        else { gold-=(s64)c; st->feasts++; st->gold_spent=st_sat_add(st->gold_spent,c);
+            for(int k=0;k<sim_w.nfolk;k++){ SimFolk *f=&sim_w.folk[k]; sim_sat8(&f->need[SIMN_HUNGER],60); sim_sat8(&f->need[SIMN_FUN],90); sim_sat8(&f->need[SIMN_SOCIAL],60); sim_sat8(&f->stress,-40); }
+            sim_log(&sim_w,SIME_STAND,0,6,0); scpy(menu_msg,"A FEAST! THE TOWN IS HAPPY"); sfx(6); } }
+    else { sfx(7); }
+    return 0;
+}
+static void sim_hall(volatile u16 *pg){
+    Standing *st=sim_st();
+    if(!(st->flags&1)){ st->flags|=1; char l0[44], l1[44]; scpy(l0,"MAYOR OF "); scat(l0,st->home); scat(l0,"."); scpy(l1,"FAME "); ncat(l1,stand_rank_fame(STR_LEGEND)); scat(l1," OPENS THE ARMADA.");
+        const char *ln[3]={l0,"COLLECT TAXES. THROW A FEAST FOR THE TOWN.",l1}; card(pg,"THE WORLD NAMES YOU MAYOR",ln,3); }
+    static int sel=0; menu_msg[0]=0; in_menu++;
+    sim_rows(pg,"TOWN HALL",6,sim_hall_row,sim_hall_foot,"A: DO  B: BACK",&sel,sim_hall_act);
+    in_menu--; menu_msg[0]=0;
+}
+static const uint64_t sim_buy_n[4]={1,10,100,1000};
+static void sim_arm_row(int i, char *b, int *c){
+    Standing *st=sim_st(); uint64_t u=sim_unit(), cnt=0; b[0]=0; *c=C_GREY;
+    if(i<4){ uint64_t pr=stand_buy_price(st,sim_lead_level(),u,sim_buy_n[i],&cnt); scpy(b,"> BUY "); ncat(b,(s64)sim_buy_n[i]); scat(b,i?" SHIPS  ":" SHIP  "); if(cnt<sim_buy_n[i]) scpy(b,"> BUY SHIPS  (YOUR LEVEL LEADS NO MORE)"); else sim_g(b,pr); *c=C_GOLD; return; }
+    if(i==4){ char nm[24];
+        if(stand_galaxy_open(st)){ scpy(b,"> CROSS TO GALAXY "); ncat(b,st->galaxies+2); }
+        else { stand_world_name(st,st->worlds_total,nm,sizeof nm); scpy(b,"> SETTLE "); scat(b,nm); }
+        *c=C_GOLD; return; }
+    if(i==5){ scpy(b,"FLEET  "); ncat(b,(s64)st->ships); scat(b," SHIPS: "); scat(b,stand_fleet_name(st->ships)); *c=C_WHITE; }
+    else if(i==6){ scpy(b,"YOUR LEVEL LEADS "); ncat(b,(s64)stand_command(sim_lead_level())); scat(b," SHIPS"); }
+    else { scpy(b,"WORLDS  "); ncat(b,st->worlds); scat(b,"/"); ncat(b,ST_GALAXY_WORLDS); scat(b," IN GALAXY "); ncat(b,st->galaxies+1); scat(b,". ALL "); ncat(b,(s64)st->worlds_total); }
+}
+static void sim_arm_foot(int i, char *b, int *c){
+    Standing *st=sim_st(); uint64_t u=sim_unit(); *c=C_GREY;
+    if(i>=0){
+        if(i<4) scpy(b,"A SHIP COSTS MORE AS THE FLEET GROWS");
+        else if(i==4){ if(stand_galaxy_open(st)){ scpy(b,"NEEDS "); ncat(b,(s64)stand_galaxy_ships(st)); scat(b," SHIPS, "); sim_g(b,stand_galaxy_cost(st,u)); }
+                       else { scpy(b,"NEEDS "); ncat(b,(s64)stand_world_ships(st)); scat(b," SHIPS, "); sim_g(b,stand_world_cost(st,u)); } }
+        else if(i==5) scpy(b,"SHIPS STAY YOURS WHEN YOU SETTLE");
+        else if(i==6) scpy(b,"ONE SHIP PER LEVEL, 5 AT THE LEAST");
+        else scpy(b,stand_galaxy_open(st) ? "THIS GALAXY IS FULL. CROSS TO THE NEXT" : "SETTLED WORLDS SEND GOLD EVERY DAY");
+        return; }
+    if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; } else scpy(b,stand_scale_line(st));
+}
+static int sim_arm_act(int i){
+    Standing *st=sim_st(); uint64_t u=sim_unit(); menu_msg[0]=0;
+    if(i<4){ uint64_t before=st->ships; int64_t g=gold; uint64_t got=stand_buy(st,&g,sim_lead_level(),u,sim_buy_n[i]);
+        if(!got){ scpy(menu_msg, before>=stand_command(sim_lead_level()) ? "YOUR LEVEL CANNOT LEAD MORE SHIPS" : "NOT ENOUGH GOLD"); sfx(4); return 0; }
+        gold=(s64)g; scpy(menu_msg,"BOUGHT "); ncat(menu_msg,(s64)got); scat(menu_msg,got==1?" SHIP":" SHIPS"); sfx(6);
+        { int t0=stand_fleet_tier(before), t1=stand_fleet_tier(st->ships); if(t1>t0){ sim_log(&sim_w,SIME_STAND,0,3,t1); scpy(menu_msg,"YOUR SHIPS ARE NOW A "); scat(menu_msg,stand_fleet_name(st->ships)); } }
+        return 0; }
+    if(i==4){ int64_t g=gold; int32_t fg=0; int r;
+        if(stand_galaxy_open(st)){ r=stand_cross(st,&g,&fg,u);
+            if(r==0){ gold=(s64)g; fame+=fg; sim_log(&sim_w,SIME_STAND,0,5,(int)st->galaxies); scpy(menu_msg,"GALAXY "); ncat(menu_msg,st->galaxies+1); scat(menu_msg," REACHED! +500 FAME"); sfx(6); return 0; } }
+        else { char nm[24]; stand_world_name(st,st->worlds_total,nm,sizeof nm); r=stand_settle(st,&g,&fg,u);
+            if(r==0){ gold=(s64)g; fame+=fg; sim_log(&sim_w,SIME_STAND,0,4,(int)st->worlds_total); scpy(menu_msg,"SETTLED "); scat(menu_msg,nm); scat(menu_msg,"! +"); ncat(menu_msg,fg); scat(menu_msg," FAME"); sfx(6); return 0; } }
+        scpy(menu_msg, r==-4 ? "BUY SHIPS FIRST" : r==-1 ? "NOT ENOUGH SHIPS YET" : r==-2 ? "NOT ENOUGH GOLD" : "THE GALAXY IS FULL"); sfx(4); return 0; }
+    sfx(7); return 0;
+}
+static void sim_armada(volatile u16 *pg){
+    Standing *st=sim_st();
+    if(!(st->flags&2)){ st->flags|=2; const char *ln[4]={"THE SKY IS YOURS TO FILL.","BUY SHIPS WITH GOLD. YOUR LEVEL SAYS HOW MANY","YOU MAY LEAD. SHIPS SETTLE NEW WORLDS.","WHEN A GALAXY IS FULL, CROSS TO THE NEXT."}; card(pg,"THE ARMADA",ln,4); }
+    static int sel=0; menu_msg[0]=0; in_menu++;
+    sim_rows(pg,"ARMADA",8,sim_arm_row,sim_arm_foot,"A: DO  B: BACK",&sel,sim_arm_act);
+    in_menu--; menu_msg[0]=0;
+}

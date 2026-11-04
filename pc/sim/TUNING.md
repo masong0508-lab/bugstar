@@ -91,3 +91,14 @@ Chats and couples went down on purpose: free time is now split between the plaza
 - Birth, ageing and leaving (the town size is still fixed unless a god power adds a bug).
 - Bugs that choose a different job or move house; goals and memories of events.
 - Friendship rivalries are still rare (0.05 rival pairs per town): quarrels need two bugs who dislike each other to chat.
+
+# Patch 42: standing (fame opens the side game, mayor, armada)
+
+NOT played by you. Plain C (`pc/sim/standing.h`, header only) plus glue; PC and Android only.
+
+- Quick menu (A on empty ground) lists only what your fame opened: 0 JOURNAL + MY LEVEL, 50 PEOPLE, 150 COLONY, 350 GOD POWERS, 700 SANDBOX. One line under the list says what is next.
+- At 700 fame, on a planet with a town (2+ bugs), the world names you MAYOR: TOWN HALL (taxes from the home town and tribute from settled worlds, a feast for the town).
+- At 1200 fame, as mayor: ARMADA. Ships cost gold (dearer as the fleet grows), your level caps the fleet (one per level, 5 at least). 8 + 6 per world ships settle a world (stays yours, pays tribute, +fame); after 12 worlds you cross to the next galaxy (costs triple, ships x4 each time).
+- Old saves: menus already earned are adopted silently. New save chunk STND (80 bytes); old files have none.
+- PC LAB > SIDE GAME keeps the first six menus open (cheat page). Test hook: BUGSTAR_SET_FAME=n.
+- Tests: standing_test.c (13,570 checks) in test.sh; whole test.sh passes. In-game: sim_town, sim_lab, sim_friend, sim_unlock, determinism OK. sim_collect still FAILS with fame 699 (not diagnosed). sim_off golden was already stale.

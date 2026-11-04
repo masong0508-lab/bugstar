@@ -4,7 +4,7 @@
 #  3. continue save 1 with 0 freed: the tent stays (rungs never close) and the COLONY screen lists it; continue save 0: the screen says LOCKED
 #  Two runs of 2 are the same.
 cd "$(dirname "$0")/.."; mkdir -p out; rm -f out/un*.*
-run(){ BUGSTAR_SET_FREED=$2 BUGSTAR_SIM_DUMP=out/un$1.dump ./bugstar_pc --script $3 --out out/un$1 --sav out/un$1.sav --frames $4 > out/un$1.log; }
+run(){ BUGSTAR_SET_FAME=699 BUGSTAR_SET_FREED=$2 BUGSTAR_SIM_DUMP=out/un$1.dump ./bugstar_pc --script $3 --out out/un$1 --sav out/un$1.sav --frames $4 > out/un$1.log; }
 last(){ grep "^$2" out/un$1.dump | tail -1; }
 field(){ echo "$1" | awk -v k=$2 '{for(i=1;i<=NF;i++) if($i==k) print $(i+1)}'; }
 run 0 0 tests/sim_town.txt 12000; run 1 1 tests/sim_town.txt 12000; run 1b 1 tests/sim_town.txt 12000

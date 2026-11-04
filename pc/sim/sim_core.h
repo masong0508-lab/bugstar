@@ -11,6 +11,7 @@
 #include "lv.h"
 #include "god.h"
 #include "colony.h"
+#include "standing.h"
 
 #define SIM_HZ         10
 #define SIM_TICK_VBL   6            // one tick is 6 vblanks of the 60 Hz screen
@@ -37,7 +38,7 @@ enum { SIMW_CLEAR, SIMW_CLOUD, SIMW_RAIN, SIMW_STORM, SIMW_SNOW, SIMW_N };      
 enum { SIME_NONE, SIME_WAKE, SIME_SLEEP, SIME_WORK, SIME_EAT, SIME_CHAT, SIME_HUNGRY, SIME_TIRED, SIME_WEATHER, SIME_DAWN, SIME_CAST,
        SIME_UNLOCK, SIME_EMPTY, SIME_HARVEST, SIME_NEWFOLK, SIME_SPECIES, SIME_LEGEND, SIME_IDEA, SIME_SANDBOX, SIME_FRIEND, SIME_LETTER, SIME_COLONY,
        SIME_BOND, SIME_RIVAL, SIME_COUPLE, SIME_BREAKUP, SIME_QUARREL, SIME_SICK, SIME_WELL, SIME_BREAK, SIME_CARE,
-       SIME_GIFT, SIME_HELP, SIME_WORRY, SIME_N };   // v2 life: who/b = the two bugs   // SIME_COLONY: a = colony event kind, b = its first number, seed32 = its second
+       SIME_GIFT, SIME_HELP, SIME_WORRY, SIME_STAND, SIME_N };   // v2 life: who/b = the two bugs   // SIME_COLONY: a = colony event kind, b = its first number, seed32 = its second
 
 typedef struct { uint32_t tick; uint16_t kind, who, a, b; uint32_t seed32; } SimEvent;     // 16 bytes
 
@@ -136,6 +137,7 @@ typedef struct {
     uint8_t  has_lv;
     uint8_t nfr; struct { uint32_t town; uint8_t who, val; } fr[SIM_FRMAX];   // Phase 3: friendships, by town (seed hash) and townsperson
     ColList  cols;                              // Phase 4: the colonies of this slot (chunk COLN)
+    Standing stand;                             // patch 42: how the world sees you: mayor, armada, worlds (chunk STND; see standing.h)
     uint16_t ntail; SimEvent tail[SIM_TAILN];   // the newest events, oldest first
 } SimSlot;
 typedef struct { uint8_t side_on; uint8_t sandbox; uint8_t difficulty; SimSlot slot[SIM_SLOTS]; int bad_chunks; } SimFile;

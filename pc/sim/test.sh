@@ -22,6 +22,8 @@ $CC life_test.c sim_core.c colony.c god.c lv.c -o out/life_test
 ./out/life_test
 $CC colony_test.c sim_core.c colony.c god.c lv.c -o out/colony_test
 ./out/colony_test
+$CC standing_test.c sim_core.c colony.c god.c lv.c -o out/standing_test
+./out/standing_test
 # against Python's own big integers: random and edge numbers, all operations, including saturation at 64^256
 python3 - <<'PY' > out/lv_cases.txt
 import random

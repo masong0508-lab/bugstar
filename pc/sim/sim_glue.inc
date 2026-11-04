@@ -32,6 +32,12 @@ static int sim_is_on(void){
     return sim_env_side && xo_v(XO_SIDE);
 }
 
+// ---------------------------------------------------------------- patch 42: STANDING (standing.h): the menus open with fame; a CHAMPION in a town becomes its mayor; the mayor can raise an armada
+static Standing *sim_st(void){ return &sim_f.slot[cur_slot%SIM_SLOTS].stand; }
+static u64 sim_unit(void){ return 20u+(u64)(level>100 ? 100 : level<0 ? 0 : level); }          // the game's gold unit (the same one the friends' gifts use)
+static u64 sim_lead_level(void){ return level<1 ? 1u : (u64)level; }
+static u32 sim_town32(void);
+
 // ---------------------------------------------------------------- the big level (Lv): beyond the game's 64-bit level, up to 64^256
 // The game's `level` (s64) is the low part: it is min(true level, LEVEL_CAP) and LEVEL_CAP is the s64 limit on the PC build.
 // From level 500,000,000 up (where 18 x L x L stops fitting in 64 bits) experience is counted here, in Lv, instead of by the game's loop.
@@ -157,6 +163,7 @@ static void sim_env_once(void){
     if(sim_env_done) return; sim_env_done=1;
     const char *e=sim_io_env("BUGSTAR_SET_LEVEL");      // a test hook: start with this level (a decimal number, up to 64^256)
     if(e && *e){ Lv v; if(lv_from_dec(&v,e)>=0 && !lv_is_zero(&v)){ sim_big_set(&v); recalc(); hearts=maxh; mp=maxmp; } }
+    e=sim_io_env("BUGSTAR_SET_FAME"); if(e && *e){ int v=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<9;i++) v=v*10+(e[i]-'0'); fame=v; }     // patch 42, a test hook: start with this fame
     e=sim_io_env("BUGSTAR_SET_FREED"); if(e && *e) bugs_freed=e[0]-'0';     // a test hook: bugs freed so far (0..9)
     e=sim_io_env("BUGSTAR_SANDBOX"); if(e && e[0]=='1'){ Lv l; sim_level_lv(&l); sim_f.sandbox=1; if(sim_have_w) sim_set_sandbox(&sim_w,1,&l); }
 }
@@ -170,6 +177,7 @@ static void sim_unlock_msgs(void){
             if(e->a==SIMG_FOOD) eat(a); else if(e->a==SIMG_GOLD) gold=sadd(gold,(s64)a*(20+(level>100?100:(s64)level))); else if(e->a==SIMG_HEAL){ hearts=maxh; mp=maxmp; } else if(e->a==SIMG_ORE) ore_add(0,a);
             char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_gifts_got++; break; } }
     sim_seen_log=sim_w.log_n;
+    if(!(stand_open_mask(sim_st(),fame)>>STM_GODS&1)) c=0;                     // patch 42: GOD POWERS is not open yet: no news of them (the journal still keeps the line)
     if(c>3){ char b[40]; b[0]=0; ncat(b,c); scat(b," NEW GOD POWERS ARE OPEN"); say(b); sfx(6); }
     else if(c>0){ char b[40]; scpy(b,"NEW POWER "); ncat(b,last); scat(b,": "); scat(b,god_power(last)->name); say(b); sfx(6); }
 }
@@ -181,6 +189,7 @@ static void sim_dump_all(void){
       scpy(t,"friends"); for(int k=0;k<sim_w.nfolk;k++){ scat(t," "); ncat(t,sim_w.friend[k]); } scat(t," letters "); ncat(t,nl); scat(t," shown "); ncat(t,sim_said_letters); scat(t,"\n"); sim_io_append(path,t); }
     { static char cb[200]; col_dump(sim_colony(),cb,sizeof cb); sim_io_append(path,cb); scpy(t,"colcards "); ncat(t,sim_col_cards); scat(t," gifts "); ncat(t,sim_col_gifts); scat(t," fgifts "); ncat(t,sim_gifts_got); scat(t," helped "); ncat(t,sim_helped_n); { SimTies ti; sim_ties(&sim_w,&ti); scat(t," ties "); ncat(t,ti.guard); scat(t,"/"); ncat(t,ti.food); scat(t,"/"); ncat(t,ti.goods); scat(t," worry "); ncat(t,sim_w.worry); scat(t," aid "); ncat(t,sim_w.aid); } scat(t," gold "); ncat(t,gold); scat(t," food "); ncat(t,food); scat(t,"\n"); sim_io_append(path,t); }
     { Lv l; sim_level_lv(&l); char d[LV_DEC_MAX]; lv_to_dec(&l,d,sizeof d); scpy(t,"level "); scat(t,d); scat(t," powers "); ncat(t,god_unlocked_count(&l,sim_w.god.sandbox)); scat(t,"\n"); sim_io_append(path,t); }
+    { const Standing *st=sim_st(); scpy(t,"stand fame "); ncat(t,fame); scat(t," open "); ncat(t,stand_open_mask(st,fame)); scat(t," mayor "); ncat(t,stand_is_mayor(st)); scat(t," ships "); ncat(t,(s64)st->ships); scat(t," worlds "); ncat(t,(s64)st->worlds_total); scat(t," galaxies "); ncat(t,st->galaxies); scat(t,"\n"); sim_io_append(path,t); }
     sim_io_append(path,"--\n");
 }
 // ---------------------------------------------------------------- the colony (Phase 4): the action game's milestones open its rungs
@@ -221,6 +230,20 @@ static void sim_colony_tick(void){
           if(k==COLE_RAIDWARN||k==COLE_FOODWARN||k==COLE_RAIDLOST||k==COLE_RUINS||k==COLE_WORLDEND||k==COLE_SICK){ char t[52]; col_event_text(&aw.ev[i],t,sizeof t); say(t); sfx(4); break; } } }
     if(nw){ int top=0; for(int r=1;r<COLR_N;r++) if(nw&(1u<<r)) top=r; say(col_rung_card(top)); sfx(6); sim_col_cards++; }
 }
+static void sim_stand_announce(int m){                                       // say() keeps 39 letters
+    char b[48]; if(m==STM_HALL) scpy(b,"MAYOR! TOWN HALL IS OPEN"); else { scpy(b,"NEW MENU: "); scat(b,stand_menu_name(m)); }
+    say(b); sfx(6);
+}
+static void sim_stand_tick(void){
+    Standing *st=sim_st(); if(!st->used){ st->used=1; st->told=(uint16_t)stand_open_mask(st,fame); }      // an old save: the menus you already earned are yours, with no fanfare
+    if(stand_can_appoint(st,fame,sim_w.nfolk)){ stand_appoint(st,sim_town32(),world_name(),sim_cal); sim_log(&sim_w,SIME_STAND,0,2,0); }
+    uint16_t m=stand_open_mask(st,fame), nw=(uint16_t)(m&~st->told); int top=-1;
+    for(int i=0;i<STM_N;i++) if(nw>>i&1){ top=i; if(i!=STM_HALL) sim_log(&sim_w,SIME_STAND,0,1,i); }
+    if(top>=0){ st->told|=nw; sim_stand_announce(top); }
+    if(stand_is_mayor(st) && sim_town32()==st->mayor_town && sim_w.nfolk>0){        // the home town pays: its bugs, more when they are happy
+        int sum=0; for(int k=0;k<sim_w.nfolk;k++) sum+=sim_mood(&sim_w.folk[k]);
+        st->tax_rate=stand_rate(sim_w.nfolk,sum/sim_w.nfolk,sim_unit()); }
+}
 static int sim_open_gods(void){ if(!sim_is_on()) return 0; Lv l; sim_level_lv(&l); return god_unlocked_count(&l,sim_f.sandbox); }
 static void sim_frame(int n){
     pc_land_note();
@@ -232,7 +255,7 @@ static void sim_frame(int n){
     sim_walk(n);
     { static int nk=-2; if(nk==-2){ const char *e=sim_io_env("BUGSTAR_SIM_NEAR"); nk = e && *e ? e[0]-'0' : -1; }   // a test hook: keep the player beside townsperson k
       if(nk>=0 && nk<sim_w.nfolk){ ppx=sim_fx[nk]+0xC000; ppy=sim_fy[nk]; } }
-    if(frames%30==0){ sim_unlock_msgs(); sim_colony_tick(); }
+    if(frames%30==0){ sim_unlock_msgs(); sim_colony_tick(); sim_stand_tick(); }
     if(sim_dump_at && sim_w.tick>=sim_dump_at){ sim_dump_at=sim_w.tick+600; sim_dump_all(); }
 }
 
