@@ -64,13 +64,13 @@ static inline uint32_t pn_bld(int ix, double dy, int z, double u, double gc, int
 // the town's streets (palette 74 asphalt, 75 lane dash, 80/81 plaza and yards). Smooth colour sampling smeared them into the lots beside them and washed the lane dashes out, so
 // near a street the colour map is sampled "sharp bilinear": the blend between two texels is squeezed into about one screen pixel, so edges stay crisp but never staircase. The
 // asphalt gets a fine grain, and the paving beside a street gets a pale kerb line, so a street reads as a street and not as paint.
-static int pn_roadT;                                         // the city's tech level (0 huts .. 5 megacity), set once a frame
+static int pn_roadT; static double pn_L;                                         // the city's tech level (0 huts .. 5 megacity), set once a frame
 static inline int pn_stI(int ix){ return ix==74 || ix==75 || ix==80 || ix==81; }
 static uint32_t pn_gnd(double u, double v, double zcc){
     int tx=(int)__builtin_floor(u)&HMASK, ty=(int)__builtin_floor(v)&HMASK, xr=(tx+1)&HMASK, xl=(tx-1)&HMASK, yd=(ty+1)&HMASK, yu=(ty-1)&HMASK;
     int c0=cmap[ty*HW+tx], cr=cmap[ty*HW+xr], cl=cmap[ty*HW+xl], cd=cmap[yd*HW+tx], cu=cmap[yu*HW+tx];
     if(!(pn_stI(c0)||pn_stI(cr)||pn_stI(cl)||pn_stI(cd)||pn_stI(cu))) return pn_bil(u,v);
-    double k=0.5*FOCP/zcc*(pc_pn.w/240.0); if(k<1) k=1; if(k>8) k=8;                              // screen pixels per texel here: the nearer, the sharper
+    double k=0.5*FOCP/zcc*(pc_pn.w/240.0); if(k<1.5) k=1.5; if(k>16) k=16;                              // screen pixels per texel here: the nearer, the sharper
     double uu=u-0.5, vv=v-0.5, fu=__builtin_floor(uu), fv=__builtin_floor(vv), a=uu-fu, b=vv-fv;
     a=0.5+(a-0.5)*k; if(a<0) a=0; if(a>1) a=1; b=0.5+(b-0.5)*k; if(b<0) b=0; if(b>1) b=1;
     int x0=((int)fu)&HMASK, y0=((int)fv)&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK, wx=(int)(a*256), wy=(int)(b*256);
@@ -79,7 +79,15 @@ static uint32_t pn_gnd(double u, double v, double zcc){
         double fx=u-__builtin_floor(u), fy=v-__builtin_floor(v);
         if(c0==74 || c0==75){ uint32_t hh=(uint32_t)((int)__builtin_floor(u*6))*2654435761u ^ (uint32_t)((int)__builtin_floor(v*6))*2246822519u; hh^=hh>>15; hh*=2246822519u; hh^=hh>>13;
             static const u8 amp[6]={5,4,3,2,1,0}; int d=((int)(hh&7)-3)*amp[pn_roadT]*(int)(18-zcc)/36;  /* rough earth, smooth megacity */ int r=(int)(col>>16&255)+d, g=(int)(col>>8&255)+d, bl=(int)(col&255)+d; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; bl=bl<0?0:bl>255?255:bl; col=(uint32_t)(r<<16|g<<8|bl); }
-        else if((c0==80 || c0==81) && pn_roadT>=2){ int e = (cr==74&&1-fx<0.16) || (cl==74&&fx<0.16) || (cd==74&&1-fy<0.16) || (cu==74&&fy<0.16); if(e) col=pn_mix(col,0xFFFFFF,48); }   // kerb
+        else if((c0==80 || c0==81) && pn_roadT>=1){ int e = (cr==74&&1-fx<0.16) || (cl==74&&fx<0.16) || (cd==74&&1-fy<0.16) || (cu==74&&fy<0.16); if(e) col=pn_mix(col,0xFFFFFF,pn_roadT>=2?56:30); }   // kerb
+    }
+    if(zcc<40){                                                                           // paint and shadows, at any distance a street is visible
+        double fx=u-__builtin_floor(u), fy=v-__builtin_floor(v);
+        if(c0==75 && pn_roadT>=2) col=pn_mix(col,pn_roadT>=5?0x80F0FF:0xFFF4C8, pn_roadT>=5?110:150);   // lane paint
+        if(c0==74 || c0==75){ int ke=(pn_isb(cr)&&1-fx<0.22) || (pn_isb(cl)&&fx<0.22) || (pn_isb(cd)&&1-fy<0.22) || (pn_isb(cu)&&fy<0.22);
+            int yk=((cr==80||cr==81)&&1-fx<0.10) || ((cl==80||cl==81)&&fx<0.10) || ((cd==80||cd==81)&&1-fy<0.10) || ((cu==80||cu==81)&&fy<0.10);
+            if(ke) col=pn_mix(col,0x000000,70); else if(yk) col=pn_mix(col,0x000000,36); }    // the street is shadowed under the walls and darker along the kerb
+        else if(c0==80 || c0==81){ int ke=(pn_isb(cr)&&1-fx<0.30) || (pn_isb(cl)&&fx<0.30) || (pn_isb(cd)&&1-fy<0.30) || (pn_isb(cu)&&fy<0.30); if(ke) col=pn_mix(col,0x000000,64); }   // contact shadow at a building's foot
     }
     return col;
 }
