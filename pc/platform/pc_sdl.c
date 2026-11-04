@@ -162,7 +162,11 @@ static void tex_ensure(int w, int h, int linear){
     tex_w=w; tex_h=h; tex_linear=linear;
     if((size_t)w*h>pix_cap){ free(pix); pix=malloc((size_t)w*h*4); pix_cap=(size_t)w*h; }
 }
+#ifdef PC_ANDROID
+static int cap_pixels(void){ return C.max_mp ? C.max_mp*1000000 : 450000; }      // patch 37: phone CPUs cannot do the native 3D at 2.4 MP
+#else
 static int cap_pixels(void){ return C.max_mp ? C.max_mp*1000000 : 2400000; }
+#endif
 static void present_game(int with_overlay);
 static void touch_draw(void);          // patch 30.1: defined further down (clang refuses an implicit declaration)
 static void frame_geometry(int *W, int *H, SDL_Rect *dst, int *linear, int *smooth){
