@@ -2,7 +2,7 @@
 # Colony output flows back into the action game (Phase 5): 1 bug freed (tent, 2 settlers), 2.5 game days in town, then the quick menu, COLONY, A takes
 # what the colony made. Checks: one gift was taken, the colony's food went to the player's bar, two runs are the same.
 cd "$(dirname "$0")/.."; mkdir -p out; rm -f out/sc1.* out/sc2.*
-for r in 1 2; do BUGSTAR_SET_FAME=1200 BUGSTAR_SET_FREED=1 BUGSTAR_SIM_DUMP=out/sc$r.dump ./bugstar_pc --script tests/sim_collect.txt --out out/sc$r --sav out/sc$r.sav --frames 96000 > out/sc$r.log; done
+for r in 1 2; do BUGSTAR_SET_FAME=699 BUGSTAR_SET_FREED=1 BUGSTAR_SIM_DUMP=out/sc$r.dump ./bugstar_pc --script tests/sim_collect.txt --out out/sc$r --sav out/sc$r.sav --frames 96000 > out/sc$r.log; done
 cmp -s out/sc1.log out/sc2.log && cmp -s out/sc1.dump out/sc2.dump || { echo "sim_collect: DIFFERENT between two runs"; exit 1; }
 b=$(grep "^colcards" out/sc1.dump | tail -2 | head -1); a=$(grep "^colcards" out/sc1.dump | tail -1)
 cb=$(grep "^colony" out/sc1.dump | tail -2 | head -1); ca=$(grep "^colony" out/sc1.dump | tail -1)
