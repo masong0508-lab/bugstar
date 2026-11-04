@@ -39,7 +39,7 @@ static int enter_dungeon_flag=0;
 IWRAM_DATA static s16 raydx[120];                          // per column: sideways cells per cell of depth, 8.8 (before turning)
 static int iatan2(s32 x, s32 y);                              // (kart.inc)
 static int cam_fp=0, heading=0;                            // first person? and which way you face (0..1023, 0 = north = up the map)
-static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc);
+static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc, s32 ox, s32 oy, s32 wx, s32 wy, s32 gh);
 static u8 kcam[8]={0,1,1,1,1,0,1,1};                       // the kart camera (kart.inc): view, distance, height, field of view, swing, look into turns, speed zoom, bump shake
 static int kfovk=180;                                      // the kart camera's field of view: sideways cells per cell of depth at the screen's edge (8.8)
 static s32 kcam_back(void); static s32 kcam_up(void); static s32 kcam_base(void);
@@ -772,7 +772,7 @@ sprites:;
 #ifndef TEST_NOOCC
             if(!m7_on) sh_occ = bin>=0 ? ybin+bin : 0;                                    // a nearer hill or canyon wall hides it (and its shadow)
 #endif
-            if(!m7_on) ship_shadow(pg, sx, sy, sc);
+            if(!m7_on) ship_shadow(pg, sx, sy, sc, o->x, o->y, wrapd(o->x-cam_x), wrapd(o->y-cam_y), gh);
             { int el=iatan2(cam_h+curve-gh, zc); if(el<24) el=24; if(el>230) el=230;                // how high above it the camera looks down on it (the true angle: the nose rises up the screen, the engines face you)
               ship_draw(pg, sx, sy-(f>>9), sc, (1024-heading)&1023, el, 236, 237, 0,18,240,160); }
             sh_occ=0; continue; }
@@ -807,14 +807,45 @@ sprites:;
 #endif
     if(m7_on) m7_present();
 }
-static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc){      // a soft shadow under the parked ship: the ground under it, a few shades darker
+// the parked ship's shadow. The land is lit from the north-west (planet_tables bakes that into the colours), so the shadow falls south-east on the map, turned by the way you
+// face. How far it reaches comes from the sun's height and the LAND under it: the ground a little way down-sun is looked up (two reads of the height map), so a shadow thrown
+// up a slope is short and one thrown down a slope is long; its far end is projected onto the land where it really lands (higher ground lifts it up the screen). The shape is a
+// stretched blob from the dark contact patch under the hull to a paler, softer far end. All fixed-point, nothing new in RAM (the row ends reuse polyfill's sh_l / sh_r).
+static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc, s32 ox, s32 oy, s32 wx, s32 wy, s32 gh){
     if(sc>140) sc=140;                                                  // (first person: the ship can stand right beside you; never paint a shadow wider than the screen)
-    int rx=sc*5/12+2, ry=rx/3+1;
-    for(int dy=-ry; dy<=ry; dy++){ int y=cy+dy; if(y<18||y>=160) continue;
-        int w=rx*(int)isqrt((u32)(ry*ry-dy*dy))/ry;
-        for(int x=cx-w; x<=cx+w; x++){ if(x<0||x>=240) continue; if(sh_occ && sh_occ[(x>>1)<<3]<=y) continue;
+    int rx0=sc*3/8+2, ry0=rx0/3+1;                                      // the contact patch under the hull
+    int tanE = wd.hour==1 ? 90 : wd.hour==2 ? 300 : 215;                // how high the sun stands, 8.8 (dusk: low and long, night: the moon, high and short)
+    s32 H=(sh_rad*29)>>4;                                               // the top of the hull above the ground, 8.8 cells (100 model units = 2 cells)
+    s32 L=(H<<8)/tanE, dw=0, gt=gh;
+    for(int it=0; it<2; it++){ dw=((L*181)>>8)<<8; gt=ground_h(ox+dw, oy+dw);                  // down-sun: (+1,+1)/sqrt2 on the map, in 16.16. what is the ground like there?
+        s32 den=tanE + (L>0 ? ((gt-gh)<<8)/L : 0); if(den<tanE*2/5) den=tanE*2/5; if(den>tanE*3) den=tanE*3;   // climbing ground shortens it, falling ground stretches it
+        L=(H<<8)/den; }
+    dw=((L*181)>>8)<<8; gt=ground_h(ox+dw, oy+dw);
+    int tx=cx, ty=cy;                                                   // the far end of the shadow, on the screen
+    { s32 tx_=wx+dw, ty_=wy+dw, dz=((tx_*hsn)>>8)+((ty_*hcs)>>8), dxx=((tx_*hcs)>>8)-((ty_*hsn)>>8);
+      if(dz>(1<<16)){ s32 zc2=dz>>8, f2=(FOCP<<16)/zc2, fovq=65536/fov_k();
+          tx=120+(s32)(((((long long)dxx*f2)>>24)*fovq)>>8); ty=PHZ+(((cam_h+curv(zc2)-tiny_sub()-gt)*f2)>>16); } }
+    if(tx<cx-100) tx=cx-100; if(tx>cx+100) tx=cx+100; if(ty<cy-40) ty=cy-40; if(ty>cy+24) ty=cy+24;
+    int rx1=rx0+rx0/4, ry1=ry0+ry0/3;
+#ifdef BUGSTAR_PC_SHADOW_HOOK
+    if(pc_pn_shadow(pg,cx,cy,rx0,ry0,tx,ty,rx1,ry1,wd.hour)) return;   // (PC: smooth, at the window's own resolution)
+#endif
+    int ylo=(cy<ty?cy:ty)-ry1, yhi=(cy>ty?cy:ty)+ry1; if(ylo<18) ylo=18; if(yhi>159) yhi=159; if(ylo>yhi) return;
+    for(int y=ylo;y<=yhi;y++){ sh_l[y]=32767; sh_r[y]=-32768; }
+    int span=(ty>cy?ty-cy:cy-ty); int n=1+span/(ry0+1); if(n>7) n=7;       // enough overlapping ellipses to make one unbroken blob between the two ends
+    for(int k=0;k<=n;k++){ int ex=cx+(tx-cx)*k/n, ey=cy+(ty-cy)*k/n, rx=rx0+(rx1-rx0)*k/n, ry=ry0+(ry1-ry0)*k/n;
+        for(int dy=-ry; dy<=ry; dy++){ int y=ey+dy; if(y<ylo||y>yhi) continue; int w=rx*(int)isqrt((u32)(ry*ry-dy*dy))/ry; if(ex-w<sh_l[y]) sh_l[y]=ex-w; if(ex+w>sh_r[y]) sh_r[y]=ex+w; } }
+    int near_x = cx+(tx-cx)*11/20, dir = tx>=cx;                        // the first half of the shadow is darker than the far end
+    for(int y=ylo;y<=yhi;y++){ int xl=sh_l[y], xr=sh_r[y]; if(xl>xr) continue; if(xl<0) xl=0; if(xr>239) xr=239;
+        int dyc=y-cy, in0 = (dyc<0?-dyc:dyc)<=ry0, w0 = in0 ? rx0*(int)isqrt((u32)(ry0*ry0-dyc*dyc))/ry0 : -1;     // the contact patch on this row
+        for(int x=xl; x<=xr; x++){ if(sh_occ && sh_occ[(x>>1)<<3]<=y) continue;
             volatile u16 *p=pg+y*120+(x>>1); u16 v=*p; int ix = (x&1) ? (v>>8) : (v&255);
-            if(ix>=GND_B && ix<GND_B+16){ int dk = (x-cx>-w/2 && x-cx<w/2) ? 5 : 3; ix-=dk; if(ix<GND_B) ix=GND_B; *p = (x&1) ? (u16)((v&0x00FF)|(ix<<8)) : (u16)((v&0xFF00)|ix); } } }
+            if(ix>=GND_B && ix<GND_B+16){ int ax=x-cx; if(ax<0) ax=-ax;
+                int dk = (w0>=0 && ax<=w0/2) ? 5 : (w0>=0 && ax<=w0) ? 4 : ((dir ? x<=near_x+rx0/2 : x>=near_x-rx0/2) ? 3 : 2);        // under the hull, the rim of that, the near shadow, the far end
+                if(x-xl<2 || xr-x<2) dk=(dk+1)>>1;                                                                                        // soft edges
+                if(ix>GND_B+9) dk++;                                                                                                       // lit ground shows a shadow more
+                if(wd.hour==2) dk=(dk+1)>>1;                                                                                               // by moonlight it is faint
+                ix-=dk; if(ix<GND_B) ix=GND_B; *p = (x&1) ? (u16)((v&0x00FF)|(ix<<8)) : (u16)((v&0xFF00)|ix); } } }
 }
 static void planet_enter(void){
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BG2CNT=3; hdma_on=0; REG_BLDCNT=0;

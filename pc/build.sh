@@ -95,6 +95,7 @@ echo '#include "../pc_dnative.inc"' >> main.c
 sed -i 's|else render_planet(pg); u32 t_r1=TMR();|else { render_planet(pg); pc_pn_native(pg); } u32 t_r1=TMR();|' planet.inc
 sed -i 's|^    int ad=dd<0?-dd:dd, t=ad\*2\*rc/60-rc;|    if(pc_pn_disc(cx,cy,rc,dd,lit,dark,sunmode)) return;\n&|' planet.inc
 sed -i '1i static void pc_pn_native(volatile unsigned short *pg); static int pc_pn_disc(int cx, int cy, int rc, int dd, int lit, int dark, int sunmode);' main.c
+sed -i '1i #define BUGSTAR_PC_SHADOW_HOOK 1\nstatic int pc_pn_shadow(volatile unsigned short *pg, int cx, int cy, int rx0, int ry0, int tx, int ty, int rx1, int ry1, int hour);' main.c
 echo '#include "../pc_pnative.inc"' >> main.c
 # --- the native space view (pc/pc_snative.inc, pc_sncomp.inc in pc_hw.c)
 sed -i 's|^IWRAM static void planet_fill(\(.*\)const u8 \*noise){|&\n    pc_sn_rec(cx,cy,r,Lx,Ly,Lz,rot,noise);|' space.inc

@@ -76,6 +76,26 @@ static void pc_pn_native(volatile u16 *pg){
               double d=__builtin_sqrt((X+0.5-px)*(X+0.5-px)+(Y+0.5-py)*(Y+0.5-py)); double a=(1.0-d/(rad+0.5))*tw; if(a<=0) continue; uint32_t *p=&pc_pn.buf[(size_t)(Y-ya)*W+X]; *p=pn_mix(*p,sc,(int)(a*255)); } } } }
     int t=((uintptr_t)pg)>=0x0600A000u?1:0; pc_pn.w=W; pc_pn.h=H; pc_pn.ya=ya; memcpy(pc_pn.snap[t],(const void*)pg,240*160); pc_pn.f[t]=pc_frames(); pn_active=1;
 }
+// the parked ship's shadow (ship_shadow in planet.inc works out where it lies: a dark patch under the hull and a paler, softer far end up or down the slope).
+// Here it is drawn into the picture as a smooth, soft-edged, slightly cool shadow over the ground only; the game's own blocky copy is skipped. 1 = drawn here.
+static int pc_pn_shadow(volatile unsigned short *pg, int cx, int cy, int rx0, int ry0, int tx, int ty, int rx1, int ry1, int hour){
+    if(!pn_active) return 0; int W=pc_pn.w, H=pc_pn.h, ya=pc_pn.ya; double sx=W/240.0, sy=H/160.0;
+    double amax = hour==2 ? 0.34 : hour==1 ? 0.64 : 0.74;                                  // by moonlight it is faint
+    double ax=cx+0.5, ay=cy+0.5, vx=tx-cx, vy=ty-cy, l2=vx*vx+vy*vy;
+    int gx0=(int)((cx<tx?cx:tx)-(rx0>rx1?rx0:rx1)-4), gx1=(int)((cx>tx?cx:tx)+(rx0>rx1?rx0:rx1)+5), gy0=(int)((cy<ty?cy:ty)-(ry0>ry1?ry0:ry1)-4), gy1=(int)((cy>ty?cy:ty)+(ry0>ry1?ry0:ry1)+5);
+    int X0=(int)(gx0*sx), X1=(int)(gx1*sx)+1, Y0=(int)(gy0*sy), Y1=(int)(gy1*sy)+1; if(X0<0) X0=0; if(X1>W) X1=W; if(Y0<ya) Y0=ya; if(Y1>H) Y1=H;
+    for(int Y=Y0;Y<Y1;Y++){ double gy=(Y+0.5)/sy; int gyi=(int)gy; if(gyi<18||gyi>159) continue;
+        for(int X=X0;X<X1;X++){ if(Y<pn_top[X]-0.5f) continue; double gx=(X+0.5)/sx; int gxi=(int)gx; if(gxi<0||gxi>239) continue;
+            double px=gx-ax, py=gy-ay, t = l2>0.01 ? (px*vx+py*vy)/l2 : 0; if(t<0) t=0; if(t>1) t=1;
+            double ex=px-vx*t, ey=py-vy*t, rx=rx0+(rx1-rx0)*t, ry=ry0+(ry1-ry0)*t, q=__builtin_sqrt((ex*ex)/(rx*rx)+(ey*ey)/(ry*ry));
+            double soft=0.30+0.40*t, f=(1.0+soft*0.5-q)/soft; if(f<=0) continue; if(f>1) f=1; f=f*f*(3-2*f);                    // a wider penumbra the farther from the hull
+            double a=amax*(1.0-0.55*t)*f; if(t<0.2 && q<0.6) a+=0.18*(1.0-t*5);                                                   // darkest right under the hull
+            if(sh_occ && sh_occ[(gxi>>1)<<3]<=gyi) continue;                                                                      // a nearer hill hides it
+            int ix=pg[(gyi*240+gxi)>>1]; ix = (gxi&1) ? ix>>8 : ix&255; if(ix<GND_B || ix>=GND_B+16) continue;                    // only on the ground
+            uint32_t *p=&pc_pn.buf[(size_t)(Y-ya)*W+X]; uint32_t c=*p; int r=(int)(c>>16&255), g=(int)(c>>8&255), b=(int)(c&255);
+            r=(int)(r*(1.0-0.72*a)); g=(int)(g*(1.0-0.68*a)); b=(int)(b*(1.0-0.52*a)); *p=(uint32_t)(r<<16|g<<8|b); } }
+    return 1;
+}
 // the sun and the moons (sky_disc): smooth discs, drawn into the picture only over the sky; the game's own blocky disc is not drawn
 static int pc_pn_disc(int cx, int cy, int rc, int dd, int lit, int dark, int sunmode){
     if(!pn_active) return 0; int W=pc_pn.w, H=pc_pn.h, ya=pc_pn.ya; double sx=W/240.0, sy=H/160.0; double px=(cx*2+1)*sx, py=(cy+0.5)*sy, R=2.0*rc*sx, Ry=2.0*rc*sy;
