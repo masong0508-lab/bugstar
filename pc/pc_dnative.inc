@@ -60,7 +60,7 @@ static DnSpr dn_sp[96]; static int dn_nsp, dn_active; static int *dn_perp; stati
 static void pc_dn_spr(const u8 *art, int aw, int ah, int x0, int wcols, int top, int bot, s32 tY, int tint, int dark, int flash){
     if(!dn_active || dn_nsp>=96) return; DnSpr *s=&dn_sp[dn_nsp++]; s->art=art; s->aw=aw; s->ah=ah; s->x0=x0; s->wcols=wcols; s->top=top; s->bot=bot; s->tY=tY; s->tint=tint; s->dark=dark; s->flash=flash; }
 static void pc_dn_sprites_done(volatile u16 *pg){
-    if(!dn_active) return; int W=pc_dn_w, H=pc_dn_h, Y0=(18*H+159)/160; double sy=H/160.0, sx=W/240.0; int t=((uintptr_t)pg)>=0x0600A000u?1:0;
+    if(!dn_active) return; int W=pc_dn_w, H=pc_dn_h, Y0=(18*H+159)/160; double sy=H/160.0, sx=W/240.0; int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0;
     memcpy(pc_dn_snap2[t],(const void*)pg,240*160);
     if(!dn_nsp){ pc_dn_spl_on=0; return; }
     unsigned long need=(unsigned long)W*(H-Y0); static unsigned long scap; if(need>scap){ free(pc_dn_spl); pc_dn_spl=malloc(need*4); scap=need; } memset(pc_dn_spl,0,need*4); pc_dn_spl_on=1;
@@ -106,7 +106,7 @@ static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply)
               if((a>>5)==(b>>5)) k->hv[v]=(u16)(((a>>5)<<10)|(((a&31)*(32-fu)+(b&31)*fu)&1023)); else k->hv[v]=0x2000; } } }
     { int step=W/120>1?W/120:1; for(int X=0;X<W;X++){ int p=col[X].edge, e=0; if(X>=step && col[X-step].edge-p>0x400) e=1; if(X+step<W && col[X+step].edge-p>0x400) e=1; col[X].L|=e<<16; } for(int X=0;X<W;X++){ col[X].edge=col[X].L>>16; col[X].L&=0xFFFF; } }
     DnCtx c={W,H,Y0,sy,hzf,col,rxc,ryc,pc_dn_buf,px_,py_}; pc_par_chunk(H-Y0,8,dn_rows,&c);
-    int t=((uintptr_t)pg)>=0x0600A000u?1:0; pc_dn_w=W; pc_dn_h=H; memcpy(pc_dn_snap[t],(const void*)pg,240*160); pc_dn_f[t]=pc_frames(); dn_active=1;      // (the page as render_view left it: what changes after is the game's own)
+    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_dn_w=W; pc_dn_h=H; memcpy(pc_dn_snap[t],(const void*)pg,240*160); pc_dn_f[t]=pc_frames(); dn_active=1;      // (the page as render_view left it: what changes after is the game's own)
     { double ms=pc_now_ms()-a0; static double ema; static int n, env=-1; if(env<0){ const char *e=getenv("PC_DN_LOW"); env=e?atoi(e):0; }
       ema = n++ ? ema*0.92+ms*0.08 : ms; if(n>30){ if(!dn_low && ema>12.0) dn_low=1; else if(dn_low && ema<3.5) dn_low=0; } if(env) dn_low=env>0;      // slow machine: drop to the cheap mode (an average above 12 ms a frame); back when it is cheap again
       pc_dn_report(ms,W,H); }

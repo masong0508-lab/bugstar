@@ -182,7 +182,7 @@ static void sy_draw(volatile u16 *pg, int *rows, int nrows){
     ui_foot(pg, "A: PICK  SEL: DICE  START: UNDO/DONE", "L R: TAB  B: DONE");
 }
 static void sy_preview(volatile u16 *pg){
-    volatile u16 *bp = (volatile u16*)(0x06000000 + ((REG_DISPCNT & 0x10) ? 0 : 0xA000));
+    volatile u16 *bp = (volatile u16*)(GBAA(0x06000000) + ((REG_DISPCNT & 0x10) ? 0 : 0xA000));
     ui_well(bp, SY_PX, SY_PY, SY_PW, SY_PH);
     for(int k = 0; k < 12; k++){ int x = SY_PX + 2 + ((k * 37 + sy_clock / 6) % (SY_PW - 4)), y = SY_PY + 2 + (k * 53) % (SY_PH - 4); pix(bp, x, y, (k & 3) ? U_RAISE : U_SOFT); }
     sy_nat_on = pc_sr_on() && pc_ships_mode > 0;                                    // NATIVE/ULTRA ships: the same faces are also handed to the window-size renderer
@@ -194,7 +194,7 @@ static void sy_preview(volatile u16 *pg){
     vsync();
     for(int y = SY_PY; y < SY_PY + SY_PH; y++){ volatile u16 *s = bp + y * 120 + SY_PX / 2, *t = pg + y * 120 + SY_PX / 2; for(int x = 0; x < (SY_PW + 1) / 2; x++) t[x] = s[x]; }
     if(sy_nat_on){ static u8 back[240 * 128]; for(int y = 0; y < SY_PH; y++) for(int x = 0; x < 240; x++) back[(SY_PY + y) * 240 + x] = ((volatile u8*)keep)[y * 240 + x];
-        sr_commit(((u32)(uintptr_t)pg) >= 0x0600A000u ? 1 : 0); pc_sr_snapshot_rect(pg, back, SY_PX, SY_PY, SY_PW, SY_PH); }
+        sr_commit(((u32)(uintptr_t)pg) >= GBAA(0x0600A000u) ? 1 : 0); pc_sr_snapshot_rect(pg, back, SY_PX, SY_PY, SY_PW, SY_PH); }
 }
 // ---------------------------------------------------------------- small pop-up editors
 static int sy_name_edit(volatile u16 *pg){
@@ -320,7 +320,7 @@ static void pc_sy_autotest(void){
     if(scene != 2){ oam_hide_all(); oam_flush(); scene = 2; page_back = 1; space_enter(1); music(3); }
     if(getenv("BUGSTAR_SY_PIRATES")) spawn_pirates(atoi(getenv("BUGSTAR_SY_PIRATES")));
 }
-static void pc_sy_wipe(void){ for(int p = 0; p < 2; p++){ volatile u16 *q = (volatile u16 *)(0x06000000 + p * 0xA000); for(int i = 0; i < 160 * 120; i++) q[i] = 0; } }     // (both pages of the 240x160 8-bit bitmap, black)
+static void pc_sy_wipe(void){ for(int p = 0; p < 2; p++){ volatile u16 *q = (volatile u16 *)(GBAA(0x06000000) + p * 0xA000); for(int i = 0; i < 160 * 120; i++) q[i] = 0; } }     // (both pages of the 240x160 8-bit bitmap, black)
 static int make_ship_g(volatile u16 *pg, int first);
 static int pc_sy_screen(volatile u16 *pg, int first){
     int rows[64], nrows, leave = 0, dirty = 1, selp = 0, selused = 0; u16 dispcnt = REG_DISPCNT;

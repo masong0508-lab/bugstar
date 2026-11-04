@@ -24,21 +24,21 @@ void (*pc_irq_fn)(void);
 int pc_ships_mode=-1, pc_armada_n=0;   // the ship renderer: -1 off (the game draws its own ships), 0 CLASSIC, 1 NATIVE, 2 ULTRA; ships in the far battle (PC_SHIPS / PC_ARMADA for tests)
 int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h; uint32_t *pc_dn_buf, *pc_dn_spl; int pc_dn_spl_on; long pc_dn_f[2]={-100,-100}; uint8_t pc_dn_snap[2][240*160], pc_dn_snap2[2][240*160];   // the native dungeon (pc_dnative.inc): the picture, its size, the page snapshot it belongs to
 static uint8_t sr_snap[2][240*128]; static long sr_snap_f[2]={-100,-100};
-void pc_sr_snapshot(const volatile void *pg){ int t=((uintptr_t)pg)>=0x0600A000u ? 1 : 0; memcpy(sr_snap[t],(const void*)pg,240*128); sr_snap_f[t]=pc_frames(); }
+void pc_sr_snapshot(const volatile void *pg){ int t=((uintptr_t)pg)>=GBAA(0x0600A000u) ? 1 : 0; memcpy(sr_snap[t],(const void*)pg,240*128); sr_snap_f[t]=pc_frames(); }
 // the ship editor's preview: the page as it will be shown, except the preview rectangle which holds what it looked like before its text went on (so text stays on top of the native ship)
-void pc_sr_snapshot_rect(const volatile void *pg, const volatile void *back, int x0, int y0, int w, int h){ int t=((uintptr_t)pg)>=0x0600A000u ? 1 : 0; memcpy(sr_snap[t],(const void*)pg,240*128);
+void pc_sr_snapshot_rect(const volatile void *pg, const volatile void *back, int x0, int y0, int w, int h){ int t=((uintptr_t)pg)>=GBAA(0x0600A000u) ? 1 : 0; memcpy(sr_snap[t],(const void*)pg,240*128);
     for(int y=y0;y<y0+h && y<128;y++) for(int x=x0;x<x0+w && x<240;x++) sr_snap[t][y*240+x]=((const volatile uint8_t*)back)[y*240+x]; sr_snap_f[t]=pc_frames(); }
 void pc_sr_forget(void){ sr_snap_f[0]=sr_snap_f[1]=-100; }      // leaving a screen: whatever the ship renderer last kept must not show on the next one
 int pc_vid3d;                   // 3D views: 0 AUTO, 1 NATIVE, 2 CLASSIC (set by the window front end; PC_V3D=0..2 in the environment for tests)
 
-#define EWRAM 0x02000000u
-#define IWRAM 0x03000000u
-#define IOREG 0x04000000u
-#define PALRAM 0x05000000u
-#define VRAMB 0x06000000u
-#define OAMB  0x07000000u
-#define GPIOB 0x08000000u
-#define SRAMB 0x0E000000u
+#define EWRAM GBAA(0x02000000u)
+#define IWRAM GBAA(0x03000000u)
+#define IOREG GBAA(0x04000000u)
+#define PALRAM GBAA(0x05000000u)
+#define VRAMB GBAA(0x06000000u)
+#define OAMB  GBAA(0x07000000u)
+#define GPIOB GBAA(0x08000000u)
+#define SRAMB GBAA(0x0E000000u)
 #define R16(a) (*(volatile uint16_t*)(uintptr_t)(a))
 #define R32(a) (*(volatile uint32_t*)(uintptr_t)(a))
 

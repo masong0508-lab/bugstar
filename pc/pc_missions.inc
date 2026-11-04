@@ -71,7 +71,7 @@ static void pcm_on_sab(int s){ int mi=pcm_match(&pcw_f.c,1);
 static void pcm_collect(void){                                      // leaving a craft: inside jobs that are done get paid
     for(int i=0;i<pcm_nact;i++){ WsMission *m=&pcm_act[i]; if(!m->prog || m->cseed!=pcw_f.c.seed || m->z!=pcw_f.c.z) continue;
         WsPay p; ms_pay(&pcw_f.c,NULL,ws_attack((double)level,laser_lv,ship_gun(),tech_lv),m,&p); WsCraft c=pcw_f.c; pcm_finish(i,&p,&c,1); pcw_last=p; pcw_last_ok=1;
-        pc_ws_breakdown((volatile u16*)0x06000000,&c,&p); pcm_note[0]=0; build_space_palette(); REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); BG_PAL[57]=rgb15(14,16,30); BG_PAL[58]=rgb15(60,70,120);
+        pc_ws_breakdown((volatile u16*)GBAA(0x06000000),&c,&p); pcm_note[0]=0; build_space_palette(); REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); BG_PAL[57]=rgb15(14,16,30); BG_PAL[58]=rgb15(60,70,120);
         do_save(); pc_ws_slot_save(cur_slot); i--; } }
 static void pcm_dwell(int target_room, const char **prompt, char *msg, int *msg_t){          // standing in the objective room
     int mi=pcm_match(&pcw_f.c,1);

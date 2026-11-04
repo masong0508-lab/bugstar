@@ -109,3 +109,8 @@ Needs `arm64-v8a` in the list. PAGE_SIZE 4096 or 16384 are both fine (step 3 bui
 ## Status
 - 3 Nov 2026, step 0 done: phone SM-S731U, Android 17, arm64-v8a only, 4096-byte pages.
 - patch 21 (step 1): pc/android test app + .github/workflows/android.yml made. NOT yet run on CI or the phone.
+- patch 21 result on the phone: FAIL. Android's Java heap sits on 02000000-12000000, so every fake-GBA range gave "File exists".
+- patch 24 (step 1b): the fallback above, done. `pc/platform/pc_gbaaddr.h` has `GBAA(a)` = `a + PC_GBA_TOP`; `pc_hw.c`, `pc_main.c`, the PC `.inc` files and
+  (through `build.sh`, one regex pass over the game's copied sources) every `0x0[2-8E]xxxxxx` in the game use it. `PC_GBA_TOP=0x30000000 ./pc/build.sh` gives the
+  same screen and save hashes as the normal build (tests/play.txt, 4501 frames). Unset = +0, so the Windows and Linux builds do not change.
+  The test app now searches for a free TOP (30000000 ... 70000000, then 20000000, 10000000, 0) and says which one to build with. Run it on the phone, then step 2.

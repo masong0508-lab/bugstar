@@ -62,7 +62,7 @@ int pc_view_main(int argc, char **argv){
         char fn[600]; snprintf(fn,sizeof fn,"%s_view%d.ppm",out,k); pc_write_ppm(fn,scale);
         printf("view%d screen=%016llx\n",k,(unsigned long long)pc_hash_screen()); }
     // ---- the card, in the game's own font
-    { volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); rect(pg,0,0,240,160,0); char b[96]; int y=6;
+    { volatile u16 *pg=(volatile u16*)GBAA(0x06000000); REG_DISPCNT=4|(1<<10); rect(pg,0,0,240,160,0); char b[96]; int y=6;
       text(pg,6,y,nm,C_WHITE,2); y+=18;
       scpy(b,pc_name[wd.cls]); text(pg,6,y,b,C_WHITE,1); y+=10;
       scpy(b,"STAR "); scat(b,sn); text(pg,6,y,b,C_WHITE,1); y+=10;
@@ -75,7 +75,7 @@ int pc_view_main(int argc, char **argv){
       scpy(b,"CLUSTER E "); scat(b,cxs); b[40]=0; text(pg,6,y,b,C_WHITE,1); y+=10;
       scpy(b,"CLUSTER N "); scat(b,cys); b[40]=0; text(pg,6,y,b,C_WHITE,1);
       char fn[600]; snprintf(fn,sizeof fn,"%s_card.ppm",out); pc_write_ppm(fn,scale); }
-    { volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10);
+    { volatile u16 *pg=(volatile u16*)GBAA(0x06000000); REG_DISPCNT=4|(1<<10);
       for(int k=0;k<pcw.npages;k++){ pc_world_draw(pg,k); char fn[600]; snprintf(fn,sizeof fn,"%s_pcfile%d.ppm",out,k+1); pc_write_ppm(fn,scale); } }
     pc_hw_finish();
     return 0;

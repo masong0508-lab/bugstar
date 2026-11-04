@@ -97,7 +97,7 @@ static void pc_pn_native(volatile u16 *pg){
       for(int k=0;k<88;k++){ double x=__builtin_fmod(k*83+17-hor+536*4,536); if(x>=120) continue; int y=19+((k*31+5)%50); double px=(x*2+1)*sx, py=(y+0.5)*sy; double tw=0.7+0.3*__builtin_cos(frames*0.1+k*2.3); uint32_t sc=pn_pal[((frames>>3)+k)&7?4:5]; double rad=0.55*sy+0.5;
           for(int Y=(int)(py-rad-1);Y<=(int)(py+rad+1);Y++){ if(Y<ya||Y>=H) continue; for(int X=(int)(px-rad-1);X<=(int)(px+rad+1);X++){ if(X<0||X>=W||Y>=pn_top[X]-0.5f) continue;
               double d=__builtin_sqrt((X+0.5-px)*(X+0.5-px)+(Y+0.5-py)*(Y+0.5-py)); double a=(1.0-d/(rad+0.5))*tw; if(a<=0) continue; uint32_t *p=&pc_pn.buf[(size_t)(Y-ya)*W+X]; *p=pn_mix(*p,sc,(int)(a*255)); } } } }
-    int t=((uintptr_t)pg)>=0x0600A000u?1:0; pc_pn.w=W; pc_pn.h=H; pc_pn.ya=ya; memcpy(pc_pn.snap[t],(const void*)pg,240*160); pc_pn.f[t]=pc_frames(); pn_active=1;
+    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_pn.w=W; pc_pn.h=H; pc_pn.ya=ya; memcpy(pc_pn.snap[t],(const void*)pg,240*160); pc_pn.f[t]=pc_frames(); pn_active=1;
 }
 // the parked ship's shadow (ship_shadow in planet.inc works out where it lies: a dark patch under the hull and a paler, softer far end up or down the slope).
 // Here it is drawn into the picture as a smooth, soft-edged, slightly cool shadow over the ground only; the game's own blocky copy is skipped. 1 = drawn here.

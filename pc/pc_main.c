@@ -36,7 +36,7 @@ static LONG WINAPI win_crash(EXCEPTION_POINTERS *e){
 // and one of them often lands on 02000000 (windows error 487). So the first copy of the program is only a launcher: it starts a second copy of itself
 // SUSPENDED (only ntdll and the exe are loaded then), reserves the GBA ranges in it, and resumes it. The loader then places every DLL around them.
 static int win_launch(int *rc){
-    static const struct { unsigned a, n; } R[]={{0x02000000,0x40000},{0x03000000,0x10000},{0x04000000,0x10000},{0x05000000,0x10000},{0x06000000,0x20000},{0x07000000,0x10000},{0x08000000,0x10000},{0x0E000000,0x10000}};
+    static const struct { unsigned a, n; } R[]={{GBAA(0x02000000),0x40000},{GBAA(0x03000000),0x10000},{GBAA(0x04000000),0x10000},{GBAA(0x05000000),0x10000},{GBAA(0x06000000),0x20000},{GBAA(0x07000000),0x10000},{GBAA(0x08000000),0x10000},{GBAA(0x0E000000),0x10000}};
     char tmp[8];
     if(GetEnvironmentVariableA("PC_CHILD",tmp,sizeof tmp)) return 0;          // we are the child: run the game
     SetEnvironmentVariableA("PC_CHILD","1");

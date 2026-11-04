@@ -35,7 +35,7 @@ static void pc_sr_space(volatile u16 *pg){
     if(battle_on && pc_armada_n>0) sr_armada(pc_armada_n, sys_id(cur_sys)^0xA4A7u, frames, 14000);                          // the far battle around yours (only drawn)
     sr_run_hooks();                                                                                                     // (more ships: warships and anything else that registered)
 }
-static int pc_sr_tag; static void pc_sr_mark(volatile u16 *pg){ pc_sr_tag=((u32)(uintptr_t)pg)>=0x0600A000u ? 1 : 0; sr_commit(pc_sr_tag); pc_sr_snapshot(pg); }
+static int pc_sr_tag; static void pc_sr_mark(volatile u16 *pg){ pc_sr_tag=((u32)(uintptr_t)pg)>=GBAA(0x0600A000u) ? 1 : 0; sr_commit(pc_sr_tag); pc_sr_snapshot(pg); }
 // the player's own ship in the chase view: the game's own model (shv/shf/shn) with the same turn, scale and light as ship_draw, but each face is
 // drawn at the window's resolution (no 120-column grid, no checkerboard dither: the two shades are mixed)
 static uint32_t pc_sr_mixc(uint32_t a, uint32_t b){ return ((a>>1)&0x7F7F7F)+((b>>1)&0x7F7F7F); }

@@ -2,6 +2,7 @@
 #ifndef PC_PLAT_H
 #define PC_PLAT_H
 #include <stdint.h>
+#include "pc_gbaaddr.h"
 #define PC_AUDIO_RATE 48000
 // --- sound chip (pc_psg.c)
 void pc_snd(unsigned off, unsigned v);          // a write to the sound registers: off = offset from 0x04000060 (0x30..0x3F = wave RAM)

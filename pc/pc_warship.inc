@@ -139,7 +139,7 @@ static void pcw_victory(void){
     WsPay p; ws_pay(&pcw_f.c,&pcw_f.kill,&p); pcm_on_win(&p); pcw_last=p; pcw_last_ok=1;
     pcw_pay(p.reward); pcw_kills++; if(wn_cmp(p.reward,pcw_best)>0) pcw_best=p.reward; if(p.cheat){ pcw_cheated=1; plw_set_cheated(1); }
     gain_xp(200+pcw_f.c.cls*300); fame+=20+pcw_f.c.cls*5; boom(0,0,0,40,49); sfx(9);
-    volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000)); WsCraft c=pcw_f.c; pcw_end(1);
+    volatile u16 *pg=(volatile u16*)(GBAA(0x06000000) + (page_back?0:0xA000)); WsCraft c=pcw_f.c; pcw_end(1);
     pc_ws_breakdown(pg,&c,&p); build_space_palette();
 }
 static void pc_ws_lost(void){ if(!pc_ws_on) return; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws lost at %d\n",frames); pc_ws_on=0; wf_away(&pcw_f,1e9); pcw_f.state=WF_FLED; pcw_left_at=-1; music(3); }
@@ -255,7 +255,7 @@ static void pc_ws_board(void){
             for(int yy=m->y0;yy<=m->y1 && !found;yy++) for(int xx=m->x0;xx<=m->x1 && !found;xx++) if(pcw_free(xx+0.5f,yy+0.5f)){ bx=xx+0.5f; by=yy+0.5f; found=1; }
             pcw_px=bx; pcw_py=by; pcw_pa=atan2f((m->y0+m->y1+1)*0.5f-by,(m->x0+m->x1+1)*0.5f-bx)+turn; } } }
     fade(1); oam_hide_all(); oam_flush(); for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i]; BG_PAL[0]=0; BG_PAL[250]=rgb15(6,8,12); BG_PAL[251]=rgb15(255,200,60);
-    REG_DISPCNT = 4 | (1<<10); volatile u16 *pg=(volatile u16*)0x06000000; pc_ovl_fn=pcw_ovl; REG_BLDCNT=0; REG_BLDY=0;
+    REG_DISPCNT = 4 | (1<<10); volatile u16 *pg=(volatile u16*)GBAA(0x06000000); pc_ovl_fn=pcw_ovl; REG_BLDCNT=0; REG_BLDY=0;
     char msg[48]="YOU ARE IN. FIND THE TARGET: SEL MAP"; int msg_t=180, hold=0, dead=0; float aim_cd=0, shot_t=0; u32 fr=0;
     while(1){
         vsync(); read_keys(); fr++; double dt=1/60.0; pcw_t+=dt; if(aim_cd>0) aim_cd-=dt; if(shot_t>0) shot_t-=dt;
@@ -321,7 +321,7 @@ static void pc_ws_board(void){
 
 // ================================================================= THE SCREENS
 static void pc_ws_breakdown(volatile u16 *pg, const WsCraft *c, const WsPay *p){
-    oam_hide_all(); oam_flush(); for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i]; REG_DISPCNT = 4 | (1<<10); pg=(volatile u16*)0x06000000; wait_release();
+    oam_hide_all(); oam_flush(); for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i]; REG_DISPCNT = 4 | (1<<10); pg=(volatile u16*)GBAA(0x06000000); wait_release();
     ui_bg(pg,0,160); ui_panel(pg,4,4,232,140); char b[80], v[48];
     ui_head(pg,10,8,220,"COST BREAKDOWN",C_GOLD); scpy(b,c->name); scat(b," - "); scat(b,ws_class_name(c->cls)); text(pg,10,18,b,C_WHITE,1);
     static const char *const rn[6]={"MATERIALS","CREW AND PAY","AIRCRAFT","WEAPONS","POWER","TOTAL COST"};
@@ -395,7 +395,7 @@ static int pcw_list(volatile u16 *pg, int in_space){
 static void pc_ws_lab(volatile u16 *pg){ int go=pcw_list(pg,scene==2); if(go && scene!=2){ ui_bg(pg,0,160); ui_panel(pg,30,60,180,30); text(pg,40,68,"TAKE OFF: IT WAITS IN ORBIT",C_GOLD,1); text(pg,40,78,"(LAUNCH FROM YOUR SHIP)",C_GREY,1); wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)&&!HIT(K_B)); wait_release(); } }
 static int pc_ws_scan(void){                                   // in space: hold R and press SELECT
     if(pc_ws_on || in_lair) return 0;
-    volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000)); REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?0:(1<<4));
+    volatile u16 *pg=(volatile u16*)(GBAA(0x06000000) + (page_back?0:0xA000)); REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?0:(1<<4));
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
     int go=pcw_list(pg,1); build_space_palette();
     if(go){ pcw_req=0; pcw_engage(pcw_req_seed,pcw_req_z,pcw_req_cheat); }
@@ -410,15 +410,15 @@ static void pc_ws_autotest(void){
     static int done=0; if(in_game) pcm_tick(); if(done || !in_game) return; const char *e=getenv("BUGSTAR_WS_TEST"); if(!e){ done=1; return; }
     const char *at=getenv("BUGSTAR_WS_AT"); if(frames < (at?atoi(at):0) || scene!=0) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
     char mode[16]={0}; int z=WS_ZREF; unsigned seed=0; sscanf(e,"%15[a-z],%d,%u",mode,&z,&seed);
-    if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)0x06000000); fprintf(stderr,"screen lab returned\n"); return; }
+    if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen lab returned\n"); return; }
     { const char *g=getenv("BUGSTAR_AFT_GOLD"); if(g) gold=atoll(g); }
-    if(!strcmp(mode,"pclab")){ pc_lab_screen((volatile u16*)0x06000000); fprintf(stderr,"screen pclab returned\n"); return; }
+    if(!strcmp(mode,"pclab")){ pc_lab_screen((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen pclab returned\n"); return; }
     if(!strcmp(mode,"shop")){ shop_menu(); fprintf(stderr,"screen shop returned\n"); return; }                                  // (screens test) the ship's shop menu (supplies, gear, sell, quest board, heal...)
-    if(!strcmp(mode,"spshop")){ spell_shop((volatile u16*)0x06000000); fprintf(stderr,"screen spshop returned\n"); return; }
-    if(!strcmp(mode,"bench")){ workbench((volatile u16*)0x06000000); fprintf(stderr,"screen bench returned\n"); return; }
-    if(!strcmp(mode,"colony")){ sim_ship_colony((volatile u16*)0x06000000); fprintf(stderr,"screen colony returned\n"); return; }
-    if(!strcmp(mode,"giant")){ pc_giant_hub((volatile u16*)0x06000000); fprintf(stderr,"screen giant returned\n"); return; }
-    if(!strcmp(mode,"missions")){ pc_ms_board((volatile u16*)0x06000000,MP_STATION); fprintf(stderr,"screen missions returned\n"); return; }
+    if(!strcmp(mode,"spshop")){ spell_shop((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen spshop returned\n"); return; }
+    if(!strcmp(mode,"bench")){ workbench((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen bench returned\n"); return; }
+    if(!strcmp(mode,"colony")){ sim_ship_colony((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen colony returned\n"); return; }
+    if(!strcmp(mode,"giant")){ pc_giant_hub((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen giant returned\n"); return; }
+    if(!strcmp(mode,"missions")){ pc_ms_board((volatile u16*)GBAA(0x06000000),MP_STATION); fprintf(stderr,"screen missions returned\n"); return; }
     if(!strcmp(mode,"hell")){ pcm_enc_mode=3; pcm_test_hell(); return; }               // (aftermath test) the surface burns now
     if(!strcmp(mode,"dun")){ pcm_enc_mode=3; enter_dungeon_flag=1; return; }                            // (aftermath test) go through the door; BUGSTAR_AFT_DUN=seal|inv|board says what happens down there
     if(!strcmp(mode,"encounter")){ pcm_enc_mode=3; pcm_clk=3599; pcm_enc_force=1; return; }

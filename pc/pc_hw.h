@@ -2,10 +2,11 @@
 #ifndef PC_HW_H
 #define PC_HW_H
 #include <stdint.h>
+#include "platform/pc_gbaaddr.h"
 uint16_t pc_vcount(void);            // replaces reading REG_VCOUNT: every read moves the beam one line on (228 lines = one frame)
 void pc_dma3(uint32_t cnt);          // replaces the write that starts DMA channel 3 (copies/fills now, like the real chip does)
 extern void (*pc_irq_fn)(void);      // the game's interrupt handler (installed by sound_init)
-static inline uint32_t pc_sp(void){ return 0x03007E00u; }   // the stack probes: pretend the stack is at the top of IWRAM
+static inline uint32_t pc_sp(void){ return GBAA(0x03007E00u); }   // the stack probes: pretend the stack is at the top of IWRAM
 int  pc_hw_init(const char *sav_path);
 void pc_hw_finish(void);             // writes the save file
 void pc_script(const char *path, const char *outprefix, long max_frames);

@@ -196,6 +196,17 @@ echo '#include "../pc_warship.inc"' >> main.c
 echo '#include "../pc_view.inc"' >> main.c
 echo '#include "../coil_test.inc"' >> main.c
 case "$PC_CFLAGS" in *TEST_KFUZZ*) echo '#include "../tests/kart_fuzz.inc"' >> main.c;; esac   # only the fuzz test build (-DTEST_KFUZZ=n) includes the driver
+# --- the fake GBA's address range (pc/platform/pc_gbaaddr.h). PC_GBA_TOP=0x30000000 moves every GBA address up by that much (Android: the Java heap sits on 02000000-12000000).
+# Every 0x0[2-8E]xxxxxx in the game's own code is a GBA address (RAM, I/O, palette, VRAM, OAM, ROM, SRAM): wrap it in GBAA(). With PC_GBA_TOP unset that is +0: the same program.
+# Two numbers look like addresses but are not (a random "memory error" screen, and a bit mask): hidden from the rewrite and put back.
+sed -i -e 's/0x02000000u+((fx_rnd/@@KEEP_A@@/g' -e 's/0x07FFFFFFu/@@KEEP_B@@/g' *.inc main.c
+python3 -c 'import re,sys
+r=re.compile(r"(?<![0-9A-Za-z_@])(0[xX]0[2-8eE][0-9A-Fa-f]{6}u?)(?![0-9A-Za-z_])")
+for f in sys.argv[1:]:
+    s=open(f,encoding="latin-1",newline="").read(); t=r.sub(r"GBAA(\1)",s)
+    if t!=s: open(f,"w",encoding="latin-1",newline="").write(t)' *.inc main.c
+sed -i -e 's/@@KEEP_A@@/0x02000000u+((fx_rnd/g' -e 's/@@KEEP_B@@/0x07FFFFFFu/g' *.inc main.c
+if [ -n "$PC_GBA_TOP" ]; then PC_CFLAGS="$PC_CFLAGS -DPC_GBA_TOP=$PC_GBA_TOP"; fi
 # --- compile -----------------------------------------------------------------------------------------------------------
 # -funsigned-char: the GBA compiler's char is unsigned. -fwrapv: ARM integers wrap. -no-pie: all addresses stay below 4 GB.
 # SDL: with the window front end (default) the game links the system SDL2 (libSDL2-2.0.so.0); PC_SDL=0 builds the headless-only program.

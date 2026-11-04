@@ -75,7 +75,7 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
         int y0=(int)((c->cy+0.5-c->r-1.5)*sy); if(y0<0) y0=0; int y1=(int)((c->cy+0.5+c->r+1.5)*sy)+1; if(y1>hn) y1=hn; if(y1<=y0) continue;
         pc_par_chunk(y1-y0,8,sn_rows,&k); }
     memset(pc_sn.ok,0,256); static const unsigned char okv[]={0,3,4,5,40,41,42,43,44,45,46,47,48,49,50}; for(unsigned i=0;i<sizeof okv;i++) pc_sn.ok[okv[i]]=1;
-    int t=((uintptr_t)pg)>=0x0600A000u?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames();
+    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames();
 }
 
 // the rest of the space view's wireframes (dust, station, rocks) at window resolution: drawn onto the same picture as the background (anti-aliased), and a mask
@@ -93,7 +93,7 @@ static void so_line(double x0,double y0,double x1,double y1,int ci){
 static void so_wire(const s32 *v,int nv,const u8 *e,int ne,int c){ double X[16],Y[16]; u8 ok[16]; for(int i=0;i<nv;i++) ok[i]=so_proj(v[i*3],v[i*3+1],v[i*3+2],&X[i],&Y[i]);
     for(int i=0;i<ne;i++){ int a=e[i*2], b=e[i*2+1]; if(ok[a]&&ok[b]) so_line(X[a],Y[a],X[b],Y[b],c); } }
 static void pc_so_native(volatile unsigned short *pg){
-    if(!pc_sn.w || !pc_sn.msk) return; int t=((uintptr_t)pg)>=0x0600A000u?1:0; memcpy(pc_sn.snap2[t],(const void*)pg,240*128); pc_sn.f2[t]=pc_frames();
+    if(!pc_sn.w || !pc_sn.msk) return; int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; memcpy(pc_sn.snap2[t],(const void*)pg,240*128); pc_sn.f2[t]=pc_frames();
     for(int i=0;i<20;i++){ s32 *d=&dust[i*3]; double X,Y,X2,Y2; if(so_proj(d[0],d[1],d[2],&X,&Y)){
         if(speed>14 && so_proj(d[0]-((bf[0]*speed*4)>>14),d[1]-((bf[1]*speed*4)>>14),d[2]-((bf[2]*speed*4)>>14),&X2,&Y2)) so_line(X,Y,X2,Y2,56); else so_line(X,Y,X,Y,56); } }
     if(in_lair) return;
