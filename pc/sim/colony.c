@@ -433,3 +433,32 @@ void col_outside(const SimColony *c, int *worry, int *aid){
     }
     if(worry) *worry = w; if(aid) *aid = a;
 }
+
+int col_call(const SimColony *c, uint32_t day){
+    if(c->state != COLS_ALIVE || !c->nset || !(c->mask & (1u << COLR_TENT)) || day < c->call_cool) return COLC_NONE;
+    if(c->raid_eta && (uint32_t)col_defence(c) < (uint32_t)c->raid_size + 10u) return COLC_RAID;
+    if(c->hungry_days || c->food < (uint32_t)c->nset * 4u) return COLC_FAMINE;
+    if(c->wood < 15 || c->morale < 40) return COLC_SUPPLY;
+    if(c->nset < col_cap(c->mask) && sim_rngn(c->town, day / 3u, RP_LUCK, 77, 4) == 0) return COLC_LOST;
+    return COLC_NONE;
+}
+void col_call_text(int call, char *o, size_t n){
+    const char *t = call == COLC_RAID ? "HUNT THE RAID SCOUTS" : call == COLC_FAMINE ? "CLEAR THE NEST FOR FOOD" : call == COLC_SUPPLY ? "BEAT THE CLOCK FOR SUPPLIES" : call == COLC_LOST ? "FREE THE LOST SETTLER" : "";
+    size_t i = 0; while(t[i] && i + 1 < n){ o[i] = t[i]; i++; } if(n) o[i] = 0;
+}
+int col_call_done(SimColony *c, int call, int depth, uint32_t day, char *o, size_t n){
+    if(call <= COLC_NONE || call >= COLC_N || c->state != COLS_ALIVE) return 0;
+    if(depth < 1) depth = 1; if(depth > 200) depth = 200;
+    char t[48]; t[0] = 0;
+    switch(call){
+    case COLC_RAID:   c->raid_size = (uint16_t)(c->raid_size * 7u / 10u + (c->raid_size ? 1u : 0u)); c->help_days = 5; snprintf(t, sizeof t, "RAID CUT TO %u. DEFENCE UP", (unsigned)c->raid_size); break;
+    case COLC_FAMINE: c->food = sat_add(c->food, 20u + (uint32_t)depth * 4u); c->hungry_days = 0; snprintf(t, sizeof t, "COLONY +%u FOOD", 20u + (unsigned)depth * 4u); break;
+    case COLC_SUPPLY: c->wood = sat_add(c->wood, 15u + (uint32_t)depth * 2u); c->ore = sat_add(c->ore, 5u + (uint32_t)depth); c->goods = sat_add(c->goods, 3u + (uint32_t)depth / 2u);
+                      if(c->morale < 100) c->morale = (uint8_t)(c->morale + 10 > 100 ? 100 : c->morale + 10); snprintf(t, sizeof t, "COLONY +%u WOOD, ORE, GOODS", 15u + (unsigned)depth * 2u); break;
+    default:          if(c->nset < col_cap(c->mask)){ c->nset++; snprintf(t, sizeof t, "A SETTLER CAME HOME. %u LIVE HERE", (unsigned)c->nset); }
+                      else { c->food = sat_add(c->food, 10); c->morale = (uint8_t)(c->morale + 15 > 100 ? 100 : c->morale + 15); snprintf(t, sizeof t, "THE SETTLER IS HOME. MORALE UP"); } break;
+    }
+    c->call_cool = day + 2u;
+    if(o && n){ size_t i = 0; while(t[i] && i + 1 < n){ o[i] = t[i]; i++; } o[i] = 0; }
+    return 1;
+}

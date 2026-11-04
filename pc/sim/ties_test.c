@@ -44,5 +44,16 @@ int main(void){
     col_day(&c, 5); col_day(&z, 5); CHECK(c.ore >= z.ore + 1 && c.goods >= z.goods + 1);
     c.raid_eta = 5; c.raid_size = 200; int wy, ad; col_outside(&c, &wy, &ad); CHECK(wy == 2);
     c.raid_eta = 0; c.food = 6 * 40; c.hungry_days = 0; col_outside(&c, &wy, &ad); CHECK(wy == 0 && ad == 2);
+    // dungeon calls: trouble picks the call; clearing it pays once, then a rest
+    { SimColony k; col_init(&k, 3, 0); k.mask = 0x1ff; k.nset = 6; k.state = COLS_ALIVE; k.food = 200; k.wood = 100; k.morale = 80; char tx2[56];
+      CHECK(col_call(&k, 10) == COLC_NONE || col_call(&k, 10) == COLC_LOST);
+      k.raid_eta = 8; k.raid_size = 90; CHECK(col_call(&k, 10) == COLC_RAID); uint16_t rs = k.raid_size;
+      CHECK(col_call_done(&k, COLC_RAID, 5, 10, tx2, sizeof tx2) == 1 && k.raid_size < rs && k.help_days == 5 && strlen(tx2) > 3);
+      CHECK(col_call(&k, 11) != COLC_RAID);                                               // resting: no call for 2 days
+      k.raid_eta = 0; k.food = 3; k.call_cool = 0; CHECK(col_call(&k, 20) == COLC_FAMINE); uint32_t f1 = k.food; col_call_done(&k, COLC_FAMINE, 6, 20, 0, 0); CHECK(k.food == f1 + 44);
+      k.food = 200; k.wood = 5; k.call_cool = 0; CHECK(col_call(&k, 30) == COLC_SUPPLY); uint32_t w1 = k.wood; col_call_done(&k, COLC_SUPPLY, 4, 30, 0, 0); CHECK(k.wood == w1 + 23);
+      k.wood = 100; k.nset = 3; k.call_cool = 0; int lost = 0; for(uint32_t d = 0; d < 60; d += 3) if(col_call(&k, d) == COLC_LOST) lost++; CHECK(lost > 0 && lost < 20);
+      uint8_t ns = k.nset; col_call_done(&k, COLC_LOST, 3, 90, 0, 0); CHECK(k.nset == ns + 1);
+      k.state = COLS_RUINS; k.call_cool = 0; CHECK(col_call(&k, 50) == COLC_NONE && col_call_done(&k, COLC_RAID, 3, 50, 0, 0) == 0); }
     printf("ties_test: %d checks, %d failed\n", checks, fails); return fails != 0;
 }

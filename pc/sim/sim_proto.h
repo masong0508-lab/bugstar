@@ -20,4 +20,8 @@ static void sim_ship_colony(volatile unsigned short *pg);   // the ship menu's C
 static int  sim_is_on(void);
 static int  sim_invasion(unsigned size, unsigned long long *reward);   // a warship DEFEND mission raids this planet's colony for real: 1 won, -1 lost, 0 no colony
 static int  sim_planet_burnt(void);              // 1 if this planet was destroyed (kept in the colony records for good)
+static int  sim_dn_call(void);                   // patch 15: 1 if the colony has a call for this dungeon floor
+static void sim_dn_reset(void), sim_dn_pick(void), sim_dn_mark(void), sim_dn_leave(void);   // new floor / the floor event is chosen / after the floor is built / taking the stairs
+static void sim_dn_done(int fe);                 // a floor goal was met (FE_ELITE, FE_QUIET) or is checked on leaving (FE_SPEED, FE_NEST)
+static void sim_dn_draw(volatile unsigned short *pg);   // the COLONY CALLS line under the goal line
 #endif

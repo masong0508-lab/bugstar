@@ -62,9 +62,15 @@ typedef struct {
     uint32_t raids_won, raids_lost;
     uint64_t reward_due, reward_total;   // gold owed to the action game; all gold ever paid
     // patch 15 TIES (runtime: the glue sets them from the town; not saved, zero = no effect)
+    uint32_t call_cool;                                       // no new colony call before this day (runtime)
     uint8_t  t_def, t_food, t_wood, t_ore, t_goods, t_mood;   // defence, daily food/wood/ore/goods lent by friends; the town's mood 0..100
 } SimColony;
 void col_set_ties(SimColony *c, int def, int food, int wood, int ore, int goods, int mood);
+// patch 15 CALLS: the colony's real trouble picks a dungeon floor's goal (the glue maps them to floor events); clearing it pays the colony back.
+enum { COLC_NONE, COLC_RAID, COLC_FAMINE, COLC_SUPPLY, COLC_LOST, COLC_N };   // RAID -> elite hunt, FAMINE -> monster nest, SUPPLY -> speed run, LOST -> a caged settler
+int  col_call(const SimColony *c, uint32_t day);                   // what the colony needs from a dungeon floor today (COLC_*), 0 = nothing
+void col_call_text(int call, char *out, size_t n);                 // "HUNT THE RAID SCOUTS"
+int  col_call_done(SimColony *c, int call, int depth, uint32_t day, char *out, size_t n);   // pays the colony; 1 if it did. Then a 2 day rest
 void col_outside(const SimColony *c, int *worry, int *aid);   // for the town: 0..2 worry (raid coming), 0..2 aid (food to spare)
 
 typedef struct { uint8_t kind; uint32_t a, b; uint32_t day; } ColEvent;

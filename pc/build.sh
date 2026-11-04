@@ -138,6 +138,16 @@ H ui.inc 'static const char *const shop_nm[17]={' 'static const char *const shop
 H ui.inc '"KART CLUB","SPELL SHOP","MINING"};' '"KART CLUB","SPELL SHOP","MINING","COLONY","MISSIONS"};'
 H ui.inc 'static const char *const shop_ds[17]={' 'static const char *const shop_ds[19]={'
 H ui.inc '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG"};' '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG","YOUR SETTLERS: SEE THEM AND TAKE WHAT THEY MADE","WARSHIP JOBS: BOARD AND JOURNAL"};'
+# --- patch 15: colony calls in the dungeon (the colony's trouble picks a floor's goal; the floor event code does the rest)
+H dungeon.inc 'fl_ev=FE_NONE; fl_need=fl_have=0; fl_bonus=100; fl_done=0;' ' sim_dn_reset();' after
+H dungeon.inc '(rndi(100)<65 || cur_rock==5 || (ddna.on && ddna.haz))){' '(rndi(100)<65 || cur_rock==5 || (ddna.on && ddna.haz) || sim_dn_call())){'
+H dungeon.inc '        switch(fl_ev){' '        sim_dn_pick(); switch(fl_ev){'
+H dungeon.inc '    if(endless && cur_moon && !mboss){ char mb[40];' '    sim_dn_mark(); if(endless && cur_moon && !mboss){ char mb[40];'
+H dungeon.inc 'fl_done=1; int g=200+dlv()*40+depth_no*10;' 'fl_done=1; sim_dn_done(FE_ELITE); int g=200+dlv()*40+depth_no*10;'
+H dungeon.inc 'static void fl_leave(void){' 'static void fl_leave(void){ sim_dn_leave();'
+H dungeon.inc 'static void fl_draw(volatile u16 *pg){' ' sim_dn_draw(pg);' after
+H main.c 'dob[i].alive=0; free_bug(dob[i].sub); break;' '{ int cc_=dob[i].champ==3; dob[i].alive=0; free_bug(dob[i].sub); if(cc_) sim_dn_done(FE_QUIET); } break;'
+H main.c 'dob[near_cage].alive=0; free_bug(dob[near_cage].sub);' '{ int cc_=dob[near_cage].champ==3; dob[near_cage].alive=0; free_bug(dob[near_cage].sub); if(cc_) sim_dn_done(FE_QUIET); }'
 H ui.inc 'in_menu++; menu_msg[0]=0; ship_build_model();' 'in_menu++; menu_msg[0]=0; ship_build_model(); shop_tab_n[0]=sim_is_on()?5:4; shop_tab_id[0][3]=sim_is_on()?17:18; shop_tab_id[0][4]=18;'
 H ui.inc 'if(sel==15){ spell_shop(pg); continue; }' 'if(sel==17){ sim_ship_colony(pg); continue; } if(sel==15){ spell_shop(pg); continue; }'
 # --- the PC SHIP EDITOR (pc/shipyard): the hangar opens it, and your design gives the ship's numbers (no design file for the slot = the game's own numbers)

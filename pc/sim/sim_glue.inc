@@ -235,4 +235,29 @@ static void sim_frame(int n){
     if(sim_dump_at && sim_w.tick>=sim_dump_at){ sim_dump_at=sim_w.tick+600; sim_dump_all(); }
 }
 
+// ---------------------------------------------------------------- patch 15 CALLS: the colony's trouble sets the goal of a dungeon floor
+static int sim_dn_cur, sim_dn_paid;                    // the call this floor carries (COLC_*); calls paid so far (the tests read it)
+static int sim_dn_fe(int call){ return call==COLC_RAID ? FE_ELITE : call==COLC_FAMINE ? FE_NEST : call==COLC_SUPPLY ? FE_SPEED : call==COLC_LOST ? FE_QUIET : 0; }
+static int sim_dn_call(void){
+    if(!sim_is_on() || forge_on || base_mode) return 0;
+    if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
+    return col_call(sim_colony(),(u32)sim_day(&sim_w));
+}
+static void sim_dn_reset(void){ sim_dn_cur=0; }
+static void sim_dn_pick(void){ int c=sim_dn_call(); sim_dn_cur=c; if(c) fl_ev=sim_dn_fe(c); }
+static void sim_dn_mark(void){ if(sim_dn_cur!=COLC_LOST) return; for(int i=ndo-1;i>=0;i--) if(dob[i].kind==K_CAGE && dob[i].alive){ dob[i].champ=3; break; } }   // the last cage made is the settler's
+static void sim_dn_done(int fe){
+    if(!sim_dn_cur || fe!=sim_dn_fe(sim_dn_cur)) return;
+    char b[48]; if(!col_call_done(sim_colony(),sim_dn_cur,depth_no,(u32)sim_day(&sim_w),b,sizeof b)) return;
+    sim_dn_cur=0; sim_dn_paid++; say(b); sfx(6); msg_timer=70;
+}
+static void sim_dn_leave(void){
+    if(!sim_dn_cur) return;
+    if(fl_ev==FE_SPEED && !fl_done && (s32)(fl_end-vbl_count)>0) sim_dn_done(FE_SPEED);
+    else if(fl_ev==FE_NEST && !fl_done){ int live=0; for(int i=0;i<ndo;i++) if(dob[i].alive && is_mon(dob[i].kind)) live++; if(!live){ fl_done=1; sim_dn_done(FE_NEST); } }
+}
+static void sim_dn_draw(volatile u16 *pg){
+    if(!sim_dn_cur) return; char b[48]; scpy(b,"COLONY: "); { char t[32]; col_call_text(sim_dn_cur,t,sizeof t); scat(b,t); } text(pg,4,38,b,C_GOLD,1);
+}
+
 #include "sim_ui.inc"
