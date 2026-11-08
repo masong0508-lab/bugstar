@@ -180,7 +180,7 @@ static void kart_cup_next(void){
     if(k_cup_i>=3){ if(kw_mode) kw_tour_done(me); kart_stop(); return; }
     k_cup_i++; if(kw_mode) kw_tour_race(k_cup_i); else { k_trk=kcup_trk[k_cup_i]; kt_official(k_trk,&kt); }
     int grid=nrc-1; for(int i=0;i<nrc;i++) if(ord[i]==0) grid=nrc-1-i; if(grid<0) grid=0;     // the leader starts at the back
-    kart_go(NRC,grid,1,1); if(kw_mode) fade(0); }
+    kart_go(NRC,grid,1,1); }
 
 // ---------------------------------------------------------------- the track maker: drive, drop gates, close the loop
 EW static u8 kbeac[KG_MAX];

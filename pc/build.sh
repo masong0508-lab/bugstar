@@ -88,7 +88,7 @@ grep -c "pc_tick_poll();" main.c | grep -qx 1 && grep -c "pc_tick_step();" main.
 # --- patch 43 (game speed): the dungeon loop (scene 1 in run_game) waits only through vsync_flip(): "if the beam is already in the blank, flip now". On the GBA that is
 # true only when the frame's work really took that long. On the fake GBA the beam moves one line per REG_VCOUNT read, so it was ALWAYS "already in the blank" and the loop
 # ran 68 dungeon logic steps per vblank (measured: tests/speed.sh). On the PC every pass of the dungeon loop is one whole frame: wait for the next vblank, always.
-sed -i 's|^static void vsync_flip(void){ if(REG_VCOUNT>=160) return; while(REG_VCOUNT<160); }|static void vsync_flip(void){ vsync(); }|' main.c
+sed -i 's|^static void vsync_flip(void){ if(REG_VCOUNT>=160){ if(hud_pend \&\& REG_VCOUNT<215) hud_copy(); return; } while(REG_VCOUNT<160); if(hud_pend) hud_copy(); }|static void vsync_flip(void){ vsync(); }|' main.c
 grep -c "^static void vsync_flip(void){ vsync(); }" main.c | grep -qx 1 || { echo "build: vsync_flip patch did not apply"; exit 1; }
 # --- patch 43 (game speed): the game's profile timer (TM0 + TM1 cascaded, a 32-bit count of CPU cycles at 16.78 MHz) reads the fake GBA's clock: pc_tmr() = beam lines gone by x 1232
 # cycles, so it runs at the GBA's rate (280896 a frame) and does not stand still (before: always 0). Nothing in the game's logic reads it (only profile numbers and debug overlays).

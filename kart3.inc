@@ -72,7 +72,7 @@ static void kw_race_setup(void){ k_skill_adj = kw.skill==0 ? -8 : kw.skill==2 ? 
 static void kw_start_planet_race(u32 seed, u32 trk, int riders, int type){
     kw_world(seed,kw_force(kw.ftype)); kw_race_setup(); k_type=type; k_trk=(int)(trk%KW_TRACKS); k_rec=-1; kt_official(k_trk,&kt); kt_mirror_reverse(kw.mirror,kw.reverse);
     if(kw.laps) kt.laps=(u8)kw.laps; else kt.laps=0; if(type==5) kt.laps=2; if(type==6) kt.laps=50;
-    kart_go(riders,riders>1?-1:0,0,1); kt.laps = kt.laps ? kt.laps : 3; fade(0);
+    kart_go(riders,riders>1?-1:0,0,1); kt.laps = kt.laps ? kt.laps : 3;
 #ifdef TEST_TOPMAP
     { volatile u16 *pg=(volatile u16*)0x06000000; REG_DISPCNT=4|(1<<10); for(int y=0;y<160;y++) for(int x=0;x<120;x++){ int tx=(x*2*256/240+((ppx>>15)&255)-60)&255, ty=(y+((ppy>>15)&255)-80)&255; int c=cmap[ty*HW+tx]; pg[y*120+x]=c|(c<<8); }
       char b[48]; scpy(b,"KNP "); ncat(b,knp); scat(b," LEN "); ncat(b,kt_len); scat(b," N "); ncat(b,kt.n); scat(b," WL "); ncat(b,water_lv); scat(b," HS "); ncat(b,g_hs); text(pg,4,150,b,C_WHITE,1); while(1) vsync(); }
@@ -87,12 +87,12 @@ static void kw_tour_race(int i){                                  // race i of t
     u32 seed=kw_tour_seed(kw_tour,i); kw_world(seed,kw_force(kw_tour_type[kw_tour])); kw.weird=(u8)w; kw.mirror=(u8)mir; kw.reverse=(u8)rev;
     k_type=1; k_cup_i=i; k_trk=(int)(hmix(seed^0x51u)%(u32)kt_count()); k_rec=-1; kt_official(k_trk,&kt); kt.laps=0; kw_race_setup(); }
 static void kw_tour_start(void){
-    kw_race_setup(); kw_tour_race(0); rc[0].pts=0; kart_go(NRC,-1,0,1); for(int r=0;r<NRC;r++) rc[r].pts=0; fade(0); }
+    kw_race_setup(); kw_tour_race(0); rc[0].pts=0; kart_go(NRC,-1,0,1); for(int r=0;r<NRC;r++) rc[r].pts=0; }
 static void kw_endless_race(void){
     u32 seed=rnd(); int c = kw_endless_n/3; if(c>4) c=4; if(c>=kw.cls_open) c=kw.cls_open-1; k_cls=c;
     k_skill_adj = kw_endless_n*2; if(k_skill_adj>16) k_skill_adj=16; k_items=1; k_catch=1; k_stunts=0; kwd_palette();
     kw_world(seed,0); k_type=5; k_trk=(int)(rnd()%KW_TRACKS); k_rec=-1; kt_official(k_trk,&kt); kt.laps=2;
-    char b[40]; scpy(b,"ENDLESS RUN: PLANET "); ncat(b,kw_endless_n+1); show_msg(b); kart_go(NRC,-1,0,1); fade(0); }
+    char b[40]; scpy(b,"ENDLESS RUN: PLANET "); ncat(b,kw_endless_n+1); show_msg(b); kart_go(NRC,-1,0,1); }
 
 // ---------------------------------------------------------------- after each Kart World race
 static void kw_after_race(int me){                                 // returns through the race's end: what Kart World does next
@@ -255,12 +255,13 @@ static int kw_my_tracks(volatile u16 *pg){                         // race any s
     if(r.at.star==0xFF){ kw_world(r.at.seed,r.at.body); }
     else { for(int w=0;w<UAX;w++){ clus[w]=r.at.cx[w]; clus[UAX+w]=r.at.cy[w]; } { u32 fu[UW]; fav_uni(&r.at,fu); uni_set(fu); } clus_refold(); gen_cluster(); cur_sys=r.at.star; cur_pl=r.at.body>>3; cur_moon=r.at.body&7;
         land_on_current(); fade(1); landing_screen(0); new_planet(); planet_enter(); scene=0; msg_timer=0; }
-    kw_race_setup(); krec_to_kt(&r); k_rec=ri; k_trk=-1; k_cls = r.cls<kw.cls_open ? r.cls : 0; k_type=4; kart_go(r.riv+1,-1,0,1); fade(0); return 1; }
+    kw_race_setup(); krec_to_kt(&r); k_rec=ri; k_trk=-1; k_cls = r.cls<kw.cls_open ? r.cls : 0; k_type=4; kart_go(r.riv+1,-1,0,1); return 1; }
 
 // ---------------------------------------------------------------- the whole mode
 static void kw_run(void){                                          // the planet, with a race on it, until the race says we are done
     while(!kw_quit){ read_keys(); frames++; if(invuln) invuln--; rng_s+=keys; planet_frame();
-        vsync(); if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?(1<<4):0); page_back^=1; oam_flush(); } }
+        vsync(); if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?(1<<4):0); page_back^=1; oam_flush(); }
+        if(kg_fadein && !--kg_fadein) fade(0); }                                                         // (a race that has just started: its first pictures are drawn in the dark, then it fades in)
     fade(1); oam_hide_all(); oam_flush(); music(2); }
 static void kart_world(void){
     shd_off();

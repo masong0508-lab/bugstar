@@ -528,7 +528,7 @@ static void kart_place_grid(int r, int slot){
     Racer *k=&rc[r]; k->pi=(s16)pi; k->hd=(s16)dir; k->lap=0; k->nextg=0;
     k->x=(kp_cx(pi)+((sinx(nd>>2)*side*9)>>1))&((TW<<16)-1); k->y=(kp_cy(pi)+((cosx(nd>>2)*side*9)>>1))&((TW<<16)-1); }   // two columns, 1.1 cells either side
 static void kart_go(int riders, int grid_me, int keep, int repaint){
-    shd_off(); if(!scr_black){ fade(1); kg_fadein=4; }              // (from a menu: fade out, draw the first race pictures in the dark, fade in; no half menu, half road)
+    shd_off(); if(!scr_black) fade(1); kg_fadein=4;              // (from a menu: fade out, draw the first race pictures in the dark, fade in; no half menu, half road)
     if(kw_mode) krev=0;   // paint the track, line everyone up and start the countdown
     if(!kr_mode){ kret_x=ppx; kret_y=ppy; kret_h=heading; }
     kgive_back(); katan_init(); kloop_on=0; kloop_ph=0; kla=0; kloop_prev=-1; kdraft=0; kstuck=0; kbr_cur=0; kstar=0; kroul=0; for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; kloop_hide=0;
