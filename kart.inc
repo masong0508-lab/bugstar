@@ -304,7 +304,7 @@ static void kt_paint(void){
             int covK=kcov(KW_OUT-ala,invw);
             if(covK<56){ if(!ramp){ hfine[t]=(u8)(ala<(4<<8) ? (hfine[t]+hp*3+2)>>2 : (hfine[t]+hp+1)>>1); } continue; }   // the shoulder eases into the land
             int covA=kcov(KW_IN-ala,invw), c;
-            int inner = ramp ? ((i&1) ? KRC_RAMP : KRC_RAMP2) : start ? ((((la+1024)>>8)+i)&1) ? KRC_CK0 : KRC_CK1 : (pad && ala<1100) ? ((((i*256-ala)>>7)&3)<2 ? KRC_PAD : KRC_A) : KRC_A;
+            int inner = ramp ? ((i&1) ? KRC_RAMP : KRC_RAMP2) : start ? ((((la+1024)>>8)+i)&1) ? KRC_CK0 : KRC_CK1 : (pad && ala<1100) ? (((i>>1)&1) ? KRC_PAD : KRC_A) : KRC_A;
             if(ramp && ala>KW_IN) inner=KRC_RAMP2;
             if(covA>=128){                                                                    // the asphalt
                 if(inner==KRC_A){
