@@ -24,13 +24,13 @@ Built and tested: sizes, reward formula, fights, interiors, missions, encounters
 - [ ] Re-run the skipped suites. DONE in patch 17 (all pass): in-game `pc/tests/warship.sh`, `pc/tests/aftermath.sh`, `pc/warship/test.sh`, `pc/sim/test.sh`. STILL TO RUN: coil.sh, giant.sh, giant/test.sh. Fix stale goldens once, in one commit.
 - [x] Shipyard rooms into warship interiors (patch 18, part 2): `wd_make_mix` (`pc/warship/ws_deck.h`, `WdMix`) builds a deck from a design's rooms and props (bunks, crates, guns, fighters); `wd_make` is the same call with no mix and its decks are byte for byte what they were. Glue: `pc/warship/ws_mix_sy.h` (`wd_mix_from_sy`). Tests: `pc/warship/mix_test.c` (in `pc/warship/test.sh`). A craft with many subsystem rooms of its own (the 8 rooms of a single-deck NORMAL craft) leaves less floor: the mix then gets what fits and never more than it asked.
 - [x] Call `wd_make_mix` from the game (patch 19, `pcw_mix` in `pc/pc_warship.inc`): when the ship editor's FOES option is on, a boarded craft gets a `sy_foe` design (team 1, level from its class) made from its own seed, and that design's rooms and props build the deck. FOES off: decks exactly as before. `BUGSTAR_WS_MIX=1/0` forces it on/off (tests). In-game check in `pc/tests/warship.sh`. NOT seen in play by you.
-- [ ] Boarding an ALLIED craft should use a team 0 design, and your own ship's design for your own hangar deck; today every boarded craft is treated as an enemy design. Foe designs still do not change stats or fight rules.
+- [x] (patch 44: with a mix every bunk has a sleeper and the workshops are worked) - [ ] Boarding an ALLIED craft should use a team 0 design, and your own ship's design for your own hangar deck; today every boarded craft is treated as an enemy design. Foe designs still do not change stats or fight rules.
 - [ ] Foe designs that change stats and fight rules; designs for allied and enemy ships (README says not done).
 - [ ] Extreme end: play a real dead-world path once (colony ruins, burnt planet, resettle elsewhere). Story worlds must never be destroyed for good.
 - [ ] Death penalty check: the save stays byte identical apart from the stated penalty.
 
 ## D. Side game (pc/DEPTH_PLAN.md), phases 6 and up
-- [ ] Workshops and the mine with z-levels (the nest under the mine is half done through the FAMINE call).
+- [x] Workshops and the mine with z-levels (patch 44, `pc/sim/mine.c`; see README, 'The colony's WORKSHOPS and MINE'). Still to do: a colony call for the mine (a cave-in rescue or a missing-material run), mine events in the dungeon generator, the nest under the mine. NOT played by you.
 - [ ] WorldBox-style races, tribes and powers using the 12,672 creatures and 48 god powers.
 - [ ] Replay layer.
 - [ ] Permanent ruins shown in the planet file.

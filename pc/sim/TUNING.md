@@ -102,3 +102,14 @@ NOT played by you. Plain C (`pc/sim/standing.h`, header only) plus glue; PC and 
 - Old saves: menus already earned are adopted silently. New save chunk STND (80 bytes); old files have none.
 - PC LAB > SIDE GAME keeps the first six menus open (cheat page). Test hook: BUGSTAR_SET_FAME=n.
 - Tests: standing_test.c (13,570 checks) in test.sh; whole test.sh passes. In-game: sim_town, sim_lab, sim_friend, sim_unlock, determinism OK. sim_collect still FAILS with fame 699 (not diagnosed). sim_off golden was already stale.
+
+# Patch 44: workshops and mine (phase 6)
+
+NOT played by you. Plain C (`pc/sim/mine.c`) plus glue; the numbers below are guesses measured only with `mine_test.c` and one in-game run.
+
+- Seams: `150 + 40 x level + 0..99` ore a level (an eight-miner colony used to dry a level in a few days at 30 + 8 x level; now about 10 to 25 days). Dry levels find new veins (a quarter of a seam) every 120 days, so a mine never ends.
+- Yield per miner a day: `1 + level/6 + tools/4 + 0..1`; ore into the colony counts `1 + level/8` per unit. Deep ore is a few times the surface miner's 2 a day, not ten times.
+- Creak odds (per mille a day) `4 + 3 x level - 2 x braces - tools/2 + miners/4`; the colony works levels at 24 or less (two braces: down to level 7 on NORMAL, deeper on CALM). In 108,000 mine-days of 8 miners that was one cave-in per 144 days, 172 deaths on NORMAL and HARSH, none on CALM. Brace 0 against brace 9 at level 8: 488 against 28 cave-ins in 24,000 mine-days.
+- The colony never saves wood below 12 for the workshops, braces or digging (houses and fields still get built).
+- Check against play: gold from bars and tools (9G and 30G each) next to the old surface ore (3G); gems 60G. `col_collect` still sells all colony ore at 3G, so a deep mine mostly feeds the smelter's 1 to 3 units a day.
+- Found while testing: `sim_rows` kept each row in 56 letters but a locked rung's text is 67 (stack overflow when a colony had locked rungs): the buffers are 96 now. The side file's chunk buffer was 4,499 bytes, so a colony list of more than 27 colonies was silently not saved: 8,192 now.
