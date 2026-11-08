@@ -312,12 +312,12 @@ static void kt_paint(void){
             int covA=kcov(KW_IN-ala,invw), c;
             int inner = ramp ? ((i&1) ? KRC_RAMP : KRC_RAMP2) : start ? ((((la+1024)>>8)+i)&1) ? KRC_CK0 : KRC_CK1 : (pad && ala<1100) ? (((i>>1)&1) ? KRC_PAD : KRC_A) : KRC_A;
             if(ramp && ala>KW_IN) inner=KRC_RAMP2;
-            if(covA>=128){                                                                    // the asphalt
-                if(inner==KRC_A){
-                    int cl=0; if(line){ int c1=kcov(KW_IN-60-ala,invw), c0=kcov(KW_IN-330-ala,invw); cl=c1-c0; if(cl<0) cl=0;       // the solid edge lines: a whole texel wide
+            if(covA>=56 && inner==KRC_A){                                                     // the asphalt, its edges soft: a texel the kerb or a line only partly covers gets a blend colour
+                if(covA>=200){ int cl=0; if(line){ int c1=kcov(KW_IN-60-ala,invw), c0=kcov(KW_IN-330-ala,invw); cl=c1-c0; if(cl<0) cl=0;       // the solid edge lines: a whole texel wide
                         if(dash){ int d=kcov(128-ala,invw); if(d>cl) cl=d; } }
-                    c = cl>=128 ? KRC_LINE : (((i/5)&1) ? KRC_A : KRC_B); }
-                else c=inner; }
+                    c = cl>=200 ? KRC_LINE : cl>=128 ? KRC_AY2 : cl>=56 ? KRC_AY1 : (((i/5)&1) ? KRC_A : KRC_B); }
+                else c = covA>=128 ? (kw?KRC_AW1:KRC_AR1) : (kw?KRC_AW2:KRC_AR2); }
+            else if(covA>=128) c=inner;
             else c = covK>=200 ? (kw?KRC_KW:KRC_KR) : (kw?KRC_KWM:KRC_KRM);                    // the kerb, its outer edge soft
             cmap[t]=(u8)c; hfine[t]=(u8)hp; } }
     kt_painted=1; }
@@ -381,10 +381,12 @@ static int kitem_roll(int place){                                  // further ba
     if(place<=1) return r<35?KI_SLIME : r<65?KI_BUBBLE : r<85?KI_PEPPER : KI_SHELL;
     if(place<=3) return r<25?KI_PEPPER : r<50?KI_SHELL : r<65?KI_SLIME : r<80?KI_BUBBLE : r<92?KI_MAGNET : KI_SNEEZE;
     return r<20?KI_PEPPER3 : r<38?KI_SHELL : r<52?KI_MAGNET : r<66?KI_CLOUD : r<80?KI_SNEEZE : r<92?KI_PEPPER : KI_BUBBLE; }
+static int kpnear(s32 x, s32 y){ s32 dx=wrapd(x-ppx), dy=wrapd(y-ppy); return (dx<0?-dx:dx)+(dy<0?-dy:dy) < (16<<16); }
 static void kspin(int r, const char *why){
     Racer *k=&rc[r]; if(k->fin || k->la || (r==0 && kloop_on)) return;                      // (nothing hits you upside down in a loop)
     if(k->spin) return;
-    if(k->shield){ k->shield=0; if(r==0) show_msg("YOUR BUBBLE POPPED!"); sfx(2); return; }
+    if(k->shield){ k->shield=0; if(r==0) show_msg("YOUR BUBBLE POPPED!"); if(r==0 || kpnear(k->x,k->y)) sfx(2); return; }
+    if(r!=0 && kpnear(k->x,k->y)) sfx(1);                                                  // (a rival gets hit nearby: you hear it)
     k->spin=48; if(r==0){ show_msg(why); sfx(4); kboost_t=0; kdrift=0; kcharge=0; if(kstar) kstar = kstar>3 ? kstar-3 : 0; } }   // (hit: you drop some star bits)
 static int kahead(int r){                                          // the racer just ahead of r (or -1)
     int want=rc[r].place-1; if(want<1) return -1; for(int i=0;i<nrc;i++) if(rc[i].place==want) return i; return -1; }
@@ -401,7 +403,7 @@ static void kuse_item(int r){
         case KI_CLOUD: for(int i=0;i<nrc;i++) if(rc[i].place==1 && i!=r){ rc[i].cloud=200; if(i==0) show_msg("A GRUMPY CLOUD! IT IS RAINING ON YOU"); } if(r==0) sfx(8); break; }
     k->item=0; k->item_n=0; }
 static void kitems_tick(int n){
-    if(kroul>0){ kroul-=n; if(kroul<=0){ kroul=0; if(rc[0].item){ char b2[40]; scpy(b2,"GOT: "); scat(b2,kitem_name[rc[0].item]); scat(b2,"! A: USE"); show_msg(b2); sfx(7); } } }   // the item box spins for a moment before it shows what you got
+    if(kroul>0){ kroul-=n; if(kroul>0 && (kroul&7)<n) sfx(7); else if(kroul<=0){ kroul=0; if(rc[0].item){ char b2[40]; scpy(b2,"GOT: "); scat(b2,kitem_name[rc[0].item]); scat(b2,"! A: USE"); show_msg(b2); sfx(7); } } }   // the item box spins for a moment before it shows what you got
     for(int b=0;b<15;b++){ if(kbox_po[b]==255) continue; PObj *o=&po[kbox_po[b]];
         if(kbox_t[b]){ if(kbox_t[b]>n) kbox_t[b]-=n; else { kbox_t[b]=0; o->alive=1; } continue; }
         for(int r=0;r<nrc;r++){ s32 dx=wrapd(rc[r].x-o->x), dy=wrapd(rc[r].y-o->y); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<0xE000){ o->alive=0; kbox_t[b] = k_items==2 ? 80 : 200;
@@ -411,7 +413,7 @@ static void kitems_tick(int n){
     for(int s=0;s<3;s++){ KShell *h=&ksh[s]; if(!h->life) continue; if(h->life>n) h->life-=n; else h->life=0;
         s32 tx, ty; int tg=h->tgt;
         if(tg>=0 && !rc[tg].fin){ s32 dx=wrapd(rc[tg].x-h->x), dy=wrapd(rc[tg].y-h->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
-            if(ad<0xC000){ kspin(tg,"BONK! A BEETLE SHELL GOT YOU"); h->life=0; }
+            if(ad<0xC000){ int sp0=rc[tg].spin; kspin(tg,"BONK! A BEETLE SHELL GOT YOU"); if(h->owner==0 && tg!=0 && !sp0 && rc[tg].spin){ show_msg("DIRECT HIT!"); sfx(9); } h->life=0; }
             if(ad<(6<<16)){ tx=rc[tg].x; ty=rc[tg].y; } else { h->pi=(h->pi+3*n)%knp; tx=kp_cx(h->pi); ty=kp_cy(h->pi); } }
         else { h->pi=(h->pi+3*n)%knp; tx=kp_cx(h->pi); ty=kp_cy(h->pi); }
         s32 dx=wrapd(tx-h->x), dy=wrapd(ty-h->y); int a=iatan2(dx>>4,dy>>4); s32 sp=(K_VBASE*17/10)*n;
@@ -895,6 +897,18 @@ static void kbump(void){                                           // karts that
 
 // ---------------------------------------------------------------- every frame of a race
 static void kart_results(void); static void kw_elim_tick(int n);
+static u8 kpal_fx=0;
+static void kshield_fx(void){                                      // the bubble: your kart's colours flash cyan and white while it holds (and its blip stays on until a hit pops it)
+    int want = rc[0].shield && ((frames>>2)&1); volatile u16 *P=OBJ_PAL+7*16;
+    if(want){ u16 c1=(frames&2) ? C15(130,225,255) : C15(255,255,255); P[1]=C15(40,120,200); P[2]=C15(60,170,220); P[3]=c1; P[4]=C15(235,255,255); P[5]=c1; P[6]=C15(60,170,220); P[7]=C15(220,250,255); P[12]=c1; P[13]=C15(40,120,200); P[15]=C15(235,255,255); kpal_fx=1; }
+    else if(kpal_fx){ kart_bank(7,&kl); kpal_fx=0; } }
+static int keng_t=0;
+static void kengine(int n){                                        // the motor: a low put-put on channel 1 that quickens and rises with your speed (it gives way to any noise and to the final lap's arpeggio)
+    if(ks_state!=KS_RACE || !opt_sfx || mus_hold1 || mus_track==7 || rc[0].fin || kr_mode!=1) return;
+    keng_t-=n; if(keng_t>0) return;
+    int s=(int)((kv>0?kv:-kv)*16/K_VBASE); if(s>26) s=26;
+    keng_t=9-s/4; if(kstall) keng_t=10;
+    SND(0x00)=0; SND(0x02)=((kboost_t?7:4)<<12)|(1<<8)|(0<<6); SND(0x04)=0x8000|(620+s*24); }
 static void kart_tick(int n){
     if(kr_mode!=1) return;
     if(ks_state==KS_COUNT){ int was=k_count; k_count-=n;
@@ -928,7 +942,10 @@ static void kart_tick(int n){
             int d=kp_dir(k->pi), off=((k->hd-d+512)&1023)-512; if(off<0) off=-off; if(off>300 && k->v>K_VBASE/4) { klog[40]++; klogb[32+k->pi*16/knp]++; if(klogn<1500 && (frames&7)==0) klogp[klogn++]=((k->x>>15)&255)|(((k->y>>15)&255)<<8)|((u32)r<<16)|((u32)(k->v>>8)<<20); } if(k->v<K_VBASE/10) klog[44]++; }
         klog[41]=fin; klog[42]=sl; klog[43]=k_clock; klog[45]=mn; klog[46]=mx; klog[47]=nrc; }
 #endif
-    kitems_tick(n); kbump(); kplaces(); kw_elim_tick(n);
+#ifdef TEST_KSH
+    if(ks_state==KS_RACE){ if(k_clock>40) rc[0].shield=255; if(k_clock>140 && k_clock<400 && !rc[0].spin) rc[0].spin=30; }
+#endif
+    kitems_tick(n); kbump(); kplaces(); kw_elim_tick(n); kengine(n); kshield_fx();
     for(int r=1;r<nrc;r++) if(rc[r].po!=255){ po[rc[r].po].x=rc[r].x; po[rc[r].po].y=rc[r].y; }
     if(HIT(K_L)){ khorn(kl.part[KP_HORN]); for(int r=1;r<nrc;r++){ s32 dx=wrapd(rc[r].x-ppx), dy=wrapd(rc[r].y-ppy); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<(4<<16)) rc[r].lane=-rc[r].lane; } }
     if(!rc[0].fin && (k_finished>=nrc-1 || k_clock>36000) && nrc>1){          // (no race may last over ten minutes: then the HURRY timer runs whatever the others are doing)
