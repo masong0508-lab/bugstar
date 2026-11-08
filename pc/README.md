@@ -49,11 +49,45 @@ about no window, no sound and wrong kart ground are history; the window, sound, 
 ## Not done (the limits)
 
 - **Windows exe** is cross-compiled and has never been run on real Windows.
-- **Native-resolution 3D** for the dungeon, planet and space views is not done: they still draw at 240x160 and are scaled (see NATIVE_PLAN.md, Seam 6).
+- **Native-resolution 3D** (space, planet, dungeon, terraced cavern, kart) is done; the speeds are in the table under "Native 3D views" below. Not native yet: the cockpit frame in space, the dungeon's wall tops and bottoms are not anti-aliased, ULTRA is bloom and glow (no supersampling).
 - **Not drawn:** windows, mosaic, tile backgrounds, object-window sprites (the game's code does not use them; only the skipped boot logo uses tile layers).
-- **Kart NATIVE view** is about 34 to 44 ms a frame at 1200x800 on a 2-core box (target 60 fps).
+- **Kart NATIVE view** costs about 23 ms of CPU a frame at 1200x800 (it was 34 to 44): about 12 ms on two free cores, see the table. Planet and terrace views at 1200x800 need a 4-core PC for 60 fps.
 - The build hides compiler warnings with `-w`; 64-bit surprises beyond the saved layout are possible.
 - Window, sound, gamepad, mouse, kart ground and the native dungeon exist now (see ROADMAP_NEXT.md).
+
+## Native 3D views (Esc > VIDEO > 3D VIEWS)
+
+**CLASSIC** is the GBA picture (the goldens and every test use it). **NATIVE** draws the dungeon, the terraced cavern, the planet, space and the kart ground at the window's own size.
+**ULTRA** is NATIVE plus a bloom pass (bright suns, lamps, sparks, lava and flashes spill a soft glow) and extra glow on suns, sparks, embers and cargo cans (`PC_V3D=3` in the environment forces it in tests).
+What is native now:
+
+| view | drawn at window size |
+|---|---|
+| space | stars, planets, the sun, the station, rocks, cargo cans, hit sparks, laser bolts (cockpit and chase), the crosshair |
+| planet | terrain with anti-aliased silhouette edges, sky, stars, weather (rain streaks, snow, dust, embers, ash), weird worlds (extra suns, moons with a terminator, rings, meteors with tails), hell suns and the skull moon, the parked ship's shadow, the ore minimap |
+| dungeon | walls, floors, ceilings, things and monsters, water and polished floors that mirror the wall in front of them, the terraced cavern (`terrace.inc`: ledges, rails, risers, pillars, high ceiling, with a depth per pixel for things behind them) |
+| kart | ground, horizon, sky, far hills, shadows, banking and hills |
+
+Anything the game draws after the 3D pass (HUD, text, the cockpit frame) stays the game's own 240x160 picture, put on top where the page still holds what the game wrote.
+
+**Speed at 1200x800** (`PC_NATIVE=2 PC_SCALE=5`, one picture; `PC_NBENCH=60` at a shot frame prints the best of 60 composes and the native pass of the game frame, wall and CPU time).
+The build machine has 2 cores and was busy with other jobs (load average 3 to 7), so wall times here are worse than on a free machine. "CPU" is all threads added up
+(the row workers share the work), so a free 2-core PC needs about half of it, a 4-core PC about a quarter. Best frame of a run, in ms:
+
+| view (NATIVE) | compose CPU | game-frame pass CPU | total CPU | wall, measured (busy box) | est. wall on 2 free cores | 30 fps (33 ms) | 60 fps (16.7 ms) |
+|---|---|---|---|---|---|---|---|
+| space (with cans and sparks) | 9.9 | 0.3 | 10.2 | 10.2 | 5 | yes | yes |
+| planet | 18.9 | 36.5 | 55 | 51 | 28 | yes | needs 4 cores |
+| dungeon | 20.3 | 12.6 | 33 | 30 | 17 | yes | about (4 cores: yes) |
+| dungeon, terraced cavern | 21.5 | 31.7 | 53 | 46 | 27 | yes | needs 4 cores |
+| kart | 22.8 | (in the compose) | 23 | 23 | 12 | yes | yes |
+
+ULTRA adds the bloom, about 3 to 4 ms of CPU: space 13.4, planet 56, dungeon 37, terraced cavern 57, kart 23 (CPU, ms).
+The kart went from 34 to 44 ms to 23 ms CPU with fixed-point bilinear for the near ground (runs of pixels that share a table row step u and v by one add),
+one colour for a run of sky pixels, sprite texels decoded once a picture, and affine (scaled) sprites that only visit the part of a row that lands in their picture.
+How to measure again: `tests/vt_run.sh NAME PC_V3D=1 PC_NBENCH=60 BUGSTAR_VT=space,1,0,0,0 BUGSTAR_VT_FX=1` (or `planet,-1,-1,1,0,5`, `dungeon,3,0,1` with `BUGSTAR_VT_FX=1` for water,
+`dungeon,3,1` for the terraced cavern, `kart,0`), then look at `pc/out/vt/NAME.err`. `BUGSTAR_VT=<view>` jumps a running game to that view (see `pc_vt_tick` in `pc_warship.inc`);
+`BUGSTAR_VT_WLV="19:14,20:12"` sets weird-world traits (suns, rings, ...), `BUGSTAR_VT_HEAD` the heading. The PNGs come out as `NAME_003140.png`.
 
 ## The universe the game already has (names for the code that does it)
 
