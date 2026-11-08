@@ -18,5 +18,7 @@ run count giant_count.txt 5000 "$G"
 run misc giant_misc.txt 5200 "$G"
 # the V3 name with NO digit folder: the row says INDEX NEEDED, opening it must not crash
 MINU=3 run v3none giant_v3.txt 4500 "BUGSTAR_GIANT_DIR=$(pwd)/out/gt_nodir $G"
-if [ -n "$BUGSTAR_GIANT_DIR" ]; then run v3 giant_v3.txt 6600 "BUGSTAR_GIANT_DIR=$BUGSTAR_GIANT_DIR $G"; else echo "giant: v3 with the index skipped (set BUGSTAR_GIANT_DIR to a folder with the V3 index)"; fi
+if [ -n "$BUGSTAR_GIANT_DIR" ]; then MINU=4 run v3 giant_v3.txt 6600 "BUGSTAR_GIANT_DIR=$BUGSTAR_GIANT_DIR $G"
+    # the long walk (patch 45): scroll, hold-scroll, jump to the last letter (SEL = max), the menu, go to the start / end, a term jump, the about pages, WRITE 1 MB (1,048,576 bytes and its SHA-256 on screen)
+    MINU=9 run v3deep giant_v3deep.txt 10400 "BUGSTAR_GIANT_DIR=$BUGSTAR_GIANT_DIR $G"; else echo "giant: v3 with the index skipped (set BUGSTAR_GIANT_DIR to a folder with the V3 index)"; fi
 [ $fail = 0 ] && echo "giant: OK" || exit 1

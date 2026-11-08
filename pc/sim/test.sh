@@ -26,6 +26,8 @@ $CC standing_test.c mine.c sim_core.c colony.c god.c lv.c -o out/standing_test
 ./out/standing_test
 $CC mine_test.c mine.c sim_core.c colony.c god.c lv.c -o out/mine_test
 ./out/mine_test
+$CC mine_bal.c mine.c sim_core.c colony.c god.c lv.c -o out/mine_bal -include stdlib.h
+./out/mine_bal 600 8 | tail -1     # the long run (1500 days x 30 seeds) is how TUNING.md patch 45 was measured
 # against Python's own big integers: random and edge numbers, all operations, including saturation at 64^256
 python3 - <<'PY' > out/lv_cases.txt
 import random

@@ -457,3 +457,12 @@ Nothing is drawn by hand and nothing is stored: a picture is a pure function of 
 - **SPRITE GALLERY:** PC LAB, last row. L and R pick the kind, the arrows pick the number (UP and DOWN a row, SELECT +100, A a random one, hold to repeat), planets turn.
 - **Cost:** sprites are made once per (id, size bucket) and kept in a 192 picture least-recently-used cache; the blit is fixed-point. Planet discs re-render only when the spin or the light changes.
 - **Tests:** `bash pc/tests/sprgen.sh` (all generators: same id same hash, different ids different pictures, not empty, any size 8 to 256, cache, blit, planets; again under the address and undefined-behaviour sanitizers; -O0 and -O2 give identical output). Contact sheets: `pc/tests/sprgen_sheet.c`. Pictures of the game: `BUGSTAR_SG_DEMO=1` lines up one of every object kind in front of you (used with `tests/vt_run.sh` and `tests/sprgen_vt.txt`).
+
+
+## Patch 45: played through by script
+
+- `tests/mission.sh`: every warship mission kind from board to payout, the gold checked against `warship/ms_check.c`, save and CONTINUE, deadline expiry. New env vars: BUGSTAR_MS_SYNC, BUGSTAR_MS_AUTO, BUGSTAR_MS_KIND/Z/DL/ENC, BUGSTAR_WS_ALLY, BUGSTAR_WS_MIX, BUGSTAR_WS_TEST=mplay/maccept/mresume/mcheck/mexpire/mscan.
+- `tests/walk.sh`: the scanner's ALLY row boards a convoy craft with the team 0 design, YOUR SHIP walks your own hangar deck; both are peaceful (crew only, no guards, no targets). Leaving an ally refits you.
+- A raid that burns a colony now ruins it (`col_burn`); a burnt colony map shows ash, stumps, embers and smoke; a dead world says BURNT FOR GOOD. Hell terrain appears in the same visit (no need to re-enter), and the second stair and the dig work on any floor that leads to the surface.
+- `sim/mine_bal.c`: mine and workshops for years with nobody helping; results in `sim/TUNING.md` (no value changed).
+- `tests/giant.sh` with BUGSTAR_GIANT_DIR runs the long V3 walk (`giant_v3deep.txt`); the index folder is `/home/claude/giant-cache` here (`pow2_2e32.bcd` plus `pow2_2e32.v3idx`).

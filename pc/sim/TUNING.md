@@ -113,3 +113,12 @@ NOT played by you. Plain C (`pc/sim/mine.c`) plus glue; the numbers below are gu
 - The colony never saves wood below 12 for the workshops, braces or digging (houses and fields still get built).
 - Check against play: gold from bars and tools (9G and 30G each) next to the old surface ore (3G); gems 60G. `col_collect` still sells all colony ore at 3G, so a deep mine mostly feeds the smelter's 1 to 3 units a day.
 - Found while testing: `sim_rows` kept each row in 56 letters but a locked rung's text is 67 (stack overflow when a colony had locked rungs): the buffers are 96 now. The side file's chunk buffer was 4,499 bytes, so a colony list of more than 27 colonies was silently not saved: 8,192 now.
+
+# Patch 45: mine and workshops played for years (`mine_bal.c`)
+
+Nobody helping, 3 / 6 / 10 miners, three more settlers of other trades, all rungs open, 30 towns x 1,500 days a cell (`out/mine_bal 1500 30`).
+- Output a day: 16 to 26 ore, about 1.8 bars, 0.7 cloth, 0.2 gems. Tools sit at the stock cap of 30 (they wear out one in 12 days and the smithy replaces them). More miners lift ore only a little (a miner's day is capped by the seam and the smelter takes 4 ore at most at level 3), so a small colony is not left behind.
+- Depth: 15 of 15 in every cell but the 10-miner one (14.6). Every colony got there, none went dry for good.
+- Cave-ins per 1,000 mine-days: 2.4 to 4.3 on CALM, 4.5 to 7.4 on NORMAL and HARSH (one in 135 to 220 days). Deaths per 1,000 days: 0 on CALM, 0.9 to 1.6 on NORMAL, 1.7 to 2.7 on HARSH. Fewer miners die more often per day because the roof is less shored.
+- Softlocks: none. No colony lost every settler, no mine stopped mining for 400 days with a miner alive, no level stayed caved in for good. Wood is never short: stocks at the end were 20,000+ wood and 60,000+ ore, bars 2,000+ (the player collects them; nothing in the mine spends them).
+- Checked and left alone: a smelter that stops at 40 bars so the wood goes to tools changed tools by under 0.02 a day (tools are already at the cap), so the rule was dropped. No value in `mine.c` changed; `mine_test.c` still passes with its numbers. `sim/test.sh` now runs a short `mine_bal` (600 days, 8 towns) and fails on a wiped colony or a stuck mine.
