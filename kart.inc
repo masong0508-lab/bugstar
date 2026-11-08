@@ -582,7 +582,7 @@ static int kproj_(s32 wx, s32 wy, s32 wh, int *sx, int *sy, s32 *zc){  // a poin
     s32 cx, cy; if(kpc_on){ cx=kpc_cx; cy=kpc_cy; } else { s32 cb=cam_back(); cx=ppx-((hsn*cb)>>8); cy=ppy-((hcs*cb)>>8); }
     s32 dxw=wrapd(wx-cx), dyw=wrapd(wy-cy);
     s32 dz=((dxw*hsn)>>8)+((dyw*hcs)>>8), dx=((dxw*hcs)>>8)-((dyw*hsn)>>8); if(dz<(1<<15)) return 0;
-    s32 z=dz>>8, f=(FOCP<<16)/z; long long t=((long long)dx*f)>>24; int xx, yy;
+    s32 z=dz>>8, f=krec(z); long long t=((long long)dx*f)>>24; int xx, yy;
     if(kpc_on){ if(t>8000) t=8000; if(t<-8000) t=-8000; xx=(int)(((long long)(s32)t*kpc_fi)>>16); yy=PHZ+(((cam_h+((((z*z)>>14)*kpc_ck)>>kpc_sh)-kpc_sub-wh)*f)>>16); }
     else { xx=(int)(t*256/fov_k()); yy=PHZ+(((cam_h+curv(z)-tiny_sub()-wh)*f)>>16); }
     if(xx<-2000) xx=-2000; if(xx>2000) xx=2000; if(yy<-2000) yy=-2000; if(yy>2000) yy=2000; *sx=120+xx; *sy=yy; *zc=z; return 1; }
@@ -590,7 +590,7 @@ static int kproj2_(s32 wx, s32 wy, s32 h1, s32 h2, int *sx, int *sy1, int *sy2, 
     s32 cx, cy; if(kpc_on){ cx=kpc_cx; cy=kpc_cy; } else { s32 cb=cam_back(); cx=ppx-((hsn*cb)>>8); cy=ppy-((hcs*cb)>>8); }
     s32 dxw=wrapd(wx-cx), dyw=wrapd(wy-cy);
     s32 dz=((dxw*hsn)>>8)+((dyw*hcs)>>8), dx=((dxw*hcs)>>8)-((dyw*hsn)>>8); if(dz<(1<<15)) return 0;
-    s32 z=dz>>8, f=(FOCP<<16)/z; long long t=((long long)dx*f)>>24; int xx, ya, yb; s32 base;
+    s32 z=dz>>8, f=krec(z); long long t=((long long)dx*f)>>24; int xx, ya, yb; s32 base;
     if(kpc_on){ if(t>8000) t=8000; if(t<-8000) t=-8000; xx=(int)(((long long)(s32)t*kpc_fi)>>16); base=cam_h+((((z*z)>>14)*kpc_ck)>>kpc_sh)-kpc_sub; }
     else { xx=(int)(t*256/fov_k()); base=cam_h+curv(z)-tiny_sub(); }
     ya=PHZ+(((base-h1)*f)>>16); yb=PHZ+(((base-h2)*f)>>16);

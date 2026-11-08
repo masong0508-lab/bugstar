@@ -4,6 +4,7 @@
 // perspective, at no CPU cost. Hills come from a 1D profile under the camera's centre line: each screen row is given the depth
 // where the ground first reaches it. Page 0 holds the sky, the HUD and the top of any loop-de-loop, in two halves (80 rows
 // each), so one half is drawn while the other shows. The old column renderer (render_planet) still draws the planet on foot.
+#include "recip.inc"
 typedef struct { s16 pa, pb, pc, pd; s32 x, y; } M7Line;   // BG2's affine registers, 0x20..0x2F
 #define M7_TAB(t) ((M7Line*)((t) ? 0x06013600 : 0x06009600))   // a table of 160 lines each (line 0 is set by the CPU, lines 1..159 by the DMA): the two unused ends of the bitmap pages
 typedef u16 M7Dc[160];
@@ -82,7 +83,7 @@ IWRAM static void m7_irq(void){                 // at every VBlank: start the li
         *(volatile u16*)0x04000020=256; *(volatile u16*)0x04000022=0; *(volatile u16*)0x04000024=0; *(volatile u16*)0x04000026=256; *(volatile u32*)0x04000028=0; *(volatile u32*)0x0400002C=0; m7_armed=0; }
 }
 // ---- the frame: the profile under the centre line, then the line table (the hidden one)
-static void m7_frame(void){
+OVK static void m7_frame(void){
     int T=m7_tab^1; M7Line *tab=M7_TAB(T); u16 *dc=m7_dc[T]; u16 *fog=m7_fog[T];
     m7_cock = cam_fp && !kloop_on;
     s32 cb=cam_back(); s32 cam_x=ppx-((hsn*cb)>>8), cam_y=ppy-((hcs*cb)>>8);
@@ -96,11 +97,11 @@ static void m7_frame(void){
     int ytop=160; s32 z=stp_z[0], zl=z, zmax=(64<<8);
     for(int i=0;i<96;i++){
         s32 mx=cam_x+hsn*z, my=cam_y+hcs*z; int ti=((my>>15)&HMASK)*HW+((mx>>15)&HMASK); s32 hh=hfine[ti]*g_hs;
-        s32 curve=((((z*z)>>14)*ck)>>csh)-csub; s32 f=(FOCP<<16)/z; int y=PHZ+(((cam_h+curve-hh)*f)>>16);
+        s32 curve=((((z*z)>>14)*ck)>>csh)-csub; s32 f=krec(z); int y=PHZ+(((cam_h+curve-hh)*f)>>16);
         if(i==0){ int y0 = y>160 ? 160 : y<0 ? 0 : y; s32 dh=cam_h-hh; if(dh<16) dh=16;                 // the ground nearer than the first step: flat, under the camera
-            for(int r=y0;r<160;r++){ s32 zz = r>PHZ ? (dh*FOCP)/(r-PHZ) : z; if(zz>z) zz=z; if(zz<16) zz=16; m7_rowz[r]=(s16)zz; }
+            for(int r=y0;r<160;r++){ s32 zz = r>PHZ ? (s32)(((long long)(dh*FOCP)*kr_rc[r-PHZ])>>32) : z; if(zz>z) zz=z; if(zz<16) zz=16; m7_rowz[r]=(s16)zz; }
             ytop=y0; zl=z; }
-        else if(y<ytop){ if(y<0) y=0; int n=ytop-y; for(int r=y;r<ytop;r++) m7_rowz[r]=(s16)(z+(zl-z)*(r-y)/n); ytop=y; zl=z; }
+        else if(y<ytop){ if(y<0) y=0; int n=ytop-y; s32 st=(s32)(((long long)(zl-z)*(s32)kr_rc[n])>>16), acc=z<<16; for(int r=y;r<ytop;r++, acc+=st) m7_rowz[r]=(s16)(acc>>16); ytop=y; zl=z; }
         if(ytop<=0) break;
         z += 20+((i*i)>>4); if(z>zmax) break;
     }

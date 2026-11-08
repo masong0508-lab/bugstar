@@ -745,7 +745,7 @@ sprites:;
 #endif
     // ---- sprites: project everything onto the terrain
     s32 cam_y = ppy - ((hcs*cam_back())>>8), cam_x = ppx - ((hsn*cam_back())>>8);
-    for(int m=0;m<28;m++){ int s=8+m*4; int inv=16384/s; set_affine(m, inv, 0, 0, inv); }      // scales 0.125x .. 1.8x
+    { static const u16 ainv[28]={2048,1365,1024,819,682,585,512,455,409,372,341,315,292,273,256,240,227,215,204,195,186,178,170,163,157,151,146,141}; for(int m=0;m<28;m++){ int inv=ainv[m]; set_affine(m, inv, 0, 0, inv); } }      // scales 0.125x .. 1.8x (16384/s: a table, 28 divisions a frame are 3000 cycles)
     oam_hide_all();
     int slot=0;
     s32 bug_sy;
@@ -807,7 +807,7 @@ sprites:;
     for(int k=0;k<cnt && slot<126;k++){
         PObj *o=&po[order[k]]; s32 dz=odz[order[k]], dx=odx[order[k]];
         s32 zc=dz>>8;                                                                  // 8.8 cells
-        s32 f=(FOCP<<16)/zc;                                                           // 8.8 px per cell
+        s32 f=krec(zc);                                                                // 8.8 px per cell (table, not a division)
         int sx = 120 + (s32)(((((long long)dx*f)>>24)*fovq)>>8);                       // (16.16 cells * 8.8) >> 24 = px, spread to match the land's field of view
         s32 gh=ground_h(o->x,o->y); s32 curve=curv(zc) - tiny_sub();
         int sy = PHZ + (((cam_h + curve - gh) * f)>>16);                                // (8.8 cells * 8.8) >> 16 = px
