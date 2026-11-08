@@ -610,7 +610,13 @@ void pc_set_keys(uint16_t down){ R16(IOREG+0x130)=(uint16_t)(~down & 0x3FF); }
 #ifdef PC_SDL
 static void irq_now(void){ if((R16(IOREG+0x200)&1) && R16(IOREG+0x208)&1 && pc_irq_fn){ R16(IOREG+0x202)|=1; pc_irq_fn(); R16(IOREG+0x202)&=~1; } }
 #endif
+static unsigned long g_vc_reads, g_tk_poll, g_tk_step;
+void pc_tick_poll(void){ g_tk_poll++; }
+void pc_tick_step(void){ g_tk_step++; }          // (FRAMELOG, env PC_FRAMELOG=file: one line per vblank = frame number, ms clock, REG_VCOUNT reads, key polls, dungeon steps)
 static void vblank(void){
+    { static int fl=-1; static FILE *ff; static unsigned long ls_reads; if(fl<0){ const char *e=getenv("PC_FRAMELOG"); fl=0; if(e&&*e){ ff=fopen(e,"a"); fl=ff!=0; if(ff) fprintf(ff,"# run\n"); } }
+      if(fl){ fprintf(ff,"%ld %.3f %lu %lu %lu\n",(long)g_frame+1,pc_now_ms(),g_vc_reads,g_tk_poll,g_tk_step); ls_reads=g_vc_reads; } (void)ls_reads; }
+    g_vc_reads=0; g_tk_poll=0; g_tk_step=0;
     { static double lt, sum; static int on=-1, nf; static FILE *lf;             // FRAME LOG: put an empty file slowlog.on next to the exe; slowlog.txt then lists every frame over 33 ms (and an average line every 300 frames)
       if(on<0){ FILE *t=fopen("slowlog.on","rb"); on=t!=0; if(t) fclose(t); if(on) lf=fopen("slowlog.txt","a"); if(!lf) on=0; if(on) fprintf(lf,"--- start, window %dx%d\n",pc_nat_w,pc_nat_h); }
       if(on){ double nw=pc_now_ms(); if(lt){ double d=nw-lt; sum+=d; if(d>33) { fprintf(lf,"frame %ld: %.0f ms (dungeon renderer %.1f ms)\n",(long)g_frame,d,pc_dn_last_ms); fflush(lf); } if(++nf==300){ fprintf(lf,"frame %ld: average %.1f ms over 300 frames\n",(long)g_frame,sum/300); fflush(lf); nf=0; sum=0; } } lt=nw; } }
@@ -628,6 +634,7 @@ static void vblank(void){
     if((R16(IOREG+0x200)&1) && R16(IOREG+0x208)&1 && pc_irq_fn){ R16(IOREG+0x202)|=1; pc_irq_fn(); R16(IOREG+0x202)&=~1; }
 }
 uint16_t pc_vcount(void){
+    g_vc_reads++;
     if(++g_line>=228) g_line=0;
     uint16_t ds=R16(IOREG+4); ds=(uint16_t)((ds&~7)|((g_line>=160&&g_line<227)?1:0)); R16(IOREG+4)=ds;
     R16(IOREG+6)=(uint16_t)g_line;

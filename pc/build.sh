@@ -78,6 +78,16 @@ sed -i -e 's/^static void slot_erase(int i){/static void slot_erase(int i){ pc_l
        -e 's/xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed; uni_load();/& pc_laws_slot_load(cur_slot);/' \
        -e 's/^\(    sram_write(slot_base(cur_slot), s, sizeof(Save));\)$/\1 pc_laws_slot_save(cur_slot);/' save.inc
 sed -i 's/if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug/if(s2>=0){ cur_slot=s2; pc_laws_slot_new(s2); oam_hide_all(); oam_flush(); if(make_bug/' main.c
+# --- patch 43 (game speed): two counters for the frame log / speed test (pc_hw.c): how many times the game polled the keys (one pass of a main or menu loop) and how many dungeon logic
+# steps it ran, per vblank. A scene that does more than about one of each per vblank would run faster than the GBA does.
+sed -i 's|^static void read_keys(void){ keys_old=keys;|static void read_keys(void){ pc_tick_poll(); keys_old=keys;|' main.c
+sed -i 's|^static int dungeon_frame(void){ u32 t=TMR();|static int dungeon_frame(void){ pc_tick_step(); u32 t=TMR();|' main.c
+grep -c "pc_tick_poll();" main.c | grep -qx 1 && grep -c "pc_tick_step();" main.c | grep -qx 1 || { echo "build: speed counters did not apply"; exit 1; }
+# --- patch 43 (game speed): the dungeon loop (scene 1 in run_game) waits only through vsync_flip(): "if the beam is already in the blank, flip now". On the GBA that is
+# true only when the frame's work really took that long. On the fake GBA the beam moves one line per REG_VCOUNT read, so it was ALWAYS "already in the blank" and the loop
+# ran 68 dungeon logic steps per vblank (measured: tests/speed.sh). On the PC every pass of the dungeon loop is one whole frame: wait for the next vblank, always.
+sed -i 's|^static void vsync_flip(void){ if(REG_VCOUNT>=160) return; while(REG_VCOUNT<160); }|static void vsync_flip(void){ vsync(); }|' main.c
+grep -c "^static void vsync_flip(void){ vsync(); }" main.c | grep -qx 1 || { echo "build: vsync_flip patch did not apply"; exit 1; }
 # --- the PC ship renderer (pc/shipr, pc/pc_ships.inc): the space ships go to it when it is on (pc_ships_mode >= 0, the window build's SHIPS option)
 sed -i -e 's|^    int crowd=0; for(int i=0;i<NPIR;i++) if(pir\[i\].alive) crowd++;$|    if(pc_sr_on()){ pc_sr_space(pg); goto pc_sr_done; }\n&|' \
        -e 's|^    for(int k=0;k<4;k++) if(cans\[k\].alive){ int sx,sy; s32 z; if(sproj|    pc_sr_done: pc_sr_mark(pg); pc_so_native(pg);\n&|' space.inc
