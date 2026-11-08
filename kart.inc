@@ -724,14 +724,14 @@ static void kbridge_draw_(volatile u16 *pg, int cy0, int cy1){           // the 
     u32 kq3=TMR(); kt_v[0]=kq1-kq0; kt_v[1]=kq2-kq1; kt_v[2]=kq3-kq2; kt_t0=kq3;
 #endif
     if(!nkb || kr_mode!=1 || cy0>=cy1) return;
-    for(int b=0;b<nkb;b++){ int pc=kbs[b]+KBR_S; s32 near = kbr_cur>=64 ? 128 : 900;   // (a deck right overhead would fill the screen: leave it out)
+    for(int b=0;b<nkb;b++){ int pc=kbs[b]+KBR_S; s32 near = kbr_cur>=64 ? 128 : 900; int S=1;   // (a deck right overhead would fill the screen: leave it out)
         { s32 cb=cam_back(), dxw=wrapd(kp_cx(pc)-(ppx-((hsn*cb)>>8))), dyw=wrapd(kp_cy(pc)-(ppy-((hcs*cb)>>8))), dz=((dxw*hsn)>>8)+((dyw*hcs)>>8), dx=((dxw*hcs)>>8)-((dyw*hsn)>>8);
-          if(dz>(40<<16) || dz<-(10<<16) || dx>(36<<16) || dx<-(36<<16)) continue; }
+          if(dz>(40<<16) || dz<-(10<<16) || dx>(36<<16) || dx<-(36<<16)) continue; if(dz>(22<<16)) S=2; }      // (far away the deck is drawn in six pieces, not twelve: they are a few pixels each)
 #if defined(TEST_FPS) || defined(TEST_KLOG)
         u32 d0=TMR();
 #endif
         s16 tx[KBN+1][2], ty[KBN+1][2], by[KBN+1][2]; s32 zz[KBN+1]; u8 ok[KBN+1];
-        for(int i=0;i<=KBN;i++){ int pi=kbs[b]+i*3; if(pi>=knp) pi-=knp; int d=kp_dir(pi); s32 ex=kp_cx(pi), ey=kp_cy(pi), g=ground_h(ex,ey)+kbr_h(pi), rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6); ok[i]=1; zz[i]=0;
+        for(int i=0;i<=KBN;i+=S){ int pi=kbs[b]+i*3; if(pi>=knp) pi-=knp; int d=kp_dir(pi); s32 ex=kp_cx(pi), ey=kp_cy(pi), g=ground_h(ex,ey)+kbr_h(pi), rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6); ok[i]=1; zz[i]=0;
             for(int e=0;e<2;e++){ s32 w = e ? KBDW : -KBDW, z, fo; int qx,qa,qb;
                 if(!kproj2(ex+rx*w,ey+ry*w,g,g-KBTH,&qx,&qa,&qb,&z,&fo) || z<near) ok[i]=0; else { zz[i]+=z; tx[i][e]=(s16)qx; ty[i][e]=(s16)qa; by[i][e]=(s16)qb; } } }
 #if defined(TEST_FPS) || defined(TEST_KLOG)
@@ -740,20 +740,20 @@ static void kbridge_draw_(volatile u16 *pg, int cy0, int cy1){           // the 
 #ifdef TEST_KCNT
         u32 kc0[7]; { extern u32 klog[]; static const u8 kx[7]={14,15,29,56,57,58,59}; for(int q=0;q<7;q++) kc0[q]=klog[kx[q]]; }
 #endif
-        u8 ord[KBN]; int n=0; for(int i=0;i<KBN;i++) if(ok[i] && ok[i+1]) ord[n++]=(u8)i;
-        for(int a=1;a<n;a++){ u8 t=ord[a]; int c=a; s32 zt=zz[t]+zz[t+1]; while(c>0 && zz[ord[c-1]]+zz[ord[c-1]+1]<zt){ ord[c]=ord[c-1]; c--; } ord[c]=t; }
+        u8 ord[KBN]; int n=0; for(int i=0;i<KBN;i+=S) if(ok[i] && ok[i+S]) ord[n++]=(u8)i;
+        for(int a=1;a<n;a++){ u8 t=ord[a]; int c=a; s32 zt=zz[t]+zz[t+S]; while(c>0 && zz[ord[c-1]]+zz[ord[c-1]+S]<zt){ ord[c]=ord[c-1]; c--; } ord[c]=t; }
         if(!sh_rt_ok) sh_rt_init();
-        for(int k=0;k<n;k++){ KTD int i=ord[k], i2=i+1; int qx[4]={tx[i][0],tx[i][1],tx[i2][1],tx[i2][0]}, qy[4]={ty[i][0],ty[i][1],ty[i2][1],ty[i2][0]};
+        for(int k=0;k<n;k++){ KTD int i=ord[k], i2=i+S, ci=S==2?i>>1:i; int qx[4]={tx[i][0],tx[i][1],tx[i2][1],tx[i2][0]}, qy[4]={ty[i][0],ty[i][1],ty[i2][1],ty[i2][0]};
             s32 cr=(s32)(qx[1]-qx[0])*(qy[3]-qy[0])-(s32)(qy[1]-qy[0])*(qx[3]-qx[0]); int top=cr<0;
             int wd0=qx[1]-qx[0]; if(wd0<0) wd0=-wd0;
             if(wd0>=26 || !top){ for(int e=0;e<2;e++){ int wx[4]={tx[i][e],tx[i2][e],tx[i2][e],tx[i][e]}, wy[4]={ty[i][e],ty[i2][e],by[i2][e],by[i][e]};      // the sides (far away they are a pixel high: left out)
                     s32 ce=(s32)(wx[1]-wx[0])*(wy[3]-wy[0])-(s32)(wy[1]-wy[0])*(wx[3]-wx[0]); if((ce<0)==(e==0) && ce!=0) continue;   // (only the side that faces you: the other is hidden)
-                    KTM(0); polyfill(pg,wx,wy,4,(i&1)?C_DGREY:C_GREY,0,cy0,240,cy1); KTE(40); } }
+                    KTM(0); polyfill(pg,wx,wy,4,(ci&1)?C_DGREY:C_GREY,0,cy0,240,cy1); KTE(40); } }
             if(!top){ int ux[4]={tx[i][0],tx[i][1],tx[i2][1],tx[i2][0]}, uy[4]={by[i][0],by[i][1],by[i2][1],by[i2][0]}; polyfill(pg,ux,uy,4,C_DGREY,0,cy0,240,cy1); continue; }     // seen from below: the underside
-            KTM(0); polyfill(pg,qx,qy,4,(i&1)?KRC_A:KRC_B,0,cy0,240,cy1); KTE(41);                                                     // the road...
+            KTM(0); polyfill(pg,qx,qy,4,(ci&1)?KRC_A:KRC_B,0,cy0,240,cy1); KTE(41);                                                     // the road...
             if(wd0<26) continue;                                                                                     // (far away: just the road)
-            KTM(0); { int kc=(i&1)?KRC_KR:KRC_KW; linep(pg,qx[0]+1,qy[0],qx[3]+1,qy[3],kc,0,cy0,240,cy1); linep(pg,qx[1]-1,qy[1],qx[2]-1,qy[2],kc,0,cy0,240,cy1); }   // ...a kerb down each side...
-            if(!(i&1)) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); KTE(42); }   // ...and a dash down the middle
+            KTM(0); { int kc=(ci&1)?KRC_KR:KRC_KW; linep(pg,qx[0]+1,qy[0],qx[3]+1,qy[3],kc,0,cy0,240,cy1); linep(pg,qx[1]-1,qy[1],qx[2]-1,qy[2],kc,0,cy0,240,cy1); }   // ...a kerb down each side...
+            if(!(ci&1)) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); KTE(42); }   // ...and a dash down the middle
 #if defined(TEST_FPS) || defined(TEST_KLOG)
         { u32 d3=TMR(); kt_v[3]=d1-d0; kt_d[2]=d3-d1; kt_d[3]=n;
 #ifdef TEST_KLOG

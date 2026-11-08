@@ -51,9 +51,13 @@ static int m7_fovs=0;                                              // the field 
 static int fov_k(void){ if(m7_snap && m7_fovs) return m7_fovs; return kr_mode ? kfovk+(kloop_on?0:kfov_add) : 180; }
 IWRAM_DATA static s16 rayvx[120], rayvy[120];              // per column: the ray direction on the map, 8.8 per cell of depth
 static int hcs=256, hsn=0;                                 // cos and sin of the heading, 8.8
+static int rays_ok=0;                                    // the 120 ray directions are only needed by the column renderer (render_planet): they are built when it asks (the kart races' hardware ground never does)
 static void heading_rays(void){
-    hcs=cosx(heading>>2)>>6; hsn=sinx(heading>>2)>>6;
+    hcs=cosx(heading>>2)>>6; hsn=sinx(heading>>2)>>6; rays_ok=0;
+}
+static void rays_build(void){
     for(int c=0;c<120;c++){ rayvx[c]=(s16)(hsn + ((hcs*raydx[c])>>8)); rayvy[c]=(s16)(hcs - ((hsn*raydx[c])>>8)); }
+    rays_ok=1;
 }
 #define WP_WIN 6                 // a bite is TIMED if you hit again within this many frames of the last swing ending (the bug is upright again): it takes two bites off
 static u8 mine_gap=99;           // frames since the last swing ended (99: a while ago)
@@ -346,7 +350,7 @@ static void planet_tables(void){
     s32 z = cam_fp ? (3<<8)/4 : (9<<8)/2;                   // start 0.75 cells out in first person, 4.5 behind the bug otherwise
     if(kr_mode && !cam_fp){ s32 m=(kcam_base()>>8)-(3<<7); if(m<(1<<8)) m=1<<8; if(m<z) z=m; }   // a close kart camera starts the march nearer
     for(int i=0;i<NSTEP;i++){ stp_z[i]=z; stp_f[i]=(FOCP<<16)/z; stp_base[i]=0; z += (cam_fp?24:40) + (i*i>>2); }   // steps grow with distance (8.8)
-    { int fk=fov_k(); for(int c=0;c<120;c++) raydx[c]=(s16)(((2*c-119)*fk)/120); }    // field of view: about 70 degrees (the kart camera can change it), 8.8 cells sideways per cell of depth
+    { int fk=fov_k(); for(int c=0;c<120;c++) raydx[c]=(s16)(((2*c-119)*fk)/120); }  rays_ok=0;    // field of view: about 70 degrees (the kart camera can change it), 8.8 cells sideways per cell of depth
     for(int y=0;y<160;y++){ int t = y<18 ? 0 : (y-18)*8/(PHZ+30-18); if(t>7) t=7; skyrow[y]=SKY_B+t; }
     { u32 r=0x2545F491; for(int i=0;i<256;i++){ r^=r<<13; r^=r>>17; r^=r<<5; int v=(r>>4)&7; gtex[i] = v==0?-1 : v==7?1 : 0; } }
     heading_rays();
@@ -389,6 +393,7 @@ __attribute__((section(".iwram"), long_call, noinline)) static void bld_col(vola
                 else c2 = fr>=19 ? 117 : fr<11 ? 118 : 73; } }                            // the pane mirrors the sky toward its sill; dark reveal at the top
         col[yy*120]=c2|(c2<<8); } }
 IWRAM static void render_planet(volatile u16 *pg){
+    if(!rays_ok) rays_build();
     s32 cb=cam_back(); s32 cam_x = ppx - ((hsn*cb)>>8), cam_y = ppy - ((hcs*cb)>>8);
     int ck = curv_k(); s32 csub = tiny_sub();                                       // small planets: the horizon falls away faster (measured from the bug)
     for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((((z*z)>>14)*ck)>>curv_sh()) - csub;     // the world drops away
