@@ -252,8 +252,22 @@ If the model changes on purpose, make the golden again with `pc/tests/laws.sh --
 ## Window version and packages
 `./pc/build.sh` builds the window version (SDL2). Linux: `bugstar_pc` (libSDL2 bundled in `lib/` in the tar.gz). Windows: a 32-bit exe cross-built with llvm-mingw
 (`PC_WIN=<SDL2 mingw i686 dir> PC_CC=i686-w64-mingw32-gcc PC_ARCH=-m32 PC_OUT=BUGSTAR.exe PC_CFLAGS="-include stdio.h -include string.h -include stdlib.h -Wno-error -Wno-implicit-function-declaration -Wno-int-conversion -Wno-incompatible-pointer-types" ./pc/build.sh`).
-32-bit on purpose: the game keeps addresses in 32-bit numbers, so no stack trick is needed; the GBA memory map uses VirtualAlloc. The Windows exe was compiled, NOT run (no Windows/Wine here).
+32-bit on purpose: the game keeps addresses in 32-bit numbers, so no stack trick is needed; the GBA memory map uses VirtualAlloc. The Windows exe was compiled, NOT run (no Windows/Wine here; `pc/tests/win_smoke.sh` runs it wherever wine is installed).
 Keys: arrows/WASD, X/Space=A, Z/K=B, Backspace/Tab=Select, Enter=Start, Q=L, E=R (Coil = Q+E). Esc = options, F11 fullscreen, F12 screenshot.
+
+**Making the packages: `pc/make_dist.sh [linux|windows]`.** Builds the Linux game and the Windows exe, then repacks `pc/dist/BUGSTAR-PC-linux64.tar.gz` and
+`BUGSTAR-PC-windows32.zip`: it unpacks the packages already in `pc/dist`, keeps everything that is not built (README.txt, portable.txt, SDL2.dll, `lib/libSDL2`),
+swaps in the fresh `BUGSTAR` / `BUGSTAR.exe`, empties `data/` (so no saves ship; only `data/readme.txt`) and packs them again. It does not use git: afterwards
+`git add -f pc/dist pc/BUGSTAR.exe pc/objwin/game.stamp`, commit and push. For the Windows half set `MINGW_BIN` (the llvm-mingw `bin` folder; not needed if
+`i686-w64-mingw32-gcc` is on PATH) and `SDL_WIN` (the `i686-w64-mingw32` folder of the SDL2 mingw development package); the downloads are listed at the top of the script.
+`COPY_TO=<folder>` copies the finished packages there too. Without the Windows pieces `make_dist.sh linux` still works, and the full run stops before it changes anything.
+Run it after any change that reaches the game (the packages are what people download, so a stale one ships old bugs).
+
+**Windows smoke test: `pc/tests/win_smoke.sh [--strict] [seconds]`.** Always checks the zip (a 32-bit PE `BUGSTAR.exe`, `SDL2.dll`, `portable.txt`, `README.txt`, a clean `data/`).
+If `wine` is installed it also runs the exe from the zip for a few seconds with SDL's dummy video and audio drivers (no display needed) and passes when the game is still
+running at the end, `data/bugstar.sav` and `data/settings.ini` exist and wine reports no crash. Without wine it says SKIP and exits 0 (`--strict`: exit 3).
+Status: wine could not be installed in the build sandbox (apt mirrors, WineHQ and GitHub are blocked there), so the run half has not been executed yet; the Linux package
+does the same thing under SDL's dummy drivers (6 s, still running, `bugstar.sav` and `settings.ini` made).
 
 ## Game speed (patch 43): the GBA's own 59.7275 frames a second, on every machine
 The game must run at the real GBA speed: 16777216 Hz / 280896 cycles = **59.7275 Hz**, and nothing else may set it (the monitor's 60 / 75 / 90 / 120 / 144 / 165 Hz, vsync, the window, the audio buffer, the CPU).
