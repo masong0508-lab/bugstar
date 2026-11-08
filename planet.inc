@@ -571,7 +571,7 @@ static void planet_oremap(volatile u16 *pg){
     pix(pg,ox,oy,C_WHITE); pix(pg,ox,oy-1,C_WHITE); pix(pg,ox-1,oy,C_WHITE); pix(pg,ox+1,oy,C_WHITE); pix(pg,ox,oy+1,C_WHITE);      // you, in the middle
     pix(pg,ox,oy-R,C_GOLD); }                               // north of the view, the way you face
 #ifdef TEST_KLOG
-u32 klog[48]; static int ks_state;                                                   // (test builds: where the race frames' time goes: harness reads it)
+u32 klog[64]; static int ks_state;                                                   // (test builds: where the race frames' time goes: harness reads it)
 #endif
 static void planet_frame(void){
     u32 t_f0=TMR();

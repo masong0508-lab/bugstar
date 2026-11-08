@@ -8,6 +8,8 @@ SECTIONS {
   .text : { KEEP(*(.crt0)) *(EXCLUDE_FILE(*libgcc.a:*) .text*) *(.rodata*) *(.glue_7) *(.glue_7t) . = ALIGN(4); } > rom
   .ARM.exidx : { *(.ARM.exidx*) } > rom
   .iwram : { __iwram_start = .; *(.iwram*) *libgcc.a:*(.text*) . = ALIGN(4); __iwram_end = .; } > iwram AT > rom
+  __ov_start = .;
+  OVERLAY : NOCROSSREFS { .ovd { *(.ovd) . = ALIGN(4); } .ovk { *(.ovk) . = ALIGN(4); } } > iwram AT > rom
   __iwram_lma = LOADADDR(.iwram);
   .data : { __data_start = .; *(.data*) . = ALIGN(4); __data_end = .; } > iwram AT > rom
   __data_lma = LOADADDR(.data);

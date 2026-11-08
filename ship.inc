@@ -176,60 +176,22 @@ static u16 sh_tone(u16 c, int k){                                               
     if(shpx.finish==FN_PEARL){ if(k<4) return sh_mix(shade15(c,8+k*2),14,6,20,(4-k)*3/2+2); if(k==4) return lift15(c,3); return sh_lit(c,bo[3][k-5],gw[3][k-5],22,31,31); }   // violet shadows, a cyan sheen
     if(k<4) return sh_mix(shade15(c,5+k*3),3,4,10,(4-k)*3/2); if(k==4) return c; return sh_lit(c,bo[0][k-5],gw[0][k-5],31,30,27); }
 static void ship_ramps(void){ for(int k=0;k<8;k++){ BG_PAL[SHP_PAINT+k] = sh_tone(ship.paint,k); BG_PAL[SHP_TRIM+k] = sh_tone(ship.trim,k); BG_PAL[SHP_GLOW+k] = k<3 ? shade15(ship.glow,10+k*2) : lift15(ship.glow,(k-3)*3); } }static const u8 *sh_occ=0;                                                     // on a planet: the terrain's top row per column (every 8th byte), so hills and canyon walls hide what is behind them. 0 = nothing hides it
-static void linep(volatile u16 *pg, int x0, int y0, int x1, int y1, int c, int cx0, int cy0, int cx1, int cy1){
-    int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(n>300) return;
-    if(m7_on){ s32 fx=(x0<<16)+0x8000, fy=(y0<<16)+0x8000, sx=n?(dx<<16)/n:0, sy=n?(dy<<16)/n:0;         // (a kart race: each pixel finds its own way to the screen)
-        for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; if(x>=cx0&&x<cx1&&y>=cy0&&y<cy1) m7_pix(x,y,c); fx+=sx; fy+=sy; } return; }
-    if(!n){ if(x0>=cx0&&x0<cx1&&y0>=cy0&&y0<cy1) pix(pg,x0,y0,c); return; }
-    s32 sx, sy; if(n<256){ sx=dx*(s32)sh_rt[n]; sy=dy*(s32)sh_rt[n]; } else { sx=(dx<<16)/n; sy=(dy<<16)/n; }
-    s32 fx=(x0<<16)+0x8000, fy=(y0<<16)+0x8000; u16 lo=(u16)c, hi=(u16)(c<<8);
-    if(sh_occ){ for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; if(x>=cx0&&x<cx1&&y>=cy0&&y<cy1 && sh_occ[(x>>1)<<3]>y){ volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|hi; else *p=(*p&0xFF00)|lo; } fx+=sx; fy+=sy; } return; }   // (on a planet: not through a hill)
-    if(x0>=cx0&&x0<cx1&&x1>=cx0&&x1<cx1&&y0>=cy0&&y0<cy1&&y1>=cy0&&y1<cy1){        // both ends inside: no clipping per pixel
-        for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|hi; else *p=(*p&0xFF00)|lo; fx+=sx; fy+=sy; }
-        return; }
-    for(int i=0;i<=n;i++){ int x=fx>>16, y=fy>>16; if(x>=cx0&&x<cx1&&y>=cy0&&y<cy1){ volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|hi; else *p=(*p&0xFF00)|lo; } fx+=sx; fy+=sy; }
-}
 static int sh_df=0;                                                               // ship faces: 0..3 = how far from palette entry c towards c+1 (a 2x2 ordered dither). 0 for everything else
-static void hspan(volatile u16 *pg, int y, int x0, int x1, int c){                 // a row of pixels, x0..x1 inclusive, written two at a time
-    if(m7_on){ m7_span(y,x0,x1,c+(sh_df>>1)); return; }
-    volatile u16 *row=pg+y*120; u16 cc;
-    if(!sh_df) cc=(u16)(c|(c<<8)); else { int f=sh_df, t0=(y&1)?3:0, t1=(y&1)?1:2; cc=(u16)((c+(f>t0)) | ((c+(f>t1))<<8)); }
-    if(x0&1){ volatile u16 *p=row+(x0>>1); *p=(*p&0x00FF)|(cc&0xFF00); x0++; }
-    if(x1>=x0 && !(x1&1)){ volatile u16 *p=row+(x1>>1); *p=(*p&0xFF00)|(cc&0x00FF); x1--; }
-    for(int k=x0>>1, e=x1>>1; k<=e && x0<=x1; k++) row[k]=cc;
-}
 #ifdef TEST_FPS
 static u32 dbg_pc=0, dbg_rows=0, dbg_px=0, dbg_pt=0, dbg_kt=0, dbg_kn=0;
 #endif
-static void polyfill_(volatile u16 *pg, const int *px, const int *py, int n, int c, int cx0, int cy0, int cx1, int cy1);
-static void polyfill(volatile u16 *pg, const int *px, const int *py, int n, int c, int cx0, int cy0, int cx1, int cy1){
-#ifdef TEST_FPS
-    u32 t0=*(volatile u16*)0x04000100 | ((u32)*(volatile u16*)0x04000104<<16); polyfill_(pg,px,py,n,c,cx0,cy0,cx1,cy1); dbg_pt+=(*(volatile u16*)0x04000100 | ((u32)*(volatile u16*)0x04000104<<16))-t0;
-}
-static void polyfill_(volatile u16 *pg, const int *px, const int *py, int n, int c, int cx0, int cy0, int cx1, int cy1){
-#endif
-    int ymin=py[0], ymax=py[0]; for(int i=1;i<n;i++){ if(py[i]<ymin) ymin=py[i]; if(py[i]>ymax) ymax=py[i]; }
-    if(ymin<cy0) ymin=cy0; if(ymax>=cy1) ymax=cy1-1; if(ymin>ymax) return;
-    for(int y=ymin;y<=ymax;y++){ sh_l[y]=32767; sh_r[y]=-32768; }
-    for(int i=0;i<n;i++){ int j=i+1; if(j==n) j=0; int x0=px[i], y0=py[i], x1=px[j], y1=py[j];      // walk each edge once, noting where it crosses every row
-        if(y0==y1){ if(y0>=ymin && y0<=ymax){ int a=x0<x1?x0:x1, b=x0<x1?x1:x0; if(a<sh_l[y0]) sh_l[y0]=a; if(b>sh_r[y0]) sh_r[y0]=b; } continue; }
-        if(y0>y1){ int t=x0; x0=x1; x1=t; t=y0; y0=y1; y1=t; }
-        int ys=y0<ymin?ymin:y0, ye=y1>ymax?ymax:y1; if(ys>ye) continue;
-        s32 dy=y1-y0, dx=x1-x0, sl = dy<256 ? dx*(s32)sh_rt[dy] : (dx<<16)/dy;
-        s32 x=(x0<<16)+0x8000+sl*(ys-y0);
-        for(int y=ys;y<=ye;y++){ int xi=x>>16; if(xi<sh_l[y]) sh_l[y]=xi; if(xi>sh_r[y]) sh_r[y]=xi; x+=sl; } }
-#ifdef TEST_FPS
-    dbg_pc++;
-#endif
-    for(int y=ymin;y<=ymax;y++){ int xl=sh_l[y], xr=sh_r[y]; if(xl>xr) continue; if(xl<cx0) xl=cx0; if(xr>=cx1) xr=cx1-1; if(xl>xr) continue;
-#ifdef TEST_FPS
-        dbg_rows++; dbg_px+=xr-xl+1;
-#endif
-        if(sh_occ){ int x=xl;                                                       // on a planet: columns a nearer hill covers from this row down are skipped
-            while(x<=xr){ while(x<=xr && sh_occ[(x>>1)<<3]<=y) x++; if(x>xr) break; int s0=x; while(x<=xr && sh_occ[(x>>1)<<3]>y) x++; hspan(pg,y,s0,x-1,c); }
-            continue; }
-        hspan(pg,y,xl,xr,c); }
-}
+#define PN(x) x
+#define PAT
+#include "paint.inc"
+#undef PN
+#undef PAT
+#define PAINT_K
+#define PN(x) k##x
+#define PAT OVK
+#include "paint.inc"
+#undef PN
+#undef PAT
+#undef PAINT_K
 static int ship_roll=0;                                                        // extra bank applied on screen (the chase camera)
 static s32 shp_c[10];                                                       // this draw's turn: yaw cos/sin, pitch cos/sin, roll cos/sin, rolled?, centre x, scale, centre y
 static void sh_pt(int x, int y, int z, int *X, int *Y, int *Z){                // one model point to the screen (the same maths as the vertex loop in ship_draw)

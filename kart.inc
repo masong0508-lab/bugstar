@@ -4,6 +4,9 @@
 // slugs, locals, this world's creatures, trees, rocks, your evil twin...) in four classes, in single races, cups and time
 // trials, with items. Build your own track on any planet by dropping gates as you drive: up to 50 of them are kept on the
 // cartridge (shared by the three slots) and you can fly back to race them again. The kart garage (kart2.inc) dresses your kart.
+// (the painting calls below are the kart overlay's ARM copies, ship.inc / paint.inc: see ov_k in main.c)
+#define polyfill kpolyfill
+#define linep klinep
 #ifdef TEST_KAUDIT
 EW u32 klogb[64]; EW u32 klogi[16]; EW u32 klogn; EW u32 klogp[1600]; EW u8 klogk[1200];
 #endif
@@ -622,7 +625,7 @@ static void kloop_one(volatile u16 *pg, int j, int cy0, int cy1){               
         int kc=(i&1)?KRC_KR:KRC_KW; polyfill(pg,qx,qy,4,kc,0,cy0,240,cy1);                                 // the kerbs: the whole ribbon in the kerb colour...
         int ix[4]={qx[0]+2,qx[1]-2,qx[2]-2,qx[3]+2}; if(ix[0]<ix[1] && ix[3]<ix[2]) polyfill(pg,ix,qy,4,col,0,cy0,240,cy1);   // ...then the road inside it
         if(top && (i&3)==1) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); } }   // the centre line
-static void kloop_draw(volatile u16 *pg, int cy0, int cy1){ if(!nkl || kr_mode!=1 || cy0>=cy1) return; kproj_prep(); for(int j=0;j<nkl;j++) kloop_one(pg,j,cy0,cy1); kpc_on=0; }
+static void kloop_draw(volatile u16 *pg, int cy0, int cy1){ if(!nkl || kr_mode!=1 || cy0>=cy1) return; ov_k(); kproj_prep(); for(int j=0;j<nkl;j++) kloop_one(pg,j,cy0,cy1); kpc_on=0; }
 static int kstar_at(int i){ int f=kpf[i]; return i>=10 && i<knp-10 && (i%3)==0 && ((i>>4)%4)==2 && !(f&(KPF_GAP|KPF_RAMP|KPF_LOOP|KPF_TAKEN)); }   // star bits: little trails of four along the road
 static void kstar_xy(int i, s32 *x, s32 *y, s32 *h){ int d=kp_dir(i); s32 rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6), w=(sinx((i*9)&255)*380)>>14; *x=kp_cx(i)+rx*w; *y=kp_cy(i)+ry*w; *h=ground_h(*x,*y)+kbr_h(i)+150; }
 static int kst_dbg=0, kst_dbg2=0;
@@ -726,6 +729,9 @@ static void kbridge_draw_(volatile u16 *pg, int cy0, int cy1){           // the 
 #if defined(TEST_FPS) || defined(TEST_KLOG)
         u32 d1=TMR();
 #endif
+#ifdef TEST_KCNT
+        u32 kc0[7]; { extern u32 klog[]; static const u8 kx[7]={14,15,29,56,57,58,59}; for(int q=0;q<7;q++) kc0[q]=klog[kx[q]]; }
+#endif
         u8 ord[KBN]; int n=0; for(int i=0;i<KBN;i++) if(ok[i] && ok[i+1]) ord[n++]=(u8)i;
         for(int a=1;a<n;a++){ u8 t=ord[a]; int c=a; s32 zt=zz[t]+zz[t+1]; while(c>0 && zz[ord[c-1]]+zz[ord[c-1]+1]<zt){ ord[c]=ord[c-1]; c--; } ord[c]=t; }
         if(!sh_rt_ok) sh_rt_init();
@@ -745,10 +751,13 @@ static void kbridge_draw_(volatile u16 *pg, int cy0, int cy1){           // the 
 #ifdef TEST_KLOG
   { extern u32 klog[]; klog[30]+=d1-d0; klog[31]+=d3-d1; }
 #endif
+#ifdef TEST_KCNT
+  { extern u32 klog[]; static const u8 kx[7]={14,15,29,56,57,58,59}; for(int q=0;q<7;q++) klog[48+q]+=klog[kx[q]]-kc0[q]; klog[60]++; klog[61]+=n; }
+#endif
         }
 #endif
     } }
-static void kbridge_draw(volatile u16 *pg, int cy0, int cy1){ kproj_prep(); kbridge_draw_(pg,cy0,cy1); kpc_on=0; }
+static void kbridge_draw(volatile u16 *pg, int cy0, int cy1){ ov_k(); kproj_prep(); kbridge_draw_(pg,cy0,cy1); kpc_on=0; }
 static void kloop_cam(void);
 static void kloop_begin(int j){
     s32 vmax=k_vmax(&kl);
@@ -1096,31 +1105,31 @@ static void kart_hud(volatile u16 *pg){
             for(int i=0;i<=kt.n;i++){ int x=194+(ux[i]-mnx)*40/span, y=21+(uy[i]-mny)*40/span; if(i==kt.n) rect(pg,x-1,y-1,3,3,C_GOLD); else rect(pg,x,y,2,2,i==0?C_WHITE:C_CYAN);
                 if(i>0){ int x0=194+(ux[i-1]-mnx)*40/span, y0=21+(uy[i-1]-mny)*40/span; for(int t=1;t<8;t++) pix(pg,x0+(x-x0)*t/8,y0+(y-y0)*t/8,C_GREY); } } }
         rect(pg,56,58,50,3,C_DGREY); if(kart_boost>0) rect(pg,56,58,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED); return; }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h0=TMR();
 #endif
     if(nrc>1 && ks_state!=KS_COUNT){ const char *p=kplace_s(rc[0].place); text(pg,6,21,p,0,2); text(pg,4,20,p,rc[0].place==1?C_GOLD:C_WHITE,2); scpy(b,"/"); ncat(b,nrc); stext(pg,4+textlen(p)*8,26,b,C_GREY); }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h1=TMR();
 #endif
     { int lp=rc[0].lap<1?1:rc[0].lap>kt.laps?kt.laps:rc[0].lap; scpy(b,"LAP "); ncat(b,lp); scat(b,"/"); ncat(b,kt.laps); stext(pg,4,33,b,C_CYAN); }
     { char t[12]; kfmt_time(t, rc[0].fin ? rc[0].ftime : k_clock); stext(pg,4,40,t,C_WHITE); }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h2=TMR();
 #endif
     if(rc[0].item){ rect(pg,28,48,16,16,1); const char *ic=kicon[kroul ? 1+((frames>>1)%(NKI-1)) : rc[0].item];
         for(int y=0;y<8;y++){ volatile u16 *row=pg+(48+y*2)*120+14; for(int x=0;x<8;x++){ int c=kicon_c(ic[y*8+x]); if(c>=0){ u16 cc=(u16)(c|(c<<8)); row[x]=cc; row[x+120]=cc; } } }   // (each icon dot is a pair of pixels, two rows: whole halfwords)
         frame1(pg,28,48,16,16,(frames&16)?C_GOLD:C_WHITE);
         if(rc[0].item_n>1 && !kroul){ scpy(b,"X"); ncat(b,rc[0].item_n); stext(pg,46,57,b,C_GOLD); } }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h3=TMR();
 #endif
     { char sb[20]; scpy(sb,"STAR BITS "); ncat(sb,kstar); stext(pg,192,66,sb,kstar>=10?C_GOLD:C_WHITE); }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h4=TMR();
 #endif
     rect(pg,192,19,44,44,1); frame1(pg,192,19,44,44,C_DGREY); kart_minimap(pg);
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h5=TMR();
 #endif
     rect(pg,56,58,50,3,C_DGREY); if(kart_boost>0) rect(pg,56,58,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED);
@@ -1128,8 +1137,11 @@ static void kart_hud(volatile u16 *pg){
     if(ks_state==KS_RACE && !kloop_on && !kair && kv>K_VBASE/4 && knp>40){ int p=rc[0].pi, d0=kp_dir((p+4)%knp), d1=kp_dir((p+16)%knp), d2=kp_dir((p+30)%knp);   // a sharp bend ahead: arrows say which way
         int a1=((d1-d0+512)&1023)-512, a2=((d2-d1+512)&1023)-512, a=(a1*3/2>a2*3/2 ? a1 : a2); if((a2>0?a2:-a2)>(a1>0?a1:-a1)) a=a2; else a=a1;
         if((a>70 || a<-70) && ((frames>>3)&1)){ int big=(a>140||a<-140); text(pg,a>0?196:22,78,a>0?">>":"<<",big?C_GOLD:C_WHITE,2); if(big) text(pg,a>0?180:38,78,a>0?">":"<",C_RED,2); } }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h6=TMR(); kh_t[0]=h1-h0; kh_t[1]=h2-h1; kh_t[2]=h3-h2; kh_t[3]=h4-h3; kh_t[4]=h5-h4; kh_t[5]=h6-h5;
+#ifdef TEST_KLOG
+    { extern u32 klog[]; for(int q=0;q<6;q++) klog[23+q]+=kh_t[q]; }
+#endif
 #endif
     if(kdrift){ rect(pg,110,58,40,3,C_DGREY); rect(pg,110,58,kcharge>110?40:kcharge*40/110,3,kcharge>110?C_GOLD:kcharge>50?C_CYAN:C_WHITE); }
     if(ks_state==KS_COUNT){ const char *c = k_count>190 ? "3" : k_count>130 ? "2" : k_count>70 ? "1" : "GO!"; int L=textlen(c); text(pg,120-L*6+1,25,c,0,3); text(pg,120-L*6,24,c,k_count>70?C_WHITE:C_GREEN,3);
@@ -1148,3 +1160,5 @@ static void kart_hud(volatile u16 *pg){
 
 static void kart_reset(void){ kr_mode=0; kart_on=0; kt_painted=0; nkslot=0; nkhid=0; nrc=1; ks_state=0; kloop_on=0; nkl=0; }   // a new planet: its land is fresh, nothing is borrowed
 static int kart_glow(void){ return kl.part[KP_GLOW]; }
+#undef polyfill
+#undef linep

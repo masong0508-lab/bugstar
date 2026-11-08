@@ -25,14 +25,15 @@ static s32 m7_sppx, m7_sppy, m7_scamh; static int m7_shsn, m7_shcs, m7_sphz, m7_
 static u32 m7_t[6], kt_v[4], kt_t0, kt_d[4], kfr_sum=0, kfr_n=0, kfr_avg=0, kh_t[8];
 #endif
 static inline void m7_wr8(volatile u16 *pg, int u, int v, int c){ volatile u16 *p=pg+((v*240+u)>>1); if(u&1) *p=(*p&0x00FF)|(c<<8); else *p=(*p&0xFF00)|c; }
-static void m7_pix(int x, int y, int c){         // a pixel of the screen: into the sky half, or onto the map texel the ground shows there
+OVK static void m7_pix(int x, int y, int c){         // a pixel of the screen: into the sky half, or onto the map texel the ground shows there
+    KCNT(59,1);
     if(x<0||x>=240||y<0||y>=160) return;
     if(y<m7_strip || (m7_cock && y>=140)){ m7_wr8(M7_PG0,x,y,c); return; }
     if(!(m7_dc[m7_tab][y]&(1<<4))) return; const M7Line *L=&M7_TAB(m7_tab)[y];
     int u=(L->x+L->pa*x)>>8, v=(L->y+L->pc*x)>>8; if((unsigned)u<240 && (unsigned)v<160) m7_wr8(M7_PG1,u,v,c);
 }
-static inline void m7_wt(int u, int v, int c){ if((unsigned)u<240 && (unsigned)v<160) m7_wr8(M7_PG1,u,v,c); }
-static void m7_gspan(s32 U0, s32 V0, s32 U1, s32 V1, int c){      // the texels a row of the screen passes over, from (U0,V0) to (U1,V1) (8.8 texels), each painted once
+static inline void m7_wt(int u, int v, int c){ KCNT(57,1); if((unsigned)u<240 && (unsigned)v<160) m7_wr8(M7_PG1,u,v,c); }
+OVK static void m7_gspan(s32 U0, s32 V0, s32 U1, s32 V1, int c){      // the texels a row of the screen passes over, from (U0,V0) to (U1,V1) (8.8 texels), each painted once
     s32 dU=U1-U0, dV=V1-V0; int sw = (dV<0?-dV:dV) > (dU<0?-dU:dU);                              // walk along whichever axis moves more
     s32 P0,Q0,P1,Q1,dP,dQ; if(sw){ P0=V0; Q0=U0; P1=V1; Q1=U1; dP=dV; dQ=dU; } else { P0=U0; Q0=V0; P1=U1; Q1=V1; dP=dU; dQ=dV; }
     int m=P0>>8, m1=P1>>8; if(m==m1 || !dQ){ int ia=Q0>>8, ib=Q1>>8; if(!dQ){ ib=ia; }
@@ -45,22 +46,22 @@ static void m7_gspan(s32 U0, s32 V0, s32 U1, s32 V1, int c){      // the texels 
         if(ia==ib){ if(sw) m7_wt(ia,m,c); else m7_wt(m,ia,c); }
         else { int st = ib>ia ? 1 : -1; for(int q=ia;;q+=st){ if(sw) m7_wt(q,m,c); else m7_wt(m,q,c); if(q==ib) break; } }
         if(m==m1) break; m+=dir; qa=qb; qb=qa+(dir>0?qs:-qs); } }
-static void m7_span(int y, int x0, int x1, int c){
+OVK static void m7_span(int y, int x0, int x1, int c){
     if(y<0||y>=160) return; if(x0<0) x0=0; if(x1>239) x1=239; if(x0>x1) return;
     if(y<m7_strip || (m7_cock && y>=140)){ volatile u16 *row=M7_PG0+y*120;                                    // the sky: pairs at a time
         if(x0&1){ volatile u16 *p=row+(x0>>1); *p=(*p&0x00FF)|(c<<8); x0++; }
         if(x1>=x0 && !(x1&1)){ volatile u16 *p=row+(x1>>1); *p=(*p&0xFF00)|c; x1--; }
         u16 cc=(u16)(c|(c<<8)); for(int k=x0>>1, e=x1>>1; k<=e && x0<=x1; k++) row[k]=cc; return; }
-    if(!(m7_dc[m7_tab][y]&(1<<4))) return; const M7Line *L=&M7_TAB(m7_tab)[y];
+    KCNT(56,1); if(!(m7_dc[m7_tab][y]&(1<<4))) return; const M7Line *L=&M7_TAB(m7_tab)[y];
     s32 pa=L->pa, pc=L->pc, u=L->x+pa*x0, v=L->y+pc*x0; int lu=-1, lv=-1;                                       // the ground: each texel once
     { int n=x1-x0; s32 du=pa*n, dv=pc*n; int adu=du<0?-du:du, adv=dv<0?-dv:dv, mx=adu>adv?adu:adv;
 #ifndef TEST_NODDA
       if(((mx>>8)+1)*5 < (n+1)*2){ m7_gspan(u,v,u+du,v+dv,c); return; }
 #endif
     }                                      // (near the camera a texel is many pixels wide: walk the texels, not the pixels)
-    for(int x=x0;x<=x1;x++, u+=pa, v+=pc){ int uu=u>>8, vv=v>>8; if(uu==lu && vv==lv) continue; lu=uu; lv=vv; if((unsigned)uu<240 && (unsigned)vv<160) m7_wr8(M7_PG1,uu,vv,c); }
+    KCNT(58,x1-x0+1); for(int x=x0;x<=x1;x++, u+=pa, v+=pc){ int uu=u>>8, vv=v>>8; if(uu==lu && vv==lv) continue; lu=uu; lv=vv; if((unsigned)uu<240 && (unsigned)vv<160) m7_wr8(M7_PG1,uu,vv,c); }
 }
-static void m7_begin(void){ m7_dc=(M7Dc*)(void*)gen_acc; m7_rowz=(s16*)(void*)gen_acc+320; m7_fog=(M7Fog*)(void*)((s16*)(void*)gen_acc+480); m7_on=1; m7_arm=0; m7_tab=0; m7_strip=160; page_back=0; REG_DISPCNT=4|(1<<10)|(1<<12)|(1<<6); }
+static void m7_begin(void){ ov_k(); m7_dc=(M7Dc*)(void*)gen_acc; m7_rowz=(s16*)(void*)gen_acc+320; m7_fog=(M7Fog*)(void*)((s16*)(void*)gen_acc+480); m7_on=1; m7_arm=0; m7_tab=0; m7_strip=160; page_back=0; REG_DISPCNT=4|(1<<10)|(1<<12)|(1<<6); }
 static void m7_end(void){ m7_on=0; m7_arm=0; m7_strip=160; page_back=0; }
 IWRAM static void m7_irq(void){                 // at every VBlank: start the line DMAs for this frame, or stop them when a menu is up or the race is over
     if(m7_arm && !(in_menu&0xFFFF)){ const M7Line *t=M7_TAB(m7_tab); const u16 *d=m7_dc[m7_tab];
@@ -134,6 +135,7 @@ static void sky_hills(volatile u16 *pg){                                        
         for(int k=1;k<=hf;k++){ int y=hor-k; if(y>=19) *(volatile u32*)(pg+y*120+c)=0x6C6C6C6Cu; }
         for(int k=1;k<=hn;k++){ int y=hor-k; if(y>=19) *(volatile u32*)(pg+y*120+c)=0x6D6D6D6Du; } } }
 static void m7_sky(void){                     // the sky, the loops, the dust, the messages and the HUD, on page 0 (ground pixels find their way onto the map)
+    ov_k();
     volatile u16 *pg=M7_PG0;
     s32 kpx=ppx, kpy=ppy, kch=cam_h; int khs=hsn, khc=hcs, kph=g_phz, klo=kloop_on, kfp=cam_fp, khd_=kloop_hide;                 // the loops are drawn where the frame on show has its camera
     ppx=m7_sppx; ppy=m7_sppy; cam_h=m7_scamh; hsn=m7_shsn; hcs=m7_shcs; g_phz=m7_sphz; kloop_on=m7_sloop; kloop_hide=m7_shide; cam_fp=m7_sfp; m7_snap=1;

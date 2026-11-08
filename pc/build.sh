@@ -19,6 +19,7 @@ sed -i "s/\\bsinf\\b/pc_slotinfo/g" debug.inc save.inc main.c
 sed -i \
  -e 's/__attribute__((section("\.[ie]wram")))//g' \
  -e 's/__attribute__((section("\.iwram"), long_call, target("arm"), noinline))/__attribute__((noinline))/' \
+ -e 's/__attribute__((section("\.ov[dk]"), long_call, target("arm"), noinline))/__attribute__((noinline))/' \
  -e 's|#define REG_VCOUNT   (\*(volatile u16\*)0x04000006)|#define REG_VCOUNT   pc_vcount()|' \
  -e '/^void \*memset(void \*d, int c, unsigned n)/d' -e '/^void \*memcpy(void \*d, const void \*s, unsigned n)/d' \
  -e 's/__asm__ volatile("mov %0, sp":"=r"(\([a-z_]*\)))/\1=pc_sp()/g' \

@@ -682,7 +682,7 @@ static inline u32 recip32(u32 a){      // about 0xFFFFFFFF/a for a>2, to 16 bits
     return y>>(30-sh);
 }
 u32 prof[8];
-IWRAM static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
+OVD static void render_view(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     u32 t0=TMR();
     const int H=hz; const int gq=(gq_adapt && xo_i(XO_GFX)==1) ? 0 : xo_i(XO_GFX), wthr=gq==0?0:gq==1?40:9999, sthr=gq==0?0:gq==1?12:40;
     // pass 1: one ray per column
@@ -882,7 +882,7 @@ __attribute__((noinline)) static void spr_bar(volatile u16 *pg, DObj *o, int scx
         if(o->wind && (frames&2)){ int cx=scx; int y0=by-9; if(y0<19) y0=19; for(int y=y0;y<y0+5;y++) if(cx>=0&&cx<120&&tY<zbuf[cx]) pg[y*120+cx]=C_RED|(C_RED<<8); if(cx>=0&&cx<120&&tY<zbuf[cx]) pg[(y0+6)*120+cx]=C_RED|(C_RED<<8); }
     }
 }
-IWRAM static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32 plx, s32 ply){
+OVD static void draw_sprite(volatile u16 *pg, DObj *o, s32 dirx, s32 diry, s32 plx, s32 ply){
     s32 sx=o->x-px_, sy=o->y-py_;
     s32 det = (s32)((((long long)plx*diry) - ((long long)dirx*ply))>>16);
     if(!det) return;

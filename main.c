@@ -14,6 +14,11 @@ typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; 
 #define REG_BLDY     (*(volatile u16*)0x04000054)
 #define REG_KEYINPUT (*(volatile u16*)0x04000130)
 #define REG_WAITCNT  (*(volatile u16*)0x04000204)
+#ifdef TEST_KCNT
+#define KCNT(i,n) { extern u32 klog[]; klog[i]+=(n); }
+#else
+#define KCNT(i,n)
+#endif
 #define BG_PAL  ((volatile u16*)0x05000000)
 #define OBJ_PAL ((volatile u16*)0x05000200)
 #define VRAM    ((volatile u16*)0x06000000)
@@ -33,6 +38,11 @@ typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; 
 volatile u32 ktv[4];
 #endif
 #define IWRAM __attribute__((section(".iwram"), long_call, target("arm"), noinline))
+// Code overlays: the IWRAM is full, but the dungeon's renderer (.ovd) and the kart races' painting code (.ovk) are never needed at the same time, so they share
+// one stretch of IWRAM (gba.ld: OVERLAY). ov_d() / ov_k() copy the one that is wanted in (from the ROM, by DMA), and only if it is not already there.
+// ov_d() starts every dungeon frame, ov_k() starts every kart painting entry (kloop_draw, kbridge_draw); nothing in an overlay calls into the other one.
+#define OVD __attribute__((section(".ovd"), long_call, target("arm"), noinline))
+#define OVK __attribute__((section(".ovk"), long_call, target("arm"), noinline))
 static int film_mode=0;                               // the debug menu's HIDE THE HUD: no HUD anywhere, only the world
 #ifdef TEST_FILM
 #define FILM 1                                        // (a build for filming the trailer: always)
@@ -53,10 +63,21 @@ static int dbg_live_menu(volatile u16 *pg);
 #define DBG_EDGE(x,y) ((x)<0x10000||(y)<0x10000||(x)>=((MW-1)<<16)||(y)>=((MW-1)<<16))
 #define PBOX(x,y,r) (dbg_noclip ? DBG_EDGE(x,y) : box_solid(x,y,r))
 // ---- the kart races' hardware ground (m7.inc): on, and the first screen row the ground can use (the rows above come from page 0)
-static int m7_on=0, m7_strip=160, m7_snap=0; static s32 m7_cb_snap=0; static void m7_pix(int x, int y, int c); static void m7_span(int y, int x0, int x1, int c); IWRAM static void m7_irq(void); static void m7_after_vsync(void);
+static int m7_on=0, m7_strip=160, m7_snap=0; static s32 m7_cb_snap=0; OVK static void m7_pix(int x, int y, int c); OVK static void m7_span(int y, int x0, int x1, int c); IWRAM static void m7_irq(void); static void m7_after_vsync(void);
 
 void *memset(void *d, int c, unsigned n){ u8 *p=d; while(n--) *p++=c; return d; }
 void *memcpy(void *d, const void *s, unsigned n){ u8 *p=d; const u8 *q=s; while(n--) *p++=*q++; return d; }
+#ifndef PC_HW_H
+extern u32 __ov_start[], __load_start_ovd[], __load_stop_ovd[], __load_start_ovk[], __load_stop_ovk[];
+static int ov_cur=0;                                                               // 0 nothing yet, 1 the dungeon renderer, 2 the kart painters
+static void ov_load(int w){ const u32 *s = w==1 ? __load_start_ovd : __load_start_ovk; u32 n = w==1 ? (u32)(__load_stop_ovd-__load_start_ovd) : (u32)(__load_stop_ovk-__load_start_ovk);
+    *(volatile u32*)0x040000D4=(u32)s; *(volatile u32*)0x040000D8=(u32)__ov_start; *(volatile u32*)0x040000DC=n|(1<<26)|(1u<<31); ov_cur=w; }
+static inline void ov_d(void){ if(ov_cur!=1) ov_load(1); }
+static inline void ov_k(void){ if(ov_cur!=2) ov_load(2); }
+#else
+static inline void ov_d(void){}
+static inline void ov_k(void){}
+#endif
 
 static u32 keys, keys_old;
 static u32 rng_s = 0x1234567;
@@ -840,7 +861,7 @@ static void mine_hazard(void){                                                  
     else { if(HELD(K_UP|K_DOWN|K_LEFT|K_RIGHT)){ say("A ROCK CRASHES BEHIND YOU"); sfx(11); } else { say("CAVE-IN! A ROCK FALLS ON YOU"); hurt(dmg*2); } }
 }
 static int dungeon_frame_(void);
-static int dungeon_frame(void){ u32 t=TMR(); int r=dungeon_frame_(); prof[5]=TMR()-t; return r; }
+static int dungeon_frame(void){ u32 t=TMR(); ov_d(); int r=dungeon_frame_(); prof[5]=TMR()-t; return r; }
 static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint, 3 when you warp out
     int freeze = hitstop>0; if(freeze){ hitstop--; wtick=0; }      // a blink of stillness when a hit lands
     if(wtick){ tick_timers(); hunger_tick(40); regen_tick(45); map_reveal(); mine_hazard(); }
