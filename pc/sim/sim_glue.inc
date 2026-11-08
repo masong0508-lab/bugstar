@@ -78,7 +78,7 @@ static uint32_t sim_ls_update(void){                                            
     Unlock *u=sim_ul(); UlFacts f;
     if(sim_gold_prev>=0 && gold>sim_gold_prev) ul_note(u,ULC_GOLD); sim_gold_prev=gold;       // the first gold you earn
     if(sim_w.weather!=SIMW_CLEAR) ul_note(u,ULC_WEATHER);
-    for(int k=0;k<sim_w.nfolk;k++) if(sim_w.folk[k].warned) { ul_note(u,ULC_NEEDY); break; }  // somebody got hungry or tired
+    for(int k=0;k<sim_w.nfolk;k++) if(sim_w.folk[k].warned&3){ ul_note(u,ULC_NEEDY); break; }  // somebody got hungry or tired
     sim_ls_facts(&f); return ul_update(u,&f, sim_ls_h_early && sim_cal<UL_EARLY_TICKS);
 }
 // a tip as a card: normal size uses the game's own card; BIG TEXT draws 8-pixel letters, 26 to a line
@@ -112,7 +112,11 @@ static void sim_ls_deliver(void){                                               
     if(st==ULT_CARD){ sim_ls_cards++; sim_a_up=0; sim_tip_card(ft,o.big); p_last=vbl_count; if(ul_feat_sq(ft)<0) ul_open(u,ft); sim_tip_wait=1200; }     // (a card you read is not new any more, unless it has its own menu row)
     else if(st==ULT_TOAST){ char b[44]; scpy(b,"NEW: "); scat(b,ul_defs[ft].name); scat(b,". SEE TIPS"); say(b); sfx(6); sim_ls_toasts++; sim_tip_wait=150; }
 }
-static void sim_ls_tick(void){ sim_ls_update(); sim_ls_deliver(); }
+static void sim_ls_tick(void){
+    uint32_t nw=sim_ls_update();
+    for(int ft=0;ft<UF_N;ft++) if(nw>>ft&1){ int sq=ul_feat_sq(ft); if(sq>=0 && sq<STM_N && sq!=SQ_HALL) sim_log(&sim_w,SIME_STAND,0,1,sq); }     // the journal tells of a menu when it is found (not before)
+    sim_ls_deliver();
+}
 static void sim_ls_hud_dump(char *t, size_t n){ char a[300],b[300],c[300]; Unlock *u=sim_ul(); ul_names(u->have,a,sizeof a); ul_names(ul_pending(u),b,sizeof b); ul_names(ul_fresh(u),c,sizeof c);
     scpy(t,"unlock have "); ncat(t,u->have); scat(t," told "); ncat(t,u->told); scat(t," opened "); ncat(t,u->opened); scat(t," cards "); ncat(t,sim_ls_cards); scat(t," toasts "); ncat(t,sim_ls_toasts); scat(t," crowds "); ncat(t,sim_ls_summaries);
     scat(t," names "); scat(t,a[0]?a:"-"); scat(t," fresh "); scat(t,c[0]?c:"-"); (void)b; (void)n; }
@@ -271,7 +275,7 @@ static void sim_unlock_msgs(void){
     for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1);                // patch 15: a friend's gift reaches your bag
         if(e && e->kind==SIME_GIFT){ int a=e->b;
             if(e->a==SIMG_FOOD) eat(a); else if(e->a==SIMG_GOLD) gold=sadd(gold,(s64)a*(20+(level>100?100:(s64)level))); else if(e->a==SIMG_HEAL){ hearts=maxh; mp=maxmp; } else if(e->a==SIMG_ORE) ore_add(0,a);
-            char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_gifts_got++; break; } }
+            char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_gifts_got++; ul_note(sim_ul(),ULC_GIFT); break; } }
     sim_seen_log=sim_w.log_n;
     if(!sim_ls_on(UF_GODS)) c=0;                                               // patch 47: GOD POWERS is not found yet: no news of them (the journal still keeps the line)
     if(c>3){ char b[40]; b[0]=0; ncat(b,c); scat(b," NEW GOD POWERS ARE OPEN"); say(b); sfx(6); }
@@ -316,6 +320,7 @@ static void sim_burn_world(void){                       // a warship burnt this 
     SimColony *co=sim_colony(); co->world_ok = pc_applied ? 1 : 0; col_burn(co); }              // an endless-galaxy world is burnt for good (DEAD_WORLD), a story world is only ruined (it heals; settle again)
 static int sim_mine_news, sim_mine_said;             // mine news said aloud (the tests read it)
 static void sim_colony_tick(void){
+    int cv=sim_ls_on(UF_COLONY);                                         // patch 47: the colony talks only once you found it (it still runs, and its news is kept)
     sim_f.difficulty=(u8)xo_i(XO_SIDEDIF);                              // the main Options setting is the one that counts
     ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony(); u32 today=(u32)sim_day(&sim_w)+(u32)sim_h_age, yd=col_year_days(SIM_SEASON_DAYS);
     co->world_ok = pc_applied ? 1 : 0;                                  // only endless-galaxy planets can ever be destroyed; story worlds never
@@ -327,20 +332,19 @@ static void sim_colony_tick(void){
     if(sim_h_mine && !sim_h_done && (co->mask&(1u<<COLR_TENT)) && co->nset){ sim_h_done=1; co->bld[COLB_MINE]=1; co->grid[5]=COLB_MINE+1; co->wood=400; co->food=500; for(int i=0;i<co->nset && i<6;i++) co->job[i]= (u8)(i<4 ? COLJ_MINER : i==4 ? COLJ_BUILDER : COLJ_COOK); }
     { ColAway aw; MnAway maw; Mine *mi=sim_mine(); int nd=mn_catchup(co,mi,today,yd,sim_f.difficulty,&aw,&maw);       // Phase 6: the colony's days and its mine's days together
       if(nd>=2 && (co->mask&(1u<<COLR_TENT))){ sim_away_n=col_away_text(&aw,co,sim_away,6); sim_away_n+=mn_away_text(&maw,mi,sim_away+sim_away_n,6-sim_away_n); sim_away_new=1;     // read on the COLONY screen; one line now
-          char b[40]; scpy(b,"COLONY: "); if(aw.years){ ncat(b,aw.years); scat(b," YEARS PASSED"); } else { ncat(b,aw.days); scat(b," DAYS PASSED"); } if(!nw){ say(b); } }
+          char b[40]; scpy(b,"COLONY: "); if(aw.years){ ncat(b,aw.years); scat(b," YEARS PASSED"); } else { ncat(b,aw.days); scat(b," DAYS PASSED"); } if(!nw && cv){ say(b); } }
       for(int i=aw.nev-1;i>=0;i--){ int k=aw.ev[i].kind;                  // warnings in advance, and bad news, as they come
-          if(k==COLE_RAIDWARN||k==COLE_FOODWARN||k==COLE_RAIDLOST||k==COLE_RUINS||k==COLE_WORLDEND||k==COLE_SICK){ char t[52]; col_event_text(&aw.ev[i],t,sizeof t); say(t); sfx(4); sim_mine_news++; break; } }
+          if(k==COLE_RAIDWARN||k==COLE_FOODWARN||k==COLE_RAIDLOST||k==COLE_RUINS||k==COLE_WORLDEND||k==COLE_SICK){ char t[52]; col_event_text(&aw.ev[i],t,sizeof t); if(cv){ say(t); sfx(4); } sim_mine_news++; break; } }
       if(!sim_mine_news) for(int i=maw.nev-1;i>=0;i--){ int k=maw.ev[i].kind;                              // the mine's news: a creak is a day's warning, a cave-in is bad news
-          if(k==MNE_CREAK||k==MNE_CAVE||k==MNE_DIED||k==MNE_GOAL){ char t[52]; mn_event_text(&maw.ev[i],t,sizeof t); say(t); sfx(4); sim_mine_said++; break; } }
+          if(k==MNE_CREAK||k==MNE_CAVE||k==MNE_DIED||k==MNE_GOAL){ char t[52]; mn_event_text(&maw.ev[i],t,sizeof t); if(cv){ say(t); sfx(4); } sim_mine_said++; break; } }
       sim_mine_news=0; }
-    if(nw){ int top=0; for(int r=1;r<COLR_N;r++) if(nw&(1u<<r)) top=r; say(col_rung_card(top)); sfx(6); sim_col_cards++; }
+    if(nw){ int top=0; for(int r=1;r<COLR_N;r++) if(nw&(1u<<r)) top=r; if(cv){ say(col_rung_card(top)); sfx(6); sim_col_cards++; } }
 }
 static void sim_stand_tick(void){
     Standing *st=sim_st(); if(!st->used){ st->used=1; st->told=(uint16_t)stand_open_mask(st,fame); }      // an old save: the menus you already earned are yours, with no fanfare
     if(stand_can_appoint(st,fame,sim_w.nfolk)){ stand_appoint(st,sim_town32(),world_name(),sim_cal); sim_log(&sim_w,SIME_STAND,0,2,0); }
     uint16_t m=stand_open_mask(st,fame), nw=(uint16_t)(m&~st->told);              // patch 47: the TIP cards (unlock.h) announce menus now; here only the journal line is kept
-    for(int i=0;i<STM_N;i++) if(nw>>i&1){ if(i!=STM_HALL) sim_log(&sim_w,SIME_STAND,0,1,i); }
-    st->told|=nw;
+    st->told|=nw;                                                                    // (the journal line "X IS OPEN TO YOU" is written when the menu is found, in sim_ls_tick)
     if(stand_is_mayor(st) && sim_town32()==st->mayor_town && sim_w.nfolk>0){        // the home town pays: its bugs, more when they are happy
         int sum=0; for(int k=0;k<sim_w.nfolk;k++) sum+=sim_mood(&sim_w.folk[k]);
         st->tax_rate=stand_rate(sim_w.nfolk,sum/sim_w.nfolk,sim_unit()); }
@@ -370,7 +374,7 @@ static int sim_dn_call(void){
     return col_call(sim_colony(),(u32)sim_day(&sim_w));
 }
 static void sim_dn_reset(void){ sim_dn_cur=0; }
-static void sim_dn_pick(void){ int c=sim_dn_call(); sim_dn_cur=c; if(c) fl_ev=sim_dn_fe(c); }
+static void sim_dn_pick(void){ int c=sim_dn_call(); sim_dn_cur=c; if(c){ fl_ev=sim_dn_fe(c); ul_note(sim_ul(),ULC_CALL); } }
 static void sim_dn_mark(void){ if(sim_dn_cur!=COLC_LOST) return; for(int i=ndo-1;i>=0;i--) if(dob[i].kind==K_CAGE && dob[i].alive){ dob[i].champ=3; break; } }   // the last cage made is the settler's
 static void sim_dn_done(int fe){
     if(!sim_dn_cur || fe!=sim_dn_fe(sim_dn_cur)) return;

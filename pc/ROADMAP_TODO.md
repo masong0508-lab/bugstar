@@ -49,3 +49,8 @@ Built and tested: sizes, reward formula, fights, interiors, missions, encounters
 5. `bash pc/warship/test.sh` now also runs the balance report (quick); when you change a PCM_* number in `pc/pc_missions.inc`, change it in `pc/warship/bal_rules.h` too.
 
 - [x] Patch 45 (played by scripts, not by a person): all 7 warship mission kinds accepted, flown, finished and paid with the pay checked by `pc/warship/ms_check.c`, saved and reloaded (`pc/tests/mission.sh`); ally and own-ship hangar decks (`pc/tests/walk.sh`); second stair and dig on floors deeper than 1; burnt colony art; hell terrain in the same visit; mine and workshops run for 1,500 days x 30 towns (`pc/sim/mine_bal.c`, no softlock, no value changed, see `pc/sim/TUNING.md`); BUGSTARILLION v3 long walk with the real index (`pc/tests/giant_v3deep.txt`, needs BUGSTAR_GIANT_DIR). Still open: nothing played by a human; the dig and hell terrain were checked in code and by the aftermath script only.
+
+## Patch 47: the life sim found step by step (progressive disclosure)
+- [x] 47: unlock registry (`pc/sim/unlock.h`), tips, TIPS page, `!` markers, LIFE SIM options, hidden rows everywhere (see README "The life sim, found step by step").
+- [ ] Not played by a person yet: only scripts and frames. Check the pace by hand (does the 10-minute rule feel right? is 20 seconds between cards enough?) and read the tip texts aloud for a dyslexic reader.
+- [ ] Skills (`SimFolk.skill`) and the weather forecast have no feature of their own yet: add `UF_SKILL` when they show in a menu.
