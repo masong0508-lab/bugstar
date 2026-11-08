@@ -3,9 +3,13 @@
 // smoothly (bilinear heights and colours, 3 samples per game step, sky as a continuous gradient, stars as soft dots, sun and moons as smooth discs).
 // It only READS the game. CLASSIC (or no window size) turns it off. pc_pncomp.inc (in pc_hw.c) shows it where the page still holds what render_planet wrote.
 #include <stdlib.h>
-typedef struct { int w,h,ya; uint32_t *buf; long f[2]; uint8_t snap[2][240*160]; } PcNat;
+typedef struct { int w,h,ya; uint32_t *buf; long f[2]; uint8_t snap[2][240*160]; int sc; } PcNat;
 extern PcNat pc_pn; extern int pc_nat_w, pc_nat_h; extern int pc_v3d_classic(void); extern long pc_frames(void);
 typedef void (*PcParFn2)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn2 fn, void *ctx);
+extern int pc_q_get(int view);
+static inline int ifl(double x){ int i=(int)x; return i-(x<(double)i); }        // floor without the libm call (|x| < 2^31)
+static int pn_cheap;                                                              // quality MEDIUM / LOW: far ground is shaded every other row, far steps are sampled once instead of three times
+static float pn_sint[4096]; static int pn_sint_ok; static inline double pn_fsin(double x){ if(!pn_sint_ok){ for(int i=0;i<4096;i++) pn_sint[i]=(float)__builtin_sin(i*(6.283185307179586/4096)); pn_sint_ok=1; } return pn_sint[ifl(x*(4096/6.283185307179586))&4095]; }
 static int pn_active; static float *pn_top, *pn_ca, *pn_cb;           // per window column: the first terrain row (sky above it), and how much terrain covers the row above it (ca) and that row itself (cb)
 extern double pc_now_ms(void); extern void pc_vrec(int,double,double); extern double pc_cpu_ms(void); extern int pc_v3d_ultra(void); static void pc_pn_off(void){ pn_active=0; }
 static uint32_t pn_tex[256*256], pn_pal[256];
@@ -14,18 +18,22 @@ static inline uint32_t pn_mix(uint32_t a, uint32_t b, int f){ uint32_t rb=((a&0x
 static inline double pn_sf(int X,int Y){ int r0=(int)pn_top[X]; if(Y<r0-1) return 1; if(Y==r0-1) return 1-pn_ca[X]; if(Y==r0) return 1-pn_cb[X]; return 0; }       // how much of this pixel is sky (the terrain edge row is shared)
 static inline void pn_sky_over(int X,int Y,uint32_t col,double a){ if(X<0||X>=pc_pn.w||Y<pc_pn.ya||Y>=pc_pn.h||a<=0) return; a*=pn_sf(X,Y); if(a<=0) return; uint32_t *p=&pc_pn.buf[(size_t)(Y-pc_pn.ya)*pc_pn.w+X]; *p=pn_mix(*p,col,(int)(a>1?255:a*255)); }
 static inline void pn_sky_add(int X,int Y,uint32_t col,double f){ if(X<0||X>=pc_pn.w||Y<pc_pn.ya||Y>=pc_pn.h||f<=0) return; f*=pn_sf(X,Y); if(f<=0) return; int i=(int)(f*256); uint32_t *p=&pc_pn.buf[(size_t)(Y-pc_pn.ya)*pc_pn.w+X], d=*p; int r=(d>>16&255)+((col>>16&255)*i>>8), g=(d>>8&255)+((col>>8&255)*i>>8), b=(d&255)+((col&255)*i>>8); if(r>255) r=255; if(g>255) g=255; if(b>255) b=255; *p=(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; }
-static inline uint32_t pn_bil(double u, double v){ u-=0.5; v-=0.5; double fu=__builtin_floor(u), fv=__builtin_floor(v); int x0=((int)fu)&255, y0=((int)fv)&255, x1=(x0+1)&255, y1=(y0+1)&255; int wx=(int)((u-fu)*256), wy=(int)((v-fv)*256);
+static inline uint32_t pn_bil(double u, double v){ u-=0.5; v-=0.5; int ix=ifl(u), iy=ifl(v); int x0=ix&255, y0=iy&255, x1=(x0+1)&255, y1=(y0+1)&255; int wx=(int)((u-ix)*256), wy=(int)((v-iy)*256);
     return pn_mix(pn_mix(pn_tex[y0*256+x0],pn_tex[y0*256+x1],wx), pn_mix(pn_tex[y1*256+x0],pn_tex[y1*256+x1],wx), wy); }
-static inline double pn_hgt(double u, double v){ u-=0.5; v-=0.5; double fu=__builtin_floor(u), fv=__builtin_floor(v); int x0=((int)fu)&HMASK, y0=((int)fv)&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK; double a=u-fu, b=v-fv;
+static inline uint32_t pn_bil_t(double u, double v, int tx, int ty){          // the same, given the texel the point lies in (tx = floor(u), ty = floor(v))
+    double fu=u-tx, fv=v-ty; int x0, y0, wx, wy; if(fu<0.5){ x0=tx-1; wx=(int)((fu+0.5)*256); } else { x0=tx; wx=(int)((fu-0.5)*256); } if(fv<0.5){ y0=ty-1; wy=(int)((fv+0.5)*256); } else { y0=ty; wy=(int)((fv-0.5)*256); }
+    int x1=(x0+1)&255; x0&=255; int y1=(y0+1)&255; y0&=255;
+    return pn_mix(pn_mix(pn_tex[y0*256+x0],pn_tex[y0*256+x1],wx), pn_mix(pn_tex[y1*256+x0],pn_tex[y1*256+x1],wx), wy); }
+static inline double pn_hgt(double u, double v){ u-=0.5; v-=0.5; int iu=ifl(u), iv=ifl(v); int x0=iu&HMASK, y0=iv&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK; double a=u-iu, b=v-iv;
     return (hfine[y0*HW+x0]*(1-a)+hfine[y0*HW+x1]*a)*(1-b)+(hfine[y1*HW+x0]*(1-a)+hfine[y1*HW+x1]*a)*b; }
 // heights near a building are point-sampled, not blended: the blend turned every wall into a ramp one texel wide (a roof with sloping sides, like a hill). The classic
 // view takes the nearest texel, so a wall is vertical and a roof flat; here the same rule applies wherever any of the four blend texels is a building.
 static inline int pn_isb(int c){ return c>=BLD_B && c<BLD_B+8; }
 static inline double pn_hgtb(double u, double v){
-    double uu=u-0.5, vv=v-0.5, fu=__builtin_floor(uu), fv=__builtin_floor(vv); int x0=((int)fu)&HMASK, y0=((int)fv)&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK;
+    double uu=u-0.5, vv=v-0.5; int iu=ifl(uu), iv=ifl(vv); int x0=iu&HMASK, y0=iv&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK;
     if(pn_isb(cmap[y0*HW+x0])||pn_isb(cmap[y0*HW+x1])||pn_isb(cmap[y1*HW+x0])||pn_isb(cmap[y1*HW+x1]))
-        return hfine[(((int)__builtin_floor(v))&HMASK)*HW+(((int)__builtin_floor(u))&HMASK)];
-    return pn_hgt(u,v); }
+        return hfine[(ifl(v)&HMASK)*HW+(ifl(u)&HMASK)];
+    double a=uu-iu, b=vv-iv; return (hfine[y0*HW+x0]*(1-a)+hfine[y0*HW+x1]*a)*(1-b)+(hfine[y1*HW+x0]*(1-a)+hfine[y1*HW+x1]*a)*b; }
 static inline uint32_t pn_sky(double yg){ double t=(yg-18)*8.0/(PHZ+30-18)-0.5; if(t<0) t=0; if(t>7) t=7; int i=(int)t; if(i>6) i=6; return pn_mix(pn_pal[SKY_B+i],pn_pal[SKY_B+i+1],(int)((t-i)*256)); }
 // a building's wall: floors every 32 units of real height (so they shrink with distance like real floors), a roof ledge, slab lines, punched windows or glass ribbons
 // (by tint), some windows lit. hd = height below the roof edge; u = distance along the wall (mx+my: one of them is constant on any face).
@@ -71,22 +79,22 @@ static inline uint32_t pn_bld(int ix, double dy, int z, double u, double gc, int
 static int pn_roadT; static double pn_L;                                         // the city's tech level (0 huts .. 5 megacity), set once a frame
 static inline int pn_stI(int ix){ return ix==74 || ix==75 || ix==80 || ix==81; }
 static uint8_t pn_nst[HW*HW];                                                         // 1 where the texel or one of its four neighbours is street (made once a frame): the others skip the street tests
-static uint32_t pn_gnd(double u, double v, double zcc){
-    int tx=(int)__builtin_floor(u)&HMASK, ty=(int)__builtin_floor(v)&HMASK; if(!pn_nst[ty*HW+tx]) return pn_bil(u,v); int xr=(tx+1)&HMASK, xl=(tx-1)&HMASK, yd=(ty+1)&HMASK, yu=(ty-1)&HMASK;
+static uint32_t pn_gnd(double u, double v, double zcc, int *cio){
+    int itx=ifl(u), ity=ifl(v); int tx=itx&HMASK, ty=ity&HMASK; *cio=cmap[ty*HW+tx]; if(!pn_nst[ty*HW+tx]) return pn_bil_t(u,v,itx,ity); int xr=(tx+1)&HMASK, xl=(tx-1)&HMASK, yd=(ty+1)&HMASK, yu=(ty-1)&HMASK;
     int c0=cmap[ty*HW+tx], cr=cmap[ty*HW+xr], cl=cmap[ty*HW+xl], cd=cmap[yd*HW+tx], cu=cmap[yu*HW+tx];
     double k=0.5*FOCP/zcc*(pc_pn.w/240.0); if(k<1.5) k=1.5; if(k>16) k=16;                              // screen pixels per texel here: the nearer, the sharper
-    double uu=u-0.5, vv=v-0.5, fu=__builtin_floor(uu), fv=__builtin_floor(vv), a=uu-fu, b=vv-fv;
+    double uu=u-0.5, vv=v-0.5; int fu=ifl(uu), fv=ifl(vv); double a=uu-fu, b=vv-fv;
     a=0.5+(a-0.5)*k; if(a<0) a=0; if(a>1) a=1; b=0.5+(b-0.5)*k; if(b<0) b=0; if(b>1) b=1;
-    int x0=((int)fu)&HMASK, y0=((int)fv)&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK, wx=(int)(a*256), wy=(int)(b*256);
+    int x0=fu&HMASK, y0=fv&HMASK, x1=(x0+1)&HMASK, y1=(y0+1)&HMASK, wx=(int)(a*256), wy=(int)(b*256);
     uint32_t col=pn_mix(pn_mix(pn_tex[y0*256+x0],pn_tex[y0*256+x1],wx), pn_mix(pn_tex[y1*256+x0],pn_tex[y1*256+x1],wx), wy);
     if(zcc<18){
-        double fx=u-__builtin_floor(u), fy=v-__builtin_floor(v);
-        if(c0==74 || c0==75){ uint32_t hh=(uint32_t)((int)__builtin_floor(u*6))*2654435761u ^ (uint32_t)((int)__builtin_floor(v*6))*2246822519u; hh^=hh>>15; hh*=2246822519u; hh^=hh>>13;
+        double fx=u-itx, fy=v-ity;
+        if(c0==74 || c0==75){ uint32_t hh=(uint32_t)ifl(u*6)*2654435761u ^ (uint32_t)ifl(v*6)*2246822519u; hh^=hh>>15; hh*=2246822519u; hh^=hh>>13;
             static const u8 amp[6]={5,4,3,2,1,0}; int d=((int)(hh&7)-3)*amp[pn_roadT]*(int)(18-zcc)/36;  /* rough earth, smooth megacity */ int r=(int)(col>>16&255)+d, g=(int)(col>>8&255)+d, bl=(int)(col&255)+d; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; bl=bl<0?0:bl>255?255:bl; col=(uint32_t)(r<<16|g<<8|bl); }
         else if((c0==80 || c0==81) && pn_roadT>=1){ int e = (cr==74&&1-fx<0.16) || (cl==74&&fx<0.16) || (cd==74&&1-fy<0.16) || (cu==74&&fy<0.16); if(e) col=pn_mix(col,0xFFFFFF,pn_roadT>=2?56:30); }   // kerb
     }
     if(zcc<40){                                                                           // paint and shadows, at any distance a street is visible
-        double fx=u-__builtin_floor(u), fy=v-__builtin_floor(v);
+        double fx=u-itx, fy=v-ity;
         if(c0==75 && pn_roadT>=2) col=pn_mix(col,pn_roadT>=5?0x80F0FF:0xFFF4C8, pn_roadT>=5?110:150);   // lane paint
         if(c0==74 || c0==75){ int ke=(pn_isb(cr)&&1-fx<0.22) || (pn_isb(cl)&&fx<0.22) || (pn_isb(cd)&&1-fy<0.22) || (pn_isb(cu)&&fy<0.22);
             int yk=((cr==80||cr==81)&&1-fx<0.10) || ((cl==80||cl==81)&&fx<0.10) || ((cd==80||cd==81)&&1-fy<0.10) || ((cu==80||cu==81)&&fy<0.10);
@@ -102,30 +110,33 @@ static void pn_cols(void *vc, int lo, int hi){
         int rtop=H; double ytopf=160, zl=0; int first=1; double zprev=stp_z[0]; int ne=0; int er[256]; float eca[256], ecb[256];                // (the silhouette edges of this column, to anti-alias once the column is done)
         int total=g_nst*3-2;
         for(int j=0;j<total && rtop>ya;j++){
-            int i=j/3, s=j%3; double zf = s? stp_z[i]+(stp_z[i+1]-stp_z[i])*s/3.0 : stp_z[i]; s32 z=(s32)zf; if(z<16) z=16;
+            int i=j/3, s=j%3; if(s && pn_cheap && i>=g_nst/3) continue;                    // (MEDIUM and LOW: the far two thirds of the steps are sampled once, not three times)
+            double zf = s? stp_z[i]+(stp_z[i+1]-stp_z[i])*s/3.0 : stp_z[i]; s32 z=(s32)zf; if(z<16) z=16;
             double zc=z/256.0, mx=c->camx+vx*zc, my=c->camy+vy*zc; double h=pn_hgtb(mx*2,my*2); if(g_wob){ h+=wob64[(i*3+(int)gc)&63]; if(h<0) h=0; if(h>255) h=255; }
             s32 curve=((((z*z)>>14)*c->ck)>>c->csh)-c->csub; double yi=PHZ+((double)(cam_h+curve)-h*g_hs)*FOCP/z;
             if(yi>=ytopf){ zprev=z; continue; }
             double e=yi*sy; int r0=(int)__builtin_ceil(e-0.5); int clamped=r0<ya; if(r0<ya) r0=ya; if(r0>=rtop){ ytopf=yi; zprev=z; continue; }
             double zref; if(first){ zref= yi>PHZ+1 ? z*(yi-PHZ)/(160-PHZ) : zprev; if(zref<16) zref=16; ytopf=160; first=0; } else zref=zl;
-            int ti=((int)__builtin_floor(my*2)&HMASK)*HW+((int)__builtin_floor(mx*2)&HMASK); int ix=cmap[ti]; int bld=ix>=BLD_B && ix<BLD_B+8; int sp=(int)((ytopf-yi));
+            int ti=(ifl(my*2)&HMASK)*HW+(ifl(mx*2)&HMASK); int ix=cmap[ti]; int bld=ix>=BLD_B && ix<BLD_B+8; int sp=(int)((ytopf-yi));
             double iz0=1.0/z, iz1=1.0/zref; double span=ytopf-yi; if(span<1e-6) span=1e-6; double ispan=1.0/span;
             int face=0; double ygr=0;
-            if(bld){ int tx=(int)__builtin_floor(mx*2), ty=(int)__builtin_floor(my*2); int sxs=vx>0?-1:1, sys=vy>0?-1:1;
+            if(bld){ int tx=ifl(mx*2), ty=ifl(my*2); int sxs=vx>0?-1:1, sys=vy>0?-1:1;
                 int bx=pn_isb(cmap[(ty&HMASK)*HW+((tx+sxs)&HMASK)]), by=pn_isb(cmap[((ty+sys)&HMASK)*HW+(tx&HMASK)]);
                 if(bx!=by) face = bx ? 1 : 0;                                  // the open side is the face we see (0: an x-facing wall, lit; 1: a y-facing wall, shaded)
                 else { double fx=mx*2-tx, fy=my*2-ty, ex= vx>0?fx:1-fx, ey= vy>0?fy:1-fy; face = ex<ey ? 0 : 1; }
                 ygr=PHZ+((double)(cam_h+curve)-pn_L*g_hs)*FOCP/z; }
             double hazek=(double)j/total; if(hazek>1) hazek=1;
+            double hz_=hazek*0.35; if(g_fog){ double fz=(double)(j-(g_nst-6)*3)/18.0; if(fz>0){ hz_+= fz>1?1:fz; if(hz_>1) hz_=1; } } int hz256=(int)(hz_*256);      // (the haze is the same all along one step)
+            int farseg = pn_cheap && z>(14*256);                                                                                                        // (quality: a far step is shaded every other row)
             for(int r=r0;r<rtop;r++){ double yg=(r+0.5)/sy; uint32_t col;
                 if(bld) { double hag=(ygr-yg)*z/(double)FOCP; col=pn_bld(ix,yg-yi,z,mx+my,gc,face,hag,sy); }
-                else { double t=(yg-yi)*ispan; if(t>1) t=1; double izz=iz0+(iz1-iz0)*t; double zz=1.0/izz; double zcc=zz/256.0; double px=c->camx+vx*zcc, py=c->camy+vy*zcc;
-                    col=pn_gnd(px*2,py*2,zcc); int ci=cmap[(((int)__builtin_floor(py*2))&HMASK)*HW+(((int)__builtin_floor(px*2))&HMASK)];
-                    if(ci<GND_B && zcc<20){ double w=__builtin_sin(px*47+frames*0.06)*__builtin_sin(py*53-frames*0.05); if(w>0.96 && zcc<20) col=pn_mix(col,0xFFFFFF,(int)((w-0.96)*25*128)); }
-                    else if(ci>GND_B && ci<GND_B+15 && zcc<14){ uint32_t hh=(uint32_t)((int)__builtin_floor(px*24))*2654435761u ^ (uint32_t)((int)__builtin_floor(py*24))*2246822519u; hh^=hh>>15; hh*=2246822519u; hh^=hh>>13; int d=(int)(hh&15)-8; d=d*(int)(14-zcc)/14; 
-                        int rr_=((col>>16)&255)+d, gg_=((col>>8)&255)+d, bb_=(col&255)+d; rr_=rr_<0?0:rr_>255?255:rr_; gg_=gg_<0?0:gg_>255?255:gg_; bb_=bb_<0?0:bb_>255?255:bb_; col=rr_<<16|gg_<<8|bb_; }
-                    double hz_=hazek*0.35; if(g_fog){ double fz=(double)(j-(g_nst-6)*3)/18.0; if(fz>0){ hz_+= fz>1?1:fz; if(hz_>1) hz_=1; } }
-                    col=pn_mix(col,hz,(int)(hz_*256)); }
+                else { if(farseg && (r&1) && r>r0){ c->buf[(size_t)(r-ya)*W+X]=c->buf[(size_t)(r-1-ya)*W+X]; continue; }
+                    double t=(yg-yi)*ispan; if(t>1) t=1; double izz=iz0+(iz1-iz0)*t; double zz=1.0/izz; double zcc=zz/256.0; double px=c->camx+vx*zcc, py=c->camy+vy*zcc; int ci;
+                    col=pn_gnd(px*2,py*2,zcc,&ci);
+                    if(zcc<20){ if(ci<GND_B){ double w=pn_fsin(px*47+frames*0.06)*pn_fsin(py*53-frames*0.05); if(w>0.96) col=pn_mix(col,0xFFFFFF,(int)((w-0.96)*25*128)); }
+                        else if(ci>GND_B && ci<GND_B+15 && zcc<14){ uint32_t hh=(uint32_t)ifl(px*24)*2654435761u ^ (uint32_t)ifl(py*24)*2246822519u; hh^=hh>>15; hh*=2246822519u; hh^=hh>>13; int d=(int)(hh&15)-8; d=d*(int)(14-zcc)/14;
+                            int rr_=((col>>16)&255)+d, gg_=((col>>8)&255)+d, bb_=(col&255)+d; rr_=rr_<0?0:rr_>255?255:rr_; gg_=gg_<0?0:gg_>255?255:gg_; bb_=bb_<0?0:bb_>255?255:bb_; col=rr_<<16|gg_<<8|bb_; } }
+                    if(hz256) col=pn_mix(col,hz,hz256); }
                 c->buf[(size_t)(r-ya)*W+X]=col; }
             if(!clamped && r0>ya && ne<256){ double ca=r0-e, cb=r0+1-e; er[ne]=r0; eca[ne]=(float)(ca>0?ca:0); ecb[ne]=(float)(cb<1?cb:1); ne++; }
             rtop=r0; ytopf=yi; zl=z; zprev=z; }
@@ -136,7 +147,9 @@ static void pn_cols(void *vc, int lo, int hi){
 }
 static void pc_pn_native(volatile u16 *pg){
     pn_roadT = city_r ? city_tech() : 0; pn_L = city_r ? hmap[city_cy*TW+city_cx] : 0;
-    int W=pc_nat_w, H=pc_nat_h; pn_active=0; pc_pn.w=0; if(W<=240 || H<=160 || pc_v3d_classic()) return; double pn_t0=pc_now_ms(), pn_c0=pc_cpu_ms();
+    pn_active=0; pc_pn.w=0; if(pc_nat_w<=240 || pc_nat_h<=160 || pc_v3d_classic()) return; double pn_t0=pc_now_ms(), pn_c0=pc_cpu_ms();
+    int lvl=pc_q_get(1), f=(lvl==1 && pc_nat_w>=600)?2:1; pn_cheap=lvl<=2; int W=(pc_nat_w+f-1)/f, H=(pc_nat_h+f-1)/f;      // quality: LOW makes the picture half size each way (the compositor repeats its pixels), MEDIUM and LOW shade far ground more cheaply
+    pc_pn.sc=f;
     static int cap; static unsigned long bcap; if(W>cap){ free(pn_top); free(pn_ca); free(pn_cb); pn_top=malloc(sizeof(float)*W); pn_ca=malloc(sizeof(float)*W); pn_cb=malloc(sizeof(float)*W); cap=W; }
     int ya=(18*H+159)/160; unsigned long need=(unsigned long)W*(H-ya); if(need>bcap){ free(pc_pn.buf); pc_pn.buf=malloc(need*4); bcap=need; }
     for(int i=0;i<256;i++){ u16 c=BG_PAL[i]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; pn_pal[i]=(uint32_t)(r<<3|r>>2)<<16|(uint32_t)(g<<3|g>>2)<<8|(uint32_t)(b<<3|b>>2); }
@@ -165,8 +178,11 @@ static int pc_pn_shadow(volatile unsigned short *pg, int cx, int cy, int rx0, in
             double ex=px-vx*t, ey=py-vy*t, rx=rx0+(rx1-rx0)*t, ry=ry0+(ry1-ry0)*t, q=__builtin_sqrt((ex*ex)/(rx*rx)+(ey*ey)/(ry*ry));
             double soft=0.30+0.40*t, f=(1.0+soft*0.5-q)/soft; if(f<=0) continue; if(f>1) f=1; f=f*f*(3-2*f);                    // a wider penumbra the farther from the hull
             double a=amax*(1.0-0.55*t)*f; if(t<0.2 && q<0.6) a+=0.18*(1.0-t*5);                                                   // darkest right under the hull
-            if(sh_occ && sh_occ[(gxi>>1)<<3]<=gyi) continue;                                                                      // a nearer hill hides it
-            int ix=pg[(gyi*240+gxi)>>1]; ix = (gxi&1) ? ix>>8 : ix&255; if(ix<GND_B || ix>=GND_B+16) continue;                    // only on the ground
+            if(sh_occ){ double cxm=gx*0.5-0.5; int c0=ifl(cxm); double fc=cxm-c0; int c1=c0+1; if(c0<0) c0=0; if(c1>119) c1=119; if(c0>119) c0=119; double occ=sh_occ[c0<<3]*(1-fc)+sh_occ[c1<<3]*fc; if(occ<=gy) continue; }      // a nearer hill hides it (the hill's edge between two columns, not a step per column)
+            double gm=0; { double fx=gx-0.5, fy=gy-0.5; int x0=ifl(fx), y0=ifl(fy); double ax=fx-x0, ay=fy-y0;                                                // only on the ground: how much of the four nearest game pixels is ground (a soft edge, not a staircase)
+                for(int q4=0;q4<4;q4++){ int xx=x0+(q4&1), yy=y0+(q4>>1); if(xx<0) xx=0; if(xx>239) xx=239; if(yy<18) yy=18; if(yy>159) yy=159; int ix=pg[(yy*240+xx)>>1]; ix = (xx&1) ? ix>>8 : ix&255;
+                    if(ix>=GND_B && ix<GND_B+16) gm+=((q4&1)?ax:1-ax)*((q4>>1)?ay:1-ay); } }
+            if(gm<=0.02) continue; a*=gm>1?1:gm;
             uint32_t *p=&pc_pn.buf[(size_t)(Y-ya)*W+X]; uint32_t c=*p; int r=(int)(c>>16&255), g=(int)(c>>8&255), b=(int)(c&255);
             r=(int)(r*(1.0-0.72*a)); g=(int)(g*(1.0-0.68*a)); b=(int)(b*(1.0-0.52*a)); *p=(uint32_t)(r<<16|g<<8|b); } }
     return 1;
@@ -224,7 +240,7 @@ static int pc_pn_decor(volatile u16 *pg){
         for(int X=0;X<W;X++){ double c=(X+0.5)*120.0/W-0.5; double dc=__builtin_fmod(c+hor+536-60+268,536.0)-268; double y=26+t/2+dc*dc*(4+t/4)/900.0; if(y>150) continue;
             for(int b=0;b<3;b++){ if(b==2 && t<=12) break; double yb0= b==0 ? y : b==1 ? y+1 : y+3; uint32_t col= b==1 ? pn_pal[93] : pn_pal[90]; double a0=yb0*sy, a1=(yb0+1)*sy;
                 for(int Y=(int)a0;Y<=(int)a1;Y++){ if(Y<ya||Y>=H) continue; double lo=a0>Y?a0:Y, hi=a1<Y+1?a1:Y+1, cv=hi-lo; if(cv<=0) continue; pn_sky_over(X,Y,col,cv*0.92); } } } }
-    if(WL(MW_METEOR)){ int tt=(frames*3)%200; int x0=(frames/67*37)%120; int cs=(x0+tt/2)%120; if(cs+7<120){
+    if(WL(MW_METEOR)){ int tt=(frames*3)%200; int x0=(frames/67*37)%120; int cs=(x0+tt/2)%120; { 
         double hx=((cs+7)*2+1.0)*sx, hy=(20+tt/3+7+0.5)*sy, tx=(cs*2+1.0)*sx, ty=(20+tt/3+0.5)*sy; double dx=hx-tx, dy=hy-ty, l2=dx*dx+dy*dy; int X0=(int)(tx-4*su), X1=(int)(hx+4*su)+1, Y0=(int)(ty-4*su), Y1=(int)(hy+4*su)+1; if(X0<0) X0=0; if(X1>W) X1=W; if(Y0<ya) Y0=ya; if(Y1>H) Y1=H;
         for(int Y=Y0;Y<Y1;Y++) for(int X=X0;X<X1;X++){ double px=X+0.5-tx, py=Y+0.5-ty, t=(px*dx+py*dy)/l2; if(t<0) t=0; if(t>1) t=1; double ex=px-t*dx, ey=py-t*dy, d=__builtin_sqrt(ex*ex+ey*ey), w=(0.25+0.45*t)*sx, c=w-d+0.5; if(c>0){ if(c>1) c=1; pn_sky_over(X,Y,pn_pal[94],c*t*t); }
             if(ultra && d<w*5){ double g=1-d/(w*5); pn_sky_add(X,Y,pn_pal[94],g*g*0.35*t); } } } }

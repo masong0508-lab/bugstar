@@ -23,7 +23,7 @@
 
 void (*pc_irq_fn)(void);
 int pc_ships_mode=-1, pc_armada_n=0;   // the ship renderer: -1 off (the game draws its own ships), 0 CLASSIC, 1 NATIVE, 2 ULTRA; ships in the far battle (PC_SHIPS / PC_ARMADA for tests)
-int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h; uint32_t *pc_dn_buf, *pc_dn_spl; int pc_dn_spl_on; long pc_dn_f[2]={-100,-100}; uint8_t pc_dn_snap[2][240*160], pc_dn_snap2[2][240*160];   // the native dungeon (pc_dnative.inc): the picture, its size, the page snapshot it belongs to
+int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h, pc_dn_sc=1; uint32_t *pc_dn_buf, *pc_dn_spl; int pc_dn_spl_on; long pc_dn_f[2]={-100,-100}; uint8_t pc_dn_snap[2][240*160], pc_dn_snap2[2][240*160];   // the native dungeon (pc_dnative.inc): the picture, its size, the page snapshot it belongs to
 static uint8_t sr_snap[2][240*128]; static long sr_snap_f[2]={-100,-100};
 void pc_sr_snapshot(const volatile void *pg){ int t=((uintptr_t)pg)>=GBAA(0x0600A000u) ? 1 : 0; memcpy(sr_snap[t],(const void*)pg,240*128); sr_snap_f[t]=pc_frames(); }
 // the ship editor's preview: the page as it will be shown, except the preview rectangle which holds what it looked like before its text went on (so text stays on top of the native ship)
@@ -394,6 +394,7 @@ static void nv_rows(void *vc, int lo, int hi){
         uint32_t bd888=(uint32_t)lut5[bd&31]<<16|(uint32_t)lut5[(bd>>5)&31]<<8|lut5[(bd>>10)&31]; int fog256=fog>0?(int)(fog*256+0.5):0;   // (the haze colour and strength, once per row, in integers)
         double gx0=0.5*sx-0.5, ustep=rpa*sx, vstep=rpc*sx, ubase=rrx+rpa*gx0, vbase=rry+rpc*gx0;
         for(int X=0;X<W;X++){
+            if(nv_op[(size_t)Y*W+X]&0x40) continue;
             int have=0; uint16_t bc=bd;
             uint32_t bc888=0; int sm=0;
             if(dmaln){
@@ -451,7 +452,26 @@ static void nv_rows(void *vc, int lo, int hi){
 double pc_now_ms(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec*1e3+t.tv_nsec/1e6; }
 double pc_vms[4], pc_vmin[4]={1e9,1e9,1e9,1e9}, pc_vcpu[4], pc_vcmin[4]={1e9,1e9,1e9,1e9}; static long pc_vn[4];
 double pc_cpu_ms(void){ struct timespec t; clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&t); return t.tv_sec*1e3+t.tv_nsec/1e6; }
-void pc_vrec(int id,double ms,double cpu){ pc_vms[id]=pc_vn[id]?pc_vms[id]*0.95+ms*0.05:ms; pc_vcpu[id]=pc_vn[id]?pc_vcpu[id]*0.95+cpu*0.05:cpu; pc_vn[id]++; if(ms<pc_vmin[id]) pc_vmin[id]=ms; if(cpu<pc_vcmin[id]) pc_vcmin[id]=cpu; }       // the game-frame cost of the native 3D passes (0 dungeon, 1 planet, 2 space): wall and CPU (all threads) time, a running average and the best frame (shown by PC_NBENCH)
+// ---- QUALITY (VIDEO > QUALITY): LOW, MEDIUM or HIGH, or AUTO: the native 3D views (dungeon 0, planet 1) trade detail for speed by themselves when the frame costs too much.
+// HIGH = the full picture. MEDIUM = cheaper shading (nearest texels in the dungeon, far ground every other row and far steps sampled once on the planet). LOW = MEDIUM and the
+// picture made at half size each way, shown with each pixel repeated. AUTO steps down when the average cost of a frame (the 3D pass plus the compose, wall time) is over the budget
+// (PC_QBUDGET ms, default 15), and back up only when the next level up is estimated to fit well inside it, waiting longer each time a step up had to be taken back.
+int pc_quality;                  // 0 AUTO, 1 LOW, 2 MEDIUM, 3 HIGH (set by the window front end; PC_QUALITY=0..3 in the environment forces one)
+static int pc_ql[4]={3,3,3,3}; static double pc_vlast[4]; static long pc_vfr[4]={-100,-100,-100,-100};
+static int pc_q_env(void){ static int env=-2; if(env==-2){ const char *e=getenv("PC_QUALITY"); env=e?atoi(e):-1; } return env; }
+int pc_q_get(int id){ int q=pc_quality, e=pc_q_env(); if(e>=0) q=e; if(q>=1 && q<=3) return q; return pc_ql[id&3]; }
+int pc_q_auto(void){ int e=pc_q_env(); return (e>=0?e:pc_quality)==0; }
+int pc_q_cur(void){ int id = g_frame-pc_vfr[1]<=2 ? 1 : g_frame-pc_vfr[0]<=2 ? 0 : -1; return id<0 ? 3 : pc_q_get(id); }      // the level of the view on screen (for the FPS line)
+static void pc_q_tick(double comp_ms){
+    if(!pc_q_auto()) return; static double budget=-1; if(budget<0){ const char *e=getenv("PC_QBUDGET"); budget=e?atof(e):15.0; if(budget<2) budget=15.0; }
+    static double ema[4]; static int n[4], cool[4], good[4], upwait[4]={120,120,120,120}; static long lastup[4];
+    for(int id=0;id<2;id++){ if(g_frame-pc_vfr[id]>1) { n[id]=0; continue; } double cost=pc_vlast[id]+comp_ms; ema[id]= n[id]++ ? ema[id]*0.88+cost*0.12 : cost;
+        if(cool[id]>0){ cool[id]--; continue; } int L=pc_ql[id];
+        if(ema[id]>budget && L>1 && n[id]>8){ pc_ql[id]=L-1; ema[id]*= L==3 ? 0.70 : 0.40; cool[id]=40; good[id]=0; if(g_frame-lastup[id]<400 && upwait[id]<1920) upwait[id]*=2; continue; }       // too slow: one level down
+        double ratio = L==1 ? 2.5 : 1.45;
+        if(L<3 && ema[id]*ratio<budget*0.85){ if(++good[id]>=upwait[id]){ pc_ql[id]=L+1; ema[id]*=ratio; cool[id]=40; good[id]=0; lastup[id]=g_frame; } } else good[id]=0; }
+}
+void pc_vrec(int id,double ms,double cpu){ pc_vlast[id&3]=ms; pc_vfr[id&3]=g_frame;  pc_vms[id]=pc_vn[id]?pc_vms[id]*0.95+ms*0.05:ms; pc_vcpu[id]=pc_vn[id]?pc_vcpu[id]*0.95+cpu*0.05:cpu; pc_vn[id]++; if(ms<pc_vmin[id]) pc_vmin[id]=ms; if(cpu<pc_vcmin[id]) pc_vcmin[id]=cpu; }       // the game-frame cost of the native 3D passes (0 dungeon, 1 planet, 2 space): wall and CPU (all threads) time, a running average and the best frame (shown by PC_NBENCH)
 static double pc_dn_last_ms; void pc_dn_report(double ms,int W,int H){ pc_dn_last_ms=ms; static int on=-1; static double acc; static int n; if(on<0) on=getenv("PC_TIMING")!=0; if(!on) return; acc+=ms; if(++n==200){ fprintf(stderr,"dungeon native %dx%d: %.2f ms per frame\n",W,H,acc/n); n=0; acc=0; } }
 int pc_v3d_classic(void), pc_v3d_ultra(void);
 static int nv_v3(void){ int v3=pc_vid3d; static int env=-2; if(env==-2){ const char *e=getenv("PC_V3D"); env=e?atoi(e):-1; } if(env>=0) v3=env; return v3; }
@@ -529,7 +549,32 @@ static void pc_bloom(uint32_t *out,int W,int H,int y0,int y1){
     BlCtx c={out,W,H,y0,y1,B,bw,bh,fa,fb,fz}; pc_par_chunk(bh,4,bl_down,&c); pc_par_chunk(bh,8,bl_h,&c); pc_par_chunk(bh,8,bl_v,&c); pc_par_chunk(y1-y0,16,bl_up,&c); }
 #include "pc_pncomp.inc"
 #include "pc_sncomp.inc"
+// the native dungeon (pc_dnative.inc), shown wherever the page still holds what the 3D pass wrote. Its picture may be smaller than the window (the quality levels): f = window / picture.
+typedef struct { uint32_t *out; int W,H,f,Y0,Y0i,fadeop,ev; const uint8_t *pgb,*sn1,*sn2; const uint32_t *spl; double sx,sy; uint32_t pal[256]; } DcCC;
+static void dc_rows(void *vc,int lo,int hi){
+    DcCC *c=(DcCC*)vc; int W=c->W, f=c->f, Wi=pc_dn_w, fadeop=c->fadeop, ev=c->ev; uint32_t *out=c->out; const uint32_t *pal=c->pal;
+    for(int Y=c->Y0+lo;Y<c->Y0+hi;Y++){ int gy=(int)((Y+0.5)*c->sy); if(gy>159) gy=159; if(gy<18) continue;
+        int Yi=Y/f; if(Yi<c->Y0i) Yi=c->Y0i; size_t ro=(size_t)(Yi-c->Y0i)*Wi; const uint32_t *src=pc_dn_buf+ro; const uint32_t *sp=c->spl?c->spl+ro:0;
+        for(int X=0;X<W;X++){ int gx=(int)((X+0.5)*c->sx); if(gx>239) gx=239; int gi=gy*240+gx; size_t q=(size_t)Y*W+X; int Xi=f==1?X:X/f;
+            if((nv_op[q]&7)<4) continue;
+            uint32_t v=src[Xi], sv=sp?sp[Xi]:0;
+            if(sv){ if(c->pgb[gi]!=c->sn2[gi]) continue; if(sv&0x80000000u) v=sv; else if(v&0x20000000u) continue; }         // a thing drawn natively: its own pixel (or the world behind it), while the page still holds what the sprite pass left
+            else if(c->pgb[gi]!=c->sn1[gi] || (v&0x20000000u)) continue;
+            uint32_t a=pal[v&255], b=pal[(v>>8)&255]; int fr=(v>>16)&255; uint32_t rb=((a&0xFF00FF)*(256-fr)+(b&0xFF00FF)*fr)>>8, g=((a&0xFF00)*(256-fr)+(b&0xFF00)*fr)>>8; uint32_t col=(rb&0xFF00FF)|(g&0xFF00);
+            if(fadeop==2){ uint32_t r2=(col>>16&255)+((255-(col>>16&255))*ev>>4), g2=(col>>8&255)+((255-(col>>8&255))*ev>>4), b2=(col&255)+((255-(col&255))*ev>>4); col=r2<<16|g2<<8|b2; }
+            else if(fadeop==3){ uint32_t r2=(col>>16&255)*(16-ev)>>4, g2=(col>>8&255)*(16-ev)>>4, b2=(col&255)*(16-ev)>>4; col=r2<<16|g2<<8|b2; }
+            out[q]=col; nv_op[q]|=0x40; } }
+}
+static void dn_compose(uint32_t *out,int W,int H,uint16_t dc,int bmode,int ev,uint16_t bldcnt){
+    if(!(pc_dn_w>0 && pc_dn_h>0 && pc_dn_sc>=1 && pc_dn_w==(W+pc_dn_sc-1)/pc_dn_sc && pc_dn_h==(H+pc_dn_sc-1)/pc_dn_sc && pc_dn_buf && !pc_v3d_classic())) return;
+    int t=(dc>>4)&1; if(g_frame-pc_dn_f[t]>4) return;
+    static DcCC c; c.out=out; c.W=W; c.H=H; c.f=pc_dn_sc; c.Y0=(18*H+159)/160; c.Y0i=(18*pc_dn_h+159)/160; c.pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0));
+    for(int i=0;i<256;i++){ uint16_t cc=R16(PALRAM+i*2); c.pal[i]=(uint32_t)((cc&31)<<3|(cc&31)>>2)<<16 | (uint32_t)(((cc>>5)&31)<<3|((cc>>5)&31)>>2)<<8 | (uint32_t)(((cc>>10)&31)<<3|((cc>>10)&31)>>2); }
+    c.fadeop=(bmode>=2 && ev>0 && (bldcnt&4)) ? bmode : 0; c.ev=ev; bl_y0=c.Y0; bl_y1=H; c.spl=pc_dn_spl_on?pc_dn_spl:0; c.sn1=pc_dn_snap[t]; c.sn2=pc_dn_snap2[t]; c.sx=240.0/W; c.sy=160.0/H;
+    pc_par_chunk(H-c.Y0,16,dc_rows,&c);
+}
 void pc_compose_native(uint32_t *out, int W, int H, int smooth){
+    double q_t0=pc_now_ms();
     if(W<240||H<160){ W=240; H=160; }
     if(W>240 && H>160){ pc_nat_w=W; pc_nat_h=H; }       // (the game's own native renderers, e.g. the dungeon, make their picture at this size)
     build_lines();
@@ -576,27 +621,11 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
             wy[Y]=(int8_t)lrint(d*16); }
     }
     clock_gettime(CLOCK_MONOTONIC,&T2);
+    if(mode==4 && !lst_dma){ dn_compose(out,W,H,dc,bmode,ev,bldcnt); pn_compose(out,W,H,dc,bmode,ev,bldcnt); sn_compose(out,W,H,dc,bmode,ev,bldcnt); }      // the native 3D pictures first: the bitmap pass skips every pixel they show (nv_op bit 0x40)
     { NvCtx c; c.dmaln=dmaln; c.nat3=nat3; c.have_bg=have_bg; c.W=W; c.H=H; c.bgprio=bgprio; c.axis=axis; c.bw=bw; c.bh=bh; c.ev=ev; c.bmode=bmode; c.ea=ea; c.eb=eb; c.sx=sx; c.sy=sy; c.bldcnt=bldcnt; c.bldalpha=bldalpha; c.bd=bd; c.tabx=tabx; c.taby=taby; c.wx=wx; c.wy=wy; c.rx=rx; c.ry=ry; c.pa=pa; c.pb=pb; c.pc=pc; c.pd=pd; c.out=out; memcpy(c.lut5,lut5,32); pc_par(H,nv_rows,&c); }
     free(tabx); free(wx);
     clock_gettime(CLOCK_MONOTONIC,&T3);
     if(getenv("PC_TIMING")){ double a=(T1.tv_sec-T0.tv_sec)*1e3+(T1.tv_nsec-T0.tv_nsec)/1e6, b=(T2.tv_sec-T1.tv_sec)*1e3+(T2.tv_nsec-T1.tv_nsec)/1e6, c=(T3.tv_sec-T2.tv_sec)*1e3+(T3.tv_nsec-T2.tv_nsec)/1e6; fprintf(stderr,"compose %dx%d: sprites %.2f prep %.2f main %.2f ms\n",W,H,a,b,c); }
-    if(mode==4 && pc_dn_w==W && pc_dn_h==H && pc_dn_buf && !pc_v3d_classic() && !lst_dma){                  // the native dungeon: wherever the page still holds what the 3D pass wrote
-        int t=(dc>>4)&1; if(g_frame-pc_dn_f[t]<=4){ const uint8_t *pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0)); int Y0=(18*H+159)/160; uint32_t pal[256];
-            for(int i=0;i<256;i++){ uint16_t c=R16(PALRAM+i*2); pal[i]=(uint32_t)((c&31)<<3|(c&31)>>2)<<16 | (uint32_t)(((c>>5)&31)<<3|((c>>5)&31)>>2)<<8 | (uint32_t)(((c>>10)&31)<<3|((c>>10)&31)>>2); }
-            int fadeop = (bmode>=2 && ev>0 && (bldcnt&4)) ? bmode : 0; bl_y0=Y0; bl_y1=H;
-            const uint32_t *spl=pc_dn_spl_on?pc_dn_spl:0; const uint8_t *sn1=pc_dn_snap[t], *sn2=pc_dn_snap2[t];
-            for(int Y=Y0;Y<H;Y++){ int gy=(int)((Y+0.5)*sy); if(gy>159) gy=159; const uint32_t *src=pc_dn_buf+(size_t)(Y-Y0)*W; const uint32_t *sp=spl?spl+(size_t)(Y-Y0)*W:0;
-                for(int X=0;X<W;X++){ int gx=(int)((X+0.5)*sx); if(gx>239) gx=239; int gi=gy*240+gx; size_t q=(size_t)Y*W+X;
-                    if(gy<18 || (nv_op[q]&7)<4) continue;
-                    uint32_t v=src[X], sv=sp?sp[X]:0;
-                    if(sv){ if(pgb[gi]!=sn2[gi]) continue; if(sv&0x80000000u) v=sv; else if(v&0x20000000u) continue; }         // a thing drawn natively: its own pixel (or the world behind it), while the page still holds what the sprite pass left
-                    else if(pgb[gi]!=sn1[gi] || (v&0x20000000u)) continue;
-                    uint32_t a=pal[v&255], b=pal[(v>>8)&255]; int f=(v>>16)&255; uint32_t rb=((a&0xFF00FF)*(256-f)+(b&0xFF00FF)*f)>>8, g=((a&0xFF00)*(256-f)+(b&0xFF00)*f)>>8; uint32_t c=(rb&0xFF00FF)|(g&0xFF00);
-                    if(fadeop==2){ uint32_t r2=(c>>16&255)+((255-(c>>16&255))*ev>>4), g2=(c>>8&255)+((255-(c>>8&255))*ev>>4), b2=(c&255)+((255-(c&255))*ev>>4); c=r2<<16|g2<<8|b2; }
-                    else if(fadeop==3){ uint32_t r2=(c>>16&255)*(16-ev)>>4, g2=(c>>8&255)*(16-ev)>>4, b2=(c&255)*(16-ev)>>4; c=r2<<16|g2<<8|b2; }
-                    out[q]=c; } } } }
-    if(mode==4 && !lst_dma) pn_compose(out,W,H,dc,bmode,ev,bldcnt);
-    if(mode==4 && !lst_dma) sn_compose(out,W,H,dc,bmode,ev,bldcnt);
     if(pc_ships_mode>=0 && mode==4 && !(bmode>=2 && ev>=12)){                 // the ship renderer, under whatever the game drew after its ships (cockpit, HUD, sparks)
         int t=(dc>>4)&1; if(getenv("SR_DBG")) fprintf(stderr,"sr: page %d tag %d snapf %ld/%ld frame %ld n=%d\n",t,sr_shown_tag(),sr_snap_f[0],sr_snap_f[1],g_frame,sr_count());
         if(sr_select(t) && g_frame-sr_snap_f[t]<=4){
@@ -604,7 +633,9 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
             for(int i=0;i<240*128;i++){ int e= pgb[i]==sr_snap[t][i] || sn_foot_still(t,i,pgb[i]); same+=e; mk[i]= e ? (pgb[i]==0 ? 2 : 1) : 0; } memset(mk+240*128,0,240*32);
             if(same>240*128*6/10){ sr_set_par(pc_par_chunk,pc_par_threads()); sr_render(out,W,H,mk,0); } } }
     if(mode==4 && !lst_dma) sn_items(out,W,H,dc,bmode,ev,bldcnt);
+    if(mode==4 && !lst_dma) sn_cockpit(out,W,H,dc,bmode,ev,bldcnt);
     if(bl_y1>bl_y0 && pc_v3d_ultra() && !(bmode>=2 && ev>0)) pc_bloom(out,W,H,bl_y0,bl_y1);
+    pc_q_tick(pc_now_ms()-q_t0);
 }
 void pc_compose_240(uint32_t *out){ pc_compose_native(out,240,160,0); }
 

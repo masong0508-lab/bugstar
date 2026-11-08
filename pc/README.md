@@ -49,7 +49,7 @@ about no window, no sound and wrong kart ground are history; the window, sound, 
 ## Not done (the limits)
 
 - **Windows exe** is cross-compiled and has never been run on real Windows.
-- **Native-resolution 3D** (space, planet, dungeon, terraced cavern, kart) is done; the speeds are in the table under "Native 3D views" below. Not native yet: the cockpit frame in space, the dungeon's wall tops and bottoms are not anti-aliased, ULTRA is bloom and glow (no supersampling).
+- **Native-resolution 3D** (space, planet, dungeon, terraced cavern, kart) is done; the speeds are in the table under "Native 3D views" below. The space cockpit frame and the dungeon wall tops and bottoms are native and anti-aliased now. ULTRA is bloom and glow (no supersampling). Esc > VIDEO > QUALITY (AUTO, LOW, MEDIUM, HIGH) trades detail for speed; AUTO watches the frame time per view (dungeon, planet) and steps down or up; LOW also draws a half-size picture with repeated pixels.
 - **Not drawn:** windows, mosaic, tile backgrounds, object-window sprites (the game's code does not use them; only the skipped boot logo uses tile layers).
 - **Kart NATIVE view** costs about 23 ms of CPU a frame at 1200x800 (it was 34 to 44): about 12 ms on two free cores, see the table. Planet and terrace views at 1200x800 need a 4-core PC for 60 fps.
 - The build hides compiler warnings with `-w`; 64-bit surprises beyond the saved layout are possible.
@@ -63,12 +63,12 @@ What is native now:
 
 | view | drawn at window size |
 |---|---|
-| space | stars, planets, the sun, the station, rocks, cargo cans, hit sparks, laser bolts (cockpit and chase), the crosshair |
+| space | the cockpit frame (anti-aliased edges, HUD panel), stars, planets, the sun, the station, rocks, cargo cans, hit sparks, laser bolts (cockpit and chase), the crosshair |
 | planet | terrain with anti-aliased silhouette edges, sky, stars, weather (rain streaks, snow, dust, embers, ash), weird worlds (extra suns, moons with a terminator, rings, meteors with tails), hell suns and the skull moon, the parked ship's shadow, the ore minimap |
 | dungeon | walls, floors, ceilings, things and monsters, water and polished floors that mirror the wall in front of them, the terraced cavern (`terrace.inc`: ledges, rails, risers, pillars, high ceiling, with a depth per pixel for things behind them) |
 | kart | ground, horizon, sky, far hills, shadows, banking and hills |
 
-Anything the game draws after the 3D pass (HUD, text, the cockpit frame) stays the game's own 240x160 picture, put on top where the page still holds what the game wrote.
+Anything the game draws after the 3D pass (HUD, text) stays the game's own 240x160 picture, put on top where the page still holds what the game wrote.
 
 **Speed at 1200x800** (`PC_NATIVE=2 PC_SCALE=5`, one picture; `PC_NBENCH=60` at a shot frame prints the best of 60 composes and the native pass of the game frame, wall and CPU time).
 The build machine has 2 cores and was busy with other jobs (load average 3 to 7), so wall times here are worse than on a free machine. "CPU" is all threads added up
@@ -77,9 +77,9 @@ The build machine has 2 cores and was busy with other jobs (load average 3 to 7)
 | view (NATIVE) | compose CPU | game-frame pass CPU | total CPU | wall, measured (busy box) | est. wall on 2 free cores | 30 fps (33 ms) | 60 fps (16.7 ms) |
 |---|---|---|---|---|---|---|---|
 | space (with cans and sparks) | 9.9 | 0.3 | 10.2 | 10.2 | 5 | yes | yes |
-| planet | 18.9 | 36.5 | 55 | 51 | 28 | yes | needs 4 cores |
-| dungeon | 20.3 | 12.6 | 33 | 30 | 17 | yes | about (4 cores: yes) |
-| dungeon, terraced cavern | 21.5 | 31.7 | 53 | 46 | 27 | yes | needs 4 cores |
+| planet (HIGH) | 4.6 | 29.5 | 34 | - | 17 | yes | about (LOW: yes) |
+| dungeon (HIGH) | 8.2 | 12.1 | 20 | - | 10 | yes | yes |
+| dungeon, terraced cavern (HIGH) | 8.2 | 31.9 | 40 | - | 20 | yes | needs MEDIUM/LOW (AUTO does it) |
 | kart | 22.8 | (in the compose) | 23 | 23 | 12 | yes | yes |
 
 ULTRA adds the bloom, about 3 to 4 ms of CPU: space 13.4, planet 56, dungeon 37, terraced cavern 57, kart 23 (CPU, ms).
@@ -447,3 +447,6 @@ Open it from the COLONY screen (rows `WORKSHOPS` and `THE MINE`), or on the colo
 - **Tests:** `bash pc/sim/test.sh` (mine_test, 294 checks: chains with exact numbers, levels and rung gates, cave-ins warned a day ahead, braces, CALM kills nobody, never the last settler, three orders of play reach the mine, catch-up equals day by day, the file, wild bytes) and `bash pc/tests/sim_mine.sh` (in the game: hooks `BUGSTAR_SIM_MINE=1`, `BUGSTAR_SIM_AGE=300`, `BUGSTAR_SIM_DUMP_EVERY=n`; opens the WORKSHOPS and MINE screens, upgrades the smelter, braces, reloads, side game OFF).
 - **Replay layer (a small part of DEPTH_PLAN phase 11):** on the MINE screen a SCENARIO row (FEED 20, REACH LEVEL 8, SURVIVE 3 RAIDS, MAKE 10 TOOLS, CLOTH FOR ALL, TWENTY GEMS; opt-in, one at a time, pays once per colony into the colony's gold you take with A, news when done) and a SANDBOX row (no creaks, no cave-ins, no deaths, and no scenario pay). Both are saved per colony (3 spare bytes of the MINE record). Kits, policies, challenge modes and colony plus are not built.
 - **Warship interiors:** with the ship editor's FOES option on (a design's rooms drive the deck, patch 18 and 19) every bunk of the QUARTERS now has a sleeper of its own (as many as the 40 crew limit allows) and the WORKSHOPS have people working at their benches; at night the night shift walks to its bunks. Decks without a mix are byte for byte what they were (`pc/warship/mix_test.c`, section 6). Still not done: boarding an ALLIED craft with a team 0 design, and your own ship's design for your own hangar deck.
+
+## tests/sim_off.golden (regenerated)
+The golden failed from shot 2800 on origin/main. Found by bisect: it is render-only, not a game bug. Sprite projection rounding changed (commit f1e879f) and the steady menus (8fd727f) moved RNG timing, so the screens differ. The save (sram) and the logic are the same. The golden was regenerated from the OFF run.

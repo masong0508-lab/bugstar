@@ -8,7 +8,7 @@
 extern int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h, pc_ships_mode; extern uint32_t *pc_dn_buf, *pc_dn_spl; extern int pc_dn_spl_on; extern uint8_t pc_dn_snap2[2][240*160]; extern long pc_dn_f[2]; extern uint8_t pc_dn_snap[2][240*160];
 extern double pc_now_ms(void); extern void pc_vrec(int,double,double); extern double pc_cpu_ms(void); extern void pc_dn_report(double,int,int); extern int pc_v3d_classic(void); extern long pc_frames(void);
 typedef void (*PcParFn)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn fn, void *ctx);
-typedef struct { double top, bot, inv; int yt, yb; const u16 *rp; int L, edge, perp, mm; u16 hv[48]; u8 nt[48]; } DnCol;
+typedef struct { double top, bot, inv, ft, fb; int yt, yb; const u16 *rp; int L, edge, perp, mm; u16 hv[48]; u8 nt[48]; } DnCol;
 typedef struct { int W, H, Y0; double sy, hzf; DnCol *col; double *rxc, *ryc; uint32_t *buf; s32 px, py; } DnCtx;
 #define PC_DN_NONE 0x20000000u        // (this pixel stays the game's own picture)
 static inline uint32_t dn_pk(int base, int s){ int sh=s>>4, f=(s&15)*17; if(s<0){ sh=0; f=0; } if(sh>=7){ sh=7; f=0; } return (uint32_t)(base+sh) | (uint32_t)(base+sh+(sh<7))<<8 | (uint32_t)f<<16; }
@@ -32,6 +32,9 @@ static const uint8_t dn_bay[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
 static int dn_wob;      // the water's ripple phase (the game's own: frames*5)
 static uint8_t *dn_tz;      // the terraced cavern: depth per window pixel (1/8 cell steps), for the things that hide behind ledges
 static int dn_low;      // 1 = cheap mode (nearest texel instead of the 4-texel blend on floors and ceilings); switched on by pc_dn_native when frames cost too much
+// a pixel the wall covers only in part (its top or bottom edge): the background pixel and the wall pixel, each rounded to its nearest palette entry, mixed by the coverage
+static inline uint32_t dn_aa(uint32_t bg, uint32_t w, double cov){ uint32_t ib=((bg>>16)&255)>=128?(bg>>8)&255:bg&255, iw=((w>>16)&255)>=128?(w>>8)&255:w&255; int f=(int)(cov*256.0); if(f>255) f=255; if(f<0) f=0; return ib|iw<<8|(uint32_t)f<<16; }
+#define PUT(v) do{ uint32_t v_=(v); row[X]= haswall ? dn_aa(v_,wpk,cov) : v_; }while(0)
 static void dn_rows(void *vc, int lo, int hi){
     DnCtx *c=(DnCtx*)vc; int W=c->W; double sy=c->sy, hz=c->hzf;
     for(int Y=lo+c->Y0;Y<hi+c->Y0;Y++){ double yg=(Y+0.5)/sy; uint32_t *row=c->buf+(unsigned long)(Y-c->Y0)*W;
@@ -40,12 +43,15 @@ static void dn_rows(void *vc, int lo, int hi){
             if(fl){ rd=(double)(FOC<<15)/dd; sl=(int)(rl_rel[d0]+(rl_rel[d1]-rl_rel[d0])*fr); fg=(int)(rf_rel[d0]+(rf_rel[d1]-rf_rel[d0])*fr); }
             else { rd=(double)(FOC<<16)/dd; sl=(int)(cl_rel[d0]+(cl_rel[d1]-cl_rel[d0])*fr); fg=(int)(cf_rel[d0]+(cf_rel[d1]-cf_rel[d0])*fr); }
             { double dx=rd*(c->rxc[W>1?W-1:0]-c->rxc[0])/65536.0/(W>1?W-1:1); if(dx<0) dx=-dx; bil = !dn_low && dx<3000.0; { double m=2048.0/(dx>1?dx:1); bm=(int)(m*16); if(bm>256) bm=256; if(bm<16) bm=16; } } }      // (one pixel covers less than 1.5 texels: blend the texels)
-        for(int X=0;X<W;X++){ const DnCol *k=&c->col[X];
-            if(yg>=k->top && yg<k->bot){                                                             // the wall
-                if(k->edge || Y==k->yt || Y==k->yb){ row[X]=dn_pk(k->rp[0]&0xFF,0); continue; }
-                int e, s=dn_wall_es(k,yg,&e); row[X]=dn_pk(e&0xFF,s); continue; }
+        for(int X=0;X<W;X++){ const DnCol *k=&c->col[X]; int haswall=0; double cov=1.0; uint32_t wpk=0;
+            if(Y>=k->yt && Y<=k->yb){                                                                // the wall (rows that can hold its top or bottom edge are anti-aliased below)
+                if(Y>=k->yt+2 && Y<=k->yb-2){ if(k->edge){ row[X]=dn_pk(k->rp[0]&0xFF,0); continue; } int e, s=dn_wall_es(k,yg,&e); row[X]=dn_pk(e&0xFF,s); continue; }
+                double ya_=Y, yb_=Y+1.0, lo=k->ft>ya_?k->ft:ya_, hi=k->fb<yb_?k->fb:yb_; cov=hi-lo;       // how much of this pixel the wall covers; the dark outline (one window pixel) at its top and bottom is covered the same way
+                if(cov>0.004){ double t0=k->ft, t1=k->ft+1.0, b0=k->fb-1.0, b1=k->fb; double o1=(t1<yb_?t1:yb_)-(t0>ya_?t0:ya_), o2=(b1<yb_?b1:yb_)-(b0>ya_?b0:ya_); if(o1<0) o1=0; if(o2<0) o2=0; double o=o1+o2; if(o>cov) o=cov;
+                    int e, s; if(k->edge){ e=k->rp[0]&0xFF; s=0; } else { s=dn_wall_es(k,(lo+hi)*0.5/sy,&e); s=(int)(s*(1.0-o/cov)); }
+                    wpk=dn_pk(e&0xFF,s); if(cov>=0.996){ row[X]=wpk; continue; } if(cov>1) cov=1; haswall=1; } }
             s32 fx=c->px+(s32)(rd*c->rxc[X]/65536.0), fy=c->py+(s32)(rd*c->ryc[X]/65536.0); u32 tx=(u32)fx>>16, ty=(u32)fy>>16;
-            if(tx>=MW || ty>=MW){ row[X]=dn_pk(R_CEIL,0); continue; }
+            if(tx>=MW || ty>=MW){ PUT(dn_pk(R_CEIL,0)); continue; }
             int fc=fcode[ty*MW+tx], Lp, lsv=dn_lsub(fx,fy);
             if(fl){ int e, s, ts, rp;
                 if(bil){ ts=dn_bil(floor_tex,fc<<10,fx,fy,&rp,bm); } else { int t=floor_tex[(fc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
@@ -58,11 +64,11 @@ static void dn_rows(void *vc, int lo, int hi){
                         if(yr>=18.0 && yr>=k->top && yr<k->bot && yr<160.0 && !k->edge){ int we, ws=dn_wall_es(k,yr,&we); ws-=(int)((wat?2.0:3.0)*16+dep*(wat?1.0:2.0)); uint32_t wp=dn_pk(we&0xFF,ws);
                             if(wat){ double fa=(20.0-ts/512.0)/3.0; if(fa>1) fa=1; if(fa>0 && (dn_bay[((Y&3)<<2)|(X&3)]+0.5)/16.0<fa) pk=wp; }
                             else { double fd=1.0-dep/lim; int s2=(int)(s+(ws-s)*0.5*fd); pk=dn_pk(e&0xFF,s2<0?0:s2); } } } }
-                row[X]=pk; }
+                PUT(pk); }
             else { int cc=((fc>=3&&fc<=5)||fc==9), ts, rp;
                 if(bil){ ts=dn_bil(ceil_tex,cc<<10,fx,fy,&rp,bm); } else { int t=ceil_tex[(cc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
                 int e=cramp[(cc<<3)|rp];
-                Lp=sl+((lsv*fg)>>7); if(Lp>127) Lp=127; row[X]=dn_pk(e&0xFF,(ts*Lp)>>14); } } }
+                Lp=sl+((lsv*fg)>>7); if(Lp>127) Lp=127; PUT(dn_pk(e&0xFF,(ts*Lp)>>14)); } } }
 }
 // ---- the things (monsters, items, lamps, crates) at the window's size. draw_sprite (the game's) hands each one over after it has drawn it; they go in the sprite layer,
 // with the game's own art, tint, darkness and hit flash, one texel per window pixel, hidden behind the wall columns exactly as the game hides them.
@@ -162,8 +168,12 @@ static void dn_terr_cols(void *vc,int lo,int hi){
         #undef TZ
     }
 }
+extern int pc_q_get(int view), pc_dn_sc;
 static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
-    int W=pc_nat_w, H=pc_nat_h; dn_active=0; dn_nsp=0; pc_dn_spl_on=0; if(W<=240 || H<=160 || pc_v3d_classic()) { pc_dn_w=0; return; }
+    dn_active=0; dn_nsp=0; pc_dn_spl_on=0; if(pc_nat_w<=240 || pc_nat_h<=160 || pc_v3d_classic()) { pc_dn_w=0; return; }
+    { static int env=-2; if(env==-2){ const char *e=getenv("PC_DN_LOW"); env=e?atoi(e):0; }
+      int lvl=pc_q_get(0); dn_low = env ? env>0 : lvl<=2; }                                    // quality: MEDIUM and LOW take the nearest texel on floors and ceilings
+    int f=(pc_q_get(0)==1 && pc_nat_w>=600)?2:1, W=(pc_nat_w+f-1)/f, H=(pc_nat_h+f-1)/f; pc_dn_sc=f;       // LOW: the picture is half size each way, the compositor repeats its pixels
     double a0=pc_now_ms(), c0=pc_cpu_ms();
     static DnCol *col; static double *rxc, *ryc; static int cap; static unsigned long bcap;
     if(W>cap){ free(col); free(rxc); free(ryc); free(dn_perp); col=malloc(sizeof(DnCol)*W); rxc=malloc(sizeof(double)*W); ryc=malloc(sizeof(double)*W); dn_perp=malloc(sizeof(int)*W); cap=W; }
@@ -189,7 +199,7 @@ static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply)
         int w=wtex[cell]; if(w<=WT_CRYSTAL && ((cell*7+side)&1)) u=0xFFFF-u;      // (a mirrored wall: mirror u)
         int lx=(hx-((rx*5)>>4))>>14, ly=(hy-((ry*5)>>4))>>14; if(lx<0)lx=0; if(lx>127)lx=127; if(ly<0)ly=0; if(ly>127)ly=127;
         int li=perp>>12; if(li>511) li=511; int L=((light_tab[li]*lantk)>>6)+((lsub[(ly<<7)|lx]*fog_tab[li])>>6); L=tonemap[L>511?511:L]; if(side==0) L=(L*48)>>6; L+=((cell*37)&7)-3; if(L<0) L=0; if(L>127) L=127;
-        double h=(double)FOC*65536.0/perp; DnCol *k=&col[X]; double mm=h*1.5*sy/48.0; if(mm<1) mm=1; if(mm>8) mm=8; k->mm=(int)(mm*16); k->top=hzf-h; k->bot=hzf+h/2; k->rp=wramp+w*8; k->L=L; k->perp=perp; dn_perp[X]=perp;
+        double h=(double)FOC*65536.0/perp; DnCol *k=&col[X]; double mm=h*1.5*sy/48.0; if(mm<1) mm=1; if(mm>8) mm=8; k->mm=(int)(mm*16); k->top=hzf-h; k->bot=hzf+h/2; k->ft=k->top*sy; k->fb=k->bot*sy; k->rp=wramp+w*8; k->L=L; k->perp=perp; dn_perp[X]=perp;
         k->inv=48.0/(k->bot-k->top); k->yt=(int)(k->top*sy); k->yb=(int)(k->bot*sy); k->edge=(int)(perp>>4);   // (edge holds perp until the edge test below)
         { int p=(int)(u>>6)-16, ta=p>>5, fu0=p&31, fu=((fu0-16)*k->mm>>4)+16, ca=ta<0?0:ta, cb=ta+1>31?31:ta+1; if(fu<0) fu=0; if(fu>32) fu=32; if(ca>31) ca=31;
           const u8 *c0=wall_tex+w*1536+ca*48, *c1=wall_tex+w*1536+cb*48;
@@ -198,7 +208,5 @@ static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply)
     { int step=W/120>1?W/120:1; for(int X=0;X<W;X++){ int p=col[X].edge, e=0; if(X>=step && col[X-step].edge-p>0x400) e=1; if(X+step<W && col[X+step].edge-p>0x400) e=1; col[X].L|=e<<16; } for(int X=0;X<W;X++){ col[X].edge=col[X].L>>16; col[X].L&=0xFFFF; } }
     dn_wob=frames*5; DnCtx c={W,H,Y0,sy,hzf,col,rxc,ryc,pc_dn_buf,px_,py_}; pc_par_chunk(H-Y0,8,dn_rows,&c);
     int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_dn_w=W; pc_dn_h=H; memcpy(pc_dn_snap[t],(const void*)pg,240*160); pc_dn_f[t]=pc_frames(); dn_active=1;      // (the page as render_view left it: what changes after is the game's own)
-    { double ms=pc_now_ms()-a0; static double ema; static int n, env=-1; if(env<0){ const char *e=getenv("PC_DN_LOW"); env=e?atoi(e):0; }
-      ema = n++ ? ema*0.92+ms*0.08 : ms; if(n>30){ if(!dn_low && ema>12.0) dn_low=1; else if(dn_low && ema<3.5) dn_low=0; } if(env) dn_low=env>0;      // slow machine: drop to the cheap mode (an average above 12 ms a frame); back when it is cheap again
-      pc_vrec(0,ms,pc_cpu_ms()-c0); pc_dn_report(ms,W,H); }
+    { double ms=pc_now_ms()-a0; pc_vrec(0,ms,pc_cpu_ms()-c0); pc_dn_report(ms,W,H); }
 }

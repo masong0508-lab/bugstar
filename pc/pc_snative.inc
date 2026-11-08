@@ -4,7 +4,7 @@
 // sub-pixel place, the sun as a smooth disc with glow, planets and moons shaded per window pixel from the game's own sphere tables. It only READS the game.
 // pc_sncomp.inc (in pc_hw.c) shows it where the page still holds what was drawn at that moment (ships, rocks, station, HUD, cockpit stay the game's own).
 #include <stdlib.h>
-typedef struct { int w,h,hn; uint32_t *buf; long f[2]; uint8_t snap[2][240*128]; uint8_t ok[256]; int sunx,suny; uint8_t snap2[2][240*128]; uint8_t *msk; long f2[2]; uint32_t *ibuf; uint8_t foot[2][240*128], fval[2][240*128]; long ff[2]; } PcSNat;
+typedef struct { int w,h,hn; uint32_t *buf; long f[2]; uint8_t snap[2][240*128]; uint8_t ok[256]; int sunx,suny; uint8_t snap2[2][240*128]; uint8_t *msk; long f2[2]; uint32_t *ibuf; uint8_t foot[2][240*128], fval[2][240*128]; long ff[2]; uint8_t snapc[2][240*128]; long fc[2]; int cpmode[2]; } PcSNat;
 extern double pc_now_ms(void); extern void pc_vrec(int,double,double); extern double pc_cpu_ms(void); extern PcSNat pc_sn; extern int pc_nat_w, pc_nat_h; extern int pc_v3d_classic(void), pc_v3d_ultra(void); extern long pc_frames(void);
 typedef void (*PcParFn3)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn3 fn, void *ctx);
 typedef struct { int cx,cy,r,Lx,Ly,Lz,rot; const u8 *noise; } SnCall;
@@ -176,3 +176,8 @@ static void pc_so_native(volatile unsigned short *pg){
     }
     so_items(t);
 }
+
+// ---- the cockpit frame (the canopy round the view, the dash with the scanner): called right after the game drew it. The page is copied (pc_sn.snapc) so the compositor can tell what the game drew
+// after the frame (text, messages) from the frame itself; cpmode 1 = canopy and dash (cockpit view), 0 = dash only (chase view or filming).
+static void pc_so_cockpit(volatile unsigned short *pg){
+    if(!pc_sn.w) return; int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; memcpy(pc_sn.snapc[t],(const void*)pg,240*128); pc_sn.fc[t]=pc_frames(); pc_sn.cpmode[t]=(!chase_cam && !FILM)?1:0; }

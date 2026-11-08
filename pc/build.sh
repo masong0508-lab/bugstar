@@ -125,6 +125,9 @@ sed -i 's|^IWRAM static void planet_fill(\(.*\)const u8 \*noise){|&\n    pc_sn_r
 sed -i 's|^    orbit_draw(pg,0); |    orbit_draw(pg,0); pc_sn_native(pg,vpx,vpy,stk); |' space.inc
 sed -i 's|line2(pg,tx,ty,hx,hy,52); line2(pg,tx+1,ty,hx+1,hy,52); line2(pg,(tx+hx)/2,(ty+hy)/2,hx,hy,54); } }|line2(pg,tx,ty,hx,hy,52); line2(pg,tx+1,ty,hx+1,hy,52); line2(pg,(tx+hx)/2,(ty+hy)/2,hx,hy,54); pc_so_bolt(tx,ty,hx,hy); } }|' space.inc
 sed -i 's|^        ship_roll=0; }$|        ship_roll=0; }\n    pc_so_late(pg);|' space.inc
+sed -i 's|^    cockpit(pg);$|    cockpit(pg); pc_so_cockpit(pg);|' space.inc
+sed -i '1i static void pc_so_cockpit(volatile unsigned short *pg);' space.inc
+grep -c "^    cockpit(pg); pc_so_cockpit(pg);" space.inc | grep -qx 1 || { echo "build: cockpit hook did not apply"; exit 1; }
 grep -c "pc_so_bolt(tx,ty,hx,hy)" space.inc | grep -qx 1 && grep -c "^    pc_so_late(pg);" space.inc | grep -qx 1 || { echo "build: space item hooks did not apply"; exit 1; }
 sed -i 's|int vpx=120, vpy=VCY, vdrift=0, stk=0;|pc_sn_begin(); &|' space.inc
 grep -c "pc_sn_rec(cx" space.inc | grep -qx 1 && grep -c "pc_sn_native(pg" space.inc | grep -qx 1 && grep -c "pc_sn_begin()" space.inc | grep -qx 1 || { echo "build: native space hooks did not apply"; exit 1; }

@@ -12,7 +12,7 @@
 #include "pc_plat.h"
 extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;
 
-extern int pc_vid3d, pc_ships_mode, pc_armada_n;
+extern int pc_vid3d, pc_ships_mode, pc_armada_n, pc_quality; extern int pc_q_auto(void), pc_q_cur(void);
 int pc_motor(void);                 // pc_hw.c: is the (cartridge) rumble motor on right now
 int pc_script_keys(uint16_t *k);    // pc_hw.c: keys from a --script file, if one was given (for tests)
 long pc_frames(void);
@@ -21,7 +21,7 @@ long pc_frames(void);
 static const char *bname[NB]={"A","B","SELECT","START","RIGHT","LEFT","UP","DOWN","R","L"};
 // ------------------------------------------------------------------------------------------------ settings
 typedef struct {
-    int ships, armada, textsize, contrast, mouse, video3d, fullscreen, scale_mode, vsync, show_fps, volume, mute, pause_unfocus, rumble, deadzone, max_mp;
+    int ships, armada, textsize, contrast, mouse, video3d, quality, fullscreen, scale_mode, vsync, show_fps, volume, mute, pause_unfocus, rumble, deadzone, max_mp;
     int kb[NB][2]; int pad[NB]; int win_w, win_h;
 } Cfg;
 enum { SM_CRISP, SM_SMOOTH, SM_COUNT };
@@ -47,7 +47,7 @@ static int tl_parse(const char *k, const char *v){
 #endif
 static void cfg_defaults(void){
     memset(&C,0,sizeof C);
-    C.mouse=1; C.ships=1; C.armada=1; C.fullscreen=0; C.scale_mode=SM_CRISP; C.vsync=1; C.show_fps=0; C.volume=80; C.mute=0; C.pause_unfocus=1; C.rumble=1; C.deadzone=30; C.max_mp=0;
+    C.mouse=1; C.ships=1; C.armada=1; C.quality=0; C.fullscreen=0; C.scale_mode=SM_CRISP; C.vsync=1; C.show_fps=0; C.volume=80; C.mute=0; C.pause_unfocus=1; C.rumble=1; C.deadzone=30; C.max_mp=0;
     C.win_w=960; C.win_h=640;
 #ifdef PC_ANDROID
     C.video3d=2;      // patch 38: phones start on CLASSIC (GBA) 3D views; the native renderer is too heavy for them
@@ -70,8 +70,8 @@ static void cfg_save(void){
 #ifdef PC_ANDROID
     fprintf(f,"android38=1\n");      // patch 38
 #endif
-    fprintf(f,"ships=%d\narmada=%d\ntextsize=%d\ncontrast=%d\nmouse=%d\nvideo3d=%d\nfullscreen=%d\nscale_mode=%d\nvsync=%d\nshow_fps=%d\nvolume=%d\nmute=%d\npause_unfocus=%d\nrumble=%d\ndeadzone=%d\nmax_mp=%d\nwin_w=%d\nwin_h=%d\n",
-        C.ships,C.armada,C.textsize,C.contrast,C.mouse,C.video3d,C.fullscreen,C.scale_mode,C.vsync,C.show_fps,C.volume,C.mute,C.pause_unfocus,C.rumble,C.deadzone,C.max_mp,C.win_w,C.win_h);
+    fprintf(f,"ships=%d\narmada=%d\ntextsize=%d\ncontrast=%d\nmouse=%d\nvideo3d=%d\nquality=%d\nfullscreen=%d\nscale_mode=%d\nvsync=%d\nshow_fps=%d\nvolume=%d\nmute=%d\npause_unfocus=%d\nrumble=%d\ndeadzone=%d\nmax_mp=%d\nwin_w=%d\nwin_h=%d\n",
+        C.ships,C.armada,C.textsize,C.contrast,C.mouse,C.video3d,C.quality,C.fullscreen,C.scale_mode,C.vsync,C.show_fps,C.volume,C.mute,C.pause_unfocus,C.rumble,C.deadzone,C.max_mp,C.win_w,C.win_h);
     for(int i=0;i<NB;i++){ fprintf(f,"key_%s=%s,%s\n",bname[i],C.kb[i][0]?SDL_GetScancodeName(C.kb[i][0]):"",C.kb[i][1]?SDL_GetScancodeName(C.kb[i][1]):"");
         fprintf(f,"pad_%s=%s\n",bname[i],SDL_GameControllerGetStringForButton(C.pad[i])?SDL_GameControllerGetStringForButton(C.pad[i]):""); }
     fclose(f);
@@ -86,7 +86,7 @@ static void cfg_load(void){
 #endif
         int v=atoi(e);
         #define I(nm,fld,lo,hi) if(!strcmp(ln,nm)){ C.fld = v<lo?lo:v>hi?hi:v; continue; }
-        I("ships",ships,0,2) I("armada",armada,0,3) I("textsize",textsize,0,2) I("contrast",contrast,0,1) I("mouse",mouse,0,1) I("video3d",video3d,0,3) I("fullscreen",fullscreen,0,1) I("scale_mode",scale_mode,0,SM_COUNT-1) I("vsync",vsync,0,1) I("show_fps",show_fps,0,1) I("volume",volume,0,100) I("mute",mute,0,1)
+        I("ships",ships,0,2) I("armada",armada,0,3) I("textsize",textsize,0,2) I("contrast",contrast,0,1) I("mouse",mouse,0,1) I("video3d",video3d,0,3) I("quality",quality,0,3) I("fullscreen",fullscreen,0,1) I("scale_mode",scale_mode,0,SM_COUNT-1) I("vsync",vsync,0,1) I("show_fps",show_fps,0,1) I("volume",volume,0,100) I("mute",mute,0,1)
         I("pause_unfocus",pause_unfocus,0,1) I("rumble",rumble,0,1) I("deadzone",deadzone,5,80) I("max_mp",max_mp,0,40) I("win_w",win_w,240,16384) I("win_h",win_h,160,16384)
         if(!strncmp(ln,"key_",4)){ for(int i=0;i<NB;i++) if(!strcmp(ln+4,bname[i])){ char *c=strchr(e,','); char a[64]="",b[64]=""; if(c){ *c=0; snprintf(b,sizeof b,"%s",c+1); } snprintf(a,sizeof a,"%s",e);
                 C.kb[i][0]=a[0]?SDL_GetScancodeFromName(a):0; C.kb[i][1]=b[0]?SDL_GetScancodeFromName(b):0; } }
@@ -250,7 +250,7 @@ enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK,
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
-static const char *const v3names[]={"AUTO","NATIVE (SMOOTH)","CLASSIC (GBA)","ULTRA (BLOOM)"};
+static const char *const v3names[]={"AUTO","NATIVE (SMOOTH)","CLASSIC (GBA)","ULTRA (BLOOM)"}; static const char *const qnames[]={"AUTO (ADAPTS TO SPEED)","LOW (FASTEST)","MEDIUM","HIGH (FULL DETAIL)"};
 static const char *const mpnames[]={"AUTO","1 MEGAPIXEL","2","3","4","6","8"}; static int mp_choice;
 static int mp_val(int i){ static const int v[]={0,1,2,3,4,6,8}; return v[i]; }
 #ifdef PC_ANDROID
@@ -267,7 +267,7 @@ static void menu_build(Item *it, int *n){
     case P_MAIN: it[k++]=(Item){0,"RESUME",0,0,0,0,0,A_RESUME}; it[k++]=(Item){0,"VIDEO",0,0,0,0,0,A_VIDEO}; it[k++]=(Item){0,"AUDIO",0,0,0,0,0,A_AUDIO}; it[k++]=(Item){0,"ACCESSIBILITY AND MOUSE",0,0,0,0,0,A_ACCESS};
         it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; TL_MENU_ITEM it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
         it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
-    case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,3,1,v3names,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
+    case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,3,1,v3names,0}; it[k++]=(Item){1,"QUALITY",&C.quality,0,3,1,qnames,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
         it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
         it[k++]=(Item){1,"PAUSE WHEN UNFOCUSED",&C.pause_unfocus,0,1,1,onoff,0}; it[k++]=(Item){0,"WINDOW SIZE: NEXT",0,0,0,0,0,A_WINSIZE}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_ACCESS: it[k++]=(Item){1,"MENU TEXT SIZE",&C.textsize,0,2,1,tsnames,0}; it[k++]=(Item){1,"HIGH CONTRAST",&C.contrast,0,1,1,hcnames,0}; it[k++]=(Item){1,"MOUSE PLAYS THE GAME",&C.mouse,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
@@ -368,7 +368,7 @@ static void present_game(int with_overlay){
     int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth);
     tex_ensure(W,H,linear);
     if(!pix || (size_t)W*H>pix_cap){ free(pix); pix=malloc((size_t)W*H*4); pix_cap=(size_t)W*H; if(!pix){ pix_cap=0; return; } }      // (never write a picture into a buffer made for another size)
-    pc_vid3d=C.video3d; pc_compose_native(pix,W,H,smooth);
+    pc_vid3d=C.video3d; pc_quality=C.quality; pc_compose_native(pix,W,H,smooth);
     if(C.contrast){ for(size_t i=0,n=(size_t)W*H;i<n;i++){ uint32_t c=pix[i]; int r=c>>16&255,g=c>>8&255,b=c&255; int m=(r+g+b)/3; r=m+(r-m)*3/2; g=m+(g-m)*3/2; b=m+(b-m)*3/2;
             r=(r-128)*3/2+128; g=(g-128)*3/2+128; b=(b-128)*3/2+128; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; b=b<0?0:b>255?255:b; pix[i]=(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; } }
     SDL_UpdateTexture(tex,NULL,pix,W*4);
@@ -376,7 +376,7 @@ static void present_game(int with_overlay){
     SDL_RenderCopy(ren,tex,NULL,&dst);
     gs_=dh_/180; if(gs_<2) gs_=2; if(gs_>10) gs_=10;
     if(with_overlay){
-        if(C.show_fps){ char b[40]; snprintf(b,sizeof b,"%.0f FPS  %dX%d",fps_show,W,H); rect_fill(gs_,gs_,text_w(b)+2*gs_,8*gs_,0,160); text_at(2*gs_,2*gs_,b,0x60FF80); }
+        if(C.show_fps){ char b[56]; static const char *const qn[]={"","LOW","MEDIUM","HIGH"}; char qb[24]=""; if(pc_q_auto()) snprintf(qb,sizeof qb,"  AUTO %s",qn[pc_q_cur()&3]); snprintf(b,sizeof b,"%.0f FPS  %dX%d%s",fps_show,W,H,qb); rect_fill(gs_,gs_,text_w(b)+2*gs_,8*gs_,0,160); text_at(2*gs_,2*gs_,b,0x60FF80); }
         if(toast[0] && SDL_GetTicks64()<toast_until){ int w=text_w(toast)+6*gs_; rect_fill((dw_-w)/2,dh_-12*gs_,w,9*gs_,0,170); text_at((dw_-w)/2+3*gs_,dh_-12*gs_+gs_*3/2,toast,0xFFFFFF); }
         if(menu_open) menu_draw();
         touch_draw();
