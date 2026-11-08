@@ -72,5 +72,21 @@ int main(void){
         if(wd_count_props(&da,WP_BUNK)==mx.bunks && wd_count_props(&da,WP_FIGHTER)==mx.fighters) full++; }
       printf("mix: %d random mixes (up to 48 bunks, 40 crates, 19 guns, 39 fighters): %d of %d prop counts met exactly (%d of %d where the deck was not crowded), never over\n", decks, exact, asked, calm_exact, calm); CHECK(decks>290, "only %d random decks", decks);
       CHECK(calm_exact*100 >= calm*97, "too many random mixes did not fit on an uncrowded deck: %d of %d", calm_exact, calm); }
+    // 6. the quarters are lived in: every bunk has its own sleeper (as many as the crew limit allows), the workshops have people at their benches, and at night the sleepers are at their bunks
+    { int decks=0, bunk_ok=0, bunk_all=0, ws_ok=0, ws_all=0, night_ok=0, night_all=0;
+      for(int p=0;p<SY_NPRESET;p++){ SyDesign sd; sy_default(&sd); sy_preset(&sd,p); WdMix mx; wd_mix_from_sy(&sd,&mx);
+        for(int s=0;s<3;s++) for(int zi=0;zi<6;zi++){ WsCraft c; ws_make(&c,(uint32_t)s*7477u+11+p*131,zs[zi],0); int sub=s%c.nsub; if(!deck_of(&da,&c,sub,s&1,&mx)) continue; decks++;
+            int bunks[WD_MAXPROP], nb=0, benches[WD_MAXPROP], nbe=0;
+            for(int q=0;q<da.nprop;q++){ int rm=da.prop[q].room; if(rm<=0||rm>=da.nroom||da.room[rm].sub!=255) continue; if(da.prop[q].type==WP_BUNK&&da.room[rm].kind==WR_QUARTERS) bunks[nb++]=q; else if(da.prop[q].type==WP_BENCH&&da.room[rm].kind==WR_WORKSHOP) benches[nbe++]=q; }
+            int crew=0; for(int i=0;i<da.nnpc;i++) if(da.npc[i].kind==WN_CREW) crew++;
+            if(nb>0){ int used=0; for(int k=0;k<nb;k++){ for(int i=0;i<da.nnpc;i++){ const WdNpc *n=&da.npc[i]; if(n->kind!=WN_CREW) continue; int dx=n->spot[WA_SLEEP][0]-(int)da.prop[bunks[k]].x, dy=n->spot[WA_SLEEP][1]-(int)da.prop[bunks[k]].y; if(dx>=-1&&dx<=1&&dy>=-1&&dy<=1){ used++; break; } } }
+                int want = nb<crew?nb:crew; bunk_all++; if(used>=want*9/10) bunk_ok++; CHECK(used>=want*8/10, "preset %s z%d: %d of %d bunks have a sleeper (crew %d)", sy_preset_name[p], zs[zi], used, nb, crew); }
+            if(nbe>0){ int worked=0; for(int i=0;i<da.nnpc;i++){ const WdNpc *n=&da.npc[i]; if(n->kind!=WN_CREW) continue; for(int k=0;k<nbe;k++){ int dx=n->spot[WA_WORK][0]-(int)da.prop[benches[k]].x, dy=n->spot[WA_WORK][1]-(int)da.prop[benches[k]].y; if(dx>=-1&&dx<=1&&dy>=-1&&dy<=1){ worked++; break; } } }
+                ws_all++; if(worked>0) ws_ok++; CHECK(worked>0, "preset %s z%d: a workshop with %d benches and nobody working at one", sy_preset_name[p], zs[zi], nbe); }
+            // at night the crew whose shift is asleep walk to their bunks (the walk can take a while, so give them an hour or two)
+            if(nb>0){ da.clock=3.0; for(int k=0;k<4000;k++){ da.clock=3.0; wd_tick(&da,0.25,-100,-100,0); da.clock=fmod(da.clock,24.0); }
+                for(int i=0;i<da.nnpc;i++){ const WdNpc *n=&da.npc[i]; if(n->kind!=WN_CREW||!n->alive) continue; if(n->home!=0) continue; night_all++; float dx=n->x-(n->spot[WA_SLEEP][0]+0.5f), dy=n->y-(n->spot[WA_SLEEP][1]+0.5f); if(dx*dx+dy*dy<2.5f) night_ok++; } } } }
+      printf("mix: crew: %d preset decks; every-bunk-has-a-sleeper on %d of %d, workshop benches worked on %d of %d, night shift at their bunks %d of %d\n", decks, bunk_ok, bunk_all, ws_ok, ws_all, night_ok, night_all);
+      CHECK(bunk_all>60 && ws_all>20, "too few decks with bunks (%d) or workshops (%d)", bunk_all, ws_all); CHECK(night_all==0 || night_ok*100>=night_all*80, "night shift not at the bunks: %d of %d", night_ok, night_all); }
     printf("mix: %d checks, %d failed\n", checks, fails); return fails?1:0;
 }

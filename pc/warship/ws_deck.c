@@ -175,6 +175,11 @@ static void spot_near(const WdDeck *d, R *r, int type, int room_kind, int *sx, i
         for(int k=0;k<9;k++){ int x=bx+o[k][0], y=by+o[k][1]; if(inb(x,y) && C(d,x,y).kind==WDC_OPEN){ *sx=x; *sy=y; return; } } }
     int rm=room_of_kind(d,room_kind); if(rm<0) rm=1+ri(r,d->nroom-1); float fx,fy; free_spot(d,r,rm,&fx,&fy); *sx=(int)fx; *sy=(int)fy;
 }
+static void spot_beside(const WdDeck *d, int p, int *sx, int *sy){      // an open cell next to prop p
+    const WdProp *q=&d->prop[p]; int bx=(int)q->x, by=(int)q->y; static const int o[9][2]={{0,1},{0,-1},{1,0},{-1,0},{1,1},{-1,-1},{1,-1},{-1,1},{0,0}};
+    for(int k=0;k<9;k++){ int x=bx+o[k][0], y=by+o[k][1]; if(inb(x,y) && C(d,x,y).kind==WDC_OPEN){ *sx=x; *sy=y; return; } }
+    *sx=bx; *sy=by;
+}
 // ================================================================= ROOM MIX: a ship design says which rooms and props the deck has (see WdMix in ws_deck.h)
 static int count_kind(const WdDeck *d, int k){ int n=0; for(int i=1;i<d->nroom;i++) if(d->room[i].kind==k) n++; return n; }
 int wd_count_rooms(const WdDeck *d, int kind){ int n=0; for(int i=1;i<d->nroom;i++) if(d->room[i].kind==kind && d->room[i].sub==255) n++; return n; }
@@ -287,9 +292,18 @@ void wd_make_mix(WdDeck *d, const WsCraft *c, uint32_t leaf, const int *subs, in
     // ---- the crew: each has a bunk, a seat in the mess, a place to chat and a job
     int living=0; for(int i=1;i<d->nroom;i++){ int k=d->room[i].kind; if(k==WR_QUARTERS||k==WR_MESS||k==WR_LOUNGE||k==WR_GARDEN||k==WR_WORKSHOP) living++; }
     int ncrew = d->band<=WB_SMALL ? 6+living*2 : 10+living*3; if(ncrew>WD_MAXNPC-8) ncrew=WD_MAXNPC-8;
+    // ROOM MIX: the quarters the design has are lived in. Every bunk has its own sleeper (as many as the crew limit allows) and the workshops have people at their benches.
+    int mbunk[WD_MAXPROP], nmb=0, mbench[WD_MAXPROP], nmw=0, nws=0;
+    if(mix){ for(int p=0;p<d->nprop;p++){ const WdProp *q=&d->prop[p]; int rm=q->room; if(rm<=0 || rm>=d->nroom || d->room[rm].sub!=255) continue;
+            if(q->type==WP_BUNK && d->room[rm].kind==WR_QUARTERS) mbunk[nmb++]=p; else if(q->type==WP_BENCH && d->room[rm].kind==WR_WORKSHOP) mbench[nmw++]=p; }
+        for(int i=1;i<d->nroom;i++) if(d->room[i].sub==255 && d->room[i].kind==WR_WORKSHOP) nws++;
+        if(nmb>0){ ncrew = nmb + nws*2; if(ncrew>WD_MAXNPC-8) ncrew=WD_MAXNPC-8; } }
+    int mbi=0, mwi=0;
     for(int i=0;i<ncrew;i++){ WdNpc *n=&d->npc[d->nnpc++]; memset(n,0,sizeof *n); n->kind=WN_CREW; n->alive=1; n->hp=20; n->home=(uint8_t)(i%3);
         spot_near(d,&r,WP_BUNK,WR_QUARTERS,&n->spot[WA_SLEEP][0],&n->spot[WA_SLEEP][1]); spot_near(d,&r,WP_BENCH,WR_MESS,&n->spot[WA_EAT][0],&n->spot[WA_EAT][1]);
         spot_near(d,&r,WP_SOFA,WR_LOUNGE,&n->spot[WA_CHAT][0],&n->spot[WA_CHAT][1]); { static const uint8_t jt[4]={WP_CONSOLE,WP_BENCH,WP_PLANT,WP_CRATE}; spot_near(d,&r,jt[i%4],WR_WORKSHOP,&n->spot[WA_WORK][0],&n->spot[WA_WORK][1]); }
+        if(mix && mbi<nmb){ spot_beside(d,mbunk[mbi++],&n->spot[WA_SLEEP][0],&n->spot[WA_SLEEP][1]); }                                  // a bunk of their own
+        if(mix && nmw && (i%3)==1){ spot_beside(d,mbench[mwi++%nmw],&n->spot[WA_WORK][0],&n->spot[WA_WORK][1]); }                         // a bench to work at
         int a=WA_SLEEP+ri(&r,4); n->act=(uint8_t)a; n->x=n->spot[a][0]+0.5f; n->y=n->spot[a][1]+0.5f; n->tx=n->x; n->ty=n->y; n->chat=rf(&r)*10; }
     // guards: by the locked door, in each target room, in security
     for(int i=1;i<d->nroom && d->nnpc<WD_MAXNPC;i++){ const WdRoom *m=&d->room[i]; int g = m->sub!=255 ? 2 : m->kind==WR_SECURITY ? 2 : 0; if(m->locked) g++; if(i==hang_entry && from_hangar) g=0;
