@@ -62,7 +62,7 @@ typedef struct {
 } UlDef;
 #define UB(f) (1u << (f))
 static const UlDef ul_defs[UF_N] = {
- [UF_CLOCK]   = { "clock",   "CLOCK",       ULW_MINOR,  1, 0, 0,                      { "A CLOCK SHOWS THE TIME.", "BUGS EAT, WORK AND SLEEP", "BY THE HOUR. PRESS A ON", "EMPTY GROUND FOR THE MENU." } },
+ [UF_CLOCK]   = { "clock",   "CLOCK",       ULW_NORMAL,  1, 0, 0,                      { "A CLOCK SHOWS THE TIME.", "BUGS EAT, WORK AND SLEEP", "BY THE HOUR. PRESS A ON", "EMPTY GROUND FOR THE MENU." } },
  [UF_JOURNAL] = { "journal", "JOURNAL",     ULW_NORMAL, 1, 1, UB(UF_CLOCK),           { "THE JOURNAL KEEPS NEWS", "OF THE TOWN.", "OPEN IT FROM THE MENU.", 0 } },
  [UF_MEET]    = { "meet",    "PEOPLE",      ULW_MAJOR,  1, 1, UB(UF_CLOCK),           { "YOU MET A BUG OF THE TOWN.", "TALK TO EACH ONCE A DAY.", "THE PEOPLE LIST IS OPEN.", 0 } },
  [UF_JOBS]    = { "jobs",    "JOBS",        ULW_NORMAL, 1, 0, UB(UF_MEET),            { "EVERY BUG HAS A JOB.", "COOKS, CLERKS, GUARDS.", "SEE IT WHEN YOU TALK.", 0 } },

@@ -257,6 +257,10 @@ static void sim_env_once(void){
     e=sim_io_env("BUGSTAR_SIM_MINE"); sim_h_mine = e && e[0]=='1';
     e=sim_io_env("BUGSTAR_SIM_AGE"); if(e && *e){ int v=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<6;i++) v=v*10+(e[i]-'0'); sim_h_age=v; }
     e=sim_io_env("BUGSTAR_SET_FREED"); if(e && *e) bugs_freed=e[0]-'0';     // a test hook: bugs freed so far (0..9)
+    e=sim_io_env("BUGSTAR_LS_GRANT"); if(e && *e){ Unlock *u=sim_ul(); const char *p=e;      // patch 47, a test hook: "meet,jobs,colony" opens these features at the start, silently (no tip)
+        while(*p){ char k[16]; int n=0; while(*p && *p!=',' && n<15) k[n++]=*p++; k[n]=0; if(*p==',') p++;
+            for(int ft=0;ft<UF_N;ft++){ const char *d=ul_defs[ft].key; int i=0; while(d[i] && d[i]==k[i]) i++; if(!d[i] && !k[i]){ u->have|=UB(ft); u->told|=UB(ft); u->used=1; } } } }
+    e=sim_io_env("BUGSTAR_SET_GOLD"); if(e && *e){ s64 v=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<12;i++) v=v*10+(e[i]-'0'); sim_gold_prev=gold; gold=v; }     // patch 47, a test hook: gold, counted as earned (the first gold opens GOLD)
     e=sim_io_env("BUGSTAR_SANDBOX"); if(e && e[0]=='1'){ Lv l; sim_level_lv(&l); sim_f.sandbox=1; if(sim_have_w) sim_set_sandbox(&sim_w,1,&l); }
 }
 static void sim_unlock_msgs(void){
@@ -283,7 +287,7 @@ static void sim_dump_all(void){
     { static char cb[200]; col_dump(sim_colony(),cb,sizeof cb); sim_io_append(path,cb); scpy(t,"colcards "); ncat(t,sim_col_cards); scat(t," gifts "); ncat(t,sim_col_gifts); scat(t," fgifts "); ncat(t,sim_gifts_got); scat(t," helped "); ncat(t,sim_helped_n); { SimTies ti; sim_ties(&sim_w,&ti); scat(t," ties "); ncat(t,ti.guard); scat(t,"/"); ncat(t,ti.food); scat(t,"/"); ncat(t,ti.goods); scat(t," worry "); ncat(t,sim_w.worry); scat(t," aid "); ncat(t,sim_w.aid); } scat(t," gold "); ncat(t,gold); scat(t," food "); ncat(t,food); scat(t,"\n"); sim_io_append(path,t); }
     { Lv l; sim_level_lv(&l); char d[LV_DEC_MAX]; lv_to_dec(&l,d,sizeof d); scpy(t,"level "); scat(t,d); scat(t," powers "); ncat(t,god_unlocked_count(&l,sim_w.god.sandbox)); scat(t,"\n"); sim_io_append(path,t); }
     { const Standing *st=sim_st(); scpy(t,"stand fame "); ncat(t,fame); scat(t," open "); ncat(t,stand_open_mask(st,fame)); scat(t," mayor "); ncat(t,stand_is_mayor(st)); scat(t," ships "); ncat(t,(s64)st->ships); scat(t," worlds "); ncat(t,(s64)st->worlds_total); scat(t," galaxies "); ncat(t,st->galaxies); scat(t,"\n"); sim_io_append(path,t); }
-    { sim_ls_hud_dump(t,sizeof t); scat(t," qm "); sim_qm_build(0); ncat(t,sim_qm_n); scat(t," rows "); for(int i=0;i<sim_qm_n;i++){ if(i) scat(t,","); scat(t,sim_qm_sil[i]?"???":sim_qm_name(sim_qm_id[i])); } scat(t,"\n"); sim_io_append(path,t); }
+    { static char ub[900]; sim_ls_hud_dump(ub,sizeof ub); scat(ub," qm "); sim_qm_build(0); ncat(ub,sim_qm_n); scat(ub," rows "); for(int i=0;i<sim_qm_n;i++){ if(i) scat(ub,","); scat(ub,sim_qm_sil[i]?"???":sim_qm_name(sim_qm_id[i])); } scat(ub,"\n"); sim_io_append(path,ub); }
     sim_io_append(path,"--\n");
 }
 // ---------------------------------------------------------------- the colony (Phase 4): the action game's milestones open its rungs
@@ -350,8 +354,9 @@ static void sim_frame(int n){
     if(!(keys&K_A)) sim_a_up=1;
     int steps=sim_feed(&sim_w,n,20); sim_cal+=(u64)steps;
     sim_walk(n);
-    { static int nk=-2; if(nk==-2){ const char *e=sim_io_env("BUGSTAR_SIM_NEAR"); nk = e && *e ? e[0]-'0' : -1; }   // a test hook: keep the player beside townsperson k
-      if(nk>=0 && nk<sim_w.nfolk){ ppx=sim_fx[nk]+0xC000; ppy=sim_fy[nk]; } }
+    { static int nk=-2, until=-1; if(nk==-2){ const char *e=sim_io_env("BUGSTAR_SIM_NEAR"); nk = e && *e ? e[0]-'0' : -1;   // a test hook: keep the player beside townsperson k ...
+        e=sim_io_env("BUGSTAR_SIM_NEAR_UNTIL"); { until=-1; if(e && *e){ until=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<9;i++) until=until*10+(e[i]-'0'); } } }                                          // ... until this frame (then the script walks away)
+      if(nk>=0 && nk<sim_w.nfolk && (until<0 || (int)frames<until)){ ppx=sim_fx[nk]+0xC000; ppy=sim_fy[nk]; } }
     if(frames%30==0){ sim_unlock_msgs(); sim_colony_tick(); sim_stand_tick(); sim_ls_tick(); }
     if(sim_dump_at && sim_w.tick>=sim_dump_at){ sim_dump_at=sim_w.tick+sim_dump_gap; sim_dump_all(); }
 }
