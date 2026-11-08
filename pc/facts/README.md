@@ -1,7 +1,7 @@
 # PC pages for HOW BIG IS IT?
 
-The GBA game has ~336 pages (facts.py, facts_more.py). The PC build adds the pages in this folder (files `NN_name.py`, NN = 01..99), so the PC
-version has 336 + the pages here (1,571 in all on 1 Nov 2026; the checker counts 1,235 PC pages: earth, cosmos, maths, tech, people, game, life, bugs, PC addresses, x16 content, laws, meaning, creator, giant number, shipyard, missions, warships with threats, hellscape and the native views). `pc/build.sh` sets `BUGSTAR_PC=1` and `facts.py` loads every `pc/facts/[0-9]*.py`.
+The GBA game has 363 pages (37 of the game's own numbers, 325 in facts.py and facts_more.py, and the Bugstarillion; `NSOLD`, `NFACT` in assets.h). The PC build adds the pages in this folder (files `NN_name.py`, NN = 01..99), so the PC
+version has 363 + the pages here (1,609 in all on 8 Nov 2026; the checker counts 1,246 PC pages: earth, cosmos, maths, tech, people, game, life, bugs, PC addresses, x16 content, laws, meaning, creator, giant number, shipyard, missions, warships with threats, hellscape, the native views and the colony mine). `pc/build.sh` sets `BUGSTAR_PC=1` and `facts.py` loads every `pc/facts/[0-9]*.py`.
 
 ## A page
 `(value, title, line1, line2, about)`
