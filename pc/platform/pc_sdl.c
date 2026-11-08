@@ -102,13 +102,14 @@ static SDL_Window *win; static SDL_Renderer *ren; static SDL_Texture *tex, *font
 static int tex_w, tex_h, tex_linear; static uint32_t *pix; static size_t pix_cap;
 static int menu_open, menu_page, menu_sel, menu_wait;      // menu_wait: 1 = waiting for a key to bind, 2 = for a pad button
 static int menu_slot;                                      // which key slot (0/1) a bind goes into
-static uint64_t t_next, t_freq; static double fps_show; static int fps_n; static uint64_t fps_t0;
+static uint64_t t_freq; static double fps_show; static int fps_n; static uint64_t fps_t0;      // (pacing state: see 'the frame' below)
 static char toast[80]; static uint64_t toast_until;
 static SDL_GameController *pad; static int pad_rumble_ok;
 static SDL_AudioDeviceID adev; static const char *g_autoshot_path; static long g_autoshot_frame=-1; static int g_headless_audio;
 static int g_no_audio; static int dw_, dh_;                // drawable size in real pixels
 static long g_stop_after=-1; static const char *g_wav_path; static FILE *g_wav; static long g_wav_n;
 static int g_paused_focus, g_fast;
+static volatile int g_bg, g_app_save, g_app_resume, g_pace_reset;      // app in the background / save wanted / back in the foreground / start a fresh clock
 
 static int g_first_run;
 static void say_toast_ms(const char *s,int ms){ snprintf(toast,sizeof toast,"%s",s); toast_until=SDL_GetTicks64()+ms; }
@@ -153,9 +154,19 @@ static void audio_open(void){
     if(got.freq!=PC_AUDIO_RATE||got.channels!=2||got.format!=AUDIO_S16SYS){ fprintf(stderr,"audio: unexpected format\n"); SDL_CloseAudioDevice(adev); adev=0; return; }
     SDL_PauseAudioDevice(adev,0);
 }
+// patch 43: one game frame lasts 280896 / 16777216 s = 1/59.7275 s, which is 48000 * 280896 / 16777216 = 803.64 samples. The sound is made at exactly that rate (the fraction is carried
+// over), so the music and the effects run at the game's own speed. The audio device has its own clock, a few parts per million off: the ring's fill is steered back to AUDIO_TARGET by
+// at most AUDIO_TRIM samples a frame (1 percent), and when the ring is far too full / empty a frame of sound is skipped / padded. The sound never decides when the game steps.
+#define AUDIO_TARGET 1200
+#define AUDIO_TRIM 8
+#define AUDIO_HIGH 4000
+static uint64_t a_acc; static unsigned long a_skips, a_pads;
 static void audio_frame(void){          // make this frame's sound and queue it
-    int fill=(int)ring_fill(); int n=PC_AUDIO_RATE/60;
-    if(adev){ int target=1000; int adj=(target-fill)/32; if(adj>24)adj=24; if(adj<-24)adj=-24; n+=adj; if(fill>6000) n=0; }
+    int fill=(int)ring_fill();
+    { static long dbg=0; static int mn=1<<30,mx=0; if(getenv("BUGSTAR_AUDLOG")){ if(fill<mn)mn=fill; if(fill>mx)mx=fill; if(++dbg%100==0){ fprintf(stderr,"audfill min %d max %d underruns %lu pads %lu\n",mn,mx,underruns,a_pads); mn=1<<30; mx=0; } } }
+    a_acc += (uint64_t)PC_AUDIO_RATE*280896u; int n=(int)(a_acc>>24); a_acc &= 0xFFFFFFu;      // 16777216 = 2^24
+    if(adev){ int adj=(AUDIO_TARGET-fill)/48; if(adj>AUDIO_TRIM)adj=AUDIO_TRIM; if(adj<-AUDIO_TRIM)adj=-AUDIO_TRIM; n+=adj;
+              if(fill>AUDIO_HIGH){ n=0; a_skips++; } else if(fill<96){ n+=64; a_pads++; } }
     static int16_t buf[2*1024]; if(n>1024) n=1024;
     if(menu_open || g_paused_focus) { memset(buf,0,sizeof buf); }
     else if(n>0) pc_psg_render(buf,n);
@@ -351,6 +362,7 @@ static void menu_pad(int btn){
 }
 // ---- one picture
 static int shot_pending;
+static void sim_vsync(void);          // test hook, defined with the pacing below
 static void present_game(int with_overlay){
     SDL_GetRendererOutputSize(ren,&dw_,&dh_);
     int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth);
@@ -377,6 +389,7 @@ static void present_game(int with_overlay){
         if(s && SDL_RenderReadPixels(ren,NULL,SDL_PIXELFORMAT_ARGB8888,s->pixels,s->pitch)==0){ plat_write_png(g_autoshot_path,s->pixels,dw_,dh_); fprintf(stderr,"window shot %dx%d (draw %dx%d) -> %s\n",dw_,dh_,W,H,g_autoshot_path); }
         if(s) SDL_FreeSurface(s); g_autoshot_frame=-1; g_autoshot_path=0; if(g_stop_after>=0 && (menu_open || pc_frames()>=g_stop_after)) pc_quit_now(); }
     SDL_RenderPresent(ren);
+    sim_vsync();
 }
 // ------------------------------------------------------------------------------------------------ input
 static void pad_open(void){
@@ -492,6 +505,7 @@ static void tl_draw(uint16_t on, int sel, int edit){        // edit: brighter (t
         if(i==sel) tl_outline(cx-r-gs_,cy-r-gs_,2*r+2*gs_,2*r+2*gs_,gs_,0xFFD23C); }
     gs_=sv; }
 static void touch_draw(void){ if(ted_on) return; tl_draw(touch_keys(),-1,0); }
+static void touch_release_all(void){ memset(tfing,0,sizeof tfing); }      // (patch 43) back from the background: no finger is still 'down'
 
 // ---- the layout editor: drag a button to move it, tap to pick it, then the panel changes its size; opacity is shared; landscape and portrait are separate layouts
 static int ted_sel=-1, ted_drag=-1, ted_ox, ted_oy, ted_py=-1; static SDL_FingerID ted_fid;
@@ -562,6 +576,7 @@ static void ted_draw(void){
 #else
 static uint16_t touch_keys(void){ return 0; }
 static void touch_draw(void){}
+static void touch_release_all(void){}
 #endif
 static uint16_t read_keys(void){
     uint16_t down=0; const Uint8 *ks=SDL_GetKeyboardState(NULL);
@@ -583,14 +598,34 @@ static void rumble_frame(void){
     hist[hi++&7]=pc_motor(); int s=0; for(int i=0;i<8;i++) s+=hist[i];
     if(s>0 && !menu_open){ int lo=s*8000, hi2=s*5000; if(lo>65535)lo=65535; SDL_GameControllerRumble(pad,(Uint16)lo,(Uint16)hi2,60); }
 }
+// ---- the app's life cycle (Android: home button, another app, screen off; also SDL_APP_TERMINATING). In the background the game does not step and makes no sound; coming back
+// starts a fresh clock (g_pace_reset): the minutes it was away are not played catch-up. The save is flushed on the game's own thread (g_app_save, in pump_events).
+static void touch_release_all(void);
+static void app_background(void){ g_bg=1; g_app_save=1; if(adev) SDL_PauseAudioDevice(adev,1); }
+static void app_foreground(void){
+    if(!g_bg && !g_app_resume) return;
+    g_bg=0; g_app_resume=0; g_pace_reset=1; memset(kst,0,sizeof kst); touch_release_all();
+    if(adev){ __atomic_store_n(&rd_i,__atomic_load_n(&wr_i,__ATOMIC_ACQUIRE),__ATOMIC_RELEASE); SDL_PauseAudioDevice(adev,0); }      // the old queued sound is dropped
+}
+static int SDLCALL app_watch(void *u, SDL_Event *e){        // called at once on SDL's own thread (the game thread may already be asleep inside SDL): only sets flags
+    (void)u;
+    if(e->type==SDL_APP_WILLENTERBACKGROUND || e->type==SDL_APP_DIDENTERBACKGROUND || e->type==SDL_APP_TERMINATING){ g_bg=1; g_app_save=1; }
+    else if(e->type==SDL_APP_DIDENTERFOREGROUND || e->type==SDL_APP_WILLENTERFOREGROUND){ g_app_resume=1; }
+    return 1;
+}
 static void open_menu(void){ menu_open=1; menu_page=P_MAIN; menu_sel=0; menu_wait=0; mp_choice=0; for(int i=0;i<7;i++) if(mp_val(i)==C.max_mp) mp_choice=i; }
 static void inject_step(void);
 static void pump_events(void){
     SDL_Event e; inject_step();
+    if(g_app_save){ g_app_save=0; pc_save_flush(1); cfg_save(); }          // the app is going to the background (Android): the save is on disk before the system may kill the process
     while(SDL_PollEvent(&e)){
         switch(e.type){
         case SDL_QUIT: cfg_save(); pc_quit_now(); break;
+        case SDL_DISPLAYEVENT: g_pace_reset=1; break;                 // the monitor changed (refresh rate, plugged in/out): the game's clock does not care
+        case SDL_APP_WILLENTERBACKGROUND: case SDL_APP_DIDENTERBACKGROUND: case SDL_APP_TERMINATING: app_background(); break;
+        case SDL_APP_WILLENTERFOREGROUND: case SDL_APP_DIDENTERFOREGROUND: app_foreground(); break;
         case SDL_WINDOWEVENT:
+            g_pace_reset=1;      // any window event (move, size, minimise, restore, focus): the next frame starts a fresh clock, no burst of catch-up frames
             if(e.window.event==SDL_WINDOWEVENT_SIZE_CHANGED && !C.fullscreen && !(SDL_GetWindowFlags(win)&SDL_WINDOW_MINIMIZED)){ int w,h; SDL_GetWindowSize(win,&w,&h); if(w>=240&&h>=160){ C.win_w=w; C.win_h=h; } }
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST) memset(kst,0,sizeof kst);
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST && C.pause_unfocus) g_paused_focus=1;
@@ -677,38 +712,83 @@ static void fakepad_frame(long fr){
     if(fr==150 && j){ SDL_JoystickDetachVirtual(fake_idx); fprintf(stderr,"fakepad: detach at frame %ld\n",fr); fake_id=-1; }
     #endif
 }
-// ------------------------------------------------------------------------------------------------ the frame
-static void wait_until(uint64_t t){
-    for(;;){ uint64_t n=SDL_GetPerformanceCounter(); if(n>=t) return; double ms=(double)(t-n)*1000.0/t_freq; if(ms>2.5) SDL_Delay((Uint32)(ms-2.0)); else if(ms>1.0) SDL_Delay(1); }
+// ------------------------------------------------------------------------------------------------ the frame (patch 43: GBA-exact pacing)
+// The game steps once per vblank of the real GBA: 16777216 Hz / 280896 cycles = 59.7275 frames a second. Nothing else may set that speed: not the monitor (60, 75, 90, 120, 144,
+// 165 Hz), not vsync, not the window, not the audio buffer, not how fast the PC or the phone is. The game steps from a fixed-timestep accumulator on the monotonic clock:
+//   g_due is when the current frame should end. Every frame it moves on by exactly one GBA frame (a fraction of a tick, carried), never "to now".
+//   Early: wait for it (sleep, then spin the last bit, so a 1 ms timer does not make the frames uneven). Late by up to PACE_MAX_LAG frames: do not wait, catch up.
+//   Later than that (a drag of the window, a long load, the phone's sleep): drop the lost time (resync: the late frame begins now). The game never runs at double speed to make it up.
+// The picture is shown once per game frame; on a 144 Hz screen with vsync the show waits for the screen, but that wait is inside the frame budget, not added to it.
+#define GBA_FRAME_SECONDS (280896.0/16777216.0)
+#define PACE_MAX_LAG 4
+static double g_due, g_slack_ms; static unsigned long g_resyncs, g_catchups, g_waits;
+static inline double now_ticks(void){ return (double)SDL_GetPerformanceCounter(); }
+static inline void cpu_relax(void){
+#if defined(__x86_64__) || defined(__i386__)
+    __asm__ __volatile__("pause");
+#elif defined(__aarch64__) || defined(__arm__)
+    __asm__ __volatile__("yield");
+#endif
 }
+static double pace_period(void){          // perf-counter ticks of one game frame at the current game speed (UNIVERSE LAWS: GAME SPEED, 100 = the GBA)
+    extern int pc_time_pct; int tp = pc_time_pct < 10 ? 10 : pc_time_pct > 2000 ? 2000 : pc_time_pct;
+    return (double)t_freq*GBA_FRAME_SECONDS*100.0/(double)tp;
+}
+static void wait_until(double due){        // sleep while there is plenty of time (SDL_Delay is 1 ms coarse, or 15 ms on an old Windows timer), spin the last g_slack_ms
+    for(;;){
+        double ms=(due-now_ticks())*1000.0/(double)t_freq; if(ms<=0) return;
+        if(ms>g_slack_ms+0.5){
+            double a=now_ticks(); Uint32 d=(Uint32)(ms-g_slack_ms); if(d<1) d=1; SDL_Delay(d);
+            double over=(now_ticks()-a)*1000.0/(double)t_freq-(double)d;      // how late the sleep woke up: keep that much in reserve for the spin
+            if(over>g_slack_ms-0.4){ g_slack_ms=over+0.6; if(g_slack_ms>8.0) g_slack_ms=8.0; } else if(g_slack_ms>1.0) g_slack_ms-=0.01;
+        } else cpu_relax();
+    }
+}
+static void sim_vsync(void){               // test hook BUGSTAR_SIMVSYNC=<hz>: when vsync is on, the picture's show waits for the next tick of a pretend monitor (tests/speed.sh: 144 Hz)
+    static double hz=-1, t0; if(hz<0){ const char *e=getenv("BUGSTAR_SIMVSYNC"); hz=e?atof(e):0; t0=now_ticks(); }
+    if(hz>0 && C.vsync){ double per=(double)t_freq/hz; double k=floor((now_ticks()-t0)/per)+1; wait_until(t0+k*per); }
+}
+static void sim_stall(long fr){            // test hook BUGSTAR_SIM_STALL=frame:ms,frame:ms: the window's thread stops for a while (a drag of the title bar, a minimise)
+    static int init, n, at[8], ms[8]; if(!init){ init=1; const char *e=getenv("BUGSTAR_SIM_STALL"); while(e&&*e&&n<8){ int a=0,m=0,k=0; if(sscanf(e,"%d:%d%n",&a,&m,&k)<2) break; at[n]=a; ms[n]=m; n++; e+=k; if(*e==',') e++; } }
+    for(int i=0;i<n;i++) if(at[i]==fr) SDL_Delay((Uint32)ms[i]);
+}
+static void pace_stats(void){ if(getenv("BUGSTAR_PACELOG")) fprintf(stderr,"pace: frames %ld resyncs %lu catchups %lu waits %lu audio skips %lu pads %lu slack %.2f ms underruns %lu\n",pc_frames(),g_resyncs,g_catchups,g_waits,a_skips,a_pads,g_slack_ms,underruns); }
 void plat_frame(void){
     long fr=pc_frames(); { static const int an[4]={0,500,2000,10000}; if(!getenv("PC_SHIPS")) pc_ships_mode=C.ships; if(!getenv("PC_ARMADA")) pc_armada_n=an[C.armada]; }
     audio_frame();
-    uint64_t now=SDL_GetPerformanceCounter();
-    int late = now > t_next + t_freq/50;                        // more than a frame behind: skip showing this one, catch up
+    double period=pace_period(), now=now_ticks();
+    // g_due is when THIS frame should have begun (= when the last one ended). A frame that arrives more than PACE_MAX_LAG frames late starts a fresh clock: the lost time is dropped.
+    if(!g_fast && now-g_due > PACE_MAX_LAG*period){ g_due=now; g_resyncs++; }
+    int late = now - g_due > period;                          // already more than a whole frame behind: do not spend time showing this one
     if(g_fast ? (fr&15)==0 : (!late || (fr&7)==0)) present_game(1);
-    fps_n++; if(now-fps_t0>=t_freq){ fps_show=fps_n*(double)t_freq/(now-fps_t0); fps_n=0; fps_t0=now; }
-    // ---- pace: the game steps at exactly 60 a second, whatever the screen's refresh rate is
-    { extern int pc_time_pct; int tp = pc_time_pct < 10 ? 10 : pc_time_pct > 2000 ? 2000 : pc_time_pct; t_next += tp == 100 ? t_freq/60 : t_freq*100/(60*(uint64_t)tp); }   // (the UNIVERSE LAWS' GAME SPEED)
-    now=SDL_GetPerformanceCounter();
-    if(now > t_next + t_freq/8) t_next = now;                  // way behind (the window was dragged, a long load): do not try to catch up
-    else if(!g_fast) wait_until(t_next);
+    fps_n++; { uint64_t n=SDL_GetPerformanceCounter(); if(n-fps_t0>=t_freq){ fps_show=fps_n*(double)t_freq/(double)(n-fps_t0); fps_n=0; fps_t0=n; } }
+    // ---- pace: the game steps at exactly 59.7275 a second, whatever the screen's refresh rate is
+    g_due += period;                                           // when this frame ends: exactly one GBA frame after it began (the fraction of a tick is kept)
+    now=now_ticks();
+    if(g_fast) g_due=now;                                      // fast-forward (--fast): as quick as it goes, and nothing is owed afterwards
+    else if(now>g_due) g_catchups++;                          // a little behind (less than PACE_MAX_LAG frames): the next frames do not wait until the clock is level again
+    else { g_waits++; wait_until(g_due); }
+    sim_stall(fr);
     pump_events();
-    while(menu_open || g_paused_focus){                        // paused: the game does not step; the window keeps being drawn
-        present_game(1); pump_events();
-        if(!C.vsync) SDL_Delay(16);
-        else if(SDL_GetPerformanceCounter()-now<t_freq/200) SDL_Delay(8);
-        if(!menu_open && !g_paused_focus) break;
-        audio_frame();
+    int was_paused=0;
+    while(menu_open || g_paused_focus || g_bg){                // paused: the game does not step; the window keeps being drawn (not while the app is in the background)
+        was_paused=1; uint64_t t0=SDL_GetPerformanceCounter();
+        if(!g_bg) present_game(1);
+        pump_events();
+        if(g_bg) SDL_Delay(50);
+        else if(!C.vsync) SDL_Delay(16);
+        else if(SDL_GetPerformanceCounter()-t0<t_freq/200) SDL_Delay(8);
+        if(!menu_open && !g_paused_focus && !g_bg) break;
+        if(!g_bg) audio_frame();
     }
-    if(!menu_open && now){ t_next=SDL_GetPerformanceCounter(); }
+    if(was_paused || g_pace_reset || g_app_resume){ g_pace_reset=0; g_app_resume=0; g_due=now_ticks(); }      // a pause, a window move/resize/minimise, a monitor change: a fresh clock, no catch-up burst
     { const char *mp=getenv("BUGSTAR_MENU"); if(mp && fr==30 && !menu_open){ open_menu(); menu_page=atoi(mp); if(getenv("BUGSTAR_MENUSEL")) menu_sel=atoi(getenv("BUGSTAR_MENUSEL")); } }   // (test hook: open the options screen on a page)
     if(g_first_run && fr==45){ g_first_run=0; say_toast_ms("ARROWS/WASD MOVE  X/SPACE=A  Z/K=B  ENTER=START  ESC=OPTIONS",9000); }
     uint16_t k; fakepad_frame(fr);
     if(pc_script_keys(&k)) pc_set_keys(k); else { k=read_keys(); pc_set_keys(k); if(getenv("BUGSTAR_FAKEPAD") && k) fprintf(stderr,"fakepad: frame %ld keys=%03x pad=%s\n",fr,k,pad?SDL_GameControllerName(pad):"none"); }
     g_lastkeys=k; rumble_frame();
     { static long saved_at; if(fr-saved_at>=120){ saved_at=fr; pc_save_flush(0); } }
-    if(g_stop_after>=0 && fr>=g_stop_after && !(g_autoshot_path && g_autoshot_frame>=0)) pc_quit_now();   // (a screenshot still waiting is taken first)
+    if(g_stop_after>=0 && fr>=g_stop_after && !(g_autoshot_path && g_autoshot_frame>=0)){ pace_stats(); pc_quit_now(); }   // (a screenshot still waiting is taken first)
 }
 void plat_close(void){ pc_save_flush(1); cfg_save(); wav_close(); if(adev) SDL_CloseAudioDevice(adev); if(pad) SDL_GameControllerClose(pad); if(ren) SDL_DestroyRenderer(ren); if(win) SDL_DestroyWindow(win); SDL_Quit(); }
 
@@ -774,6 +854,7 @@ int plat_open(int argc, char **argv){
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS,"permonitorv2"); SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING,"0");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1"); SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER,"0");
     SDL_SetHint(SDL_HINT_APP_NAME,"BUGSTAR");
+    SDL_SetHint(SDL_HINT_TIMER_RESOLUTION,"1");      // patch 43: Windows: a 1 ms timer (not 15.6 ms), so the frame waits are even (SDL then calls timeBeginPeriod(1))
 #ifdef PC_ANDROID
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS,"0"); SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS,"0");   // the touch pad replaces touch-as-mouse
 #endif
@@ -789,7 +870,13 @@ int plat_open(int argc, char **argv){
     make_icon(); font_init();
     SDL_ShowCursor(C.fullscreen?SDL_DISABLE:SDL_ENABLE);
     pad_open();
-    t_freq=SDL_GetPerformanceFrequency(); t_next=SDL_GetPerformanceCounter(); fps_t0=t_next;
+    t_freq=SDL_GetPerformanceFrequency(); fps_t0=SDL_GetPerformanceCounter(); g_due=(double)fps_t0;
+#ifdef _WIN32
+    g_slack_ms=2.0;
+#else
+    g_slack_ms=1.2;
+#endif
+    SDL_AddEventWatch(app_watch,NULL);      // the app's life cycle events arrive at once, even while the game thread sleeps inside SDL (Android in the background)
     if(g_wav_path){ g_wav=fopen(g_wav_path,"wb"); if(g_wav){ uint8_t h[44]={0}; fwrite(h,1,44,g_wav); } }
     audio_open();
     atexit(wav_close);

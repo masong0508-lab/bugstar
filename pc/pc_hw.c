@@ -633,8 +633,10 @@ static void vblank(void){
     R16(IOREG+0x130)=(uint16_t)(~down & 0x3FF);
     if((R16(IOREG+0x200)&1) && R16(IOREG+0x208)&1 && pc_irq_fn){ R16(IOREG+0x202)|=1; pc_irq_fn(); R16(IOREG+0x202)&=~1; }
 }
+static uint64_t g_cyc;     // CPU cycles since start, as the beam counts them: one REG_VCOUNT read = one line = 1232 cycles, 228 lines = one frame = 280896 cycles (the GBA's 59.7275 Hz)
+uint32_t pc_tmr(void){ return (uint32_t)g_cyc; }
 uint16_t pc_vcount(void){
-    g_vc_reads++;
+    g_vc_reads++; g_cyc+=1232; R16(IOREG+0x100)=(uint16_t)g_cyc; R16(IOREG+0x104)=(uint16_t)(g_cyc>>16);      // (TM0 / TM1 counters, for code that reads the registers itself)
     if(++g_line>=228) g_line=0;
     uint16_t ds=R16(IOREG+4); ds=(uint16_t)((ds&~7)|((g_line>=160&&g_line<227)?1:0)); R16(IOREG+4)=ds;
     R16(IOREG+6)=(uint16_t)g_line;

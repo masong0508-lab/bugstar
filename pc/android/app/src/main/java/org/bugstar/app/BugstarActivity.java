@@ -11,6 +11,9 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Surface;
 import android.provider.MediaStore;
 import android.widget.Toast;
 
@@ -98,6 +101,32 @@ public class BugstarActivity extends SDLActivity {
         } catch (Throwable t) {
             try { FileOutputStream o = new FileOutputStream(new File(dir, "bugstar_report.txt")); o.write(data); o.close(); } catch (Throwable t2) { }
         }
+    }
+
+    // patch 43: the game steps at the GBA's own 59.7275 Hz from its own clock (pc_sdl.c plat_frame), never from the screen. On a 90 / 120 Hz phone the picture is shown once per game frame;
+    // this tells Android that the content is a ~60 fps video-like source, so the screen can sit on 60 (or 120) Hz without judder and without burning battery. It is a hint only:
+    // if it is refused (API below 30, no surface yet) nothing changes in the game's speed.
+    private void hintFrameRate() {
+        if (Build.VERSION.SDK_INT < 30) return;
+        try {
+            if (mSurface != null && mSurface.getHolder() != null) {
+                Surface sf = mSurface.getHolder().getSurface();
+                if (sf != null && sf.isValid()) sf.setFrameRate(59.73f, Build.VERSION.SDK_INT >= 31 ? Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE : Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+            }
+        } catch (Throwable t) { }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        hintFrameRate();
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() { @Override public void run() { hintFrameRate(); } }, 1000);      // the surface may not exist yet right at the start
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hintFrameRate();
     }
 
     @Override

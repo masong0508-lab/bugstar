@@ -3,6 +3,7 @@
 #define PC_HW_H
 #include <stdint.h>
 #include "platform/pc_gbaaddr.h"
+uint32_t pc_tmr(void);                           // the fake TM0+TM1 cascade: CPU cycles (16.78 MHz) since start, 280896 a frame
 void pc_tick_poll(void), pc_tick_step(void);   // frame-log counters (patch 43): key polls and dungeon logic steps
 uint16_t pc_vcount(void);            // replaces reading REG_VCOUNT: every read moves the beam one line on (228 lines = one frame)
 void pc_dma_sad(uintptr_t a), pc_dma_dad(uintptr_t a);   // the DMA-3 source / destination, full width (patch 25)

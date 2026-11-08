@@ -88,6 +88,11 @@ grep -c "pc_tick_poll();" main.c | grep -qx 1 && grep -c "pc_tick_step();" main.
 # ran 68 dungeon logic steps per vblank (measured: tests/speed.sh). On the PC every pass of the dungeon loop is one whole frame: wait for the next vblank, always.
 sed -i 's|^static void vsync_flip(void){ if(REG_VCOUNT>=160) return; while(REG_VCOUNT<160); }|static void vsync_flip(void){ vsync(); }|' main.c
 grep -c "^static void vsync_flip(void){ vsync(); }" main.c | grep -qx 1 || { echo "build: vsync_flip patch did not apply"; exit 1; }
+# --- patch 43 (game speed): the game's profile timer (TM0 + TM1 cascaded, a 32-bit count of CPU cycles at 16.78 MHz) reads the fake GBA's clock: pc_tmr() = beam lines gone by x 1232
+# cycles, so it runs at the GBA's rate (280896 a frame) and does not stand still (before: always 0). Nothing in the game's logic reads it (only profile numbers and debug overlays).
+sed -i 's|^#define TMR() (\*(volatile u16\*)0x04000100 \| ((u32)\*(volatile u16\*)0x04000104<<16))|#define TMR() pc_tmr()|' main.c
+sed -i 's/(\*(volatile u16\*)0x04000100 | ((u32)\*(volatile u16\*)0x04000104<<16))/pc_tmr()/g; s/\*(volatile u16\*)0x04000100 | ((u32)\*(volatile u16\*)0x04000104<<16);/pc_tmr();/g' ship.inc
+grep -c "^#define TMR() pc_tmr()" main.c | grep -qx 1 && ! grep -q "0x04000104<<16" ship.inc main.c || { echo "build: timer patch did not apply"; exit 1; }
 # --- the PC ship renderer (pc/shipr, pc/pc_ships.inc): the space ships go to it when it is on (pc_ships_mode >= 0, the window build's SHIPS option)
 sed -i -e 's|^    int crowd=0; for(int i=0;i<NPIR;i++) if(pir\[i\].alive) crowd++;$|    if(pc_sr_on()){ pc_sr_space(pg); goto pc_sr_done; }\n&|' \
        -e 's|^    for(int k=0;k<4;k++) if(cans\[k\].alive){ int sx,sy; s32 z; if(sproj|    pc_sr_done: pc_sr_mark(pg); pc_so_native(pg);\n&|' space.inc
