@@ -55,7 +55,7 @@ static int rays_ok=0;                                    // the 120 ray directio
 static void heading_rays(void){
     hcs=cosx(heading>>2)>>6; hsn=sinx(heading>>2)>>6; rays_ok=0;
 }
-static void rays_build(void){
+__attribute__((noinline)) static void rays_build(void){
     for(int c=0;c<120;c++){ rayvx[c]=(s16)(hsn + ((hcs*raydx[c])>>8)); rayvy[c]=(s16)(hcs - ((hsn*raydx[c])>>8)); }
     rays_ok=1;
 }
@@ -393,7 +393,7 @@ __attribute__((section(".iwram"), long_call, noinline)) static void bld_col(vola
                 else c2 = fr>=19 ? 117 : fr<11 ? 118 : 73; } }                            // the pane mirrors the sky toward its sill; dark reveal at the top
         col[yy*120]=c2|(c2<<8); } }
 IWRAM static void render_planet(volatile u16 *pg){
-    if(!rays_ok) rays_build();
+
     s32 cb=cam_back(); s32 cam_x = ppx - ((hsn*cb)>>8), cam_y = ppy - ((hcs*cb)>>8);
     int ck = curv_k(); s32 csub = tiny_sub();                                       // small planets: the horizon falls away faster (measured from the bug)
     for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((((z*z)>>14)*ck)>>curv_sh()) - csub;     // the world drops away
@@ -715,7 +715,7 @@ static void planet_frame(void){
     // ---- draw the world
     weird_frame(n); hell_frame(n); rock_frame();
     if(m7_on) m7_sky_now();                                                             // (a race: the sky, loops and HUD of the frame on show, once the beam is past them)
-    u32 t_r0=TMR(); if(m7_on) m7_frame(); else render_planet(pg); u32 t_r1=TMR();
+    u32 t_r0=TMR(); if(m7_on) m7_frame(); else { if(!rays_ok) rays_build(); render_planet(pg); } u32 t_r1=TMR();
 #ifdef TEST_FPS
     if(m7_on){ m7_t[0]=t_r0-t_f0; m7_t[1]=t_r1-t_r0; }
 #endif

@@ -391,7 +391,7 @@ static void kcam_menu_(volatile u16 *pg, int live){
     int sel=0, dirty=1, y0 = live ? 19 : 28; in_menu++; wait_release();          // live: the menu sits at the top, your kart shows below
     while(1){
         if(dirty){ dirty=0; char b[40];
-            if(live){ kcam_apply(); heading=khd; heading_rays(); cam_h=ground_h(ppx,ppy)+cam_up(); render_planet(pg); oam_hide_all();
+            if(live){ kcam_apply(); heading=khd; heading_rays(); rays_build(); cam_h=ground_h(ppx,ppy)+cam_up(); render_planet(pg); oam_hide_all();
                 if(!cam_fp){ s32 dz=cam_back(), f=(FOCP<<16)/(dz>>8); int sy=PHZ+(((cam_h+curv(dz>>8)-tiny_sub()-ground_h(ppx,ppy))*f)>>16); kart_draw_me(0,sy); } else kart_cockpit(pg); oam_flush(); }
             box(pg,10,y0,220,live?78:118); rect(pg,11,y0+1,218,10,6); ctext(pg,120,y0+3,"KART CAMERA",C_GOLD);
             for(int i=0;i<NC;i++){ int y=y0+14+i*(live?6:9); if(i==sel) rect(pg,14,y-1,212,live?6:8,6); text(pg,20,y,cl[i],i==sel?C_WHITE:i>=C_RESET?C_CYAN:C_GREY,1);
