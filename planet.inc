@@ -443,7 +443,7 @@ static void planet_hud(void){
 #ifdef TEST_HASH
     scpy(b,th_str);
 #endif if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[TZ]+1); } else if(hellw()){ scat(b," H"); ncat(b,hell_tier()); }
-    for(int p=0;p<(m7_on?1:2);p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b);     // (in a race the second page is the ground's map)
+    draw_hud_safe(b);
 }
 static void show_msg(const char *s){ int n=0; while(s[n] && n<39){ msg[n]=s[n]; n++; } msg[n]=0; msg_timer = n ? 150*xo_v(XO_MSGT)/100 : 0; }
 

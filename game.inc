@@ -838,6 +838,13 @@ static void draw_hud(volatile u16 *pg, const char *l1){
     if(stat_pts){ text(pg,226,10,"+",C_GREEN,1); }
 }
 
+static volatile u16 *hud_begin(void){                       // where the bar is drawn now: the page that is NOT on screen (in a race the second page is the ground's map: page 0 as ever)
+    if(m7_on) return (volatile u16*)0x06000000;
+    u32 h=(REG_DISPCNT&0x10)?0:1; if(hud_pend && hud_pend!=1+h){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); hud_copy(); }
+    return (volatile u16*)(0x06000000 + h*0xA000); }
+static void hud_end(void){ if(m7_on) return; if(in_menu&SH_ON) hud_stale=1; else hud_pend=1+((REG_DISPCNT&0x10)?0:1); }       // (the next vsync, or the end of the steady menu, puts it on screen inside the blank)
+static void draw_hud_safe(const char *l1){ volatile u16 *pg=hud_begin(); draw_hud(pg,l1); hud_end(); }
+
 static u32 hud_sig(void){      // changes whenever something on the status bar changes
     u32 h=2166136261u; s64 v[13]={hearts,mp,maxh,maxmp,food,level,xp,gold,loot,bag_n,bag_sel,bugs_freed,stat_pts};
     for(int i=0;i<13;i++){ h^=(u32)v[i]; h*=16777619u; h^=(u32)(v[i]>>32); h*=16777619u; } if(bag_n){ h^=bag[bag_sel].it*31+bag[bag_sel].sub; h*=16777619u; } return h; }

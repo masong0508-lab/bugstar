@@ -96,16 +96,22 @@ static int auto_run=0, tapU_t=0, run_stuck=0, run_hint=0;   // AUTO-RUN in dunge
 static int in_menu;
 static void shd_copy(void){ u32 o = (REG_DISPCNT&0x10) ? 0x0600A000u : 0x06000000u;
     *(volatile u32*)0x040000D4=o^0xA000u; *(volatile u32*)0x040000D8=o; *(volatile u32*)0x040000DC=9600|(1<<26)|(1u<<31); }
-static void vsync(void){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); if(in_menu&SH_ON) shd_copy(); }
+// THE TOP BAR never gets drawn on the page the beam is reading: it is drawn on the hidden page, then its rows are copied across in the blank (hud_pend = 1 + the page it was drawn on)
+static u8 hud_pend, hud_stale;
+static void hud_copy(void){ u32 s = hud_pend==1 ? 0x06000000u : 0x0600A000u; hud_pend=0;     // (in the blank: the 18 rows of the bar, from the page it was drawn on to the other)
+    *(volatile u32*)0x040000D4=s; *(volatile u32*)0x040000D8=s^0xA000u; *(volatile u32*)0x040000DC=1080|(1<<26)|(1u<<31); }
+static void vsync(void){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); if(in_menu&SH_ON) shd_copy(); else if(hud_pend) hud_copy(); }
 static int shd_begin(void){                                         // 1 if it began (0: already steady, or a kart race's hardware ground is on)
     if((in_menu&SH_ON) || m7_on) return 0;
+    if(hud_pend){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); hud_copy(); }                         // (a bar waiting to be shown goes first)
     u32 o = (REG_DISPCNT&0x10) ? 0x0600A000u : 0x06000000u;           // the page on screen now is the one the menu draws on: copy it across, show the copy
     *(volatile u32*)0x040000D4=o; *(volatile u32*)0x040000D8=o^0xA000u; *(volatile u32*)0x040000DC=9600|(1<<26)|(1u<<31);
     while(REG_VCOUNT>=160); while(REG_VCOUNT<160); REG_DISPCNT^=0x10; in_menu|=SH_ON; return 1; }
 static void shd_end(int on){                                         // give the screen back: show the page the menu drew on
-    if(!on || !(in_menu&SH_ON)) return; in_menu&=~SH_ON; while(REG_VCOUNT>=160); while(REG_VCOUNT<160); REG_DISPCNT^=0x10; }
+    if(!on || !(in_menu&SH_ON)) return; in_menu&=~SH_ON; while(REG_VCOUNT>=160); while(REG_VCOUNT<160); REG_DISPCNT^=0x10;
+    if(hud_stale){ hud_stale=0; hud_pend=(REG_DISPCNT&0x10)?2:1; hud_copy(); } }     // (the bar changed while the menu was up: it is on the page now shown; the other page gets it in this blank)
 static void shd_off(void){ shd_end(1); }                              // (anything that takes the whole screen over, a voyage or a landing, starts with this: harmless when no menu is steady)
-static void vsync_flip(void){ if(REG_VCOUNT>=160) return; while(REG_VCOUNT<160); }   // dungeon only (it runs on real time): late but still inside the blank = flip now, no tearing, no lost frame
+static void vsync_flip(void){ if(REG_VCOUNT>=160){ if(hud_pend && REG_VCOUNT<215) hud_copy(); return; } while(REG_VCOUNT<160); if(hud_pend) hud_copy(); }   // dungeon only (it runs on real time): late but still inside the blank = flip now, no tearing, no lost frame
 static int isqrt(u32 n){ u32 r=0, b=1u<<30; while(b>n) b>>=2; while(b){ if(n>=r+b){ n-=r+b; r=(r>>1)+b; } else r>>=1; b>>=2; } return (int)r; }
 #define S64_MAX 0x7FFFFFFFFFFFFFFFLL
 static s64 sadd(s64 a, s64 b){ if(b>0){ if(a>S64_MAX-b) return S64_MAX; } else if(b<0){ if(a<-S64_MAX-1-b) return -S64_MAX-1; } return a+b; }

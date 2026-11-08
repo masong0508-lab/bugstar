@@ -1101,7 +1101,7 @@ static void dungeon_label(char *b){
 // the status bar is drawn only into the page you can't see, so it never flickers: once for each of the two pages
 static int hud_dirty=0;
 static void dungeon_hud(void){ hud_dirty=2; }
-static void dungeon_hud_both(void){ char b[40]; dungeon_label(b); for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b); hud_dirty=0; }
+static void dungeon_hud_both(void){ char b[40]; dungeon_label(b); draw_hud_safe(b); hud_dirty=0; }
 static int stair_ok;
 static int stair_panel_(volatile u16 *pg);
 static int stair_panel(volatile u16 *pg){ int sh=shd_begin(); int r=stair_panel_(sh?VISPG:pg); shd_end(sh); return r; }
