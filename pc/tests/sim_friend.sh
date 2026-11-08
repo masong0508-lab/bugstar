@@ -2,6 +2,7 @@
 # Friends and letters in the real game: BUGSTAR_SIM_NEAR=0 keeps the player beside townsperson 0; A is pressed on them once a game day for 3 days
 # (each talk: A opens the friendship card, A closes it, A closes the local's own card). Checks: the card picture (12030) differs from the game after it
 # (12300); friendship goes up every day; a letter arrives (friendship passed 25) and its pop-up was shown; two runs are the same.
+export BUGSTAR_LS_ALL=1     # patch 47: the old checks press keys on menus by position: SHOW ALL keeps every row, no tip cards
 cd "$(dirname "$0")/.."; mkdir -p out; rm -f out/sf1.* out/sf2.*
 for r in 1 2; do BUGSTAR_SIM_NEAR=0 BUGSTAR_SIM_DUMP=out/sf$r.dump ./bugstar_pc --script tests/sim_friend.txt --out out/sf$r --sav out/sf$r.sav --frames 75000 > out/sf$r.log; done
 cmp -s out/sf1.log out/sf2.log && cmp -s out/sf1.dump out/sf2.dump || { echo "sim_friend: DIFFERENT between two runs"; exit 1; }

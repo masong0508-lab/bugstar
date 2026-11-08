@@ -18,6 +18,8 @@ static int  sim_open_gods(void);                 // how many god powers are open
 static void pc_land_note(void);                   // the MEANS line after landing
 static void sim_ship_colony(volatile unsigned short *pg);   // the ship menu's COLONY row
 static int  sim_is_on(void);
+static void sim_ship_tabs(void);                 // patch 47: the GO tab lists COLONY only once the colony is found
+static void sim_slot_erase(int s), sim_slot_copy(int from, int to);   // patch 47: a save slot erased or copied takes its side game along
 static int  sim_invasion(unsigned size, unsigned long long *reward);   // a warship DEFEND mission raids this planet's colony for real: 1 won, -1 lost, 0 no colony
 static int  sim_planet_burnt(void);              // 1 if this planet was destroyed (kept in the colony records for good)
 static int  sim_dn_call(void);                   // patch 15: 1 if the colony has a call for this dungeon floor

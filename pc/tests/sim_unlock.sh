@@ -3,6 +3,7 @@
 #  1. new game, 0 freed: the colony is locked (mask 0001, no settlers, no card)          2. new game, 1 freed: the TENT opens, 2 settlers, one card
 #  3. continue save 1 with 0 freed: the tent stays (rungs never close) and the COLONY screen lists it; continue save 0: the screen says LOCKED
 #  Two runs of 2 are the same.
+export BUGSTAR_LS_ALL=1     # patch 47: the old checks press keys on menus by position: SHOW ALL keeps every row, no tip cards
 cd "$(dirname "$0")/.."; mkdir -p out; rm -f out/un*.*
 run(){ BUGSTAR_SET_FAME=699 BUGSTAR_SET_FREED=$2 BUGSTAR_SIM_DUMP=out/un$1.dump ./bugstar_pc --script $3 --out out/un$1 --sav out/un$1.sav --frames $4 > out/un$1.log; }
 last(){ grep "^$2" out/un$1.dump | tail -1; }

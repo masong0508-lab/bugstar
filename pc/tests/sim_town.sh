@@ -2,6 +2,7 @@
 # The side game in the real game: stand in the first town for 40,000 frames (about 1.4 game days), dump the townfolk every 600 ticks.
 # Checks: 3 or more named townfolk; one sleeps AT its home at night and one works AT its work by day; the log has 10 or more lines;
 # every need is in 0..255; two runs give the same dump text. (The "near" lines are tenths of a cell from where the bug should be.)
+export BUGSTAR_LS_ALL=1     # patch 47: the old checks press keys on menus by position: SHOW ALL keeps every row, no tip cards
 cd "$(dirname "$0")/.."; mkdir -p out; rm -f out/st1.* out/st2.*
 for r in 1 2; do BUGSTAR_SIM_DUMP=out/st$r.dump ./bugstar_pc --script tests/sim_town.txt --out out/st$r --sav out/st$r.sav --frames 40000 > out/st$r.log; done
 cmp -s out/st1.dump out/st2.dump || { echo "sim_town: DIFFERENT between two runs"; diff out/st1.dump out/st2.dump | head; exit 1; }

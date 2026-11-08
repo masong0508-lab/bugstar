@@ -3,6 +3,7 @@
 # BUGSTAR_SIM_AGE=300 makes it catch up 300 days at once. The script opens PC LAB > SIDE GAME > COLONY, then the WORKSHOPS and MINE screens (upgrade a workshop, brace).
 # Checks: two runs are the same; the mine is deep and the chains made bars/tools/cloth; the five screens (away card, colony, workshops x2, mine) are different pictures;
 # the .sim file keeps the mine (chunk MINE) and a CONTINUE from it still has the mine and the workshop level 2; with the side game OFF there is no mine at all.
+export BUGSTAR_LS_ALL=1     # patch 47: the old checks press keys on menus by position: SHOW ALL keeps every row, no tip cards
 cd "$(dirname "$0")/.."; mkdir -p out; rm -f out/mn1.* out/mn2.* out/mn3.* out/mnc.* out/mno.*
 run(){ BUGSTAR_SET_FAME=699 BUGSTAR_SET_LEVEL=2500 BUGSTAR_SET_FREED=1 "${@:5}" BUGSTAR_SIM_DUMP=out/$1.dump BUGSTAR_SIM_DUMP_EVERY=100 ./bugstar_pc --script $2 --out out/$1 --sav out/$1.sav --frames $3 > out/$1.log; }
 run1(){ env BUGSTAR_SET_FAME=699 BUGSTAR_SET_LEVEL=2500 BUGSTAR_SET_FREED=1 BUGSTAR_SIM_MINE=1 BUGSTAR_SIM_AGE=300 BUGSTAR_SIM_DUMP=out/$1.dump BUGSTAR_SIM_DUMP_EVERY=100 ./bugstar_pc --script tests/sim_mine.txt --out out/$1 --sav out/$1.sav --frames 12000 > out/$1.log; }

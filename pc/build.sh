@@ -152,10 +152,20 @@ echo '#include "../pc_kartnat.inc"' >> main.c
 H() { python3 ../sim/hook.py "$@"; }
 H main.c 'typedef long long s64;' $'\n#include "sim/sim_proto.h"' after
 H main.c 'XO_PVIS, NXOPT };' 'XO_PVIS, XO_SIDE, NXOPT };'
-H main.c '  [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),' $'\n  [XO_SIDE]   =XR("SIDE GAME","PC ONLY: NAMED TOWNSFOLK, A JOURNAL AND GOD POWERS. OFF GIVES THE PLAIN GAME",xl_yn,1,XG_EXTRA),' after
+H main.c '  [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),' $'\n  [XO_SIDE]   =XR("SIDE GAME","PC ONLY: NAMED TOWNSFOLK, A JOURNAL AND GOD POWERS. OFF GIVES THE PLAIN GAME",xl_yn,1,XG_LIFE),' after
 H main.c 'XO_PVIS, XO_SIDE, NXOPT };' 'XO_PVIS, XO_SIDE, XO_SIDEDIF, NXOPT };'
 H main.c 'XL(xl_pvis,"100%","50%","25%")' $'XL(xl_sdif,"CALM","NORMAL","HARSH")      XV(xl_sdif,0,1,2)\nXL(xl_pvis,"100%","50%","25%")'
-H main.c '  [XO_SIDE]   =XR(' $'  [XO_SIDEDIF]=XR("SIDE GAME DIFFICULTY","CALM: NOBODY DIES, RAIDS ALWAYS FAIL. NORMAL: HUNGER, SICKNESS AND RAIDS KILL. HARSH: A LOST BIG RAID CAN BURN THE PLANET",xl_sdif,1,XG_EXTRA),\n  [XO_SIDE]   =XR('
+H main.c '  [XO_SIDE]   =XR(' $'  [XO_SIDEDIF]=XR("SIDE GAME DIFFICULTY","CALM: NOBODY DIES, RAIDS ALWAYS FAIL. NORMAL: HUNGER, SICKNESS AND RAIDS KILL. HARSH: A LOST BIG RAID CAN BURN THE PLANET",xl_sdif,1,XG_LIFE),\n  [XO_SIDE]   =XR('
+# --- patch 47: the LIFE SIM section of MORE OPTIONS (progressive disclosure, pc/sim/unlock.h): SHOW ALL, TIPS, POPUP LEVEL, AUTO-PAUSE ON TIPS, BIG TIP TEXT
+H main.c '#define NXO 52' '#define NXO 56'
+H main.c 'XG_REWARD, XG_EXTRA, NXG };' 'XG_REWARD, XG_EXTRA, XG_LIFE, NXG };'
+H main.c '"REWARDS","EXTRAS"};' '"REWARDS","EXTRAS","LIFE SIM"};'
+H main.c 'XO_PVIS, XO_SIDE, XO_SIDEDIF, NXOPT };' 'XO_PVIS, XO_SIDE, XO_SIDEDIF, XO_LSALL, XO_LSTIPS, XO_LSPOP, XO_LSPAUSE, XO_LSBIG, NXOPT };'
+H main.c 'XL(xl_pvis,"100%","50%","25%")' $'XL(xl_lsall,"OFF","SHAPES (???)","ALL")      XV(xl_lsall,0,1,2)\nXL(xl_lspop,"FEW","NORMAL","MANY")      XV(xl_lspop,0,1,2)\nXL(xl_pvis,"100%","50%","25%")'
+H main.c '  [XO_SIDE]   =XR(' $'  [XO_LSALL]  =XR("SHOW ALL","OFF: ONLY WHAT YOU FOUND. SHAPES: ??? FOR MENUS NOT FOUND YET. ALL: EVERYTHING IS OPEN, FOR TESTERS",xl_lsall,0,XG_LIFE),\n  [XO_LSTIPS] =XR("TIPS","A SHORT CARD EXPLAINS EACH NEW PART WHEN YOU FIND IT. THE SIDE MENU KEEPS THEM IN TIPS",xl_yn,1,XG_LIFE),\n  [XO_LSPOP]  =XR("POPUP LEVEL","FEW: ONLY THE BIG ONES POP UP. NORMAL: MOST. MANY: EVERY NEW THING. THE REST WAIT IN TIPS",xl_lspop,1,XG_LIFE),\n  [XO_LSPAUSE]=XR("AUTO-PAUSE ON TIPS","ON: A TIP STOPS THE GAME UNTIL YOU PRESS A. OFF: A SHORT LINE SHOWS AND THE GAME GOES ON",xl_yn,1,XG_LIFE),\n  [XO_LSBIG]  =XR("BIG TIP TEXT","BIGGER LETTERS ON TIP CARDS, EASIER TO READ",xl_yn,0,XG_LIFE),\n  [XO_SIDE]   =XR('
+# tabs on the ship: COLONY only once found; erase / copy a save slot also erases / copies its side game
+H save.inc 'pc_laws_slot_erase(i);' ' sim_slot_erase(i);' after
+H save.inc 'pc_laws_slot_copy(from,to);' ' sim_slot_copy(from,to);' after
 H planet.inc 'life_tick(n); race_tick(n); kart_tick(n);' ' sim_frame(n);' after
 H planet.inc 'if(best<0) show_msg("NOTHING HERE");' 'if(best<0){ if(sim_quick()){ planet_hud(); p_last=vbl_count; return; } show_msg("NOTHING HERE"); }'
 H planet.inc 'oam_flush(); local_talk(&po[best]);' 'oam_flush(); sim_talk(&po[best]); local_talk(&po[best]);'
@@ -184,7 +194,7 @@ H dungeon.inc 'static void fl_leave(void){' 'static void fl_leave(void){ sim_dn_
 H dungeon.inc 'static void fl_draw(volatile u16 *pg){' ' sim_dn_draw(pg);' after
 H main.c 'dob[i].alive=0; free_bug(dob[i].sub); break;' '{ int cc_=dob[i].champ==3; dob[i].alive=0; free_bug(dob[i].sub); if(cc_) sim_dn_done(FE_QUIET); } break;'
 H main.c 'dob[near_cage].alive=0; free_bug(dob[near_cage].sub);' '{ int cc_=dob[near_cage].champ==3; dob[near_cage].alive=0; free_bug(dob[near_cage].sub); if(cc_) sim_dn_done(FE_QUIET); }'
-H ui.inc 'in_menu++; menu_msg[0]=0; ship_build_model();' 'in_menu++; menu_msg[0]=0; ship_build_model(); shop_tab_n[0]=sim_is_on()?5:4; shop_tab_id[0][3]=sim_is_on()?17:18; shop_tab_id[0][4]=18;'
+H ui.inc 'in_menu++; menu_msg[0]=0; ship_build_model();' 'in_menu++; menu_msg[0]=0; ship_build_model(); sim_ship_tabs();'
 H ui.inc 'if(sel==15){ spell_shop(pg); continue; }' 'if(sel==17){ sim_ship_colony(pg); continue; } if(sel==15){ spell_shop(pg); continue; }'
 # --- the PC SHIP EDITOR (pc/shipyard): the hangar opens it, and your design gives the ship's numbers (no design file for the slot = the game's own numbers)
 for f in armour top_speed turn damp gun hold_bonus fuel_bonus accel16; do H ship.inc "static int ship_$f(void){" "static int ship_${f}_g(void){"; done

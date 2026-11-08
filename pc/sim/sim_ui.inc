@@ -4,26 +4,38 @@
 static void sim_when(const SimEvent *e, char *b){ int day=(int)(e->tick/SIM_DAY_TICKS), hr=(int)((e->tick%SIM_DAY_TICKS)*24/SIM_DAY_TICKS); b[0]=0; scat(b,"D"); ncat(b,day+1); scat(b," "); if(hr<10) scat(b,"0"); ncat(b,hr); scat(b,"H"); }
 
 static void sim_hud(volatile u16 *pg){
-    if(!sim_is_on() || !sim_have_w || FILM || kr_mode) return;
-    int hr=sim_hour(&sim_w); char t[40]; t[0]=0; scat(t,"D"); ncat(t,sim_day(&sim_w)+1); scat(t," "); if(hr<10) scat(t,"0"); ncat(t,hr); scat(t,"H ");
-    scat(t,sim_weather_name(sim_w.weather)); if(sim_w.env_on){ scat(t," "); scat(t,sim_season_name(sim_season(&sim_w))); }
+    if(!sim_is_on() || !sim_have_w || FILM || kr_mode || !sim_ls_on(UF_CLOCK)) return;       // patch 47: the clock chip appears with the first town; weather and season are added when found
+    int hr=sim_hour(&sim_w); char t[48]; t[0]=0; scat(t,"D"); ncat(t,sim_day(&sim_w)+1); scat(t," "); if(hr<10) scat(t,"0"); ncat(t,hr); scat(t,"H");
+    if(sim_ls_on(UF_WEATHER)){ scat(t," "); scat(t,sim_weather_name(sim_w.weather)); }
+    if(sim_w.env_on && sim_ls_on(UF_SEASON)){ scat(t," "); scat(t,sim_season_name(sim_season(&sim_w))); }
     int day = hr>=6 && hr<19;
     rect(pg,3,151,4,4,day?C_GOLD:C_CYAN); stext(pg,10,150,t,C_WHITE);
+    if(ul_fresh(sim_ul())) stext(pg,10+textlen(t)*4+5,150,"!",C_GOLD);                          // something new in the side menu (A on empty ground)
 }
 
 static int sim_talk(void *po_obj){
     if(!sim_is_on() || !sim_have_w) return 0;
     int idx=(int)((PObj*)po_obj-po), k=-1; for(int i=0;i<sim_w.nfolk;i++) if(sim_fpo[i]==idx) k=i;
     if(k<0) return 0;
-    const SimFolk *f=&sim_w.folk[k]; char l0[44], l1[44], l2[44];
-    scpy(l0,sim_job_name(f->job)); scat(l0,". "); scat(l0,sim_task_name(f->task)); scat(l0,". "); scat(l0,sim_trait_text(f)); scat(l0,".");
-    sim_status_text(f,l1,sizeof l1); if(f->mate>=0 && f->mate<sim_w.nfolk){ int n1=0; while(l1[n1]) n1++; if(n1<26){ scat(l1," LOVES "); scat(l1,sim_w.folk[f->mate].name); } }
+    const SimFolk *f=&sim_w.folk[k]; char l0[44], l1[44], l2[44], l3[44]; Unlock *ul=sim_ul();
     int with=-1, ask=sim_ask(&sim_w,k,&with);
-    if(ask!=SIMA_NONE){ scpy(l2,""); sim_ask_text(ask,l2,sizeof l2); scat(l2,"."); }
-    else { scpy(l2,"IT IS "); { int hr=sim_hour(&sim_w); if(hr<10) scat(l2,"0"); ncat(l2,hr); } scat(l2,"H. "); scat(l2,sim_weather_name(sim_w.weather)); scat(l2,"."); }
     int fr=sim_talk_to(&sim_w,k); int shown = fr>=0 ? 1 : 0; if(fr<0) fr=sim_w.friend[k];
-    char l3[44]; scpy(l3, fr ? "FRIENDSHIP " : "WE HAVE NOT MET BEFORE."); if(fr){ ncat(l3,fr); scat(l3,"/100"); if(shown) scat(l3," +"); }
-    const char *ln[4]={l0,l1,l2,l3}; card(VISPG,f->name,ln,4);
+    if(shown) ul_note(ul,ULC_TALK);                                                           // patch 47: what you meet decides what you see (the tip card comes later, not in the middle of a talk)
+    if(ask!=SIMA_NONE) ul_note(ul,ULC_ASK);
+    if(f->mate>=0 && f->mate<sim_w.nfolk) ul_note(ul,ULC_MATE);
+    sim_ls_update();
+    const char *ln[4]; int nl=0;
+    if(sim_ls_on(UF_JOBS)){ scpy(l0,sim_job_name(f->job)); scat(l0,". "); scat(l0,sim_task_name(f->task)); scat(l0,". "); scat(l0,sim_trait_text(f)); scat(l0,"."); }
+    else scpy(l0,"HELLO. I LIVE HERE.");
+    ln[nl++]=l0;
+    if(sim_ls_on(UF_NEEDS)){ sim_status_text(f,l1,sizeof l1);
+        if(sim_ls_on(UF_LOVE) && f->mate>=0 && f->mate<sim_w.nfolk){ int n1=0; while(l1[n1]) n1++; if(n1<26){ scat(l1," LOVES "); scat(l1,sim_w.folk[f->mate].name); } }
+        ln[nl++]=l1; }
+    if(ask!=SIMA_NONE){ scpy(l2,""); sim_ask_text(ask,l2,sizeof l2); scat(l2,"."); }
+    else { scpy(l2,"IT IS "); { int hr=sim_hour(&sim_w); if(hr<10) scat(l2,"0"); ncat(l2,hr); } scat(l2,"H."); if(sim_ls_on(UF_WEATHER)){ scat(l2," "); scat(l2,sim_weather_name(sim_w.weather)); scat(l2,"."); } }
+    ln[nl++]=l2;
+    scpy(l3, fr ? "FRIENDSHIP " : "WE HAVE NOT MET BEFORE."); if(fr){ ncat(l3,fr); scat(l3,"/100"); if(shown) scat(l3," +"); }
+    ln[nl++]=l3; card(VISPG,f->name,ln,nl);
     if(ask!=SIMA_NONE){                                          // patch 15: a request. Helping costs a little and pays in friendship, gifts and colony help
         char q1[44], q2[44]; scpy(q1,f->name); scat(q1," "); { char t[32]; sim_ask_text(ask,t,sizeof t); scat(q1,t); }
         scpy(q2, ask==SIMA_MEAL ? "GIVE 10 FOOD FROM YOUR BAG?" : ask==SIMA_LISTEN ? "SIT AND LISTEN A WHILE?" : "TRY TO MAKE PEACE?");
@@ -74,12 +86,16 @@ static void sim_journal(volatile u16 *pg){
 
 // ---- PEOPLE: who lives here and how they are
 static void sim_pp_row(int i, char *b, int *c){
-    const SimFolk *f=&sim_w.folk[i]; scpy(b,f->name); while(textlen(b)<10) scat(b," "); scat(b,sim_job_name(f->job)); while(textlen(b)<26) scat(b," "); scat(b,sim_task_name(f->task));
-    *c = sim_mood(f)>170 ? C_GREEN : sim_mood(f)>100 ? C_WHITE : C_RED; if(sim_ask(&sim_w,i,0)!=SIMA_NONE){ while(textlen(b)<40) scat(b," "); scat(b,"ASKS"); *c=C_GOLD; }
+    const SimFolk *f=&sim_w.folk[i]; scpy(b,f->name);
+    if(sim_ls_on(UF_JOBS)){ while(textlen(b)<10) scat(b," "); scat(b,sim_job_name(f->job)); while(textlen(b)<26) scat(b," "); scat(b,sim_task_name(f->task)); }
+    *c=C_WHITE;
+    if(sim_ls_on(UF_NEEDS)) *c = sim_mood(f)>170 ? C_GREEN : sim_mood(f)>100 ? C_WHITE : C_RED;
+    if(sim_ls_on(UF_ASKS) && sim_ask(&sim_w,i,0)!=SIMA_NONE){ while(textlen(b)<40) scat(b," "); scat(b,"ASKS"); *c=C_GOLD; }
 }
 static void sim_pp_foot(int i, char *b, int *c){
-    b[0]=0; if(i>=0){ const SimFolk *f=&sim_w.folk[i]; sim_status_text(f,b,52); *c=C_WHITE; }
-else { int k=-1-i; scpy(b,"FRIEND "); ncat(b,sim_w.friend[k]); scat(b,"/100. "); if(sim_w.friend[k]>=50) scat(b,sim_perk_text(&sim_w,k)); else scat(b,"50 TO LEND A HAND"); *c=sim_w.friend[k]>=50?C_GOLD:C_GREY; }
+    b[0]=0; *c=C_GREY;
+    if(i>=0){ if(sim_ls_on(UF_NEEDS)){ const SimFolk *f=&sim_w.folk[i]; sim_status_text(f,b,52); *c=C_WHITE; } else scpy(b,"A BUG OF THIS TOWN"); }
+    else if(sim_ls_on(UF_FRIEND)){ int k=-1-i; scpy(b,"FRIEND "); ncat(b,sim_w.friend[k]); scat(b,"/100. "); if(sim_w.friend[k]>=50) scat(b,sim_perk_text(&sim_w,k)); else scat(b,"50 TO LEND A HAND"); *c=sim_w.friend[k]>=50?C_GOLD:C_GREY; }
 }
 static void sim_people(volatile u16 *pg){
     int sel=0; if(!sim_w.nfolk){ const char *ln[2]={"NOBODY LIVES HERE.","TRY A TOWN."}; card(pg,"PEOPLE",ln,2); return; }
@@ -118,24 +134,38 @@ static void sim_gods(volatile u16 *pg){
     in_menu--; menu_msg[0]=0;
 }
 
-// ---- the quick menu: A on empty ground. patch 42: only the menus your fame has opened are in the list (standing.h); one line under it says what the next one needs.
-static int sim_qm_n, sim_qm_id[STM_N];
-static void sim_qm_build(int all){ uint16_t m = all ? 0x3F : stand_open_mask(sim_st(),fame); sim_qm_n=0; for(int i=0;i<STM_N;i++) if(m>>i&1) sim_qm_id[sim_qm_n++]=i; }   // all: the PC LAB keeps the first six, as before
-static void sim_qm_row(int i, char *b, int *c){
-    int id=sim_qm_id[i]; scpy(b,stand_menu_name(id)); *c=C_GREY;
-    if(id==STM_GODS){ Lv l; sim_level_lv(&l); scat(b,"  "); ncat(b,god_unlocked_count(&l,sim_w.god.sandbox)); scat(b,"/"); ncat(b,god_count()); }
-    if(id==STM_SANDBOX){ scat(b,sim_w.god.sandbox ? ": ON. ALL POWERS OPEN" : ": OFF"); }
-    if(id==STM_HALL){ scat(b,"  "); scat(b,sim_st()->home); *c=C_GOLD; }
-    if(id==STM_ARMADA){ scat(b,"  "); ncat(b,(s64)sim_st()->ships); scat(b," SHIPS"); *c=C_GOLD; }
+// ---- the quick menu: A on empty ground. patch 47: a row is in the list only when the player has found it (unlock.h); SHAPES mode shows ??? for the menus not found yet.
+static const char *sim_qm_name(int sq){ static const char *const n[SQ_N]={"JOURNAL","PEOPLE","GOD POWERS","SANDBOX","MY LEVEL","COLONY","TOWN HALL","ARMADA","TIPS"}; return sq<0 || sq>=SQ_N ? "?" : n[sq]; }
+static int sim_qm_all, sim_qm_mode;
+static void sim_qm_build(int all){
+    UlOpts o; sim_ls_opts(&o); Unlock *u=sim_ul(); sim_qm_n=0; sim_qm_mode=all ? ULSA_ALL : o.show_all;
+    if(sim_ls_legacy && !all){ uint16_t m=stand_open_mask(sim_st(),fame); for(int s=0;s<STM_N;s++) if(m>>s&1){ sim_qm_id[sim_qm_n]=s; sim_qm_sil[sim_qm_n]=0; sim_qm_n++; } return; }   // BUGSTAR_LS_ALL=1: the old fame ladder, for the old checks
+    for(int s=0;s<SQ_N;s++){
+        if(all && s>=SQ_TIPS) continue;                       // the PC LAB keeps the first six menus whatever the player found
+        int v = all ? ULV_SHOWN : ul_sq_vis(u,s,o.show_all); if(v==ULV_HIDDEN) continue;
+        sim_qm_id[sim_qm_n]=s; sim_qm_sil[sim_qm_n]= v==ULV_SHAPE; sim_qm_n++; }
 }
-static int sim_qm_all;
+static int sim_tip_unread(void){ uint32_t m=ul_fresh(sim_ul()); for(int ft=0;ft<UF_N;ft++) if((m>>ft&1) && ul_feat_sq(ft)<0) return 1; return 0; }
+static void sim_qm_row(int i, char *b, int *c){
+    int id=sim_qm_id[i]; *c=C_GREY;
+    if(sim_qm_sil[i]){ scpy(b,"???"); *c=C_DGREY; return; }
+    scpy(b,sim_qm_name(id));
+    if(id==SQ_GODS){ Lv l; sim_level_lv(&l); scat(b,"  "); ncat(b,god_unlocked_count(&l,sim_w.god.sandbox)); scat(b,"/"); ncat(b,god_count()); }
+    if(id==SQ_SANDBOX){ scat(b,sim_w.god.sandbox ? ": ON. ALL POWERS OPEN" : ": OFF"); }
+    if(id==SQ_HALL){ scat(b,"  "); scat(b,sim_st()->home); *c=C_GOLD; }
+    if(id==SQ_ARMADA){ scat(b,"  "); ncat(b,(s64)sim_st()->ships); scat(b," SHIPS"); *c=C_GOLD; }
+    if(!sim_qm_all){ int fresh = id==SQ_TIPS ? sim_tip_unread() : (ul_fresh(sim_ul())>>ul_sq_feat(id))&1; if(fresh){ while(textlen(b)<34) scat(b," "); scat(b,"!"); *c=C_GOLD; } }     // a ! until you open it
+}
 static void sim_qm_foot(int i, char *b, int *c){
-    static const char *const hp[STM_N]={"WHAT HAPPENED HERE, NEWEST FIRST","WHO LIVES HERE AND HOW THEY FEEL","POWERS OPEN BY LEVEL: 1 POWER PER 1,000 LEVELS","PLAY WITH EVERY POWER OPEN. NO LEVEL NEEDED","YOUR LEVEL IN FULL","YOUR SETTLERS. THEY GROW AS YOU PLAY THE ACTION GAME","TAXES FROM YOUR PLANET. THROW A FEAST","SHIPS, NEW WORLDS, NEW GALAXIES"};
-    if(i>=0){ scpy(b,hp[sim_qm_id[i]]); *c=C_GREY; return; }
+    static const char *const hp[SQ_N]={"WHAT HAPPENED HERE, NEWEST FIRST","WHO LIVES HERE AND HOW THEY FEEL","POWERS OPEN BY LEVEL: 1 POWER PER 1,000 LEVELS","PLAY WITH EVERY POWER OPEN. NO LEVEL NEEDED","YOUR LEVEL IN FULL","YOUR SETTLERS. THEY GROW AS YOU PLAY THE ACTION GAME","TAXES FROM YOUR PLANET. THROW A FEAST","SHIPS, NEW WORLDS, NEW GALAXIES","SHORT NOTES ON WHAT YOU FOUND. READ THEM AGAIN"};
+    if(i>=0){ if(sim_qm_sil[i]) scpy(b,"NOT FOUND YET. KEEP PLAYING"); else scpy(b,hp[sim_qm_id[i]]); *c=C_GREY; return; }
     b[0]=0; if(sim_qm_all) return;
-    int nx=stand_next_menu(stand_open_mask(sim_st(),fame)); *c=C_DGREY;
+    if(!sim_ls_on(UF_FAME)) return;                                              // the hint for the next menu speaks of fame: only once fame is known
+    uint16_t om=(1<<SQ_JOURNAL)|(1<<SQ_PEOPLE)|(1<<SQ_LEVEL)|(1<<SQ_COLONY);       // (these four open by what you do, not by fame)
+    static const int fm[4]={SQ_GODS,SQ_SANDBOX,SQ_HALL,SQ_ARMADA}; for(int q=0;q<4;q++) if(ul_has(sim_ul(),ul_sq_feat(fm[q]))) om|=(uint16_t)(1<<fm[q]);
+    int nx=stand_next_menu(om); *c=C_DGREY;
     if(nx<0){ scpy(b,stand_scale_line(sim_st())); return; }
-    char t[48]; stand_lock_text(sim_st(),nx,fame,t,sizeof t); scpy(b,"NEXT: "); scat(b,stand_menu_name(nx)); scat(b,". "); scat(b,t);
+    char t[48]; stand_lock_text(sim_st(),nx,fame,t,sizeof t); scpy(b,"NEXT: "); scat(b,sim_qm_name(nx)); scat(b,". "); scat(b,t);
 }
 static void sim_level_full(void);
 // ---- COLONY (Phase 4): the unlock ladder and the settlers
@@ -144,11 +174,27 @@ static SimColony *sim_colony(void);
 static void sim_colony_map(volatile u16 *pg);
 static void sim_ws_screen(volatile u16 *pg), sim_mine_screen(volatile u16 *pg);
 static int sim_take_mine(char *msg);
+// patch 47: the COLONY list shows the rungs you opened and the one next goal, the actions that make sense now, and the settlers. Built when the screen opens.
+enum { SCC_ACT=100, SCC_SET=200, SCC_SHAPE=300 };
+static int sim_co_code[COLR_N+SIM_CO_ACT+COL_MAXSET+4], sim_co_n;
+static void sim_co_build(void){
+    SimColony *co=sim_colony(); UlOpts o; sim_ls_opts(&o); int all=o.show_all>=ULSA_ALL, shp=o.show_all==ULSA_SHAPES, hint=0; sim_co_n=0;
+    for(int r=1;r<COLR_N;r++){ int open=(co->mask>>r)&1;
+        if(open || all) sim_co_code[sim_co_n++]=r;
+        else if(!hint){ hint=1; sim_co_code[sim_co_n++]=r; }                       // the next goal, with how to reach it
+        else if(shp) sim_co_code[sim_co_n++]=SCC_SHAPE+r; }                       // the rest: a shape
+    for(int k=0;k<SIM_CO_ACT;k++){
+        if(k==5 && !sim_ls_on(UF_RAID)) continue;                                 // STAND GUARD: when a raid has been seen
+        if(k==6 && !sim_ls_on(UF_SHOPS)) continue;                                // WORKSHOPS
+        if(k==7 && !sim_ls_on(UF_MINE)) continue;                                 // THE MINE
+        sim_co_code[sim_co_n++]=SCC_ACT+k; }
+    for(int s=0;s<co->nset && s<COL_MAXSET;s++) sim_co_code[sim_co_n++]=SCC_SET+s;
+}
 static void sim_co_row(int i, char *b, int *c){
-    SimColony *co=sim_colony(); int r=i+1;
-    if(r<COLR_N){ int open=(co->mask>>r)&1; scpy(b,open?"+ ":"- "); scat(b,col_rung_name(r)); while(textlen(b)<16) scat(b," "); scat(b,open?"OPEN":col_rung_how(r)); if(!open){ scat(b," "); scat(b,col_rung_goal(r)); } *c=open?C_GREEN:C_DGREY; return; }
-    int k=i-(COLR_N-1);
-    if(k<SIM_CO_ACT){ static const char *const dn[3]={"CALM","NORMAL","HARSH"};
+    SimColony *co=sim_colony(); int code=sim_co_code[i];
+    if(code>=SCC_SHAPE){ scpy(b,"- ???"); *c=C_DGREY; return; }
+    if(code<COLR_N){ int r=code; int open=(co->mask>>r)&1; scpy(b,open?"+ ":"- "); scat(b,col_rung_name(r)); while(textlen(b)<16) scat(b," "); scat(b,open?"OPEN":col_rung_how(r)); if(!open){ scat(b," "); scat(b,col_rung_goal(r)); } *c=open?C_GREEN:C_DGREY; return; }
+    if(code<SCC_SET){ int k=code-SCC_ACT; static const char *const dn[3]={"CALM","NORMAL","HARSH"};
         *c=C_GOLD;
         if(k==0){ scpy(b,"> OPEN THE COLONY MAP"); }
         else if(k==1){ scpy(b,"> DIFFICULTY: "); scat(b,dn[sim_f.difficulty%3]); }
@@ -159,7 +205,7 @@ static void sim_co_row(int i, char *b, int *c){
         else if(k==6){ Mine *mi=sim_mine(); scpy(b,"> WORKSHOPS  "); scat(b,"SMELTER "); ncat(b,mi->wl[MNW_SMELTER]); scat(b," SMITHY "); ncat(b,mi->wl[MNW_SMITHY]); scat(b," LOOM "); ncat(b,mi->wl[MNW_LOOM]); }
         else { Mine *mi=sim_mine(); scpy(b,"> THE MINE  "); if(mi->warn) scat(b,"ROOF CREAKING! "); else if(mi->depth){ scat(b,"LEVEL "); ncat(b,mi->work); scat(b," OF "); ncat(b,mi->depth); } else scat(b,col_rung_how(COLR_MINE)); if(mi->warn) *c=C_RED; }
         return; }
-    k-=SIM_CO_ACT; char nm[16]; int j; col_settler(co,k,nm,&j); scpy(b,"  "); scat(b,nm); while(textlen(b)<14) scat(b," "); scat(b,col_job_name(j)); *c=C_WHITE;
+    int s=code-SCC_SET; char nm[16]; int j; col_settler(co,s,nm,&j); scpy(b,"  "); scat(b,nm); while(textlen(b)<14) scat(b," "); scat(b,col_job_name(j)); *c=C_WHITE;
 }
 static void sim_co_foot(int i, char *b, int *c){
     SimColony *co=sim_colony(); *c=C_GREY;
@@ -173,9 +219,11 @@ static void sim_co_foot(int i, char *b, int *c){
 }
 // Phase 5: A in the colony takes what it made: food for your hunger bar, goods and ore sold for gold, a nap at your bug home (HOUSES)
 static int sim_co_act(int i){
-    SimColony *co=sim_colony(); ColGift g; menu_msg[0]=0; int k=i-(COLR_N-1);
-    if(i>=COLR_N-1){
-        if(k>=SIM_CO_ACT){ int s=k-SIM_CO_ACT; int j=co->job[s]==0xFF ? -1 : co->job[s]; j++; if(j>=COLJ_N) j=-1; col_set_job(co,s,j); scpy(menu_msg,"JOB SET"); sfx(2); return 0; }
+    SimColony *co=sim_colony(); ColGift g; menu_msg[0]=0; int code=sim_co_code[i];
+    if(code>=SCC_SHAPE){ scpy(menu_msg,"NOT FOUND YET. KEEP PLAYING"); sfx(4); return 0; }
+    if(code>=COLR_N){
+        int k=code-SCC_ACT;
+        if(code>=SCC_SET){ int s=code-SCC_SET; int j=co->job[s]==0xFF ? -1 : co->job[s]; j++; if(j>=COLJ_N) j=-1; col_set_job(co,s,j); scpy(menu_msg,"JOB SET"); sfx(2); return 0; }
         int ok=0;
         if(k==0){ sim_colony_map(VISPG); return 0; }
         if(k==6){ sim_ws_screen(VISPG); return 0; }
@@ -347,17 +395,40 @@ static void sim_colony_screen(volatile u16 *pg){
     if(!(co->mask&(1u<<COLR_TENT))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_TENT)); const char *ln[3]={l1,"THE COLONY GROWS AS YOU PLAY.","EACH BIG WIN OPENS A NEW PART."}; card(pg,"COLONY",ln,3); return; }
     if(sim_away_new && sim_away_n){ const char *ln[6]; for(int i=0;i<sim_away_n;i++) ln[i]=sim_away[i]; card(pg,"WHILE YOU WERE AWAY",ln,sim_away_n); sim_away_new=0; }
     int sel=0; char t[32]; scpy(t,"COLONY  "); ncat(t,co->nset); scat(t," SETTLERS");
-    menu_msg[0]=0; in_menu++; sim_rows(pg,t,COLR_N-1+SIM_CO_ACT+co->nset,sim_co_row,sim_co_foot,"A: TAKE/DO  B: BACK",&sel,sim_co_act); in_menu--; menu_msg[0]=0; sim_save();
+    menu_msg[0]=0; in_menu++; sim_co_build(); sim_rows(pg,t,sim_co_n,sim_co_row,sim_co_foot,"A: TAKE/DO  B: BACK",&sel,sim_co_act); in_menu--; menu_msg[0]=0; sim_save();
 }
 static void sim_hall(volatile u16 *pg);
 static void sim_armada(volatile u16 *pg);
+// ---- TIPS (patch 47): every tip you earned, to read again; a ! marks the ones not read yet. The last row turns tips on and off.
+static int sim_tp_ft[UF_N], sim_tp_n;
+static void sim_tp_build(void){ UlOpts o; sim_ls_opts(&o); Unlock *u=sim_ul(); sim_tp_n=0; for(int ft=0;ft<UF_N;ft++) if(ul_shown(u,ft,o.show_all)) sim_tp_ft[sim_tp_n++]=ft; }
+static void sim_tp_row(int i, char *b, int *c){
+    if(i>=sim_tp_n){ UlOpts o; sim_ls_opts(&o); scpy(b,"> TIPS ARE "); scat(b,o.tips?"ON. A: TURN OFF":"OFF. A: TURN ON"); *c=C_GOLD; return; }
+    int ft=sim_tp_ft[i]; scpy(b,ul_defs[ft].name); *c=C_WHITE;
+    if((ul_fresh(sim_ul())>>ft)&1){ while(textlen(b)<34) scat(b," "); scat(b,"!"); *c=C_GOLD; }
+}
+static void sim_tp_foot(int i, char *b, int *c){
+    *c=C_GREY; b[0]=0;
+    if(i>=0){ if(i>=sim_tp_n){ scpy(b,"SHOW NEW THINGS WHEN YOU FIND THEM"); return; } const char *ln[4]; ul_tip_lines(sim_tp_ft[i],ln); scpy(b,ln[0]); *c=C_WHITE; return; }
+    scpy(b,"A: READ AGAIN"); }
+static int sim_tp_act(int i){
+    if(i>=sim_tp_n){ xo[XO_LSTIPS]=(u8)((1-xo_i(XO_LSTIPS))^XOT[XO_LSTIPS].def); xo_save(); sfx(2); return 0; }
+    UlOpts o; sim_ls_opts(&o); int ft=sim_tp_ft[i]; ul_open(sim_ul(),ft); sim_tip_card(ft,o.big); return 0;
+}
+static void sim_tips(volatile u16 *pg){
+    sim_tp_build(); static int sel=0; char t[32]; scpy(t,"TIPS  "); ncat(t,sim_tp_n); scat(t," FOUND");
+    sim_rows(pg,t,sim_tp_n+1,sim_tp_row,sim_tp_foot,"A: READ  B: BACK",&sel,sim_tp_act);
+}
 static int sim_qm_act(int i){
     int id=sim_qm_id[i];
-    if(id==STM_JOURNAL) sim_journal(VISPG); else if(id==STM_PEOPLE) sim_people(VISPG); else if(id==STM_GODS) sim_gods(VISPG);
-    else if(id==STM_SANDBOX){ Lv l; sim_level_lv(&l); sim_f.sandbox=!sim_f.sandbox; sim_set_sandbox(&sim_w,sim_f.sandbox,&l); sim_seen_log=sim_w.log_n; sfx(2); }
-    else if(id==STM_LEVEL) sim_level_full();
-    else if(id==STM_COLONY) sim_colony_screen(VISPG);
-    else if(id==STM_HALL) sim_hall(VISPG);
+    if(sim_qm_sil[i]){ sfx(4); return 0; }                                            // a ??? shape: nothing to open yet
+    if(!sim_qm_all && id!=SQ_TIPS) ul_open(sim_ul(),ul_sq_feat(id));                  // the ! goes away
+    if(id==SQ_JOURNAL) sim_journal(VISPG); else if(id==SQ_PEOPLE) sim_people(VISPG); else if(id==SQ_GODS) sim_gods(VISPG);
+    else if(id==SQ_SANDBOX){ Lv l; sim_level_lv(&l); sim_f.sandbox=!sim_f.sandbox; sim_set_sandbox(&sim_w,sim_f.sandbox,&l); sim_seen_log=sim_w.log_n; sfx(2); }
+    else if(id==SQ_LEVEL) sim_level_full();
+    else if(id==SQ_COLONY) sim_colony_screen(VISPG);
+    else if(id==SQ_HALL) sim_hall(VISPG);
+    else if(id==SQ_TIPS) sim_tips(VISPG);
     else sim_armada(VISPG);
     return 0;
 }
@@ -369,10 +440,14 @@ static void sim_level_full(void){                          // the level in all i
 }
 static int sim_quick(void){
     if(!sim_is_on() || !sim_a_up) return 0;
-    sim_a_up=0;
     if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
+    sim_qm_all=0; sim_qm_build(0);
+    if(!sim_qm_n) return 0;                                                           // nothing found yet: A on empty ground is just "NOTHING HERE", like the plain game
+    sim_a_up=0;
     volatile u16 *pg=VISPG; oam_hide_all(); oam_flush(); in_menu++;
-    static int sel=0; sim_qm_all=0; sim_qm_build(0); sim_rows(pg,"SIDE GAME",sim_qm_n,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act);
+    static int last=-1; int sel=0; for(int i=0;i<sim_qm_n;i++) if(sim_qm_id[i]==last) sel=i;      // the cursor stays on the same row even when rows were added above it
+    sim_rows(pg,"SIDE GAME",sim_qm_n,sim_qm_row,sim_qm_foot,"A: OPEN  B: BACK",&sel,sim_qm_act);
+    last = sel<sim_qm_n ? sim_qm_id[sel] : -1;
     in_menu--; return 1;
 }
 
@@ -385,8 +460,12 @@ static void sim_lab(volatile u16 *pg){                     // PC LAB > SIDE GAME
 // the ship's COLONY row (GO tab, only with the side game on)
 static void sim_ship_colony(volatile u16 *pg){
     if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
-    if(!(stand_open_mask(sim_st(),fame)>>STM_COLONY&1)){ char t[48]; stand_lock_text(sim_st(),STM_COLONY,fame,t,sizeof t); const char *ln[3]={t,"SETTLERS TRUST A BUG THE WORLD KNOWS.","KEEP PLAYING. IT OPENS BY ITSELF."}; card(pg,"COLONY",ln,3); return; }
-    sim_colony_screen(pg);
+    if(!sim_ls_on(UF_COLONY)){ const char *ln[3]={"NOTHING HERE YET.","FREE A CAGED BUG FIRST.","THEN YOUR COLONY OPENS."}; card(pg,"COLONY",ln,3); return; }
+    ul_open(sim_ul(),UF_COLONY); sim_colony_screen(pg);
+}
+static void sim_ship_tabs(void){                              // the ship's GO tab: COLONY is listed once you found it (the MISSIONS row stays)
+    int col = sim_is_on() && sim_f_ok && sim_ls_on(UF_COLONY);
+    shop_tab_n[0]=col?5:4; shop_tab_id[0][3]=col?17:18; shop_tab_id[0][4]=18;
 }
 
 // ---------------------------------------------------------------- patch 42: TOWN HALL and ARMADA (standing.h)
