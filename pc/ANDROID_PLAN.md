@@ -129,3 +129,6 @@ Needs `arm64-v8a` in the list. PAGE_SIZE 4096 or 16384 are both fine (step 3 bui
   on the range (`/proc/self/maps`). (5) `plat_paths` no longer runs `system("mkdir")` on Android. (6) `BugstarActivity`: logcat + Downloads copy on a background thread.
   (7) CI: fails the build if `libmain.so` / `libSDL2.so` are not in the APK or `SDL_main` is not exported; warns if not 16 KB aligned; uploads `bugstar-symbols` (unstripped libmain.so,
   for `llvm-addr2line -f -e libmain.so <offset from the crash report>`). Manifest: `appCategory=game`, predictive back off. Version 0.35.
+- patch 43 (game speed; arm64 / the phone NOT run, CI builds the APK): Step 5's "pacing" item is done in the shared code. The PC dungeon ran 68 logic steps per vblank (`vsync_flip`), now fixed for every build; `plat_frame` is a fixed-timestep
+  accumulator at 59.7275 Hz (sleep + spin, resync after stalls / pauses / window events / app background, no catch-up burst), the sound is made at the exact game rate, the app life cycle (`SDL_APP_*`) stops the game and flushes the save, and
+  the activity gives `Surface.setFrameRate(59.73)` as a hint. See `pc/README.md`, "Game speed", and `pc/tests/speed.sh`.

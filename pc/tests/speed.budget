@@ -1,0 +1,10 @@
+# scene  max key polls per vblank  max dungeon logic steps per vblank  (tests/speed.sh; one pass of a loop and one dungeon step per vblank is the GBA at full speed; the old dungeon ran 68)
+title_intro_planet 2 1
+dungeon_troops 2 1
+dungeon_seal_dig 2 1
+shop_menu 2 1
+mission_board 2 1
+warship_fight 2 1
+warship_interior 2 1
+space_flight_ships 2 1
+kart_race_countdown 2 1

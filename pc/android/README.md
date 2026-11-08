@@ -18,3 +18,7 @@ Install on the phone, from Termux, after a push (one line):
 
 If the app closes or shows a black screen (patch 35): start it once more, then in Termux `cat ~/storage/downloads/bugstar_log.txt`. It holds the crash backtrace (`pc <offset> libmain.so`),
 the game's own log and the app's logcat. Download the artifact `bugstar-symbols` from the same CI run and run `llvm-addr2line -f -e libmain.so <offset>` (Termux: `pkg install llvm`) to name the line.
+
+Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timestep clock (`plat_frame` in `pc/platform/pc_sdl.c`), never from the screen, so 60 / 90 / 120 Hz phones all run it at the same speed
+(vsync only paces the picture's show). `BugstarActivity` sets `Surface.setFrameRate(59.73)` as a hint (API 30+). Home button / screen off: the game and the sound stop, the save is flushed, and a fresh clock starts on return.
+`pc/tests/speed.sh` proves the pacing on the PC.
