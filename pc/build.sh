@@ -66,7 +66,7 @@ sed -i -e 's/^#define ULY 25 .*/#define ULY pc_uly()/' -e 's/^#define GAL_SHIFT 
        -e 's/^\(static void voyage(const char \*from, const char \*to, const u32 \*t10, u32 hours, int kind){\)/\1 hours=pc_hours(hours);/' \
        -e 's/hours_fmt(hb,(u32)d\*24\/10+1)/hours_fmt(hb,pc_hours((u32)d*24\/10+1))/' space.inc
 sed -i -e 's/^static int curv_k(void){ static const u8 ks\[6\]={12,7,4,3,2,1}; int k=ks\[wd\.psz%6\]; if(WL(MW_TINY)){ int t=8<<(WL(MW_TINY)\/7); if(t>k) k=t; }/static int curv_k(void){ static const u8 ks[6]={12,7,4,3,2,1}; int k=pc_k16>=0 ? pc_k16 : ks[wd.psz%6]*16; if(WL(MW_TINY)){ int t=(8<<(WL(MW_TINY)\/7))*16; if(t>k) k=t; }/' \
-       -e 's/^static int curv_sh(void){ return kr_mode==1 \&\& !kloop_on ? 5 : 3; }/static int curv_sh(void){ return (kr_mode==1 \&\& !kloop_on ? 5 : 3)+4; }/' \
+       -e 's/^static int curv_sh(void){ return kr_mode==1 \&\& !kloop_on ? \([0-9][0-9]*\) : 3; }/static int curv_sh(void){ return (kr_mode==1 \&\& !kloop_on ? \1 : 3)+4; }/' \
        -e 's/return curv_k()>4 ? curv(cam_back()>>8) : 0; }/return curv_k()>64 ? curv(cam_back()>>8) : 0; }/' \
        -e 's/^    land_smooth();$/    pc_tiny_hmap();\n    land_smooth();/' \
        -e 's/^    if(WL(MW_FLOOD)){ water_lv += /    water_lv=pc_cr_water(pc_water(water_lv));\n&/' \
@@ -74,6 +74,7 @@ sed -i -e 's/^static int curv_k(void){ static const u8 ks\[6\]={12,7,4,3,2,1}; i
        -e 's/s32 sp = 0x1600 + (wd\.grav-1)\*0x200;/s32 sp = 0x1600 + (wd.grav-1)*0x200 - pc_slow;/' \
        -e 's/ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;/& pc_tiny_fix();/' \
        -e 's/int sun_az = (int)((s\&127) + T\/64);/int sun_az = (int)((s\&127) + (u32)((u64)T*(u32)pc_day_pct\/6400u));/' planet.inc
+grep -q "^static int curv_sh(void){ return (kr_mode==1 && !kloop_on ? [0-9]* : 3)+4; }" planet.inc || { echo "build.sh: the curv_sh patch did not apply (planet.inc changed its text); the PC horizon would bend 16 times too hard"; exit 1; }
 sed -i -e 's/^static void slot_erase(int i){/static void slot_erase(int i){ pc_laws_slot_erase(i);/' -e 's/^static void slot_copy(int from, int to){/static void slot_copy(int from, int to){ pc_laws_slot_copy(from,to);/' \
        -e 's/xp=s->xp; gold=s->gold; galaxy_seed=s->galaxy_seed; uni_load();/& pc_laws_slot_load(cur_slot);/' \
        -e 's/^\(    sram_write(slot_base(cur_slot), s, sizeof(Save));\)$/\1 pc_laws_slot_save(cur_slot);/' save.inc
