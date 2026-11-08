@@ -133,6 +133,13 @@ sed -i 's|int vpx=120, vpy=VCY, vdrift=0, stk=0;|pc_sn_begin(); &|' space.inc
 grep -c "pc_sn_rec(cx" space.inc | grep -qx 1 && grep -c "pc_sn_native(pg" space.inc | grep -qx 1 && grep -c "pc_sn_begin()" space.inc | grep -qx 1 || { echo "build: native space hooks did not apply"; exit 1; }
 sed -i '1i static void pc_so_bolt(int tx,int ty,int hx,int hy), pc_so_late(volatile unsigned short *pg), pc_sn_begin(void), pc_so_native(volatile unsigned short *pg), pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk), pc_sn_rec(int cx,int cy,int r,int Lx,int Ly,int Lz,int rot,const unsigned char *noise);' main.c
 echo '#include "../pc_snative.inc"' >> main.c
+# --- procedural sprites (pc/pc_sprgen_game.inc): the planet's objects drawn by the generators in NATIVE/ULTRA, generated discs in the space view, the gallery in the PC LAB
+sed -i 's|^        s32 sc=8+m\*4; |        if(pc_sg_obj(o,order[k],sx,sy,f,zc)) continue;\n&|' planet.inc
+grep -c "pc_sg_obj(o,order\[k\],sx,sy,f,zc)" planet.inc | grep -qx 1 || { echo "build: sprgen object hook did not apply"; exit 1; }
+sed -i 's|if(r<2) r=2; planet_fill(pg,px,py,r,Lx,Ly,Lz,(pl_rot+(frames>>3))&127,pl_noise+pl_tex);|pc_sg_mark(); &|' space.inc
+grep -c "pc_sg_mark(); if(r<2)" space.inc | grep -qx 1 || { echo "build: sprgen planet mark did not apply"; exit 1; }
+sed -i '1i static int pc_sg_obj(const void *vo, int idx, int sx, int sy, int f, int zc); static void pc_sg_mark(void), pc_sg_space_planet(unsigned int *buf, int W, int hn, double sx, double sy, void *vc, int ci);' main.c
+echo '#include "../pc_sprgen_game.inc"' >> main.c
 echo '#include "../pc_laws.inc"' >> main.c
 # --- the kart race NATIVE extras (pc/pc_kartnat.inc, pc_kartnat_r.inc in pc_hw.c): banking, hills, soft shadows. The game's own dithered shadows are skipped when the window picture makes its own.
 sed -i 's|^static void m7_present(void){|static void pc_kn_snapshot(void);\nstatic void m7_present(void){ pc_kn_snapshot();|' m7.inc

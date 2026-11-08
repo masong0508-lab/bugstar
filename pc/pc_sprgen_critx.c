@@ -21,7 +21,7 @@ static void ramps(Cr *c, int col){
 static void habitat(Cr *c){
     SgCv *cv = &c->cv; SgRamp g, w, st; SgRng r = sg_rng((uint64_t)c->plan * 31 + 5, c->hab + 7);
     switch(c->hab){
-    case 0: sg_ramp(&w, 0x3E6A5E); cv_ell(cv, 32, CG + 1, 27, 4.5f, 0, &w, SH_SPHERE); cv_ell(cv, 28, CG + 0.6f, 13, 1.6f, 0, &w, SH_FLATLIT); cv_flat(cv, 12, CG + 1, 22, CG + 0.4f, 0.3f, 0xA8D8C0, 0.6f);
+    case 0: sg_ramp(&w, 0x3E6A5E); sg_ramp(&st, 0xA8D8C0); cv_ell(cv, 32, CG + 1, 27, 4.5f, 0, &w, SH_SPHERE); cv_ell(cv, 28, CG + 0.6f, 13, 1.6f, 0, &w, SH_FLATLIT); cv_flat(cv, 12, CG + 1, 22, CG + 0.4f, 0.3f, 0xA8D8C0, 0.6f);
         for(int i = 0; i < 4; i++){ float x = i < 2 ? 8 + i * 4 : 50 + (i - 2) * 4; for(int j = 0; j < 3; j++) cv_curve(cv, x + j * 1.2f, CG + 1, x + j * 1.2f + (j - 1) * 1.5f, CG - 8, x + j * 1.8f + (j - 1) * 2.4f, CG - 13 - (i & 1) * 3 - j, 0.6f, 0.2f, &c->dk, SH_FLAT); cv_ell(cv, x + 1.2f, CG - 9, 1.0f, 3.0f, 0, &c->bn, SH_FLAT); cv_ell(cv, x + 1.2f, CG - 9, 0.9f, 2.8f, 0, &st, SH_FLAT); }
         cv_ell(cv, 41, CG + 2, 2.6f, 1.2f, 0, &c->ac, SH_FLATLIT); break;
     case 1: sg_ramp(&g, 0x6A8A44); sg_ramp(&st, 0x8E8A84); cv_ell(cv, 32, CG + 1.5f, 27, 4, 0, &g, SH_SPHERE); cv_ell(cv, 52, CG, 5, 3.4f, 0.2f, &st, SH_SPHERE); cv_ell(cv, 56, CG + 1, 3.4f, 2.4f, 0, &st, SH_SPHERE); cv_ell(cv, 10, CG + 0.6f, 3.6f, 2.5f, 0, &st, SH_SPHERE);

@@ -20,6 +20,7 @@ int    sg_img_cover(const SgImg *im);                       // how many pixels a
 
 // ---- plants and trees (pc/content/flora.h ids)
 void sg_flora(SgImg *im, uint32_t flora_id, uint32_t var);   // the plant with this id; var 0 = the plant itself, other numbers = another individual of the same kind
+int  sg_flora_woody(uint32_t id);                            // 1 when this plant is a tree or a bush (the game puts these where it has trees)
 int  sg_flora_tree(uint32_t id);                             // a plant id of a tree-like form for the number id (the gallery's TREES list)
 void sg_flora_label(uint32_t flora_id, char *out, int n);    // its name
 

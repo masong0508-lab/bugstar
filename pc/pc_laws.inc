@@ -347,14 +347,14 @@ static void pc_ch_tp(volatile u16 *pg, int *go){
 static void pc_giant_hub(volatile u16 *pg); static void pc_ws_lab(volatile u16 *pg);
 // ---- THE LAB: the hub on the WORLD page
 static void pc_lab_screen(volatile u16 *pg){
-    enum { LB_FILE, LB_LAWS, LB_HOW, LB_GIANT, LB_CHEAT, LB_CREATE, LB_SIDE, LB_WAR, LB_N };
-    static const char *const nm[LB_N] = { "PLANET FILE", "UNIVERSE LAWS", "HOW THIS WORKS", "GIANT NUMBERS", "CHEATS", "PLANET CREATOR", "SIDE GAME", "WARSHIPS" };
-    static const char *const ds[LB_N] = { "EVERYTHING THE GAME KNOWS ABOUT THIS PLANET: ITS TRAITS, STATS, PEOPLES, CITY AND CREATURES.", "CHANGE THE NUMBERS THAT RUN THE UNIVERSE: GRAVITY, STARS, PLANET SIZES FROM PEBBLES TO GIANTS, LIFE, TIME.", "WHY THIS UNIVERSE, GALAXY, STAR AND PLANET ARE THE WAY THEY ARE, WITH THEIR REAL NUMBERS.", "A NUMBER WITH OVER A BILLION DIGITS TO READ IN FULL, THE 6-QUINTILLION-LETTER NAME OF BUGSTARILLION V3, A NAMER AND A SCALE LADDER.", "WIDE-OPEN POWERS: ANY LAW, ANY SIZE, TIME SPEED, LEVEL, GOLD, TELEPORT. MARKS THE WORLD AS CHEATED.", "MAKE YOUR OWN PLANET AND PEOPLE, SEE ITS BIOFOOTPRINT LIVE, AND LAND ON IT.", "THE TOWN'S JOURNAL AND PEOPLE, THE GOD POWERS (ONE OPENS EVERY 1,000 LEVELS), SANDBOX AND YOUR BIG LEVEL.", "COLOSSAL CRAFT FROM NANO SWARMS TO UNIVERSE HULKS: THEIR THREAT, COST AND PAY, THE ARMOURY. ENGAGE ONE, THEN TAKE OFF." };
+    enum { LB_FILE, LB_LAWS, LB_HOW, LB_GIANT, LB_CHEAT, LB_CREATE, LB_SIDE, LB_WAR, LB_SPR, LB_N };
+    static const char *const nm[LB_N] = { "PLANET FILE", "UNIVERSE LAWS", "HOW THIS WORKS", "GIANT NUMBERS", "CHEATS", "PLANET CREATOR", "SIDE GAME", "WARSHIPS", "SPRITE GALLERY" };
+    static const char *const ds[LB_N] = { "EVERYTHING THE GAME KNOWS ABOUT THIS PLANET: ITS TRAITS, STATS, PEOPLES, CITY AND CREATURES.", "CHANGE THE NUMBERS THAT RUN THE UNIVERSE: GRAVITY, STARS, PLANET SIZES FROM PEBBLES TO GIANTS, LIFE, TIME.", "WHY THIS UNIVERSE, GALAXY, STAR AND PLANET ARE THE WAY THEY ARE, WITH THEIR REAL NUMBERS.", "A NUMBER WITH OVER A BILLION DIGITS TO READ IN FULL, THE 6-QUINTILLION-LETTER NAME OF BUGSTARILLION V3, A NAMER AND A SCALE LADDER.", "WIDE-OPEN POWERS: ANY LAW, ANY SIZE, TIME SPEED, LEVEL, GOLD, TELEPORT. MARKS THE WORLD AS CHEATED.", "MAKE YOUR OWN PLANET AND PEOPLE, SEE ITS BIOFOOTPRINT LIVE, AND LAND ON IT.", "THE TOWN'S JOURNAL AND PEOPLE, THE GOD POWERS (ONE OPENS EVERY 1,000 LEVELS), SANDBOX AND YOUR BIG LEVEL.", "COLOSSAL CRAFT FROM NANO SWARMS TO UNIVERSE HULKS: THEIR THREAT, COST AND PAY, THE ARMOURY. ENGAGE ONE, THEN TAKE OFF.", "SEE WHAT THE GAME CAN DRAW FROM A NUMBER: TREES, TOWNS, PEOPLE, CREATURES, SHIPS, PLANETS, GALAXIES. THE SAME NUMBER IS ALWAYS THE SAME PICTURE." };
     int sel = 0, dirty = 1; wait_release();
     while(1){
         if(dirty){ dirty = 0; oam_hide_all(); oam_flush(); char b[40]; ui_bg(pg, 0, 160); ui_panel(pg, 24, 14, 192, 126);
             ui_head(pg, 30, 19, 180, "PC LAB", C_GOLD); pc_lw_status(b); rtext(pg, 210, 19, b, plw_cheated() ? C_RED : plw_edited_count() ? C_GOLD : C_GREEN);
-            for(int i = 0; i < LB_N; i++){ int y = 30 + i * 10; if(i == sel) rect(pg, 30, y - 2, 180, 10, 6); text(pg, 38, y, nm[i], i == LB_CHEAT ? (i == sel ? C_RED : C_RED) : i == sel ? C_WHITE : C_GREY, 1);
+            for(int i = 0; i < LB_N; i++){ int y = 29 + i * 8; if(i == sel) rect(pg, 30, y - 1, 180, 8, 6); text(pg, 38, y, nm[i], i == LB_CHEAT ? (i == sel ? C_RED : C_RED) : i == sel ? C_WHITE : C_GREY, 1);
                 if(i == LB_LAWS){ scpy(b, plw_edited_count() ? "EDITED" : "NORMAL"); rtext(pg, 204, y, b, plw_edited_count() ? C_GOLD : C_DGREY); } }
             { char ls[4][60]; int k = pc_lw_wrap(ds[sel], 44, ls, 4); for(int i = 0; i < k; i++) text(pg, 32, 104 + i * 7, ls[i], C_GREY, 1); }
             ui_foot(pg, "UP/DOWN: PICK  A: OPEN", "B: BACK"); }
@@ -369,6 +369,7 @@ static void pc_lab_screen(volatile u16 *pg){
             else if(sel == LB_GIANT) pc_giant_hub(pg);
             else if(sel == LB_SIDE) sim_lab(pg);
             else if(sel == LB_WAR) pc_ws_lab(pg);
+            else if(sel == LB_SPR) pc_sg_gallery(pg);
             else rg = pc_cheats_screen(pg);
             dirty = 1; if(rg){ if(!sys_req){ do_save(); sys_req = 1; } break; } wait_release(); }
     }

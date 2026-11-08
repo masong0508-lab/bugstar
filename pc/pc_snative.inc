@@ -73,7 +73,7 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
     // planets and moons, in the order the game drew them
     for(int i=0;i<sn_nc;i++){ SnCall *c=&sn_calls[i]; SnCtx k; k.W=W; k.H=hn; k.sx=sx; k.sy=sy; k.c=c; k.buf=buf;
         int y0=(int)((c->cy+0.5-c->r-1.5)*sy); if(y0<0) y0=0; int y1=(int)((c->cy+0.5+c->r+1.5)*sy)+1; if(y1>hn) y1=hn; if(y1<=y0) continue;
-        pc_par_chunk(y1-y0,8,sn_rows,&k); }
+        pc_par_chunk(y1-y0,8,sn_rows,&k); pc_sg_space_planet(buf,W,hn,sx,sy,c,i); }
     memset(pc_sn.ok,0,256); static const unsigned char okv[]={0,3,4,5,40,41,42,43,44,45,46,47,48,49,50}; for(unsigned i=0;i<sizeof okv;i++) pc_sn.ok[okv[i]]=1;
     int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames(); pc_vrec(2,pc_now_ms()-sn_t0,pc_cpu_ms()-sn_c0);
 }

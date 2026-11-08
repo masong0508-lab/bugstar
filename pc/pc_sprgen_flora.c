@@ -275,3 +275,5 @@ void sg_flora(SgImg *im, uint32_t id, uint32_t var){
 }
 int sg_flora_tree(uint32_t id){ static const uint8_t tf[8] = { 10, 23, 24, 11, 31, 25, 10, 24 }; uint32_t h = (uint32_t)(sg_m64(id + 0x7733) >> 20); uint32_t giv = (uint32_t)(sg_m64(id * 31 + 5) >> 30) & 0x3FFFF, adj = h & 63; return (int)(adj | (uint32_t)tf[id & 7] << 6 | giv << 11); }
 void sg_flora_label(uint32_t id, char *out, int n){ Flora f; flora_make(id, &f); snprintf(out, n, "%s", f.name); }
+
+int sg_flora_woody(uint32_t id){ switch((id >> 6) & 31){ case 7: case 8: case 9: case 10: case 11: case 22: case 23: case 24: case 25: case 31: return 1; default: return 0; } }      // a tree or a bush (the form number is bits 6..10 of the id)

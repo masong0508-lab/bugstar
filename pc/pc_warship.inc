@@ -497,12 +497,13 @@ static void pc_vt_tick(void){
 }
 // ---- the test hook: BUGSTAR_WS_TEST=fight,Z,SEED | inside,Z,SEED | kill,Z,SEED | lab  (after BUGSTAR_WS_AT frames in the game)
 static void pc_ws_autotest(void){
-    pc_vt_tick();
+    pc_vt_tick(); pc_sg_tick();
     static int done=0; if(in_game){ pcm_tick(); pcm_mp_tick(); } if(done || !in_game) return; const char *e=getenv("BUGSTAR_WS_TEST"); if(!e){ done=1; return; }
     const char *at=getenv("BUGSTAR_WS_AT"); const char *sy=getenv("BUGSTAR_MS_SYNC"); if(frames < (at?atoi(at):0) || (scene!=0 && !(scene==2 && !strncmp(e,"mscan",5))) || (sy && pc_frames()<atol(sy))) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
     char mode[16]={0}; int z=WS_ZREF; unsigned seed=0; sscanf(e,"%15[a-z],%d,%u",mode,&z,&seed);
     if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen lab returned\n"); return; }
     { const char *g=getenv("BUGSTAR_AFT_GOLD"); if(g) gold=atoll(g); }
+    if(!strcmp(mode,"sprgal")){ pc_sg_gallery((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen sprgal returned\n"); return; }
     if(!strcmp(mode,"pclab")){ pc_lab_screen((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen pclab returned\n"); return; }
     if(!strcmp(mode,"shop")){ shop_menu(); fprintf(stderr,"screen shop returned\n"); return; }                                  // (screens test) the ship's shop menu (supplies, gear, sell, quest board, heal...)
     if(!strcmp(mode,"spshop")){ spell_shop((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen spshop returned\n"); return; }

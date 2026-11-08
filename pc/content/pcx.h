@@ -32,4 +32,9 @@ void pcx_means_line(const uint32_t *uni8, const uint32_t *cx5, const uint32_t *c
 void pcx_env(const uint32_t *uni8, const uint32_t *cx5, const uint32_t *cy5, int star, int planet, int moon, int *day_hours, int *temp_c);   // the planet's day length (hours, 0 = tidally locked) and warmth
 void pcx_gods(int n);                     // how many god powers are open (they count as items too)
 void pcx_counts(int *traits, int *stats, int *peoples, int *cities, int *creature_kinds, int *themes);
+// ---- what a planet LOOKS like (pc_sprgen): the ids of the content that stands on it
+typedef struct { uint32_t flora[4]; int nflora; uint16_t being[8]; int nbeing; uint16_t people[3]; int npeople; int city; int temp_c, wet, sea, danger;
+                 uint8_t legend_gift, legend_colour, legend_rank, legend_mut; uint16_t legend_kind; uint64_t seed; } PcxVis;
+void pcx_vis(const uint32_t *uni8, const uint32_t *cx5, const uint32_t *cy5, int star, int planet, int moon, PcxVis *out);
+void pcx_vis_seed(uint64_t seed, int temp_c, int wet, int sea, PcxVis *out);      // a planet that has no address (the story worlds): the same things from a seed and a climate
 #endif

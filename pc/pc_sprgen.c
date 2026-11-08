@@ -232,6 +232,21 @@ void sg_blit(uint32_t *dst, int dw, int dh, const SgImg *src, const SgBlit *b){
     int xa = (int)floorf(b->x), xb = (int)ceilf(b->x + b->w), ya = (int)floorf(b->y), yb = (int)ceilf(b->y + b->h);
     if(xa < 0) xa = 0; if(xb > dw) xb = dw; if(ya < 0) ya = 0; if(yb > dh) yb = dh; if(b->clip_y1 > b->clip_y0){ if(ya < b->clip_y0) ya = b->clip_y0; if(yb > b->clip_y1) yb = b->clip_y1; }
     float kx = src->w / b->w, ky = src->h / b->h; int mini = (kx > 1.7f || ky > 1.7f), fl = b->flags & 1; int sw = src->w, sh = src->h; const uint32_t *sp = src->px;
+    if(!mini){                                                  // magnifying or about 1:1: one bilinear tap in 8-bit fixed point (the common case in the game)
+        int fogk = b->fog > 0 ? (b->fog > 255 ? 256 : b->fog + (b->fog >> 7)) : 0, fr = b->fogc >> 16 & 255, fg = b->fogc >> 8 & 255, fb = b->fogc & 255, add = b->flags & 4;
+        for(int Y = ya; Y < yb; Y++){ float vv = (Y + 0.5f - b->y) * ky - 0.5f; int iy = (int)floorf(vv); int fy = (int)((vv - iy) * 256.0f); uint32_t *drow = dst + (size_t)Y * dw;
+            for(int X = xa; X < xb; X++){ float uu = (X + 0.5f - b->x) * kx; if(fl) uu = sw - uu; uu -= 0.5f; int ix = (int)floorf(uu); int fx = (int)((uu - ix) * 256.0f);
+                int wa[4], n = 0; uint32_t px4[4]; int x0 = ix, y0 = iy;
+                for(int j = 0; j < 4; j++){ int xx = x0 + (j & 1), yy = y0 + (j >> 1); wa[j] = 0; px4[j] = 0; if(xx < 0 || yy < 0 || xx >= sw || yy >= sh) continue; uint32_t p = sp[yy * sw + xx]; int a = p >> 24; if(!a) continue; int w = ((j & 1) ? fx : 256 - fx) * ((j >> 1) ? fy : 256 - fy) >> 8; wa[j] = w * a; px4[j] = p; n++; }
+                if(!n) continue; int sa = wa[0] + wa[1] + wa[2] + wa[3]; if(sa < 256 * 3) continue;
+                int r = 0, g = 0, bl = 0; for(int j = 0; j < 4; j++){ if(!wa[j]) continue; r += (int)(px4[j] >> 16 & 255) * wa[j]; g += (int)(px4[j] >> 8 & 255) * wa[j]; bl += (int)(px4[j] & 255) * wa[j]; } r /= sa; g /= sa; bl /= sa;
+                int al = sa >> 8; if(al > 256) al = 256;                       // 0..256: the coverage
+                if(fogk){ r += ((fr - r) * fogk) >> 8; g += ((fg - g) * fogk) >> 8; bl += ((fb - bl) * fogk) >> 8; }
+                uint32_t d = drow[X]; int dr = d >> 16 & 255, dg = d >> 8 & 255, db = d & 255;
+                if(add){ dr += (r * al) >> 8; dg += (g * al) >> 8; db += (bl * al) >> 8; if(dr > 255) dr = 255; if(dg > 255) dg = 255; if(db > 255) db = 255; }
+                else { dr += ((r - dr) * al) >> 8; dg += ((g - dg) * al) >> 8; db += ((bl - db) * al) >> 8; }
+                drow[X] = (uint32_t)dr << 16 | (uint32_t)dg << 8 | (uint32_t)db; } }
+        return; }
     for(int Y = ya; Y < yb; Y++){ float v0 = (Y + 0.5f - b->y) * ky;
         for(int X = xa; X < xb; X++){ float u0 = (X + 0.5f - b->x) * kx; if(fl) u0 = sw - u0;
             float accr = 0, accg = 0, accb = 0, acca = 0; int taps = mini ? 4 : 1;
@@ -256,7 +271,8 @@ static const SgImg *cache_get(uint64_t key, int w, int h, void (*mk)(SgImg *, vo
     for(int i = 0; i < SG_CACHE; i++){ if(cache_[i].im && cache_[i].key == key){ cache_[i].stamp = cache_clock; c_hits++; return cache_[i].im; }
         if(!cache_[i].im){ if(free_i < 0) free_i = i; } else if(cache_[i].stamp < old_s){ old_s = cache_[i].stamp; old_i = i; } }
     int slot = free_i >= 0 ? free_i : old_i; sg_img_free(cache_[slot].im); cache_[slot].im = 0; c_miss++;
-    SgImg *im = sg_img_new(w, h); if(!im) return 0; mk(im, arg); cache_[slot].im = im; cache_[slot].key = key; cache_[slot].stamp = cache_clock; return im;
+    SgImg *im = sg_img_new(w, h); if(!im) return 0; cache_[slot].im = im; cache_[slot].key = key; cache_[slot].stamp = cache_clock;      // (taken before it is drawn: a generator may use the cache itself, e.g. a planet's surface, and must not be given this slot)
+    mk(im, arg); return im;
 }
 typedef struct { int gen; uint32_t id; } MkArg;
 static void mk_gen(SgImg *im, void *a){ MkArg *m = (MkArg *)a; sg_gens[m->gen].draw(im, m->id); }

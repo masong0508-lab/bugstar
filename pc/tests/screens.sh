@@ -16,7 +16,7 @@ while f<12000:
 open(sys.argv[2],"w").write("\n".join(L)+"\n")
 P
 }
-for mode in shop spshop bench missions colony giant pclab; do
+for mode in shop spshop bench missions colony giant pclab sprgal; do
   for seed in 1 2 3; do
     mk $seed out/scr/k$seed.txt; n=$mode$seed; rm -f out/scr/$n.sav*
     env BUGSTAR_SIDE=1 BUGSTAR_WS_AT=650 BUGSTAR_WS_TEST=$mode,0,0 BUGSTAR_AFT_GOLD=100000 BUGSTAR_SET_FREED=1 BUGSTAR_GIANT_DIR=$(pwd)/out/scr/nodir \

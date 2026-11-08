@@ -63,6 +63,20 @@ static MnExtra mx; static void profile_of(const PlanetInfo *pi, uint64_t seed, c
     nf = flora_for_planet(seed, &e, 4, f); for(i = 0; i < nf; i++) fl[i] = f[i].id;
     *nref = mn_planet_refs(pi, th, fl, nf, &mx, refs, 400); mn_resolve(refs, *nref, p, want);
 }
+void pcx_vis(const uint32_t *uni8, const uint32_t *cx5, const uint32_t *cy5, int star, int planet, int moon, PcxVis *o){
+    static Addr a; PlanetInfo pi; Flora f[4]; FloraEnv e; memset(o, 0, sizeof *o); make_addr(&a, uni8, cx5, cy5, star, planet, moon); uint64_t seed = addr_seed(&a); planet_make(seed, &pi);
+    e.temp_c = pi.temp_c; e.wet = clampw(50 + pi.life * 6); e.sea = 20; e.rough = 1; e.light = pi.stat[2 * N_ZONE + 12];
+    for(int i = 0; i < pi.n; i++){ int b = trait_base(pi.id[i]); if(b == 25) e.sea = 80; else if(b == 26) e.sea = 45; else if(b == 32 || b == 33) e.rough = 3; }
+    o->nflora = flora_for_planet(seed, &e, 4, f); for(int i = 0; i < o->nflora; i++) o->flora[i] = f[i].id;
+    o->nbeing = pi.nbeing > 8 ? 8 : pi.nbeing; for(int i = 0; i < o->nbeing; i++) o->being[i] = pi.being[i]; o->npeople = pi.npeople > 3 ? 3 : pi.npeople; for(int i = 0; i < o->npeople; i++) o->people[i] = pi.people[i];
+    o->city = pi.city; o->temp_c = pi.temp_c; o->wet = e.wet; o->sea = e.sea; o->danger = pi.danger; o->legend_kind = pi.legend_kind; o->legend_gift = pi.legend_gift; o->legend_colour = pi.legend_colour; o->legend_rank = pi.legend_rank; o->legend_mut = pi.legend_mut; o->seed = seed;
+}
+void pcx_vis_seed(uint64_t seed, int temp_c, int wet, int sea, PcxVis *o){
+    Flora f[4]; FloraEnv e; memset(o, 0, sizeof *o); e.temp_c = temp_c; e.wet = clampw(wet); e.sea = clampw(sea); e.rough = 1; e.light = 100;
+    o->nflora = flora_for_planet(seed, &e, 4, f); for(int i = 0; i < o->nflora; i++) o->flora[i] = f[i].id;
+    o->nbeing = 4; for(int i = 0; i < 4; i++) o->being[i] = (uint16_t)((seed >> (i * 9 + 3) ^ seed >> (i * 5 + 40) * 31) % N_KIND); o->npeople = 2; for(int i = 0; i < 2; i++) o->people[i] = (uint16_t)((seed >> (i * 11 + 7)) % N_PEOPLE);
+    o->city = (int)((seed >> 21) % N_CITY); o->temp_c = temp_c; o->wet = e.wet; o->sea = e.sea; o->seed = seed;
+}
 void pcx_law_clear(void){ mx.lawn = 0; }
 void pcx_law_set(int id, int v){ if(mx.lawn < 160){ mx.law_id[mx.lawn] = id; mx.law_val[mx.lawn] = v; mx.lawn++; } }
 void pcx_gods(int n){ mx.gods = n < 0 ? 0 : n; }
