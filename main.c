@@ -186,7 +186,17 @@ static void rect(volatile u16 *pg, int x, int y, int w, int h, int c){
         for(; i+1<w; i+=2) *p++=cc;
         if(i<w) pix(pg,x+i,y+j,c); }
 }
+OVK static int ktext1(volatile u16 *pg, int x, int y, const char *s, int c){          // text(..,1) for the kart race's HUD: the same pixels, written by ARM code from the kart overlay
+    static const u32 mk[16]={0x00000000,0x0000FF00,0x000000FF,0x0000FFFF,0xFF000000,0xFF00FF00,0xFF0000FF,0xFF00FFFF,0x00FF0000,0x00FFFF00,0x00FF00FF,0x00FFFFFF,0xFFFF0000,0xFFFFFF00,0xFFFF00FF,0xFFFFFFFF};   // a row's four pixel slots (two halfwords) -> the two byte masks
+    u32 cc=(u32)(c|(c<<8));
+    for(;*s;s++, x+=4){ u32 g=font[(u8)*s & 127]; if(!g) continue;
+        volatile u16 *row = pg + y*120 + (x>>1); int sh=x&1;                              // (the row's 3 pixels start at slot 0 for an even column, slot 1 for an odd one)
+        for(int r=0;r<5;r++, row+=120){ u32 b=((g>>(12-r*3))&7)<<(1-sh); if(!b) continue; u32 m=mk[b], a=m>>16, d=m&0xFFFF;
+            if(a) row[0]=(u16)((row[0]&~a)|(cc&a));
+            if(d) row[1]=(u16)((row[1]&~d)|(cc&d)); } }
+    return x; }
 static int text(volatile u16 *pg, int x, int y, const char *s, int c, int sc){
+    if(sc==1 && m7_on){ ov_k(); return ktext1(pg,x,y,s,c); }                              // (a kart race's small text: the ARM copy)
     if(sc==2 && !(x&1)){                                   // fast path: big text on an even column writes whole pixel pairs (row by row: no dividing)
         u16 cc=c|(c<<8);
         for(;*s;s++){ u16 g = font[(u8)*s & 127];

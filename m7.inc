@@ -68,6 +68,17 @@ OVK static void m7_span(int y, int x0, int x1, int c){
     }                                      // (near the camera a texel is many pixels wide: walk the texels, not the pixels)
     KCNT(58,x1-x0+1); for(int x=x0;x<=x1;x++, u+=pa, v+=pc){ int uu=u>>8, vv=v>>8; if(uu==lu && vv==lv) continue; lu=uu; lv=vv; if((unsigned)uu<240 && (unsigned)vv<160) m7_wr8(M7_PG1,uu,vv,c); }
 }
+#ifdef PC_HW_H
+#define SPR_WR(d) wrapd(d)
+#else
+#define SPR_WR(d) ((((d)+(64<<16))&((TW<<16)-1))-(64<<16))
+#endif
+OVK static int spr_scan(s32 cam_x, s32 cam_y, s32 near_z, u8 *order, s32 *odz, s32 *odx){   // which objects can be seen (planet_frame's sprite pass), far or near: the scan over every object, as ARM code
+    int cnt=0; s32 hs=hsn, hc=hcs;
+    for(int i=0;i<NPO;i++){ const PObj *o=&po[i]; if(!o->alive) continue; s32 wx=SPR_WR(o->x-cam_x), wy=SPR_WR(o->y-cam_y);
+        s32 dz=((wx*hs)>>8)+((wy*hc)>>8), dx=((wx*hc)>>8)-((wy*hs)>>8);
+        if(dz<near_z || dz>(40<<16)) continue; odz[i]=dz; odx[i]=dx; order[cnt++]=(u8)i; }
+    return cnt; }
 static void m7_begin(void){ ov_k(); m7_dc=(M7Dc*)(void*)gen_acc; m7_rowz=(s16*)(void*)gen_acc+320; m7_fog=(M7Fog*)(void*)((s16*)(void*)gen_acc+480); m7_on=1; m7_arm=0; m7_tab=0; m7_strip=160; page_back=0; REG_DISPCNT=4|(1<<10)|(1<<12)|(1<<6); }
 static void m7_end(void){ m7_on=0; m7_arm=0; m7_strip=160; page_back=0; }
 IWRAM static void m7_irq(void){                 // at every VBlank: start the line DMAs for this frame, or stop them when a menu is up or the race is over
@@ -113,8 +124,8 @@ OVK static void m7_frame(void){
     }
     m7_horizon=ytop;
     int strip = ytop>M7_HUD ? ytop : M7_HUD; if(strip>160) strip=160; m7_nstrip=strip;
-    for(int b=0;b<8;b++){ s32 Z=stp_z[8*b+7<NSTEP?8*b+7:NSTEP-1]; int yy=160; for(int r=0;r<160;r++) if(m7_rowz[r]>0 && m7_rowz[r]<=Z){ yy=r; break; }   // (sprites behind hills: the same profile for every column)
-        for(int c=0;c<120;c++) ybin[c*8+b]=(u8)yy; }
+    { int nb=8; for(int b=0;b<8;b++) ybin[b]=160;                                                         // (sprites behind hills: the same profile for every column, so one column holds it: ybin[bin])
+      for(int r=0;r<160 && nb>0;r++){ s32 v=m7_rowz[r]; if(v>0) while(nb>0 && v<=stp_z[nb<7 ? 8*nb-1 : NSTEP-1]) ybin[--nb]=(u8)r; } }   // (the first row each depth limit reaches, in one pass down the screen)
     u16 base=4|(1<<10)|(1<<12)|(1<<6);
     for(int y=0;y<160;y++){ M7Line *L=&tab[y];
         int ground = y>=strip && m7_rowz[y]>0 && !(m7_cock && y>=140);

@@ -1106,6 +1106,10 @@ static void kart_cockpit(volatile u16 *pg){                        // the cockpi
     for(int t=-14;t<=14;t++){ int x=120+((c*t)>>14), y=153+((sn*t*9/15)>>14); if(y>141 && y<160) pix(pg,x,y,C_WHITE); }
     { char b[20]; int kmh=(int)((kv>0?kv:-kv)*600/65536); scpy(b,""); ncat(b,kmh); scat(b," KM/H"); text(pg,30,150,b,kboost_t?C_GOLD:C_CYAN,1); }
     rect(pg,170,149,50,4,C_DGREY); if(kart_boost>0) rect(pg,170,149,kart_boost/2,4,kart_boost>20?C_GOLD:C_RED); text(pg,170,143,"BOOST",C_DGREY,1); }
+static void kframe(volatile u16 *pg, int x, int y, int w, int h, int c){         // frame1() for the HUD boxes (x and w even, in the sky rows): whole halfwords, no pix() calls
+    u16 cc=(u16)(c|(c<<8)); volatile u16 *p=pg+y*120+(x>>1); int n=w>>1;
+    for(int i=0;i<n;i++){ p[i]=cc; p[(h-1)*120+i]=cc; }
+    for(int j=1;j<h-1;j++){ volatile u16 *r=p+j*120; r[0]=(u16)((r[0]&0xFF00)|c); r[n-1]=(u16)((r[n-1]&0x00FF)|(c<<8)); } }
 static void kart_hud(volatile u16 *pg){
     s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=curv(dz>>8)-tiny_sub(); int sy=PHZ+(((cam_h+curve-gh)*f)>>16);
     m7_sy=sy;
@@ -1135,7 +1139,7 @@ static void kart_hud(volatile u16 *pg){
 #endif
     if(rc[0].item){ rect(pg,28,48,16,16,1); const char *ic=kicon[kroul ? 1+((frames>>1)%(NKI-1)) : rc[0].item];
         for(int y=0;y<8;y++){ volatile u16 *row=pg+(48+y*2)*120+14; for(int x=0;x<8;x++){ int c=kicon_c(ic[y*8+x]); if(c>=0){ u16 cc=(u16)(c|(c<<8)); row[x]=cc; row[x+120]=cc; } } }   // (each icon dot is a pair of pixels, two rows: whole halfwords)
-        frame1(pg,28,48,16,16,(frames&16)?C_GOLD:C_WHITE);
+        kframe(pg,28,48,16,16,(frames&16)?C_GOLD:C_WHITE);
         if(rc[0].item_n>1 && !kroul){ scpy(b,"X"); ncat(b,rc[0].item_n); stext(pg,46,57,b,C_GOLD); } }
 #if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h3=TMR();
@@ -1144,7 +1148,7 @@ static void kart_hud(volatile u16 *pg){
 #if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h4=TMR();
 #endif
-    rect(pg,192,19,44,44,1); frame1(pg,192,19,44,44,C_DGREY); kart_minimap(pg);
+    rect(pg,192,19,44,44,1); kframe(pg,192,19,44,44,C_DGREY); kart_minimap(pg);
 #if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h5=TMR();
 #endif

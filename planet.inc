@@ -640,7 +640,7 @@ static void planet_frame(void){
         if(ad<0x14000 && !invuln){ hurt((3+dlv()*2)*deadly_mul()); if(invuln>20) show_msg("OUCH! A SLUG"); pknock(dx,dy,40); } }
     // what is next to you
     int best=-1; s32 bd=0x1A000;
-    for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_LAST_USE){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); s32 d=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(d<bd){ bd=d; best=i; } }
+    if(!kr_mode) for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind<=O_LAST_USE){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); s32 d=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(d<bd){ bd=d; best=i; } }   // (a kart race never looks for what is next to you)
     if(kr_mode){ if(kart_buttons()) return; }
     else if(HIT(K_A)){
         if(best<0) show_msg("NOTHING HERE");
@@ -805,7 +805,8 @@ sprites:;
     EW static u8 order[NPO]; EW static s32 odz[NPO]; int cnt=0;
     s32 near_z = cam_fp ? (1<<16) : (5<<16);
     EW static s32 odx[NPO]; s32 fovq=65536/fov_k();
-    for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive) continue; s32 wx=wrapd(o->x-cam_x), wy=wrapd(o->y-cam_y);
+    if(m7_on){ ov_k(); cnt=spr_scan(cam_x,cam_y,near_z,order,odz,odx); }                  // (a race: the same scan, in the kart overlay's ARM code)
+    else for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive) continue; s32 wx=wrapd(o->x-cam_x), wy=wrapd(o->y-cam_y);
         s32 dz=((wx*hsn)>>8)+((wy*hcs)>>8), dx=((wx*hcs)>>8)-((wy*hsn)>>8);
         if(dz<near_z || dz>(40<<16)) continue; odz[i]=dz; odx[i]=dx; order[cnt++]=i; }
     for(int i=1;i<cnt;i++){ u8 t=order[i]; int j=i; while(j>0 && odz[order[j-1]]<odz[t]){ order[j]=order[j-1]; j--; } order[j]=t; }
@@ -832,7 +833,7 @@ sprites:;
             { int el=iatan2(cam_h+curve-gh, zc); if(el<24) el=24; if(el>230) el=230;                // how high above it the camera looks down on it (the true angle: the nose rises up the screen, the engines face you)
               ship_draw(pg, sx, sy-(f>>9), sc, (1024-heading)&1023, el, 236, 237, 0,18,240,160); }
             sh_occ=0; continue; }
-        if(bin>=0 && sy > ybin[c*8+bin]+3) continue;                                   // its feet are behind a nearer hill
+        if(bin>=0 && sy > ybin[(m7_on?0:c*8)+bin]+3) continue;                                   // its feet are behind a nearer hill
         static const u8 ksz[29]={28,28,22,18,16,30,24,22,18,30, 28,26,26,24,26,18,20,30,20,18,44,24,28, 12,14, 17,18,12,14};      // size of each kind in 16ths of a cell
         int s=(f>>6)*ksz[o->kind]>>4; if(s<8) continue; int m=(s-8)/4; if(m>27) m=27;       // px per cell / 16 px * 64. too far away to see: skip it (it used to be drawn too big)
         if(o->kind==O_KART){ slot=kart_draw_obj(slot,o,sx,sy,m,f); continue; }               // a rival kart (kart.inc)
