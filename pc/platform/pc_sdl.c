@@ -29,23 +29,25 @@ enum { SM_CRISP, SM_SMOOTH, SM_COUNT };
 static Cfg C;
 static char g_pref[1024], g_cfgpath[1100], g_savepath[1100], g_shotdir[1100];
 static int g_a38;      // patch 38: set when the settings file already carries the Android marker
-#ifdef PC_ANDROID
-// patch 39: touch pad layout data (landscape [0] and portrait [1] each keep their own), saved in settings.ini as tl0_*/tl1_* and talpha
-enum { TC_DPAD, TC_A, TC_B, TC_L, TC_R, TC_SEL, TC_STA, TC_MENU, TC_N };
+// the touch pad (Mega Drive style): layout data (landscape [0] and portrait [1] each keep their own), saved in settings.ini as gl0_*/gl1_* and the touch lines
+enum { TC_DPAD, TC_A, TC_B, TC_L, TC_R, TC_SEL, TC_STA, TC_MENU, TC_C, TC_X, TC_Y, TC_Z, TC_N };
 typedef struct { int set, x, y, s; } TPos;      // set: the player moved it; x,y: centre in 1/1000 of the window width/height; s: size in percent (0 = 100)
-static TPos g_tl[2][TC_N]; static int g_talpha;      // g_talpha: opacity in percent (0 = 20)
-static const char *const tl_key[TC_N]={"dpad","a","b","l","r","sel","sta","menu"};
+static TPos g_tl[2][TC_N]; static int g_talpha=80, g_t6=1, g_thaptic=1;      // opacity in percent; 1 = the 6 button pad (0 = 3 button); haptics on
+static int g_touch, g_thide;      // g_touch: the pad exists (1 Android, 2 PC preview with --touch); g_thide: a keyboard or gamepad was used, the pad is hidden until the next touch
+static const char *const tl_key[TC_N]={"dpad","a","b","l","r","sel","sta","menu","c","x","y","z"};
 static void tl_save(FILE *f){
-    fprintf(f,"talpha=%d\n",g_talpha);
-    for(int o=0;o<2;o++) for(int i=0;i<TC_N;i++){ TPos *p=&g_tl[o][i]; if(p->set||p->s) fprintf(f,"tl%d_%s=%d,%d,%d\n",o,tl_key[i],p->set?p->x:-1,p->set?p->y:-1,p->s?p->s:100); }
+    if(!g_touch) return;
+    fprintf(f,"talpha=%d\nt6=%d\nthaptic=%d\n",g_talpha,g_t6,g_thaptic);
+    for(int o=0;o<2;o++) for(int i=0;i<TC_N;i++){ TPos *p=&g_tl[o][i]; if(p->set||p->s) fprintf(f,"gl%d_%s=%d,%d,%d\n",o,tl_key[i],p->set?p->x:-1,p->set?p->y:-1,p->s?p->s:100); }
 }
 static int tl_parse(const char *k, const char *v){
     if(!strcmp(k,"talpha")){ int a=atoi(v); g_talpha=a<5?5:a>100?100:a; return 1; }
-    if(k[0]=='t'&&k[1]=='l'&&(k[2]=='0'||k[2]=='1')&&k[3]=='_'){ int o=k[2]-'0';
+    if(!strcmp(k,"t6")){ g_t6=atoi(v)?1:0; return 1; }
+    if(!strcmp(k,"thaptic")){ g_thaptic=atoi(v)?1:0; return 1; }
+    if(k[0]=='g'&&k[1]=='l'&&(k[2]=='0'||k[2]=='1')&&k[3]=='_'){ int o=k[2]-'0';
         for(int i=0;i<TC_N;i++) if(!strcmp(k+4,tl_key[i])){ int x,y,s; if(sscanf(v,"%d,%d,%d",&x,&y,&s)==3){ TPos *p=&g_tl[o][i]; p->set=(x>=0&&y>=0); p->x=x<0?0:x>1000?1000:x; p->y=y<0?0:y>1000?1000:y; p->s=s<50?50:s>200?200:s; } return 1; } }
     return 0;
 }
-#endif
 static void cfg_defaults(void){
     memset(&C,0,sizeof C);
     C.mouse=1; C.ships=1; C.armada=1; C.quality=0; C.fullscreen=0; C.scale_mode=SM_CRISP; C.vsync=1; C.show_fps=0; C.volume=80; C.mute=0; C.pause_unfocus=1; C.rumble=1; C.deadzone=30; C.max_mp=0;
@@ -65,9 +67,7 @@ static void cfg_defaults(void){
 static void cfg_save(void){
     FILE *f=fopen(g_cfgpath,"w"); if(!f) return;
     fprintf(f,"# BUGSTAR PC settings (edit in the game: press Esc). scale_mode: 0 crisp, 1 smooth\n");
-#ifdef PC_ANDROID
-    tl_save(f);      // patch 39
-#endif
+    tl_save(f);
 #ifdef PC_ANDROID
     fprintf(f,"android38=1\n");      // patch 38
 #endif
@@ -82,9 +82,7 @@ static void cfg_load(void){
     while(fgets(ln,sizeof ln,f)){
         char *e=strchr(ln,'='); if(!e||ln[0]=='#') continue; *e++=0; size_t n=strlen(e); while(n&&(e[n-1]=='\n'||e[n-1]=='\r')) e[--n]=0;
         if(!strcmp(ln,"android38")){ g_a38=1; continue; }      // patch 38
-#ifdef PC_ANDROID
-        if(tl_parse(ln,e)) continue;      // patch 39
-#endif
+        if(tl_parse(ln,e)) continue;
         int v=atoi(e);
         #define I(nm,fld,lo,hi) if(!strcmp(ln,nm)){ C.fld = v<lo?lo:v>hi?hi:v; continue; }
         I("ships",ships,0,2) I("armada",armada,0,3) I("textsize",textsize,0,2) I("contrast",contrast,0,1) I("mouse",mouse,0,1) I("video3d",video3d,0,3) I("quality",quality,0,3) I("fullscreen",fullscreen,0,1) I("scale_mode",scale_mode,0,SM_COUNT-1) I("vsync",vsync,0,1) I("show_fps",show_fps,0,1) I("volume",volume,0,100) I("mute",mute,0,1)
@@ -245,28 +243,22 @@ static void text_at(int x, int y, const char *s, uint32_t col){
 static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(ren,(col>>16)&255,(col>>8)&255,col&255,a); SDL_Rect r={x,y,w,h}; SDL_RenderFillRect(ren,&r); }
 
 // ---- the options screen
-enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_COUNT };
+enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_REBIND=1000 };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
 static const char *const v3names[]={"AUTO","NATIVE (SMOOTH)","CLASSIC (GBA)","ULTRA (BLOOM)"}; static const char *const qnames[]={"AUTO (ADAPTS TO SPEED)","LOW (FASTEST)","MEDIUM","HIGH (FULL DETAIL)"};
 static const char *const mpnames[]={"AUTO","1 MEGAPIXEL","2","3","4","6","8"}; static int mp_choice;
+static const char *const t6names[]={"3 BUTTON PAD","6 BUTTON PAD"};
 static int mp_val(int i){ static const int v[]={0,1,2,3,4,6,8}; return v[i]; }
-#ifdef PC_ANDROID
-static int ted_on; static void ted_open(void); static void ted_draw(void); static void ted_key(SDL_Keycode k);      // patch 39: the touch pad layout editor
-#define TL_MENU_ITEM it[k++]=(Item){0,"TOUCH PAD LAYOUT",0,0,0,0,0,A_TOUCHEDIT};
-#define TL_MENU_CASE case A_TOUCHEDIT: ted_open(); break;
-#else
-#define TL_MENU_ITEM
-#define TL_MENU_CASE
-#endif
+static int ted_on; static void ted_open(void); static void ted_draw(void); static void ted_key(SDL_Keycode k);      // the touch pad layout editor
 static void menu_build(Item *it, int *n){
     int k=0;
     switch(menu_page){
     case P_MAIN: it[k++]=(Item){0,"RESUME",0,0,0,0,0,A_RESUME}; it[k++]=(Item){0,"VIDEO",0,0,0,0,0,A_VIDEO}; it[k++]=(Item){0,"AUDIO",0,0,0,0,0,A_AUDIO}; it[k++]=(Item){0,"ACCESSIBILITY AND MOUSE",0,0,0,0,0,A_ACCESS};
-        it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; TL_MENU_ITEM it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
+        it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; if(g_touch) it[k++]=(Item){0,"TOUCH PAD",0,0,0,0,0,A_TOUCH}; it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
         it[k++]=(Item){0,"HOW TO PLAY",0,0,0,0,0,A_HELP}; it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
     case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,3,1,v3names,0}; it[k++]=(Item){1,"QUALITY",&C.quality,0,3,1,qnames,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
         it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
@@ -275,7 +267,9 @@ static void menu_build(Item *it, int *n){
     case P_AUDIO: it[k++]=(Item){2,"VOLUME",&C.volume,0,100,5,0,0}; it[k++]=(Item){1,"MUTE",&C.mute,0,1,1,onoff,0}; it[k++]=(Item){1,"RUMBLE (GAMEPAD)",&C.rumble,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_CONTROLS: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+i}; it[k++]=(Item){0,"RESET KEYS",0,0,0,0,0,A_RESETKEYS}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_PAD: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+i}; it[k++]=(Item){2,"STICK DEAD ZONE",&C.deadzone,5,80,5,0,0}; it[k++]=(Item){0,"RESET PAD",0,0,0,0,0,A_RESETPAD}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
-    case P_ABOUT: case P_HELP: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
+    case P_TOUCH: it[k++]=(Item){1,"PAD BUTTONS",&g_t6,0,1,1,t6names,0}; it[k++]=(Item){2,"OPACITY",&g_talpha,10,100,5,0,0}; it[k++]=(Item){1,"HAPTICS",&g_thaptic,0,1,1,onoff,0};
+        it[k++]=(Item){0,"MOVE AND RESIZE BUTTONS",0,0,0,0,0,A_TOUCHEDIT}; it[k++]=(Item){0,"BUTTON LEGEND",0,0,0,0,0,A_TLEGEND}; it[k++]=(Item){0,"RESET LAYOUT",0,0,0,0,0,A_TRESET}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
+    case P_ABOUT: case P_HELP: case P_TLEGEND: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     }
     *n=k;
 }
@@ -295,8 +289,10 @@ static void menu_do(int act){
     case A_RESUME: menu_open=0; cfg_save(); break;
     case A_VIDEO: menu_page=P_VIDEO; menu_sel=0; break; case A_AUDIO: menu_page=P_AUDIO; menu_sel=0; break; case A_ACCESS: menu_page=P_ACCESS; menu_sel=0; break;
     case A_CONTROLS: menu_page=P_CONTROLS; menu_sel=0; break; case A_PAD: menu_page=P_PAD; menu_sel=0; break; case A_ABOUT: menu_page=P_ABOUT; menu_sel=0; break; case A_HELP: menu_page=P_HELP; menu_sel=0; break;
-    case A_MAINBACK: menu_page=P_MAIN; menu_sel=0; cfg_save(); break;
-    TL_MENU_CASE case A_QUIT: cfg_save(); pc_quit_now(); break;
+    case A_MAINBACK: if(menu_page==P_TLEGEND){ menu_page=P_TOUCH; menu_sel=0; } else { menu_page=P_MAIN; menu_sel=0; } cfg_save(); break;
+    case A_TOUCH: menu_page=P_TOUCH; menu_sel=0; break; case A_TLEGEND: menu_page=P_TLEGEND; menu_sel=0; break; case A_TOUCHEDIT: ted_open(); break;
+    case A_TRESET: memset(g_tl,0,sizeof g_tl); g_talpha=80; say_toast("TOUCH PAD RESET"); break;
+    case A_QUIT: cfg_save(); pc_quit_now(); break;
     case A_FULLSCREEN: apply_video(); break;
     case A_VSYNC: SDL_RenderSetVSync(ren,C.vsync); break;
     case A_WINSIZE: { static const int sz[][2]={{720,480},{960,640},{1200,800},{1440,960},{1920,1280}}; int cur=0; for(int i=0;i<5;i++) if(C.win_w==sz[i][0]) cur=i; cur=(cur+1)%5; C.win_w=sz[cur][0]; C.win_h=sz[cur][1];
@@ -308,26 +304,24 @@ static void menu_do(int act){
     }
 }
 static const char *const *help_lines(void){       // (each line fits the narrowest panel: 32 letters)
-#ifdef PC_ANDROID
-    static const char *const ln[]={"THE ON-SCREEN PAD IS THE GBA PAD:","DPAD, A, B, L, R, START, SELECT","MENU (TOP) OPENS THESE OPTIONS","","OPTIONS > TOUCH PAD LAYOUT MOVES","AND RESIZES THE BUTTONS","","OPTIONS > VIDEO > 3D VIEWS:","CLASSIC IS THE LIGHTEST - NATIVE","AND ULTRA NEED A FAST PHONE","","THE GAME SAVES BY ITSELF.",0};
-#else
+    static const char *const lg[]={"MEGA PAD         GBA","D-PAD            D-PAD","B                A (OK)","A                B (BACK)","C                A (OK)","X                L","Y                R","Z                SELECT","START            START","MODE             OPTIONS","","3 BUTTON PAD: L R AT THE TOP,","MODE = SELECT, MENU AT THE TOP",0};
+    static const char *const tp[]={"THE ON-SCREEN PAD IS A MEGA PAD:","D-PAD, A B C, X Y Z, START, MODE","MODE OPENS THESE OPTIONS","","OPTIONS > TOUCH PAD: BUTTON LEGEND,","LAYOUT, SIZE, OPACITY, HAPTICS","","OPTIONS > VIDEO > 3D VIEWS:","CLASSIC IS THE LIGHTEST - NATIVE","AND ULTRA NEED A FAST PHONE","","THE GAME SAVES BY ITSELF.",0};
     static const char *const ln[]={"ARROWS OR WASD: MOVE AND TURN","X OR SPACE: A     Z OR K: B","Q: L      E: R","ENTER: START   BACKSPACE: SELECT","","ESC: THIS MENU   F11: FULLSCREEN","F12: SCREENSHOT   F3: FPS","","VIDEO > 3D VIEWS: CLASSIC IS THE","GBA LOOK - NATIVE AND ULTRA ARE","SHARP AT ANY WINDOW SIZE","A GAMEPAD WORKS: BACK+START=MENU",0};
-#endif
+    if(menu_page==P_TLEGEND) return lg;
+    if(g_touch) return tp;
     return ln; }
 static int m_x0, m_pw, m_lh, m_y1, m_n, m_gs;
 static void menu_draw(void){
-#ifdef PC_ANDROID
-    if(ted_on){ ted_draw(); return; }      // patch 39
-#endif
+    if(ted_on){ ted_draw(); return; }
     int dw=dw_, dh=dh_; gs_=(dw<dh?dw:dh)/140;      /* patch 39: portrait sizes the text by the narrow side */ if(gs_<2) gs_=2; if(gs_>12) gs_=12; if(C.textsize){ int g2=(dw<dh?dw:dh)/(C.textsize==1?100:75); if(g2>gs_) gs_=g2; if(gs_>16) gs_=16; }
     int hc=C.contrast; rect_fill(0,0,dw,dh,0x000000,hc?200:150);
-    static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY"};
+    static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND"};
     Item it[24]; int n; menu_build(it,&n);
-    int lh=9*gs_, pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"); if(pw>dw-4*gs_) pw=dw-4*gs_; int ph=(n+3)*lh+2*gs_*4; if(menu_page==P_ABOUT) ph=14*lh; if(menu_page==P_HELP){ int nl=0; while(help_lines()[nl]) nl++; ph=(nl+5)*lh; }
+    int lh=9*gs_, pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"); if(pw>dw-4*gs_) pw=dw-4*gs_; int ph=(n+3)*lh+2*gs_*4; if(menu_page==P_ABOUT) ph=14*lh; if(menu_page==P_HELP||menu_page==P_TLEGEND){ int nl=0; while(help_lines()[nl]) nl++; ph=(nl+5)*lh; }
     int x0=(dw-pw)/2, y0=(dh-ph)/2; rect_fill(x0,y0,pw,ph,hc?0x000000:0x0B1030,hc?255:235); rect_fill(x0,y0,pw,gs_,0xFFD23C,255); rect_fill(x0,y0+ph-gs_,pw,gs_,0xFFD23C,255);
     text_at(x0+4*gs_,y0+3*gs_,titles[menu_page],0xFFD23C);
-    int y=y0+3*gs_+lh*3/2; m_x0=x0; m_pw=pw; m_lh=lh; m_y1=y; m_n=(menu_page==P_ABOUT||menu_page==P_HELP)?0:n; m_gs=gs_;
-    if(menu_page==P_HELP){       // the short tutorial: shown by itself on the first start, and under HOW TO PLAY in the options
+    int y=y0+3*gs_+lh*3/2; m_x0=x0; m_pw=pw; m_lh=lh; m_y1=y; m_n=(menu_page==P_ABOUT||menu_page==P_HELP||menu_page==P_TLEGEND)?0:n; m_gs=gs_;
+    if(menu_page==P_HELP||menu_page==P_TLEGEND){       // the short tutorial: shown by itself on the first start, and under HOW TO PLAY in the options
         char b[200]; const char *const *ln=help_lines();
         for(int i=0;ln[i];i++){ snprintf(b,sizeof b,"%s",ln[i]); int maxc=(pw-8*gs_)/(4*gs_); if((int)strlen(b)>maxc){ b[maxc]=0; } text_at(x0+4*gs_,y,b,0xCCD4FF); y+=lh; }
         y+=lh/2; text_at(x0+4*gs_,y,"> OK (ENTER OR A)",0xFFFFFF); return; }
@@ -349,9 +343,7 @@ static void menu_draw(void){
     if(menu_page==P_PAD){ text_at(x0+4*gs_,y0+ph-lh-gs_,"ENTER THEN PRESS A BUTTON ON THE PAD",0x8890C8); }
 }
 static void menu_key(SDL_Keycode k, SDL_Scancode sc){
-#ifdef PC_ANDROID
-    if(ted_on){ ted_key(k); return; }      // patch 39
-#endif
+    if(ted_on){ ted_key(k); return; }
     if(menu_wait==1){ if(sc==SDL_SCANCODE_ESCAPE){ menu_wait=0; return; } Item it[24]; int n; menu_build(it,&n); int bi=it[menu_sel].action-A_REBIND; if(bi>=0&&bi<NB){ C.kb[bi][menu_slot]=sc; } menu_wait=0; menu_slot=0; return; }
     if(menu_wait==2) return;
     Item it[24]; int n; menu_build(it,&n);
@@ -411,91 +403,90 @@ static void pad_open(void){
 }
 static uint8_t kst[512]; static uint16_t g_lastkeys;
 
-// ---- patch 30: on-screen touch pad (Android only). Fingers are tracked here; read_keys ORs touch_keys() in; touch-to-mouse is switched off (hint in plat_open).
-#ifdef PC_ANDROID
+// ---- the on-screen touch pad: a Mega Drive style pad (drawn in pc_tpad.inc). Fingers are tracked here; read_keys ORs touch_keys() in; touch-to-mouse is switched off (hint in plat_open).
+//   It is on for Android, and on the PC with --touch (a preview). It hides itself when a keyboard key or a gamepad button is used and comes back at the next touch (not with --touch).
+//   MAPPING (the legend is in OPTIONS > TOUCH PAD > BUTTON LEGEND): pad B = GBA A, pad A = GBA B, pad C = GBA A, X = L, Y = R, Z = SELECT, START = START, MODE = the options menu.
+//   3 BUTTON pad: no X Y Z; L and R are slim buttons at the top, MODE = SELECT, MENU is a small button at the top.
 static void open_menu(void);
-#if 0      /* patch 39: the old touch pad, replaced below (it was fixed to the landscape layout) */
 typedef struct { SDL_FingerID id; float x, y; int on; } TFing;
 static TFing tfing[10];
-typedef struct { int cx, cy, r, bit; const char *lab; } TBtn;
-static int t_u(void){ int u=dh_/6; return u<40?40:u; }
-static int t_btns(TBtn *b){ int u=t_u(), n=0;
-    b[n++]=(TBtn){dw_-u,       dh_-u*5/2, u*6/10, 1<<0, "A"};
-    b[n++]=(TBtn){dw_-u*5/2,   dh_-u*3/2, u*6/10, 1<<1, "B"};
-    b[n++]=(TBtn){u,           u*7/10,    u*55/100, 1<<9, "L"};
-    b[n++]=(TBtn){dw_-u,       u*7/10,    u*55/100, 1<<8, "R"};
-    b[n++]=(TBtn){dw_/2-u*6/5, dh_-u/2,   u*4/10, 1<<2, "SEL"};
-    b[n++]=(TBtn){dw_/2+u*6/5, dh_-u/2,   u*4/10, 1<<3, "STA"};
-    b[n++]=(TBtn){dw_/2,       u/2,       u*4/10, 1<<15, "MENU"};
-    return n; }
-static uint16_t t_hit(int px, int py){        // what a finger at (px,py) presses: GBA key bits, plus bit 15 = the MENU button
-    int u=t_u(); uint16_t m=0; TBtn b[8]; int n=t_btns(b);
-    int cx=u*2, cy=dh_-u*2, dx=px-cx, dy=py-cy, dz=u/3;
-    if(dx*dx+dy*dy < (long)u*2*u*2 && (abs(dx)>dz || abs(dy)>dz)){
-        if(abs(dx)*10 > abs(dy)*4) m|= dx>0 ? 1<<4 : 1<<5;
-        if(abs(dy)*10 > abs(dx)*4) m|= dy>0 ? 1<<7 : 1<<6; }
-    for(int i=0;i<n;i++){ long ex=px-b[i].cx, ey=py-b[i].cy, r=b[i].r*13/10; if(ex*ex+ey*ey<r*r) m|=b[i].bit; }
-    return m; }
-static uint16_t touch_keys(void){ uint16_t m=0; for(int i=0;i<10;i++) if(tfing[i].on) m|=t_hit((int)(tfing[i].x*dw_),(int)(tfing[i].y*dh_)); return m&0x7FFF; }
-static void touch_event(const SDL_Event *e){
-    int k=-1, fr=-1; for(int i=0;i<10;i++){ if(tfing[i].on && tfing[i].id==e->tfinger.fingerId) k=i; if(!tfing[i].on && fr<0) fr=i; }
-    if(e->type==SDL_FINGERUP){ if(k>=0) tfing[k].on=0; return; }
-    if(k<0){ if(fr<0) return; k=fr; tfing[k].id=e->tfinger.fingerId; tfing[k].on=1; }
-    tfing[k].x=e->tfinger.x; tfing[k].y=e->tfinger.y;
-    if(e->type!=SDL_FINGERDOWN) return;
-    uint16_t m=t_hit((int)(e->tfinger.x*dw_),(int)(e->tfinger.y*dh_));
-    if(menu_open){          // in the options the pad steers the menu: arrows, A = enter, B / MENU = back
-        if(m&(1<<6)) menu_key(SDLK_UP,0); else if(m&(1<<7)) menu_key(SDLK_DOWN,0); else if(m&(1<<5)) menu_key(SDLK_LEFT,0); else if(m&(1<<4)) menu_key(SDLK_RIGHT,0);
-        else if(m&1) menu_key(SDLK_RETURN,0); else if(m&((1<<1)|(1<<15))) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
-    } else if(m&(1<<15)) open_menu(); }
-static void touch_draw(void){
-    int u=t_u(); uint16_t on=touch_keys(); TBtn b[8]; int n=t_btns(b);
-    static const struct { int dx, dy, bit; const char *l; } D[4]={{0,-1,1<<6,"^"},{0,1,1<<7,"V"},{-1,0,1<<5,"<"},{1,0,1<<4,">"}};
-    for(int i=0;i<4;i++){ int x=u*2+D[i].dx*u*7/10, y=dh_-u*2+D[i].dy*u*7/10, h=u*3/10; rect_fill(x-h,y-h,2*h,2*h,0xFFFFFF,(on&D[i].bit)?130:55); text_at(x-text_w(D[i].l)/2,y-5*gs_/2,D[i].l,0xFFFFFF); }
-    for(int i=0;i<n;i++){ int r=b[i].r; int p=b[i].bit<(1<<15) && (on&b[i].bit); rect_fill(b[i].cx-r,b[i].cy-r,2*r,2*r,0xFFFFFF,p?130:55); text_at(b[i].cx-text_w(b[i].lab)/2,b[i].cy-5*gs_/2,b[i].lab,0xFFFFFF); } }
-#endif      /* patch 39 */
-// ---- patch 39: the on-screen touch pad, laid out from g_tl (landscape and portrait each keep their own) and the layout editor (menu: TOUCH PAD LAYOUT)
-typedef struct { SDL_FingerID id; float x, y; int on; } TFing;
-static TFing tfing[10];
-typedef struct { int cx, cy, r; } TGeo;      // centre and radius in pixels (the pad: half the size of its touch area)
-static const int tl_base[TC_N]={200,60,60,55,55,40,40,40};                       // radius in 1/100 of a unit
-static const int tl_bit[TC_N]={0,1<<0,1<<1,1<<9,1<<8,1<<2,1<<3,1<<15};           // GBA key bits; bit 15 = the MENU button
-static const char *const tl_lab[TC_N]={"","A","B","L","R","SEL","STA","MENU"};
-static const char *const tl_nm[TC_N]={"PAD","A","B","L","R","SELECT","START","MENU"};
+typedef struct { int cx, cy, r; } TGeo;      // centre and radius in pixels (the pad: the radius of its touch area)
+static const int tl_base[TC_N]={140,52,52,50,50,36,36,36,52,40,40,40};           // radius in 1/100 of a unit
+static const char *const tl_nm[TC_N]={"D-PAD","B","A","L","R","MODE","START","MENU","C","X","Y","Z"};
+#include "pc_tpad.inc"
 static int tl_o(void){ return dw_>=dh_ ? 0 : 1; }        // 0 landscape, 1 portrait
 static int t_u(void){ int m=dw_<dh_?dw_:dh_; int u=tl_o()?m/7:m/6; return u<40?40:u; }
-static int tl_alpha(void){ return g_talpha?g_talpha:20; }
+static int tg_on(void){ return g_touch && !g_thide; }
+static int tg_vis(int i){ if(i==TC_L||i==TC_R||i==TC_MENU) return !g_t6; if(i==TC_X||i==TC_Y||i==TC_Z) return g_t6; return 1; }
+static int tg_kind(int i){ return i==TC_DPAD?0 : (i==TC_A||i==TC_B||i==TC_C||i==TC_X||i==TC_Y||i==TC_Z)?1 : 2; }       // 0 D-pad, 1 round button, 2 pill
+static uint16_t tg_bits(int i){ switch(i){ case TC_A: case TC_C: return 1<<0; case TC_B: return 1<<1; case TC_X: case TC_L: return 1<<9; case TC_Y: case TC_R: return 1<<8; case TC_Z: return 1<<2;
+    case TC_SEL: return g_t6 ? (1<<15) : (1<<2); case TC_STA: return 1<<3; case TC_MENU: return 1<<15; } return 0; }       // GBA key bits; bit 15 = the options menu
 static void tl_default(int o, int i, int *x, int *y){
-    int u=t_u(), w=dw_, h=dh_;
-    if(!o){ switch(i){
-        case TC_DPAD: *x=u*2; *y=h-u*2; break;            case TC_A: *x=w-u; *y=h-u*5/2; break;
-        case TC_B: *x=w-u*5/2; *y=h-u*3/2; break;         case TC_L: *x=u; *y=u*7/10; break;
-        case TC_R: *x=w-u; *y=u*7/10; break;              case TC_SEL: *x=w/2-u*6/5; *y=h-u/2; break;
-        case TC_STA: *x=w/2+u*6/5; *y=h-u/2; break;       default: *x=w/2; *y=u/2; break; } }
-    else { switch(i){
-        case TC_DPAD: *x=u*18/10; *y=h-u*26/10; break;    case TC_A: *x=w-u*9/10; *y=h-u*36/10; break;
-        case TC_B: *x=w-u*23/10; *y=h-u*24/10; break;     case TC_L: *x=u; *y=h-u*54/10; break;
-        case TC_R: *x=w-u; *y=h-u*54/10; break;           case TC_SEL: *x=w/2-u*6/5; *y=h-u/2; break;
-        case TC_STA: *x=w/2+u*6/5; *y=h-u/2; break;       default: *x=w/2; *y=u/2; break; } }
+    int u=t_u(), w=dw_, h=dh_; int fx, fy;
+    if(!o){ fx=w-u*305/100; fy=h-u*170/100;
+        switch(i){
+        case TC_DPAD: *x=u*205/100; *y=h-u*215/100; break;
+        case TC_A: *x=fx; *y=fy; break;                         case TC_B: *x=fx-u*160/100; *y=fy+u*24/100; break;      case TC_C: *x=fx+u*160/100; *y=fy-u*24/100; break;
+        case TC_X: *x=fx-u*155/100; *y=fy-u*111/100; break;     case TC_Y: *x=fx+u*5/100; *y=fy-u*135/100; break;        case TC_Z: *x=fx+u*165/100; *y=fy-u*159/100; break;
+        case TC_SEL: *x=w*43/100-u*90/100; *y=h-u*55/100; break; case TC_STA: *x=w*43/100+u*90/100; *y=h-u*55/100; break;
+        case TC_L: *x=u*13/10; *y=u*6/10; break;                case TC_R: *x=w-u*13/10; *y=u*6/10; break;               default: *x=w/2; *y=u/2; break; } }
+    else { fx=w-u*195/100; fy=h-u*330/100;
+        switch(i){
+        case TC_DPAD: *x=u*160/100; *y=h-u*340/100; break;
+        case TC_A: *x=fx; *y=fy; break;                         case TC_B: *x=fx-u*112/100; *y=fy+u*19/100; break;      case TC_C: *x=fx+u*112/100; *y=fy-u*19/100; break;
+        case TC_X: *x=fx-u*108/100; *y=fy-u*118/100; break;     case TC_Y: *x=fx+u*4/100; *y=fy-u*134/100; break;        case TC_Z: *x=fx+u*116/100; *y=fy-u*150/100; break;
+        case TC_SEL: *x=w/2-u*100/100; *y=h-u*105/100; break;   case TC_STA: *x=w/2+u*100/100; *y=h-u*105/100; break;
+        case TC_L: *x=u*11/10; *y=h-u*58/10; break;             case TC_R: *x=w-u*11/10; *y=h-u*58/10; break;            default: *x=w/2; *y=u/2; break; } }
 }
 static void tl_geo(TGeo *g){
-    int o=tl_o(), u=t_u();
+    int o=tl_o(), u=t_u(), sc=o?88:100;
     for(int i=0;i<TC_N;i++){ TPos *p=&g_tl[o][i]; int x,y;
         if(p->set){ x=(int)((long)p->x*dw_/1000); y=(int)((long)p->y*dh_/1000); } else tl_default(o,i,&x,&y);
-        int s=p->s?p->s:100; g[i].cx=x; g[i].cy=y; g[i].r=(int)((long)u*tl_base[i]/100*s/100); }
+        int s=p->s?p->s:100; int k=(i==TC_DPAD?(o?90:100):sc); g[i].cx=x; g[i].cy=y; g[i].r=(int)((long)u*tl_base[i]/100*s/100*k/100); }
 }
-static uint16_t t_hit(int px, int py){        // what a finger at (px,py) presses: GBA key bits, plus bit 15 = the MENU button
+static void tg_ext(const TGeo *g, int i, int *hw, int *hh){      // half size of what is drawn (and where a finger counts)
+    int r=g[i].r; int k=tg_kind(i);
+    if(k==0){ *hw=*hh=(int)(r*0.92f*1.30f); } else if(k==1){ *hw=*hh=(int)(r*1.17f); } else { *hw=(int)(r*1.55f+r*0.2f); *hh=(int)(r*0.6f+r*0.2f); } }
+static int tg_pick(const TGeo *g, int px, int py){       // the round button or pill under a finger (the nearest one), or -1
+    int best=-1; float bs=1e30f;
+    for(int i=1;i<TC_N;i++){ if(!tg_vis(i)) continue; float dx=(float)(px-g[i].cx), dy=(float)(py-g[i].cy), r=(float)g[i].r, sc;
+        if(tg_kind(i)==1){ if(dx*dx+dy*dy>=r*1.32f*r*1.32f) continue; sc=(dx*dx+dy*dy)/(r*r); }
+        else { float hw=r*1.55f+r*0.45f, hh=r*0.575f+r*0.5f; if(fabsf(dx)>hw||fabsf(dy)>hh) continue; sc=(dx*dx)/(r*1.55f*r*1.55f)+(dy*dy)/(r*0.575f*r*0.575f); }
+        if(sc<bs){ bs=sc; best=i; } }
+    return best; }
+static uint32_t tg_state(uint16_t *dirs){       // every finger: the bit mask of the pressed buttons (1<<TC_...) and the D-pad directions as GBA key bits
+    TGeo g[TC_N]; tl_geo(g); uint32_t el=0; uint16_t dm=0;
+    for(int f=0;f<10;f++){ if(!tfing[f].on) continue; int px=(int)(tfing[f].x*dw_), py=(int)(tfing[f].y*dh_);
+        int dx=px-g[TC_DPAD].cx, dy=py-g[TC_DPAD].cy, R=g[TC_DPAD].r, dz=R/6;
+        if((long)dx*dx+(long)dy*dy < (long)R*R && (abs(dx)>dz || abs(dy)>dz)){
+            if(abs(dx)*10 > abs(dy)*4) dm|= dx>0 ? 1<<4 : 1<<5;
+            if(abs(dy)*10 > abs(dx)*4) dm|= dy>0 ? 1<<7 : 1<<6; }
+        else { int b=tg_pick(g,px,py); if(b>=0) el|=1u<<b; } }
+    *dirs=dm; return el; }
+static uint16_t tg_keys(uint32_t el, uint16_t dirs){ uint16_t m=dirs; for(int i=1;i<TC_N;i++) if(el>>i&1) m|=tg_bits(i); return m; }
+static uint16_t t_hit(int px, int py){        // what one finger at (px,py) presses: GBA key bits, plus bit 15 = the options menu
     TGeo g[TC_N]; tl_geo(g); uint16_t m=0;
     int dx=px-g[TC_DPAD].cx, dy=py-g[TC_DPAD].cy, R=g[TC_DPAD].r, dz=R/6;
     if((long)dx*dx+(long)dy*dy < (long)R*R && (abs(dx)>dz || abs(dy)>dz)){
         if(abs(dx)*10 > abs(dy)*4) m|= dx>0 ? 1<<4 : 1<<5;
         if(abs(dy)*10 > abs(dx)*4) m|= dy>0 ? 1<<7 : 1<<6; }
-    for(int i=1;i<TC_N;i++){ long ex=px-g[i].cx, ey=py-g[i].cy, r=g[i].r*13/10; if(ex*ex+ey*ey<r*r) m|=tl_bit[i]; }
+    else { int b=tg_pick(g,px,py); if(b>=0) m|=tg_bits(b); }
     return m; }
-static uint16_t touch_keys(void){ if(ted_on) return 0; uint16_t m=0; for(int i=0;i<10;i++) if(tfing[i].on) m|=t_hit((int)(tfing[i].x*dw_),(int)(tfing[i].y*dh_)); return m&0x7FFF; }
+#ifdef PC_ANDROID
+static SDL_Haptic *t_hap; static int t_hap_try;
+static void t_buzz(void){ if(!g_thaptic) return; if(!t_hap_try){ t_hap_try=1; if(SDL_InitSubSystem(SDL_INIT_HAPTIC)==0 && SDL_NumHaptics()>0){ t_hap=SDL_HapticOpen(0); if(t_hap && SDL_HapticRumbleInit(t_hap)!=0){ SDL_HapticClose(t_hap); t_hap=0; } } }
+    if(t_hap) SDL_HapticRumblePlay(t_hap,0.5f,22); }
+#else
+static void t_buzz(void){}
+#endif
+static uint16_t touch_keys(void){ static uint32_t pe; static uint16_t pd; if(ted_on||!tg_on()){ pe=0; pd=0; return 0; }
+    uint16_t d; uint32_t el=tg_state(&d); if((el&~pe)||(d&~pd)) t_buzz(); pe=el; pd=d; return tg_keys(el,d)&0x7FFF; }
 static void ted_touch(const SDL_Event *e);
 static void touch_event(const SDL_Event *e){
+    if(!g_touch) return;
+    if(e->type==SDL_FINGERDOWN) g_thide=0;      // a finger brings the pad back
     if(ted_on){ ted_touch(e); return; }
+    if(g_thide) return;
     int k=-1, fr=-1; for(int i=0;i<10;i++){ if(tfing[i].on && tfing[i].id==e->tfinger.fingerId) k=i; if(!tfing[i].on && fr<0) fr=i; }
     if(e->type==SDL_FINGERUP){ if(k>=0) tfing[k].on=0; return; }
     if(k<0){ if(fr<0) return; k=fr; tfing[k].id=e->tfinger.fingerId; tfing[k].on=1; }
@@ -507,17 +498,28 @@ static void touch_event(const SDL_Event *e){
         else if(m&1) menu_key(SDLK_RETURN,0); else if(m&((1<<1)|(1<<15))) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
     } else if(m&(1<<15)) open_menu(); }
 static void tl_outline(int x, int y, int w, int h, int t, uint32_t col){ rect_fill(x,y,w,t,col,255); rect_fill(x,y+h-t,w,t,col,255); rect_fill(x,y,t,h,col,255); rect_fill(x+w-t,y,t,h,col,255); }
-static void tl_draw(uint16_t on, int sel, int edit){        // edit: brighter (the editor shows every button even at a low opacity) and the picked one is outlined
-    TGeo g[TC_N]; tl_geo(g); int a=tl_alpha()*255/100, ap=a*12/5; if(ap>255) ap=255; if(edit&&a<90) a=90; if(ap<a) ap=a;
-    static const struct { int dx, dy, bit; const char *l; } D[4]={{0,-1,1<<6,"^"},{0,1,1<<7,"V"},{-1,0,1<<5,"<"},{1,0,1<<4,">"}};
-    int sv=gs_, m=dw_<dh_?dw_:dh_; gs_=m/150; if(gs_<2) gs_=2; if(gs_>8) gs_=8;
-    for(int i=0;i<TC_N;i++){ int cx=g[i].cx, cy=g[i].cy, r=g[i].r;
-        if(i==TC_DPAD){ for(int k=0;k<4;k++){ int x=cx+D[k].dx*r*7/20, y=cy+D[k].dy*r*7/20, h=r*3/20; rect_fill(x-h,y-h,2*h,2*h,0xFFFFFF,(on&D[k].bit)?ap:a); text_at(x-text_w(D[k].l)/2,y-5*gs_/2,D[k].l,0xFFFFFF); }
-            if(edit) tl_outline(cx-r,cy-r,2*r,2*r,1,0x8890C8); }
-        else { int p=tl_bit[i]<(1<<15) && (on&tl_bit[i]); rect_fill(cx-r,cy-r,2*r,2*r,0xFFFFFF,p?ap:a); text_at(cx-text_w(tl_lab[i])/2,cy-5*gs_/2,tl_lab[i],0xFFFFFF); }
-        if(i==sel) tl_outline(cx-r-gs_,cy-r-gs_,2*r+2*gs_,2*r+2*gs_,gs_,0xFFD23C); }
-    gs_=sv; }
-static void touch_draw(void){ if(ted_on) return; tl_draw(touch_keys(),-1,0); }
+static void tl_draw(uint32_t el, uint16_t dirs, int sel, int edit){        // edit: brighter (the editor shows every button even at a low opacity) and the picked one is outlined
+    TGeo g[TC_N]; tl_geo(g); int a=g_talpha*255/100; if(edit&&a<170) a=170; int ap=a*5/4; if(ap>255) ap=255;
+    tg_stamp++; int u=t_u();
+    // the plate under the round buttons
+    { int x0=1<<30,y0=1<<30,x1=-(1<<30),y1=-(1<<30); for(int i=1;i<TC_N;i++) if(tg_kind(i)==1 && tg_vis(i)){ int hw,hh; tg_ext(g,i,&hw,&hh); if(g[i].cx-hw<x0) x0=g[i].cx-hw; if(g[i].cy-hh<y0) y0=g[i].cy-hh; if(g[i].cx+hw>x1) x1=g[i].cx+hw; if(g[i].cy+hh>y1) y1=g[i].cy+hh; }
+        if(x1>x0){ int pad=g[TC_A].r*40/100; int vw=x1-x0+2*pad, vh=y1-y0+2*pad; vw=(vw+23)/24*24; vh=(vh+23)/24*24; int th=(int)(vh/0.776f), tw=(int)(vw+0.224f*th); tw=(tw+7)/8*8; th=(th+7)/8*8;
+            tg_blit(tg_get(TG_PLATE,0,0,tw,th,0),(x0+x1)/2,(y0+y1)/2,tw,th,a); } }
+    // the D-pad
+    { int Rv=(int)(g[TC_DPAD].r*0.92f), S=(int)(Rv*2.9f); S+=S&1; tg_blit(tg_get(TG_DPAD,0,0,S,S,0),g[TC_DPAD].cx,g[TC_DPAD].cy,S,S,a);
+        static const struct { int bit, dir; } D[4]={{1<<6,0},{1<<7,1},{1<<5,2},{1<<4,3}};
+        for(int k=0;k<4;k++) if(dirs&D[k].bit) tg_blit(tg_get(TG_ARM,D[k].dir,0,S,S,0),g[TC_DPAD].cx,g[TC_DPAD].cy,S,S,ap); }
+    // the word mark and the stripe, centred above START and MODE
+    { int hp=u*60/100; int lw=(int)(hp*3.95f); int cx=(g[TC_SEL].cx+g[TC_STA].cx)/2; int top=g[TC_SEL].cy<g[TC_STA].cy?g[TC_SEL].cy:g[TC_STA].cy; int cy=top-(int)(g[TC_STA].r*0.575f)-hp/2-u*8/100;
+        tg_blit(tg_get(TG_LOGO,0,0,lw,hp,0),cx,cy,lw,hp,a); }
+    // the pills and the round buttons
+    for(int i=1;i<TC_N;i++){ if(!tg_vis(i)) continue; int pr=(el>>i)&1; int r=g[i].r;
+        if(tg_kind(i)==1){ int S=(int)(r*2.6f+0.5f); S+=S&1; tg_blit(tg_get(TG_DISC,i,pr,S,S,0),g[i].cx,g[i].cy,S,S,pr?ap:a); }
+        else { int hp=(int)(r*1.15f+0.5f), pw=(int)(r*3.1f+0.5f), w=pw+hp, h=(int)(hp*2.1f+0.5f); w+=w&1; h+=h&1; tg_blit(tg_get(TG_PILL,i,pr,w,h,hp),g[i].cx,g[i].cy,w,h,pr?ap:a); } }
+    if(sel>=0 && sel<TC_N){ int hw,hh; tg_ext(g,sel,&hw,&hh); int t=t_u()/40; if(t<2) t=2; tl_outline(g[sel].cx-hw-t,g[sel].cy-hh-t,2*hw+2*t,2*hh+2*t,t,0xFFD23C); }
+    else if(edit){ int hw,hh; for(int i=0;i<TC_N;i++){ if(!tg_vis(i)) continue; tg_ext(g,i,&hw,&hh); tl_outline(g[i].cx-hw,g[i].cy-hh,2*hw,2*hh,1,0x8890C8); } }
+}
+static void touch_draw(void){ if(ted_on||!tg_on()) return; uint16_t d; uint32_t el=tg_state(&d); tl_draw(el,d,-1,0); }
 static void touch_release_all(void){ memset(tfing,0,sizeof tfing); }      // (patch 43) back from the background: no finger is still 'down'
 
 // ---- the layout editor: drag a button to move it, tap to pick it, then the panel changes its size; opacity is shared; landscape and portrait are separate layouts
@@ -525,15 +527,15 @@ static int ted_sel=-1, ted_drag=-1, ted_ox, ted_oy, ted_py=-1; static SDL_Finger
 enum { TA_SMALLER=1, TA_BIGGER, TA_LESS, TA_MORE, TA_RESETONE, TA_RESETALL, TA_DONE };
 typedef struct { int x, y, w, h, act; const char *t; } TedB;
 typedef struct { int x, y, w, h, gs, n; TedB b[8]; } TedP;
-static int ted_hits(const TGeo *g, int x, int y, int w, int h){ int r=g->r*13/10; return g->cx+r>x && g->cx-r<x+w && g->cy+r>y && g->cy-r<y+h; }
+static int ted_hits(const TGeo *g, int x, int y, int w, int h, int i){ if(!tg_vis(i)) return 0; int hw,hh; tg_ext(g-i,i,&hw,&hh); return g->cx+hw>x && g->cx-hw<x+w && g->cy+hh>y && g->cy-hh<y+h; }
 static void ted_panel(TedP *p, const TGeo *g){
     int m=dw_<dh_?dw_:dh_, gs=m/150, gmax=dw_/108; if(gs>gmax) gs=gmax; if(gs<2) gs=2; if(gs>8) gs=8;
     int pw=100*gs; if(pw>dw_-8*gs) pw=dw_-8*gs; int rh=12*gs, ph=6*rh+2*gs, px=(dw_-pw)/2;
     int lo=2*gs, hi=dh_-ph-2*gs; if(hi<lo) hi=lo;
     int pref = tl_o()==0 ? (dh_-ph)/2 : dh_/12; if(pref<lo) pref=lo; if(pref>hi) pref=hi;
     int best=-1; long bestc=1L<<60;
-    if(ted_py>=lo && ted_py<=hi){ long c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,ted_py,pw,ph)) c+= i==ted_sel?1000:1; if(c==0) best=ted_py; }
-    if(best<0){ for(int y=lo;y<=hi;y+=gs*2){ long c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,y,pw,ph)) c+= i==ted_sel?1000:1; c=c*100000+labs((long)y-pref); if(c<bestc){ bestc=c; best=y; } } }
+    if(ted_py>=lo && ted_py<=hi){ long c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,ted_py,pw,ph,i)) c+= i==ted_sel?1000:1; if(c==0) best=ted_py; }
+    if(best<0){ for(int y=lo;y<=hi;y+=gs*2){ long c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,y,pw,ph,i)) c+= i==ted_sel?1000:1; c=c*100000+labs((long)y-pref); if(c<bestc){ bestc=c; best=y; } } }
     if(best<0) best=pref; ted_py=best;
     p->x=px; p->y=best; p->w=pw; p->h=ph; p->gs=gs; int n=0, y0=best+gs+rh*2;
     int bw=10*gs, bx2=px+pw-2*gs-bw, bx1=px+pw-14*gs-bw;       // [ - ] value [ + ] at the right of a row
@@ -544,8 +546,8 @@ static void ted_panel(TedP *p, const TGeo *g){
     p->b[n++]=(TedB){px+2*gs,y0+rh*3+gs,pw-4*gs,rh-2*gs,TA_DONE,"DONE"}; p->n=n;
 }
 static void ted_pin(int i){ TPos *p=&g_tl[tl_o()][i]; if(p->set) return; TGeo g[TC_N]; tl_geo(g); p->x=g[i].cx*1000/dw_; p->y=g[i].cy*1000/dh_; p->set=1; if(!p->s) p->s=100; }
-static void ted_clamp(int i){ TGeo g[TC_N]; tl_geo(g); int r=g[i].r, x=g[i].cx, y=g[i].cy; TPos *p=&g_tl[tl_o()][i];
-    if(2*r<dw_){ if(x<r) x=r; if(x>dw_-r) x=dw_-r; } if(2*r<dh_){ if(y<r) y=r; if(y>dh_-r) y=dh_-r; }
+static void ted_clamp(int i){ TGeo g[TC_N]; tl_geo(g); int rx, ry, x=g[i].cx, y=g[i].cy; tg_ext(g,i,&rx,&ry); TPos *p=&g_tl[tl_o()][i];
+    if(2*rx<dw_){ if(x<rx) x=rx; if(x>dw_-rx) x=dw_-rx; } if(2*ry<dh_){ if(y<ry) y=ry; if(y>dh_-ry) y=dh_-ry; }
     p->x=x*1000/dw_; p->y=y*1000/dh_; }
 static void ted_open(void){ memset(tfing,0,sizeof tfing); ted_on=1; ted_sel=-1; ted_drag=-1; ted_py=-1; say_toast("DRAG THE BUTTONS"); }
 static void ted_close(void){ ted_on=0; ted_sel=-1; ted_drag=-1; cfg_save(); say_toast("TOUCH PAD SAVED"); }
@@ -554,27 +556,27 @@ static void ted_act(int act){
     int o=tl_o(); TPos *p = ted_sel>=0 ? &g_tl[o][ted_sel] : 0;
     switch(act){
     case TA_SMALLER: case TA_BIGGER: if(p){ ted_pin(ted_sel); int s=(p->s?p->s:100)+(act==TA_BIGGER?10:-10); p->s=s<50?50:s>200?200:s; ted_clamp(ted_sel); } break;
-    case TA_LESS: case TA_MORE: { int a=tl_alpha()+(act==TA_MORE?5:-5); g_talpha=a<5?5:a>100?100:a; } break;
+    case TA_LESS: case TA_MORE: { int a=g_talpha+(act==TA_MORE?5:-5); g_talpha=a<5?5:a>100?100:a; } break;
     case TA_RESETONE: if(p) memset(p,0,sizeof *p); break;
-    case TA_RESETALL: memset(g_tl[o],0,sizeof g_tl[o]); g_talpha=0; ted_sel=-1; break;
+    case TA_RESETALL: memset(g_tl[o],0,sizeof g_tl[o]); g_talpha=80; ted_sel=-1; break;
     case TA_DONE: ted_close(); break; }
 }
 static void ted_touch(const SDL_Event *e){
     int x=(int)(e->tfinger.x*dw_), y=(int)(e->tfinger.y*dh_), o=tl_o(); TGeo g[TC_N]; tl_geo(g);
     if(e->type==SDL_FINGERUP){ if(ted_drag>=0 && e->tfinger.fingerId==ted_fid) ted_drag=-1; return; }
-    if(e->type==SDL_FINGERMOTION){ if(ted_drag>=0 && e->tfinger.fingerId==ted_fid){ int r=g[ted_drag].r, cx=x+ted_ox, cy=y+ted_oy;
-            if(2*r<dw_){ if(cx<r) cx=r; if(cx>dw_-r) cx=dw_-r; } if(2*r<dh_){ if(cy<r) cy=r; if(cy>dh_-r) cy=dh_-r; }
+    if(e->type==SDL_FINGERMOTION){ if(ted_drag>=0 && e->tfinger.fingerId==ted_fid){ int rx, ry, cx=x+ted_ox, cy=y+ted_oy; tg_ext(g,ted_drag,&rx,&ry);
+            if(2*rx<dw_){ if(cx<rx) cx=rx; if(cx>dw_-rx) cx=dw_-rx; } if(2*ry<dh_){ if(cy<ry) cy=ry; if(cy>dh_-ry) cy=dh_-ry; }
             TPos *p=&g_tl[o][ted_drag]; p->set=1; p->x=cx*1000/dw_; p->y=cy*1000/dh_; if(!p->s) p->s=100; } return; }
     if(e->type!=SDL_FINGERDOWN || ted_drag>=0) return;
     TedP pn; ted_panel(&pn,g);
     if(x>=pn.x && x<pn.x+pn.w && y>=pn.y && y<pn.y+pn.h){ for(int i=0;i<pn.n;i++){ TedB *b=&pn.b[i]; if(x>=b->x && x<b->x+b->w && y>=b->y && y<b->y+b->h){ ted_act(b->act); break; } } return; }
-    int hit=-1; for(int i=TC_N-1;i>=1 && hit<0;i--){ long ex=x-g[i].cx, ey=y-g[i].cy, r=g[i].r*13/10; if(ex*ex+ey*ey<r*r) hit=i; }
+    int hit=tg_pick(g,x,y);
     if(hit<0){ long ex=x-g[0].cx, ey=y-g[0].cy; if(ex*ex+ey*ey<(long)g[0].r*g[0].r) hit=0; }
     if(hit>=0){ ted_sel=hit; ted_drag=hit; ted_fid=e->tfinger.fingerId; ted_ox=g[hit].cx-x; ted_oy=g[hit].cy-y; ted_pin(hit); }
 }
 static void ted_draw(void){
     TGeo g[TC_N]; tl_geo(g); TedP pn; ted_panel(&pn,g); int gs=pn.gs, saved=gs_;
-    rect_fill(0,0,dw_,dh_,0x000000,120); tl_draw(0,ted_sel,1);
+    rect_fill(0,0,dw_,dh_,0x000000,120); tl_draw(0,0,ted_sel,1);
     gs_=gs; rect_fill(pn.x,pn.y,pn.w,pn.h,0x0B1030,242); rect_fill(pn.x,pn.y,pn.w,gs,0xFFD23C,255); rect_fill(pn.x,pn.y+pn.h-gs,pn.w,gs,0xFFD23C,255);
     int rh=12*gs, y=pn.y+gs; char b[48]; int land=tl_o()==0;
     text_at(pn.x+2*gs,y+rh/2-3*gs,land?"TOUCH PAD: LANDSCAPE":"TOUCH PAD: PORTRAIT",0xFFD23C); y+=rh;
@@ -582,15 +584,10 @@ static void ted_draw(void){
     snprintf(b,sizeof b,"SIZE: %s",ted_sel>=0?tl_nm[ted_sel]:"NONE"); text_at(pn.x+2*gs,y+rh/2-3*gs,b,ted_sel>=0?0xFFFFFF:0x8890C8);
     int ssz=ted_sel>=0?(g_tl[tl_o()][ted_sel].s?g_tl[tl_o()][ted_sel].s:100):0;
     if(ted_sel>=0){ snprintf(b,sizeof b,"%d%%",ssz); text_at(pn.b[0].x+pn.b[0].w+(pn.b[1].x-pn.b[0].x-pn.b[0].w-text_w(b))/2,y+rh/2-3*gs,b,0xFFFFFF); } y+=rh;
-    text_at(pn.x+2*gs,y+rh/2-3*gs,"OPACITY",0xFFFFFF); snprintf(b,sizeof b,"%d%%",tl_alpha()); text_at(pn.b[2].x+pn.b[2].w+(pn.b[3].x-pn.b[2].x-pn.b[2].w-text_w(b))/2,y+rh/2-3*gs,b,0xFFFFFF);
+    text_at(pn.x+2*gs,y+rh/2-3*gs,"OPACITY",0xFFFFFF); snprintf(b,sizeof b,"%d%%",g_talpha); text_at(pn.b[2].x+pn.b[2].w+(pn.b[3].x-pn.b[2].x-pn.b[2].w-text_w(b))/2,y+rh/2-3*gs,b,0xFFFFFF);
     for(int i=0;i<pn.n;i++){ TedB *t=&pn.b[i]; int dis=(ted_sel<0 && (t->act==TA_SMALLER||t->act==TA_BIGGER||t->act==TA_RESETONE));
         rect_fill(t->x,t->y,t->w,t->h,dis?0x252C50:(t->act==TA_DONE?0x2E8B3A:0x2A3A9A),255); text_at(t->x+(t->w-text_w(t->t))/2,t->y+(t->h-6*gs)/2,t->t,dis?0x6E78A8:0xFFFFFF); }
     gs_=saved; }
-#else
-static uint16_t touch_keys(void){ return 0; }
-static void touch_draw(void){}
-static void touch_release_all(void){}
-#endif
 static uint16_t read_keys(void){
     uint16_t down=0; const Uint8 *ks=SDL_GetKeyboardState(NULL);
     for(int b=0;b<NB;b++){ for(int sl=0;sl<2;sl++){ int c=C.kb[b][sl]; if(c&&c<512&&(ks[c]||kst[c])) down|=1<<b; else if(c>=512&&ks[c]) down|=1<<b; } }
@@ -651,7 +648,7 @@ static void pump_events(void){
                 if(e.type==SDL_MOUSEMOTION){ if(hit>=0) menu_sel=hit; }
                 else if(e.type==SDL_MOUSEBUTTONDOWN){
                     if(e.button.button==SDL_BUTTON_RIGHT) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
-                    else if(e.button.button==SDL_BUTTON_LEFT){ if(menu_page==P_ABOUT||menu_page==P_HELP) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
+                    else if(e.button.button==SDL_BUTTON_LEFT){ if(menu_page==P_ABOUT||menu_page==P_HELP||menu_page==P_TLEGEND) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
                         else if(hit>=0){ menu_sel=hit; Item it[24]; int n; menu_build(it,&n); Item *q=&it[hit];
                             if(q->kind==0) menu_key(SDLK_RETURN,0); else if(ex < m_x0+m_pw/2 + (q->kind==2?0:m_pw/4)) menu_key(SDLK_LEFT,0); else menu_key(SDLK_RIGHT,0); } } }
                 break; }
@@ -660,18 +657,19 @@ static void pump_events(void){
             int mx=(ex-dst.x)*240/(dst.w?dst.w:1), my=(ey-dst.y)*160/(dst.h?dst.h:1); if(mx<0||my<0||mx>=240||my>=160){ pc_mouse_x=-1; pc_mouse_y=-1; } else { pc_mouse_x=mx; pc_mouse_y=my; }
             if(e.type!=SDL_MOUSEMOTION){ int bit = e.button.button==SDL_BUTTON_LEFT ? 1 : e.button.button==SDL_BUTTON_RIGHT ? 2 : 0; if(e.type==SDL_MOUSEBUTTONDOWN) pc_mouse_b|=bit; else pc_mouse_b&=~bit; } break; }
         case SDL_MOUSEWHEEL: if(menu_open){ if(e.wheel.y>0) menu_key(SDLK_UP,0); else if(e.wheel.y<0) menu_key(SDLK_DOWN,0); } else pc_mouse_wheel += e.wheel.y; break;
-#ifdef PC_ANDROID
         case SDL_FINGERDOWN: case SDL_FINGERMOTION: case SDL_FINGERUP: touch_event(&e); break;
-#endif
+        case SDL_RENDER_DEVICE_RESET: case SDL_RENDER_TARGETS_RESET: tg_flush(); break;      // the graphics were lost (Android): the pad's textures are drawn again
         case SDL_CONTROLLERDEVICEADDED: pad_open(); break;
         case SDL_CONTROLLERDEVICEREMOVED: if(pad && e.cdevice.which==SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad))){ SDL_GameControllerClose(pad); pad=0; say_toast("GAMEPAD REMOVED"); pad_open(); } break;
         case SDL_CONTROLLERBUTTONDOWN:
+            if(g_touch==1) g_thide=1;      // a gamepad button: the on-screen pad goes away until the next touch
             if(menu_open) menu_pad(e.cbutton.button);
             else if(e.cbutton.button==SDL_CONTROLLER_BUTTON_GUIDE) open_menu();
             else if((e.cbutton.button==SDL_CONTROLLER_BUTTON_START && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_BACK)) || (e.cbutton.button==SDL_CONTROLLER_BUTTON_BACK && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_START))) open_menu();
             break;
         case SDL_KEYUP: if(e.key.keysym.scancode<512) kst[e.key.keysym.scancode]=0; break;
         case SDL_KEYDOWN:
+            if(g_touch==1 && e.key.keysym.sym!=SDLK_AC_BACK && e.key.keysym.sym!=SDLK_MENU && !menu_open) g_thide=1;      // a real keyboard: the on-screen pad goes away until the next touch
             if(e.key.keysym.scancode<512) kst[e.key.keysym.scancode]=1;
             if(e.key.repeat && !menu_open) break;
             if(e.key.keysym.sym==SDLK_F11 || (e.key.keysym.sym==SDLK_RETURN && (e.key.keysym.mod&KMOD_ALT))){ toggle_fullscreen(); break; }
@@ -851,6 +849,9 @@ int plat_paths(int argc, char **argv){            // finds the folders; call bef
     return 0;
 }
 int plat_open(int argc, char **argv){
+#ifdef PC_ANDROID
+    g_touch=1;
+#endif
     cfg_defaults(); { FILE *tf=fopen(g_cfgpath,"r"); if(tf) fclose(tf); else g_first_run=1; } cfg_load();
     int force_fs=-1; const char *drv=NULL;
     for(int i=1;i<argc;i++){
@@ -863,6 +864,8 @@ int plat_open(int argc, char **argv){
         else if(!strcmp(argv[i],"--stop-after")&&i+1<argc) g_stop_after=atol(argv[++i]);
         else if(!strcmp(argv[i],"--wav")&&i+1<argc){ g_wav_path=argv[++i]; }
         else if(!strcmp(argv[i],"--fast")) g_fast=1;
+        else if(!strcmp(argv[i],"--touch")) g_touch=2;      // preview the on-screen touch pad in the PC window (it stays up, whatever keys are pressed)
+        else if(!strcmp(argv[i],"--touch-6")&&i+1<argc) g_t6=atoi(argv[++i])?1:0;
     }
     if(force_fs>=0) C.fullscreen=force_fs;
     if(C.win_w<240) C.win_w=960; if(C.win_h<160) C.win_h=640;
@@ -889,7 +892,8 @@ int plat_open(int argc, char **argv){
     make_icon(); font_init();
     SDL_ShowCursor(C.fullscreen?SDL_DISABLE:SDL_ENABLE);
     pad_open();
-    t_freq=SDL_GetPerformanceFrequency(); fps_t0=SDL_GetPerformanceCounter(); g_due=(double)fps_t0;
+    if(g_touch==1 && pad) g_thide=1;      // a gamepad is plugged in: no on-screen pad until a finger touches the screen
+    { const char *td=getenv("BUGSTAR_TOUCHDEMO"); if(td&&*td&&g_touch){ int n=0; float x,y; int c; while(n<10 && sscanf(td,"%f,%f%n",&x,&y,&c)==2){ tfing[n].id=100+n; tfing[n].on=1; tfing[n].x=x/1000.f; tfing[n].y=y/1000.f; n++; td+=c; if(*td==';') td++; else break; } } }      // test hook: fingers held down at x,y (in 1/1000 of the window), "x,y;x,y"=SDL_GetPerformanceFrequency(); fps_t0=SDL_GetPerformanceCounter(); g_due=(double)fps_t0;
 #ifdef _WIN32
     g_slack_ms=2.0;
 #else
