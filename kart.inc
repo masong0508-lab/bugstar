@@ -5,7 +5,7 @@
 // trials, with items. Build your own track on any planet by dropping gates as you drive: up to 50 of them are kept on the
 // cartridge (shared by the three slots) and you can fly back to race them again. The kart garage (kart2.inc) dresses your kart.
 #ifdef TEST_KAUDIT
-EW u32 klogb[64]; EW u32 klogn; EW u32 klogp[1600]; EW u8 klogk[1200];
+EW u32 klogb[64]; EW u32 klogi[16]; EW u32 klogn; EW u32 klogp[1600]; EW u8 klogk[1200];
 #endif
 #define KG_MAX 24                                  // gates on a track
 #define KP_MAX 600                                 // points on a track's path (about one per half cell)
@@ -387,11 +387,17 @@ static void kspin(int r, const char *why){
     if(k->spin) return;
     if(k->shield){ k->shield=0; if(r==0) show_msg("YOUR BUBBLE POPPED!"); if(r==0 || kpnear(k->x,k->y)) sfx(2); return; }
     if(r!=0 && kpnear(k->x,k->y)) sfx(1);                                                  // (a rival gets hit nearby: you hear it)
+#ifdef TEST_KAUDIT
+    klogi[9+(r==0)]++;
+#endif
     k->spin=48; if(r==0){ show_msg(why); sfx(4); kboost_t=0; kdrift=0; kcharge=0; if(kstar) kstar = kstar>3 ? kstar-3 : 0; } }   // (hit: you drop some star bits)
 static int kahead(int r){                                          // the racer just ahead of r (or -1)
     int want=rc[r].place-1; if(want<1) return -1; for(int i=0;i<nrc;i++) if(rc[i].place==want) return i; return -1; }
 static void kuse_item(int r){
     Racer *k=&rc[r]; int it=k->item; if(!it) return;
+#ifdef TEST_KAUDIT
+    klogi[it]++; if(r==0) klogi[11]++;
+#endif
     switch(it){
         case KI_PEPPER: case KI_PEPPER3: k->boost=50; if(r==0){ kboost_t=50; sfx(10); } if(it==KI_PEPPER3 && k->item_n>1){ k->item_n--; return; } break;
         case KI_SHELL: for(int s=0;s<3;s++) if(!ksh[s].life){ int t=kahead(r); int p=kgrab(O_KSHELL,k->x,k->y); if(p<0) break;
@@ -407,6 +413,10 @@ static void kitems_tick(int n){
     for(int b=0;b<15;b++){ if(kbox_po[b]==255) continue; PObj *o=&po[kbox_po[b]];
         if(kbox_t[b]){ if(kbox_t[b]>n) kbox_t[b]-=n; else { kbox_t[b]=0; o->alive=1; } continue; }
         for(int r=0;r<nrc;r++){ s32 dx=wrapd(rc[r].x-o->x), dy=wrapd(rc[r].y-o->y); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<0xE000){ o->alive=0; kbox_t[b] = k_items==2 ? 80 : 200;
+#ifdef TEST_KAUDIT
+            klogi[12+(r==0)]++;
+#endif
+
             if(!rc[r].item && !rc[r].fin){ int it=kitem_roll(rc[r].place); if(kl.part[KP_TOP]==11 && r==0 && it<=KI_SLIME && rndi(3)==0) it=KI_PEPPER3;   // the cherry is lucky
                 rc[r].item=(u8)it; rc[r].item_n = it==KI_PEPPER3 ? 3 : 1; rc[r].ai_t=(u8)(30+rndi(120)); if(r==0){ kroul=40; sfx(7); } }
             break; } } }
@@ -675,6 +685,15 @@ static void kgantry_draw(volatile u16 *pg, int cy0, int cy1){            // the 
 #define KBTH 110
 static int kunder(s32 x, s32 y, int pi){                                  // under a flyover's deck (so out of sight from the high camera)?
     for(int b=0;b<nkb;b++){ if(pi>=kbs[b] && pi<=kbe[b]) return 0; int pc=kbs[b]+KBR_S; int dx=wrapd(x-kp_cx(pc))>>15, dy=wrapd(y-kp_cy(pc))>>15; if(dx*dx+dy*dy<=64) return 1; } return 0; }
+#ifdef TEST_KLOG
+#define KTD u32 ktm=0;
+#define KTM(x) ktm=TMR()
+#define KTE(i) { extern u32 klog[]; klog[i]+=TMR()-ktm; }
+#else
+#define KTD
+#define KTM(x)
+#define KTE(i)
+#endif
 #define KBN 12                                                          // the deck is drawn in 12 pieces, a cell and a half each
 static void kbridge_draw_(volatile u16 *pg, int cy0, int cy1){           // the flyovers: a deck on its ramps, over the road it crosses
 #if defined(TEST_FPS) || defined(TEST_KLOG)
@@ -709,19 +728,23 @@ static void kbridge_draw_(volatile u16 *pg, int cy0, int cy1){           // the 
         u8 ord[KBN]; int n=0; for(int i=0;i<KBN;i++) if(ok[i] && ok[i+1]) ord[n++]=(u8)i;
         for(int a=1;a<n;a++){ u8 t=ord[a]; int c=a; s32 zt=zz[t]+zz[t+1]; while(c>0 && zz[ord[c-1]]+zz[ord[c-1]+1]<zt){ ord[c]=ord[c-1]; c--; } ord[c]=t; }
         if(!sh_rt_ok) sh_rt_init();
-        for(int k=0;k<n;k++){ int i=ord[k], i2=i+1; int qx[4]={tx[i][0],tx[i][1],tx[i2][1],tx[i2][0]}, qy[4]={ty[i][0],ty[i][1],ty[i2][1],ty[i2][0]};
+        for(int k=0;k<n;k++){ KTD int i=ord[k], i2=i+1; int qx[4]={tx[i][0],tx[i][1],tx[i2][1],tx[i2][0]}, qy[4]={ty[i][0],ty[i][1],ty[i2][1],ty[i2][0]};
             s32 cr=(s32)(qx[1]-qx[0])*(qy[3]-qy[0])-(s32)(qy[1]-qy[0])*(qx[3]-qx[0]); int top=cr<0;
             int wd0=qx[1]-qx[0]; if(wd0<0) wd0=-wd0;
             if(wd0>=26 || !top){ for(int e=0;e<2;e++){ int wx[4]={tx[i][e],tx[i2][e],tx[i2][e],tx[i][e]}, wy[4]={ty[i][e],ty[i2][e],by[i2][e],by[i][e]};      // the sides (far away they are a pixel high: left out)
                     s32 ce=(s32)(wx[1]-wx[0])*(wy[3]-wy[0])-(s32)(wy[1]-wy[0])*(wx[3]-wx[0]); if((ce<0)==(e==0) && ce!=0) continue;   // (only the side that faces you: the other is hidden)
-                    polyfill(pg,wx,wy,4,(i&1)?C_DGREY:C_GREY,0,cy0,240,cy1); } }
+                    KTM(0); polyfill(pg,wx,wy,4,(i&1)?C_DGREY:C_GREY,0,cy0,240,cy1); KTE(40); } }
             if(!top){ int ux[4]={tx[i][0],tx[i][1],tx[i2][1],tx[i2][0]}, uy[4]={by[i][0],by[i][1],by[i2][1],by[i2][0]}; polyfill(pg,ux,uy,4,C_DGREY,0,cy0,240,cy1); continue; }     // seen from below: the underside
-            polyfill(pg,qx,qy,4,(i&1)?KRC_A:KRC_B,0,cy0,240,cy1);                                                     // the road...
+            KTM(0); polyfill(pg,qx,qy,4,(i&1)?KRC_A:KRC_B,0,cy0,240,cy1); KTE(41);                                                     // the road...
             if(wd0<26) continue;                                                                                     // (far away: just the road)
-            { int kc=(i&1)?KRC_KR:KRC_KW; linep(pg,qx[0]+1,qy[0],qx[3]+1,qy[3],kc,0,cy0,240,cy1); linep(pg,qx[1]-1,qy[1],qx[2]-1,qy[2],kc,0,cy0,240,cy1); }   // ...a kerb down each side...
-            if(!(i&1)) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); }   // ...and a dash down the middle
+            KTM(0); { int kc=(i&1)?KRC_KR:KRC_KW; linep(pg,qx[0]+1,qy[0],qx[3]+1,qy[3],kc,0,cy0,240,cy1); linep(pg,qx[1]-1,qy[1],qx[2]-1,qy[2],kc,0,cy0,240,cy1); }   // ...a kerb down each side...
+            if(!(i&1)) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); KTE(42); }   // ...and a dash down the middle
 #if defined(TEST_FPS) || defined(TEST_KLOG)
-        { u32 d3=TMR(); kt_v[3]=d1-d0; kt_d[2]=d3-d1; kt_d[3]=n; }
+        { u32 d3=TMR(); kt_v[3]=d1-d0; kt_d[2]=d3-d1; kt_d[3]=n;
+#ifdef TEST_KLOG
+  { extern u32 klog[]; klog[30]+=d1-d0; klog[31]+=d3-d1; }
+#endif
+        }
 #endif
     } }
 static void kbridge_draw(volatile u16 *pg, int cy0, int cy1){ kproj_prep(); kbridge_draw_(pg,cy0,cy1); kpc_on=0; }
