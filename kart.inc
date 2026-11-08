@@ -4,6 +4,9 @@
 // slugs, locals, this world's creatures, trees, rocks, your evil twin...) in four classes, in single races, cups and time
 // trials, with items. Build your own track on any planet by dropping gates as you drive: up to 50 of them are kept on the
 // cartridge (shared by the three slots) and you can fly back to race them again. The kart garage (kart2.inc) dresses your kart.
+#ifdef TEST_KAUDIT
+EW u32 klogb[64]; EW u32 klogn; EW u32 klogp[1600]; EW u8 klogk[1200];
+#endif
 #define KG_MAX 24                                  // gates on a track
 #define KP_MAX 600                                 // points on a track's path (about one per half cell)
 #define KMM_N 300                                  // minimap points (every other path point)
@@ -218,6 +221,7 @@ static s16 klp[NKL]; static int nkl=0;             // the loop-de-loops: where e
 static int kloop_j=0, kloop_t=0, kloop_dir=0, kloop_sd=1, kloop_ph=0, kloop_prev=-1, kdraft=0, kstuck=0, kdrift_t=0, kstar=0, kroul=0; static s32 kla=0, kloop_v=0, kloop_da=0;   // your ride round one (see below)
 static int k_stunts=0;                             // Kart World's STUNTS option: 0 as the track comes, 1 lots, 2 none
 EW static u8 kpf[KP_MAX];                          // what each point of the path is
+
 #define KPF_TAKEN 32                               // (a star bit here has been picked up this lap)
 #define KPF_BRIDGE 16                              // a flyover: this stretch of road is lifted over the road it crosses
 #define NKB 6
@@ -853,22 +857,27 @@ static void kai(int r, int n){
     if(k->fin) vtop=vtop*7/10;
     if(k->cloud){ vtop=vtop*3/4; k->cloud = k->cloud>n ? k->cloud-n : 0; }
     if(k->boost){ vtop=vtop*155/100; k->boost = k->boost>n ? k->boost-n : 0; }
-    int la=5+(int)(k->v>>11), tp=kwp(k->pi+la), dir=kp_dir(tp), nd=(dir+256)&1023;
+    int la=5+(int)(k->v>>11);
+    int tp=kwp(k->pi+la), dir=kp_dir(tp), nd=(dir+256)&1023;
     int bd=((kp_dir(kwp(k->pi+la+10))-dir+512)&1023)-512, ins = bd>40 ? 1 : bd<-40 ? -1 : 0; s32 ln=k->lane; if(ins) ln = ins*(5<<14) + ln/3;   // the inside of the next bend
     s32 tx=kp_cx(tp)+((sinx(nd>>2)*(ln>>8))>>6), ty=kp_cy(tp)+((cosx(nd>>2)*(ln>>8))>>6);
     s32 dx=wrapd(tx-k->x), dy=wrapd(ty-k->y); int want=iatan2(dx>>4,dy>>4), err=((want-k->hd+512)&1023)-512, trm=14*n;
     if(k->spin){ k->spin = k->spin>n ? k->spin-n : 0; k->v -= (k->v/8)*n/2; }
-    else { if(err>trm) err=trm; if(err<-trm) err=-trm; k->hd=(s16)((k->hd+err)&1023);
+    else { int err0=err; if(err>trm) err=trm; if(err<-trm) err=-trm; k->hd=(s16)((k->hd+err)&1023);
         int d0=kp_dir(k->pi), d1=kp_dir(kwp(k->pi+12)), cv=((d1-d0+512)&1023)-512; if(cv<0) cv=-cv;
         { int d2=kp_dir(kwp(k->pi+26)), cv2=((d2-d0+512)&1023)-512; if(cv2<0) cv2=-cv2; cv2=cv2*3/4; if(cv2>cv) cv=cv2; }          // a bend further on counts too: brake early
         if(cv>110){ if(k->pad2<200) k->pad2++; } else if(cv<40){ if(k->pad2>45 && !k->boost) k->boost=26+(k->skill>100?10:0); k->pad2=0; }   // came out of a sharp bend: a mini-turbo
         if(cv>170) cv=170;
-        s32 vt=vtop*(256-cv/2)/256; { int ae=err<0?-err:err; if(ae>90) vt=vt*(ae>260?35:ae>160?55:80)/100; }  /* a wide miss: slow down to come round (flat out it would circle the target for ever) */ if(k->v<vt){ k->v+=vt/40*n; if(k->v>vt) k->v=vt; } else k->v-=(k->v-vt)/8; }
+        s32 vt=vtop*(256-cv/2)/256; { int ae=err0<0?-err0:err0; if(ae>90) vt=vt*(ae>260?35:ae>160?55:80)/100; }  /* a wide miss: slow down to come round (flat out it would circle the target for ever) */ if(k->v<vt){ k->v+=vt/40*n; if(k->v>vt) k->v=vt; } else k->v-=(k->v-vt)/8; }
     s32 st=k->v*n; k->x=(k->x+((sinx(k->hd>>2)*st)>>14))&((TW<<16)-1); k->y=(k->y+((cosx(k->hd>>2)*st)>>14))&((TW<<16)-1);
     int tx2=(k->x>>15)&255, ty2=(k->y>>15)&255;
     for(int g=0;g<24;g++){ int a=k->pi, b=kwp(a+1); int da=kwrap8(kpx[a]-tx2)*kwrap8(kpx[a]-tx2)+kwrap8(kpy[a]-ty2)*kwrap8(kpy[a]-ty2), db=kwrap8(kpx[b]-tx2)*kwrap8(kpx[b]-tx2)+kwrap8(kpy[b]-ty2)*kwrap8(kpy[b]-ty2);
         if(db>da) break; k->pi=(s16)b; if(b==0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }          // (a rival who has finished keeps driving, but no longer counts laps)
-    if(k->pi!=pi0 || k->spin) k->stk=0; else if((k->stk+=(u8)n)>=120){ int q=(k->pi+4)%knp; k->stk=0; k->x=kp_cx(q); k->y=kp_cy(q); k->hd=(s16)kp_dir(q); k->v/=2; k->pi=(s16)q; if(q<pi0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }   // circling a spot it cannot get to (a tight turn round its target) or wedged: put it back on the road a little further on
+    if(k->pi!=pi0 || k->spin) k->stk=0; else if((k->stk+=(u8)n)>=120){ int q=(k->pi+4)%knp; k->stk=0;
+#ifdef TEST_KAUDIT
+    klog[39]++; klogb[k->pi*16/knp]++;
+#endif
+    k->x=kp_cx(q); k->y=kp_cy(q); k->hd=(s16)kp_dir(q); k->v/=2; k->pi=(s16)q; if(q<pi0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }   // circling a spot it cannot get to (a tight turn round its target) or wedged: put it back on the road a little further on
     for(int j=0;j<nkl;j++){ int d0=kwp(klp[j]-pi0+knp), d1=kwp(klp[j]-k->pi+knp); if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ k->la=1; k->pi=klp[j]; k->x=kp_cx(klp[j]); k->y=kp_cy(klp[j]); k->hd=(s16)kp_dir(klp[j]); return; } }
     if(cmap[ty2*HW+tx2]==KRC_PAD && !k->boost) k->boost=40;
     if(k->item && !k->fin){ if(k->ai_t>n) k->ai_t-=n; else { int t=kahead(r);
@@ -912,6 +921,13 @@ static void kart_tick(int n){
         if(kfar>130){ kfar=0; kart_splash(); show_msg("OFF THE TRACK! BACK YOU GO"); } }   // far from the road for a couple of seconds (a long way round the land): put back on it
     if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)]; if(kv<K_VBASE/12 && !kroad(c) && !kstall) kstuck+=n; else kstuck=0; if(kstuck>150){ kstuck=0; kart_splash(); show_msg("STUCK? BACK ON THE ROAD!"); } }   // wedged off the road: a kind fish helps
     for(int r=1;r<nrc;r++) kai(r,n);
+#ifdef TEST_KAUDIT
+    if(ks_state==KS_RACE){ int fin=0, sl=0, mn=999, mx=0; if(k_clock<12) for(int i=0;i<knp;i++) klogb[48+i*16/knp]|=kpf[i]; if(k_clock<12) for(int i=0;i<knp;i++) klogk[i*2]=kpx[i], klogk[i*2+1]=kpy[i];                                  // (test: how the rivals drive: where they are, how many stray, how many finish)
+        for(int r=1;r<nrc;r++){ Racer *k=&rc[r]; if(k->fin) fin++; if(k->lap<mn) mn=k->lap; if(k->lap>mx) mx=k->lap; sl+=k->lap; if(k->fin||k->la||k->out) continue;
+            klog[36]++; int c=cmap[((k->y>>15)&HMASK)*HW+((k->x>>15)&HMASK)]; if(!kroad(c) && !(nkb && kbr_h(k->pi)>0) && !kgap_at(k->pi)){ klog[37]++; klogb[16+k->pi*16/knp]++; if(hm_at(k->x,k->y)<water_lv) klog[38]++; }
+            int d=kp_dir(k->pi), off=((k->hd-d+512)&1023)-512; if(off<0) off=-off; if(off>300 && k->v>K_VBASE/4) { klog[40]++; klogb[32+k->pi*16/knp]++; if(klogn<1500 && (frames&7)==0) klogp[klogn++]=((k->x>>15)&255)|(((k->y>>15)&255)<<8)|((u32)r<<16)|((u32)(k->v>>8)<<20); } if(k->v<K_VBASE/10) klog[44]++; }
+        klog[41]=fin; klog[42]=sl; klog[43]=k_clock; klog[45]=mn; klog[46]=mx; klog[47]=nrc; }
+#endif
     kitems_tick(n); kbump(); kplaces(); kw_elim_tick(n);
     for(int r=1;r<nrc;r++) if(rc[r].po!=255){ po[rc[r].po].x=rc[r].x; po[rc[r].po].y=rc[r].y; }
     if(HIT(K_L)){ khorn(kl.part[KP_HORN]); for(int r=1;r<nrc;r++){ s32 dx=wrapd(rc[r].x-ppx), dy=wrapd(rc[r].y-ppy); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<(4<<16)) rc[r].lane=-rc[r].lane; } }
