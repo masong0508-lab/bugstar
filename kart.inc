@@ -93,12 +93,14 @@ static const char *const kadj[32]={"SOGGY","ROWDY","GRANNY'S","BUMPY","SPICY","H
 static const char *const knoun[16][2]={{"OVAL","EGG"},{"RING","DONUT"},{"EIGHT","KNOT"},{"STAR","SPARKLE"},{"CLOVER","PETALS"},{"BLOCK","BOX"},{"SNAKE","WIGGLE"},{"WEDGE","PIZZA"},
     {"HAIRPIN","PAPERCLIP"},{"BEAN","PEANUT"},{"HEART","VALENTINE"},{"WORLD TOUR","EQUATOR"},{"ZIGZAG","LIGHTNING"},{"PRETZEL","NOODLE"},{"SQUIGGLE","SPAGHETTI"},{"LOOPY LOOP","CURL"}};
 static const char *const kpsize_name[6]={"TINY","SMALL","MEDIUM","LARGE","HUGE","GIANT"};
+static inline int kwp(int i){ if(knp<=0) return 0; while(i>=knp) i-=knp; while(i<0) i+=knp; return i; }   // i modulo the path length (no division: i is never far off)
 static int kwrap8(int d){ return ((d+128)&255)-128; }
 static const u8 katan[65]={0,3,5,8,10,13,15,18,20,23,25,28,30,33,35,38,40,42,45,47,49,52,54,56,59,61,63,65,67,70,72,74,76,78,80,82,84,86,88,90,92,94,96,97,99,101,103,105,106,108,110,111,113,115,116,118,119,121,122,124,125,127,128,128,128};
 static void katan_init(void){}
+static const u16 katan_s[13][13]={{0,256,256,256,256,256,256,256,256,256,256,256,256},{0,128,180,204,216,226,231,233,236,238,241,243,243},{0,76,128,160,180,195,204,211,216,221,226,228,231},{0,52,96,128,150,168,180,191,197,204,209,214,216},{0,40,76,106,128,145,160,172,180,189,195,200,204},{0,30,61,88,111,128,141,155,164,174,180,186,193},{0,25,52,76,96,115,128,140,150,160,168,176,180},{0,23,45,65,84,101,116,128,137,148,157,164,170},{0,20,40,59,76,92,106,119,128,137,145,153,160},{0,18,35,52,67,82,96,108,119,128,135,143,150},{0,15,30,47,61,76,88,99,111,121,128,134,141},{0,13,28,42,56,70,80,92,103,113,122,128,134},{0,13,25,40,52,63,76,86,96,106,115,122,128}};   // iatan2 for small steps (the path's neighbours): no division
 static int iatan2(s32 x, s32 y){                                 // the heading (0..1023, 0 = +y, 256 = +x) that points along (x, y)
     if(!x && !y) return 0; s32 ax=x<0?-x:x, ay=y<0?-y:y; while(ax>0x7FFF || ay>0x7FFF){ ax>>=1; ay>>=1; }
-    int a = ax<=ay ? katan[(ax<<6)/(ay?ay:1)] : 256-katan[(ay<<6)/(ax?ax:1)];
+    int a = (ax<=12 && ay<=12) ? katan_s[ay][ax] : ax<=ay ? katan[(ax<<6)/(ay?ay:1)] : 256-katan[(ay<<6)/(ax?ax:1)];
     if(y<0) a=512-a; if(x<0) a=1024-a; return a&1023; }
 static void kt_pt(int sh, int k, int n, u32 h, s32 *ox, s32 *oy){   // gate k of n on a shape, in 1/256ths of its size
     int t=(k*256)/n; s32 c=cosx(t), s=sinx(t), x=0, y=0, r;
@@ -194,7 +196,7 @@ static void kt_build(void){
 }
 static s32 kp_cx(int i){ return ((s32)kpx[i]<<15)+(1<<14); }       // a path point, in 16.16 cells
 static s32 kp_cy(int i){ return ((s32)kpy[i]<<15)+(1<<14); }
-static int kp_dir(int i){ int a=(i+knp-2)%knp, b=(i+2)%knp; return iatan2(kwrap8(kpx[b]-kpx[a]),kwrap8(kpy[b]-kpy[a])); }   // which way the road runs at point i
+static int kp_dir(int i){ int a=kwp(i+knp-2), b=kwp(i+2); return iatan2(kwrap8(kpx[b]-kpx[a]),kwrap8(kpy[b]-kpy[a])); }   // which way the road runs at point i
 
 // ---------------------------------------------------------------- painting the road into the land (and taking it away again)
 static void kart_palette(void){
@@ -483,7 +485,7 @@ static void kplaces(void){
     for(int i=0;i<nrc;i++){ int p=1, si=kscore(i); for(int j=0;j<nrc;j++) if(j!=i){ int sj=kscore(j); if(sj>si || (sj==si && j<i)) p++; } if(!rc[i].fin && !rc[i].out) rc[i].place=(u8)p; } }
 static void kpath_track(int r){                                    // the path point nearest a racer, searched near the last one
     Racer *k=&rc[r]; int tx=(k->x>>15)&255, ty=(k->y>>15)&255, best=k->pi, bd=1<<30;
-    for(int d=-6;d<=22;d++){ int i=(k->pi+d+knp)%knp; int dx=kwrap8(kpx[i]-tx), dy=kwrap8(kpy[i]-ty), dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } }
+    for(int d=-6;d<=22;d++){ int i=kwp(k->pi+d+knp); int dx=kwrap8(kpx[i]-tx), dy=kwrap8(kpy[i]-ty), dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } }
     if(bd>144) for(int i=0;i<knp;i++){ int dx=kwrap8(kpx[i]-tx), dy=kwrap8(kpy[i]-ty), dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } }   // lost? look everywhere
     if(r && best<k->pi-knp/2) k->lap++;                                                       // a rival came round past the line
     k->pi=(s16)best; }
@@ -620,7 +622,7 @@ static void ksign_draw(volatile u16 *pg, int cy0, int cy1){              // trac
     if(kr_mode!=1 || knp<30 || cy0>=cy1 || kloop_on) return;
     int p0=rc[0].pi;
     int nsg=0; for(int dd=2; dd<=30 && nsg<2; dd++){ int i=p0+dd; if(i>=knp) i-=knp; int s6=(i%6)==0, s10=(i%10)==4; if(!s6 && !s10) continue; int f=kpf[i]; if(i<6 || i>knp-6 || (f&(KPF_GAP|KPF_RAMP|KPF_LOOP|KPF_BRIDGE))) continue;
-        int d=kp_dir(i), bend=((kp_dir((i+7)%knp)-kp_dir((i+knp-3)%knp)+512)&1023)-512; s32 rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6), cx=kp_cx(i), cy=kp_cy(i), zz, fo; int sx,ya,yb;
+        int d=kp_dir(i), bend=((kp_dir(kwp(i+7))-kp_dir(kwp(i+knp-3))+512)&1023)-512; s32 rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6), cx=kp_cx(i), cy=kp_cy(i), zz, fo; int sx,ya,yb;
         if(s6 && (bend>60 || bend<-60)){ int sg = bend>0 ? 1 : -1; s32 wl=-sg*1080, x=cx+rx*wl, y=cy+ry*wl, g=ground_h(x,y);
             if(!kproj2(x,y,g,g+630,&sx,&ya,&yb,&zz,&fo) || zz>(15<<8)) continue; nsg++;
             int hh=ya-yb, ym=ya-hh*290/630, bw=klat(210,fo), pw=klat(15,fo); if(bw<2) bw=2; if(pw<1) pw=1;
@@ -644,7 +646,7 @@ static void kdecor_draw(volatile u16 *pg, int cy0, int cy1){             // trac
             linep(pg,sx,ya,sx,yc,111,0,cy0,240,cy1);                                                                                        // the trunk
             if(yc-yb<=14){ int tx[3]={sx,sx+cw,sx-cw}, tyy[3]={yb,yc,yc}; polyfill(pg,tx,tyy,3,110,0,cy0,240,cy1); }                          // the crown (a solid spire...
             else { linep(pg,sx,yb,sx+cw,yc,110,0,cy0,240,cy1); linep(pg,sx,yb,sx-cw,yc,110,0,cy0,240,cy1); linep(pg,sx,yb,sx,yc,110,0,cy0,240,cy1); } }   // ...or, near by, just its edges)
-        else if(ty && nw<3){ int bend=((kp_dir((i+7)%knp)-kp_dir((i+knp-3)%knp)+512)&1023)-512; if(bend<90 && bend>-90) continue; int sg = bend>0 ? 1 : -1; s32 wl=-sg*1150, x=cx+rx*wl, y=cy+ry*wl, g=ground_h(x,y);
+        else if(ty && nw<3){ int bend=((kp_dir(kwp(i+7))-kp_dir(kwp(i+knp-3))+512)&1023)-512; if(bend<90 && bend>-90) continue; int sg = bend>0 ? 1 : -1; s32 wl=-sg*1150, x=cx+rx*wl, y=cy+ry*wl, g=ground_h(x,y);
             if(!kproj2(x,y,g,g+170,&sx,&ya,&yb,&zz,&fo) || zz>(13<<8)) continue; nw++;
             int bw=klat(150,fo); if(bw<2) bw=2; int bx[4]={sx-bw,sx+bw,sx+bw,sx-bw}, by[4]={ya,ya,yb,yb}; polyfill(pg,bx,by,4,((i>>2)&1)?KRC_KR:KRC_KW,0,cy0,240,cy1); } } }                  // (red and white blocks)
 static void kgantry_draw(volatile u16 *pg, int cy0, int cy1){            // the start gantry: two posts and a chequered banner over the line
@@ -669,33 +671,33 @@ static int kunder(s32 x, s32 y, int pi){                                  // und
     for(int b=0;b<nkb;b++){ if(pi>=kbs[b] && pi<=kbe[b]) return 0; int pc=kbs[b]+KBR_S; int dx=wrapd(x-kp_cx(pc))>>15, dy=wrapd(y-kp_cy(pc))>>15; if(dx*dx+dy*dy<=64) return 1; } return 0; }
 #define KBN 12                                                          // the deck is drawn in 12 pieces, a cell and a half each
 static void kbridge_draw_(volatile u16 *pg, int cy0, int cy1){           // the flyovers: a deck on its ramps, over the road it crosses
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 kq0=TMR();
 #endif
     ksign_draw(pg,cy0,cy1); kdecor_draw(pg,cy0,cy1);
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 kq1=TMR();
 #endif
     kstar_draw(pg,cy0,cy1);
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 kq2=TMR();
 #endif
     kgantry_draw(pg,cy0,cy1);
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 kq3=TMR(); kt_v[0]=kq1-kq0; kt_v[1]=kq2-kq1; kt_v[2]=kq3-kq2; kt_t0=kq3;
 #endif
     if(!nkb || kr_mode!=1 || cy0>=cy1) return;
     for(int b=0;b<nkb;b++){ int pc=kbs[b]+KBR_S; s32 near = kbr_cur>=64 ? 128 : 900;   // (a deck right overhead would fill the screen: leave it out)
         { s32 cb=cam_back(), dxw=wrapd(kp_cx(pc)-(ppx-((hsn*cb)>>8))), dyw=wrapd(kp_cy(pc)-(ppy-((hcs*cb)>>8))), dz=((dxw*hsn)>>8)+((dyw*hcs)>>8), dx=((dxw*hcs)>>8)-((dyw*hsn)>>8);
           if(dz>(40<<16) || dz<-(10<<16) || dx>(36<<16) || dx<-(36<<16)) continue; }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
         u32 d0=TMR();
 #endif
         s16 tx[KBN+1][2], ty[KBN+1][2], by[KBN+1][2]; s32 zz[KBN+1]; u8 ok[KBN+1];
         for(int i=0;i<=KBN;i++){ int pi=kbs[b]+i*3; if(pi>=knp) pi-=knp; int d=kp_dir(pi); s32 ex=kp_cx(pi), ey=kp_cy(pi), g=ground_h(ex,ey)+kbr_h(pi), rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6); ok[i]=1; zz[i]=0;
             for(int e=0;e<2;e++){ s32 w = e ? KBDW : -KBDW, z, fo; int qx,qa,qb;
                 if(!kproj2(ex+rx*w,ey+ry*w,g,g-KBTH,&qx,&qa,&qb,&z,&fo) || z<near) ok[i]=0; else { zz[i]+=z; tx[i][e]=(s16)qx; ty[i][e]=(s16)qa; by[i][e]=(s16)qb; } } }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
         u32 d1=TMR();
 #endif
         u8 ord[KBN]; int n=0; for(int i=0;i<KBN;i++) if(ok[i] && ok[i+1]) ord[n++]=(u8)i;
@@ -712,7 +714,7 @@ static void kbridge_draw_(volatile u16 *pg, int cy0, int cy1){           // the 
             if(wd0<26) continue;                                                                                     // (far away: just the road)
             { int kc=(i&1)?KRC_KR:KRC_KW; linep(pg,qx[0]+1,qy[0],qx[3]+1,qy[3],kc,0,cy0,240,cy1); linep(pg,qx[1]-1,qy[1],qx[2]-1,qy[2],kc,0,cy0,240,cy1); }   // ...a kerb down each side...
             if(!(i&1)) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); }   // ...and a dash down the middle
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
         { u32 d3=TMR(); kt_v[3]=d1-d0; kt_d[2]=d3-d1; kt_d[3]=n; }
 #endif
     } }
@@ -851,30 +853,30 @@ static void kai(int r, int n){
     if(k->fin) vtop=vtop*7/10;
     if(k->cloud){ vtop=vtop*3/4; k->cloud = k->cloud>n ? k->cloud-n : 0; }
     if(k->boost){ vtop=vtop*155/100; k->boost = k->boost>n ? k->boost-n : 0; }
-    int la=5+(int)(k->v>>11), tp=(k->pi+la)%knp, dir=kp_dir(tp), nd=(dir+256)&1023;
-    int bd=((kp_dir((k->pi+la+10)%knp)-dir+512)&1023)-512, ins = bd>40 ? 1 : bd<-40 ? -1 : 0; s32 ln=k->lane; if(ins) ln = ins*(5<<14) + ln/3;   // the inside of the next bend
+    int la=5+(int)(k->v>>11), tp=kwp(k->pi+la), dir=kp_dir(tp), nd=(dir+256)&1023;
+    int bd=((kp_dir(kwp(k->pi+la+10))-dir+512)&1023)-512, ins = bd>40 ? 1 : bd<-40 ? -1 : 0; s32 ln=k->lane; if(ins) ln = ins*(5<<14) + ln/3;   // the inside of the next bend
     s32 tx=kp_cx(tp)+((sinx(nd>>2)*(ln>>8))>>6), ty=kp_cy(tp)+((cosx(nd>>2)*(ln>>8))>>6);
     s32 dx=wrapd(tx-k->x), dy=wrapd(ty-k->y); int want=iatan2(dx>>4,dy>>4), err=((want-k->hd+512)&1023)-512, trm=14*n;
     if(k->spin){ k->spin = k->spin>n ? k->spin-n : 0; k->v -= (k->v/8)*n/2; }
     else { if(err>trm) err=trm; if(err<-trm) err=-trm; k->hd=(s16)((k->hd+err)&1023);
-        int d0=kp_dir(k->pi), d1=kp_dir((k->pi+12)%knp), cv=((d1-d0+512)&1023)-512; if(cv<0) cv=-cv;
-        { int d2=kp_dir((k->pi+26)%knp), cv2=((d2-d0+512)&1023)-512; if(cv2<0) cv2=-cv2; cv2=cv2*3/4; if(cv2>cv) cv=cv2; }          // a bend further on counts too: brake early
+        int d0=kp_dir(k->pi), d1=kp_dir(kwp(k->pi+12)), cv=((d1-d0+512)&1023)-512; if(cv<0) cv=-cv;
+        { int d2=kp_dir(kwp(k->pi+26)), cv2=((d2-d0+512)&1023)-512; if(cv2<0) cv2=-cv2; cv2=cv2*3/4; if(cv2>cv) cv=cv2; }          // a bend further on counts too: brake early
         if(cv>110){ if(k->pad2<200) k->pad2++; } else if(cv<40){ if(k->pad2>45 && !k->boost) k->boost=26+(k->skill>100?10:0); k->pad2=0; }   // came out of a sharp bend: a mini-turbo
         if(cv>170) cv=170;
         s32 vt=vtop*(256-cv/2)/256; { int ae=err<0?-err:err; if(ae>90) vt=vt*(ae>260?35:ae>160?55:80)/100; }  /* a wide miss: slow down to come round (flat out it would circle the target for ever) */ if(k->v<vt){ k->v+=vt/40*n; if(k->v>vt) k->v=vt; } else k->v-=(k->v-vt)/8; }
     s32 st=k->v*n; k->x=(k->x+((sinx(k->hd>>2)*st)>>14))&((TW<<16)-1); k->y=(k->y+((cosx(k->hd>>2)*st)>>14))&((TW<<16)-1);
     int tx2=(k->x>>15)&255, ty2=(k->y>>15)&255;
-    for(int g=0;g<24;g++){ int a=k->pi, b=(a+1)%knp; int da=kwrap8(kpx[a]-tx2)*kwrap8(kpx[a]-tx2)+kwrap8(kpy[a]-ty2)*kwrap8(kpy[a]-ty2), db=kwrap8(kpx[b]-tx2)*kwrap8(kpx[b]-tx2)+kwrap8(kpy[b]-ty2)*kwrap8(kpy[b]-ty2);
+    for(int g=0;g<24;g++){ int a=k->pi, b=kwp(a+1); int da=kwrap8(kpx[a]-tx2)*kwrap8(kpx[a]-tx2)+kwrap8(kpy[a]-ty2)*kwrap8(kpy[a]-ty2), db=kwrap8(kpx[b]-tx2)*kwrap8(kpx[b]-tx2)+kwrap8(kpy[b]-ty2)*kwrap8(kpy[b]-ty2);
         if(db>da) break; k->pi=(s16)b; if(b==0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }          // (a rival who has finished keeps driving, but no longer counts laps)
     if(k->pi!=pi0 || k->spin) k->stk=0; else if((k->stk+=(u8)n)>=120){ int q=(k->pi+4)%knp; k->stk=0; k->x=kp_cx(q); k->y=kp_cy(q); k->hd=(s16)kp_dir(q); k->v/=2; k->pi=(s16)q; if(q<pi0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }   // circling a spot it cannot get to (a tight turn round its target) or wedged: put it back on the road a little further on
-    for(int j=0;j<nkl;j++){ int d0=(klp[j]-pi0+knp)%knp, d1=(klp[j]-k->pi+knp)%knp; if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ k->la=1; k->pi=klp[j]; k->x=kp_cx(klp[j]); k->y=kp_cy(klp[j]); k->hd=(s16)kp_dir(klp[j]); return; } }
+    for(int j=0;j<nkl;j++){ int d0=kwp(klp[j]-pi0+knp), d1=kwp(klp[j]-k->pi+knp); if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ k->la=1; k->pi=klp[j]; k->x=kp_cx(klp[j]); k->y=kp_cy(klp[j]); k->hd=(s16)kp_dir(klp[j]); return; } }
     if(cmap[ty2*HW+tx2]==KRC_PAD && !k->boost) k->boost=40;
     if(k->item && !k->fin){ if(k->ai_t>n) k->ai_t-=n; else { int t=kahead(r);
         if(k->item==KI_SHELL && t>=0){ s32 ex=wrapd(rc[t].x-k->x), ey=wrapd(rc[t].y-k->y); if((ex<0?-ex:ex)+(ey<0?-ey:ey)>(12<<16)){ k->ai_t=30; t=-2; } }
         if(t!=-2) kuse_item(r); } }
     if((frames+r*37)%240==0) k->lane=((s32)rndi(7)-3)<<15; }
 static void kbump(void){                                           // karts that touch push each other apart; the heavy one wins
-    for(int i=0;i<nrc;i++) for(int j=i+1;j<nrc;j++){ if(rc[i].la || rc[j].la || (i==0 && kloop_on)) continue; { int dp=(rc[i].pi-rc[j].pi+knp)%knp; if(dp>24 && dp<knp-24) continue; }   // (one on a flyover, the other under it: no touching)
+    for(int i=0;i<nrc;i++) for(int j=i+1;j<nrc;j++){ if(rc[i].la || rc[j].la || (i==0 && kloop_on)) continue; { int dp=kwp(rc[i].pi-rc[j].pi+knp); if(dp>24 && dp<knp-24) continue; }   // (one on a flyover, the other under it: no touching)
          s32 dx=wrapd(rc[j].x-rc[i].x), dy=wrapd(rc[j].y-rc[i].y); if(dx>0xE000||dx<-0xE000||dy>0xE000||dy<-0xE000) continue;
         int ex=dx>>8, ey=dy>>8, d=isqrt((u32)(ex*ex+ey*ey)); if(d>=218) continue; if(d<1){ ex=1; d=1; }
         int wi=kstat(&rc[i].look,KST_WGT), wj=kstat(&rc[j].look,KST_WGT), ov=218-d;
@@ -894,17 +896,17 @@ static void kart_tick(int n){
     k_clock+=n; if(ks_state==KS_DONE) k_end_t+=n;
     rc[0].x=ppx; rc[0].y=ppy; rc[0].hd=(s16)khd; rc[0].v=kv; if(rc[0].spin) rc[0].spin = rc[0].spin>n ? rc[0].spin-n : 0; if(rc[0].cloud) rc[0].cloud = rc[0].cloud>n ? rc[0].cloud-n : 0;
     if(!kloop_on) kpath_track(0);
-    if(ks_state==KS_RACE && !kloop_on && !rc[0].fin){ int p0=rc[0].pi; for(int d=-2;d<=4;d++){ int i=(p0+d+knp)%knp; if(!kstar_at(i)) continue; s32 x,y,h; kstar_xy(i,&x,&y,&h);
+    if(ks_state==KS_RACE && !kloop_on && !rc[0].fin){ int p0=rc[0].pi; for(int d=-2;d<=4;d++){ int i=kwp(p0+d+knp); if(!kstar_at(i)) continue; s32 x,y,h; kstar_xy(i,&x,&y,&h);
             s32 dx=wrapd(x-ppx)>>8, dy=wrapd(y-ppy)>>8, pz=(kair?kalt:ground_h(ppx,ppy))+kbr_cur+150, dz=h-pz; if(dz<0) dz=-dz; if(dz>300 || dx*dx+dy*dy>94000) continue;
             kpf[i]|=KPF_TAKEN; sfx(7); if(kstar<10){ kstar++; if(kstar==10){ kboost_t=60; show_msg("STAR RUSH!"); sfx(10); } } } }   // scoop up star bits
     if(nkl && !kloop_on && !kair){ int p=rc[0].pi;                                                // driving onto a loop-de-loop
-        if(kloop_prev>=0) for(int j=0;j<nkl;j++){ int d0=(klp[j]-kloop_prev+knp)%knp, d1=(klp[j]-p+knp)%knp; if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ if(kroad(cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)])) kloop_begin(j); break; } }
+        if(kloop_prev>=0) for(int j=0;j<nkl;j++){ int d0=kwp(klp[j]-kloop_prev+knp), d1=kwp(klp[j]-p+knp); if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ if(kroad(cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)])) kloop_begin(j); break; } }
         kloop_prev=rc[0].pi; }
     if(!rc[0].fin){ int g=rc[0].nextg; s32 gx=((s32)KGX(g)<<15)+(1<<14), gy=((s32)KGY(g)<<15)+(1<<14), dx=wrapd(gx-ppx), dy=wrapd(gy-ppy);
         if((dx<0?-dx:dx)+(dy<0?-dy:dy) < 0x36000){ if(g==0){ for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; rc[0].lap++; if(rc[0].lap>1){ int lt=k_clock-k_lap_t0; if(!k_best_lap || lt<k_best_lap) k_best_lap=lt; } k_lap_t0=k_clock;
             if(rc[0].lap>kt.laps) kfinish(0); else if(rc[0].lap>1){ if(rc[0].lap==kt.laps){ show_msg("FINAL LAP!"); sfx(6); music(7); } else { char b[24]; scpy(b,"LAP "); ncat(b,rc[0].lap); scat(b," OF "); ncat(b,kt.laps); show_msg(b); sfx(7); } } }
             rc[0].nextg=(u8)((g+1)%kt.n); }
-        else { int gp=kgate_pi[g], ahead=(rc[0].pi-gp+knp)%knp; if(rc[0].lap>0 && ahead>8 && ahead<knp/3 && (frames&63)==0){ char b[32]; scpy(b,"MISSED A GATE! GO BACK"); show_msg(b); } }
+        else { int gp=kgate_pi[g], ahead=kwp(rc[0].pi-gp+knp); if(rc[0].lap>0 && ahead>8 && ahead<knp/3 && (frames&63)==0){ char b[32]; scpy(b,"MISSED A GATE! GO BACK"); show_msg(b); } }
         int dirn=kp_dir(rc[0].pi), off=((khd-dirn+512)&1023)-512; if(off<0) off=-off; if(off>380 && kv>K_VBASE/4) k_wrong+=n; else k_wrong=0; if(k_wrong>50 && (frames&31)==0) show_msg("WRONG WAY!"); }
     if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int pi=rc[0].pi, fx=kwrap8(kpx[pi]-((ppx>>15)&255)), fy=kwrap8(kpy[pi]-((ppy>>15)&255)); if(fx*fx+fy*fy>26*26) kfar+=n; else kfar=0;
         if(kfar>130){ kfar=0; kart_splash(); show_msg("OFF THE TRACK! BACK YOU GO"); } }   // far from the road for a couple of seconds (a long way round the land): put back on it

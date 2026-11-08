@@ -29,6 +29,9 @@ typedef unsigned char u8; typedef unsigned short u16; typedef unsigned int u32; 
 #define K_DOWN 128
 #define K_R 256
 #define K_L 512
+#ifdef TEST_KVAR
+volatile u32 ktv[4];
+#endif
 #define IWRAM __attribute__((section(".iwram"), long_call, target("arm"), noinline))
 static int film_mode=0;                               // the debug menu's HIDE THE HUD: no HUD anywhere, only the world
 #ifdef TEST_FILM
@@ -1400,12 +1403,19 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #ifdef TEST_KREV
     krev=TEST_KREV;
 #endif
-    k_cls=1; k_type=0; k_trk=TEST_KART%kt_count(); k_rec=-1; kt_official(k_trk,&kt);
+    k_cls=1; k_type=0; k_trk=TEST_KART%kt_count(); k_rec=-1;
+#ifdef TEST_KVAR
+    krev=(int)ktv[1]&1; if((ktv[3]>>8)&7) k_cls=(int)((ktv[3]>>8)&7)-1; k_trk=(int)ktv[0]%kt_count();
+#endif
+    kt_official(k_trk,&kt);
 #ifdef TEST_KSTUNT
     k_stunts=TEST_KSTUNT;
 #endif
 #ifdef TEST_KLAPS
     kt.laps=TEST_KLAPS;
+#endif
+#ifdef TEST_KVAR
+    k_stunts=(int)ktv[2]; if(ktv[3]&255) kt.laps=ktv[3]&255;
 #endif
     kart_go(NRC,-1,0,1);
 #endif

@@ -381,6 +381,7 @@ static void planet_life(int *k){
 }
 static int crit_count(int s){ int n=0; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_CRIT && po[i].var==s) n++; return n; }
 static void life_tick(int n){                                                         // every frame: creatures move, beetles hunt, herds breed
+    if(kr_mode){ if(!(frames&1)) return; n*=2; }                                        // (in a race the land's creatures only stroll: every other frame is plenty)
     for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive) continue;
         if(o->kind==O_CRIT){ Species *p=&spc[o->var]; s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
             if(ctim[i]>n) ctim[i]-=n; else { ctim[i]=40+wr(80); int a=wr(256); int sp = p->body==2 ? 900 : 500;

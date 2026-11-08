@@ -570,6 +570,9 @@ static void planet_oremap(volatile u16 *pg){
         pix(pg,x,y,c); pix(pg,x+1,y,c); pix(pg,x,y+1,c); pix(pg,x+1,y+1,c); }
     pix(pg,ox,oy,C_WHITE); pix(pg,ox,oy-1,C_WHITE); pix(pg,ox-1,oy,C_WHITE); pix(pg,ox+1,oy,C_WHITE); pix(pg,ox,oy+1,C_WHITE);      // you, in the middle
     pix(pg,ox,oy-R,C_GOLD); }                               // north of the view, the way you face
+#ifdef TEST_KLOG
+u32 klog[48]; static int ks_state;                                                   // (test builds: where the race frames' time goes: harness reads it)
+#endif
 static void planet_frame(void){
     u32 t_f0=TMR();
 #ifdef TEST_FPS
@@ -578,6 +581,9 @@ static void planet_frame(void){
     { int want = kr_mode && !in_menu; if(want && !m7_on) m7_begin(); else if(!want && m7_on) m7_end(); }      // a kart race: the hardware ground (m7.inc)
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
     int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>4) n=4;           // the view takes a few 60ths to draw: move by that much
+#ifdef TEST_KLOG
+    static u32 kl_last=0; int kl_on = kr_mode==1 && ks_state==1 && m7_on; if(kl_on){ klog[0]++; klog[n]+=1; klog[5]+=t_f0-kl_last; } kl_last=t_f0;
+#endif
     int moved=0;
     int th = HELD(K_LEFT) ? -16 : HELD(K_RIGHT) ? 16 : 0, tv = HELD(K_UP) ? -16 : HELD(K_DOWN) ? 16 : 0;
     if(kr_mode){ th=tv=0; }
@@ -734,7 +740,7 @@ static void planet_frame(void){
       }
     (void)prompt_k;
 sprites:;
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 t_s0=TMR();
 #endif
     // ---- sprites: project everything onto the terrain
@@ -851,6 +857,9 @@ sprites:;
     if(m7_on) m7_t[2]=TMR()-t_s0;
 #endif
     if(m7_on) m7_present();
+#ifdef TEST_KLOG
+    if(kl_on){ u32 te=TMR(); klog[6]+=t_r0-t_f0-m7_t[4]-m7_t[5]; klog[7]+=t_r1-t_r0; klog[8]+=te-t_s0; klog[9]+=m7_t[4]; klog[10]+=m7_t[5]; klog[11]+=te-t_f0; if(te-t_f0>klog[12]) klog[12]=te-t_f0; if(te-t_f0>4*70000) klog[13]++; }
+#endif
 }
 // the parked ship's shadow. The land is lit from the north-west (planet_tables bakes that into the colours), so the shadow falls south-east on the map, turned by the way you
 // face. How far it reaches comes from the sun's height and the LAND under it: the ground a little way down-sun is looked up (two reads of the height map), so a shadow thrown

@@ -21,7 +21,7 @@ static int m7_wx0=0, m7_wy0=0, m7_nwx0=0, m7_nwy0=0;   // the map window in page
 static int m7_horizon=160, m7_nstrip=160, m7_cock=0;   // where the ground stops, the strip being built, cockpit view
 static int m7_sy=0;                             // the kart's screen row (for its dust and sparks)
 static s32 m7_sppx, m7_sppy, m7_scamh; static int m7_shsn, m7_shcs, m7_sphz, m7_sloop, m7_shide, m7_shead, m7_sfp, m7_want=0;   // a snapshot of the camera the frame on show was drawn with
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
 static u32 m7_t[6], kt_v[4], kt_t0, kt_d[4], kfr_sum=0, kfr_n=0, kfr_avg=0, kh_t[8];
 #endif
 static inline void m7_wr8(volatile u16 *pg, int u, int v, int c){ volatile u16 *p=pg+((v*240+u)>>1); if(u&1) *p=(*p&0x00FF)|(c<<8); else *p=(*p&0xFF00)|c; }
@@ -123,51 +123,58 @@ static void m7_present(void){                   // the end of the frame's drawin
     m7_tab^=1; m7_strip=m7_nstrip; m7_copy = (m7_nwx0!=m7_wx0 || m7_nwy0!=m7_wy0 || !m7_arm); m7_wx0=m7_nwx0; m7_wy0=m7_nwy0; m7_arm=1;
     m7_sppx=ppx; m7_sppy=ppy; m7_scamh=cam_h; m7_shsn=hsn; m7_shcs=hcs; m7_sphz=g_phz; m7_sloop=kloop_on; m7_shide=kloop_hide; m7_shead=heading; m7_fovs=fov_k(); m7_sfp=cam_fp; m7_cb_snap=cam_back(); m7_want=1; }
 static void kproj_prep(void); static int kpc_on; static void kloop_draw(volatile u16 *pg, int cy0, int cy1); static void kbridge_draw(volatile u16 *pg, int cy0, int cy1); static void kart_fx(volatile u16 *pg, int sy); static void weather_draw(volatile u16 *pg); static void kart_hud(volatile u16 *pg); static int kproj(s32 wx, s32 wy, s32 wh, int *sx, int *sy, s32 *zc);
+static const u8 khill_t[1024]={181,181,181,181,181,181,181,181,181,181,181,181,181,181,182,182,182,182,182,182,182,182,182,182,182,182,182,182,182,182,182,182,181,181,181,181,181,181,181,181,181,181,182,182,182,182,182,182,182,183,183,183,183,184,184,184,184,185,185,185,185,185,185,186,186,186,186,186,186,185,185,185,185,185,185,184,184,184,168,167,167,167,167,166,166,166,166,165,165,165,165,149,148,148,148,148,148,148,148,148,148,148,148,147,147,147,147,147,147,147,147,146,146,146,146,146,161,161,161,161,161,160,160,160,160,160,176,176,176,176,176,176,176,176,192,192,192,192,192,193,193,193,193,194,194,194,194,195,195,195,195,195,196,196,196,196,196,196,196,196,196,196,196,180,180,180,180,180,180,180,164,164,163,163,163,147,147,147,147,147,147,131,131,131,132,132,132,116,116,116,116,116,116,116,116,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,84,84,83,83,83,83,84,84,84,84,84,84,84,85,85,85,85,86,86,86,87,87,87,88,88,72,72,73,73,73,73,73,74,74,74,74,74,74,74,74,74,74,73,73,73,73,73,73,73,72,72,72,72,72,72,72,72,72,88,87,87,87,87,87,87,103,103,103,103,103,103,119,118,118,118,118,118,134,133,133,133,133,132,148,148,147,147,147,146,146,146,146,161,161,161,161,161,161,161,161,161,161,161,161,161,161,161,161,161,146,146,146,146,146,147,147,147,147,147,147,131,131,132,132,132,132,132,132,132,131,131,131,131,131,115,115,115,115,115,115,115,115,115,114,130,130,131,131,131,131,131,131,131,131,131,131,131,131,131,147,147,147,147,147,147,147,147,147,147,147,147,163,162,162,162,162,162,162,162,161,161,161,161,161,161,161,161,161,161,161,162,162,162,162,163,163,163,163,164,180,180,181,181,181,182,182,182,183,183,183,183,183,184,184,184,184,200,200,200,200,200,200,200,200,200,200,216,216,216,216,216,216,216,216,216,217,217,233,233,233,233,233,233,233,233,233,233,233,233,233,233,233,233,233,217,216,216,216,216,216,215,215,199,198,198,198,197,197,181,180,180,180,164,163,163,163,163,147,147,147,147,147,131,131,131,131,131,131,115,115,116,116,116,116,116,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,100,100,100,100,100,100,100,100,100,100,99,99,99,99,99,99,99,98,98,98,98,97,97,97,97,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,96,97,97,97,113,114,114,114,114,115,115,115,115,116,116,116,116,132,133,133,133,133,133,133,133,133,133,133,133,134,134,134,134,134,134,134,134,135,135,135,135,135,120,120,120,120,120,121,121,121,121,121,105,105,106,106,106,106,106,105,89,89,89,89,89,88,88,88,88,87,87,87,87,86,86,86,86,86,85,85,85,85,85,85,85,85,85,85,85,101,101,101,101,101,101,101,117,117,118,118,118,134,134,134,134,134,134,150,150,150,149,149,149,165,165,165,165,165,165,165,165,181,181,181,181,181,181,181,181,181,181,181,181,181,181,181,181,181,197,197,198,198,198,198,197,197,197,197,197,197,197,196,196,196,196,195,195,195,194,194,194,193,193,209,209,208,208,208,208,208,208,208,208,208,208,208,208,208,208,208,208,208,208,208,208,208,208,209,209,209,209,209,209,209,209,209,193,194,194,194,194,194,194,178,178,178,178,178,178,162,163,163,163,163,163,147,148,148,148,148,149,133,133,134,134,134,135,135,135,135,120,120,120,120,120,120,120,120,120,120,120,120,120,120,120,120,120,135,135,135,135,135,134,134,134,134,134,134,150,150,149,149,149,149,149,149,149,150,150,150,150,150,166,166,166,166,166,166,166,166,166,167,151,151,150,150,150,150,150,150,150,150,150,150,150,150,150,134,134,134,134,134,134,134,134,134,134,134,134,118,119,119,119,119,119,119,119,120,120,120,120,120,120,120,120,120,120,120,119,119,119,119,118,118,118,118,117,101,101,100,100,100,99,99,99,98,98,98,98,98,97,97,97,97,81,81,81,81,81,81,81,81,81,81,65,65,65,65,65,65,65,65,65,64,64,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,48,64,65,65,65,65,65,66,66,82,83,83,83,84,84,100,101,101,101,117,118,118,118,118,134,134,134,134,134,150,150,150,150,150,150,166,166,165,165,165,165,165,181,181,181,181,181};   // sky_hills: the two hill heights for each bearing (hf<<4 | hn), from the old per-column sums of sines
 static void sky_hills(volatile u16 *pg){                                          // two ranges of hills on the horizon that slide past as you turn: the sense of turning, for free
     int hor=m7_horizon; if(hor<24 || hor>160 || WL(MW_VOID)) return;
     BG_PAL[108]=lerp15(BG_PAL[SKY_B+7],BG_PAL[GND_B+8],8); BG_PAL[109]=lerp15(BG_PAL[SKY_B+7],BG_PAL[GND_B+3],14);
     int fv=fov_k(), b0=m7_shead;
-    for(int c=0;c<120;c+=2){ int i=(b0+(((c*2+2)-120)*fv)/188)&1023;                                 // the compass bearing of this pair of columns
-        int sf=sinx((i*3)>>2)*3+sinx(((i*7)>>2)+40)*2+sinx(((i*13)>>2)+90), sn=sinx(((i*5)>>2)+10)*3+sinx(((i*11)>>2)+120)*2+sinx(((i*23)>>2)+200);
-        int hf=9+(sf>>14), hn=5+(sn>>14); if(hf<2) hf=2; if(hn<0) hn=0;
+    int base=((-118)*fv);
+    for(int c=0;c<120;c+=2, base+=4*fv){ int i=(b0+(((base)*349)>>16))&1023;                          // the compass bearing of this pair of columns
+        int hh=khill_t[i], hf=hh>>4, hn=hh&15;
         for(int k=1;k<=hf;k++){ int y=hor-k; if(y>=19) *(volatile u32*)(pg+y*120+c)=0x6C6C6C6Cu; }
         for(int k=1;k<=hn;k++){ int y=hor-k; if(y>=19) *(volatile u32*)(pg+y*120+c)=0x6D6D6D6Du; } } }
 static void m7_sky(void){                     // the sky, the loops, the dust, the messages and the HUD, on page 0 (ground pixels find their way onto the map)
     volatile u16 *pg=M7_PG0;
     s32 kpx=ppx, kpy=ppy, kch=cam_h; int khs=hsn, khc=hcs, kph=g_phz, klo=kloop_on, kfp=cam_fp, khd_=kloop_hide;                 // the loops are drawn where the frame on show has its camera
     ppx=m7_sppx; ppy=m7_sppy; cam_h=m7_scamh; hsn=m7_shsn; hcs=m7_shcs; g_phz=m7_sphz; kloop_on=m7_sloop; kloop_hide=m7_shide; cam_fp=m7_sfp; m7_snap=1;
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 ta=TMR();
 #endif
     for(int y=18;y<m7_strip;y++){ int ix=skyrow[y]; static u32 sv; sv=ix*0x01010101u; *(volatile u32*)0x040000D4=(u32)&sv; *(volatile u32*)0x040000D8=(u32)(pg+y*120); *(volatile u32*)0x040000DC=60|(2<<23)|(1<<26)|(1u<<31); }
     for(int k=0;k<22;k++){ int x=(k*53+17)%120, y=19+((k*31+5)%50); if(y<m7_horizon){ int ix=((frames>>3)+k)&7 ? 4 : 5; pg[y*120+x]=ix|(ix<<8); } }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 tb=TMR();
 #endif
     kart_hud(pg);                                                                   // (the HUD first: it must be done before the beam is back at the top)
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 t1=TMR();
 #endif
     if(kr_mode==1) sky_hills(pg);
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 t2=TMR();
 #endif
     if(kr_mode==1) kloop_draw(pg,18,160);
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 t3=TMR();
 #endif
 #ifdef TEST_FPS
     dbg_pc=0; dbg_rows=0; dbg_px=0; dbg_pt=0; dbg_kt=0; dbg_kn=0;
 #endif
     if(kr_mode==1) kbridge_draw(pg,18,160);
+#if defined(TEST_FPS) || defined(TEST_KLOG)
+    u32 tc=TMR();
+#endif
 #ifdef TEST_FPS
-    u32 tc=TMR(), qpc=dbg_pc, qrows=dbg_rows, qpx=dbg_px, qpt=dbg_pt, qkt=dbg_kt, qkn=dbg_kn;
+    u32 qpc=dbg_pc, qrows=dbg_rows, qpx=dbg_px, qpt=dbg_pt, qkt=dbg_kt, qkn=dbg_kn;
 #endif
     if(!m7_cock && !kloop_on) kart_fx(pg,m7_sy);
     weather_draw(pg); if(wd.weird) sky_decor(pg); if(hellw()) hell_sky(pg);
     if(msg_timer && !FILM){ int L=textlen(msg); stext(pg,120-L*2,50,msg,C_WHITE); }
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 td=TMR();
+#endif
+#ifdef TEST_KLOG
+    if(kr_mode==1){ extern u32 klog[]; klog[16]+=tb-ta; klog[17]+=t1-tb; klog[18]+=t2-t1; klog[19]+=t3-t2; klog[20]+=tc-t3; klog[21]+=td-tc; klog[22]++; klog[32]+=kt_v[0]; klog[33]+=kt_v[1]; klog[34]+=kt_v[2]; klog[35]+=tc-kt_t0; }
 #endif
 #ifdef TEST_FPS
     { char fb[80]; scpy(fb,"LOGIC "); ncat(fb,(int)(m7_t[0]/1000)); scat(fb,"K TAB "); ncat(fb,(int)(m7_t[1]/1000)); scat(fb,"K SPR "); ncat(fb,(int)(m7_t[2]/1000)); scat(fb,"K COPY "); ncat(fb,(int)(m7_t[3]/1000)); scat(fb,"K WAIT "); ncat(fb,(int)(m7_t[4]/1000)); scat(fb,"K SKY "); ncat(fb,(int)(m7_t[5]/1000)); scat(fb,"K"); rect(pg,0,19,240,8,0); text(pg,2,20,fb,C_GOLD,1);
@@ -200,7 +207,7 @@ static void m7_sky_now(void){                   // once the beam is past the sky
     while(REG_VCOUNT<m7_strip || REG_VCOUNT>=160);
     u32 tq2=TMR();
     m7_sky();
-#ifdef TEST_FPS
+#if defined(TEST_FPS) || defined(TEST_KLOG)
     m7_t[4]=tq2-tq1; m7_t[5]=TMR()-tq2;
 #else
     (void)tq1; (void)tq2;
