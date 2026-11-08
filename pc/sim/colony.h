@@ -106,6 +106,8 @@ uint32_t col_year_days(int season_days);
 int  col_catchup(SimColony *c, uint32_t today);
 int  col_catchup_ex(SimColony *c, uint32_t today, uint32_t year_days, ColAway *aw);   // NORMAL
 int  col_catchup_d(SimColony *c, uint32_t today, uint32_t year_days, int diff, ColAway *aw);
+int  col_catchup_hook(SimColony *c, uint32_t today, uint32_t year_days, int diff, ColAway *aw, void (*after_day)(SimColony *, uint32_t, void *), void *ud);   // the same, and after_day runs after each day (the mine and workshops, mine.h)
+int  col_lose(SimColony *c, uint32_t n, uint32_t day, ColAway *aw);   // settlers lost to an accident in a side layer: at most nset-1 (an accident never ends a colony); returns how many
 int  col_away_text(const ColAway *a, const SimColony *c, char lines[][48], int max);
 int  col_event_text(const ColEvent *e, char *out, size_t n);
 uint64_t col_reward(uint32_t size, int danger, int no_deaths, int no_god, int brink);   // gold for beating a raid (saturating)

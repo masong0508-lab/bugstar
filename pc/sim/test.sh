@@ -9,21 +9,23 @@ $CC god_test.c god.c lv.c -o out/god_test
 ./out/god_test
 $CC lvxp_test.c lvxp.c lv.c -o out/lvxp_test
 ./out/lvxp_test
-$CC sim_test.c sim_core.c colony.c god.c lv.c -o out/sim_test
+$CC sim_test.c mine.c sim_core.c colony.c god.c lv.c -o out/sim_test
 [ -f sim.golden ] || ./out/sim_test --make-golden
 ./out/sim_test
-$CC env_test.c sim_core.c colony.c god.c lv.c -o out/env_test
+$CC env_test.c mine.c sim_core.c colony.c god.c lv.c -o out/env_test
 ./out/env_test
-$CC social_test.c sim_core.c colony.c god.c lv.c -o out/social_test
+$CC social_test.c mine.c sim_core.c colony.c god.c lv.c -o out/social_test
 ./out/social_test
-$CC ties_test.c sim_core.c colony.c god.c lv.c -o out/ties_test
+$CC ties_test.c mine.c sim_core.c colony.c god.c lv.c -o out/ties_test
 ./out/ties_test
-$CC life_test.c sim_core.c colony.c god.c lv.c -o out/life_test
+$CC life_test.c mine.c sim_core.c colony.c god.c lv.c -o out/life_test
 ./out/life_test
-$CC colony_test.c sim_core.c colony.c god.c lv.c -o out/colony_test
+$CC colony_test.c mine.c sim_core.c colony.c god.c lv.c -o out/colony_test
 ./out/colony_test
-$CC standing_test.c sim_core.c colony.c god.c lv.c -o out/standing_test
+$CC standing_test.c mine.c sim_core.c colony.c god.c lv.c -o out/standing_test
 ./out/standing_test
+$CC mine_test.c mine.c sim_core.c colony.c god.c lv.c -o out/mine_test
+./out/mine_test
 # against Python's own big integers: random and edge numbers, all operations, including saturation at 64^256
 python3 - <<'PY' > out/lv_cases.txt
 import random

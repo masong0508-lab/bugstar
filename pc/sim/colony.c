@@ -137,6 +137,12 @@ static void kill(SimColony *c, uint32_t n, uint32_t day, ColAway *aw){
     for(int i = c->nset; i < COL_MAXSET; i++) c->job[i] = 0xFF;
     if(!c->nset){ c->state = COLS_RUINS; c->raid_eta = 0; ev(aw, COLE_RUINS, 0, 0, day); if(aw) aw->ruined = 1; }
 }
+int col_lose(SimColony *c, uint32_t n, uint32_t day, ColAway *aw){      // settlers lost to a side-layer accident (a cave-in): never the last one, never the colony's end
+    if(c->state != COLS_ALIVE || c->nset < 2) return 0;
+    if(n > (uint32_t)c->nset - 1) n = (uint32_t)c->nset - 1;
+    if(!n) return 0;
+    kill(c, n, day, aw); return (int)n;
+}
 uint64_t col_reward(uint32_t size, int danger, int no_deaths, int no_god, int brink){
     if(danger < 0) danger = 0;
     if(danger > 9) danger = 9;
@@ -234,17 +240,18 @@ void col_day_ex(SimColony *c, uint32_t day, uint32_t year_days, int diff, ColAwa
 }
 void col_day(SimColony *c, uint32_t day){ col_day_ex(c, day, COL_YEAR_DAYS, COLD_NORMAL, 0); }
 uint32_t col_year_days(int season_days){ return season_days > 0 ? (uint32_t)season_days * 4u : COL_YEAR_DAYS; }
-int col_catchup_d(SimColony *c, uint32_t today, uint32_t year_days, int diff, ColAway *aw){
+int col_catchup_hook(SimColony *c, uint32_t today, uint32_t year_days, int diff, ColAway *aw, void (*after_day)(SimColony *, uint32_t, void *), void *ud){
     if(aw){ memset(aw, 0, sizeof *aw); aw->built0 = aw->built1 = (uint32_t)col_built_total(c); aw->settlers = c->nset; }
     if(today <= c->last_day) return 0;
     if(!year_days) year_days = COL_YEAR_DAYS;
     uint64_t span = (uint64_t)COL_CATCHUP_YEARS * year_days;
     uint32_t from = c->last_day + 1; if((uint64_t)today - from + 1 > span) from = (uint32_t)(today - span + 1);
-    int n = 0; g_catchup = 1; for(uint32_t d = from; d <= today; d++){ col_day_ex(c, d, year_days, diff, aw); n++; } g_catchup = 0;
+    int n = 0; g_catchup = 1; for(uint32_t d = from; d <= today; d++){ col_day_ex(c, d, year_days, diff, aw); if(after_day) after_day(c, d, ud); n++; } g_catchup = 0;
     c->last_day = today;
     if(aw){ aw->days = (uint32_t)n; aw->years = (uint32_t)n / year_days; aw->settlers = c->nset; aw->built1 = (uint32_t)col_built_total(c); }
     return n;
 }
+int col_catchup_d(SimColony *c, uint32_t today, uint32_t year_days, int diff, ColAway *aw){ return col_catchup_hook(c, today, year_days, diff, aw, 0, 0); }
 int col_catchup_ex(SimColony *c, uint32_t today, uint32_t year_days, ColAway *aw){ return col_catchup_d(c, today, year_days, COLD_NORMAL, aw); }
 int col_catchup(SimColony *c, uint32_t today){ return col_catchup_d(c, today, COL_YEAR_DAYS, COLD_NORMAL, 0); }
 

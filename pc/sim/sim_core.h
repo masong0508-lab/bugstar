@@ -11,6 +11,7 @@
 #include "lv.h"
 #include "god.h"
 #include "colony.h"
+#include "mine.h"
 #include "standing.h"
 
 #define SIM_HZ         10
@@ -137,6 +138,7 @@ typedef struct {
     uint8_t  has_lv;
     uint8_t nfr; struct { uint32_t town; uint8_t who, val; } fr[SIM_FRMAX];   // Phase 3: friendships, by town (seed hash) and townsperson
     ColList  cols;                              // Phase 4: the colonies of this slot (chunk COLN)
+    MineList mines;                             // Phase 6: the workshops and mine of each colony (chunk MINE; see mine.h)
     Standing stand;                             // patch 42: how the world sees you: mayor, armada, worlds (chunk STND; see standing.h)
     uint16_t ntail; SimEvent tail[SIM_TAILN];   // the newest events, oldest first
 } SimSlot;
