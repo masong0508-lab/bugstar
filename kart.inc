@@ -875,9 +875,11 @@ static void kai(int r, int n){
     int tx2=(k->x>>15)&255, ty2=(k->y>>15)&255;
     for(int g=0;g<24;g++){ int a=k->pi, b=kwp(a+1); int da=kwrap8(kpx[a]-tx2)*kwrap8(kpx[a]-tx2)+kwrap8(kpy[a]-ty2)*kwrap8(kpy[a]-ty2), db=kwrap8(kpx[b]-tx2)*kwrap8(kpx[b]-tx2)+kwrap8(kpy[b]-ty2)*kwrap8(kpy[b]-ty2);
         if(db>da) break; k->pi=(s16)b; if(b==0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }          // (a rival who has finished keeps driving, but no longer counts laps)
+    if(k->pi==pi0){ int a=k->pi, bi=0, bd=0x7FFFFFFF; for(int j=0;j<=10;j++){ int q=kwp(a+j); int dx=kwrap8(kpx[q]-tx2), dy=kwrap8(kpy[q]-ty2), d=dx*dx+dy*dy; if(d<bd){ bd=d; bi=j; } }       // (tucked inside a sharp bend the next points first lead away and the greedy walk stops: look a few points on for the nearest, so nobody sits in a heap waiting for a point that never comes)
+        for(int j=0;j<bi;j++){ int b=kwp(k->pi+1); k->pi=(s16)b; if(b==0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } } }
     if(k->pi!=pi0 || k->spin) k->stk=0; else if((k->stk+=(u8)n)>=120){ int q=(k->pi+4)%knp; k->stk=0;
 #ifdef TEST_KAUDIT
-    klog[39]++; klogb[k->pi*16/knp]++;
+    klog[39]++; klogb[k->pi*16/knp]++; if(klogn<1560){ klogp[klogn++]=(u32)k->pi|((u32)r<<16); klogp[klogn++]=(u32)k->x>>8; klogp[klogn++]=(u32)k->y>>8; klogp[klogn++]=(u32)(u16)k->hd|((u32)(k->v>>4)<<16); klogp[klogn++]=(u32)kp_cx(kwp(k->pi+9))>>8; klogp[klogn++]=(u32)kp_cy(kwp(k->pi+9))>>8; klogp[klogn++]=(u32)k->pi; }
 #endif
     k->x=kp_cx(q); k->y=kp_cy(q); k->hd=(s16)kp_dir(q); k->v/=2; k->pi=(s16)q; if(q<pi0 && !k->fin){ k->lap++; if(k->lap>kt.laps) kfinish(r); } }   // circling a spot it cannot get to (a tight turn round its target) or wedged: put it back on the road a little further on
     for(int j=0;j<nkl;j++){ int d0=kwp(klp[j]-pi0+knp), d1=kwp(klp[j]-k->pi+knp); if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ k->la=1; k->pi=klp[j]; k->x=kp_cx(klp[j]); k->y=kp_cy(klp[j]); k->hd=(s16)kp_dir(klp[j]); return; } }
@@ -939,7 +941,7 @@ static void kart_tick(int n){
     if(ks_state==KS_RACE){ int fin=0, sl=0, mn=999, mx=0; if(k_clock<12) for(int i=0;i<knp;i++) klogb[48+i*16/knp]|=kpf[i]; if(k_clock<12) for(int i=0;i<knp;i++) klogk[i*2]=kpx[i], klogk[i*2+1]=kpy[i];                                  // (test: how the rivals drive: where they are, how many stray, how many finish)
         for(int r=1;r<nrc;r++){ Racer *k=&rc[r]; if(k->fin) fin++; if(k->lap<mn) mn=k->lap; if(k->lap>mx) mx=k->lap; sl+=k->lap; if(k->fin||k->la||k->out) continue;
             klog[36]++; int c=cmap[((k->y>>15)&HMASK)*HW+((k->x>>15)&HMASK)]; if(!kroad(c) && !(nkb && kbr_h(k->pi)>0) && !kgap_at(k->pi)){ klog[37]++; klogb[16+k->pi*16/knp]++; if(hm_at(k->x,k->y)<water_lv) klog[38]++; }
-            int d=kp_dir(k->pi), off=((k->hd-d+512)&1023)-512; if(off<0) off=-off; if(off>300 && k->v>K_VBASE/4) { klog[40]++; klogb[32+k->pi*16/knp]++; if(klogn<1500 && (frames&7)==0) klogp[klogn++]=((k->x>>15)&255)|(((k->y>>15)&255)<<8)|((u32)r<<16)|((u32)(k->v>>8)<<20); } if(k->v<K_VBASE/10) klog[44]++; }
+            int d=kp_dir(k->pi), off=((k->hd-d+512)&1023)-512; if(off<0) off=-off; if(off>300 && k->v>K_VBASE/4) { klog[40]++; klogb[32+k->pi*16/knp]++; if(0) klogp[klogn++]=((k->x>>15)&255)|(((k->y>>15)&255)<<8)|((u32)r<<16)|((u32)(k->v>>8)<<20); } if(k->v<K_VBASE/10) klog[44]++; }
         klog[41]=fin; klog[42]=sl; klog[43]=k_clock; klog[45]=mn; klog[46]=mx; klog[47]=nrc; }
 #endif
 #ifdef TEST_KSH
