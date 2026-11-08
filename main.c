@@ -69,7 +69,21 @@ static void read_keys(void){ keys_old=keys; keys = ~REG_KEYINPUT & 0x3FF; }
 #define HELD(k) (keys&(k))
 #define HIT(k) ((keys&(k)) && !(keys_old&(k)))
 static int auto_run=0, tapU_t=0, run_stuck=0, run_hint=0;   // AUTO-RUN in dungeons: double-tap UP, and you keep running until you stop it
-static void vsync(void){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); }
+// ---- STEADY MENUS: a menu draws on one page while the other is on screen; every vsync inside it copies the finished picture across, in the blank (DMA), so a half-drawn menu is never shown.
+// (SH_ON is a flag in in_menu; the page being drawn on is the one NOT on screen. shd_begin when a menu opens, shd_end before it leaves or something else takes the screen.)
+#define SH_ON 0x10000
+static int in_menu;
+static void shd_copy(void){ u32 o = (REG_DISPCNT&0x10) ? 0x0600A000u : 0x06000000u;
+    *(volatile u32*)0x040000D4=o^0xA000u; *(volatile u32*)0x040000D8=o; *(volatile u32*)0x040000DC=9600|(1<<26)|(1u<<31); }
+static void vsync(void){ while(REG_VCOUNT>=160); while(REG_VCOUNT<160); if(in_menu&SH_ON) shd_copy(); }
+static int shd_begin(void){                                         // 1 if it began (0: already steady, or a kart race's hardware ground is on)
+    if((in_menu&SH_ON) || m7_on) return 0;
+    u32 o = (REG_DISPCNT&0x10) ? 0x0600A000u : 0x06000000u;           // the page on screen now is the one the menu draws on: copy it across, show the copy
+    *(volatile u32*)0x040000D4=o; *(volatile u32*)0x040000D8=o^0xA000u; *(volatile u32*)0x040000DC=9600|(1<<26)|(1u<<31);
+    while(REG_VCOUNT>=160); while(REG_VCOUNT<160); REG_DISPCNT^=0x10; in_menu|=SH_ON; return 1; }
+static void shd_end(int on){                                         // give the screen back: show the page the menu drew on
+    if(!on || !(in_menu&SH_ON)) return; in_menu&=~SH_ON; while(REG_VCOUNT>=160); while(REG_VCOUNT<160); REG_DISPCNT^=0x10; }
+static void shd_off(void){ shd_end(1); }                              // (anything that takes the whole screen over, a voyage or a landing, starts with this: harmless when no menu is steady)
 static void vsync_flip(void){ if(REG_VCOUNT>=160) return; while(REG_VCOUNT<160); }   // dungeon only (it runs on real time): late but still inside the blank = flip now, no tearing, no lost frame
 static int isqrt(u32 n){ u32 r=0, b=1u<<30; while(b>n) b>>=2; while(b){ if(n>=r+b){ n-=r+b; r=(r>>1)+b; } else r>>=1; b>>=2; } return (int)r; }
 #define S64_MAX 0x7FFFFFFFFFFFFFFFLL
@@ -133,6 +147,9 @@ static u32 aword(int i, int star){ i%=NCW0+2; return i==0 ? (galaxy_no ^ gal_fol
 static u32 hmix(u32 h){ h^=h>>16; h*=0x85EBCA6Bu; h^=h>>13; h*=0xC2B2AE35u; h^=h>>16; return h; }
 static u32 amix(u32 k, int star){ u32 h=0x811C9DC5u ^ k*0x9E3779B1u; for(int i=0;i<NCW0+2;i++) h=hmix(h ^ aword(i,star) ^ (u32)i*0x27D4EB2Fu); return h; }
 static void clus_refold(void){ u32 f=0, up=0; for(int i=NCW0;i<NCW;i++) if(clus[i]){ up|=clus[i]; f=hmix(f^clus[i]^(u32)i*0x27D4EB2Fu); } clus_f=f; clus_up=up; }   // call after any change to the cluster words
+#ifdef TEST_MENU
+static const volatile u32 tm_sel __attribute__((used)) = 0x54450000u+TEST_MENU;
+#endif
 static int in_menu=0; static char menu_msg[40];   // inside a menu, messages go on a line in the menu instead of over it                 // set by the SYSTEM page: 1 = load cur_slot, 2 = quit to the title
 
 // ---------------------------------------------------------------- mode 4 text
@@ -204,7 +221,7 @@ static const char *const eco_name[4]={"FARMING","MINING","TECH","HIVE"};
 static const char *const goods[8]={"FOOD","NECTAR","SILK","AMBER","CRYSTALS","MACHINES","MEDICINE","RELICS"};
 static u32 sys_id(int i); static int is_hive(int i);
 static int cargo_n(void){ int n=0; for(int i=0;i<8;i++) n+=cargo[i]; return n; }
-#define VISPG ((volatile u16*)(0x06000000 + (((REG_DISPCNT&0x10) && !m7_on)?0xA000:0)))   // the page on screen right now (in a kart race, always the first)
+#define VISPG ((volatile u16*)(0x06000000 + ((in_menu&SH_ON) ? ((REG_DISPCNT&0x10)?0:0xA000) : (((REG_DISPCNT&0x10) && !m7_on)?0xA000:0))))   // the page on screen right now (in a kart race, always the first); in a steady menu, the one it draws on
 // ================================================================= MORE OPTIONS (OPTIONS screen, press SELECT)
 // Every extra option is a row in XOT. Its setting is stored as (index XOR default), so a zero byte (a fresh game, or EWRAM at power on)
 // always means "the normal setting". xo_v(XO_...) is the number the game uses; xo_i(XO_...) is which choice is picked.
@@ -380,7 +397,7 @@ static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10
 
 static void hud_now(void){ if(scene==2) return; if(scene==0) planet_hud(); else dungeon_hud(); }
 static void say(const char *t){
-    if(in_menu){ int n=0; while(t[n] && n<39){ menu_msg[n]=t[n]; n++; } menu_msg[n]=0; return; }
+    if(in_menu&0xFFFF){ int n=0; while(t[n] && n<39){ menu_msg[n]=t[n]; n++; } menu_msg[n]=0; return; }
     if(scene==0){ show_msg(t); return; }
     int n=0; while(t[n] && n<39){ msg[n]=t[n]; n++; } msg[n]=0; msg_timer=24*xo_v(XO_MSGT)/100;
 }
@@ -1190,7 +1207,7 @@ static int title_screen(void){
     REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
     music(2);
     int sel=0, blink=0, dirty=1, full=1, n=0, cs=-1, kwu=0; int it[7]; int kon=0;
-    wait_release();
+    wait_release(); int sh=shd_begin();
     int fading_in=1;
     while(1){
         if(full){ full=0; title_paint(pg); slots_refresh(); cs=first_good_slot();
@@ -1219,17 +1236,17 @@ static int title_screen(void){
         { static const u16 code[10]={K_UP,K_UP,K_DOWN,K_DOWN,K_LEFT,K_RIGHT,K_LEFT,K_RIGHT,K_B,K_A}; u16 k=0;        // the Konami code opens the debug menu
           for(int i=0;i<10;i++) if(HIT(code[i])) k=code[i];
           if(k){ if(k==code[kon]) kon++; else kon = (k==K_UP) ? 1 : 0;
-              if(kon==10){ kon=0; sfx(6); oam_hide_all(); oam_flush(); int r=dbg_menu(pg); full=1; if(r) return r; wait_release(); continue; } } }
+              if(kon==10){ kon=0; sfx(6); oam_hide_all(); oam_flush(); shd_end(sh); int r=dbg_menu(pg); sh=shd_begin(); full=1; if(r){ shd_end(sh); return r; } wait_release(); continue; } } }
         if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; sfx(7); }
         if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; sfx(7); }
         if(HIT(K_A)||HIT(K_START)){
             int a=it[sel]; sfx(2);
-            if(a==TI_CONT){ cur_slot=cs; return 1; }
-            if(a==TI_NEW){ int s2=slot_picker(pg,SP_NEW,0); if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug(pg,1) && make_ship(pg,1)) return 0; } full=1; }
-            if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; return 1; } full=1; }
+            if(a==TI_CONT){ cur_slot=cs; shd_end(sh); return 1; }
+            if(a==TI_NEW){ int s2=slot_picker(pg,SP_NEW,0); if(s2>=0){ cur_slot=s2; oam_hide_all(); oam_flush(); if(make_bug(pg,1) && make_ship(pg,1)){ shd_end(sh); return 0; } } full=1; }
+            if(a==TI_LOAD){ int s2=slot_picker(pg,SP_LOAD,0); if(s2>=0){ cur_slot=s2; shd_end(sh); return 1; } full=1; }
             if(a==TI_OPT){ oam_hide_all(); oam_flush(); options_screen(pg); full=1; }
             if(a==TI_HELP){ oam_hide_all(); oam_flush(); help_screen(pg); full=1; }
-            if(a==TI_EXTRA){ oam_hide_all(); oam_flush(); if(title_extras(pg,cs)==2) return 2; full=1; }
+            if(a==TI_EXTRA){ oam_hide_all(); oam_flush(); if(title_extras(pg,cs)==2){ shd_end(sh); return 2; } full=1; }
             wait_release();
         }
     }
@@ -1320,6 +1337,17 @@ static void start_game(int cont){       // fades out, sets the world up from cur
 #endif
 #ifdef TEST_UNI
     scene=2; page_back=1; space_enter(1); shx=PR*3; shy=0; shz=0; galaxy_map();      // out in space, away from the planet: try a universe jump
+#endif
+#ifdef TEST_MENU                                                                     // (a test build: open one menu right away, scripted keys play it; see the flicker checks. The number sits in the ROM so a test can patch it: tm_sel)
+    gold=99999; fuel=fuel_max(); { int mm=(int)(tm_sel&255);
+    if(mm<=7 || mm==21){ scene=2; page_back=1; space_enter(1); shx=PR*3; shy=0; shz=0; }
+    volatile u16 *tp = mm<=7||mm==21 ? (volatile u16*)(0x06000000 + (page_back?0:0xA000)) : VISPG;
+    switch(mm){ case 1: galaxy_map(); break; case 2: cluster_jump(tp); break; case 3: universe_menu(tp); break; case 4: station_menu(); break; case 5: fav_add_here(); fav_screen(tp); break;
+        case 6: deep_chart(tp); break; case 7: body_menu(); break; case 8: options_screen(tp); break; case 9: shop_menu(); break; case 10: spell_shop(tp); break;
+        case 11: size_screen(tp,0); break; case 12: title_extras(tp,0); break; case 13: kart_menu(1); break; case 14: kw_menu(); break; case 15: char_screen(tp); break;
+        case 16: help_screen(tp); break; case 17: kgarage(tp); break; case 18: kpick_track(tp,"PICK A TRACK",1); break; case 19: kw_options(tp,0); break; case 20: market(tp); break;
+        case 21: { u32 u[UW]={1}; uni_edit(tp,u); } break; case 22: cantina(tp); break; case 23: kmy_tracks(tp); break; case 24: smelter_menu(tp); break; case 25: mining_menu(tp); break; }
+    for(;;) vsync(); }
 #endif
     return;
 #endif

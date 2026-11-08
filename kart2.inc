@@ -76,13 +76,17 @@ static void ktp_desc(int i, char *b, int *c){
     if(i<0){ i=-1-i; if(i<ktp_n){ scpy(b,"SURFACE: "); kt_official(i,&ktp_tmp); scat(b,ksurf_name[ktp_tmp.surf]); if(ktp_tmp.flags&KF_PADS) scat(b,"   BOOST PADS"); } else scpy(b,"A TRACK YOU BUILT HERE"); return; }
     if(i<ktp_n){ kt_official(i,&ktp_tmp); scpy(b,"ABOUT "); ncat(b,kt_rough_len(&ktp_tmp)); scat(b," CELLS ROUND, "); ncat(b,ktp_tmp.n); scat(b," GATES"); }
     else { KRec r; krec_get(ktp_cust[i-ktp_n],&r); scpy(b,"BY YOU. "); ncat(b,r.n); scat(b," GATES, "); ncat(b,r.laps); scat(b," LAPS, "); ncat(b,r.riv); scat(b," RIVALS"); } (void)c; }
-static int kpick_track(volatile u16 *pg, const char *title, int customs){   // >=0: this planet's track; <=-2: your saved track -2-i; -1: back
+static int kpick_track_(volatile u16 *pg, const char *title, int customs);
+static int kpick_track(volatile u16 *pg, const char *title, int customs){ int sh=shd_begin(); int r=kpick_track_(pg, title, customs); shd_end(sh); return r; }
+static int kpick_track_(volatile u16 *pg, const char *title, int customs){   // >=0: this planet's track; <=-2: your saved track -2-i; -1: back
     ktp_n=kt_count(); ktp_nc=0; if(customs){ KRec r; for(int i=0;i<NKREC;i++) if(krec_get(i,&r) && krec_here(&r)) ktp_cust[ktp_nc++]=i; }
     int sel=0; list_desc=ktp_desc; int k=list_pick(pg,title,ktp_n+ktp_nc,ktp_row,&sel,"A: PICK   B: BACK"); list_desc=0;
     if(k<0) return -1; return k<ktp_n ? k : -2-ktp_cust[k-ktp_n]; }
 static void kcls_row(int i, char *b, int *c){ static const char *const d[5]={"  (EASY)","  (NORMAL)","  (FAST)","  (VERY FAST)","  (LUDICROUS)"}; scpy(b,kcls_name[i]); scat(b,d[i]);
     if(i>=kcls_open){ static const char *const need[5]={"","","   LOCKED: WIN A PUPA CUP","   LOCKED: WIN AN IMAGO CUP","   LOCKED: WIN A STARBUG TOUR"}; scat(b,need[i]); *c=C_DGREY; } }
-static int kpick_class(volatile u16 *pg){ int sel=k_cls<kcls_open?k_cls:0; list_desc=0;
+static int kpick_class_(volatile u16 *pg);
+static int kpick_class(volatile u16 *pg){ int sh=shd_begin(); int r=kpick_class_(pg); shd_end(sh); return r; }
+static int kpick_class_(volatile u16 *pg){ int sel=k_cls<kcls_open?k_cls:0; list_desc=0;
     while(1){ int k=list_pick(pg,"PICK A CLASS",kw_mode?5:4,kcls_row,&sel,"A: PICK   B: BACK"); if(k<0) return -1; if(k<kcls_open) return k; say("WIN A CUP TO OPEN THIS CLASS"); } }
 
 // ---------------------------------------------------------------- the results
@@ -147,6 +151,7 @@ static void kart_results(void){
 
 // ---------------------------------------------------------------- the cup: four races, points for every place
 static void kart_cup_start(void){
+    shd_off();
     int n=kt_count(); u32 h=hmix(wd.tseed^0x43555021u^(u32)k_cls); for(int i=0;i<4;i++){ int t; do { h=hmix(h+i); t=(int)(h%(u32)n); int dup=0; for(int j=0;j<i;j++) if(kcup_trk[j]==t) dup=1; if(!dup) break; } while(1); kcup_trk[i]=(u8)t; }
     const char *ln[6]; char a[48], tn[4][24]; scpy(a,"THE "); { char w[24]; scpy(w,world_name()); w[14]=0; scat(a,w); } scat(a," CUP: "); scat(a,kcls_name[k_cls]); ln[0]=a;
     for(int i=0;i<4;i++){ kt_official(kcup_trk[i],&ktp_tmp); scpy(tn[i],""); ncat(tn[i],i+1); scat(tn[i],". "); scat(tn[i],ktp_tmp.name); ln[1+i]=tn[i]; } ln[5]="POINTS: 15 12 10 8 6 4 2 1";
@@ -180,6 +185,7 @@ static void kart_cup_next(void){
 // ---------------------------------------------------------------- the track maker: drive, drop gates, close the loop
 EW static u8 kbeac[KG_MAX];
 static void kbuild_begin(void){ krev=0;
+    shd_off();
     const char *ln[5]={"DRIVE ANYWHERE ON THIS PLANET.","A: DROP A GATE WHERE YOU ARE.","SELECT: TAKE THE LAST ONE BACK.","START: CLOSE THE LOOP AND FINISH.","4 TO 24 GATES. THE ROAD JOINS THEM UP."};
     card(VISPG,"BUILD A TRACK",ln,5);
     kret_x=ppx; kret_y=ppy; kret_h=heading; kgive_back(); kt_unpaint(); memset(&kt,0,sizeof kt); kt.riv=7; kt.cls=(u8)(k_cls<kcls_open?k_cls:0); kt.flags=KF_ITEMS|KF_PADS;
@@ -194,7 +200,9 @@ static void kbuild_drop(void){
 static void kbuild_undo(void){ if(!kt.n){ show_msg("NO GATES YET"); return; } kt.n--; if(kbeac[kt.n]!=255) kpo_release(kbeac[kt.n]); show_msg("GATE TAKEN BACK"); sfx(2); }
 static void kt_random_name(KTrack *t){ u32 h=rnd(); kt_name(t,h); }
 static void kbuild_save(volatile u16 *pg);
-static void kbuild_menu(void){                                            // the finished loop: name it, tune it, test it, keep it
+static void kbuild_menu_(void);
+static void kbuild_menu(void){ int sh=shd_begin(); kbuild_menu_(); shd_end(sh); }
+static void kbuild_menu_(void){                                            // the finished loop: name it, tune it, test it, keep it
     volatile u16 *pg=VISPG; int sel=0, dirty=1, arm=0;
     enum { B_NAME, B_LAPS, B_RIV, B_CLS, B_SURF, B_ITEMS, B_PADS, B_RAMPS, B_LOOPS, B_TEST, B_SAVE, B_MORE, B_BIN, NB };
     static const char *const bl[NB]={"NAME","LAPS","RIVALS","CLASS","SURFACE","ITEMS","BOOST PADS","RAMPS","LOOP-DE-LOOPS","TEST DRIVE IT","SAVE THIS TRACK","KEEP BUILDING","THROW IT AWAY"};
@@ -252,7 +260,9 @@ static void kmy_desc(int i, char *b, int *c){ int k = i<0 ? -1-i : i; KRec r; kr
     if(i<0){ char nm[32]; if(r.at.star==0xFF){ scpy(nm,"KART WORLD PLANET #"); ncat(nm,r.at.seed); } else fav_name(&r.at,nm); scpy(b,"ON "); scat(b,nm); return; }
     scpy(b,""); ncat(b,r.n); scat(b," GATES  "); ncat(b,r.laps); scat(b," LAPS  "); ncat(b,r.riv); scat(b," RIVALS  "); scat(b,ksurf_name[r.surf%6]);
     if(r.best){ char t[12]; kfmt_time(t,r.best); scat(b,"  BEST "); scat(b,t); } (void)c; }
-static void kmy_tracks(volatile u16 *pg){
+static void kmy_tracks_(volatile u16 *pg);
+static void kmy_tracks(volatile u16 *pg){ int sh=shd_begin(); kmy_tracks_(pg); shd_end(sh); }
+static void kmy_tracks_(volatile u16 *pg){
     int sel=0;
     while(1){ KRec r; kmy_n=0; for(int i=0;i<NKREC;i++) if(krec_get(i,&r)) kmy_idx[kmy_n++]=i;
         if(!kmy_n){ const char *ln[2]={"YOU HAVE NOT SAVED ANY TRACKS YET.","PICK BUILD A TRACK TO MAKE ONE."}; card(pg,"YOUR TRACKS",ln,2); return; }
@@ -285,7 +295,9 @@ static void kart_records(volatile u16 *pg){
 // ---------------------------------------------------------------- the kart garage: a ludicrous amount of kart
 // UP/DOWN pick a row. LEFT/RIGHT try things on (even ones you have not bought). A buys, mixes a colour, types the name or toots the horn.
 // L turns the kart round. R matches the colours to the paint. SELECT surprises you. B undoes. START is done (anything not bought goes back).
-static void kgarage(volatile u16 *pg){
+static void kgarage_(volatile u16 *pg);
+static void kgarage(volatile u16 *pg){ int sh=shd_begin(); kgarage_(pg); shd_end(sh); }
+static void kgarage_(volatile u16 *pg){
     enum { G_NAME, G_BODY, G_SIZE, G_PAINT, G_TRIM, G_PAT, G_PATC, G_STICK, G_NUM, G_WHEEL, G_SPOIL, G_EXH, G_TOP, G_TRAIL, G_GLOW, G_HORN, NG };
     static const char *const gl[NG]={"NAME","BODY","SIZE","PAINT","TRIM","PATTERN","PATTERN COL","STICKER","NUMBER","WHEELS","SPOILER","EXHAUST","TOPPER","TRAIL","UNDERGLOW","HORN"};
     static const s8 gp[NG]={-1,KP_BODY,KP_SIZE,-1,-1,KP_PAT,-1,KP_STICK,-1,KP_WHEEL,KP_SPOIL,KP_EXH,KP_TOP,KP_TRAIL,KP_GLOW,KP_HORN};
@@ -368,7 +380,9 @@ static void kgarage(volatile u16 *pg){
     #undef G_PUSH
     in_menu--; kart_build(0); kart_save(); wait_release(); oam_hide_all(); oam_flush(); }
 // ---------------------------------------------------------------- the kart camera: as you like it
-static void kcam_menu(volatile u16 *pg, int live){
+static void kcam_menu_(volatile u16 *pg, int live);
+static void kcam_menu(volatile u16 *pg, int live){ int sh=shd_begin(); kcam_menu_(pg, live); shd_end(sh); }
+static void kcam_menu_(volatile u16 *pg, int live){
     enum { C_VIEW, C_DIST, C_HGT, C_FOV, C_SWING, C_TURNS, C_ZOOM, C_SHAKE, C_RESET, C_DONE, NC };
     static const char *const cl[NC]={"VIEW","DISTANCE","HEIGHT","FIELD OF VIEW","SWING","LOOK INTO TURNS","SPEED ZOOM","BUMP SHAKE","BACK TO NORMAL","DONE"};
     static const u8 cn[8]={2,5,5,4,4,2,2,2};
@@ -400,7 +414,9 @@ static void kc_desc(int i, char *b, int *c){ int k = i<0 ? -1-i : i; int o=kc_op
         "DRIVE ROUND AND DROP GATES. THE ROAD JOINS THEM.","16 BODIES, ANY COLOURS, WHEELS, SPOILERS, TOPPERS...","THE OLD FLAG RACE, ON FOOT.","WINS, CUPS, MEDALS AND TRACKS.","BACK TO THE PLANET.","DISTANCE, HEIGHT, FIELD OF VIEW, SWING, COCKPIT...","EVERY TRACK IS A CLOSED LOOP: RACE IT BOTH WAYS."};
     static const char *const d2[11]={"UP: GO  B: BOOST  R: DRIFT  A: ITEM  L: HORN","BEAT A CUP TO OPEN THE NEXT CLASS.","","THEY ARE KEPT ON THE CART. ALL SLOTS SHARE THEM.","4 TO 24 GATES, ON ANY PLANET OF ANY SIZE.","LEFT/RIGHT TO TRY THINGS ON. BUY WHAT YOU LOVE.","","","","IN A RACE, PAUSE AND PICK CAMERA TO SEE IT LIVE.","PRESS A. BEST TIMES ARE KEPT FOR EACH WAY ROUND."};
     scpy(b, i<0 ? d2[o] : d1[o]); (void)c; }
-static void kart_menu(int at_post){
+static void kart_menu_(int at_post);
+static void kart_menu(int at_post){ int sh=shd_begin(); kart_menu_(at_post); shd_end(sh); }
+static void kart_menu_(int at_post){
     volatile u16 *pg=VISPG; kc_post=at_post; kc_n=0; static const u8 all[11]={0,1,2,10,3,4,5,9,6,7,8};
     for(int i=0;i<11;i++){ if(all[i]==6 && !at_post) continue; kc_opt[kc_n++]=all[i]; }
     oam_hide_all(); oam_flush(); in_menu++; int sel=0;

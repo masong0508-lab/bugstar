@@ -40,7 +40,9 @@ static void hg_bars(volatile u16 *pg, const int *v, const int *o){       // the 
 #define HG_PW 108
 #define HG_PH 64
 static void hg_copy(volatile u16 *pg, volatile u16 *bp){ for(int y=HG_PY;y<HG_PY+HG_PH;y++){ volatile u16 *src=bp+y*120+HG_PX/2, *dst=pg+y*120+HG_PX/2; for(int x=0;x<HG_PW/2;x++) dst[x]=src[x]; } }
-static int make_ship(volatile u16 *pg, int first){
+static int make_ship_(volatile u16 *pg, int first);
+static int make_ship(volatile u16 *pg, int first){ int sh=shd_begin(); int r=make_ship_(pg, first); shd_end(sh); return r; }
+static int make_ship_(volatile u16 *pg, int first){
     char nm[9]; scpy(nm,ship.name); int n=textlen(nm); if(n<1){ scpy(nm,"MOTH"); n=4; }
     ShipLook before=ship; ShipX beforex=shpx; ship_build_model();
     static int hg_step=4; u32 sk_add[NSK]={0}; char sk_msg[32]; sk_msg[0]=0;                     // LEVEL tab: the step (MAX/100/50/5/1, kept between visits) and what this visit spent, for LEFT and B to take back

@@ -63,7 +63,7 @@ static void m7_span(int y, int x0, int x1, int c){
 static void m7_begin(void){ m7_dc=(M7Dc*)(void*)gen_acc; m7_rowz=(s16*)(void*)gen_acc+320; m7_fog=(M7Fog*)(void*)((s16*)(void*)gen_acc+480); m7_on=1; m7_arm=0; m7_tab=0; m7_strip=160; page_back=0; REG_DISPCNT=4|(1<<10)|(1<<12)|(1<<6); }
 static void m7_end(void){ m7_on=0; m7_arm=0; m7_strip=160; page_back=0; }
 IWRAM static void m7_irq(void){                 // at every VBlank: start the line DMAs for this frame, or stop them when a menu is up or the race is over
-    if(m7_arm && !in_menu){ const M7Line *t=M7_TAB(m7_tab); const u16 *d=m7_dc[m7_tab];
+    if(m7_arm && !(in_menu&0xFFFF)){ const M7Line *t=M7_TAB(m7_tab); const u16 *d=m7_dc[m7_tab];
         *(volatile u16*)0x04000020=t[0].pa; *(volatile u16*)0x04000022=0; *(volatile u16*)0x04000024=t[0].pc; *(volatile u16*)0x04000026=t[0].pd;
         *(volatile u32*)0x04000028=t[0].x; *(volatile u32*)0x0400002C=t[0].y; REG_DISPCNT=d[0];
         *(volatile u32*)0x040000C4=0; *(volatile u32*)0x040000D0=0; *(volatile u32*)0x040000B8=0;              // (restart them all from the tables' tops)

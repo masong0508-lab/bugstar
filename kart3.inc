@@ -129,7 +129,9 @@ static u32 kw_num_edit(volatile u16 *pg, const char *title, u32 v, int nd, u32 l
         if(HIT(K_A)||HIT(K_B)||HIT(K_START)){ u32 s=0; for(int i=0;i<nd;i++){ u32 dg=(u32)(d[i]-'0'); if(s>(0xFFFFFFFFu-dg)/10u){ s=0xFFFFFFFFu; break; } s=s*10u+dg; }
             if(s<lo) s=lo; if(s>hi) s=hi; wait_release(); return s; } } }
 static void kw_seed_edit(volatile u16 *pg){ kw.seed=kw_num_edit(pg,"PLANET NUMBER (0 TO 4,294,967,295)",kw.seed,10,0,0xFFFFFFFFu); }
-static int kw_options(volatile u16 *pg, int mode){                 // mode 0 quick race, 1 time attack, 2 elimination, 3 the track maker. 1 = go
+static int kw_options_(volatile u16 *pg, int mode);
+static int kw_options(volatile u16 *pg, int mode){ int sh=shd_begin(); int r=kw_options_(pg, mode); shd_end(sh); return r; }
+static int kw_options_(volatile u16 *pg, int mode){                 // mode 0 quick race, 1 time attack, 2 elimination, 3 the track maker. 1 = go
     u8 show[NKO]; int ns=0; for(int i=0;i<NKO;i++){ int ok=1;
         if(mode==1 && (i==KO_RIV||i==KO_ITEMS||i==KO_SKILL||i==KO_CATCH||i==KO_CLASS)) ok=0;
         if(mode==2 && (i==KO_RIV||i==KO_LAPS)) ok=0;
@@ -211,7 +213,7 @@ static int kw_menu(void){
     static const char *const it[14]={"GRAND TOUR","QUICK RACE","RANDOM RACE","TIME ATTACK","ELIMINATION","ENDLESS RUN","TRACK MAKER","YOUR TRACKS","GARAGE","DRIVER","RECORDS","HOW IT WORKS","BACK TO THE TITLE","CAMERA"};
     static const char *const dsc[14]={"10 TOURS OF 4 RACES ON 4 PLANETS. WIN TROPHIES.","ANY OF 4.3 QUADRILLION TRACKS. EVERY OPTION.","ONE BUTTON. A SURPRISE PLANET AND TRACK.","JUST YOU AND THE CLOCK.","EVERY 20 SECONDS THE LAST KART IS OUT.",
         "TOP 3 GOES ON TO A NEW PLANET. HOW FAR CAN YOU GET?","BUILD A TRACK ON ANY PLANET YOU LIKE.","EVERY TRACK YOU HAVE SAVED. RACE ANY OF THEM.","DRESS UP YOUR KART. COINS BUY PARTS.","WHO DRIVES? YOUR BUG OR NEARLY ANYONE.","TROPHIES, WINS AND BEST TIMES.","THE BUTTONS AND THE BASICS.","BACK TO BUGSTAR.","DISTANCE, HEIGHT, FIELD OF VIEW, SWING, COCKPIT."};
-    int sel=0, top=0, dirty=1, t=0; kw_paint_bg(pg); wait_release(); fade(0);
+    int sel=0, top=0, dirty=1, t=0; kw_paint_bg(pg); int sh=shd_begin(); wait_release(); fade(0);
     while(1){
         if(dirty){ dirty=0; char b[48]; rect(pg,0,33,148,96,0);                                  // the list sits on a card, 7 rows at a time, and scrolls
             static const u8 ord[14]={0,1,2,3,4,5,6,7,8,9,13,10,11,12};
@@ -238,7 +240,7 @@ static int kw_menu(void){
         kw_strip(pg,t>>1); vsync(); oam_flush(); read_keys(); t++; rng_s+=t;
         if(HIT(K_UP)){ sel=(sel+13)%14; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%14; dirty=1; sfx(7); }
         if(HIT(K_B)){ sel=13; dirty=1; }
-        if(HIT(K_A)||HIT(K_START)){ static const u8 ord3[14]={0,1,2,3,4,5,6,7,8,9,13,10,11,12}; sfx(2); oam_hide_all(); oam_flush(); wait_release(); return ord3[sel]; } } }
+        if(HIT(K_A)||HIT(K_START)){ static const u8 ord3[14]={0,1,2,3,4,5,6,7,8,9,13,10,11,12}; sfx(2); oam_hide_all(); oam_flush(); wait_release(); shd_end(sh); return ord3[sel]; } } }
 static void kw_help(volatile u16 *pg){
     const char *a[6]={"UP: GO.  DOWN: BRAKE.  LEFT/RIGHT: STEER.","B: BOOST (THE YELLOW BAR).  L: YOUR HORN.","HOLD R IN A TURN TO DRIFT. LET GO FOR A TURBO.","DRIVE THROUGH ? BOXES FOR ITEMS. A: USE ONE.","STAY ON THE ROAD. GRASS AND WATER SLOW YOU.","ORANGE ARROWS ON THE ROAD: A FREE BOOST."};
     card(pg,"HOW IT WORKS",a,6);
@@ -261,6 +263,7 @@ static void kw_run(void){                                          // the planet
         vsync(); if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?(1<<4):0); page_back^=1; oam_flush(); } }
     fade(1); oam_hide_all(); oam_flush(); music(2); }
 static void kart_world(void){
+    shd_off();
     kw_load(); if(!kw.unlocked) return;
     kw_mode=1; cur_slot=last_slot; grind_load(); hum_load(); form=0; obj_palette(); bug_build();
     galaxy_no=0; for(int w=0;w<NCW;w++) clus[w]=0; for(int k=0;k<NGH;k++) galaxy_hi[k]=0; clus_refold(); uni_set32(1); cluster_no=0; zone=0; zone_cleared=1; cur_sys=0; gen_cluster();

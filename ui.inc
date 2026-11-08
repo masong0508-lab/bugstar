@@ -576,7 +576,9 @@ static const u8 help_ico[HELP_N][6]={
 };
 static int badge_col(const char *b){ if(!b[0]) return -1; if(b[0]=='A'&&!b[1]) return C_RED; if(b[0]=='B'&&!b[1]) return C_CYAN; if(b[0]=='!') return C_RED; if(b[0]>='1'&&b[0]<='3') return C_GOLD; if(b[0]=='S') return C_GOLD; if(b[0]=='D') return C_GREEN; return C_GREY; }
 static int big_unlocked(void);
-static void help_screen(volatile u16 *pg){
+static void help_screen_(volatile u16 *pg);
+static void help_screen(volatile u16 *pg){ int sh=shd_begin(); help_screen_(pg); shd_end(sh); }
+static void help_screen_(volatile u16 *pg){
     int p=0, dirty=1, t=0, crawl=((((unsigned long long)rnd()<<32)|rnd())%(big_unlocked()?78539ULL:31415926535ULL))==0; wait_release(); bug_build();     // the little bug only trots along the bottom now and then (1 in 31,415,926,535; 1 in 78,539 once the game is beaten)
     while(1){
         if(dirty){ dirty=0;
@@ -677,7 +679,9 @@ static void st_spend(int i, int step, int dir, s64 *add){       // the BUG page:
     if(n<=0){ sfx(4); scpy(menu_msg, dir>0 ? "NO POINTS LEFT: LEVEL UP FOR MORE" : "ONLY THIS VISIT'S POINTS COME BACK"); return; }
     s64 oldmax=maxh; *sv[i]=sadd(*sv[i],dir*n); stat_pts=sadd(stat_pts,-dir*n); add[i]=sadd(add[i],dir*n); menu_msg[0]=0;
     recalc(); hearts=sadd(hearts,sadd(maxh,-oldmax)); if(hearts<1) hearts=1; if(hearts>maxh) hearts=maxh; if(mp>maxmp) mp=maxmp; sfx(dir>0?2:4); }
-static void char_screen(volatile u16 *pg){
+static void char_screen_(volatile u16 *pg);
+static void char_screen(volatile u16 *pg){ int sh=shd_begin(); char_screen_(pg); shd_end(sh); }
+static void char_screen_(volatile u16 *pg){
     static const u8 ord[9]={0,1,2,3,7,4,8,6,5};                // page numbers in tab order (7 = WORLD, 8 = EXTRAS; pause_last keeps page numbers, so older orders still work)
     static const char *const tabn[9]={"BUG","GEAR","MAGIC","QUEST","WORLD","FEATS","EXTRAS","MAP","SYSTEM"};
     static const u8 tabc[9]={C_GREEN,C_CYAN,C_UNIQ,C_GOLD,C_CYAN,C_GOLD,C_UNIQ,C_GREEN,C_WHITE};
@@ -821,9 +825,9 @@ static void char_screen(volatile u16 *pg){
             if(menu_msg[0]){ char mm[40]; scpy(mm,menu_msg); mm[34]=0; rect(pg,0,150,150,10,U_BG0); text(pg,6,152,mm,C_GREEN,1); }
         }
         // ---- every frame: the selection bar breathes, and your bug stands in its frame on the BUG page
-        tick++; { int s=sinx((tick*5)&255); int t=((s+16384)*16)>>15; if(t>16) t=16; BG_PAL[HI]=rgb15(24+t*2,34+t*3,64+t*5); }
-        oam_hide_all(); if(page==0) me_oam(0,182,76,(tick>>4)&1); oam_flush();
-        vsync(); read_keys();
+        tick++; oam_hide_all(); if(page==0) me_oam(0,182,76,(tick>>4)&1);
+        vsync(); oam_flush(); { int s=sinx((tick*5)&255); int t=((s+16384)*16)>>15; if(t>16) t=16; BG_PAL[HI]=rgb15(24+t*2,34+t*3,64+t*5); }   // (the sprites and the colour change inside the blank, not while the picture is being drawn)
+        read_keys();
         if(HIT(K_START)) break;
         if(page==5){                                                   // the Konami code here (or SELECT, once it has been typed) opens the debug menu
             int dq=0; u16 k=0; for(int i=0;i<10;i++) if(HIT(dbg_kc[i])) k=dbg_kc[i];
@@ -886,7 +890,9 @@ static void make_quest(void){
     b[23]=0; scpy(q_name,b);
 }
 static void (*list_desc)(int,char*,int*)=0;      // an optional second line about the picked row
-static int list_pick(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help){
+static int list_pick_(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help);
+static int list_pick(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help){ int sh=shd_begin(); int r=list_pick_(pg,title,n,row,sel,help); shd_end(sh); return r; }
+static int list_pick_(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help){
     int dirty=1;
     wait_release();
     while(1){
@@ -995,7 +1001,9 @@ static void spshop_desc(int i, char *b, int *c){ if(i<0){ b[0]=0; return; } int 
 static void spcls_row(int i, char *b, int *c){ int own=0, all=0; for(int k=SP_CORE;k<NSPELL;k++) if(spell_def[k].cls==i){ all++; if(spell_known[k]) own++; }
     scpy(b,spell_cls_name[i]); while(textlen(b)<16) scat(b," "); ncat(b,own); scat(b,"/"); ncat(b,all); scat(b," OWNED"); *c=C_WHITE; }
 static void spcls_desc(int i, char *b, int *c){ static const char *const d[3]={"FIRE, LIGHTNING, POISON AND STORMS","HEALS, SHIELDS, SPEED AND MANA","FRIENDS AND SPIRITS THAT FIGHT FOR YOU"}; if(i<0){ b[0]=0; return; } scpy(b,d[i]); *c=C_WHITE; }
-static void spell_shop(volatile u16 *pg){
+static void spell_shop_(volatile u16 *pg);
+static void spell_shop(volatile u16 *pg){ int sh=shd_begin(); spell_shop_(pg); shd_end(sh); }
+static void spell_shop_(volatile u16 *pg){
     int c0=0;
     while(1){ list_desc=spcls_desc; int r=list_pick(pg,"SPELL SHOP",3,spcls_row,&c0,"A: OPEN  B: BACK"); if(r<0) break;
         int n=0; for(int k=SP_CORE;k<NSPELL;k++) if(spell_def[k].cls==r) sp_shop_id[n++]=k;
@@ -1063,7 +1071,9 @@ static void smelter_row(int i, char *b, int *c){ *c=C_WHITE;
 static void smelter_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY; if(i<0){ sm_job_line(b,c); return; }
     if(i==0) scpy(b,"MELT ORE INTO BARS WHILE YOU PLAY"); else if(i==1) scpy(b,"BARS MAKE PARTS, PARTS MAKE TOOLS");
     else if(i==2) scpy(b,"WHAT THE SMELTER HAS MADE"); else if(i==3) scpy(b,"FOR TOOLS, AND FOR LATER"); else if(i==4) scpy(b,"HULL PLATES, ENGINE TUNES, LENSES, SHIELD CELLS"); else scpy(b,"SELL EVERY BAR AND PART YOU HOLD"); }
-static void smelter_menu(volatile u16 *pg){
+static void smelter_menu_(volatile u16 *pg);
+static void smelter_menu(volatile u16 *pg){ int sh=shd_begin(); smelter_menu_(pg); shd_end(sh); }
+static void smelter_menu_(volatile u16 *pg){
     int s0=0, r;
     { int o=sm_job?sm_rec[sm_job-1].out:0, n=sm_collect(); if(n){ char b[40]; scpy(b,"SMELT DONE: +"); ncat(b,n); scat(b," "); scat(b,sm_name[o]); say(b); sfx(7); } }
     while(1){ list_desc=smelter_desc; r=list_pick(pg,"SMELTER",6,smelter_row,&s0,"A: CHOOSE  B: BACK"); if(r<0) break;
@@ -1089,7 +1099,9 @@ static void mn_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY;
     else scpy(b,"MELT ORE, MAKE PARTS, BUILD BETTER TOOLS"); }
 static void ob_row(int i, char *b, int *c){ int o=4+i; scpy(b,ore_def[o].name); while(textlen(b)<14) scat(b," "); ncat(b,ore_n[o]); while(textlen(b)<19) scat(b," "); if(ore_rich[o]||ore_prist[o]){ scat(b,"R"); ncat(b,ore_rich[o]); scat(b," P"); ncat(b,ore_prist[o]); } else { scat(b,"T"); ncat(b,ore_def[o].tier); } while(textlen(b)<26) scat(b," "); ncat(b,ore_px(o)); scat(b,"G EACH"); *c=ore_n[o]?C_WHITE:C_DGREY; }
 static void ob_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY; if(i<0) return; int o=4+i; scpy(b,"MINED "); ncat(b,ml_n[i]); scat(b,"  NEEDS A "); scat(b,ore_tool_name[ore_need_tool(o)]); scat(b,ore_need_tool(o)<=ore_tool?" (YOU CAN)":" (YOU CAN'T YET)"); *c=ore_need_tool(o)<=ore_tool?C_GREEN:C_RED; }
-static void mining_menu(volatile u16 *pg){
+static void mining_menu_(volatile u16 *pg);
+static void mining_menu(volatile u16 *pg){ int sh=shd_begin(); mining_menu_(pg); shd_end(sh); }
+static void mining_menu_(volatile u16 *pg){
     int s0=0, r;
     while(1){ list_desc=mn_desc; r=list_pick(pg,"MINING",4,mn_row,&s0,"A: CHOOSE  B: BACK"); if(r<0) break;
         if(r==0){ int v=ore_sellval(); if(!v){ say("NO ORE TO SELL"); continue; } s64 g0=gold; earn(v); ore_clear_sold(); char b[40]; scpy(b,"SOLD ORE: +"); ncat(b,(int)(gold-g0)); scat(b,"G"); say(b); sfx(7); hud_now(); }
@@ -1223,7 +1235,9 @@ static void bazaar(volatile u16 *pg, int tab){
             dirty=1; }
     }
 }
-static int shop_menu(void){   // returns 1 to fly on, 2 for autopilot
+static int shop_menu_(void);
+static int shop_menu(void){ int sh=shd_begin(); int r=shop_menu_(); shd_end(sh); return r; }
+static int shop_menu_(void){   // returns 1 to fly on, 2 for autopilot
     volatile u16 *pg=VISPG;
     oam_hide_all(); oam_flush();
     int sel=0, tab=0, row[4]={0,0,0,0}, mspin=0, mt=0; in_menu++; menu_msg[0]=0; ship_build_model();

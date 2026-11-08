@@ -279,7 +279,9 @@ static void slot_card(volatile u16 *pg, int i, int y, int sel, int mode){
     scpy(b,"G "); ncat(b,o->gold); scat(b,"  FAME "); ncat(b,o->fame); text(pg,cx+8,y+24,b,sel?C_GREY:C_DGREY,1);
     s64 need=sadd(smul(smul(o->level,o->level),18),12); hbar(pg,cx+w-8-48,y+25,48,o->xp,need,C_GOLD);
 }
-static int slot_picker(volatile u16 *pg, int mode, int src){
+static int slot_picker_(volatile u16 *pg, int mode, int src);
+static int slot_picker(volatile u16 *pg, int mode, int src){ int sh=shd_begin(); int r=slot_picker_(pg, mode, src); shd_end(sh); return r; }
+static int slot_picker_(volatile u16 *pg, int mode, int src){
     static const char *const ttl[4]={"LOAD GAME","NEW GAME","SAVE GAME","COPY TO WHICH SLOT?"};
     static const char *const hlp[4]={"A: LOAD  SELECT: ERASE  R: COPY  B: BACK","A: PLAY HERE  SELECT: ERASE  B: BACK","A: SAVE  SELECT: ERASE  R: COPY  B: BACK","A: COPY HERE  B: BACK"};
     slots_refresh(); oam_hide_all(); oam_flush(); if(in_game) rect(pg,0,18,240,142,0);
@@ -410,7 +412,9 @@ static void dif_details(volatile u16 *pg, int ts, int tt){       // ts: the row 
     if(tt>0) text(pg,216,47,"^",C_CYAN,1); if(tt+11<NDL) text(pg,216,117,"v",C_CYAN,1);
 }
 // ---------------------------------------------------------------- the options screen
-static void options_screen(volatile u16 *pg){
+static void options_screen_(volatile u16 *pg);
+static void options_screen(volatile u16 *pg){ int sh=shd_begin(); options_screen_(pg); shd_end(sh); }
+static void options_screen_(volatile u16 *pg){
     enum { OP_DIFF, OP_HUNGER, OP_FAINT, OP_XP, OP_GOLD, OP_CAM, OP_MUSIC, OP_SFX, OP_AUTO, OP_SHAKE, OP_MAP, OP_MINI, OP_NUMS, OP_HINTS, OP_ARROW, NOPT };
     static const char *const nm[NOPT]={"DIFFICULTY","HUNGER","LOSE STUFF WHEN YOU FAINT","XP SPEED","GOLD","PLANET CAMERA","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE","MINIMAP","MINI STAT BARS","DAMAGE NUMBERS","BUTTON HINTS","GUIDE ARROW"};
     static const char *const hlp[NOPT]={"BABY: 1 DAMAGE, NO HUNGER, NOTHING LOST, 2X GOLD AND XP. EASY: HALF DAMAGE. HARD UP: MORE DAMAGE, MORE GOLD","OFF: NOBODY EVER STARVES","OFF: FAINTING COSTS NO GOLD AND NO BAG","HOW FAST YOU LEVEL UP","HOW MUCH GOLD EVERYTHING PAYS","WHICH VIEW A NEW GAME STARTS WITH","THE CHIPTUNE TUNES","BITES, HITS AND PICKUPS","SAVES AT THE SHIP, AFTER DUNGEONS AND AT STATIONS","THE JOLT WHEN YOU GET HURT","THE LITTLE MAP IN THE DUNGEON CORNER","THE 3 LITTLE HP/MP/FOOD BARS IN THE DUNGEON CORNER","NUMBERS THAT FLY OFF THINGS YOU BITE","THE 'A: ...' LINES THAT SAY WHAT A DOES","THE YELLOW ARROW ON PLANETS"};

@@ -52,7 +52,9 @@ static void fg_val(int r, char *b){
         case 9: ncat(b,fg_slot+1); if(fst.d[fg_slot].used){ scat(b,"  S"); ncat(b,fst.d[fg_slot].seed); if(fst.d[fg_slot].done) scat(b," *"); else if(fst.d[fg_slot].best){ scat(b," B"); ncat(b,fst.d[fg_slot].best); } } else scat(b,"  EMPTY"); break;
     }
 }
-static int forge_menu(volatile u16 *pg){                                      // returns 1 to start a run
+static int forge_menu_(volatile u16 *pg);
+static int forge_menu(volatile u16 *pg){ int sh=shd_begin(); int r=forge_menu_(pg); shd_end(sh); return r; }
+static int forge_menu_(volatile u16 *pg){                                      // returns 1 to start a run
     fst_load(); if(!fg_ready){ fg_default(); fg_ready=1; }
     int sel=12, dirty=1; wait_release(); menu_msg[0]=0;
     while(1){

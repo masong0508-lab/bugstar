@@ -1103,7 +1103,9 @@ static int hud_dirty=0;
 static void dungeon_hud(void){ hud_dirty=2; }
 static void dungeon_hud_both(void){ char b[40]; dungeon_label(b); for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b); hud_dirty=0; }
 static int stair_ok;
-static int stair_panel(volatile u16 *pg){                       // the stairs up: back to the surface, or any floor you have already been to. -1 = stay where you are
+static int stair_panel_(volatile u16 *pg);
+static int stair_panel(volatile u16 *pg){ int sh=shd_begin(); int r=stair_panel_(pg); shd_end(sh); return r; }
+static int stair_panel_(volatile u16 *pg){                       // the stairs up: back to the surface, or any floor you have already been to. -1 = stay where you are
     int sel=depth_no-1, top=fl_max>depth_no?fl_max:depth_no, redraw=1; wait_release();
     while(1){
         if(redraw){ redraw=0; char b[40];
@@ -1131,6 +1133,7 @@ static void test_view(int cell, int maxd){                  // (a test) stand a 
 }
 #endif
 static void dungeon_enter(void){ auto_run=0;
+    shd_off();
 #ifdef TEST_MEM
     { static u8 once; if(!once && FMH->cur==4){ once=1; int n=0; for(int i=0;i<ndo && n<6;i++) if(dob[i].alive && is_mon(dob[i].kind) && dob[i].kind!=K_BOSS){ dob[i].alive=0; n++; } } }   // (a test: B4 loses six monsters before you leave)
 #endif

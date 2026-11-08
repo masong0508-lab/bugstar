@@ -367,6 +367,7 @@ static void ship_dies(Pirate *p, int by_you){
     if(lr(3)==0) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].good=255; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; }
 }
 static void space_enter(int from_planet){
+    shd_off();
 #ifdef TEST_MOONS
     if(sys[cur_sys].kind<6){ sys[cur_sys].kind=6; cur_pl=0; cur_moon=0; }
 #endif
@@ -557,6 +558,7 @@ static void beast_hud(volatile u16 *pg){
     else if(!(frames&64)) text(pg,64,18,"SELECT: WARP OUT",56,1);
 }
 static void lair_enter(void){
+    shd_off();
     music(4); no_ambush=1; space_enter(0); no_ambush=0; in_lair=1; ambush_t=0;
     beast_fight = beast_stage>=2 ? 3 : beast_stage+1;
     if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"WITHOUT ITS KING. THE BEAST WAKES.","IT ATE A WHOLE MOON. 1 TRILLION HP.","YOU CANNOT WIN TODAY. HIT IT AND WARP OUT.","GET STRONGER. AND COME BACK.","ITS WOUNDS WILL NEVER HEAL."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); hive_card=1; hive_done=0; }
@@ -579,7 +581,9 @@ static void ship_hit(int dm, int crash){            // shields first, then the h
 }
 // ---------------------------------------------------------------- one frame of flying
 // ---- choose which world of the system to land on (only asked when the star has more than one)
-static int body_menu(void){
+static int body_menu_(void);
+static int body_menu(void){ int sh=shd_begin(); int r=body_menu_(); shd_end(sh); return r; }
+static int body_menu_(void){
     int n=body_count(cur_sys), np=sys_nplan(cur_sys);
     if(n<=1){ cur_pl=cur_moon=0; return 1; }
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));
@@ -922,7 +926,8 @@ static void digits_named(char *out, const char *d, int k){          // the first
     int g=(k-1)/3; int lead=k-3*g, j=0; for(int i=0;i<lead && i<3;i++) out[j++]=d[i]; if(lead<3){ out[j++]='.'; out[j++]=d[lead]; } out[j]=0; scat(out," "); scat(out,illion(g)); }
 static void tv_log(const u32 *t10, u32 hours){ big_add(tv_ly,t10,LYW); tv_trips++; tv_hours = tv_hours+hours<tv_hours ? 0xFFFFFFFFu : tv_hours+hours; if(big_cmp(t10,tv_best)>0) for(int i=0;i<LYW;i++) tv_best[i]=t10[i]; }
 EW static s16 vsa[40], vsr[40], vsv[40];                              // the streaking stars of a voyage (the fold drive's voyage uses them too)
-static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, int kind){   // kind: 0 a star in this cluster, 1 the next cluster, 2 a warp, 3 into the beast's lair, 4 out of it, 5 to another universe
+static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, int kind){
+    shd_off();   // kind: 0 a star in this cluster, 1 the next cluster, 2 a warp, 3 into the beast's lair, 4 out of it, 5 to another universe
     coil_fx_end(); hours=coil_hours(hours,t10);
     char tot[40], ds[144]; ly_fmt(tot,t10); int n; { u32 t[LYW]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); n=big_dec(ds,t); }
     int big = n>6, T = kind==0 ? 110+(int)((t10[1]||t10[0]>2400?2400:t10[0])/20) : (kind==3||kind==4) ? 120 : 170+n*7; if(T>400) T=400;   // how long it takes, in 60ths: longer trips take longer
@@ -1082,19 +1087,26 @@ static int universe_go(const u32 *to, const Fav *f){                    // jump 
     dp_ix=0; u_settle(); gen_cluster(); if(f){ cur_sys=f->star; cur_pl=f->body>>3; cur_moon=f->body&7; } else { cur_pl=cur_moon=0; } visits++;
     { u32 t[LYW]; char d[144]; for(int i=0;i<LYW;i++) t[i]=t10[i]; big_div(t,LYW,10); int dg=big_dec(d,t); voyage(fn,tn,t10,(u32)(30+dg*25)*24,5); }
     space_enter(0); { char b[48], nm[24]; uni_name(b,dest); scat(b,": "); sys_name(cur_sys,nm); nm[13]=0; scat(b,nm); b[39]=0; space_say(b); } return 1; }
-static void uni_edit(volatile u16 *pg, u32 *u){                         // type a universe number digit by digit: 78 digits, 3 rows of 26
+static void ue_cell(volatile u16 *pg, const char *d, int i, int cur, int t){            // one digit of the typed number: its box, the digit, and the cursor's underline when it blinks on
+    int r=i/26, x=i%26; int px=16+x*8, py=56+r*14; char c[2]={d[i],0}; rect(pg,px-1,py-1,8,10,0); text(pg,px,py,c,i==cur?C_GOLD:C_WHITE,1); if(i==cur) rect(pg,px,py+8,5,1,C_GOLD); }
+static void uni_edit(volatile u16 *pg, u32 *u){                         // type a universe number digit by digit: 78 digits, 3 rows of 26. The panel is drawn once; only the digit cells that change are drawn again
     char d[80]; { char t[144]; int n=uni_dec(t,u); for(int i=0;i<78;i++) d[i]='0'; for(int i=0;i<n && i<78;i++) d[78-n+i]=t[i]; } d[78]=0;
-    int cur=77, t=0; wait_release();
-    while(1){ box(pg,4,34,232,92); ctext(pg,120,38,"UNIVERSE NUMBER (0 TO 2^256-1)",C_GOLD);
-        for(int i=0;i<78;i++){ int r=i/26, x=i%26; int px=16+x*8, py=56+r*14; char c[2]={d[i],0}; rect(pg,px-1,py-1,8,10,0); text(pg,px,py,c,i==cur?C_GOLD:C_WHITE,1); if(i==cur && (t&16)) rect(pg,px,py+8,5,1,C_GOLD); }
-        ui_chint(pg,120,108,"UP/DOWN: DIGIT  LEFT/RIGHT: MOVE",C_GREY); ui_chint(pg,120,116,"A: OK  B: CANCEL",C_GREY); vsync(); read_keys(); t++;
-        if(HIT(K_UP)) d[cur]=(char)(d[cur]=='9'?'0':d[cur]+1); if(HIT(K_DOWN)) d[cur]=(char)(d[cur]=='0'?'9':d[cur]-1);
+    int sh=shd_begin(); int cur=77, t=0, oc=77; wait_release();
+    box(pg,4,34,232,92); ctext(pg,120,38,"UNIVERSE NUMBER (0 TO 2^256-1)",C_GOLD);
+    for(int i=0;i<78;i++) ue_cell(pg,d,i,cur,t);
+    ui_chint(pg,120,108,"UP/DOWN: DIGIT  LEFT/RIGHT: MOVE",C_GREY); ui_chint(pg,120,116,"A: OK  B: CANCEL",C_GREY);
+    while(1){ vsync(); read_keys(); t++; int ch=-1;                    // (ch: a digit that changed)
+        if(HIT(K_UP)){ d[cur]=(char)(d[cur]=='9'?'0':d[cur]+1); ch=cur; } if(HIT(K_DOWN)){ d[cur]=(char)(d[cur]=='0'?'9':d[cur]-1); ch=cur; }
         if(HIT(K_LEFT) && cur>0) cur--; if(HIT(K_RIGHT) && cur<77) cur++;
-        if(HIT(K_B)){ wait_release(); return; }
+        if(HIT(K_B)){ wait_release(); shd_end(sh); return; }
         if(HIT(K_A)||HIT(K_START)){ u32 v[LYW]; for(int i=0;i<LYW;i++) v[i]=0;
             for(int i=0;i<78;i++){ big_mul(v,LYW,10); u32 dg[LYW]; for(int k=0;k<LYW;k++) dg[k]=0; dg[0]=(u32)(d[i]-'0'); big_add(v,dg,LYW); }
-            int over=0; for(int i=UW;i<LYW;i++) if(v[i]) over=1; for(int i=0;i<UW;i++) u[i]= over ? 0xFFFFFFFFu : v[i]; wait_release(); return; } } }
-static int universe_menu(volatile u16 *pg){                             // pick a universe by its number; 1 if you jumped
+            int over=0; for(int i=UW;i<LYW;i++) if(v[i]) over=1; for(int i=0;i<UW;i++) u[i]= over ? 0xFFFFFFFFu : v[i]; wait_release(); shd_end(sh); return; }
+        if(cur!=oc){ ue_cell(pg,d,oc,cur,t); oc=cur; ch=cur; }          // the cursor moved: the cell it left, and the one it is on now
+        if(ch>=0){ ue_cell(pg,d,cur,cur,t); } } }
+static int universe_menu_(volatile u16 *pg);
+static int universe_menu(volatile u16 *pg){ int sh=shd_begin(); int r=universe_menu_(pg); shd_end(sh); return r; }
+static int universe_menu_(volatile u16 *pg){                             // pick a universe by its number; 1 if you jumped
     u32 to[UW]; for(int i=0;i<UW;i++) to[i]=uni_w[i]; { u32 one[UW]={1}; uni_addp(to,one,0); } int dirty=2, rep=0; wait_release();
     while(1){
         if(dirty){ char b[64], c[48], dd[144];
@@ -1142,7 +1154,9 @@ static int fav_go(const Fav *f){                                              //
     ax_shr(dx,over); ax_shr(dy,over);                                         // too far for the drive: go as far as it reaches, the same way
     if(!warp_by(dx,sx,dy,sy,0,0)) return 0;
     { char b[48], d2[40]; here_ly(d2,f->cx,f->cy); scpy(b,"PART WAY. "); scat(b,d2); scat(b," TO GO"); b[46]=0; space_say(b); } return 1; }
-static int fav_screen(volatile u16 *pg){                                      // the list: A flies there, SELECT removes, the top row saves where you are
+static int fav_screen_(volatile u16 *pg);
+static int fav_screen(volatile u16 *pg){ int sh=shd_begin(); int r=fav_screen_(pg); shd_end(sh); return r; }
+static int fav_screen_(volatile u16 *pg){                                      // the list: A flies there, SELECT removes, the top row saves where you are
     fav_init(); int sel=0, top=0, dirty=1, n=0, arm=-1; EW static u8 idx[NFAV]; char note[48]; note[0]=0;
     #define FAV_REBUILD() do{ Fav q_; n=0; for(int i_=0;i_<NFAV;i_++) if(fav_get(i_,&q_)) idx[n++]=(u8)i_; }while(0)
     FAV_REBUILD(); wait_release();
@@ -1189,7 +1203,9 @@ static int fav_screen(volatile u16 *pg){                                      //
     }
     #undef FAV_REBUILD
 }
-static int cluster_jump(volatile u16 *pg){                                    // START on the galaxy map: to a neighbouring cluster, a blind warp, another universe, or the long-range chart
+static int cluster_jump_(volatile u16 *pg);
+static int cluster_jump(volatile u16 *pg){ int sh=shd_begin(); int r=cluster_jump_(pg); shd_end(sh); return r; }
+static int cluster_jump_(volatile u16 *pg){                                    // START on the galaxy map: to a neighbouring cluster, a blind warp, another universe, or the long-range chart
     char b[48], r2[40]; int dirty=1;
     wait_release();
     while(1){
@@ -1212,7 +1228,9 @@ static int cluster_jump(volatile u16 *pg){                                    //
         if(HIT(K_R)){ if(too_close_to_jump()){ space_say("TOO CLOSE TO THE PLANET TO JUMP"); wait_release(); return 0; } int r=blind_warp(); wait_release(); return r; }
         if(HIT(K_A)){ int r=universe_menu(pg); wait_release(); return r; } }
 }
-static int galaxy_map(void){     // returns 1 if you jumped
+static int galaxy_map_(void);
+static int galaxy_map(void){ int sh=shd_begin(); int r=galaxy_map_(); shd_end(sh); return r; }
+static int galaxy_map_(void){     // returns 1 if you jumped
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));     // draw on the page you are looking at
     int sel=cur_sys, dirty=1, rep=0;
     for(int k=0;k<6;k++) if(k<zones_open && !((cleared_mask>>k)&1) && k!=cur_sys && sys[k].kind==k){ sel=k; break; }     // start on the star you should go to next
@@ -1288,7 +1306,9 @@ static int tech_scrap(void){ return 3*(tech_lv+1); }
 static int tech_cost(void){ if(beast_stage<1) return 0; return tech_lv<30 ? 2000*(tech_lv+1)*(tech_lv+1) : 0; }
 static int good_price(int g){ int e=sys[cur_sys].eco; int p=good_base[g]*eco_mul[e][g]/100; int wob=(int)((sys_id(cur_sys)*7+g*13+visits*5)%21); return p*(90+wob)/100+1; }
 static int ore_station_pct(void){ static const u8 m[4]={85,125,110,100}; int wob=(int)((sys_id(cur_sys)*7+visits*5)%21); return m[sys[cur_sys].eco&3]*(90+wob)/100; }      // mining worlds pay most for ore, farming worlds least
-static void station_menu(void){
+static void station_menu_(void);
+static void station_menu(void){ int sh=shd_begin(); station_menu_(); shd_end(sh); }
+static void station_menu_(void){
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));
     int tab=0, sel=0, dirty=1; wait_release(); sfx(5);
     static const char *const yard[11]={"REFUEL","REPAIR HULL","LASER UPGRADE","SHIELD UPGRADE","BIGGER CARGO BAY","TECH CORE (X4 DMG)","HIRE A WINGMAN","JOIN A FLEET BATTLE","BIGGER FUEL TANK","WARP DRIVE","LEAVE"};

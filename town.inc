@@ -553,7 +553,9 @@ static void market_row(int i, char *b, int *c){
     if(i<mk_n){ int g=mk_sell[i]; scpy(b,"SELL ALL "); scat(b,goods[g]); scat(b," ("); ncat(b,cargo[g]); scat(b,")  "); ncat(b,local_price(g)*cargo[g]); scat(b,"G"); *c=C_GREEN; }
     else { int g=mk_buy[i-mk_n]; scpy(b,"BUY 1 "); scat(b,goods[g]); scat(b,"  "); ncat(b,local_price(g)*120/100); scat(b,"G"); *c = gold>=local_price(g)*120/100 ? C_GREY : C_DGREY; }
 }
-static void market(volatile u16 *pg){
+static void market_(volatile u16 *pg);
+static void market(volatile u16 *pg){ int sh=shd_begin(); market_(pg); shd_end(sh); }
+static void market_(volatile u16 *pg){
     int sel=0, r; list_desc=0;
     while(1){
         mk_n=0; for(int g=0;g<8;g++) if(cargo[g]) mk_sell[mk_n++]=g;
@@ -614,7 +616,9 @@ static void gossip_talk(volatile u16 *pg){
     card(pg,"THE GOSSIP",ln,n);
 }
 static void cant_row(int i, char *b, int *c){ static const char *const r[4]={"A BOWL OF SOUP  8G  (FOOD +40)","HEAR THE GOSSIP  (FREE)","BUY A ROUND  20G  (+FAME)","ARM WRESTLE THE BARTENDER  10G"}; scpy(b,r[i]); }
-static void cantina(volatile u16 *pg){
+static void cantina_(volatile u16 *pg);
+static void cantina(volatile u16 *pg){ int sh=shd_begin(); cantina_(pg); shd_end(sh); }
+static void cantina_(volatile u16 *pg){
     int sel=0, r; list_desc=0;
     while((r=list_pick(pg,"THE CANTINA",4,cant_row,&sel,"A: PICK  B: LEAVE"))>=0){
         if(r==0){ if(gold<8) say("NOT ENOUGH GOLD"); else { gold-=8; eat(40); say("SLURP. DO NOT ASK WHAT WAS IN IT"); sfx(11); } }
@@ -624,7 +628,8 @@ static void cantina(volatile u16 *pg){
     }
 }
 // ---------------------------------------------------------------- races, ruins, fossils, beetles
-static void race_start(int kart){                                                     // kart=1: the KART GRAND PRIX job: a big loop of 8 gates, fast kart, B boosts
+static void race_start(int kart){
+    shd_off();                                                     // kart=1: the KART GRAND PRIX job: a big loop of 8 gates, fast kart, B boosts
     kart_on=kart; race_on=1; race_t=0; race_next=0; race_n=kart?8:5; kart_boost=100; int a=wr(256);
     for(int i=0;i<race_n;i++){ int d=kart ? 16+(i&1)*8+(i>>1) : 5+i*4; int an=kart ? a+i*32 : a+i*40;
         race_x[i]=(ppx+cosx(an&255)*d*4)&((TW<<16)-1); race_y[i]=(ppy+sinx(an&255)*d*4)&((TW<<16)-1);
