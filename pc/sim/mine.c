@@ -234,7 +234,7 @@ int mn_away_text(const MnAway *a, const Mine *m, char lines[][48], int max){
 void mn_level_text(const Mine *m, const SimColony *c, int z, int diff, char *o, size_t n){
     if(z < 1 || z > MN_ZMAX){ if(n) o[0] = 0; return; }
     const char *s = m->zst[z] == MNZ_OPEN ? "OPEN" : m->zst[z] == MNZ_CAVED ? "CAVED IN" : m->zst[z] == MNZ_DRY ? "DRY" : "SOLID";
-    if(m->zst[z] == MNZ_SOLID) snprintf(o, n, "Z%d %s", z, z <= m->depth ? s : z == m->depth + 1 ? "NEXT TO DIG" : "ROCK");
+    if(m->zst[z] == MNZ_SOLID) snprintf(o, n, "Z%d %s", z, z == m->depth + 1 && z <= mn_zcap(c->mask) ? "NEXT TO DIG" : "ROCK: NEEDS A HIGHER RUNG");
     else if(m->zst[z] == MNZ_CAVED) snprintf(o, n, "Z%d %s RUBBLE %u/%d", z, s, (unsigned)(m->work == z ? m->clear : 0), clear_need(m, z));
     else snprintf(o, n, "Z%d %s%s SEAM %u BRACE %u RISK %d", z, s, m->work == z ? " *" : "", (unsigned)m->seam[z], (unsigned)m->brace[z], mn_risk(m, c, z, diff));
 }

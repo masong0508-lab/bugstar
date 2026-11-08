@@ -140,8 +140,10 @@ static void sim_qm_foot(int i, char *b, int *c){
 static void sim_level_full(void);
 // ---- COLONY (Phase 4): the unlock ladder and the settlers
 static SimColony *sim_colony(void);
-#define SIM_CO_ACT 6
+#define SIM_CO_ACT 8
 static void sim_colony_map(volatile u16 *pg);
+static void sim_ws_screen(volatile u16 *pg), sim_mine_screen(volatile u16 *pg);
+static int sim_take_mine(char *msg);
 static void sim_co_row(int i, char *b, int *c){
     SimColony *co=sim_colony(); int r=i+1;
     if(r<COLR_N){ int open=(co->mask>>r)&1; scpy(b,open?"+ ":"- "); scat(b,col_rung_name(r)); while(textlen(b)<16) scat(b," "); scat(b,open?"OPEN":col_rung_how(r)); if(!open){ scat(b," "); scat(b,col_rung_goal(r)); } *c=open?C_GREEN:C_DGREY; return; }
@@ -153,7 +155,9 @@ static void sim_co_row(int i, char *b, int *c){
         else if(k==2){ scpy(b,"> BUILD NEXT: "); scat(b,col_bld_name(co->plan)); }
         else if(k==3){ scpy(b,"> CARRY WOOD AND BUILD"); }
         else if(k==4){ scpy(b,"> BRING 10 FOOD FROM MY BAG"); }
-        else { scpy(b,"> STAND GUARD 3 DAYS"); }
+        else if(k==5){ scpy(b,"> STAND GUARD 3 DAYS"); }
+        else if(k==6){ Mine *mi=sim_mine(); scpy(b,"> WORKSHOPS  "); scat(b,"SMELTER "); ncat(b,mi->wl[MNW_SMELTER]); scat(b," SMITHY "); ncat(b,mi->wl[MNW_SMITHY]); scat(b," LOOM "); ncat(b,mi->wl[MNW_LOOM]); }
+        else { Mine *mi=sim_mine(); scpy(b,"> THE MINE  "); if(mi->warn) scat(b,"ROOF CREAKING! "); else if(mi->depth){ scat(b,"LEVEL "); ncat(b,mi->work); scat(b," OF "); ncat(b,mi->depth); } else scat(b,col_rung_how(COLR_MINE)); if(mi->warn) *c=C_RED; }
         return; }
     k-=SIM_CO_ACT; char nm[16]; int j; col_settler(co,k,nm,&j); scpy(b,"  "); scat(b,nm); while(textlen(b)<14) scat(b," "); scat(b,col_job_name(j)); *c=C_WHITE;
 }
@@ -164,6 +168,7 @@ static void sim_co_foot(int i, char *b, int *c){
     else if(co->state==COLS_DEAD_WORLD){ scpy(b,"BURNT FOR GOOD. SETTLE ANOTHER PLANET"); *c=C_RED; }
     else if(co->state==COLS_RUINS){ scpy(b,"RUINS. A: SETTLE AGAIN"); *c=C_RED; }
     else if(co->raid_eta){ scpy(b,"RAID OF "); ncat(b,co->raid_size); scat(b," IN "); ncat(b,co->raid_eta); scat(b," DAYS. DEFENCE "); ncat(b,col_defence(co)); *c=C_RED; }
+    else if(sim_mine()->warn){ mn_status_text(sim_mine(),b,56); *c=C_RED; }
     else { scpy(b,"SETTLERS "); ncat(b,co->nset); scat(b,"/"); ncat(b,col_cap(co->mask)); scat(b,"  BUILDINGS "); ncat(b,col_built_total(co)); scat(b,"/"); ncat(b,col_buildings(co->mask)); }
 }
 // Phase 5: A in the colony takes what it made: food for your hunger bar, goods and ore sold for gold, a nap at your bug home (HOUSES)
@@ -173,6 +178,8 @@ static int sim_co_act(int i){
         if(k>=SIM_CO_ACT){ int s=k-SIM_CO_ACT; int j=co->job[s]==0xFF ? -1 : co->job[s]; j++; if(j>=COLJ_N) j=-1; col_set_job(co,s,j); scpy(menu_msg,"JOB SET"); sfx(2); return 0; }
         int ok=0;
         if(k==0){ sim_colony_map(VISPG); return 0; }
+        if(k==6){ sim_ws_screen(VISPG); return 0; }
+        if(k==7){ sim_mine_screen(VISPG); return 0; }
         if(k==1){ sim_f.difficulty=(u8)((sim_f.difficulty+1)%3); xo[XO_SIDEDIF]=(u8)(sim_f.difficulty^XOT[XO_SIDEDIF].def); xo_save(); ok=1; }
         else if(k==2){ int b=co->plan; for(int t=0;t<COLB_N;t++){ b=(b+1)%COLB_N; if(col_set_plan(co,b,-1)){ ok=1; break; } } }
         else if(k==3) ok=col_help_build(co);
@@ -181,15 +188,16 @@ static int sim_co_act(int i){
         if(co->state==COLS_RUINS) ok=col_resettle(co,(u32)sim_day(&sim_w));
         if(ok){ sfx(2); if(!menu_msg[0]) scpy(menu_msg,"DONE"); } else { sfx(4); if(!menu_msg[0]) scpy(menu_msg,"NOT NOW"); }
         return 0; }
-    if(!col_collect(co,100-food,&g)){ scpy(menu_msg,"NOTHING TO TAKE YET. COME BACK LATER"); sfx(4); return 0; }
+    int got=col_collect(co,100-food,&g); char mm[44]; mm[0]=0; int mgot=sim_take_mine(mm);          // Phase 6: the workshops' bars, tools and cloth, and gems from the deep, go the same way
+    if(!got && !mgot){ scpy(menu_msg,"NOTHING TO TAKE YET. COME BACK LATER"); sfx(4); return 0; }
     if(g.food_pts) eat(g.food_pts); if(g.gold) gold=sadd(gold,(s64)g.gold); if(g.heal){ hearts=maxh; mp=maxmp; }
-    scpy(menu_msg,"TAKEN:"); if(g.food_pts){ scat(menu_msg," FOOD +"); ncat(menu_msg,g.food_pts); } if(g.gold){ scat(menu_msg," GOLD +"); ncat(menu_msg,g.gold); } if(g.heal) scat(menu_msg," A NAP");
+    scpy(menu_msg,"TAKEN:"); if(g.food_pts){ scat(menu_msg," FOOD +"); ncat(menu_msg,g.food_pts); } if(g.gold){ scat(menu_msg," GOLD +"); ncat(menu_msg,g.gold); } if(g.heal) scat(menu_msg," A NAP"); scat(menu_msg,mm);
     sim_col_gifts++; sfx(6); return 0;
 }
 
 // ---- the COLONY MAP (the 8 x 6 grid): walk the cursor, pick what to build and where, carry wood to the site (Keflings style). Optional: the colony runs without it.
 static void sim_cell_name(const SimColony *co, int cell, char *b){
-    int g=co->grid[cell]; if(g) { scpy(b,col_bld_name(g-1)); return; }
+    int g=co->grid[cell]; if(g) { scpy(b,col_bld_name(g-1)); if(g-1==COLB_MINE){ Mine *mi=sim_mine(); if(mi->depth){ scat(b," LEVEL "); ncat(b,mi->work); scat(b," OF "); ncat(b,mi->depth); scat(b,mi->warn?" CREAKING!":"  A: OPEN"); } else scat(b,"  A: OPEN"); } else if(g-1==COLB_KITCHEN) scat(b,"  A: WORKSHOPS"); return; }
     scpy(b, co->state==COLS_DEAD_WORLD ? "BURNT GROUND" : (co->plan_cell==cell ? "BUILDING SITE" : "EMPTY GROUND"));
 }
 static void sim_colony_map(volatile u16 *pg){
@@ -234,9 +242,84 @@ static void sim_colony_map(volatile u16 *pg){
                          else if(col_set_plan(co,co->plan,cell)){ scpy(msg,"SITE CHOSEN. CARRY WOOD HERE"); sfx(2); } else { scpy(msg,"CANNOT BUILD THAT YET"); sfx(4); } }
             else if(g-1==COLB_STORE||g-1==COLB_HUT){ if(carry){ carry=0; scpy(msg,"YOU PUT IT BACK"); } else if(co->wood>0){ carry=1; scpy(msg,"YOU LIFT SOME WOOD"); sfx(2); } else { scpy(msg,"THE STORE HAS NO WOOD"); sfx(4); } }
             else if(g-1==COLB_TOWER||g-1==COLB_WALL){ if(col_help_guard(co)){ scpy(msg,"YOU STAND GUARD: DEFENCE UP"); sfx(2); } }
+            else if(g-1==COLB_MINE){ sim_mine_screen(VISPG); wait_release(); dirty=1; }
+            else if(g-1==COLB_KITCHEN){ sim_ws_screen(VISPG); wait_release(); dirty=1; }
             else { scpy(msg,"WORKERS USE THIS"); } }
     }
     in_menu--; wait_release();
+}
+// ---- Phase 6: WORKSHOPS and the MINE (mine.h). Every part is optional: the mine and the workshops run by themselves, and you only brace, dig and build by hand.
+static int sim_take_mine(char *msg){                          // bars, tools, cloth: gold; gems: ore for your bag (the game's ore_def by depth)
+    MnGift g; Mine *mi=sim_mine(); if(!mn_collect(mi,&g)) return 0;
+    if(g.gold) gold=sadd(gold,(s64)g.gold);
+    if(g.ore_n>0) ore_add(g.ore_kind,g.ore_n);
+    scat(msg," MINE GOLD +"); ncat(msg,g.gold); if(g.ore_n>0){ scat(msg," GEMS +"); ncat(msg,g.ore_n); } return 1;
+}
+static void sim_ws_row(int i, char *b, int *c){
+    SimColony *co=sim_colony(); Mine *mi=sim_mine(); b[0]=0; *c=C_GREY;
+    if(i<MNW_N){ int open=(co->mask>>mn_ws_rung(i))&1; scpy(b,mn_ws_name(i)); while(textlen(b)<14) scat(b," ");
+        if(!open){ scat(b,"LOCKED: "); scat(b,col_rung_how(mn_ws_rung(i))); *c=C_DGREY; return; }
+        if(mi->wl[i]){ scat(b,"LV "); ncat(b,mi->wl[i]); scat(b,"  "); } else scat(b,"NOT BUILT  ");
+        scat(b,mn_ws_make(i)); *c=mi->wl[i]?C_GREEN:C_WHITE; return; }
+    if(i==MNW_N){ scpy(b,"> TAKE BARS, TOOLS, CLOTH AND GEMS"); *c=C_GOLD; return; }
+    scpy(b,"STOCK  BARS "); ncat(b,mi->bars); scat(b,"  TOOLS "); ncat(b,mi->tools); scat(b,"  CLOTH "); ncat(b,mi->cloth); scat(b,"  GEMS "); ncat(b,mi->gems); *c=C_WHITE;
+}
+static void sim_ws_foot(int i, char *b, int *c){
+    SimColony *co=sim_colony(); Mine *mi=sim_mine(); *c=C_GREY;
+    if(i>=0){ scpy(b,"WOOD "); ncat(b,co->wood); scat(b,"  ORE "); ncat(b,co->ore); scat(b,"  GOODS "); ncat(b,co->goods); *c=C_WHITE; }
+    else if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; }
+    else if(-1-i<MNW_N){ int w=-1-i; if(mi->wl[w]>=mn_ws_max(co->mask)) scpy(b,"AT THE MOST FOR NOW. MARKET AND MUSEUM ADD MORE");
+        else { scpy(b,"A: "); scat(b,mi->wl[w]?"UPGRADE FOR ":"BUILD FOR "); ncat(b,mn_ws_cost(mi,w)); scat(b," WOOD"); if(w==MNW_SMITHY && mi->wl[w]){ scat(b," + "); ncat(b,2*mi->wl[w]); scat(b," BARS"); } } }
+    else scpy(b,"WORKERS OF THE TRADE MAKE ONE MORE A DAY");
+}
+static int sim_ws_act(int i){
+    SimColony *co=sim_colony(); Mine *mi=sim_mine(); menu_msg[0]=0;
+    if(i<MNW_N){ if(mn_build_ws(mi,co,i)){ sfx(2); scpy(menu_msg,"BUILT"); } else { sfx(4); scpy(menu_msg,"NOT NOW: WOOD, BARS OR A RUNG IS MISSING"); } }
+    else if(i==MNW_N){ char mm[44]; mm[0]=0; if(sim_take_mine(mm)){ scpy(menu_msg,"TAKEN:"); scat(menu_msg,mm); sfx(6); sim_col_gifts++; } else { scpy(menu_msg,"NOTHING TO TAKE YET"); sfx(4); } }
+    return 0;
+}
+static void sim_ws_screen(volatile u16 *pg){
+    SimColony *co=sim_colony();
+    if(!(co->mask&(1u<<COLR_SHOPS))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_SHOPS)); const char *ln[3]={l1,col_rung_goal(COLR_SHOPS),"THEN THE SMELTER AND LOOM ARE YOURS."}; card(pg,"WORKSHOPS",ln,3); return; }
+    int sel=0; menu_msg[0]=0; in_menu++; sim_rows(pg,"WORKSHOPS",MNW_N+2,sim_ws_row,sim_ws_foot,"A: BUILD/TAKE  B: BACK",&sel,sim_ws_act); in_menu--; menu_msg[0]=0;
+}
+#define SIM_MN_ACT 5
+static void sim_mine_row(int i, char *b, int *c){
+    SimColony *co=sim_colony(); Mine *mi=sim_mine(); b[0]=0; *c=C_GOLD;
+    if(i<SIM_MN_ACT){ switch(i){
+        case 0: scpy(b,"> BRACE THE WORK LEVEL  4 WOOD"); break;
+        case 1: scpy(b,"> STRONG BRACE  2 WOOD + 1 BAR"); break;
+        case 2: scpy(b,"> DIG DOWN WITH THE MINERS"); break;
+        case 3: scpy(b,"> CLEAR THE RUBBLE"); break;
+        default: scpy(b,"> WORK LEVEL: "); scat(b,mi->pin?"MINE":"THE COLONY PICKS"); }
+        return; }
+    int z=i-SIM_MN_ACT+1; mn_level_text(mi,co,z,sim_f.difficulty,b,56); *c = mi->zst[z]==MNZ_OPEN ? C_WHITE : mi->zst[z]==MNZ_CAVED ? C_RED : C_DGREY; if(z==mi->work && mi->warn) *c=C_RED;
+}
+static void sim_mine_foot(int i, char *b, int *c){
+    SimColony *co=sim_colony(); Mine *mi=sim_mine(); *c=C_GREY;
+    if(i>=0){ mn_status_text(mi,b,56); *c = mi->warn ? C_RED : C_WHITE; }
+    else if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; }
+    else { scpy(b,"WOOD "); ncat(b,co->wood); scat(b,"  ORE "); ncat(b,co->ore); scat(b,"  BARS "); ncat(b,mi->bars); scat(b,"  TOOLS "); ncat(b,mi->tools); scat(b,"  GEMS "); ncat(b,mi->gems); }
+}
+static int sim_mine_act(int i){
+    SimColony *co=sim_colony(); Mine *mi=sim_mine(); menu_msg[0]=0; int ok=0;
+    switch(i){
+    case 0: ok=mn_brace(mi,co,0); break;
+    case 1: ok=mn_brace(mi,co,1); break;
+    case 2: ok=mn_dig_help(mi,co); break;
+    case 3: ok=mn_clear_help(mi,co); break;
+    case 4: ok=mn_set_work(mi,0); break;
+    default: ok=mn_set_work(mi,i-SIM_MN_ACT+1); }
+    if(ok){ sfx(2); scpy(menu_msg,"DONE"); } else { sfx(4); scpy(menu_msg,"NOT NOW"); }
+    return 0;
+}
+static void sim_mine_screen(volatile u16 *pg){
+    SimColony *co=sim_colony(); Mine *mi=sim_mine();
+    if(!(co->mask&(1u<<COLR_MINE))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_MINE)); const char *ln[3]={l1,col_rung_goal(COLR_MINE),"THEN BUILD A MINE ON THE COLONY MAP."}; card(pg,"THE MINE",ln,3); return; }
+    if(!mi->depth && co->bld[COLB_MINE]<1){ const char *ln[3]={"NO SHAFT YET.","BUILD A MINE ON THE COLONY MAP,","THEN MINERS DIG DOWN LEVEL BY LEVEL."}; card(pg,"THE MINE",ln,3); return; }
+    int sel=0; menu_msg[0]=0; in_menu++;
+    { char t[32]; scpy(t,"THE MINE  LEVELS "); ncat(t,mi->depth); scat(t,"/"); ncat(t,mn_zcap(co->mask)); sim_rows(pg,t,SIM_MN_ACT+(mi->depth<MN_ZMAX?mi->depth+1:MN_ZMAX),sim_mine_row,sim_mine_foot,"A: DO  B: BACK",&sel,sim_mine_act); }
+    in_menu--; menu_msg[0]=0;
 }
 static void sim_colony_screen(volatile u16 *pg){
     SimColony *co=sim_colony();

@@ -10,6 +10,7 @@
 #include "sim/sim_io.h"
 #include "content/pcx.h"
 static SimColony *sim_colony(void);
+static Mine *sim_mine(void);
 
 // ---------------------------------------------------------------- state
 static Sim sim_w;                       // the town of the planet you are on (rebuilt when the planet changes)
@@ -25,6 +26,7 @@ static u16 sim_stuck[SIM_MAXFOLK];
 static int sim_nhome;
 static int sim_said_letters, sim_col_cards, sim_col_gifts;   // letter pop-ups and colony cards shown (the tests read them)            // letter pop-ups shown (the tests read it)
 static int sim_gifts_got, sim_helped_n;   // friend gifts received, requests helped (the tests read them)
+static int sim_h_mine, sim_h_age, sim_h_done;          // test hooks: BUGSTAR_SIM_MINE=1 (open the mine rungs and give the colony a mine), BUGSTAR_SIM_AGE=days (the colony catches up that many days)
 static int sim_a_up;                    // 1 once A has been seen up on this planet: keeps a key still held from the title or a menu from opening the quick menu
 
 static int sim_is_on(void){
@@ -164,6 +166,8 @@ static void sim_env_once(void){
     const char *e=sim_io_env("BUGSTAR_SET_LEVEL");      // a test hook: start with this level (a decimal number, up to 64^256)
     if(e && *e){ Lv v; if(lv_from_dec(&v,e)>=0 && !lv_is_zero(&v)){ sim_big_set(&v); recalc(); hearts=maxh; mp=maxmp; } }
     e=sim_io_env("BUGSTAR_SET_FAME"); if(e && *e){ int v=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<9;i++) v=v*10+(e[i]-'0'); fame=v; }     // patch 42, a test hook: start with this fame
+    e=sim_io_env("BUGSTAR_SIM_MINE"); sim_h_mine = e && e[0]=='1';
+    e=sim_io_env("BUGSTAR_SIM_AGE"); if(e && *e){ int v=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<6;i++) v=v*10+(e[i]-'0'); sim_h_age=v; }
     e=sim_io_env("BUGSTAR_SET_FREED"); if(e && *e) bugs_freed=e[0]-'0';     // a test hook: bugs freed so far (0..9)
     e=sim_io_env("BUGSTAR_SANDBOX"); if(e && e[0]=='1'){ Lv l; sim_level_lv(&l); sim_f.sandbox=1; if(sim_have_w) sim_set_sandbox(&sim_w,1,&l); }
 }
@@ -187,6 +191,7 @@ static void sim_dump_all(void){
     char t[96]; for(int k=0;k<sim_w.nfolk;k++){ scpy(t,"near "); ncat(t,k); scat(t," "); ncat(t,sim_dist10(k)); scat(t,"\n"); sim_io_append(path,t); }
     { int nl=0; for(u32 b=0;b<sim_log_count(&sim_w);b++) if(sim_log_at(&sim_w,b)->kind==SIME_LETTER) nl++;
       scpy(t,"friends"); for(int k=0;k<sim_w.nfolk;k++){ scat(t," "); ncat(t,sim_w.friend[k]); } scat(t," letters "); ncat(t,nl); scat(t," shown "); ncat(t,sim_said_letters); scat(t,"\n"); sim_io_append(path,t); }
+    { static char mb[300]; mn_dump(sim_mine(),mb,sizeof mb); sim_io_append(path,mb); }
     { static char cb[200]; col_dump(sim_colony(),cb,sizeof cb); sim_io_append(path,cb); scpy(t,"colcards "); ncat(t,sim_col_cards); scat(t," gifts "); ncat(t,sim_col_gifts); scat(t," fgifts "); ncat(t,sim_gifts_got); scat(t," helped "); ncat(t,sim_helped_n); { SimTies ti; sim_ties(&sim_w,&ti); scat(t," ties "); ncat(t,ti.guard); scat(t,"/"); ncat(t,ti.food); scat(t,"/"); ncat(t,ti.goods); scat(t," worry "); ncat(t,sim_w.worry); scat(t," aid "); ncat(t,sim_w.aid); } scat(t," gold "); ncat(t,gold); scat(t," food "); ncat(t,food); scat(t,"\n"); sim_io_append(path,t); }
     { Lv l; sim_level_lv(&l); char d[LV_DEC_MAX]; lv_to_dec(&l,d,sizeof d); scpy(t,"level "); scat(t,d); scat(t," powers "); ncat(t,god_unlocked_count(&l,sim_w.god.sandbox)); scat(t,"\n"); sim_io_append(path,t); }
     { const Standing *st=sim_st(); scpy(t,"stand fame "); ncat(t,fame); scat(t," open "); ncat(t,stand_open_mask(st,fame)); scat(t," mayor "); ncat(t,stand_is_mayor(st)); scat(t," ships "); ncat(t,(s64)st->ships); scat(t," worlds "); ncat(t,(s64)st->worlds_total); scat(t," galaxies "); ncat(t,st->galaxies); scat(t,"\n"); sim_io_append(path,t); }
@@ -196,6 +201,7 @@ static void sim_dump_all(void){
 static char sim_away[6][48]; static int sim_away_n, sim_away_new;   // the WHILE YOU WERE AWAY summary of the last catch-up
 static u32 sim_town32(void){ return (u32)sim_mix64(sim_w.seed ^ 0xC0105EEDull); }
 static SimColony *sim_colony(void){ return col_find(&sim_f.slot[cur_slot%SIM_SLOTS].cols, sim_town32(), 1, (u32)sim_day(&sim_w)); }
+static Mine *sim_mine(void){ SimColony *co=sim_colony(); return mn_find(&sim_f.slot[cur_slot%SIM_SLOTS].mines, sim_town32(), 1, co->last_day); }   // Phase 6: this colony's workshops and mine (mine.h)
 static void sim_colflags(ColFlags *f){
     f->bugs_freed=bugs_freed; f->zone_cleared=zone_cleared; f->best_depth=best_depth; f->bosses=__builtin_popcount((unsigned)cleared_mask);
     f->outposts=outposts_done; f->ore_tool=ore_tool; f->hives=hive_done; f->ant_king=ant_king; f->relics=relic_bits!=0;
@@ -215,19 +221,25 @@ static void sim_burn_world(void){                       // a warship burnt this 
     if(!sim_is_on()) return;
     u64 ws=sim_world_seed(); if(!sim_have_w || ws!=sim_w.seed) sim_bind();
     SimColony *co=sim_colony(); co->nset=0; co->state=COLS_RUINS; co->raid_eta=0; }
+static int sim_mine_news, sim_mine_said;             // mine news said aloud (the tests read it)
 static void sim_colony_tick(void){
     sim_f.difficulty=(u8)xo_i(XO_SIDEDIF);                              // the main Options setting is the one that counts
-    ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony(); u32 today=(u32)sim_day(&sim_w), yd=col_year_days(SIM_SEASON_DAYS);
+    ColFlags fl; sim_colflags(&fl); SimColony *co=sim_colony(); u32 today=(u32)sim_day(&sim_w)+(u32)sim_h_age, yd=col_year_days(SIM_SEASON_DAYS);
     co->world_ok = pc_applied ? 1 : 0;                                  // only endless-galaxy planets can ever be destroyed; story worlds never
     if(!co->danger || co->danger==2) co->danger = (u8)(1 + (sim_town32()>>9)%6);
     { SimTies ti; sim_ties(&sim_w,&ti); col_set_ties(co,ti.guard*6,ti.food*2,ti.wood*2,ti.ore,ti.goods,ti.mood);      // patch 15: friends lend their trade to the colony...
       int wy, ad; col_outside(co,&wy,&ad); sim_set_outside(&sim_w,wy,ad); }                                         // ...and the colony's trouble or plenty reaches the town
-    u16 nw=col_update(co,(u16)(col_mask(&fl)|col_goal_mask(co,&fl,today,yd)));
-    { ColAway aw; int nd=col_catchup_d(co,today,yd,sim_f.difficulty,&aw);
-      if(nd>=2 && (co->mask&(1u<<COLR_TENT))){ sim_away_n=col_away_text(&aw,co,sim_away,6); sim_away_new=1;     // read on the COLONY screen; one line now
+    u16 hk = sim_h_mine ? (u16)((1u<<COLR_TENT)|(1u<<COLR_FIELDS)|(1u<<COLR_HOUSES)|(1u<<COLR_SHOPS)|(1u<<COLR_MINE)|(1u<<COLR_WALLS)|(1u<<COLR_MARKET)) : 0;     // test hook BUGSTAR_SIM_MINE=1: rungs, a mine, miners and wood
+    u16 nw=col_update(co,(u16)(col_mask(&fl)|col_goal_mask(co,&fl,today,yd)|hk));
+    if(sim_h_mine && !sim_h_done && (co->mask&(1u<<COLR_TENT)) && co->nset){ sim_h_done=1; co->bld[COLB_MINE]=1; co->grid[5]=COLB_MINE+1; co->wood=400; co->food=500; for(int i=0;i<co->nset && i<6;i++) co->job[i]= (u8)(i<4 ? COLJ_MINER : i==4 ? COLJ_BUILDER : COLJ_COOK); }
+    { ColAway aw; MnAway maw; Mine *mi=sim_mine(); int nd=mn_catchup(co,mi,today,yd,sim_f.difficulty,&aw,&maw);       // Phase 6: the colony's days and its mine's days together
+      if(nd>=2 && (co->mask&(1u<<COLR_TENT))){ sim_away_n=col_away_text(&aw,co,sim_away,6); sim_away_n+=mn_away_text(&maw,mi,sim_away+sim_away_n,6-sim_away_n); sim_away_new=1;     // read on the COLONY screen; one line now
           char b[40]; scpy(b,"COLONY: "); if(aw.years){ ncat(b,aw.years); scat(b," YEARS PASSED"); } else { ncat(b,aw.days); scat(b," DAYS PASSED"); } if(!nw){ say(b); } }
       for(int i=aw.nev-1;i>=0;i--){ int k=aw.ev[i].kind;                  // warnings in advance, and bad news, as they come
-          if(k==COLE_RAIDWARN||k==COLE_FOODWARN||k==COLE_RAIDLOST||k==COLE_RUINS||k==COLE_WORLDEND||k==COLE_SICK){ char t[52]; col_event_text(&aw.ev[i],t,sizeof t); say(t); sfx(4); break; } } }
+          if(k==COLE_RAIDWARN||k==COLE_FOODWARN||k==COLE_RAIDLOST||k==COLE_RUINS||k==COLE_WORLDEND||k==COLE_SICK){ char t[52]; col_event_text(&aw.ev[i],t,sizeof t); say(t); sfx(4); sim_mine_news++; break; } }
+      if(!sim_mine_news) for(int i=maw.nev-1;i>=0;i--){ int k=maw.ev[i].kind;                              // the mine's news: a creak is a day's warning, a cave-in is bad news
+          if(k==MNE_CREAK||k==MNE_CAVE||k==MNE_DIED){ char t[52]; mn_event_text(&maw.ev[i],t,sizeof t); say(t); sfx(4); sim_mine_said++; break; } }
+      sim_mine_news=0; }
     if(nw){ int top=0; for(int r=1;r<COLR_N;r++) if(nw&(1u<<r)) top=r; say(col_rung_card(top)); sfx(6); sim_col_cards++; }
 }
 static void sim_stand_announce(int m){                                       // say() keeps 39 letters
