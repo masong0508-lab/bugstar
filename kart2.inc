@@ -77,7 +77,7 @@ static void ktp_desc(int i, char *b, int *c){
     if(i<ktp_n){ kt_official(i,&ktp_tmp); scpy(b,"ABOUT "); ncat(b,kt_rough_len(&ktp_tmp)); scat(b," CELLS ROUND, "); ncat(b,ktp_tmp.n); scat(b," GATES"); }
     else { KRec r; krec_get(ktp_cust[i-ktp_n],&r); scpy(b,"BY YOU. "); ncat(b,r.n); scat(b," GATES, "); ncat(b,r.laps); scat(b," LAPS, "); ncat(b,r.riv); scat(b," RIVALS"); } (void)c; }
 static int kpick_track_(volatile u16 *pg, const char *title, int customs);
-static int kpick_track(volatile u16 *pg, const char *title, int customs){ int sh=shd_begin(); int r=kpick_track_(pg, title, customs); shd_end(sh); return r; }
+static int kpick_track(volatile u16 *pg, const char *title, int customs){ int sh=shd_begin(); int r=kpick_track_(sh?VISPG:pg, title, customs); shd_end(sh); return r; }
 static int kpick_track_(volatile u16 *pg, const char *title, int customs){   // >=0: this planet's track; <=-2: your saved track -2-i; -1: back
     ktp_n=kt_count(); ktp_nc=0; if(customs){ KRec r; for(int i=0;i<NKREC;i++) if(krec_get(i,&r) && krec_here(&r)) ktp_cust[ktp_nc++]=i; }
     int sel=0; list_desc=ktp_desc; int k=list_pick(pg,title,ktp_n+ktp_nc,ktp_row,&sel,"A: PICK   B: BACK"); list_desc=0;
@@ -85,7 +85,7 @@ static int kpick_track_(volatile u16 *pg, const char *title, int customs){   // 
 static void kcls_row(int i, char *b, int *c){ static const char *const d[5]={"  (EASY)","  (NORMAL)","  (FAST)","  (VERY FAST)","  (LUDICROUS)"}; scpy(b,kcls_name[i]); scat(b,d[i]);
     if(i>=kcls_open){ static const char *const need[5]={"","","   LOCKED: WIN A PUPA CUP","   LOCKED: WIN AN IMAGO CUP","   LOCKED: WIN A STARBUG TOUR"}; scat(b,need[i]); *c=C_DGREY; } }
 static int kpick_class_(volatile u16 *pg);
-static int kpick_class(volatile u16 *pg){ int sh=shd_begin(); int r=kpick_class_(pg); shd_end(sh); return r; }
+static int kpick_class(volatile u16 *pg){ int sh=shd_begin(); int r=kpick_class_(sh?VISPG:pg); shd_end(sh); return r; }
 static int kpick_class_(volatile u16 *pg){ int sel=k_cls<kcls_open?k_cls:0; list_desc=0;
     while(1){ int k=list_pick(pg,"PICK A CLASS",kw_mode?5:4,kcls_row,&sel,"A: PICK   B: BACK"); if(k<0) return -1; if(k<kcls_open) return k; say("WIN A CUP TO OPEN THIS CLASS"); } }
 
@@ -261,7 +261,7 @@ static void kmy_desc(int i, char *b, int *c){ int k = i<0 ? -1-i : i; KRec r; kr
     scpy(b,""); ncat(b,r.n); scat(b," GATES  "); ncat(b,r.laps); scat(b," LAPS  "); ncat(b,r.riv); scat(b," RIVALS  "); scat(b,ksurf_name[r.surf%6]);
     if(r.best){ char t[12]; kfmt_time(t,r.best); scat(b,"  BEST "); scat(b,t); } (void)c; }
 static void kmy_tracks_(volatile u16 *pg);
-static void kmy_tracks(volatile u16 *pg){ int sh=shd_begin(); kmy_tracks_(pg); shd_end(sh); }
+static void kmy_tracks(volatile u16 *pg){ int sh=shd_begin(); kmy_tracks_(sh?VISPG:pg); shd_end(sh); }
 static void kmy_tracks_(volatile u16 *pg){
     int sel=0;
     while(1){ KRec r; kmy_n=0; for(int i=0;i<NKREC;i++) if(krec_get(i,&r)) kmy_idx[kmy_n++]=i;
@@ -296,7 +296,7 @@ static void kart_records(volatile u16 *pg){
 // UP/DOWN pick a row. LEFT/RIGHT try things on (even ones you have not bought). A buys, mixes a colour, types the name or toots the horn.
 // L turns the kart round. R matches the colours to the paint. SELECT surprises you. B undoes. START is done (anything not bought goes back).
 static void kgarage_(volatile u16 *pg);
-static void kgarage(volatile u16 *pg){ int sh=shd_begin(); kgarage_(pg); shd_end(sh); }
+static void kgarage(volatile u16 *pg){ int sh=shd_begin(); kgarage_(sh?VISPG:pg); shd_end(sh); }
 static void kgarage_(volatile u16 *pg){
     enum { G_NAME, G_BODY, G_SIZE, G_PAINT, G_TRIM, G_PAT, G_PATC, G_STICK, G_NUM, G_WHEEL, G_SPOIL, G_EXH, G_TOP, G_TRAIL, G_GLOW, G_HORN, NG };
     static const char *const gl[NG]={"NAME","BODY","SIZE","PAINT","TRIM","PATTERN","PATTERN COL","STICKER","NUMBER","WHEELS","SPOILER","EXHAUST","TOPPER","TRAIL","UNDERGLOW","HORN"};
@@ -381,7 +381,7 @@ static void kgarage_(volatile u16 *pg){
     in_menu--; kart_build(0); kart_save(); wait_release(); oam_hide_all(); oam_flush(); }
 // ---------------------------------------------------------------- the kart camera: as you like it
 static void kcam_menu_(volatile u16 *pg, int live);
-static void kcam_menu(volatile u16 *pg, int live){ int sh=shd_begin(); kcam_menu_(pg, live); shd_end(sh); }
+static void kcam_menu(volatile u16 *pg, int live){ int sh=shd_begin(); kcam_menu_(sh?VISPG:pg, live); shd_end(sh); }
 static void kcam_menu_(volatile u16 *pg, int live){
     enum { C_VIEW, C_DIST, C_HGT, C_FOV, C_SWING, C_TURNS, C_ZOOM, C_SHAKE, C_RESET, C_DONE, NC };
     static const char *const cl[NC]={"VIEW","DISTANCE","HEIGHT","FIELD OF VIEW","SWING","LOOK INTO TURNS","SPEED ZOOM","BUMP SHAKE","BACK TO NORMAL","DONE"};

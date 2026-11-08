@@ -302,7 +302,9 @@ static void sz_draw(volatile u16 *pg, int full, int pi, int view, int pos, int r
         if(nb_virt && view==1) scat(mid," OF ENDLESS"); else { scat(mid," OF "); kcomma(mid,(u32)(view==1?nb_n:nb_nz)); }
         if(full || !seq(mid,was)){ rect(pg,66,0,130,12,U_BG0); ctext(pg,134,3,mid,C_CYAN); scpy(was,mid); } } }   // (was: what this page's bar says now)
 
-static void size_screen(volatile u16 *pg, int from_title){       // LEFT/RIGHT: another number. A: another view. UP/DOWN, L/R, SELECT: scroll. B: back
+static void size_screen_(volatile u16 *pg, int from_title);
+static void size_screen(volatile u16 *pg, int from_title){ int on=in_menu&SH_ON; shd_off(); size_screen_(pg,from_title); if(on) shd_begin(); }   // (it flips the two pages itself, so a steady menu around it lets go for the while)
+static void size_screen_(volatile u16 *pg, int from_title){       // LEFT/RIGHT: another number. A: another view. UP/DOWN, L/R, SELECT: scroll. B: back
     if(from_title) tv_load();                                    // (in a game the travel log in memory is the newest)
 #ifdef TEST_TRAVELDEMO
     { u32 a[LYW]={32}, b[LYW]={250}, c[LYW]; { u32 f0[UW]={1}, t0[UW]={3236620590u}; uni_ly(c,f0,t0); } tv_log(a,77); tv_log(b,600); tv_log(c,35520); }   // a short hop, the next cluster, a jump to another universe

@@ -104,7 +104,7 @@ static int extras_press(volatile u16 *pg, int cur){
 // ---------------------------------------------------------------- EXTRAS from the title screen: Kart World and HOW BIG IS IT? live here
 // Returns 2 when Kart World should start, 0 otherwise. They open when the game is beaten (any save), or from the debug menu (Konami code).
 static int title_extras_(volatile u16 *pg, int cs);
-static int title_extras(volatile u16 *pg, int cs){ int sh=shd_begin(); int r=title_extras_(pg, cs); shd_end(sh); return r; }
+static int title_extras(volatile u16 *pg, int cs){ int sh=shd_begin(); int r=title_extras_(sh?VISPG:pg, cs); shd_end(sh); return r; }
 static int title_extras_(volatile u16 *pg, int cs){
     static const char *const nm[2]={"KART WORLD","HOW BIG IS IT?"}, *const d1[2]={"A WHOLE KART RACING GAME, ALL ON ITS OWN","EVERY HUGE NUMBER IN THE GAME, EVERY DIGIT"},
         *const d2[2]={"BILLIONS OF TRACKS, 18 DRIVERS, A GARAGE","BY NAME, IN SHORT, OR EVERY DIGIT"};

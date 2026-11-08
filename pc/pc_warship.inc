@@ -415,6 +415,8 @@ static void pc_ws_autotest(void){
     if(!strcmp(mode,"pclab")){ pc_lab_screen((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen pclab returned\n"); return; }
     if(!strcmp(mode,"shop")){ shop_menu(); fprintf(stderr,"screen shop returned\n"); return; }                                  // (screens test) the ship's shop menu (supplies, gear, sell, quest board, heal...)
     if(!strcmp(mode,"spshop")){ spell_shop((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen spshop returned\n"); return; }
+    if(!strcmp(mode,"unisel")){ universe_menu(VISPG); fprintf(stderr,"screen unisel returned\n"); return; }                                 // (steady test) the universe jump menu: pick a universe by its number
+    if(!strcmp(mode,"unityp")){ u32 u[UW]={1}; uni_edit(VISPG,u); fprintf(stderr,"screen unityp returned\n"); return; }              // (steady test) typing a universe number digit by digit
     if(!strcmp(mode,"bench")){ workbench((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen bench returned\n"); return; }
     if(!strcmp(mode,"colony")){ sim_ship_colony((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen colony returned\n"); return; }
     if(!strcmp(mode,"giant")){ pc_giant_hub((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen giant returned\n"); return; }

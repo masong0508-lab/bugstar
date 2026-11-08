@@ -422,5 +422,5 @@ static int dm_run(volatile u16 *pg, int live){
     }
     #undef DM_SHOW0
 }
-static int dbg_menu(volatile u16 *pg){ return dm_run(pg,0); }           // the title screen's door
-static int dbg_live_menu(volatile u16 *pg){ return dm_run(pg,1); }      // the pause screen's door
+static int dbg_menu(volatile u16 *pg){ int on=in_menu&SH_ON; shd_off(); int r=dm_run(pg,0); if(on) shd_begin(); return r; }           // the title screen's door
+static int dbg_live_menu(volatile u16 *pg){ int on=in_menu&SH_ON; shd_off(); int r=dm_run(pg,1); if(on && !r) shd_begin(); return r; }      // the pause screen's door

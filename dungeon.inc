@@ -1104,7 +1104,7 @@ static void dungeon_hud(void){ hud_dirty=2; }
 static void dungeon_hud_both(void){ char b[40]; dungeon_label(b); for(int p=0;p<2;p++) draw_hud((volatile u16*)(0x06000000 + p*0xA000), b); hud_dirty=0; }
 static int stair_ok;
 static int stair_panel_(volatile u16 *pg);
-static int stair_panel(volatile u16 *pg){ int sh=shd_begin(); int r=stair_panel_(pg); shd_end(sh); return r; }
+static int stair_panel(volatile u16 *pg){ int sh=shd_begin(); int r=stair_panel_(sh?VISPG:pg); shd_end(sh); return r; }
 static int stair_panel_(volatile u16 *pg){                       // the stairs up: back to the surface, or any floor you have already been to. -1 = stay where you are
     int sel=depth_no-1, top=fl_max>depth_no?fl_max:depth_no, redraw=1; wait_release();
     while(1){

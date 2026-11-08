@@ -554,7 +554,7 @@ static void market_row(int i, char *b, int *c){
     else { int g=mk_buy[i-mk_n]; scpy(b,"BUY 1 "); scat(b,goods[g]); scat(b,"  "); ncat(b,local_price(g)*120/100); scat(b,"G"); *c = gold>=local_price(g)*120/100 ? C_GREY : C_DGREY; }
 }
 static void market_(volatile u16 *pg);
-static void market(volatile u16 *pg){ int sh=shd_begin(); market_(pg); shd_end(sh); }
+static void market(volatile u16 *pg){ int sh=shd_begin(); market_(sh?VISPG:pg); shd_end(sh); }
 static void market_(volatile u16 *pg){
     int sel=0, r; list_desc=0;
     while(1){
@@ -617,7 +617,7 @@ static void gossip_talk(volatile u16 *pg){
 }
 static void cant_row(int i, char *b, int *c){ static const char *const r[4]={"A BOWL OF SOUP  8G  (FOOD +40)","HEAR THE GOSSIP  (FREE)","BUY A ROUND  20G  (+FAME)","ARM WRESTLE THE BARTENDER  10G"}; scpy(b,r[i]); }
 static void cantina_(volatile u16 *pg);
-static void cantina(volatile u16 *pg){ int sh=shd_begin(); cantina_(pg); shd_end(sh); }
+static void cantina(volatile u16 *pg){ int sh=shd_begin(); cantina_(sh?VISPG:pg); shd_end(sh); }
 static void cantina_(volatile u16 *pg){
     int sel=0, r; list_desc=0;
     while((r=list_pick(pg,"THE CANTINA",4,cant_row,&sel,"A: PICK  B: LEAVE"))>=0){

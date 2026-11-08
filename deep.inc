@@ -180,7 +180,7 @@ static void dp_text2(volatile u16 *pg, int x, int y, int y2, char *s, int w, int
     if(cut){ char ch=s[cut]; s[cut]=0; text(pg,x,y,s,col,1); s[cut]=ch; text(pg,x,y2,s+cut+1,col,1); return; }
     cut=illi_cut(s,w-1); if(!cut) cut=w-1; char ch=s[cut]; s[cut]=0; text(pg,x,y,s,col,1); text(pg,x+cut*4,y,"-",col,1); s[cut]=ch; text(pg,x,y2,s+cut,col,1); }
 static int deep_chart_(volatile u16 *pg);
-static int deep_chart(volatile u16 *pg){ int sh=shd_begin(); int r=deep_chart_(pg); shd_end(sh); return r; }
+static int deep_chart(volatile u16 *pg){ int sh=shd_begin(); int r=deep_chart_(sh?VISPG:pg); shd_end(sh); return r; }
 static int deep_chart_(volatile u16 *pg){                                  // the chart: pick a place and fold there. 1 if you went
     u8 rows[DP_N+1]; int nr=0; if(dp_ret_ok) rows[nr++]=0; for(int i=1;i<=DP_N;i++) rows[nr++]=(u8)i;
     int sel=0, top=0, dirty=1;

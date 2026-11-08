@@ -280,7 +280,7 @@ static void slot_card(volatile u16 *pg, int i, int y, int sel, int mode){
     s64 need=sadd(smul(smul(o->level,o->level),18),12); hbar(pg,cx+w-8-48,y+25,48,o->xp,need,C_GOLD);
 }
 static int slot_picker_(volatile u16 *pg, int mode, int src);
-static int slot_picker(volatile u16 *pg, int mode, int src){ int sh=shd_begin(); int r=slot_picker_(pg, mode, src); shd_end(sh); return r; }
+static int slot_picker(volatile u16 *pg, int mode, int src){ int sh=shd_begin(); int r=slot_picker_(sh?VISPG:pg, mode, src); shd_end(sh); return r; }
 static int slot_picker_(volatile u16 *pg, int mode, int src){
     static const char *const ttl[4]={"LOAD GAME","NEW GAME","SAVE GAME","COPY TO WHICH SLOT?"};
     static const char *const hlp[4]={"A: LOAD  SELECT: ERASE  R: COPY  B: BACK","A: PLAY HERE  SELECT: ERASE  B: BACK","A: SAVE  SELECT: ERASE  R: COPY  B: BACK","A: COPY HERE  B: BACK"};
@@ -413,7 +413,7 @@ static void dif_details(volatile u16 *pg, int ts, int tt){       // ts: the row 
 }
 // ---------------------------------------------------------------- the options screen
 static void options_screen_(volatile u16 *pg);
-static void options_screen(volatile u16 *pg){ int sh=shd_begin(); options_screen_(pg); shd_end(sh); }
+static void options_screen(volatile u16 *pg){ int sh=shd_begin(); options_screen_(sh?VISPG:pg); shd_end(sh); }
 static void options_screen_(volatile u16 *pg){
     enum { OP_DIFF, OP_HUNGER, OP_FAINT, OP_XP, OP_GOLD, OP_CAM, OP_MUSIC, OP_SFX, OP_AUTO, OP_SHAKE, OP_MAP, OP_MINI, OP_NUMS, OP_HINTS, OP_ARROW, NOPT };
     static const char *const nm[NOPT]={"DIFFICULTY","HUNGER","LOSE STUFF WHEN YOU FAINT","XP SPEED","GOLD","PLANET CAMERA","MUSIC","SOUND EFFECTS","AUTOSAVE","SCREEN SHAKE","MINIMAP","MINI STAT BARS","DAMAGE NUMBERS","BUTTON HINTS","GUIDE ARROW"};

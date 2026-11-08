@@ -130,7 +130,7 @@ static u32 kw_num_edit(volatile u16 *pg, const char *title, u32 v, int nd, u32 l
             if(s<lo) s=lo; if(s>hi) s=hi; wait_release(); return s; } } }
 static void kw_seed_edit(volatile u16 *pg){ kw.seed=kw_num_edit(pg,"PLANET NUMBER (0 TO 4,294,967,295)",kw.seed,10,0,0xFFFFFFFFu); }
 static int kw_options_(volatile u16 *pg, int mode);
-static int kw_options(volatile u16 *pg, int mode){ int sh=shd_begin(); int r=kw_options_(pg, mode); shd_end(sh); return r; }
+static int kw_options(volatile u16 *pg, int mode){ int sh=shd_begin(); int r=kw_options_(sh?VISPG:pg, mode); shd_end(sh); return r; }
 static int kw_options_(volatile u16 *pg, int mode){                 // mode 0 quick race, 1 time attack, 2 elimination, 3 the track maker. 1 = go
     u8 show[NKO]; int ns=0; for(int i=0;i<NKO;i++){ int ok=1;
         if(mode==1 && (i==KO_RIV||i==KO_ITEMS||i==KO_SKILL||i==KO_CATCH||i==KO_CLASS)) ok=0;

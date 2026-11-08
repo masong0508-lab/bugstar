@@ -1105,7 +1105,7 @@ static void uni_edit(volatile u16 *pg, u32 *u){                         // type 
         if(cur!=oc){ ue_cell(pg,d,oc,cur,t); oc=cur; ch=cur; }          // the cursor moved: the cell it left, and the one it is on now
         if(ch>=0){ ue_cell(pg,d,cur,cur,t); } } }
 static int universe_menu_(volatile u16 *pg);
-static int universe_menu(volatile u16 *pg){ int sh=shd_begin(); int r=universe_menu_(pg); shd_end(sh); return r; }
+static int universe_menu(volatile u16 *pg){ int sh=shd_begin(); int r=universe_menu_(sh?VISPG:pg); shd_end(sh); return r; }
 static int universe_menu_(volatile u16 *pg){                             // pick a universe by its number; 1 if you jumped
     u32 to[UW]; for(int i=0;i<UW;i++) to[i]=uni_w[i]; { u32 one[UW]={1}; uni_addp(to,one,0); } int dirty=2, rep=0; wait_release();
     while(1){
@@ -1155,7 +1155,7 @@ static int fav_go(const Fav *f){                                              //
     if(!warp_by(dx,sx,dy,sy,0,0)) return 0;
     { char b[48], d2[40]; here_ly(d2,f->cx,f->cy); scpy(b,"PART WAY. "); scat(b,d2); scat(b," TO GO"); b[46]=0; space_say(b); } return 1; }
 static int fav_screen_(volatile u16 *pg);
-static int fav_screen(volatile u16 *pg){ int sh=shd_begin(); int r=fav_screen_(pg); shd_end(sh); return r; }
+static int fav_screen(volatile u16 *pg){ int sh=shd_begin(); int r=fav_screen_(sh?VISPG:pg); shd_end(sh); return r; }
 static int fav_screen_(volatile u16 *pg){                                      // the list: A flies there, SELECT removes, the top row saves where you are
     fav_init(); int sel=0, top=0, dirty=1, n=0, arm=-1; EW static u8 idx[NFAV]; char note[48]; note[0]=0;
     #define FAV_REBUILD() do{ Fav q_; n=0; for(int i_=0;i_<NFAV;i_++) if(fav_get(i_,&q_)) idx[n++]=(u8)i_; }while(0)
@@ -1204,7 +1204,7 @@ static int fav_screen_(volatile u16 *pg){                                      /
     #undef FAV_REBUILD
 }
 static int cluster_jump_(volatile u16 *pg);
-static int cluster_jump(volatile u16 *pg){ int sh=shd_begin(); int r=cluster_jump_(pg); shd_end(sh); return r; }
+static int cluster_jump(volatile u16 *pg){ int sh=shd_begin(); int r=cluster_jump_(sh?VISPG:pg); shd_end(sh); return r; }
 static int cluster_jump_(volatile u16 *pg){                                    // START on the galaxy map: to a neighbouring cluster, a blind warp, another universe, or the long-range chart
     char b[48], r2[40]; int dirty=1;
     wait_release();

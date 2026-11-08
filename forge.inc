@@ -53,7 +53,7 @@ static void fg_val(int r, char *b){
     }
 }
 static int forge_menu_(volatile u16 *pg);
-static int forge_menu(volatile u16 *pg){ int sh=shd_begin(); int r=forge_menu_(pg); shd_end(sh); return r; }
+static int forge_menu(volatile u16 *pg){ int sh=shd_begin(); int r=forge_menu_(sh?VISPG:pg); shd_end(sh); return r; }
 static int forge_menu_(volatile u16 *pg){                                      // returns 1 to start a run
     fst_load(); if(!fg_ready){ fg_default(); fg_ready=1; }
     int sel=12, dirty=1; wait_release(); menu_msg[0]=0;
