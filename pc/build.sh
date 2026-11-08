@@ -108,19 +108,27 @@ sed -i 's|^    spr_bar(pg,o,scx,top,wcols,tY);|    pc_dn_spr(art,aw,ah,x0,wcols,
 sed -i '1i static void pc_dn_spr(const unsigned char *art, int aw, int ah, int x0, int wcols, int top, int bot, int tY, int tint, int dark, int flash);' dungeon.inc
 sed -i '1i static void pc_dn_sprites_done(volatile unsigned short *pg);' main.c
 sed -i '1i static void pc_dn_native(volatile unsigned short *pg, int dirx, int diry, int plx, int ply);' main.c
+sed -i 's|^static int terr_roll(int bossfl,int mz_last,int mboss){ *|&\n    if(pc_vt_terr()) return 1;|' dungeon.inc terrace.inc
+sed -i '1i static int pc_vt_terr(void);' main.c
 echo '#include "../pc_dnative.inc"' >> main.c
 # --- the native planet (pc/pc_pnative.inc, pc_pncomp.inc in pc_hw.c)
-sed -i 's|else render_planet(pg); u32 t_r1=TMR();|else { render_planet(pg); pc_pn_native(pg); } u32 t_r1=TMR();|' planet.inc
+sed -i 's|if(m7_on) m7_frame(); else render_planet(pg); u32 t_r1=TMR();|if(m7_on){ pc_pn_off(); m7_frame(); } else { render_planet(pg); pc_pn_native(pg); } u32 t_r1=TMR();|' planet.inc
+sed -i 's|^static void sky_decor(volatile u16 \*pg){$|&\n    if(pc_pn_decor(pg)) return;|; s|^static void hell_sky(volatile u16 \*pg){ .*$|&\n    if(pc_pn_hellsky(pg)) return;|; s|^    rect(pg,ox-R-1,oy-R-1,2\*R+2,2\*R+2,C_DGREY); rect(pg,ox-R,oy-R,2\*R,2\*R,1);$|    if(pc_pn_minimap(ox,oy,R)) return;\n&|' planet.inc
+sed -i 's|^    if(!wd.weather) return; weather_t+=3; u32 s=wd.tseed+(frames>>1)\*7;$|    if(!wd.weather) return; weather_t+=3; if(pc_pn_weather()) return; u32 s=wd.tseed+(frames>>1)*7;|' town.inc
+grep -c "pc_pn_decor(pg)" planet.inc | grep -qx 1 && grep -c "pc_pn_hellsky(pg)" planet.inc | grep -qx 1 && grep -c "pc_pn_minimap(ox,oy,R)" planet.inc | grep -qx 1 && grep -c "pc_pn_weather()" town.inc | grep -qx 1 && grep -c "pc_pn_off();" planet.inc | grep -qx 1 || { echo "build: native planet hooks did not apply"; exit 1; }
 sed -i 's|^    int ad=dd<0?-dd:dd, t=ad\*2\*rc/60-rc;|    if(pc_pn_disc(cx,cy,rc,dd,lit,dark,sunmode)) return;\n&|' planet.inc
-sed -i '1i static void pc_pn_native(volatile unsigned short *pg); static int pc_pn_disc(int cx, int cy, int rc, int dd, int lit, int dark, int sunmode);' main.c
+sed -i '1i static void pc_pn_native(volatile unsigned short *pg), pc_pn_off(void); static int pc_pn_disc(int cx, int cy, int rc, int dd, int lit, int dark, int sunmode), pc_pn_decor(volatile unsigned short *pg), pc_pn_hellsky(volatile unsigned short *pg), pc_pn_minimap(int ox, int oy, int R), pc_pn_weather(void);' main.c
 sed -i '1i #define BUGSTAR_PC_SHADOW_HOOK 1\nstatic int pc_pn_shadow(volatile unsigned short *pg, int cx, int cy, int rx0, int ry0, int tx, int ty, int rx1, int ry1, int hour);' main.c
 echo '#include "../pc_pnative.inc"' >> main.c
 # --- the native space view (pc/pc_snative.inc, pc_sncomp.inc in pc_hw.c)
 sed -i 's|^IWRAM static void planet_fill(\(.*\)const u8 \*noise){|&\n    pc_sn_rec(cx,cy,r,Lx,Ly,Lz,rot,noise);|' space.inc
 sed -i 's|^    orbit_draw(pg,0); |    orbit_draw(pg,0); pc_sn_native(pg,vpx,vpy,stk); |' space.inc
+sed -i 's|line2(pg,tx,ty,hx,hy,52); line2(pg,tx+1,ty,hx+1,hy,52); line2(pg,(tx+hx)/2,(ty+hy)/2,hx,hy,54); } }|line2(pg,tx,ty,hx,hy,52); line2(pg,tx+1,ty,hx+1,hy,52); line2(pg,(tx+hx)/2,(ty+hy)/2,hx,hy,54); pc_so_bolt(tx,ty,hx,hy); } }|' space.inc
+sed -i 's|^        ship_roll=0; }$|        ship_roll=0; }\n    pc_so_late(pg);|' space.inc
+grep -c "pc_so_bolt(tx,ty,hx,hy)" space.inc | grep -qx 1 && grep -c "^    pc_so_late(pg);" space.inc | grep -qx 1 || { echo "build: space item hooks did not apply"; exit 1; }
 sed -i 's|int vpx=120, vpy=VCY, vdrift=0, stk=0;|pc_sn_begin(); &|' space.inc
 grep -c "pc_sn_rec(cx" space.inc | grep -qx 1 && grep -c "pc_sn_native(pg" space.inc | grep -qx 1 && grep -c "pc_sn_begin()" space.inc | grep -qx 1 || { echo "build: native space hooks did not apply"; exit 1; }
-sed -i '1i static void pc_sn_begin(void), pc_so_native(volatile unsigned short *pg), pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk), pc_sn_rec(int cx,int cy,int r,int Lx,int Ly,int Lz,int rot,const unsigned char *noise);' main.c
+sed -i '1i static void pc_so_bolt(int tx,int ty,int hx,int hy), pc_so_late(volatile unsigned short *pg), pc_sn_begin(void), pc_so_native(volatile unsigned short *pg), pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk), pc_sn_rec(int cx,int cy,int r,int Lx,int Ly,int Lz,int rot,const unsigned char *noise);' main.c
 echo '#include "../pc_snative.inc"' >> main.c
 echo '#include "../pc_laws.inc"' >> main.c
 # --- the kart race NATIVE extras (pc/pc_kartnat.inc, pc_kartnat_r.inc in pc_hw.c): banking, hills, soft shadows. The game's own dithered shadows are skipped when the window picture makes its own.

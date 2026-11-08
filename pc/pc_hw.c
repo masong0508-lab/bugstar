@@ -258,10 +258,11 @@ void pc_render(uint8_t *rgb){
     for(int y=0;y<160;y++) for(int x=0;x<240;x++){ uint16_t c=screen[y][x]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; uint8_t *p=rgb+(y*240+x)*3;
         p[0]=(uint8_t)(r<<3|r>>2); p[1]=(uint8_t)(g<<3|g>>2); p[2]=(uint8_t)(b<<3|b>>2); }
 }
+double pc_now_ms(void); void pc_vrec(int,double); extern double pc_vms[4], pc_vmin[4];
 int pc_write_ppm(const char *path, int scale){
     if(getenv("PC_NATIVE")){                                   // test: make the picture with the native path (pc_compose_native) at scale x 240x160
         int W=240*scale, H=160*scale; uint32_t *b=malloc((size_t)W*H*4); pc_compose_native(b,W,H,atoi(getenv("PC_NATIVE"))>1);
-        if(getenv("PC_NBENCH")){ int n=atoi(getenv("PC_NBENCH")); double mn=1e9,sum=0; for(int i=0;i<n;i++){ struct timespec a,c; clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&a); pc_compose_native(b,W,H,1); clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&c); double ms=(c.tv_sec-a.tv_sec)*1e3+(c.tv_nsec-a.tv_nsec)/1e6; if(ms<mn) mn=ms; sum+=ms; } fprintf(stderr,"native compose %dx%d: best %.2f ms avg %.2f ms (cpu time, all threads) over %d (frame %ld)\n",W,H,mn,sum/n,n,g_frame); }   // (test: time the whole native picture)
+        if(getenv("PC_NBENCH")){ int n=atoi(getenv("PC_NBENCH")); double mn=1e9,sum=0,wmn=1e9,wsum=0; for(int i=0;i<n;i++){ struct timespec a,c; double w0=pc_now_ms(); clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&a); pc_compose_native(b,W,H,1); clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&c); double ww=pc_now_ms()-w0; if(ww<wmn) wmn=ww; wsum+=ww; double ms=(c.tv_sec-a.tv_sec)*1e3+(c.tv_nsec-a.tv_nsec)/1e6; if(ms<mn) mn=ms; sum+=ms; } fprintf(stderr,"native compose %dx%d: wall best %.2f avg %.2f ms, cpu best %.2f avg %.2f ms (all threads) over %d (frame %ld); native pass in the game frame: dungeon %.2f planet %.2f space %.2f ms (best %.2f %.2f %.2f)\n",W,H,wmn,wsum/n,mn,sum/n,n,g_frame,pc_vms[0],pc_vms[1],pc_vms[2],pc_vmin[0]<1e8?pc_vmin[0]:0,pc_vmin[1]<1e8?pc_vmin[1]:0,pc_vmin[2]<1e8?pc_vmin[2]:0); }   // (test: time the whole native picture)
         FILE *f=fopen(path,"wb"); if(!f){ free(b); return 0; } fprintf(f,"P6 %d %d 255\n",W,H);
         for(size_t i=0;i<(size_t)W*H;i++){ uint8_t p[3]={(uint8_t)(b[i]>>16),(uint8_t)(b[i]>>8),(uint8_t)b[i]}; fwrite(p,1,3,f); } fclose(f); free(b); return 1; }
     static uint8_t rgb[240*160*3]; pc_render(rgb);
@@ -448,9 +449,12 @@ static void nv_rows(void *vc, int lo, int hi){
     }
 }
 double pc_now_ms(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec*1e3+t.tv_nsec/1e6; }
+double pc_vms[4], pc_vmin[4]={1e9,1e9,1e9,1e9}; static long pc_vn[4];
+void pc_vrec(int id,double ms){ pc_vms[id]=pc_vn[id]++?pc_vms[id]*0.95+ms*0.05:ms; if(ms<pc_vmin[id]) pc_vmin[id]=ms; }       // the game-frame cost of the native 3D passes (0 dungeon, 1 planet, 2 space): a running average and the best frame (shown by PC_NBENCH)
 static double pc_dn_last_ms; void pc_dn_report(double ms,int W,int H){ pc_dn_last_ms=ms; static int on=-1; static double acc; static int n; if(on<0) on=getenv("PC_TIMING")!=0; if(!on) return; acc+=ms; if(++n==200){ fprintf(stderr,"dungeon native %dx%d: %.2f ms per frame\n",W,H,acc/n); n=0; acc=0; } }
-int pc_v3d_classic(void);
+int pc_v3d_classic(void), pc_v3d_ultra(void);
 static int nv_v3(void){ int v3=pc_vid3d; static int env=-2; if(env==-2){ const char *e=getenv("PC_V3D"); env=e?atoi(e):-1; } if(env>=0) v3=env; return v3; }
+int pc_v3d_ultra(void){ return nv_v3()==3 && pc_ships_mode!=0; }                  // 3D VIEWS = ULTRA: the native views plus the extras (smoothed edges, bloom, glow); PC_V3D=3 in the environment for tests
 int pc_v3d_classic(void){ return nv_v3()==2 || pc_ships_mode==0; }   // CLASSIC in either switch (3D VIEWS, or SHIPS: the one the ship renderer uses) keeps the GBA picture
 static int spr_tex(int tile,int tx,int ty,int w,int h,int one_d,int is8,int pal,uint16_t *col){    // one texel of a sprite: 0 = transparent
     if(tx<0||ty<0||tx>=w||ty>=h) return 0; int units=is8?2:1; int t=tile + (ty>>3)*(one_d ? (w>>3)*units : 32) + (tx>>3)*units;
@@ -458,6 +462,12 @@ static int spr_tex(int tile,int tx,int ty,int w,int h,int one_d,int is8,int pal,
     int idx=*(volatile uint8_t*)(uintptr_t)addr; if(!is8){ idx = (tx&1) ? idx>>4 : idx&15; } if(!idx) return 0;
     *col=rgbpix(R16(PALRAM+0x200 + 2*(is8? idx : pal*16+idx))); return 1; }
 typedef struct { int W, H, one_d, sprsm; double sx, sy; } SpCtx;
+static uint16_t sp_tex[128][64*64]; static uint8_t sp_ok[128];       // every sprite's texels decoded once a picture (colour | 0x8000, 0 = clear): the row workers only read it
+static void nv_sprprep(int one_d){
+    static const uint8_t dim[3][4][2]={{{8,8},{16,16},{32,32},{64,64}},{{16,8},{32,8},{32,16},{64,32}},{{8,16},{8,32},{16,32},{32,64}}};
+    for(int i=0;i<128;i++){ sp_ok[i]=0; uint32_t o=OAMB+i*8; uint16_t a0=R16(o), a1=R16(o+2), a2=R16(o+4); int am=(a0>>8)&3, gm=(a0>>10)&3; if(am==2||gm==2) continue; int shape=(a0>>14)&3, size=(a1>>14)&3; if(shape==3) continue;
+        int w=dim[shape][size][0], h=dim[shape][size][1], is8=(a0>>13)&1, pal=(a2>>12)&15, tile=a2&1023; int y0=a0&255; if(y0>=160) y0-=256; if(y0+h*2<-60 || y0>220) continue;
+        uint16_t *d=sp_tex[i]; for(int ty=0;ty<h;ty++) for(int tx=0;tx<w;tx++){ uint16_t col; d[ty*w+tx]=spr_tex(tile,tx,ty,w,h,one_d,is8,pal,&col) ? (uint16_t)(col|0x8000) : 0; } sp_ok[i]=1; if(getenv("PC_SPRDBG")&&g_frame==3140) fprintf(stderr,"spr %d: %dx%d aff%d dbl%d at %d,%d prio %d\n",i,w,h,(am&1),am==3,a1&511,y0,(a2>>10)&3); } }
 static void nv_sprites(void *vc, int lo, int hi){
     SpCtx *c=(SpCtx*)vc; int W=c->W, H=c->H, one_d=c->one_d, sprsm=c->sprsm; double sx=c->sx, sy=c->sy; (void)H;
 
@@ -478,29 +488,44 @@ static void nv_sprites(void *vc, int lo, int hi){
             double x0d=x0+kox, y0d=y0+koy;
             int ox0=(int)floor(x0d/sx), ox1=(int)ceil((x0d+bw)/sx), oy0=(int)floor(y0d/sy), oy1=(int)ceil((y0d+bh)/sy);
             if(ox0<0)ox0=0; if(oy0<lo)oy0=lo; if(ox1>W)ox1=W; if(oy1>hi)oy1=hi; if(oy0>=oy1) continue;
-            int units=is8?2:1;
+            if(!sp_ok[i]) continue; const uint16_t *tcache=sp_tex[i];
             for(int Y=oy0;Y<oy1;Y++){
                 double gy=Y*sy;                                  // the top edge of this output pixel, in game pixels
-                for(int X=ox0;X<ox1;X++){
+                int xa=ox0, xb=ox1;
+                if(aff){ double dyy=gy-y0d-bh/2.0, A0=pa*sx, B0=pa*(-x0d-bw/2.0)+pb*dyy+w/2.0, C0=pc*sx, D0=pc*(-x0d-bw/2.0)+pd*dyy+h/2.0;      // a turned or scaled sprite: only the stretch of this row that lands inside its picture (the box of a double-size one is mostly empty)
+                    for(int k2=0;k2<2;k2++){ double A=k2?C0:A0, B=k2?D0:B0, n=k2?h:w; if(A>-1e-9 && A<1e-9){ if(B<0||B>=n){ xa=xb; break; } continue; } double t1=(0-B)/A, t2=(n-B)/A, lo2=t1<t2?t1:t2, hi2=t1<t2?t2:t1; if(lo2<-1e6) lo2=-1e6; if(hi2>1e6) hi2=1e6; if(lo2>1e6||hi2<-1e6){ xa=xb; break; } int l2=(int)floor(lo2)-1, h2=(int)ceil(hi2)+2; if(l2>xa) xa=l2; if(h2<xb) xb=h2; } }
+                for(int X=xa;X<xb;X++){
                     double gx=X*sx; int tx,ty;
                     if(aff){ double dx=gx-x0d-bw/2.0, dy=gy-y0d-bh/2.0; double fx=pa*dx+pb*dy+w/2.0, fy=pc*dx+pd*dy+h/2.0;
                              if(fx<0||fy<0) continue; tx=(int)fx; ty=(int)fy; if(tx>=w||ty>=h) continue; }
                     else { int ix=(int)floor(gx-x0d), iy=(int)floor(gy-y0d); if(ix<0||iy<0||ix>=bw||iy>=bh) continue; tx=hf?w-1-ix:ix; ty=vf?h-1-iy:iy; }
                     size_t q=(size_t)Y*W+X;
                     if((nv_op[q]&7)<4 && (nv_op[q]&3)<=prio) continue;
-                    int t=tile + (ty>>3)*(one_d ? (w>>3)*units : 32) + (tx>>3)*units;
-                    uint32_t addr=VRAMB+0x10000+(uint32_t)t*32 + (ty&7)*(is8?8:4) + ((tx&7)>>(is8?0:1));
-                    if(addr>=VRAMB+0x18000) continue;
-                    int idx=*(volatile uint8_t*)(uintptr_t)addr; if(!is8){ idx = (tx&1) ? idx>>4 : idx&15; } if(!idx) continue;
-                    nv_oc[q]=rgbpix(R16(PALRAM+0x200 + 2*(is8? idx : pal*16+idx))); nv_op[q]=(uint8_t)(prio | (gm==1?16:0));
+                    uint16_t tcv=tcache[ty*w+tx]; if(!tcv) continue;
+                    nv_oc[q]=tcv&0x7FFF; nv_op[q]=(uint8_t)(prio | (gm==1?16:0));
                     if(aff && sprsm){                                      // a scaled or turned sprite: the colour is a bilinear mix of the opaque texels around, the edge stays as it was
                         double ux=pa*(gx-x0d-bw/2.0)+pb*(gy-y0d-bh/2.0)+w/2.0-0.5, uy=pc*(gx-x0d-bw/2.0)+pd*(gy-y0d-bh/2.0)+h/2.0-0.5; int ix=(int)floor(ux), iy=(int)floor(uy); double ax=ux-ix, ay=uy-iy;
-                        double wsum=0, r=0, g2=0, b2=0; for(int jy=0;jy<2;jy++) for(int jx=0;jx<2;jx++){ uint16_t cc; if(!spr_tex(tile,ix+jx,iy+jy,w,h,one_d,is8,pal,&cc)) continue; double wt=(jx?ax:1-ax)*(jy?ay:1-ay); wsum+=wt; r+=wt*(cc&31); g2+=wt*((cc>>5)&31); b2+=wt*((cc>>10)&31); }
+                        double wsum=0, r=0, g2=0, b2=0; for(int jy=0;jy<2;jy++) for(int jx=0;jx<2;jx++){ int qx=ix+jx, qy=iy+jy; if(qx<0||qy<0||qx>=w||qy>=h) continue; uint16_t cc=tcache[qy*w+qx]; if(!cc) continue; double wt=(jx?ax:1-ax)*(jy?ay:1-ay); wsum+=wt; r+=wt*(cc&31); g2+=wt*((cc>>5)&31); b2+=wt*((cc>>10)&31); }
                         if(wsum>0.01) nv_oc[q]=(uint16_t)((int)(r/wsum+0.5) | (int)(g2/wsum+0.5)<<5 | (int)(b2/wsum+0.5)<<10); }
                 }
             }
         }
     }
+static int bl_y0, bl_y1;                                       // the rows of the picture a native 3D view made this frame (ULTRA: the bloom works on these only)
+// ---- ULTRA bloom: bright parts of the 3D picture (suns, lamps, sparks, lava, hit flashes) spill a soft glow. Bright-pass into a 1/B picture (every 2nd pixel is looked at), a box blur both ways, added back
+// with bilinear sampling, only where the blurred picture holds light (most of a frame holds none).
+typedef struct { uint32_t *out; int W,H,y0,y1,B,bw,bh; float *a,*b; uint8_t *nz; } BlCtx;
+static void bl_down(void *vc,int lo,int hi){ BlCtx *c=(BlCtx*)vc; int B=c->B; for(int by=lo;by<hi;by++) for(int bx=0;bx<c->bw;bx++){ float r=0,g=0,bl=0; int n=0; for(int j=0;j<B;j+=2){ int Y=c->y0+by*B+j; if(Y>=c->y1) break; const uint32_t *p=c->out+(size_t)Y*c->W+bx*B; for(int i=0;i<B;i+=2){ if(bx*B+i>=c->W) break; n++; uint32_t v=p[i]; int R=v>>16&255, G=v>>8&255, Bl=v&255, l=(R*3+G*6+Bl)/10; if(l>185){ float w=(l-185)/70.0f; r+=R*w; g+=G*w; bl+=Bl*w; } } } float *d=c->a+3*((size_t)by*c->bw+bx); float k=n?1.0f/n:0; d[0]=r*k; d[1]=g*k; d[2]=bl*k; } }
+static void bl_h(void *vc,int lo,int hi){ BlCtx *c=(BlCtx*)vc; int bw=c->bw; for(int y=lo;y<hi;y++) for(int x=0;x<bw;x++){ float s[3]={0,0,0}; for(int i=-3;i<=3;i++){ int xx=x+i; if(xx<0||xx>=bw) continue; const float *q=c->a+3*((size_t)y*bw+xx); float w=4-(i<0?-i:i); s[0]+=q[0]*w; s[1]+=q[1]*w; s[2]+=q[2]*w; } float *d=c->b+3*((size_t)y*bw+x); d[0]=s[0]/16; d[1]=s[1]/16; d[2]=s[2]/16; } }
+static void bl_v(void *vc,int lo,int hi){ BlCtx *c=(BlCtx*)vc; int bw=c->bw, bh=c->bh; for(int y=lo;y<hi;y++) for(int x=0;x<bw;x++){ float s[3]={0,0,0}; for(int i=-3;i<=3;i++){ int yy=y+i; if(yy<0||yy>=bh) continue; const float *q=c->b+3*((size_t)yy*bw+x); float w=4-(i<0?-i:i); s[0]+=q[0]*w; s[1]+=q[1]*w; s[2]+=q[2]*w; } float *d=c->a+3*((size_t)y*bw+x); d[0]=s[0]/16; d[1]=s[1]/16; d[2]=s[2]/16; c->nz[(size_t)y*bw+x]=(s[0]+s[1]+s[2])>48.0f; } }
+static void bl_up(void *vc,int lo,int hi){ BlCtx *c=(BlCtx*)vc; int B=c->B, bw=c->bw, bh=c->bh; for(int Y=c->y0+lo;Y<c->y0+hi;Y++){ float fy=(Y-c->y0+0.5f)/B-0.5f; int y0=(int)__builtin_floorf(fy); float ty=fy-y0; int ya=y0<0?0:y0, yb=y0+1>=bh?bh-1:y0+1; if(ya>=bh) ya=bh-1; uint32_t *o=c->out+(size_t)Y*c->W;
+    for(int bx=0;bx<bw;bx++){ int xa0=bx-1<0?0:bx-1, xb0=bx+1>=bw?bw-1:bx+1; if(!(c->nz[(size_t)ya*bw+xa0]|c->nz[(size_t)ya*bw+bx]|c->nz[(size_t)ya*bw+xb0]|c->nz[(size_t)yb*bw+xa0]|c->nz[(size_t)yb*bw+bx]|c->nz[(size_t)yb*bw+xb0])) continue;
+      int X1=(bx+1)*B; if(X1>c->W) X1=c->W; for(int X=bx*B;X<X1;X++){ float fx=(X+0.5f)/B-0.5f; int x0=(int)__builtin_floorf(fx); float tx=fx-x0; int xa=x0<0?0:x0, xb=x0+1>=bw?bw-1:x0+1; if(xa>=bw) xa=bw-1; const float *p00=c->a+3*((size_t)ya*bw+xa), *p01=c->a+3*((size_t)ya*bw+xb), *p10=c->a+3*((size_t)yb*bw+xa), *p11=c->a+3*((size_t)yb*bw+xb); int add[3];
+        for(int k=0;k<3;k++){ float v=(p00[k]*(1-tx)+p01[k]*tx)*(1-ty)+(p10[k]*(1-tx)+p11[k]*tx)*ty; add[k]=(int)(v*1.2f); }
+        if(!(add[0]|add[1]|add[2])) continue; uint32_t v=o[X]; int r=(v>>16&255)+add[0], g=(v>>8&255)+add[1], b=(v&255)+add[2]; if(r>255) r=255; if(g>255) g=255; if(b>255) b=255; o[X]=(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; } } } }
+static void pc_bloom(uint32_t *out,int W,int H,int y0,int y1){
+    if(y1>H) y1=H; if(y0<0) y0=0; if(y1-y0<16 || W<480) return; int B=W/200; if(B<4) B=4; int bw=(W+B-1)/B, bh=(y1-y0+B-1)/B; static float *fa,*fb; static uint8_t *fz; static size_t cap; size_t n=(size_t)bw*bh*3; if(n>cap){ free(fa); free(fb); free(fz); fa=malloc(n*4); fb=malloc(n*4); fz=malloc((size_t)bw*bh); cap=n; }
+    BlCtx c={out,W,H,y0,y1,B,bw,bh,fa,fb,fz}; pc_par_chunk(bh,4,bl_down,&c); pc_par_chunk(bh,8,bl_h,&c); pc_par_chunk(bh,8,bl_v,&c); pc_par_chunk(y1-y0,16,bl_up,&c); }
 #include "pc_pncomp.inc"
 #include "pc_sncomp.inc"
 void pc_compose_native(uint32_t *out, int W, int H, int smooth){
@@ -516,10 +541,11 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(dc&0x80){ for(size_t i=0;i<need;i++) out[i]=0xFFFFFF; return; }
     { static uint32_t *ovl; static size_t ovl_cap; nv_ovl=0; if(pc_ovl_fn){ if(need>ovl_cap){ free(ovl); ovl=malloc(need*4); ovl_cap=need; } pc_ovl_fn(ovl,W,H); nv_ovl=ovl; } }
     const double sx=240.0/W, sy=160.0/H;                       // game pixels per output pixel
+    bl_y0=bl_y1=0;
     struct timespec T0,T1,T2,T3,T4; clock_gettime(CLOCK_MONOTONIC,&T0);
     // ---- sprites
     kn_prep(W,H,R16(IOREG)&7); memset(nv_op,4,need); int sprsm = nv_v3()!=2 && lst_dma && W>240;
-    if((dc>>12)&1){ SpCtx c={W,H,one_d,sprsm,sx,sy}; pc_par(H,nv_sprites,&c); }
+    if((dc>>12)&1){ SpCtx c={W,H,one_d,sprsm,sx,sy}; nv_sprprep(one_d); pc_par(H,nv_sprites,&c); }
     clock_gettime(CLOCK_MONOTONIC,&T1);
     // ---- bitmap layer + blend
     uint16_t bldcnt=R16(IOREG+0x50), bldalpha=R16(IOREG+0x52); int ev=R16(IOREG+0x54)&31; if(ev>16) ev=16;
@@ -556,7 +582,7 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(mode==4 && pc_dn_w==W && pc_dn_h==H && pc_dn_buf && !pc_v3d_classic() && !lst_dma){                  // the native dungeon: wherever the page still holds what the 3D pass wrote
         int t=(dc>>4)&1; if(g_frame-pc_dn_f[t]<=4){ const uint8_t *pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0)); int Y0=(18*H+159)/160; uint32_t pal[256];
             for(int i=0;i<256;i++){ uint16_t c=R16(PALRAM+i*2); pal[i]=(uint32_t)((c&31)<<3|(c&31)>>2)<<16 | (uint32_t)(((c>>5)&31)<<3|((c>>5)&31)>>2)<<8 | (uint32_t)(((c>>10)&31)<<3|((c>>10)&31)>>2); }
-            int fadeop = (bmode>=2 && ev>0 && (bldcnt&4)) ? bmode : 0;
+            int fadeop = (bmode>=2 && ev>0 && (bldcnt&4)) ? bmode : 0; bl_y0=Y0; bl_y1=H;
             const uint32_t *spl=pc_dn_spl_on?pc_dn_spl:0; const uint8_t *sn1=pc_dn_snap[t], *sn2=pc_dn_snap2[t];
             for(int Y=Y0;Y<H;Y++){ int gy=(int)((Y+0.5)*sy); if(gy>159) gy=159; const uint32_t *src=pc_dn_buf+(size_t)(Y-Y0)*W; const uint32_t *sp=spl?spl+(size_t)(Y-Y0)*W:0;
                 for(int X=0;X<W;X++){ int gx=(int)((X+0.5)*sx); if(gx>239) gx=239; int gi=gy*240+gx; size_t q=(size_t)Y*W+X;
@@ -574,8 +600,10 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
         int t=(dc>>4)&1; if(getenv("SR_DBG")) fprintf(stderr,"sr: page %d tag %d snapf %ld/%ld frame %ld n=%d\n",t,sr_shown_tag(),sr_snap_f[0],sr_snap_f[1],g_frame,sr_count());
         if(sr_select(t) && g_frame-sr_snap_f[t]<=4){
             static uint8_t mk[240*160]; int same=0; const uint8_t *pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0));
-            for(int i=0;i<240*128;i++){ int e= pgb[i]==sr_snap[t][i]; same+=e; mk[i]= e ? (pgb[i]==0 ? 2 : 1) : 0; } memset(mk+240*128,0,240*32);
+            for(int i=0;i<240*128;i++){ int e= pgb[i]==sr_snap[t][i] || sn_foot_still(t,i,pgb[i]); same+=e; mk[i]= e ? (pgb[i]==0 ? 2 : 1) : 0; } memset(mk+240*128,0,240*32);
             if(same>240*128*6/10){ sr_set_par(pc_par_chunk,pc_par_threads()); sr_render(out,W,H,mk,0); } } }
+    if(mode==4 && !lst_dma) sn_items(out,W,H,dc,bmode,ev,bldcnt);
+    if(bl_y1>bl_y0 && pc_v3d_ultra() && !(bmode>=2 && ev>0)) pc_bloom(out,W,H,bl_y0,bl_y1);
 }
 void pc_compose_240(uint32_t *out){ pc_compose_native(out,240,160,0); }
 

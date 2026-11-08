@@ -4,6 +4,7 @@ typedef struct { int w,h,ya; uint32_t *buf; long f[2]; uint8_t snap[2][240*160];
 PcNat pc_pn;
 static void pn_compose(uint32_t *out,int W,int H,uint16_t dc,int bmode,int ev,uint16_t bldcnt){
     PcNat *n=&pc_pn; int t=(dc>>4)&1; if(!n->buf || n->w!=W || n->h!=H || g_frame-n->f[t]>4 || pc_v3d_classic() || ((dc&7)!=4)) return;
+    bl_y0=n->ya; bl_y1=H;
     const uint8_t *pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0)), *sn=n->snap[t]; double sy=160.0/H, sx=240.0/W; int fadeop=(bmode>=2 && ev>0 && (bldcnt&4)) ? bmode : 0;
     for(int Y=n->ya;Y<H;Y++){ int gy=(int)((Y+0.5)*sy); if(gy>159) gy=159; if(gy<18) continue; const uint32_t *src=n->buf+(size_t)(Y-n->ya)*W;
         for(int X=0;X<W;X++){ int gx=(int)((X+0.5)*sx); if(gx>239) gx=239; int gi=gy*240+gx; size_t q=(size_t)Y*W+X;

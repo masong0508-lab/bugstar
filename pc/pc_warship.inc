@@ -405,8 +405,38 @@ static void pc_ws_space_enter(void){                          // a craft engaged
     if(pcw_req && !pc_ws_on && !no_ambush){ pcw_req=0; pcw_engage(pcw_req_seed,pcw_req_z,pcw_req_cheat); return; }
     if(!no_ambush && ant_king && sys[cur_sys].kind==6 && (hmix(sys_id(cur_sys)^0xC0105Au)%30u)==0) space_say("A COLOSSUS DRIFTS HERE: HOLD R, PRESS SELECT");
 }
+// ---- RENDER TEST HOOK (pc/tests/views.sh): BUGSTAR_VT=<view>,args jumps a running game (after BUGSTAR_VT_AT frames, default 650) to one 3D view, so headless pictures and
+// timings of the native renderers can be made without playing there. Nothing here runs unless BUGSTAR_VT is set.
+//   space,CHASE,YAW,PITCH    out in space; BUGSTAR_VT_FX=1 keeps cans, sparks and a laser burst in front of the ship
+//   planet,CLS,WEIRD,WEATHER,HOUR,SEED   a world (CLS -1 any, 7+ hell classes; WEIRD trait id or -1; WEATHER 0-5 or -1; HOUR 0-2 or -1)
+//   dungeon,FLOOR,TERR,WATER    FLOOR = depth, TERR=1 the terraced cavern, WATER=1 a pond and polished tiles ahead of you
+//   kart,TRACK                  a kart race on that track
+static int pc_vt_terr_force;
+static int pc_vt_terr(void){ return pc_vt_terr_force; }
+static void pc_vt_tick(void){
+    static int st=-1; static char mode[16]; static int a[6]; const char *e=getenv("BUGSTAR_VT"); if(!e) return;
+    if(st<0){ st=0; memset(a,0,sizeof a); a[1]=-1; a[2]=-1; a[3]=-1; a[4]=-1; sscanf(e,"%15[a-z],%d,%d,%d,%d,%d",mode,&a[0],&a[1],&a[2],&a[3],&a[4]); }
+    const char *at=getenv("BUGSTAR_VT_AT"); if(!in_game || frames < (at?atoi(at):650)) return;
+    if(st==0 && scene==0){ st=1;
+        if(!strcmp(mode,"space")){ chase_cam=a[0]; oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); shx=PR*3; shy=0; shz=0; yaw=a[1]>=0?a[1]:0; pitch=a[2]>=0?a[2]:0; speed=a[3]>=0?a[3]:0; basis(); }
+        else if(!strcmp(mode,"planet")){ int seed=a[4]>=0?a[4]:5; ant_king=1; zones_open=6; cleared_mask=63; endless=1; galaxy_no=4000000000u; for(int w=0;w<NCW;w++) clus[w]=hmix(w*77+seed); u_settle(); gen_cluster(); cur_sys=7+seed%20; dbg_cls=a[0]; dbg_weird=a[1]; dbg_weather=a[2]; dbg_hour=a[3]; fade(0); arrive_on_planet();
+            { const char *w=getenv("BUGSTAR_VT_WLV"); if(w){ int k,l,n; wd.weird=1; while(sscanf(w,"%d:%d%n",&k,&l,&n)==2){ if(k>=0&&k<NMW){ wlv[k]=(u8)l; wcol[k]=rgb15(120+(k*53)%130,100+(k*97)%150,110+(k*31)%140); } w+=n; if(*w==',') w++; } BG_PAL[88]=wcol[MW_SUNS]; BG_PAL[89]=lift15(wcol[MW_SUNS],10); BG_PAL[90]=wcol[MW_RINGS]; BG_PAL[91]=lift15(wcol[MW_MOONS],6); BG_PAL[92]=shade15(wcol[MW_MOONS],9); BG_PAL[93]=lift15(wcol[MW_RINGS],8); BG_PAL[94]=rgb15(255,240,200); } }
+            { const char *h=getenv("BUGSTAR_VT_HEAD"); if(h){ heading=atoi(h)&1023; heading_rays(); } } }
+        else if(!strcmp(mode,"dungeon")){ portal_depth=a[0]>0?a[0]:3; pc_vt_terr_force=a[1]==1; enter_dungeon_flag=1; }
+        else if(!strcmp(mode,"kart")){ k_cls=1; k_type=0; k_trk=a[0]%kt_count(); k_rec=-1; kt_official(k_trk,&kt); kt.laps=3; kart_go(NRC,-1,0,1); }
+        return; }
+    if(st==1 && scene==2 && getenv("BUGSTAR_VT_FX")){                                           // space: things to look at, kept in front of the ship
+        s32 *o; Can *c=cans; (void)o; for(int k=0;k<3;k++){ c[k].alive=1; c[k].good=(u8)(3+k); int f=700+k*500, r=(k-1)*260, u=(k==1?-120:90);
+            c[k].x=shx+((bf[0]*f+br[0]*r+bu[0]*u)>>14); c[k].y=shy+((bf[1]*f+br[1]*r+bu[1]*u)>>14); c[k].z=shz+((bf[2]*f+br[2]*r+bu[2]*u)>>14); }
+        if((frames%12)==0){ int f=1500; boom(shx+((bf[0]*f+br[0]*300)>>14), shy+((bf[1]*f+br[1]*300)>>14), shz+((bf[2]*f+br[2]*300)>>14), 6, 54); } }
+    if(st==1 && scene==1 && getenv("BUGSTAR_VT_FX") && a[2]==1){ st=2;                          // dungeon: a pond and polished tiles in front of you
+        int cx=px_>>16, cy=py_>>16, k=(pang>>8)&3; static const int dx[4]={1,0,-1,0}, dy[4]={0,1,0,-1};
+        for(int d=2;d<=7;d++) for(int sd=-3;sd<=3;sd++){ int x=cx+dx[k]*d-dy[k]*sd, y=cy+dy[k]*d+dx[k]*sd; if(x<1||y<1||x>=MW-1||y>=MW-1) continue; int i=y*MW+x; if(dmap[i]!=D_FLOOR) continue;
+            fmat[i]= (sd<0) ? FL_TILE : ((d==2||d==7||sd==3) ? FL_SHALLOW : FL_WATER); fcode[i]= (sd<0) ? 2 : (fmat[i]==FL_WATER ? 5 : 9); } }
+}
 // ---- the test hook: BUGSTAR_WS_TEST=fight,Z,SEED | inside,Z,SEED | kill,Z,SEED | lab  (after BUGSTAR_WS_AT frames in the game)
 static void pc_ws_autotest(void){
+    pc_vt_tick();
     static int done=0; if(in_game) pcm_tick(); if(done || !in_game) return; const char *e=getenv("BUGSTAR_WS_TEST"); if(!e){ done=1; return; }
     const char *at=getenv("BUGSTAR_WS_AT"); if(frames < (at?atoi(at):0) || scene!=0) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
     char mode[16]={0}; int z=WS_ZREF; unsigned seed=0; sscanf(e,"%15[a-z],%d,%u",mode,&z,&seed);

@@ -35,19 +35,30 @@ static int kn_prep(int W, int H, int mode){            // before the sprites: th
     KN.piv=g0+KN.sh[g0]; { const char *fr=getenv("PC_KNROLL"); if(fr) KN.roll=atof(fr); } KN.cs=cos(KN.roll); KN.sn=sin(KN.roll);
     for(int i=0;i<4200;i++){ double yh=-30+i*(1.0/16), L=yh; for(int k=0;k<4;k++) L=yh-kn_shi(L); if(L<0) L=0; if(L>159.99) L=159.99; KN.kidx[i]=(short)(int)(L*8); }       // the hills undone: where (game row) the picture row yh comes from
     kn_on=1; return 1; }
-typedef struct { double pa,pc,rx,ry,fp,ifp,fog; int g; } KnL;
+typedef struct { double pa,pc,rx,ry,fp,ifp,fog; int g, ifx; } KnL;
 static KnL knl[160]; static KnL knf[160*8+8]; static uint32_t kn_bd888; static int kn_W, kn_H_; static double kn_sx, kn_sy; static uint16_t kn_hill[2];
 static void kn_fine(void); static void kn_tab(void){
     for(int l=0;l<160;l++){ const LineSt *A=&lst[l]; KnL *k=&knl[l]; k->g=kn_gnd(l); k->pa=A->pa/256.0; k->pc=A->pc/256.0; k->rx=A->rx/256.0; k->ry=A->ry/256.0;
         k->fog=-1; uint16_t bc=A->bldcnt; if(((bc>>6)&3)==1 && (bc&4) && (bc&0x2000)){ double eb=((A->bldalpha>>8)&31)/16.0; k->fog=eb>1?1:eb; }
         const LineSt *B=&lst[l<159?l+1:l]; double g=120*kn_sx; double du=(B->rx+B->pa*g)/256.0-(A->rx+A->pa*g)/256.0, dv=(B->ry+B->pc*g)/256.0-(A->ry+A->pc*g)/256.0;
-        double fy=sqrt(du*du+dv*dv)*kn_sy, fx=sqrt(k->pa*k->pa+k->pc*k->pc)*kn_sx; double F=fx>fy?fx:fy; if(F<0.0625) F=0.0625; k->fp=F; k->ifp=1.0/F; } }
+        double fy=sqrt(du*du+dv*dv)*kn_sy, fx=sqrt(k->pa*k->pa+k->pc*k->pc)*kn_sx; double F=fx>fy?fx:fy; if(F<0.0625) F=0.0625; k->fp=F; k->ifp=1.0/F; k->ifx=(int)(256.0/F); } }
 static void kn_fine(void){ for(int i=0;i<160*8+8;i++){ double Ls=(i+0.5)/8.0; if(Ls>159.99) Ls=159.99; int N=(int)Ls; KnL *o=&knf[i]; o->g=knl[N].g; if(!o->g) continue;
         double lc=Ls-0.5; int l0=(int)floor(lc); if(l0<0) l0=0; int l1=l0<159?l0+1:l0; double f=lc-l0; if(f<0) f=0; if(f>1) f=1; const KnL *A=&knl[l0], *B=&knl[l1]; if(!(A->g && B->g)){ A=B=&knl[N]; f=0; }
-        o->pa=A->pa*(1-f)+B->pa*f; o->pc=A->pc*(1-f)+B->pc*f; o->rx=A->rx*(1-f)+B->rx*f; o->ry=A->ry*(1-f)+B->ry*f; o->fp=A->fp*(1-f)+B->fp*f; o->ifp=1.0/o->fp;
+        o->pa=A->pa*(1-f)+B->pa*f; o->pc=A->pc*(1-f)+B->pc*f; o->rx=A->rx*(1-f)+B->rx*f; o->ry=A->ry*(1-f)+B->ry*f; o->fp=A->fp*(1-f)+B->fp*f; o->ifp=1.0/o->fp; o->ifx=(int)(256.0*o->ifp);
         double fg=knl[N].fog>=0 ? (A->fog*(1-f)+B->fog*f) : -1; o->fog=fg>1?1:fg; } }
 static inline int kn_world(uint16_t c){ return c==kn_hill[0] || c==kn_hill[1]; }
 static inline void kn_uv(const KnL *K, double x0, double *u, double *v){ double g=x0-0.5; *u=K->rx+K->pa*g; *v=K->ry+K->pc*g; }
+// the same sharp bilinear as nv_bil, in integers (texel position and blend weights in 1/256): the near ground is most of the picture and this runs for every one of its pixels
+static inline uint32_t kn_bilx(double u, double v, int ifx){
+    int U=(int)(u*256.0), V=(int)(v*256.0); if(U<0) U=0; if(V<0) V=0; int x0=U>>8, y0=V>>8, fu=U&255, fv=V&255;
+    int tx=(((fu-128)*ifx)>>8)+128, ty=(((fv-128)*ifx)>>8)+128; tx=tx<0?0:tx>256?256:tx; ty=ty<0?0:ty>256?256:ty;
+    int wx=fu<128?256-tx:tx, wy=fv<128?256-ty:ty; int ax=fu<128?x0-1:x0+1, ay=fv<128?y0-1:y0+1;
+    int X0=x0>239?239:x0, Y0=y0>159?159:y0, X1=ax<0?0:ax>239?239:ax, Y1=ay<0?0:ay>159?159:ay;
+    if(!wx && !wy) return pg888[1][Y0][X0];
+    uint32_t a=pg888[1][Y0][X0], b=pg888[1][Y0][X1], c=pg888[1][Y1][X0], d=pg888[1][Y1][X1];
+    uint32_t rb0=((a&0xFF00FF)*(256-wx)+(b&0xFF00FF)*wx)>>8, g0=((a&0xFF00)*(256-wx)+(b&0xFF00)*wx)>>8, rb1=((c&0xFF00FF)*(256-wx)+(d&0xFF00FF)*wx)>>8, g1=((c&0xFF00)*(256-wx)+(d&0xFF00)*wx)>>8;
+    rb0&=0xFF00FF; rb1&=0xFF00FF; g0&=0xFF00; g1&=0xFF00;
+    return ((((rb0*(256-wy)+rb1*wy)>>8)&0xFF00FF)|(((g0*(256-wy)+g1*wy)>>8)&0xFF00)); }
 static int8_t kn_gt[65536]; static int kn_gt_ok;
 static inline uint32_t kn_grain(uint32_t c, float u, float v, float F){      // nv_grain with its hash made once into a table (same look, no hashing per pixel)
     double k=(0.5-F)/0.5; int iu=(int)(u*5), iv=(int)(v*5); int d=(int)kn_gt[(iu&255)<<8|(iv&255)]*(int)(k*9)/128;
@@ -64,10 +75,30 @@ static void kn_rows(void *vc, int lo, int hi){
         if(yg<19){ for(int X=0;X<W;X++) row[X]=0; continue; }
         double dy=yg-KN.piv; int no=(int)yg; if(no>159) no=159; int ognd=kn_gnd(no);
         double x0b=120+(0.5*sx-120)*c+dy*s, yhb=KN.piv-(0.5*sx-120)*s+dy*c, dxs=sx*c, dys=sx*s;      // (x0 and yh step the same each pixel)
+        int xlo=0, xhi=W-1; if(dxs>1e-9){ double l=ceil((0.0-x0b)/dxs), h=floor((239.99-x0b)/dxs); xlo=l<0?0:l>W?W:(int)l; xhi=h>W-1?W-1:h<-1?-1:(int)h; } else xlo=1, xhi=0;
         double tb=(yhb+30)*16, ts=dys*16; const short *kidx=KN.kidx; const double xs0=0.5*sx;
         for(int X=0;X<W;){
             double Xf=X; int pair=0, ti=(int)(tb-ts*Xf); if(ti<0) ti=0; if(ti>4198) ti=4198; int ki=kidx[ti]; const KnL *K=&knf[ki];
+            if(!ognd && !K->g && tb-ts*Xf>=1.0 && tb-ts*Xf<4196.0){                              // sky and far hills: one colour for a run of pixels that share a table row, a game column of the page and a column of the HUD test
+                double r0=x0b+dxs*X; int gx=r0<0?0:r0>239.99?239:(int)r0, Xe=W; double q;
+                if(r0<0){ q=ceil((1.0-x0b)/dxs); if(q<Xe) Xe=(int)q; } else if(r0<239.0 && gx<239){ q=ceil((gx+1-x0b)/dxs); if(q<Xe) Xe=(int)q; }
+                int xo=(int)(xs0+sx*X); if(xo>239) xo=239; if(xo<239){ q=ceil((xo+1-xs0)/sx); if(q<Xe) Xe=(int)q; }
+                if(ts>1e-9){ q=floor((tb-ti)/ts)+1; if(q<Xe) Xe=(int)q; } else if(ts<-1e-9){ q=ceil((ti+1-tb)/(-ts)); if(q<Xe) Xe=(int)q; }
+                if(Xe<=X) Xe=X+1; if(Xe>W) Xe=W;
+                int N=ki>>3; uint32_t pix=0; int ok=skyok[no];
+                if(ok){ uint16_t oc=bgres[no][xo]; if(bghave[no][xo] && oc!=skym[no] && !kn_world(oc)) ok=0; }
+                if(ok){ if(N<19 || !skyok[N]) ok=0; else { uint16_t pc2=bgres[N][gx]; pix=0x80000000u|((kn_world(pc2) && bghave[N][gx]) ? KN_C888(pc2) : kn_skycol[ki]); } }
+                if(!ok) pix=0; for(;X<Xe;X++) row[X]=pix; continue; }
             if(X+1<W && !(K->g && K->fp<1.6)){ pair=1; Xf=X+0.5; ti=(int)(tb-ts*Xf); if(ti<0) ti=0; if(ti>4198) ti=4198; ki=kidx[ti]; K=&knf[ki]; if(K->g && K->fp<1.6){ pair=0; Xf=X; ki=kidx[(int)(tb-ts*Xf)<0?0:(int)(tb-ts*Xf)>4198?4198:(int)(tb-ts*Xf)]; K=&knf[ki]; } }   // far ground and sky: two pixels at a time (one texel is 5 pixels there, you cannot see it)
+            if(!pair && ognd && K->g && K->fp<1.6 && X>=xlo && X<=xhi && tb-ts*Xf>=1.0 && tb-ts*Xf<4196.0){                         // the near ground, a run of pixels that use the same table row: u and v step by one add each (what the loop below does, pixel by pixel)
+                double tf=tb-ts*Xf; int Xe=W; if(ts>1e-9){ double q=floor((tb-ti)/ts)+1; if(q<Xe) Xe=(int)q; } else if(ts<-1e-9){ double q=ceil((ti+1-tb)/(-ts)); if(q<Xe) Xe=(int)q; }
+                (void)tf; if(Xe>xhi+1) Xe=xhi+1; if(Xe<=X) Xe=X+1;
+                double x0r=x0b+dxs*X, g=x0r-0.5, u=K->rx+K->pa*g, v=K->ry+K->pc*g, du=K->pa*dxs, dv=K->pc*dxs; int fg=K->fog>0?(int)(K->fog*256+0.5):0, ifx=K->ifx, gr=K->fp<0.5 && !kn_x; float fpf=(float)K->fp;
+                for(;X<Xe;X++,u+=du,v+=dv){ if(u<0||v<0||u>=240||v>=160){ row[X]=0; continue; }
+                    uint32_t col=kn_bilx(u,v,ifx); if(gr) col=kn_grain(col,(float)u,(float)v,fpf);
+                    if(fg){ uint32_t rb=((col&0xFF00FF)*(256-fg)+(kn_bd888&0xFF00FF)*fg)>>8, gg=((col&0xFF00)*(256-fg)+(kn_bd888&0xFF00)*fg)>>8; col=(rb&0xFF00FF)|(gg&0xFF00); }
+                    row[X]=0xC0000000u|col; }
+                continue; }
             double x0=x0b+dxs*Xf; if(x0<0) x0=0; if(x0>239.99) x0=239.99;
             uint32_t pix=0; int n=pair?2:1; int ok0=1, ok1=pair;
             if(!ognd){ if(!skyok[no]) ok0=ok1=0; else { int xo=(int)(xs0+sx*X); if(xo>239) xo=239; uint16_t oc=bgres[no][xo]; if(bghave[no][xo] && oc!=skym[no] && !kn_world(oc)) ok0=0;
@@ -75,9 +106,8 @@ static void kn_rows(void *vc, int lo, int hi){
             if(ok0|ok1){
             if(K->g){ double fp=K->fp, fog=K->fog; double g=x0-0.5, u=K->rx+K->pa*g, v=K->ry+K->pc*g; uint32_t col;
                 if(u<0||v<0||u>=240||v>=160) goto none;
-                float ifp=(float)K->ifp;
-                if(fp<1.6){ col=nv_bil(1,(float)u,(float)v,ifp); if(fp<0.5 && !kn_x) col=kn_grain(col,(float)u,(float)v,(float)fp); }
-                else { double du=K->pa*sx*0.25, dv=K->pc*sx*0.25; uint32_t t0=nv_bil(1,(float)(u-du),(float)(v-dv),2*ifp), t1=nv_bil(1,(float)(u+du),(float)(v+dv),2*ifp);
+                if(fp<1.6){ col=kn_bilx(u,v,K->ifx); if(fp<0.5 && !kn_x) col=kn_grain(col,(float)u,(float)v,(float)fp); }
+                else { double du=K->pa*sx*0.25, dv=K->pc*sx*0.25; uint32_t t0=kn_bilx(u-du,v-dv,2*K->ifx), t1=kn_bilx(u+du,v+dv,2*K->ifx);
                     col=((t0>>1)&0x7F7F7F)+((t1>>1)&0x7F7F7F)+((t0&t1)&0x010101); }
                 int fg=fog>0?(int)(fog*256+0.5):0; if(fg){ uint32_t rb=((col&0xFF00FF)*(256-fg)+(kn_bd888&0xFF00FF)*fg)>>8, gg=((col&0xFF00)*(256-fg)+(kn_bd888&0xFF00)*fg)>>8; col=(rb&0xFF00FF)|(gg&0xFF00); }
                 pix=0xC0000000u|col; }

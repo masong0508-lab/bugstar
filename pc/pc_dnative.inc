@@ -6,7 +6,7 @@
 // sparks and text stay as the game drew them. 3D VIEWS = CLASSIC (or no window size known) turns it off. Water and polished-floor reflections: not done.
 #include <stdlib.h>
 extern int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h, pc_ships_mode; extern uint32_t *pc_dn_buf, *pc_dn_spl; extern int pc_dn_spl_on; extern uint8_t pc_dn_snap2[2][240*160]; extern long pc_dn_f[2]; extern uint8_t pc_dn_snap[2][240*160];
-extern double pc_now_ms(void); extern void pc_dn_report(double,int,int); extern int pc_v3d_classic(void); extern long pc_frames(void);
+extern double pc_now_ms(void); extern void pc_vrec(int,double); extern void pc_dn_report(double,int,int); extern int pc_v3d_classic(void); extern long pc_frames(void);
 typedef void (*PcParFn)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn fn, void *ctx);
 typedef struct { double top, bot, inv; int yt, yb; const u16 *rp; int L, edge, perp, mm; u16 hv[48]; u8 nt[48]; } DnCol;
 typedef struct { int W, H, Y0; double sy, hzf; DnCol *col; double *rxc, *ryc; uint32_t *buf; s32 px, py; } DnCtx;
@@ -21,6 +21,16 @@ static inline int dn_bil(const u8 *tab, int base, s32 fx, s32 fy, int *rmp, int 
     int a=tab[base|(y0<<5)|x0], b=tab[base|(y0<<5)|x1], c=tab[base|(y1<<5)|x0], d=tab[base|(y1<<5)|x1];
     if((a>>5)==(b>>5) && (a>>5)==(c>>5) && (a>>5)==(d>>5)){ *rmp=a>>5; return (((a&31)*(32-fu)+(b&31)*fu)*(32-fv)+((c&31)*(32-fu)+(d&31)*fu)*fv)>>1; }   // (31*32*32 = 31744, in 1/512 of a shade step... see below)
     int t=(fv>=16)?((fu>=16)?d:c):((fu>=16)?b:a); *rmp=t>>5; return (t&31)<<9; }
+// one pixel of a wall column at game row yg: its colour-ramp entry (in *pe) and shade (the game's own baked texels, blended between neighbours when they share a ramp)
+static inline int dn_wall_es(const DnCol *k, double yg, int *pe){
+    double vv=(yg-k->top)*k->inv-0.5; if(vv<0) vv=0; int v0=(int)vv, fv=(int)((vv-v0)*16), v1=v0+1>47?47:v0+1; fv=((fv-8)*k->mm>>4)+8; if(fv<0) fv=0; if(fv>16) fv=16; if(v0>47) v0=47;
+    int h0=k->hv[v0], h1=k->hv[v1], e, s;
+    if(!((h0|h1)&0x2000) && ((h0>>10)&7)==((h1>>10)&7)){ int r=(h0>>10)&7; e=k->rp[r]; int ts=(h0&1023)*(16-fv)+(h1&1023)*fv; s=(e&0x100) ? (ts>>7) : (ts*k->L)>>14; }
+    else { int t=k->nt[fv>=8?v1:v0]; e=k->rp[t>>5]; s=(e&0x100) ? (t&31)<<2 : ((t&31)*k->L)>>5; }
+    *pe=e; return s; }
+static const uint8_t dn_bay[16]={0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
+static int dn_wob;      // the water's ripple phase (the game's own: frames*5)
+static uint8_t *dn_tz;      // the terraced cavern: depth per window pixel (1/8 cell steps), for the things that hide behind ledges
 static int dn_low;      // 1 = cheap mode (nearest texel instead of the 4-texel blend on floors and ceilings); switched on by pc_dn_native when frames cost too much
 static void dn_rows(void *vc, int lo, int hi){
     DnCtx *c=(DnCtx*)vc; int W=c->W; double sy=c->sy, hz=c->hzf;
@@ -33,21 +43,22 @@ static void dn_rows(void *vc, int lo, int hi){
         for(int X=0;X<W;X++){ const DnCol *k=&c->col[X];
             if(yg>=k->top && yg<k->bot){                                                             // the wall
                 if(k->edge || Y==k->yt || Y==k->yb){ row[X]=dn_pk(k->rp[0]&0xFF,0); continue; }
-                double vv=(yg-k->top)*k->inv-0.5; if(vv<0) vv=0; int v0=(int)vv, fv=(int)((vv-v0)*16), v1=v0+1>47?47:v0+1; fv=((fv-8)*k->mm>>4)+8; if(fv<0) fv=0; if(fv>16) fv=16; if(v0>47) v0=47;
-                int h0=k->hv[v0], h1=k->hv[v1], e, s;
-                if(!((h0|h1)&0x2000) && ((h0>>10)&7)==((h1>>10)&7)){ int r=(h0>>10)&7; e=k->rp[r]; int ts=(h0&1023)*(16-fv)+(h1&1023)*fv;      // all four texels use one ramp: blend the shade
-                    s=(e&0x100) ? (ts>>7) : (ts*k->L)>>14; }
-                else { int t=k->nt[fv>=8?v1:v0]; e=k->rp[t>>5]; s=(e&0x100) ? (t&31)<<2 : ((t&31)*k->L)>>5; }
-                row[X]=dn_pk(e&0xFF,s); continue; }
+                int e, s=dn_wall_es(k,yg,&e); row[X]=dn_pk(e&0xFF,s); continue; }
             s32 fx=c->px+(s32)(rd*c->rxc[X]/65536.0), fy=c->py+(s32)(rd*c->ryc[X]/65536.0); u32 tx=(u32)fx>>16, ty=(u32)fy>>16;
             if(tx>=MW || ty>=MW){ row[X]=dn_pk(R_CEIL,0); continue; }
             int fc=fcode[ty*MW+tx], Lp, lsv=dn_lsub(fx,fy);
             if(fl){ int e, s, ts, rp;
                 if(bil){ ts=dn_bil(floor_tex,fc<<10,fx,fy,&rp,bm); } else { int t=floor_tex[(fc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
                 e=framp[(fc<<3)|rp];
-                if(fc==5 || (fc==2 && rp==0)){ row[X]=PC_DN_NONE; continue; }                   // water and polished floors mirror the walls: the game's own picture stays
                 if(e&0x100) s=ts>>7; else { Lp=sl+((lsv*fg)>>6); if(Lp>127) Lp=127; s=(ts*Lp)>>14; }
-                row[X]=dn_pk(e&0xFF,s); }
+                uint32_t pk=dn_pk(e&0xFF,s);
+                if(fc==5 || (fc==2 && rp==0)){                                                   // water and polished floors mirror the wall in front: the game's mirror, with the wall at window resolution
+                    int wat=fc==5; double dep=yg-k->bot, lim=wat?64.0:28.0;
+                    if(dep>0 && dep<lim){ double yr=2*k->bot-yg+(wat?(double)sinI[((int)(yg*12.0)+dn_wob)&255]/8192.0:0.0);
+                        if(yr>=18.0 && yr>=k->top && yr<k->bot && yr<160.0 && !k->edge){ int we, ws=dn_wall_es(k,yr,&we); ws-=(int)((wat?2.0:3.0)*16+dep*(wat?1.0:2.0)); uint32_t wp=dn_pk(we&0xFF,ws);
+                            if(wat){ double fa=(20.0-ts/512.0)/3.0; if(fa>1) fa=1; if(fa>0 && (dn_bay[((Y&3)<<2)|(X&3)]+0.5)/16.0<fa) pk=wp; }
+                            else { double fd=1.0-dep/lim; int s2=(int)(s+(ws-s)*0.5*fd); pk=dn_pk(e&0xFF,s2<0?0:s2); } } } }
+                row[X]=pk; }
             else { int cc=((fc>=3&&fc<=5)||fc==9), ts, rp;
                 if(bil){ ts=dn_bil(ceil_tex,cc<<10,fx,fy,&rp,bm); } else { int t=ceil_tex[(cc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
                 int e=cramp[(cc<<3)|rp];
@@ -71,17 +82,97 @@ static void pc_dn_sprites_done(volatile u16 *pg){
         u8 lut[256]; for(int i=0;i<256;i++){ int ix=i; if(ix==1) ix=s->tint; else if(s->dark && ix>=64 && ix<216){ int l=(ix&7)-s->dark; ix=(ix&~7)+(l<0?0:l>7?7:l); }
             if(s->flash){ if(s->flash>=5) ix=R_UP+7; else if(ix>=64 && ix<216){ int l=(ix&7)+3; ix=(ix&~7)+(l>7?7:l); } } lut[i]=(u8)ix; }
         for(int Y=YA;Y<YB;Y++){ int v=(int)((Y+0.5-v0)*iv); if(v<0) v=0; if(v>=s->ah) v=s->ah-1; uint32_t *row=pc_dn_spl+(unsigned long)(Y-Y0)*W; const u8 *ar=s->art+v*s->aw;
-            for(int X=XA;X<XB;X++){ if(s->tY>=dn_perp[X]){ if(!row[X]) row[X]=0x40000000u; continue; }
+            for(int X=XA;X<XB;X++){ if(terr_on ? ((s->tY>>13)>(s32)dn_tz[(unsigned long)(Y-Y0)*W+X]+1) : s->tY>=dn_perp[X]){ if(!row[X]) row[X]=0x40000000u; continue; }
                 int u=(int)((X+0.5-u0)*iu); if(u<0) u=0; if(u>=s->aw) u=s->aw-1; int ix=ar[u];
                 if(!ix){ if(!row[X]) row[X]=0x40000000u; continue; }
                 ix=lut[ix]; row[X]=0x80000000u|(uint32_t)ix|(uint32_t)ix<<8; } } }
 }
+
+// ---- the terraced cavern (terrace.inc) at the window's size: the game's own ray march (cells with their own floor heights, step risers, cliff faces, rails, a high ceiling),
+// one ray per window column, one sample per window pixel, smooth shade. Every pixel also keeps its depth (dn_tz, 1/8 cell steps) so things hide behind ledges and pillars at window precision.
+typedef struct { int W,H,Y0; double sy; s32 dirx,diry,plx,ply,E,CH; uint32_t *buf; uint8_t *tz; double rxl,rxr; } TrCtx;
+static inline uint32_t dn_tr_flat(int ceil, s32 tt, s32 rx, s32 ry, double dxw){
+    s32 fx=px_+(s32)(((long long)tt*rx)>>16), fy=py_+(s32)(((long long)tt*ry)>>16); u32 tx=(u32)fx>>16, ty=(u32)fy>>16; if(tx>=MW||ty>=MW) return dn_pk(R_CEIL,0);
+    int fc=fcode[ty*MW+tx], rp, ts, bm=16, bil=dxw<3000.0; { double m=2048.0/(dxw>1?dxw:1); bm=(int)(m*16); if(bm>256) bm=256; if(bm<16) bm=16; }
+    int li=tt>>12; if(li>511) li=511; if(li<0) li=0; int lsv=dn_lsub(fx,fy);
+    if(!ceil){ if(bil) ts=dn_bil(floor_tex,fc<<10,fx,fy,&rp,bm); else { int t=floor_tex[(fc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
+        int e=framp[(fc<<3)|rp], s; if(e&0x100) s=ts>>7; else { int Lp=((light_tab[li]*44)>>6)+((lsv*((fog_tab[li]*52)>>6))>>6); if(Lp>127) Lp=127; s=(ts*Lp)>>14; } return dn_pk(e&0xFF,s); }
+    int cc=((fc>=3&&fc<=5)||fc==9); if(bil) ts=dn_bil(ceil_tex,cc<<10,fx,fy,&rp,bm); else { int t=ceil_tex[(cc<<10)|(((fy>>11)&31)<<5)|((fx>>11)&31)]; rp=t>>5; ts=(t&31)<<9; }
+    int e=cramp[(cc<<3)|rp]; int Lp=((light_tab[li]*36)>>6)+((lsv*fog_tab[li])>>7); if(Lp>127) Lp=127; return dn_pk(e&0xFF,(ts*Lp)>>14); }
+static void dn_terr_cols(void *vc,int lo,int hi){
+    TrCtx *t=(TrCtx*)vc; int W=t->W, H=t->H, Y0=t->Y0; double sy=t->sy; const int Hz=hz; const s32 E=t->E, CH=t->CH; const double D48=(double)(48<<16);
+    for(int X=lo;X<hi;X++){
+        double gc=(X+0.5)*120.0/W-0.5; s32 cam=camtab[0]+(s32)((double)(camtab[119]-camtab[0])*gc/119.0);
+        s32 rx=t->dirx+(s32)(((long long)t->plx*cam)>>16), ry=t->diry+(s32)(((long long)t->ply*cam)>>16);
+        int mx=px_>>16, my=py_>>16; u32 arx=rx<0?-rx:rx, ary=ry<0?-ry:ry;
+        u32 qx=arx>2?0xFFFFFFFFu/arx:0x7fffffff; if(qx>0x7fffffff) qx=0x7fffffff; u32 qy=ary>2?0xFFFFFFFFu/ary:0x7fffffff; if(qy>0x7fffffff) qy=0x7fffffff;
+        s32 ddx=(s32)qx, ddy=(s32)qy; int sxs=rx<0?-1:1, sys=ry<0?-1:1; s32 fx0=px_&0xFFFF, fy0=py_&0xFFFF;
+        s32 tx=rx<0?(s32)(((long long)fx0*ddx)>>16):(s32)(((long long)(0x10000-fx0)*ddx)>>16), ty=ry<0?(s32)(((long long)fy0*ddy)>>16):(s32)(((long long)(0x10000-fy0)*ddy)>>16);
+        int side=0, ylo=H, k=0, done=0; s32 fp=(s32)trh[my*MW+mx]*TU, dn=0x1000;
+        #define TPIX(Y) t->buf[(size_t)((Y)-Y0)*W+X]
+        #define TZ(Y,v) do{ s32 z_=(v)>>13; t->tz[(size_t)((Y)-Y0)*W+X]=(uint8_t)(z_>255?255:z_<0?0:z_); }while(0)
+        double dxw_unit=(t->rxr-t->rxl)/65536.0/(W>1?W-1:1); if(dxw_unit<0) dxw_unit=-dxw_unit;
+        for(;;){
+            int cell=my*MW+mx, tt0=dmap[cell]; s32 df=tx<ty?tx:ty;
+            int full=(tt0==D_WALL||tt0==D_LOCK||(tt0==D_PILLAR&&trb[cell]>=TR_CEIL)), rail=(tt0==D_PILLAR&&!full);
+            s32 ht=full?CH:rail?(s32)trb[cell]*TU:(s32)trh[cell]*TU;
+            if(k>0 && ht>fp){
+                double ya=Hz+(double)(E-ht)*FOC/dn, yb=Hz+(double)(E-fp)*FOC/dn; int Ya=(int)__builtin_floor(ya*sy), Yb=(int)__builtin_floor(yb*sy); int y0=Ya<Y0?Y0:Ya, y1=Yb<ylo?Yb:ylo;
+                if(y0<y1){
+                    s32 hx=px_+(s32)(((long long)dn*rx)>>16), hy=py_+(s32)(((long long)dn*ry)>>16);
+                    u32 u=(u32)((side==0?hy:hx)&0xFFFF); if((side==0&&rx>0)||(side==1&&ry<0)) u=0xFFFF-u;
+                    int w=rail?WT_STONE:(tt0==D_PILLAR||tt0==D_WALL||tt0==D_LOCK)?wtex[cell]:WT_STONE;
+                    if(w<=WT_CRYSTAL && ((cell*7+side)&1)) u=0xFFFF-u;
+                    const u16 *rp=wramp+w*8;
+                    int lx=(hx-((rx*5)>>4))>>14, ly=(hy-((ry*5)>>4))>>14; if(lx<0)lx=0; if(lx>127)lx=127; if(ly<0)ly=0; if(ly>127)ly=127; int li=dn>>12; if(li>511) li=511;
+                    int L=((light_tab[li]*lantk)>>6)+((lsub[(ly<<7)|lx]*fog_tab[li])>>6); L=(L*150)/(L+70); if(side==0) L=(L*48)>>6; L+=((cell*37)&7)-3; if(L<0) L=0; if(L>127) L=127;
+                    double mmh=((double)FOC*sy/((double)dn/65536.0))*(1.0/32.0); int mmi=(int)(mmh*16); if(mmi<16) mmi=16; if(mmi>128) mmi=128;                 // window pixels per texel (x16), the blend stays about one pixel wide
+                    int p=(int)(u>>6)-16, ta=p>>5, fu0=p&31, fu=((fu0-16)*mmi>>4)+16, ca=ta<0?0:ta>31?31:ta, cb=ta+1<0?0:ta+1>31?31:ta+1; if(fu<0) fu=0; if(fu>32) fu=32;
+                    const u8 *c0=wall_tex+w*1536+ca*48, *c1=wall_tex+w*1536+cb*48;
+                    for(int Y=y0;Y<y1;Y++){ double yg=(Y+0.5)/sy, hgt=(double)E-(yg-Hz)*(double)dn/FOC; double vpd=__builtin_fmod((hgt-(double)fp)*32.0,D48); if(vpd<0) vpd+=D48;
+                        double vv=47.0-vpd/65536.0-0.5; if(vv<0) vv=0; int v0=(int)vv, v1=v0+1>47?47:v0+1; if(v0>47) v0=47; int fv=(int)((vv-v0)*16); fv=((fv-8)*mmi>>4)+8; if(fv<0) fv=0; if(fv>16) fv=16;
+                        int a=c0[v0], b=c1[v0], c=c0[v1], d=c1[v1], e, s;
+                        if((a>>5)==(b>>5) && (a>>5)==(c>>5) && (a>>5)==(d>>5)){ e=rp[a>>5]; int ts=(((a&31)*(32-fu)+(b&31)*fu)*(16-fv)+((c&31)*(32-fu)+(d&31)*fu)*fv)>>4;   // (shade in 1/32 steps x 32)
+                            s=(e&0x100)?(ts>>3):(ts*L)>>10; }
+                        else { int tn=(fv>=8?(fu>=16?d:c):(fu>=16?b:a)); e=rp[tn>>5]; s=(e&0x100)?(tn&31)<<2:((tn&31)*L)>>5; }
+                        TPIX(Y)=dn_pk(e&0xFF,s); TZ(Y,dn); }
+                }
+                if(y0<ylo) ylo=y0;
+            }
+            if(full){
+                done=1;
+                for(int Y=Y0;Y<ylo;Y++){ double yg=(Y+0.5)/sy, d=Hz-yg; if(d<1) break; if(d>=99) continue; int d0=(int)d; double fr=d-d0; double cdr=cd_rel[d0]+(cd_rel[d0+1]-cd_rel[d0])*fr; s32 tt=(s32)((double)(CH-E)*cdr/65536.0);
+                    TPIX(Y)=dn_tr_flat(1,tt,rx,ry,(double)tt*dxw_unit); TZ(Y,tt); }
+                break;
+            }
+            if(ht<E){
+                double yfar=Hz+(double)(E-ht)*FOC/df, ynear=Hz+(double)(E-ht)*FOC/dn; int Yf=(int)__builtin_floor(yfar*sy), Yn=(int)__builtin_floor(ynear*sy); int y0=Yf<Y0?Y0:Yf, y1=Yn<ylo?Yn:ylo; if(yfar<=Hz) y0=(int)__builtin_floor((Hz+1)*sy);
+                if(y0<Y0) y0=Y0;
+                for(int Y=y0;Y<y1;Y++){ double yg=(Y+0.5)/sy, d=yg-Hz; if(d<1||d>=99) continue; int d0=(int)d; double fr=d-d0; double rdr=rd_rel[d0]+(rd_rel[d0+1]-rd_rel[d0])*fr; s32 tt=(s32)((double)(E-ht)*rdr/32768.0);
+                    TPIX(Y)=dn_tr_flat(0,tt,rx,ry,(double)tt*dxw_unit); TZ(Y,tt); }
+                if(y0<y1 && y0<ylo) ylo=y0;
+            }
+            fp=ht;
+            if(tx<ty){ dn=tx; tx+=ddx; mx+=sxs; side=0; } else { dn=ty; ty+=ddy; my+=sys; side=1; }
+            if(dn<0x1000) dn=0x1000;
+            k++; if(k>=64 || mx<0||my<0||mx>=MW||my>=MW) break;
+        }
+        if(!done) for(int Y=Y0;Y<ylo;Y++){ TPIX(Y)=dn_pk(0,0); TZ(Y,0xFFFFFFF); }
+        #undef TPIX
+        #undef TZ
+    }
+}
 static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
-    int W=pc_nat_w, H=pc_nat_h; dn_active=0; dn_nsp=0; pc_dn_spl_on=0; if(terr_on || W<=240 || H<=160 || pc_v3d_classic()) { pc_dn_w=0; return; }
+    int W=pc_nat_w, H=pc_nat_h; dn_active=0; dn_nsp=0; pc_dn_spl_on=0; if(W<=240 || H<=160 || pc_v3d_classic()) { pc_dn_w=0; return; }
     double a0=pc_now_ms();
     static DnCol *col; static double *rxc, *ryc; static int cap; static unsigned long bcap;
     if(W>cap){ free(col); free(rxc); free(ryc); free(dn_perp); col=malloc(sizeof(DnCol)*W); rxc=malloc(sizeof(double)*W); ryc=malloc(sizeof(double)*W); dn_perp=malloc(sizeof(int)*W); cap=W; }
     int Y0=(18*H+159)/160; unsigned long need=(unsigned long)W*(H-Y0); if(need>bcap){ free(pc_dn_buf); pc_dn_buf=malloc(need*4); bcap=need; }
+    if(terr_on){ static unsigned long tzcap; if(need>tzcap){ free(dn_tz); dn_tz=malloc(need); tzcap=need; }
+        TrCtx tc; tc.W=W; tc.H=H; tc.Y0=Y0; tc.sy=H/160.0; tc.dirx=dirx; tc.diry=diry; tc.plx=plx; tc.ply=ply; tc.E=t_eye; tc.CH=(s32)TR_CEIL*TU; tc.buf=pc_dn_buf; tc.tz=dn_tz;
+        { s32 c0=camtab[0], c1=camtab[119]; tc.rxl=dirx+(double)(((long long)plx*c0)>>16); tc.rxr=dirx+(double)(((long long)plx*c1)>>16); }
+        pc_par_chunk(W,16,dn_terr_cols,&tc);
+        int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_dn_w=W; pc_dn_h=H; memcpy(pc_dn_snap[t],(const void*)pg,240*160); pc_dn_f[t]=pc_frames(); dn_active=1; pc_vrec(0,pc_now_ms()-a0); return; }
     double sy=H/160.0; const double hzf=hz;
     for(int X=0;X<W;X++){ double gc=(X+0.5)*120.0/W-0.5; s32 cam=camtab[0]+(s32)((double)(camtab[119]-camtab[0])*gc/119.0);
         s32 rx=dirx+(s32)(((long long)plx*cam)>>16), ry=diry+(s32)(((long long)ply*cam)>>16); rxc[X]=rx; ryc[X]=ry;
@@ -105,9 +196,9 @@ static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply)
           for(int v=0;v<48;v++){ int a=c0[v], b=c1[v]; k->nt[v]=(fu0>=16?b:a);
               if((a>>5)==(b>>5)) k->hv[v]=(u16)(((a>>5)<<10)|(((a&31)*(32-fu)+(b&31)*fu)&1023)); else k->hv[v]=0x2000; } } }
     { int step=W/120>1?W/120:1; for(int X=0;X<W;X++){ int p=col[X].edge, e=0; if(X>=step && col[X-step].edge-p>0x400) e=1; if(X+step<W && col[X+step].edge-p>0x400) e=1; col[X].L|=e<<16; } for(int X=0;X<W;X++){ col[X].edge=col[X].L>>16; col[X].L&=0xFFFF; } }
-    DnCtx c={W,H,Y0,sy,hzf,col,rxc,ryc,pc_dn_buf,px_,py_}; pc_par_chunk(H-Y0,8,dn_rows,&c);
+    dn_wob=frames*5; DnCtx c={W,H,Y0,sy,hzf,col,rxc,ryc,pc_dn_buf,px_,py_}; pc_par_chunk(H-Y0,8,dn_rows,&c);
     int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_dn_w=W; pc_dn_h=H; memcpy(pc_dn_snap[t],(const void*)pg,240*160); pc_dn_f[t]=pc_frames(); dn_active=1;      // (the page as render_view left it: what changes after is the game's own)
     { double ms=pc_now_ms()-a0; static double ema; static int n, env=-1; if(env<0){ const char *e=getenv("PC_DN_LOW"); env=e?atoi(e):0; }
       ema = n++ ? ema*0.92+ms*0.08 : ms; if(n>30){ if(!dn_low && ema>12.0) dn_low=1; else if(dn_low && ema<3.5) dn_low=0; } if(env) dn_low=env>0;      // slow machine: drop to the cheap mode (an average above 12 ms a frame); back when it is cheap again
-      pc_dn_report(ms,W,H); }
+      pc_vrec(0,ms); pc_dn_report(ms,W,H); }
 }
