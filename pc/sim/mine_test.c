@@ -127,6 +127,25 @@ int main(void){
         for(int z = 1; z <= 15; z++) CHECK(m->brace[z] <= 9 && m->zst[z] <= MNZ_DRY); CHECK(mn_list_read(&L, r, sizeof r - 1) < 0); r[0] = 99; CHECK(mn_list_read(&L, r, sizeof r) < 0); } }
     // ---- the list keeps at most COL_MAX and drops the oldest
     { MineList L; memset(&L, 0, sizeof L); for(uint32_t t = 1; t <= COL_MAX + 3; t++) mn_find(&L, t, 1, t); CHECK(L.n == COL_MAX); CHECK(!mn_find(&L, 1, 0, 0) && mn_find(&L, COL_MAX + 3, 0, 0)); }
+    // ---- the REPLAY LAYER: scenarios pay once, SANDBOX takes the cave-ins (and the pay) away, both are saved
+    { CHECK(!strcmp(mn_scn_name(MNS_DEEP8), "REACH LEVEL 8")); for(int s = 0; s < MNS_N; s++) CHECK(mn_scn_about(s)[0] && (s == 0 || mn_scn_pay(&(SimColony){ .danger = 3 }, s) == 150 * s * 4));
+      SimColony c; Mine m; mk(&c, 80, ALL, 8, COLJ_MINER, 1); mn_init(&m, 80, 0); CHECK(mn_scn_set(&m, MNS_DEEP8) && !mn_scn_set(&m, MNS_DEEP8) && !mn_scn_set(&m, 99)); uint64_t due0 = c.reward_due; int paid = 0; MnAway aw; memset(&aw, 0, sizeof aw);
+      for(uint32_t d = 1; d <= 900; d++){ c.wood = 300; c.food = 5000; c.health = 100; if(c.nset < 3) c.nset = 8; uint64_t b0 = c.reward_due; mn_day(&m, &c, d, COLD_CALM, 0, &aw); if(c.reward_due > b0){ paid++; CHECK(c.reward_due - b0 == (uint64_t)mn_scn_pay(&c, MNS_DEEP8)); } }
+      CHECK(paid == 1 && (m.scn_done >> MNS_DEEP8 & 1) && aw.goals == 1 && c.reward_due > due0); CHECK(m.deepest >= 8);
+      m.scn = MNS_DEEP8; m.scn_done = 0; due0 = c.reward_due; mn_day(&m, &c, 901, COLD_CALM, 0, 0); CHECK(c.reward_due > due0);                                  // asked again: pays again only after the mark is cleared
+      due0 = c.reward_due; mn_day(&m, &c, 902, COLD_CALM, 0, 0); CHECK(c.reward_due == due0);
+      CHECK(mn_scn_next(&m) != MNS_DEEP8 || m.scn_done >> MNS_DEEP8 & 1); { int s0 = m.scn; for(int k = 0; k < 20; k++){ int s = mn_scn_next(&m); CHECK(s >= 0 && s < MNS_N && (s == 0 || !(m.scn_done >> s & 1))); } (void)s0; }
+      // saturating pay
+      { SimColony c2; Mine m2; mk(&c2, 81, ALL, 8, COLJ_MINER, 1); mn_init(&m2, 81, 0); m2.scn = MNS_GEMS20; m2.gems = 30; c2.reward_due = COL_GOLD_MAX - 5; mn_day(&m2, &c2, 1, COLD_CALM, 0, 0); CHECK(c2.reward_due == COL_GOLD_MAX); }
+      // sandbox: no creaks, no cave-ins, no deaths, no scenario pay
+      { int caves = 0, creaks = 0, died0 = 0; uint64_t pay = 0; for(uint32_t town = 1; town <= 20; town++){ SimColony c3; Mine m3; mk(&c3, 8000u + town, ALL, 8, COLJ_MINER, 1); mn_init(&m3, c3.town, 0); mn_set_safe(&m3, 1); mn_scn_set(&m3, MNS_DEEP8);
+            for(uint32_t d = 1; d <= 600; d++){ c3.wood = 12; c3.food = 5000; c3.health = 100; uint8_t n0 = c3.nset; MnAway a3; memset(&a3, 0, sizeof a3); mn_day(&m3, &c3, d, COLD_HARSH, 0, &a3); for(int i = 0; i < a3.nev; i++) if(a3.ev[i].kind == MNE_CREAK) creaks++; if(c3.nset < n0) died0++; }
+            caves += (int)m3.cave_ins; pay += c3.reward_due; }
+        CHECK(caves == 0 && creaks == 0 && died0 == 0 && pay == 0); }
+      // saved and read back
+      { MineList L, L2; memset(&L, 0, sizeof L); Mine *k = mn_find(&L, 5, 1, 0); k->scn = MNS_GEMS20; k->scn_done = 6; k->safe = 1; uint8_t b[1 + MN_REC_BYTES]; CHECK(mn_list_write(&L, b, sizeof b)); CHECK(mn_list_read(&L2, b, sizeof b) == 0 && L2.m[0].scn == MNS_GEMS20 && L2.m[0].scn_done == 6 && L2.m[0].safe == 1);
+        b[1 + 109] = 99; b[1 + 110] = 0xFF; mn_list_read(&L2, b, sizeof b); CHECK(L2.m[0].scn == 0 && !(L2.m[0].scn_done & 1) && L2.m[0].scn_done < (1u << MNS_N)); }
+      char t[60]; MnEvent e = { MNE_GOAL, MNS_DEEP8, 1200, 5 }; CHECK(mn_event_text(&e, t, sizeof t) > 10 && strstr(t, "REACH LEVEL 8")); }
     // ---- text
     { SimColony c; Mine m; mk(&c, 70, ALL, 6, COLJ_MINER, 1); mn_init(&m, 70, 0); runboth(&c, &m, 1, 60, COLD_NORMAL, ALL, 0); char t[80]; mn_status_text(&m, t, sizeof t); CHECK(t[0]); m.warn = 1; mn_status_text(&m, t, sizeof t); CHECK(strstr(t, "CREAKING"));
       for(int z = 1; z <= 15; z++){ mn_level_text(&m, &c, z, COLD_NORMAL, t, sizeof t); CHECK(t[0] == 'L' && t[1] == 'V' && strlen(t) < 46); } char d[300]; CHECK(mn_dump(&m, d, sizeof d) > 20);

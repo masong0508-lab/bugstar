@@ -240,7 +240,7 @@ static void sim_colony_tick(void){
       for(int i=aw.nev-1;i>=0;i--){ int k=aw.ev[i].kind;                  // warnings in advance, and bad news, as they come
           if(k==COLE_RAIDWARN||k==COLE_FOODWARN||k==COLE_RAIDLOST||k==COLE_RUINS||k==COLE_WORLDEND||k==COLE_SICK){ char t[52]; col_event_text(&aw.ev[i],t,sizeof t); say(t); sfx(4); sim_mine_news++; break; } }
       if(!sim_mine_news) for(int i=maw.nev-1;i>=0;i--){ int k=maw.ev[i].kind;                              // the mine's news: a creak is a day's warning, a cave-in is bad news
-          if(k==MNE_CREAK||k==MNE_CAVE||k==MNE_DIED){ char t[52]; mn_event_text(&maw.ev[i],t,sizeof t); say(t); sfx(4); sim_mine_said++; break; } }
+          if(k==MNE_CREAK||k==MNE_CAVE||k==MNE_DIED||k==MNE_GOAL){ char t[52]; mn_event_text(&maw.ev[i],t,sizeof t); say(t); sfx(4); sim_mine_said++; break; } }
       sim_mine_news=0; }
     if(nw){ int top=0; for(int r=1;r<COLR_N;r++) if(nw&(1u<<r)) top=r; say(col_rung_card(top)); sfx(6); sim_col_cards++; }
 }

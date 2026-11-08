@@ -93,6 +93,7 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
         if(!m->depth) open_level(m, 1, day, aw);
         int zcap = mn_zcap(c->mask), miners = mn_miners(c), eff = miners;
         if(m->hurt_days){ m->hurt_days--; eff = 0; }
+        if(m->safe) m->warn = 0;
         if(m->warn){                                         // yesterday the roof creaked: today it holds or comes down
             int z = m->work; m->warn = 0;
             if(z >= 1 && z <= m->depth && m->zst[z] == MNZ_OPEN){
@@ -122,7 +123,7 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
             if(!m->seam[z]){ m->zst[z] = MNZ_DRY; ev(aw, MNE_DRY, (uint32_t)z, 0, day); }
             if(m->tools && day % 12 == 0) m->tools--;        // tools wear out
             // the creak: a chance a working level starts to give way. You get a day's warning.
-            if(m->zst[z] == MNZ_OPEN && (int)sim_rngn(m->town, day, MP_CREAK, (uint64_t)z, 1000) < mn_risk(m, c, z, diff)){ m->warn = 1; ev(aw, MNE_CREAK, (uint32_t)z, 0, day); }
+            if(!m->safe && m->zst[z] == MNZ_OPEN && (int)sim_rngn(m->town, day, MP_CREAK, (uint64_t)z, 1000) < mn_risk(m, c, z, diff)){ m->warn = 1; ev(aw, MNE_CREAK, (uint32_t)z, 0, day); }
         }
         // digging the next level: when the work level is half empty (or you started it), and the rules allow a deeper one
         if(m->depth < zcap){
@@ -151,6 +152,9 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
       if(m->wl[MNW_LOOM]){ uint32_t cap = (uint32_t)m->wl[MNW_LOOM] + (mn_staff(c, MNW_LOOM) > 0 ? 1u : 0u), u = cap;
           if(u > spare / 2) u = spare / 2; if(m->cloth + u > 60u) u = m->cloth >= 60u ? 0u : 60u - m->cloth;
           c->wood -= 2 * u; m->cloth = sat(m->cloth, u); if(aw) aw->cloth = sat(aw->cloth, u); } }
+    if(m->scn && !m->safe && !(m->scn_done >> m->scn & 1) && mn_scn_check(m, c, m->scn)){        // the scenario you chose is done: paid once
+        int pay = mn_scn_pay(c, m->scn); m->scn_done |= (uint8_t)(1u << m->scn); c->reward_due = c->reward_due + (uint64_t)pay > COL_GOLD_MAX ? COL_GOLD_MAX : c->reward_due + (uint64_t)pay;
+        if(aw) aw->goals++; ev(aw, MNE_GOAL, (uint32_t)m->scn, (uint32_t)pay, day); }
     if(day % 7 == 0 && m->cloth){                            // a week: the settlers wear cloth through, and are the better for it
         uint32_t need = ((uint32_t)c->nset + 3u) / 4u;
         if(m->cloth >= need){ m->cloth -= need; if(c->morale < 100) c->morale = (uint8_t)(c->morale + 3 > 100 ? 100 : c->morale + 3); if(c->health < 100) c->health++; } }
@@ -206,6 +210,26 @@ int mn_collect(Mine *m, MnGift *g){
     return g->gold != 0;
 }
 
+// ---- the replay layer
+static const char *const SN[MNS_N] = { "NONE", "FEED 20", "REACH LEVEL 8", "SURVIVE 3 RAIDS", "MAKE 10 TOOLS", "CLOTH FOR ALL", "TWENTY GEMS" };
+static const char *const SA[MNS_N] = { "NO SCENARIO. THE COLONY JUST LIVES", "GROW THE COLONY TO 20 SETTLERS", "DIG DOWN TO LEVEL 8", "BEAT THREE RAIDS", "HOLD 10 TOOLS IN STOCK", "HOLD 30 CLOTH IN STOCK", "HOLD 20 GEMS IN STOCK" };
+const char *mn_scn_name(int s){ return s >= 0 && s < MNS_N ? SN[s] : "?"; }
+const char *mn_scn_about(int s){ return s >= 0 && s < MNS_N ? SA[s] : "?"; }
+int mn_scn_pay(const SimColony *c, int s){ return s > 0 && s < MNS_N ? 150 * s * (1 + c->danger) : 0; }
+int mn_scn_check(const Mine *m, const SimColony *c, int s){
+    switch(s){
+    case MNS_FEED20: return c->nset >= 20;
+    case MNS_DEEP8: return m->deepest >= 8;
+    case MNS_RAIDS3: return c->raids_won >= 3;
+    case MNS_TOOLS10: return m->tools >= 10;
+    case MNS_CLOTH30: return m->cloth >= 30;
+    case MNS_GEMS20: return m->gems >= 20;
+    default: return 0; }
+}
+int mn_scn_set(Mine *m, int s){ if(s < 0 || s >= MNS_N || m->scn == s) return 0; m->scn = (uint8_t)s; return 1; }
+int mn_scn_next(Mine *m){ int s = m->scn; for(int k = 0; k < MNS_N; k++){ s = (s + 1) % MNS_N; if(s == 0 || !(m->scn_done >> s & 1)) break; } m->scn = (uint8_t)s; return s; }
+void mn_set_safe(Mine *m, int on){ m->safe = on ? 1 : 0; if(m->safe) m->warn = 0; }
+
 // ---- text
 int mn_event_text(const MnEvent *e, char *o, size_t n){
     int k = 0;
@@ -217,6 +241,7 @@ int mn_event_text(const MnEvent *e, char *o, size_t n){
     case MNE_DRY: k = snprintf(o, n, "LEVEL %u RAN DRY", e->a); break;
     case MNE_CLEARED: k = snprintf(o, n, "LEVEL %u RUBBLE CLEARED", e->a); break;
     case MNE_DIED: k = snprintf(o, n, "%u MINER%s LOST AT LEVEL %u", e->a, e->a == 1 ? "" : "S", e->b); break;
+    case MNE_GOAL: k = snprintf(o, n, "SCENARIO DONE: %s +%uG", mn_scn_name((int)e->a), e->b); break;
     case MNE_WS: k = snprintf(o, n, "A %s WAS BUILT", mn_ws_name((int)e->a)); break;
     default: k = snprintf(o, n, "..."); }
     return k < 0 ? 0 : k;
@@ -228,6 +253,7 @@ int mn_away_text(const MnAway *a, const Mine *m, char lines[][48], int max){
     if(a->bars || a->tools || a->cloth) L("MADE %u BARS %u TOOLS %u CLOTH", a->bars, a->tools, a->cloth);
     if(a->gems) L("FOUND %u GEMS", a->gems);
     if(a->cave_ins) L("%u CAVE-INS, %u MINERS LOST", a->cave_ins, a->died);
+    if(a->goals) L("SCENARIO DONE: %s", mn_scn_name(m->scn));
     #undef L
     return n;
 }
@@ -245,8 +271,8 @@ void mn_status_text(const Mine *m, char *o, size_t n){
     else snprintf(o, n, "NO SHAFT YET: BUILD A MINE");
 }
 size_t mn_dump(const Mine *m, char *o, size_t n){
-    int k = snprintf(o, n, "mine town %08x depth %u work %u ws %u/%u/%u bars %u tools %u cloth %u gems %u mined %u caveins %u warn %u hurt %u day %u\n",
-                     m->town, m->depth, m->work, m->wl[0], m->wl[1], m->wl[2], m->bars, m->tools, m->cloth, m->gems, m->mined, m->cave_ins, m->warn, m->hurt_days, m->last_day);
+    int k = snprintf(o, n, "mine town %08x depth %u work %u ws %u/%u/%u bars %u tools %u cloth %u gems %u mined %u caveins %u warn %u hurt %u scn %u safe %u day %u\n",
+                     m->town, m->depth, m->work, m->wl[0], m->wl[1], m->wl[2], m->bars, m->tools, m->cloth, m->gems, m->mined, m->cave_ins, m->warn, m->hurt_days, m->scn, m->safe, m->last_day);
     return k < 0 ? 0 : (size_t)k;
 }
 
@@ -268,7 +294,7 @@ size_t mn_list_write(const MineList *l, uint8_t *o, size_t cap){
     memset(o, 0, need); o[0] = l->n;
     for(int i = 0; i < l->n; i++){ const Mine *m = &l->m[i]; uint8_t *q = o + 1 + i * MN_REC_BYTES;
         p32(q, m->town); q[4] = m->wl[0]; q[5] = m->wl[1]; q[6] = m->wl[2]; q[7] = m->depth; q[8] = m->work; q[9] = (uint8_t)(m->pin | m->digging << 1);
-        q[10] = m->warn; q[11] = m->hurt_days; q[12] = m->clear; q[13] = m->deepest; p16(q + 14, m->digprog);
+        q[10] = m->warn; q[11] = m->hurt_days; q[12] = m->clear; q[13] = m->deepest; q[109] = m->scn; q[110] = m->scn_done; q[111] = m->safe; p16(q + 14, m->digprog);
         memcpy(q + 16, m->zst, 16); memcpy(q + 32, m->brace, 16); for(int z = 0; z < 16; z++) p16(q + 48 + z * 2, m->seam[z]);
         p32(q + 80, m->bars); p32(q + 84, m->tools); p32(q + 88, m->cloth); p32(q + 92, m->gems); p32(q + 96, m->cave_ins); p32(q + 100, m->mined); p32(q + 104, m->last_day); }
     return need;
@@ -285,6 +311,7 @@ int mn_list_read(MineList *l, const uint8_t *in, size_t n){
         for(int z = 1; z <= MN_ZMAX; z++){ m->zst[z] = q[16 + z] > MNZ_DRY ? MNZ_SOLID : q[16 + z]; m->brace[z] = q[32 + z] > 9 ? 9 : q[32 + z]; m->seam[z] = (uint16_t)g16(q + 48 + z * 2);
             if(z > m->depth){ m->zst[z] = MNZ_SOLID; m->seam[z] = 0; m->brace[z] = 0; } }
         if(m->deepest < m->depth) m->deepest = m->depth;
+        m->scn = q[109] < MNS_N ? q[109] : 0; m->scn_done = (uint8_t)(q[110] & ((1u << MNS_N) - 2u)); m->safe = q[111] ? 1 : 0;
         m->bars = cl(g32(q + 80)); m->tools = cl(g32(q + 84)); m->cloth = cl(g32(q + 88)); m->gems = cl(g32(q + 92)); m->cave_ins = cl(g32(q + 96)); m->mined = cl(g32(q + 100)); m->last_day = g32(q + 104);
         if(m->warn && (!m->work || m->zst[m->work] != MNZ_OPEN)) m->warn = 0; }
     return 0;

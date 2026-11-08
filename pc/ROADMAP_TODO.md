@@ -32,7 +32,7 @@ Built and tested: sizes, reward formula, fights, interiors, missions, encounters
 ## D. Side game (pc/DEPTH_PLAN.md), phases 6 and up
 - [x] Workshops and the mine with z-levels (patch 44, `pc/sim/mine.c`; see README, 'The colony's WORKSHOPS and MINE'). Still to do: a colony call for the mine (a cave-in rescue or a missing-material run), mine events in the dungeon generator, the nest under the mine. NOT played by you.
 - [ ] WorldBox-style races, tribes and powers using the 12,672 creatures and 48 god powers.
-- [ ] Replay layer.
+- [ ] Replay layer: scenarios and a sandbox switch for the mine are in (patch 44); kits, policies, challenge modes and colony plus are not.
 - [ ] Permanent ruins shown in the planet file.
 - [ ] Pull-backs not built yet: famine hunt on the surface, missing material mine run, festival rare item.
 

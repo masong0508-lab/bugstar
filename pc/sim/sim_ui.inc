@@ -283,7 +283,7 @@ static void sim_ws_screen(volatile u16 *pg){
     if(!(co->mask&(1u<<COLR_SHOPS))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_SHOPS)); const char *ln[3]={l1,col_rung_goal(COLR_SHOPS),"THEN THE SMELTER AND LOOM ARE YOURS."}; card(pg,"WORKSHOPS",ln,3); return; }
     int sel=0; menu_msg[0]=0; in_menu++; sim_rows(pg,"WORKSHOPS",MNW_N+2,sim_ws_row,sim_ws_foot,"A: BUILD/TAKE  B: BACK",&sel,sim_ws_act); in_menu--; menu_msg[0]=0; sim_dump_all(); sim_save();
 }
-#define SIM_MN_ACT 5
+#define SIM_MN_ACT 7
 static void sim_mine_row(int i, char *b, int *c){
     SimColony *co=sim_colony(); Mine *mi=sim_mine(); b[0]=0; *c=C_GOLD;
     if(i<SIM_MN_ACT){ switch(i){
@@ -291,7 +291,9 @@ static void sim_mine_row(int i, char *b, int *c){
         case 1: scpy(b,"> STRONG BRACE  2 WOOD + 1 BAR"); break;
         case 2: scpy(b,"> DIG DOWN WITH THE MINERS"); break;
         case 3: scpy(b,"> CLEAR THE RUBBLE"); break;
-        default: scpy(b,"> WORK LEVEL: "); scat(b,mi->pin?"MINE":"THE COLONY PICKS"); }
+        case 4: scpy(b,"> WORK LEVEL: "); scat(b,mi->pin?"MINE":"THE COLONY PICKS"); break;
+        case 5: scpy(b,"> SCENARIO: "); scat(b,mn_scn_name(mi->scn)); if(mi->scn && (mi->scn_done>>mi->scn&1)) scat(b," (DONE)"); break;
+        default: scpy(b,"> SANDBOX: "); scat(b,mi->safe?"ON, NO CAVE-INS":"OFF"); }
         return; }
     int z=i-SIM_MN_ACT+1; mn_level_text(mi,co,z,sim_f.difficulty,b,56); *c = mi->zst[z]==MNZ_OPEN ? C_WHITE : mi->zst[z]==MNZ_CAVED ? C_RED : C_DGREY; if(z==mi->work && mi->warn) *c=C_RED;
 }
@@ -299,6 +301,8 @@ static void sim_mine_foot(int i, char *b, int *c){
     SimColony *co=sim_colony(); Mine *mi=sim_mine(); *c=C_GREY;
     if(i>=0){ mn_status_text(mi,b,56); *c = mi->warn ? C_RED : C_WHITE; }
     else if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; }
+    else if(-1-i==5){ scpy(b,mn_scn_about(mi->scn)); if(mi->scn){ scat(b,"  PAYS "); ncat(b,mn_scn_pay(co,mi->scn)); scat(b,"G"); } *c=C_GOLD; }
+    else if(-1-i==6){ scpy(b,mi->safe?"NO CAVE-INS, AND NO SCENARIO PAY":"CAVE-INS ARE ON. THE RISK IS THE GAME"); *c=C_GOLD; }
     else { scpy(b,"WOOD "); ncat(b,co->wood); scat(b,"  ORE "); ncat(b,co->ore); scat(b,"  BARS "); ncat(b,mi->bars); scat(b,"  TOOLS "); ncat(b,mi->tools); scat(b,"  GEMS "); ncat(b,mi->gems); }
 }
 static int sim_mine_act(int i){
@@ -309,6 +313,8 @@ static int sim_mine_act(int i){
     case 2: ok=mn_dig_help(mi,co); break;
     case 3: ok=mn_clear_help(mi,co); break;
     case 4: ok=mn_set_work(mi,0); break;
+    case 5: mn_scn_next(mi); ok=1; break;
+    case 6: mn_set_safe(mi,!mi->safe); ok=1; break;
     default: ok=mn_set_work(mi,i-SIM_MN_ACT+1); }
     if(ok){ sfx(2); scpy(menu_msg,"DONE"); } else { sfx(4); scpy(menu_msg,"NOT NOW"); }
     return 0;

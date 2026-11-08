@@ -31,7 +31,7 @@
 #define MN_STORE_MAX 999999u
 enum { MNW_SMELTER, MNW_SMITHY, MNW_LOOM, MNW_N };                 // workshops
 enum { MNZ_SOLID, MNZ_OPEN, MNZ_CAVED, MNZ_DRY };                  // a level: not dug, worked, caved in, empty
-enum { MNE_NONE, MNE_DUG, MNE_CREAK, MNE_CAVE, MNE_HELD, MNE_DRY, MNE_CLEARED, MNE_DIED, MNE_WS, MNE_N };
+enum { MNE_NONE, MNE_DUG, MNE_CREAK, MNE_CAVE, MNE_HELD, MNE_DRY, MNE_CLEARED, MNE_DIED, MNE_WS, MNE_GOAL, MNE_N };
 
 typedef struct {
     uint32_t town;                       // the colony this belongs to (SimColony.town)
@@ -46,11 +46,12 @@ typedef struct {
     uint32_t bars, tools, cloth, gems;   // stocks
     uint32_t cave_ins, mined, last_day;  // totals; the last day this layer ran
     uint8_t  deepest;
+    uint8_t  scn, scn_done, safe;        // REPLAY LAYER: the scenario you chose (0 none), the scenarios finished (bit n), SANDBOX (1 = no creaks, no cave-ins, and no scenario pay)
 } Mine;
 
 typedef struct { uint8_t kind; uint32_t a, b, day; } MnEvent;
 typedef struct {                         // what happened over a stretch of days
-    uint32_t days, ore, bars, tools, cloth, gems, cave_ins, died, dug, ws_built;
+    uint32_t days, ore, bars, tools, cloth, gems, cave_ins, died, dug, ws_built, goals;
     int nev; MnEvent ev[8];
 } MnAway;
 
@@ -87,6 +88,18 @@ int  mn_set_work(Mine *m, int z);                       // pick the work level (
 typedef struct { int64_t gold; uint32_t bars, tools, cloth, gems; int ore_kind, ore_n; } MnGift;
 int  mn_collect(Mine *m, MnGift *g);                    // you take the bars, tools, cloth and gems: gold, and gems as ore for your bag (at most MN_TAKE_GEMS a time)
 #define MN_TAKE_GEMS 6
+
+// ---- REPLAY LAYER (DEPTH_PLAN 6.2 and phase 11, a small part): SCENARIOS and a SANDBOX switch, per colony, opt-in, never forced.
+// Pick one scenario at a time. Its goal is checked every day; the first time it holds, it pays gold into the colony's reward (taken with A like the raid gold)
+// and tells you once. Each scenario pays once per colony. SANDBOX takes the cave-ins away (a calm way to dig down and look) and also the scenario pay.
+enum { MNS_NONE, MNS_FEED20, MNS_DEEP8, MNS_RAIDS3, MNS_TOOLS10, MNS_CLOTH30, MNS_GEMS20, MNS_N };
+const char *mn_scn_name(int s);                         // "REACH LEVEL 8"
+const char *mn_scn_about(int s);                        // "DIG DOWN TO LEVEL 8"
+int  mn_scn_pay(const SimColony *c, int s);             // gold the scenario pays (more on a dangerous planet)
+int  mn_scn_check(const Mine *m, const SimColony *c, int s);   // 1 when the goal holds now
+int  mn_scn_set(Mine *m, int s);                        // choose a scenario (0 none): 1 when it changed
+int  mn_scn_next(Mine *m);                              // the next scenario you have not finished (a ring through 0 = none): returns it
+void mn_set_safe(Mine *m, int on);
 
 // ---- text
 int  mn_event_text(const MnEvent *e, char *out, size_t n);
