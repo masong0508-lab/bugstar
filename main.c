@@ -195,15 +195,15 @@ static int text(volatile u16 *pg, int x, int y, const char *s, int c, int sc){
                     if(bits&4){ row[0]=cc; row[120]=cc; } if(bits&2){ row[1]=cc; row[121]=cc; } if(bits&1){ row[2]=cc; row[122]=cc; } } }
             x += 8; }
         return x; }
-    if(sc==1){                                             // small text: each glyph row touches two pixel pairs at most
+    if(sc==1){                                             // small text: each glyph row touches two pixel pairs at most. A table gives, for the row's three bits, which halves of the first and the second pair take the colour (no branches)
+        static const u16 mka[2][8]={ {0x0000,0x0000,0xFF00,0xFF00,0x00FF,0x00FF,0xFFFF,0xFFFF}, {0x0000,0x0000,0x0000,0x0000,0xFF00,0xFF00,0xFF00,0xFF00} }, mkb[2][8]={ {0x0000,0x00FF,0x0000,0x00FF,0x0000,0x00FF,0x0000,0x00FF}, {0x0000,0xFF00,0x00FF,0xFFFF,0x0000,0xFF00,0x00FF,0xFFFF} };   // [odd column][bits]
+        u16 cc=(u16)(c|(c<<8));
         for(;*s;s++){ u16 g = font[(u8)*s & 127];
-            if(g){ volatile u16 *row = pg + y*120 + (x>>1);
-                if(x&1){ for(int r=0;r<5;r++, row+=120){ int bits=(g>>(12-r*3))&7; if(!bits) continue;
-                    if(bits&4) row[0]=(row[0]&0x00FF)|(c<<8);
-                    if(bits&2){ if(bits&1) row[1]=c|(c<<8); else row[1]=(row[1]&0xFF00)|c; } else if(bits&1) row[1]=(row[1]&0x00FF)|(c<<8); } }
-                else { for(int r=0;r<5;r++, row+=120){ int bits=(g>>(12-r*3))&7; if(!bits) continue;
-                    if(bits&4){ if(bits&2) row[0]=c|(c<<8); else row[0]=(row[0]&0xFF00)|c; } else if(bits&2) row[0]=(row[0]&0x00FF)|(c<<8);
-                    if(bits&1) row[1]=(row[1]&0xFF00)|c; } } }
+            if(g){ volatile u16 *row = pg + y*120 + (x>>1); const u16 *ta=mka[x&1], *tb=mkb[x&1];
+                for(int r=0;r<5;r++, row+=120){ int bits=(g>>(12-r*3))&7; if(!bits) continue;
+                    int a=ta[bits], b=tb[bits];
+                    if(a) row[0]=(row[0]&~a)|(cc&a);
+                    if(b) row[1]=(row[1]&~b)|(cc&b); } }
             x += 4; }
         return x; }
     for(;*s;s++){

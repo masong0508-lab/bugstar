@@ -47,6 +47,12 @@ OVK static void m7_gspan(s32 U0, s32 V0, s32 U1, s32 V1, int c){      // the tex
         if(ia==ib){ if(sw) m7_wt(ia,m,c); else m7_wt(m,ia,c); }
         else { int st = ib>ia ? 1 : -1; for(int q=ia;;q+=st){ if(sw) m7_wt(q,m,c); else m7_wt(m,q,c); if(q==ib) break; } }
         if(m==m1) break; m+=dir; qa=qb; qb=qa+(dir>0?qs:-qs); } }
+OVK static void m7_dith(int y, int x0, int x1, int c){                    // every other pixel of a row from x0 to x1 (a checkerboard shadow), each texel found by stepping along the row
+    if(y<0||y>=160) return; if(x0<0) x0=x0&1; if(x1>239) x1=239-((x1-239)&1); if(x0>x1) return;
+    if(y<m7_strip || (m7_cock && y>=140)){ for(int x=x0;x<=x1;x+=2) m7_wr8(M7_PG0,x,y,c); return; }
+    if(!(m7_dc[m7_tab][y]&(1<<4))) return; const M7Line *L=&M7_TAB(m7_tab)[y];
+    s32 pa=L->pa, pc=L->pc, u=L->x+pa*x0, v=L->y+pc*x0; pa*=2; pc*=2;
+    for(int x=x0;x<=x1;x+=2, u+=pa, v+=pc){ int uu=u>>8, vv=v>>8; if((unsigned)uu<240 && (unsigned)vv<160) m7_wr8(M7_PG1,uu,vv,c); } }
 OVK static void m7_span(int y, int x0, int x1, int c){
     if(y<0||y>=160) return; if(x0<0) x0=0; if(x1>239) x1=239; if(x0>x1) return;
     if(y<m7_strip || (m7_cock && y>=140)){ volatile u16 *row=M7_PG0+y*120;                                    // the sky: pairs at a time

@@ -7,6 +7,14 @@
 // (the painting calls below are the kart overlay's ARM copies, ship.inc / paint.inc: see ov_k in main.c)
 #define polyfill kpolyfill
 #define linep klinep
+static void krect(volatile u16 *pg, int x, int y, int w, int h, int c){       // rect() for the HUD: the middle of every row is a DMA fill (a boxed minimap is 44 rows of 22 pixel pairs)
+    if(w<16){ rect(pg,x,y,w,h,c); return; }
+    volatile u32 v=(u32)(c|(c<<8)|(c<<16)|(c<<24));
+    for(int j=0;j<h;j++){ int i=0; if(x&1){ pix(pg,x,y+j,c); i=1; }
+        int pairs=(w-i)>>1; volatile u16 *p=pg+(((y+j)*240+x+i)>>1);
+        *(volatile u32*)0x040000D4=(u32)&v; *(volatile u32*)0x040000D8=(u32)p; *(volatile u32*)0x040000DC=(u32)pairs|(2<<23)|(1u<<31);
+        i+=pairs*2; if(i<w) pix(pg,x+i,y+j,c); } }
+#define rect krect
 #ifdef TEST_KAUDIT
 EW u32 klogb[64]; EW u32 klogi[16]; EW u32 klogn; EW u32 klogp[1600]; EW u8 klogk[1200];
 #endif
@@ -1052,9 +1060,15 @@ EW static KPart kpt[NKPT]; static int kpt_i=0;
 static void kpart_add(int x, int y, int vx, int vy, int life, int c){ KPart *p=&kpt[kpt_i]; kpt_i=(kpt_i+1)%NKPT; p->x=(s16)(x<<4); p->y=(s16)(y<<4); p->vx=(s8)vx; p->vy=(s8)vy; p->life=(u8)life; p->c=(u8)c; }
 static void kart_fx(volatile u16 *pg, int sy){
     int g=kl.part[KP_GLOW];
+    if(m7_on){ ov_k();                                                       // (the kart race: whole rows of dots, each row's texels found once: m7_dith)
+        if(g && !cam_fp){ if(g==7) BG_PAL[KRC_GLOW]=kglow_col[1+((frames>>3)%6)]; for(int y=-3;y<=3;y++){ int w=24-y*y*2, yy=sy+y; if(yy>18&&yy<160) m7_dith(yy,120-w+(y&1),120+w+(y&1),KRC_GLOW); } }
+        for(int i=0;i<ksh_n;i++){ for(int y=-1;y<=1;y++){ int w=ksh_w[i]-y*y*(ksh_w[i]/3), yy=ksh_y[i]+y; if(yy>18 && yy<160){ int x0=-w+(((-w+y)&1)?1:0); m7_dith(yy,ksh_x[i]+x0,ksh_x[i]+w,C_DGREY); } } }   // the rivals' shadows
+        if(!cam_fp && !kair && !kloop_on){ for(int y=-1;y<=1;y++){ int w=19-y*y*7, yy=sy+y; if(yy>18 && yy<160){ int x0=-w+(((-w+y)&1)?1:0); m7_dith(yy,120+x0,120+w,C_DGREY); } } } }     // shadow
+    else {
     if(g && !cam_fp){ if(g==7) BG_PAL[KRC_GLOW]=kglow_col[1+((frames>>3)%6)]; for(int y=-3;y<=3;y++){ int w=24-y*y*2; for(int x=-w;x<=w;x+=2){ int xx=120+x+(y&1), yy=sy+y; if(yy>18&&yy<160) pix(pg,xx,yy,KRC_GLOW); } } }
     for(int i=0;i<ksh_n;i++){ for(int y=-1;y<=1;y++){ int w=ksh_w[i]-y*y*(ksh_w[i]/3); for(int x=-w;x<=w;x++) if(((x+y)&1)==0){ int xx=ksh_x[i]+x, yy=ksh_y[i]+y; if(xx>=0 && xx<240 && yy>18 && yy<160) pix(pg,xx,yy,C_DGREY); } } }   // the rivals' shadows
     if(!cam_fp && !kair && !kloop_on){ for(int y=-1;y<=1;y++){ int w=19-y*y*7; for(int x=-w;x<=w;x++) if(((x+y)&1)==0){ int yy=sy+y; if(yy>18 && yy<160) pix(pg,120+x,yy,C_DGREY); } } }   // shadow
+    }
     int tr=kl.part[KP_TRAIL], mv = kv>K_VBASE/4;
     if(!cam_fp && mv && tr && (frames&1)==0){ static const u8 tc[10][2]={{0,0},{C_DGREY,C_GREY},{C_GOLD,C_WHITE},{C_CYAN,C_WHITE},{C_RED,C_RED},{C_RED,C_GOLD},{C_GREY,C_DGREY},{C_GOLD,C_WHITE},{C_RED,C_GOLD},{C_GREEN,C_CYAN}};
         int c = tr==5 ? (int)(C_RED+((frames>>1)%4==0?0:(frames>>1)%4==1?3:(frames>>1)%4==2?2:6)) : tr==9 ? (int)(C_RED+rndi(8)) : tc[tr][rndi(2)];
@@ -1077,9 +1091,11 @@ static const char *const kicon[NKI]={0,
     "..dddd...dddddd.dddddddd.dddddd...c.c.c...c.c.c..c.c.c..........",   // cloud
 };
 static int kicon_c(char ch){ switch(ch){ case 'r': return C_RED; case 'g': return C_GREEN; case 'w': return C_WHITE; case 'c': return C_CYAN; case 'd': return C_GREY; default: return -1; } }
+OVK static void kmm_path(volatile u16 *pg, int ox, int oy, int n){ int lx=-1, ly=-1;        // the minimap's path, one pixel per point, straight into the page (ARM, in the kart overlay)
+    for(int i=0;i<n;i++){ int x=ox+kmmx[i], y=oy+kmmy[i], c=(i==0)?C_WHITE:C_GREY; if(x==lx && y==ly) continue; lx=x; ly=y; volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|(c<<8); else *p=(*p&0xFF00)|c; } }
 static void kart_minimap(volatile u16 *pg){
     int ox=194+(40-kmm_w)/2, oy=20+(40-kmm_h)/2;
-    if(oy+40<m7_strip){ int n=(knp>>1)<KMM_N ? (knp>>1) : KMM_N; int lx=-1, ly=-1; for(int i=0;i<n;i++){ int x=ox+kmmx[i], y=oy+kmmy[i], c=(i==0)?C_WHITE:C_GREY; if(x==lx && y==ly) continue; lx=x; ly=y; volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|(c<<8); else *p=(*p&0xFF00)|c; } }   // (the path, a pixel each: straight into the page)
+    if(oy+40<m7_strip){ ov_k(); kmm_path(pg,ox,oy,(knp>>1)<KMM_N ? (knp>>1) : KMM_N); }   // (the path, a pixel each: straight into the page)
     else for(int i=0;i<(knp>>1) && i<KMM_N;i++) pix(pg,ox+kmmx[i],oy+kmmy[i],(i==0)?C_WHITE:C_GREY);
     if(kr_mode==1) for(int r=nrc-1;r>=0;r--){ int i=(rc[r].pi>>1); if(i>=KMM_N) i=KMM_N-1; int x=ox+kmmx[i], y=oy+kmmy[i], c = r==0 ? C_GOLD : (rc[r].place==1 ? C_RED : C_CYAN);
         if(r==0){ rect(pg,x-1,y-1,3,3,c); } else pix(pg,x,y,c); } }
@@ -1162,3 +1178,4 @@ static void kart_reset(void){ kr_mode=0; kart_on=0; kt_painted=0; nkslot=0; nkhi
 static int kart_glow(void){ return kl.part[KP_GLOW]; }
 #undef polyfill
 #undef linep
+#undef rect
