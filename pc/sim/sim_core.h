@@ -13,6 +13,7 @@
 #include "colony.h"
 #include "mine.h"
 #include "standing.h"
+#include "unlock.h"
 
 #define SIM_HZ         10
 #define SIM_TICK_VBL   6            // one tick is 6 vblanks of the 60 Hz screen
@@ -140,10 +141,13 @@ typedef struct {
     ColList  cols;                              // Phase 4: the colonies of this slot (chunk COLN)
     MineList mines;                             // Phase 6: the workshops and mine of each colony (chunk MINE; see mine.h)
     Standing stand;                             // patch 42: how the world sees you: mayor, armada, worlds (chunk STND; see standing.h)
+    Unlock   unlock;                            // patch 47: what the player has found of the life sim (chunk UNLK; see unlock.h)
     uint16_t ntail; SimEvent tail[SIM_TAILN];   // the newest events, oldest first
 } SimSlot;
 typedef struct { uint8_t side_on; uint8_t sandbox; uint8_t difficulty; SimSlot slot[SIM_SLOTS]; int bad_chunks; } SimFile;
 void   simfile_init(SimFile *f);
+void   simfile_clear_slot(SimFile *f, int slot);                        // a new game in a slot: that slot starts empty, the other two keep what they have
+void   simfile_copy_slot(SimFile *f, int from, int to);                 // copying a save slot copies its side game too
 size_t simfile_write(const SimFile *f, uint8_t *buf, size_t cap);     // bytes written (0 if buf too small)
 int    simfile_read(SimFile *f, const uint8_t *buf, size_t n);        // 0 ok, -1 not a .sim file (f stays empty). Bad chunks are counted in f->bad_chunks.
 #define SIMFILE_MAX (64 * 1024)

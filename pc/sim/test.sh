@@ -24,6 +24,8 @@ $CC colony_test.c mine.c sim_core.c colony.c god.c lv.c -o out/colony_test
 ./out/colony_test
 $CC standing_test.c mine.c sim_core.c colony.c god.c lv.c -o out/standing_test
 ./out/standing_test
+$CC unlock_test.c mine.c sim_core.c colony.c god.c lv.c -o out/unlock_test
+./out/unlock_test
 $CC mine_test.c mine.c sim_core.c colony.c god.c lv.c -o out/mine_test
 ./out/mine_test
 $CC mine_bal.c mine.c sim_core.c colony.c god.c lv.c -o out/mine_bal -include stdlib.h
