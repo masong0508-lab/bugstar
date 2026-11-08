@@ -42,14 +42,14 @@ static void sim_rows(volatile u16 *pg, const char *title, int n, void (*row)(int
     int top=0, dirty=1; if(*sel>=n) *sel=0; wait_release();
     while(1){
         if(*sel<top) top=*sel; if(*sel>=top+10) top=*sel-9;
-        if(dirty){ dirty=0; char b[56]; int c;
+        if(dirty){ dirty=0; char b[96]; int c;       // (96: a locked rung's text is 67 letters long and was overflowing 56)
             panel(pg,12,20,216,136,title);
             for(int r=0;r<10 && top+r<n;r++){ int i=top+r, y=37+r*9; c=C_GREY; row(i,b,&c); b[50]=0;
                 if(i==*sel){ rect(pg,18,y-2,204,10,6); if(c==C_GREY) c=C_WHITE; }
                 text(pg,22,y,b,c,1); }
             if(top>0) text(pg,216,37,"^",C_CYAN,1); if(top+10<n) text(pg,216,118,"v",C_CYAN,1);
             rect(pg,18,128,204,1,C_DGREY);
-            if(foot){ char f1[56], f2[56]; int c1=C_GREY, c2=C_GREY; foot(*sel,f1,&c1); foot(-1-*sel,f2,&c2); f1[52]=0; f2[52]=0; text(pg,20,131,f1,c1,1); text(pg,20,139,f2,c2,1); }
+            if(foot){ char f1[96], f2[96]; int c1=C_GREY, c2=C_GREY; foot(*sel,f1,&c1); foot(-1-*sel,f2,&c2); f1[52]=0; f2[52]=0; text(pg,20,131,f1,c1,1); text(pg,20,139,f2,c2,1); }
             ctext(pg,120,148,hint,C_CYAN);
         }
         vsync(); read_keys(); if(keys!=keys_old) dirty=1;
@@ -281,7 +281,7 @@ static int sim_ws_act(int i){
 static void sim_ws_screen(volatile u16 *pg){
     SimColony *co=sim_colony();
     if(!(co->mask&(1u<<COLR_SHOPS))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_SHOPS)); const char *ln[3]={l1,col_rung_goal(COLR_SHOPS),"THEN THE SMELTER AND LOOM ARE YOURS."}; card(pg,"WORKSHOPS",ln,3); return; }
-    int sel=0; menu_msg[0]=0; in_menu++; sim_rows(pg,"WORKSHOPS",MNW_N+2,sim_ws_row,sim_ws_foot,"A: BUILD/TAKE  B: BACK",&sel,sim_ws_act); in_menu--; menu_msg[0]=0;
+    int sel=0; menu_msg[0]=0; in_menu++; sim_rows(pg,"WORKSHOPS",MNW_N+2,sim_ws_row,sim_ws_foot,"A: BUILD/TAKE  B: BACK",&sel,sim_ws_act); in_menu--; menu_msg[0]=0; sim_dump_all(); sim_save();
 }
 #define SIM_MN_ACT 5
 static void sim_mine_row(int i, char *b, int *c){
@@ -319,14 +319,14 @@ static void sim_mine_screen(volatile u16 *pg){
     if(!mi->depth && co->bld[COLB_MINE]<1){ const char *ln[3]={"NO SHAFT YET.","BUILD A MINE ON THE COLONY MAP,","THEN MINERS DIG DOWN LEVEL BY LEVEL."}; card(pg,"THE MINE",ln,3); return; }
     int sel=0; menu_msg[0]=0; in_menu++;
     { char t[32]; scpy(t,"THE MINE  LEVELS "); ncat(t,mi->depth); scat(t,"/"); ncat(t,mn_zcap(co->mask)); sim_rows(pg,t,SIM_MN_ACT+(mi->depth<MN_ZMAX?mi->depth+1:MN_ZMAX),sim_mine_row,sim_mine_foot,"A: DO  B: BACK",&sel,sim_mine_act); }
-    in_menu--; menu_msg[0]=0;
+    in_menu--; menu_msg[0]=0; sim_dump_all(); sim_save();
 }
 static void sim_colony_screen(volatile u16 *pg){
     SimColony *co=sim_colony();
     if(!(co->mask&(1u<<COLR_TENT))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_TENT)); const char *ln[3]={l1,"THE COLONY GROWS AS YOU PLAY.","EACH BIG WIN OPENS A NEW PART."}; card(pg,"COLONY",ln,3); return; }
     if(sim_away_new && sim_away_n){ const char *ln[6]; for(int i=0;i<sim_away_n;i++) ln[i]=sim_away[i]; card(pg,"WHILE YOU WERE AWAY",ln,sim_away_n); sim_away_new=0; }
     int sel=0; char t[32]; scpy(t,"COLONY  "); ncat(t,co->nset); scat(t," SETTLERS");
-    menu_msg[0]=0; in_menu++; sim_rows(pg,t,COLR_N-1+SIM_CO_ACT+co->nset,sim_co_row,sim_co_foot,"A: TAKE/DO  B: BACK",&sel,sim_co_act); in_menu--; menu_msg[0]=0;
+    menu_msg[0]=0; in_menu++; sim_rows(pg,t,COLR_N-1+SIM_CO_ACT+co->nset,sim_co_row,sim_co_foot,"A: TAKE/DO  B: BACK",&sel,sim_co_act); in_menu--; menu_msg[0]=0; sim_save();
 }
 static void sim_hall(volatile u16 *pg);
 static void sim_armada(volatile u16 *pg);

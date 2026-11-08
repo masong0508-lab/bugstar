@@ -26,6 +26,7 @@ static u16 sim_stuck[SIM_MAXFOLK];
 static int sim_nhome;
 static int sim_said_letters, sim_col_cards, sim_col_gifts;   // letter pop-ups and colony cards shown (the tests read them)            // letter pop-ups shown (the tests read it)
 static int sim_gifts_got, sim_helped_n;   // friend gifts received, requests helped (the tests read them)
+static int sim_dump_gap=600;                           // ticks between test dumps (BUGSTAR_SIM_DUMP_EVERY)
 static int sim_h_mine, sim_h_age, sim_h_done;          // test hooks: BUGSTAR_SIM_MINE=1 (open the mine rungs and give the colony a mine), BUGSTAR_SIM_AGE=days (the colony catches up that many days)
 static int sim_a_up;                    // 1 once A has been seen up on this planet: keeps a key still held from the title or a menu from opening the quick menu
 
@@ -125,7 +126,7 @@ static void sim_bind(void){
     if(pc_applied){ u32 cx[5], cy[5]; int dh, tc; for(int i=0;i<5;i++){ cx[i]=clus[i]; cy[i]=clus[UAX+i]; } pcx_env(uni_w,cx,cy,cur_sys,cur_pl,cur_moon,&dh,&tc); sim_set_env(&sim_w,dh,tc); }   // endless-galaxy planets: their own day and climate
     if(sl->used){ sim_w.spirit=sl->spirit; sim_w.god=sl->god; sim_load_tail(&sim_w,sl); sim_load_friends(&sim_w,sl); }
     sim_w.god.sandbox=sim_f.sandbox;
-    sim_have_w=1; sim_seen_log=sim_w.log_n; sim_dump_at=sim_w.tick+600; sim_a_up=0;
+    sim_have_w=1; sim_seen_log=sim_w.log_n; sim_dump_at=sim_w.tick+sim_dump_gap; sim_a_up=0;
     s32 px = city_r ? city_cx<<16 : 64<<16, py = city_r ? city_cy<<16 : 64<<16;
     for(int k=0;k<nl;k++){
         PObj *o=&po[sim_fpo[k]]; sim_fx[k]=o->x; sim_fy[k]=o->y; sim_stuck[k]=0;
@@ -166,6 +167,7 @@ static void sim_env_once(void){
     const char *e=sim_io_env("BUGSTAR_SET_LEVEL");      // a test hook: start with this level (a decimal number, up to 64^256)
     if(e && *e){ Lv v; if(lv_from_dec(&v,e)>=0 && !lv_is_zero(&v)){ sim_big_set(&v); recalc(); hearts=maxh; mp=maxmp; } }
     e=sim_io_env("BUGSTAR_SET_FAME"); if(e && *e){ int v=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<9;i++) v=v*10+(e[i]-'0'); fame=v; }     // patch 42, a test hook: start with this fame
+    e=sim_io_env("BUGSTAR_SIM_DUMP_EVERY"); if(e && *e){ int v=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<6;i++) v=v*10+(e[i]-'0'); if(v>=10){ sim_dump_gap=v; if(sim_have_w) sim_dump_at=sim_w.tick+v; } }
     e=sim_io_env("BUGSTAR_SIM_MINE"); sim_h_mine = e && e[0]=='1';
     e=sim_io_env("BUGSTAR_SIM_AGE"); if(e && *e){ int v=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<6;i++) v=v*10+(e[i]-'0'); sim_h_age=v; }
     e=sim_io_env("BUGSTAR_SET_FREED"); if(e && *e) bugs_freed=e[0]-'0';     // a test hook: bugs freed so far (0..9)
@@ -268,7 +270,7 @@ static void sim_frame(int n){
     { static int nk=-2; if(nk==-2){ const char *e=sim_io_env("BUGSTAR_SIM_NEAR"); nk = e && *e ? e[0]-'0' : -1; }   // a test hook: keep the player beside townsperson k
       if(nk>=0 && nk<sim_w.nfolk){ ppx=sim_fx[nk]+0xC000; ppy=sim_fy[nk]; } }
     if(frames%30==0){ sim_unlock_msgs(); sim_colony_tick(); sim_stand_tick(); }
-    if(sim_dump_at && sim_w.tick>=sim_dump_at){ sim_dump_at=sim_w.tick+600; sim_dump_all(); }
+    if(sim_dump_at && sim_w.tick>=sim_dump_at){ sim_dump_at=sim_w.tick+sim_dump_gap; sim_dump_all(); }
 }
 
 // ---------------------------------------------------------------- patch 15 CALLS: the colony's trouble sets the goal of a dungeon floor

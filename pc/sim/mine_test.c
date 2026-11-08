@@ -129,7 +129,7 @@ int main(void){
     { MineList L; memset(&L, 0, sizeof L); for(uint32_t t = 1; t <= COL_MAX + 3; t++) mn_find(&L, t, 1, t); CHECK(L.n == COL_MAX); CHECK(!mn_find(&L, 1, 0, 0) && mn_find(&L, COL_MAX + 3, 0, 0)); }
     // ---- text
     { SimColony c; Mine m; mk(&c, 70, ALL, 6, COLJ_MINER, 1); mn_init(&m, 70, 0); runboth(&c, &m, 1, 60, COLD_NORMAL, ALL, 0); char t[80]; mn_status_text(&m, t, sizeof t); CHECK(t[0]); m.warn = 1; mn_status_text(&m, t, sizeof t); CHECK(strstr(t, "CREAKING"));
-      for(int z = 1; z <= 15; z++){ mn_level_text(&m, &c, z, COLD_NORMAL, t, sizeof t); CHECK(t[0] == 'Z' && strlen(t) < 46); } char d[300]; CHECK(mn_dump(&m, d, sizeof d) > 20);
+      for(int z = 1; z <= 15; z++){ mn_level_text(&m, &c, z, COLD_NORMAL, t, sizeof t); CHECK(t[0] == 'L' && t[1] == 'V' && strlen(t) < 46); } char d[300]; CHECK(mn_dump(&m, d, sizeof d) > 20);
       MnAway aw; memset(&aw, 0, sizeof aw); aw.days = 5; aw.ore = 3; aw.bars = 1; aw.gems = 2; aw.cave_ins = 1; char ln[6][48]; CHECK(mn_away_text(&aw, &m, ln, 6) >= 3); }
     printf("mine_test: %d checks, %d failed\n", checks, fails); return fails ? 1 : 0;
 }
