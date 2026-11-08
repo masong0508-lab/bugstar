@@ -213,7 +213,8 @@ H space.inc 'for(int i=0;i<NSYS;i++) if(has_base(i) && (i<6 ? i<zones_open : ant
 H planet.inc 'bounty_office(VISPG); planet_hud(); p_last=vbl_count; return; }' 'bounty_office(VISPG); pc_ms_board(VISPG,2); planet_hud(); p_last=vbl_count; return; }'
 sed -i '1i static void pc_ms_board(volatile unsigned short *pg, int place), pc_ms_map(volatile unsigned short *pg);' main.c
 # --- AFTERMATH of a severe warship (pc/pc_missions.inc): burnt-world look, the sealed entrance, troops holding the stairs, the burning-surface survival line
-sed -i '1i static void pcm_hud(volatile unsigned short *pg); static int pcm_up_blocked(int surface), pcm_burnt_here(void), pcm_burnt_cls(void);' main.c
+sed -i '1i static void pcm_hud(volatile unsigned short *pg), pcm_floor_new(void); static int pcm_up_blocked(int surface), pcm_burnt_here(void), pcm_burnt_cls(void);' main.c
+H dungeon.inc 'fl_ev=FE_NONE; fl_need=fl_have=0; fl_bonus=100; fl_done=0;' ' pcm_floor_new();' after
 H game.inc '    if(dbg_cls>=0) wd.cls=dbg_cls;' ' if(pcm_burnt_here()) wd.cls=PC_INFERNO+pcm_burnt_cls();' after
 H planet.inc 'sim_hud(pg);' ' pcm_hud(pg);' after
 H main.c '            if(!(!endless && !forge_on && !base_mode && depth_no>=2)) return 1;' '            if(pcm_up_blocked(!(!endless && !forge_on && !base_mode && depth_no>=2))) return 0; if(!(!endless && !forge_on && !base_mode && depth_no>=2)) return 1;'

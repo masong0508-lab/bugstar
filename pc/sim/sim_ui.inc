@@ -200,18 +200,33 @@ static void sim_cell_name(const SimColony *co, int cell, char *b){
     int g=co->grid[cell]; if(g) { scpy(b,col_bld_name(g-1)); if(g-1==COLB_MINE){ Mine *mi=sim_mine(); if(mi->depth){ scat(b," LEVEL "); ncat(b,mi->work); scat(b," OF "); ncat(b,mi->depth); scat(b,mi->warn?" CREAKING!":"  A: OPEN"); } else scat(b,"  A: OPEN"); } else if(g-1==COLB_KITCHEN) scat(b,"  A: WORKSHOPS"); return; }
     scpy(b, co->state==COLS_DEAD_WORLD ? "BURNT GROUND" : (co->plan_cell==cell ? "BUILDING SITE" : "EMPTY GROUND"));
 }
+// BURNT ART (patch 45): a colony on a destroyed planet (BURNT FOR GOOD) or in ruins is drawn as ash, broken walls, glowing embers and rising smoke instead of plain boxes.
+// Every cell is made from its own number, so it looks the same every time; only the embers flicker and the smoke drifts with the tick.
+static u32 sim_bh(u32 a, u32 b){ a ^= b * 0x9E3779B1u; a ^= a >> 15; a *= 0x85EBCA6Bu; a ^= a >> 13; a *= 0xC2B2AE35u; a ^= a >> 16; return a; }
+static void sim_burnt_cell(volatile u16 *pg, int px, int py, int g, int i, int tick, int forever){
+    rect(pg,px,py,19,13,C_DGREY); rect(pg,px,py+10,19,3,forever?C_DRED:C_DGREY);                                   // charred ground, a darker burnt strip along the bottom
+    u32 h=sim_bh((u32)i+1,(u32)g*77u+5u);
+    for(int k=0;k<5;k++){ u32 q=sim_bh(h,(u32)k); rect(pg,px+(int)(q%17)+1,py+(int)((q>>8)%11)+1,1,1,(q>>16)&1?C_GREY:C_DRED); }  // ash and scorch marks
+    if(!g) return;
+    for(int w=0;w<3;w++){ u32 q=sim_bh(h,(u32)w+31u); int hh=2+(int)(q%6u), x=px+2+w*6;                     // three broken wall stumps of different heights
+        rect(pg,x,py+10-hh,4,hh,C_GREY); rect(pg,x,py+10-hh,4,1,C_DGREY); if(q&0x100u) rect(pg,x+1,py+10-hh-1,2,1,C_GREY);
+        rect(pg,x+(int)((q>>9)&1u)*2,py+10-hh+1,1,hh>2?hh-2:1,C_DRED); }                                         // a charred streak down each stump
+    { int e=(tick>>3)+i; for(int k=0;k<3;k++){ u32 q=sim_bh((u32)e,h+(u32)k*13u); if((q&3u)==0) continue; rect(pg,px+3+(int)(q%13),py+6+(int)((q>>8)%5),1,1,(q>>16)&1?C_GOLD:C_RED); } }   // embers that flicker
+    { int sm=(tick>>2)+(int)(h&15u); for(int k=0;k<2;k++){ int yy=py+5-((sm+k*5)%9); if(yy>=py-2) rect(pg,px+5+(int)((h>>(4+k*3))&7u)+((sm>>2)&1),yy,1,1,k?C_DGREY:C_GREY); } }       // smoke drifting up
+}
 static void sim_colony_map(volatile u16 *pg){
     SimColony *co=sim_colony(); static const char L[COLB_N+1]="HFWSOKM|T$U";
     int cx=0, cy=0, carry=0, tick=0, dirty=1; char msg[44]; msg[0]=0; wait_release(); in_menu++;
     while(1){
         co=sim_colony();
-        if(dirty || !(tick&15)){ dirty=0;
-            ui_bg(pg,0,160); panel(pg,4,6,232,150,co->state==COLS_ALIVE?"COLONY MAP":"COLONY MAP: NO ONE LIVES HERE");
+        if(dirty || !(tick&15) || (co->state!=COLS_ALIVE && !(tick&7))){ dirty=0;
+            ui_bg(pg,0,160); panel(pg,4,6,232,150,co->state==COLS_ALIVE?"COLONY MAP":co->state==COLS_DEAD_WORLD?"COLONY MAP: BURNT FOR GOOD":"COLONY MAP: NO ONE LIVES HERE");
             for(int y=0;y<COL_GRID_H;y++) for(int x=0;x<COL_GRID_W;x++){ int i=y*COL_GRID_W+x, g=co->grid[i], px=10+x*20, py=24+y*14;
-                rect(pg,px,py,19,13,g?(co->state==COLS_DEAD_WORLD?C_DGREY:6):C_DGREY);
-                if(!g && co->plan_cell==i && co->state==COLS_ALIVE) rect(pg,px+1,py+1,17,11,C_GOLD);
-                if(g){ char t[2]={L[(g-1)<COLB_N?g-1:COLB_N],0}; text(pg,px+7,py+3,t,co->state==COLS_DEAD_WORLD?C_RED:C_WHITE,1); }
-                else rect(pg,px+8,py+5,3,3,co->state==COLS_DEAD_WORLD?C_RED:C_GREY); }
+                if(co->state!=COLS_ALIVE){ sim_burnt_cell(pg,px,py,g,i,tick,co->state==COLS_DEAD_WORLD); continue; }               // burnt or in ruins: the burnt art
+                rect(pg,px,py,19,13,g?6:C_DGREY);
+                if(!g && co->plan_cell==i) rect(pg,px+1,py+1,17,11,C_GOLD);
+                if(g){ char t[2]={L[(g-1)<COLB_N?g-1:COLB_N],0}; text(pg,px+7,py+3,t,C_WHITE,1); }
+                else rect(pg,px+8,py+5,3,3,C_GREY); }
             if(co->state==COLS_ALIVE){ int occ[COL_GRID_W*COL_GRID_H], no=0; for(int i=0;i<COL_GRID_W*COL_GRID_H;i++) if(co->grid[i]) occ[no++]=i;
                 for(int k=0;k<co->nset && k<COL_MAXSET;k++){ int i=no?occ[(k+(tick>>6))%no]:0; rect(pg,10+(i%COL_GRID_W)*20+2+(k%4)*4,24+(i/COL_GRID_W)*14+9,3,3,C_GREEN); } }
             { int px=10+cx*20, py=24+cy*14; rect(pg,px-1,py-1,21,1,C_CYAN); rect(pg,px-1,py+13,21,1,C_CYAN); rect(pg,px-1,py-1,1,15,C_CYAN); rect(pg,px+19,py-1,1,15,C_CYAN);

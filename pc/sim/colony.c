@@ -329,6 +329,11 @@ int col_carry_wood(SimColony *c, int cell){            // the map: you carry woo
     return 1;
 }
 int col_burnt(const SimColony *c){ return c->state == COLS_DEAD_WORLD; }
+int col_burn(SimColony *c){                            // a warship burnt this planet: an endless-galaxy world is lost for good, a story world only has ruins (it heals; settle again)
+    if(c->world_ok) c->state = COLS_DEAD_WORLD; else if(c->state != COLS_DEAD_WORLD) c->state = COLS_RUINS;
+    c->nset = 0; c->raid_eta = 0; c->hungry_days = 0; c->god_used = 0;
+    if(c->state == COLS_DEAD_WORLD) c->food = c->wood = c->goods = 0;
+    return c->state == COLS_DEAD_WORLD; }
 int col_invade(SimColony *c, uint32_t size, int diff, uint32_t day, ColAway *aw, uint64_t *reward){   // a real raid now (warship DEFEND missions)
     if(reward) *reward = 0;
     if(c->state != COLS_ALIVE || !(c->mask & (1u << COLR_TENT)) || !c->nset) return 0;

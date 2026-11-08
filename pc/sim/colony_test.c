@@ -120,6 +120,10 @@ int main(void){
       SimColony d; col_init(&d, 79, 0); col_update(&d, 0x1FF); d.world_ok = 1; CHECK(col_invade(&d, 5000, COLD_HARSH, 5, 0, &rw) == -1 && col_burnt(&d) && !col_resettle(&d, 9) && !col_invade(&d, 5, COLD_NORMAL, 6, 0, 0));
       ColList L; memset(&L, 0, sizeof L); for(uint32_t q = 0; q < COL_MAX; q++) col_find(&L, 200 + q, 1, q + 5); L.c[7].state = COLS_DEAD_WORLD; L.c[7].last_day = 0; col_find(&L, 999, 1, 90); CHECK(col_find(&L, 207, 0, 0) && col_find(&L, 999, 0, 0));
       col_update(&d, 0xFF); col_catchup_d(&d, 500, 28, COLD_NORMAL, 0); CHECK(col_burnt(&d) && d.nset == 0); }
+    // ---- col_burn (patch 45): a warship burns the planet
+    { SimColony e; col_init(&e, 81, 0); col_update(&e, 0x1FF); e.world_ok = 1; e.food = 50; e.wood = 40; CHECK(e.nset > 0 && col_burn(&e) == 1 && col_burnt(&e) && e.nset == 0 && e.food == 0 && e.wood == 0 && !col_resettle(&e, 12));
+      SimColony f; col_init(&f, 82, 0); col_update(&f, 0x1FF); f.world_ok = 0; f.wood = 40; CHECK(col_burn(&f) == 0 && !col_burnt(&f) && f.state == COLS_RUINS && f.nset == 0 && f.wood == 40 && col_resettle(&f, 12) && f.nset == 2);
+      col_update(&e, 0xFF); col_catchup_d(&e, 300, 28, COLD_NORMAL, 0); CHECK(col_burnt(&e) && e.nset == 0); CHECK(col_burn(&e) == 1 && col_burnt(&e)); }
     char t[300]; CHECK(col_dump(&c, t, sizeof t) > 20);
     printf("colony_test: %d checks, %d failed\n", checks, fails); return fails != 0;
 }

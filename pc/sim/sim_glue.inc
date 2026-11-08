@@ -213,7 +213,7 @@ static void sim_colflags(ColFlags *f){
 static int sim_invasion(unsigned size, unsigned long long *reward){          // warship DEFEND missions: a real raid on this planet's colony now. 1 won, -1 lost, 0 none
     if(!sim_is_on()) return 0;
     if(!sim_have_w || sim_world_seed()!=sim_w.seed) sim_bind();
-    SimColony *co=sim_colony(); ColAway aw; uint64_t r=0; sim_f.difficulty=(u8)xo_i(XO_SIDEDIF);
+    SimColony *co=sim_colony(); ColAway aw; memset(&aw,0,sizeof aw); uint64_t r=0; sim_f.difficulty=(u8)xo_i(XO_SIDEDIF);       // (patch 45: aw was never cleared: the first DEFEND job with a colony crashed in ev())
     if(sim_f.difficulty==COLD_NORMAL){ unsigned cap=(unsigned)(col_defence(co)*6/5+2); if(size>cap) size=cap; }   // patch 17: on NORMAL a DEFEND raid is never far beyond what the colony can hold (CALM always holds, HARSH keeps the full size)
     int res=col_invade(co,size,sim_f.difficulty,(u32)sim_day(&sim_w),&aw,&r); if(reward) *reward=r;
     return res;
@@ -222,7 +222,7 @@ static int sim_planet_burnt(void){ if(!sim_is_on()) return 0; if(!sim_have_w || 
 static void sim_burn_world(void){                       // a warship burnt this planet: the colony is dead (RUINS, so it can be resettled later); story worlds are never ended for good
     if(!sim_is_on()) return;
     u64 ws=sim_world_seed(); if(!sim_have_w || ws!=sim_w.seed) sim_bind();
-    SimColony *co=sim_colony(); co->nset=0; co->state=COLS_RUINS; co->raid_eta=0; }
+    SimColony *co=sim_colony(); co->world_ok = pc_applied ? 1 : 0; col_burn(co); }              // an endless-galaxy world is burnt for good (DEAD_WORLD), a story world is only ruined (it heals; settle again)
 static int sim_mine_news, sim_mine_said;             // mine news said aloud (the tests read it)
 static void sim_colony_tick(void){
     sim_f.difficulty=(u8)xo_i(XO_SIDEDIF);                              // the main Options setting is the one that counts

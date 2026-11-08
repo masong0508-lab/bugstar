@@ -8,7 +8,7 @@
 #include "warship/ws_mix_sy.h"
 static void pcm_reset(void), pcm_save(FILE *f), pcm_on_win(WsPay *p), pcm_on_sab(int s), pcm_collect(void), pcm_fight_tick(void), pc_ms_board(volatile u16 *pg, int place);
 static int pcm_load_line(const char *ln), pcm_contact(int i, u32 *seed, int *z), pcm_obj_kind(void), pcm_enc_mode, pcm_escort; static void pcm_dwell(int target_room, const char **prompt, char *msg, int *msg_t);
-static u32 pcm_test_setup(int z); static int pcm_cf, pcm_enc_force, pcm_clk, pcm_match_k(const WsCraft *c); static char pcm_note[40]; static unsigned char pcm_mark[8];
+static int pcm_obj_done(void), pcm_auto; static void pcm_mp_start(const char *mode), pcm_mp_tick(void); static u32 pcm_test_setup(int z); static int pcm_cf, pcm_enc_force, pcm_clk, pcm_match_k(const WsCraft *c); static char pcm_note[40]; static unsigned char pcm_mark[8];
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +34,10 @@ static int pc_ws_danger(void){ int d=4+pcw_f.c.cls; return d>24?24:d; }
 // ---------------------------------------------------------------- wide gold: the game's 64-bit gold first, the rest in the vault; tiny sums collect as dust
 static void pcw_topup(void){ if(wn_is_zero(pcw_vault) || gold>=(1LL<<62)) return; double room=(double)((1LL<<62)-gold); WN r=wn(room);
     if(wn_cmp(pcw_vault,r)<=0){ gold+=(s64)wn_to_d(pcw_vault); pcw_vault=wn(0); } else { gold+=(s64)room; pcw_vault=wn_sub(pcw_vault,r); } }
-static void pcw_pay(WN g){
+static void pcw_pay_(WN g);
+static void pcw_pay(WN g){ long long g0=(long long)gold; double d0=pcw_dust; pcw_pay_(g);
+    if(pcm_auto) fprintf(stderr,"mp %ld pay reward=%.17g,%lld gold %lld -> %lld dust %.6f -> %.6f vault=%.15g,%lld\n",(long)pc_frames(),g.m,(long long)g.e,g0,(long long)gold,d0,pcw_dust,pcw_vault.m,(long long)pcw_vault.e); }
+static void pcw_pay_(WN g){
     if(wn_is_zero(g)) return;
     if(g.e<0){ pcw_dust+=wn_to_d(g); if(pcw_dust>=1){ s64 w=(s64)pcw_dust; gold=sadd(gold,w); pcw_dust-=(double)w; } return; }
     if(g.e<15){ double v=wn_to_d(g); s64 w=(s64)v; pcw_dust+=v-(double)w; gold=sadd(gold,w); if(pcw_dust>=1){ s64 k=(s64)pcw_dust; gold=sadd(gold,k); pcw_dust-=(double)k; } }
@@ -188,13 +191,25 @@ static void pcw_ovl(uint32_t *out, int w, int h){
 // seed and that design's rooms and props (bunks, crates, guns, fighters) build the deck. Off: the builder's own random mix, exactly as before.
 // Test hook: BUGSTAR_WS_MIX=1 forces it on, 0 forces it off.
 static WdMix pcw_mixv;
-static const WdMix *pcw_mix(void){ const char *e=getenv("BUGSTAR_WS_MIX"); int on = e ? atoi(e)!=0 : (pc_sy_on && pc_sy_foes); if(!on) return 0;
-    SyDesign fd; int lv=ws_class_of(pcw_f.c.z)/2; if(lv>9) lv=9; if(lv<0) lv=0; sy_foe(&fd,pcw_f.c.seed,1,lv); wd_mix_from_sy(&fd,&pcw_mixv); return &pcw_mixv; }
+// patch 45: WHO OWNS THE DECK. pcw_mode 0: an enemy craft (a team 1 design with FOES on, as before). 1: an ALLIED craft (a team 0 design with FOES on: friendly crew, nobody shoots, a free refit when you leave).
+// 2: YOUR OWN HANGAR DECK: built from your own ship's design (pc_sy_des, the one in the ship editor), always, FOES or not. Test hook BUGSTAR_WS_MIX=1 forces the foe designs on, 0 off.
+static int pcw_mode=0, pcw_req_mode=0;
+static SyDesign pcw_own_design(void){ SyDesign d; if(pc_sy_on) d=pc_sy_des; else sy_default(&d); return d; }
+static const WdMix *pcw_mix(void){ const char *e=getenv("BUGSTAR_WS_MIX"); int on = e ? atoi(e)!=0 : (pc_sy_on && pc_sy_foes);
+    if(pcw_mode==2){ SyDesign od=pcw_own_design(); wd_mix_from_sy(&od,&pcw_mixv); return &pcw_mixv; }
+    if(!on) return 0;
+    SyDesign fd; int lv=ws_class_of(pcw_f.c.z)/2; if(lv>9) lv=9; if(lv<0) lv=0; sy_foe(&fd,pcw_f.c.seed,pcw_mode==1?0:1,lv); wd_mix_from_sy(&fd,&pcw_mixv); return &pcw_mixv; }
+static void pcw_peace(void);
 static void pcw_deck_here(int from_hangar){                           // make the deck at the end of the current path
     u32 h=wd_root(&pcw_f.c); for(int k=0;k<pcw_D;k++){ h=wd_child(h,pcw_path_[k],k); pcw_hash_[k+1]=h; }
-    int subs[WS_MAXSUB]; int n=wd_subs_at(&pcw_f.c,pcw_path_,pcw_D,subs); wd_make_mix(&pcw_deck,&pcw_f.c,h,subs,n,from_hangar,pcw_D,pcw_mix());
+    int subs[WS_MAXSUB]; int n=pcw_mode==2 ? 0 : wd_subs_at(&pcw_f.c,pcw_path_,pcw_D,subs); wd_make_mix(&pcw_deck,&pcw_f.c,h,subs,n,from_hangar,pcw_D,pcw_mix());
     for(int i=0;i<pcw_deck.nroom;i++){ int s=pcw_deck.room[i].sub; if(s!=255 && !pcw_f.c.sub[s].alive) pcw_deck.room[i].sub=255; }
-    pcw_px=pcw_deck.sx+0.5f; pcw_py=pcw_deck.sy+0.5f; pcw_pa=pcw_deck.sdir; pcw_key=0; pcw_schem=0; pcw_nch=0; pcw_lv=pcw_D; }
+    pcw_px=pcw_deck.sx+0.5f; pcw_py=pcw_deck.sy+0.5f; pcw_pa=pcw_deck.sdir; pcw_key=0; pcw_schem=0; pcw_nch=0; pcw_lv=pcw_D; if(pcw_mode) pcw_peace(); }
+static void pcw_peace(void){                                      // an allied or your own deck: no targets, no guards, no alarm
+    for(int i=0;i<pcw_deck.nroom;i++) pcw_deck.room[i].sub=255;
+    for(int i=0;i<WD_W*WD_W;i++) pcw_deck.cell[i].flags&=(uint8_t)~WF_TARGET;
+    for(int i=0;i<pcw_deck.nnpc;i++){ WdNpc *n=&pcw_deck.npc[i]; if(n->kind!=WN_CREW){ n->kind=WN_CREW; if(n->act==WA_HUNT||n->act==WA_FLEE) n->act=WA_WORK; } }
+    pcw_deck.alarm=0; }
 static void pcw_pick_obj(void){ { int mk=pcm_obj_kind(); if(mk>=0){ for(int i=0;i<pcw_f.c.nsub;i++) if(pcw_f.c.sub[i].alive && pcw_f.c.sub[i].kind==mk){ pcw_obj=i; return; } } } static const u8 pri[5]={WSS_GEN,WSS_REACTOR,WSS_BRIDGE,WSS_HANGAR,WSS_TURRET}; pcw_obj=-1;
     for(int k=0;k<5 && pcw_obj<0;k++) for(int i=0;i<pcw_f.c.nsub;i++) if(pcw_f.c.sub[i].alive && pcw_f.c.sub[i].kind==pri[k]){ pcw_obj=i; break; } }
 static int pcw_obj_child(int level){ return pcw_obj>=0 ? wd_sub_child(&pcw_f.c,pcw_obj,level) : -1; }
@@ -239,12 +254,22 @@ static int pcw_free(float x, float y){ const float pr=0.22f; for(int k=0;k<4;k++
         if(fabsf(p->x-x)<rx+pr && fabsf(p->y-y)<ry+pr) return 0; }
     return 1; }
 static int pcw_near_prop(int type, float rad){ for(int i=0;i<pcw_deck.nprop;i++){ const WdProp *p=&pcw_deck.prop[i]; if(p->type!=type) continue; float dx=p->x-pcw_px, dy=p->y-pcw_py; if(dx*dx+dy*dy<rad*rad) return i; } return -1; }
+// (mission tests, BUGSTAR_MS_AUTO) stand in the room of the objective; later, from there, back at the hangar
+static void pcw_place_obj(void){
+    if(pcw_obj<0) return;
+    for(int k=0;k<pcw_D;k++) pcw_path_[k]=(u8)pcw_obj_child(k);
+    pcw_deck_here(0); int rm=-1; for(int i=1;i<pcw_deck.nroom;i++) if(pcw_deck.room[i].sub==pcw_obj){ rm=i; break; } if(rm<=0) return;
+    const WdRoom *m=&pcw_deck.room[rm]; float bx=m->x0+0.6f, by=m->y0+0.6f; int found=0;
+    for(int yy=m->y0;yy<=m->y1 && !found;yy++) for(int xx=m->x0;xx<=m->x1 && !found;xx++) if(pcw_free(xx+0.5f,yy+0.5f)){ bx=xx+0.5f; by=yy+0.5f; found=1; }
+    pcw_px=bx; pcw_py=by; pcw_pa=atan2f((m->y0+m->y1+1)*0.5f-by,(m->x0+m->x1+1)*0.5f-bx); }
+static void pcw_goto_hangar(void){ int hang=-1; for(int i=0;i<pcw_f.c.nsub;i++) if(pcw_f.c.sub[i].alive && pcw_f.c.sub[i].kind==WSS_HANGAR){ hang=i; break; } if(hang<0) return;
+    for(int k=0;k<pcw_D;k++) pcw_path_[k]=(u8)wd_sub_child(&pcw_f.c,hang,k); pcw_deck_here(1); }
 static void pc_ws_board(void){
     if(pcw_in) return; pcw_in=1; pcw_board_ok=0;
-    int hang=-1; for(int i=0;i<pcw_f.c.nsub;i++) if(pcw_f.c.sub[i].alive && pcw_f.c.sub[i].kind==WSS_HANGAR){ hang=i; break; } if(hang<0){ pcw_in=0; return; }
+    int hang=-1; for(int i=0;i<pcw_f.c.nsub;i++) if(pcw_f.c.sub[i].alive && pcw_f.c.sub[i].kind==WSS_HANGAR){ hang=i; break; } if(hang<0 && pcw_mode!=2){ pcw_in=0; return; }
     pcw_D=wd_levels(&pcw_f.c); free(pcw_path_); free(pcw_hash_); pcw_path_=calloc(pcw_D+1,1); pcw_hash_=calloc(pcw_D+2,sizeof(u32)); pcw_hash_[0]=wd_root(&pcw_f.c);
-    for(int k=0;k<pcw_D;k++) pcw_path_[k]=(u8)wd_sub_child(&pcw_f.c,hang,k);
-    pcw_deck_here(1); pcw_pick_obj(); pcw_hp=100+shield_max()/2; pcw_hurt=0; pcw_t=0;
+    for(int k=0;k<pcw_D;k++) pcw_path_[k]=(u8)(hang>=0 ? wd_sub_child(&pcw_f.c,hang,k) : 0);
+    pcw_deck_here(1); if(pcw_mode) pcw_obj=-1; else pcw_pick_obj(); pcw_hp=100+shield_max()/2; pcw_hurt=0; pcw_t=0; int tele=0;
     { const char *e=getenv("BUGSTAR_WS_ROOM"); if(e){ int kind=atoi(e); float turn=0; const char *t=strchr(e,','); if(t) turn=(float)atof(t+1);   // (tests: stand in a room of this kind)
         static const int int2sub[WR_NKIND]={-1,WSS_HANGAR,WSS_REACTOR,-1,-1,-1,-1,-1,-1,-1,-1,WSS_GEN,WSS_TURRET,WSS_BRIDGE,-1}; int sk=int2sub[kind];
         if(sk>=0){ for(int i=0;i<pcw_f.c.nsub;i++) if(pcw_f.c.sub[i].kind==sk){ for(int k=0;k<pcw_D;k++) pcw_path_[k]=(u8)wd_sub_child(&pcw_f.c,i,k); pcw_deck_here(0); break; } }
@@ -254,6 +279,11 @@ static void pc_ws_board(void){
         if(rm>0){ const WdRoom *m=&pcw_deck.room[rm]; float bx=m->x0+0.6f, by=m->y0+0.6f; int found=0;
             for(int yy=m->y0;yy<=m->y1 && !found;yy++) for(int xx=m->x0;xx<=m->x1 && !found;xx++) if(pcw_free(xx+0.5f,yy+0.5f)){ bx=xx+0.5f; by=yy+0.5f; found=1; }
             pcw_px=bx; pcw_py=by; pcw_pa=atan2f((m->y0+m->y1+1)*0.5f-by,(m->x0+m->x1+1)*0.5f-bx)+turn; } } }
+    if(pcm_auto && !pcw_mode) pcw_place_obj();
+    if(pcm_auto){ int cr=0, gd=0; for(int i=0;i<pcw_deck.nnpc;i++){ if(pcw_deck.npc[i].kind==WN_CREW) cr++; else gd++; } const WdMix *mx=pcw_mix();
+        fprintf(stderr,"mp %ld walk mode=%d craft=%s seed=%u z=%d D=%d mix=%d bunks=%d fighters=%d crates=%d guns=%d hangar=%d quarters=%d turret=%d | props bunk=%d fighter=%d crate=%d gun=%d | rooms hangar=%d quarters=%d | crew=%d guards=%d targets=%d\n",(long)pc_frames(),pcw_mode,pcw_f.c.name,pcw_f.c.seed,pcw_f.c.z,pcw_D,mx?1:0,
+            mx?mx->bunks:-1,mx?mx->fighters:-1,mx?mx->crates:-1,mx?mx->guns:-1,mx?mx->hangar:-1,mx?mx->quarters:-1,mx?mx->turret:-1,wd_count_props(&pcw_deck,WP_BUNK),wd_count_props(&pcw_deck,WP_FIGHTER),wd_count_props(&pcw_deck,WP_CRATE),wd_count_props(&pcw_deck,WP_GUN),
+            wd_count_rooms(&pcw_deck,WR_HANGAR),wd_count_rooms(&pcw_deck,WR_QUARTERS),cr,gd,({ int t=0; for(int i=1;i<pcw_deck.nroom;i++) if(pcw_deck.room[i].sub!=255) t++; t; })); }
     fade(1); oam_hide_all(); oam_flush(); for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i]; BG_PAL[0]=0; BG_PAL[250]=rgb15(6,8,12); BG_PAL[251]=rgb15(255,200,60);
     REG_DISPCNT = 4 | (1<<10); volatile u16 *pg=(volatile u16*)GBAA(0x06000000); pc_ovl_fn=pcw_ovl; REG_BLDCNT=0; REG_BLDY=0;
     char msg[48]="YOU ARE IN. FIND THE TARGET: SEL MAP"; int msg_t=180, hold=0, dead=0; float aim_cd=0, shot_t=0; u32 fr=0;
@@ -290,13 +320,15 @@ static void pc_ws_board(void){
                 if(!dup && pcw_nch<4){ pcw_ch[pcw_nch].sub=s; pcw_ch[pcw_nch].x=pcw_px; pcw_ch[pcw_nch].y=pcw_py; pcw_ch[pcw_nch].t=pcw_t+5; pcw_nch++;
                     if(pcw_deck.nprop<WD_MAXPROP){ WdProp *p=&pcw_deck.prop[pcw_deck.nprop++]; memset(p,0,sizeof *p); p->type=WP_CHARGE; p->x=pcw_px+cosf(pcw_pa)*0.8f; p->y=pcw_py+sinf(pcw_pa)*0.8f; p->w=0.4f; p->h=0.3f; p->room=(u8)target_room; }
                     scpy(msg,"CHARGE SET: 5 SECONDS. MOVE!"); msg_t=150; sfx(6); } } }
-        else if(HIT(K_A) && aim_cd<=0){ aim_cd=0.3f; shot_t=0.08f; sfx(10);                     // the blaster: the first one in the middle of the view
+        else if(HIT(K_A) && aim_cd<=0 && !pcw_mode){ aim_cd=0.3f; shot_t=0.08f; sfx(10);                     // the blaster: the first one in the middle of the view
             int best=-1; float bd=14; for(int i=0;i<pcw_deck.nnpc;i++){ WdNpc *n=&pcw_deck.npc[i]; if(!n->alive) continue; float dx=n->x-pcw_px, dy=n->y-pcw_py, d=sqrtf(dx*dx+dy*dy); float a=atan2f(dy,dx)-pcw_pa; while(a>3.14159f) a-=6.2832f; while(a<-3.14159f) a+=6.2832f;
                 if(d<bd && fabsf(a)<0.09f+0.3f/(d+0.5f)){ bd=d; best=i; } }
             if(best>=0){ WdNpc *n=&pcw_deck.npc[best]; n->hp-=25+(float)(level>1000?1000:level)*0.1f; pcw_deck.alarm=1; if(n->hp<=0){ n->alive=0; n->act=WA_DEAD; sfx(9); } } }
         if(!HELD(K_A)) hold=0;
         if(HIT(K_SEL)) pcw_deck_map(pg);
-        if(HIT(K_START)){ int r=wd_room_at(&pcw_deck,pcw_px,pcw_py); if(r>0 && pcw_deck.room[r].kind==WR_HANGAR){ scpy(msg,"BACK TO YOUR SHIP"); break; } scpy(msg,"GET TO A HANGAR TO LEAVE"); msg_t=90; }
+        if(pcm_auto && !pcw_mode && !tele && pcm_obj_done()){ tele=1; pcw_goto_hangar(); fprintf(stderr,"mp %ld objective done: back to the hangar deck\n",(long)pc_frames()); }       // (tests) walk home
+        else if(tele==1) tele=2;
+        if(HIT(K_START) || tele==2){ int r=wd_room_at(&pcw_deck,pcw_px,pcw_py); if(r>0 && pcw_deck.room[r].kind==WR_HANGAR){ scpy(msg,"BACK TO YOUR SHIP"); break; } scpy(msg,"GET TO A HANGAR TO LEAVE"); msg_t=90; tele=pcm_auto?1:0; }
         if(pcw_hp<=0){ dead=1; break; }
         // ---- the HUD (the 3D view is under it)
         for(int i=0;i<240*160/2;i++) pg[i]=0;
@@ -304,6 +336,8 @@ static void pc_ws_board(void){
           scpy(b,"HP "); ncat(b,pcw_hp<0?0:pcw_hp); if(pcw_key) scat(b,"  KEY"); if(pcw_schem) scat(b,"  WEAK POINT"); pcw_text(pg,4,150,b,pcw_hp<40?C_RED:C_WHITE);
           if(pcw_obj>=0){ scpy(b,"OBJECTIVE: "); scat(b,ws_sub_name(pcw_f.c.sub[pcw_obj].kind)); int here=0; for(int i=0;i<pcw_deck.nsubs;i++) if(pcw_deck.subs[i]==pcw_obj) here=1;
               scat(b, here ? " (MARKED)" : pcw_D>0 ? " (TAKE THE TRAM)" : ""); pcw_text(pg,4,11,b,251); }
+          else if(pcw_mode==1) pcw_text(pg,4,11,"ALLIED CRAFT: NO ONE SHOOTS. LEAVE FROM A HANGAR",C_GREEN);
+          else if(pcw_mode==2){ snprintf(b,sizeof b,"YOUR SHIP: %d FIGHTERS  %d BUNKS  %d CRATES",pcw_mixv.fighters,pcw_mixv.bunks,pcw_mixv.crates); pcw_text(pg,4,11,b,C_GREEN); }
           { int h=(int)fmod(pcw_deck.clock,24); scpy(b,"SHIP TIME "); ncat(b,h); scat(b,":00"); if(pcw_deck.alarm) scpy(b,"ALARM!"); pcw_text(pg,236-textlen(b)*4,150,b,pcw_deck.alarm?C_RED:C_GREY); }
           int near=-1; float nd=3.5f; for(int i=0;i<pcw_deck.nnpc;i++){ const WdNpc *n=&pcw_deck.npc[i]; if(!n->alive) continue; float dx=n->x-pcw_px, dy=n->y-pcw_py, d=sqrtf(dx*dx+dy*dy); if(d<nd){ nd=d; near=i; } }
           if(near>=0 && !prompt){ const WdNpc *n=&pcw_deck.npc[near]; scpy(b, n->kind==WN_GUARD?"GUARD: ":n->kind==WN_OFFICER?"OFFICER: ":"CREW: "); scat(b,wd_act_name(n->act)); pcw_text(pg,120-textlen(b)*2,128,b,n->kind==WN_CREW?C_GREY:C_RED); }
@@ -315,7 +349,8 @@ static void pc_ws_board(void){
     pc_ovl_fn=0; pcw_in=0; fade(1);
     build_space_palette(); REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); BG_PAL[57]=rgb15(14,16,30); BG_PAL[58]=rgb15(60,70,120);
     if(dead){ hull-=30; if(hull<1) hull=1; space_say("THROWN OUT AN AIRLOCK! -30 HULL"); } else space_say("BACK IN YOUR SHIP");
-    if(!dead) pcm_collect();
+    if(!dead && !pcw_mode) pcm_collect();
+    if(!dead && pcw_mode==1){ hull=100; fuel=fuel_max(); space_say("THE ALLIED CREW REFUEL AND PATCH YOUR SHIP"); fprintf(stderr,"ally refit hull %d fuel %d\n",hull,fuel); }
     shz=-(PCW_DS*2); svx_=svy_=svz_=0; speed=0; fade(0); wait_release();
 }
 
@@ -366,39 +401,65 @@ static void pcw_armoury(volatile u16 *pg){
     wait_release(); pc_ws_slot_save(cur_slot);
 }
 // the list of colossal craft near this star; in space (from the scanner) A then START engages at once, on a planet ENGAGE waits for take-off
+static int pcm_ally_craft(WsCraft *c);
+static void pcw_own_craft(WsCraft *c){ ws_make(c,0xB06C0DEu^(u32)cur_slot*0x9E3779B1u,240,0); snprintf(c->name,sizeof c->name,"YOUR OWN SHIP"); snprintf(c->title,sizeof c->title,"YOUR OWN SHIP: THE HANGAR DECK"); }
+static void pcw_detail_extra(volatile u16 *pg, int kind, const WsCraft *c, int y0){            // an allied craft, or your own ship
+    char b[80], v[48]; int y=y0; scpy(b,c->name); text(pg,12,y,b,C_GOLD,1); ws_len_text(c->z,v,sizeof v); rtext(pg,228,y,v,C_WHITE); y+=8;
+    scpy(b,c->title); text(pg,12,y,b,C_WHITE,1); y+=10;
+    if(kind==1){ text(pg,12,y,"ALLIED CRAFT: IT FLIES WITH THE CONVOY.",C_GREEN,1); y+=8; text(pg,12,y,"DOCK AT ITS HANGAR. THE CREW ARE FRIENDS: NO ONE",C_GREY,1); y+=8;
+        text(pg,12,y,"SHOOTS, NOTHING TO BLOW UP. LEAVE FROM A HANGAR",C_GREY,1); y+=8; text(pg,12,y,"AND ITS CREW REFUEL AND PATCH YOUR SHIP.",C_GREY,1); y+=10;
+        text(pg,12,y,pc_sy_on && pc_sy_foes ? "ITS ROOMS COME FROM A TEAM 0 DESIGN (SHIP EDITOR)." : "(TURN FOES ON IN THE SHIP EDITOR FOR TEAM 0 DESIGNS)",C_DGREY,1); }
+    else { SyDesign od=pcw_own_design(); SyRooms r; sy_rooms(&od,&r); text(pg,12,y,"YOUR OWN HANGAR DECK",C_GREEN,1); y+=8; text(pg,12,y,"BUILT FROM YOUR SHIP'S DESIGN IN THE SHIP EDITOR.",C_GREY,1); y+=10;
+        snprintf(b,sizeof b,"FIGHTERS %d  BUNKS %d  CRATES %d  GUNS %d",r.fighters,r.bunks,r.crates,r.guns); text(pg,12,y,b,C_WHITE,1); y+=8;
+        snprintf(b,sizeof b,"HANGARS %d  QUARTERS %d  WORKSHOP %d  MESS %d",r.hangar,r.quarters,r.workshop,r.mess); text(pg,12,y,b,C_GREY,1); y+=8;
+        text(pg,12,y,pc_sy_on ? "THE DESIGN IS YOUR SAVED SHIP." : "NO SAVED DESIGN YET: THE DEFAULT SHIP.",C_DGREY,1); } }
+// the list of colossal craft near this star; in space (from the scanner) A then START engages at once, on a planet ENGAGE waits for take-off.
+// In space the list also holds an ALLIED craft (when an ESCORT job is on here: START docks) and YOUR OWN SHIP (START walks your hangar deck).
 static int pcw_list(volatile u16 *pg, int in_space){
-    enum { NC=6 }; WsCraft *cs=malloc(sizeof(WsCraft)*(NC+1)); int nc=NC, sel=0, dirty=1, detail=0, cz=WS_ZREF*2, go=0, cheat_row=plw_cheated();
+    enum { NC=6 }; WsCraft *cs=malloc(sizeof(WsCraft)*(NC+3)); int nc=NC, sel=0, dirty=1, detail=0, cz=WS_ZREF*2, go=0, cheat_row=plw_cheated(), nx=0, xk[2];
     u32 sd[NC]; int zz[NC]; for(int i=0;i<NC;i++){ pcw_contact(i,&sd[i],&zz[i]); pcw_make(&cs[i],sd[i],zz[i],pcm_cf); }
-    pcw_topup(); wait_release();
+    if(in_space){ if(pcm_ally_craft(&cs[NC+1])) xk[nx++]=1; pcw_own_craft(&cs[NC+2]); xk[nx++]=2; }
+    int cr=nc+nx; pcw_req_mode=0; pcw_topup(); wait_release();
     while(1){
         if(dirty){ dirty=0; oam_hide_all(); oam_flush(); ui_bg(pg,0,160); ui_panel(pg,6,6,228,136); char b[64], v[40];
             ui_head(pg,12,10,216,in_space?"WARSHIP SCANNER":"WARSHIPS NEAR THIS STAR",C_GOLD);
-            if(detail){ const WsCraft *c = sel<nc ? &cs[sel] : &cs[NC]; pcw_detail(pg,c,22); ui_foot(pg,in_space?"START: ENGAGE":"START: ENGAGE AFTER TAKE-OFF","B: BACK"); }
-            else { for(int i=0;i<nc;i++){ int y=24+i*12; const WsCraft *c=&cs[i]; if(i==sel) rect(pg,10,y-2,220,11,6);
+            if(detail){ if(sel<nc) pcw_detail(pg,&cs[sel],22); else if(sel<cr) pcw_detail_extra(pg,xk[sel-nc],&cs[NC+xk[sel-nc]],22); else pcw_detail(pg,&cs[NC],22);
+                ui_foot(pg,sel>=nc&&sel<cr ? (xk[sel-nc]==1?"START: DOCK AT IT":"START: WALK YOUR HANGAR DECK") : in_space?"START: ENGAGE":"START: ENGAGE AFTER TAKE-OFF","B: BACK"); }
+            else { for(int i=0;i<nc+nx;i++){ int y=(nx?22:24)+i*(nx?11:12); const WsCraft *c = i<nc ? &cs[i] : &cs[NC+xk[i-nc]]; if(i==sel) rect(pg,10,y-2,220,11,6);
+                    if(i>=nc){ text(pg,16,y,xk[i-nc]==1?"ALLY":"YOUR SHIP",i==sel?C_WHITE:C_GREEN,1); text(pg,110,y,xk[i-nc]==1?c->name:"HANGAR DECK",C_GREY,1); rtext(pg,226,y,xk[i-nc]==1?"DOCK":"WALK",C_GREEN); continue; }
                     scpy(b,ws_class_name(c->cls)); text(pg,16,y,b,i==sel?C_WHITE:C_GREY,1); ws_len_text(c->z,v,sizeof v); text(pg,110,y,v,C_GREY,1); if(pcm_mark[i]) text(pg,152,y,"MISSION",C_CYAN,1);
                     WsThreat t; ws_threat(c,ws_attack((double)level,laser_lv,ship_gun(),tech_lv),pcw_ehp(),wing_n,pcw_kits,fuel_max(),&t); rtext(pg,226,y,t.word,t.tier>=4?C_RED:t.tier>=2?C_GOLD:C_GREEN); }
-                if(cheat_row){ int y=24+nc*12; if(sel==nc) rect(pg,10,y-2,220,11,6); ws_len_text(cz,v,sizeof v); scpy(b,"CHEAT: ANY SIZE  "); scat(b,v); text(pg,16,y,b,C_RED,1); }
+                if(cheat_row){ int y=(nx?22:24)+cr*(nx?11:12); if(sel==cr) rect(pg,10,y-2,220,11,6); ws_len_text(cz,v,sizeof v); scpy(b,"CHEAT: ANY SIZE  "); scat(b,v); text(pg,16,y,b,C_RED,1); }
                 pcw_wallet(v,sizeof v); scpy(b,"GOLD "); scat(b,v); text(pg,12,118,b,C_GOLD,1); scpy(b,"KILLS "); ncat(b,pcw_kills); if(pcw_kills){ wn_text(pcw_best,v,sizeof v,0); scat(b,"  BEST PAY "); scat(b,v); } text(pg,12,126,b,C_GREY,1);
                 { static const char *const en[4]={"OFF","RARE","NORMAL","COMMON"}; scpy(b,"L: WARSHIP ENCOUNTERS: "); scat(b,en[pcm_enc_mode&3]); text(pg,12,108,b,C_CYAN,1); }
-                ui_foot(pg, cheat_row && sel==nc ? "LEFT/RIGHT: SIZE (L/R: X10)  A: SEE IT" : "A: SEE IT  SEL: ARMOURY  START: MISSIONS","B: BACK"); } }
+                ui_foot(pg, cheat_row && sel==cr ? "LEFT/RIGHT: SIZE (L/R: X10)  A: SEE IT" : "A: SEE IT  SEL: ARMOURY  START: MISSIONS","B: BACK"); } }
         vsync(); read_keys();
         if(HIT(K_B)){ if(detail){ detail=0; dirty=1; continue; } break; }
-        if(!detail){ int n=nc+(cheat_row?1:0);
+        if(!detail){ int n=cr+(cheat_row?1:0);
             if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; sfx(7); } if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; sfx(7); }
-            if(sel==nc){ int st = HELD(K_L)||HELD(K_R) ? 100 : 10; if(HIT(K_LEFT)){ cz-=st; if(cz<WS_ZMIN) cz=WS_ZMIN; dirty=1; } if(HIT(K_RIGHT)){ cz+=st; if(cz>WS_ZMAX) cz=WS_ZMAX; dirty=1; } }
-            if(HIT(K_SEL)){ pcw_armoury(pg); dirty=1; } if(HIT(K_START)){ pc_ms_board(pg,MP_SPACE); dirty=1; } if(HIT(K_L) && sel!=nc){ pcm_enc_mode=(pcm_enc_mode+1)&3; dirty=1; sfx(7); }
-            if(HIT(K_A)){ if(sel==nc) pcw_make(&cs[NC],0x5EED0000u+(u32)cz,cz,1); detail=1; dirty=1; sfx(2); } }
-        else if(HIT(K_START)){ const WsCraft *c = sel<nc ? &cs[sel] : &cs[NC]; pcw_req_seed=c->seed; pcw_req_z=c->z; pcw_req_cheat=c->cheat; pcw_req=1; go=1; sfx(6); break; }
+            if(sel==cr && cheat_row){ int st = HELD(K_L)||HELD(K_R) ? 100 : 10; if(HIT(K_LEFT)){ cz-=st; if(cz<WS_ZMIN) cz=WS_ZMIN; dirty=1; } if(HIT(K_RIGHT)){ cz+=st; if(cz>WS_ZMAX) cz=WS_ZMAX; dirty=1; } }
+            if(HIT(K_SEL)){ pcw_armoury(pg); dirty=1; } if(HIT(K_START)){ pc_ms_board(pg,MP_SPACE); dirty=1; } if(HIT(K_L) && !(sel==cr && cheat_row)){ pcm_enc_mode=(pcm_enc_mode+1)&3; dirty=1; sfx(7); }
+            if(HIT(K_A)){ if(sel==cr && cheat_row) pcw_make(&cs[NC],0x5EED0000u+(u32)cz,cz,1); detail=1; dirty=1; sfx(2); } }
+        else if(HIT(K_START)){ if(sel>=nc && sel<cr){ pcw_req_mode=xk[sel-nc]; go=1; sfx(6); break; }
+            const WsCraft *c = sel<nc ? &cs[sel] : &cs[NC]; pcw_req_seed=c->seed; pcw_req_z=c->z; pcw_req_cheat=c->cheat; pcw_req=1; go=1; sfx(6); break; }
     }
     free(cs); wait_release(); pc_ws_slot_save(cur_slot); return go;
 }
+// walk an allied craft (mode 1) or your own hangar deck (mode 2): the same interior view and walking as a boarding, no fight, nothing to blow up
+static void pc_ws_board(void);
+static void pcw_walk(int mode){
+    WsFight *sv=malloc(sizeof(WsFight)); *sv=pcw_f; WsCraft c; if(mode==1){ if(!pcm_ally_craft(&c)){ free(sv); return; } } else pcw_own_craft(&c);
+    WsShip sh=pcw_ship(); wf_start(&pcw_f,&c,&sh); pcw_f.layers_up=0; pcw_f.lay_hp=wn(0); pcw_mode=mode; pcw_board_ok=0;
+    pc_ws_board();
+    pcw_mode=0; pcw_f=*sv; free(sv); }
 static void pc_ws_lab(volatile u16 *pg){ int go=pcw_list(pg,scene==2); if(go && scene!=2){ ui_bg(pg,0,160); ui_panel(pg,30,60,180,30); text(pg,40,68,"TAKE OFF: IT WAITS IN ORBIT",C_GOLD,1); text(pg,40,78,"(LAUNCH FROM YOUR SHIP)",C_GREY,1); wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)&&!HIT(K_B)); wait_release(); } }
 static int pc_ws_scan(void){                                   // in space: hold R and press SELECT
     if(pc_ws_on || in_lair) return 0;
     volatile u16 *pg=(volatile u16*)(GBAA(0x06000000) + (page_back?0:0xA000)); REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?0:(1<<4));
     for(int i=0;i<256;i++) BG_PAL[i]=bg_pal[i];
     int go=pcw_list(pg,1); build_space_palette();
-    if(go){ pcw_req=0; pcw_engage(pcw_req_seed,pcw_req_z,pcw_req_cheat); }
+    if(go && pcw_req_mode){ int m=pcw_req_mode; pcw_req_mode=0; pcw_walk(m); }
+    else if(go){ pcw_req=0; pcw_engage(pcw_req_seed,pcw_req_z,pcw_req_cheat); }
     return 1;
 }
 static void pc_ws_space_enter(void){                          // a craft engaged from a planet waits in orbit; far out, now and then one drifts by
@@ -437,8 +498,8 @@ static void pc_vt_tick(void){
 // ---- the test hook: BUGSTAR_WS_TEST=fight,Z,SEED | inside,Z,SEED | kill,Z,SEED | lab  (after BUGSTAR_WS_AT frames in the game)
 static void pc_ws_autotest(void){
     pc_vt_tick();
-    static int done=0; if(in_game) pcm_tick(); if(done || !in_game) return; const char *e=getenv("BUGSTAR_WS_TEST"); if(!e){ done=1; return; }
-    const char *at=getenv("BUGSTAR_WS_AT"); if(frames < (at?atoi(at):0) || scene!=0) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
+    static int done=0; if(in_game){ pcm_tick(); pcm_mp_tick(); } if(done || !in_game) return; const char *e=getenv("BUGSTAR_WS_TEST"); if(!e){ done=1; return; }
+    const char *at=getenv("BUGSTAR_WS_AT"); const char *sy=getenv("BUGSTAR_MS_SYNC"); if(frames < (at?atoi(at):0) || (scene!=0 && !(scene==2 && !strncmp(e,"mscan",5))) || (sy && pc_frames()<atol(sy))) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
     char mode[16]={0}; int z=WS_ZREF; unsigned seed=0; sscanf(e,"%15[a-z],%d,%u",mode,&z,&seed);
     if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen lab returned\n"); return; }
     { const char *g=getenv("BUGSTAR_AFT_GOLD"); if(g) gold=atoll(g); }
@@ -451,8 +512,9 @@ static void pc_ws_autotest(void){
     if(!strcmp(mode,"colony")){ sim_ship_colony((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen colony returned\n"); return; }
     if(!strcmp(mode,"giant")){ pc_giant_hub((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen giant returned\n"); return; }
     if(!strcmp(mode,"missions")){ pc_ms_board((volatile u16*)GBAA(0x06000000),MP_STATION); fprintf(stderr,"screen missions returned\n"); return; }
+    if(!strncmp(mode,"mplay",5)||!strcmp(mode,"mscan")||!strcmp(mode,"maccept")||!strcmp(mode,"mresume")||!strcmp(mode,"mcheck")||!strcmp(mode,"mexpire")){ pcm_mp_start(mode); return; }
     if(!strcmp(mode,"hell")){ pcm_enc_mode=3; pcm_test_hell(); return; }               // (aftermath test) the surface burns now
-    if(!strcmp(mode,"dun")){ pcm_enc_mode=3; enter_dungeon_flag=1; return; }                            // (aftermath test) go through the door; BUGSTAR_AFT_DUN=seal|inv|board says what happens down there
+    if(!strcmp(mode,"dun")){ pcm_enc_mode=3; { const char *d=getenv("BUGSTAR_AFT_DEPTH"); if(d && atoi(d)>0) portal_depth=atoi(d); } enter_dungeon_flag=1; return; }                            // (aftermath test) go through the door; BUGSTAR_AFT_DUN=seal|inv|board says what happens down there
     if(!strcmp(mode,"encounter")){ pcm_enc_mode=3; pcm_clk=3599; pcm_enc_force=1; return; }
     if(!strcmp(mode,"save")){ pc_ws_slot_save(cur_slot); return; }
     { const char *lv=getenv("BUGSTAR_WS_LEVEL"); if(lv) level=atoll(lv); }
