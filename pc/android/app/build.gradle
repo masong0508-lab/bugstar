@@ -24,13 +24,18 @@ android {
         applicationId 'org.bugstar.app'
         minSdk 24
         targetSdk 34          // 34, not newer: no forced edge-to-edge layout for SDL2 to trip over
-        versionCode 35
-        versionName '0.35'
+        versionCode 36
+        versionName '0.36'
         ndk { abiFilters 'arm64-v8a' }
         externalNativeBuild { ndkBuild { arguments 'APP_PLATFORM=android-24' } }
     }
 
     externalNativeBuild { ndkBuild { path 'jni/Android.mk' } }
+
+    // the file is named bugstar-<version>-debug.apk (not app-debug.apk), so a download says which build it is
+    applicationVariants.all { variant ->
+        variant.outputs.all { outputFileName = "bugstar-${variant.versionName}-debug.apk" }
+    }
 
     sourceSets {
         main {

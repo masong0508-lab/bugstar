@@ -116,6 +116,14 @@ public class BugstarActivity extends SDLActivity {
         } catch (Throwable t) { }
     }
 
+    // patch 46: low memory. Android tells the app when the phone is short of memory; the game answers by emptying its sprite cache and writing the save (pc_sdl.c, SDL_APP_LOWMEMORY).
+    // onLowMemory is SDL's own (it sends the same event); onTrimMemory is the newer, earlier warning: RUNNING_LOW (10) and worse, or the app hidden (20) and worse.
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level >= 10) { try { SDLActivity.nativeLowMemory(); } catch (Throwable t) { } }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();

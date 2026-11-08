@@ -55,13 +55,21 @@ jobs:
       - name: Prepare the game sources (writes pc/gen/sources.txt + cflags.txt for jni/src/Android.mk)
         run: PC_ANDROID_PREP=1 bash pc/build.sh
 
+      # patch 46: the app must contain the newer features (the procedural sprite generators, the first-start tutorial page); a source list that lost them would still build
+      - name: Check the game sources include the features
+        run: |
+          n=$(grep -c 'pc_sprgen' pc/gen/sources.txt); echo "sprite generator sources: $n"; [ "$n" -ge 10 ] || { echo "::error::the sprite generators are not in the Android source list"; exit 1; }
+          for f in warship/ws.c laws/laws.c sim/sim_core.c giant/giant.c; do grep -qx "$f" pc/gen/sources.txt || { echo "::error::$f is missing from the Android source list"; exit 1; }; done
+          grep -q 'DPC_ANDROID' pc/gen/cflags.txt || { echo "::error::cflags.txt has no -DPC_ANDROID"; exit 1; }
+
       - name: Build the debug APK
         run: gradle -p pc/android assembleDebug --stacktrace
 
       # patch 35: things that make an APK install fine and then die on launch, found here instead of on the phone
       - name: Check the APK (libraries inside, SDL_main exported, page alignment)
         run: |
-          APK=pc/android/app/build/outputs/apk/debug/app-debug.apk
+          APK=$(ls pc/android/app/build/outputs/apk/debug/bugstar-*-debug.apk | head -1)
+          echo "APK: $APK"
           ls -l "$APK"
           unzip -l "$APK" | grep -E 'lib/arm64-v8a/' || true
           for l in libSDL2.so libmain.so; do
@@ -71,6 +79,8 @@ jobs:
           echo "libmain.so: $SO"
           NM=$(find "$ANDROID_NDK_HOME" "$ANDROID_NDK_LATEST_HOME" -name llvm-nm 2>/dev/null | head -1)
           RE=$(find "$ANDROID_NDK_HOME" "$ANDROID_NDK_LATEST_HOME" -name llvm-readelf 2>/dev/null | head -1)
+          grep -aq 'HOW TO PLAY' "$SO" && echo "feature check: the tutorial page is in libmain.so" || { echo "::error::libmain.so lacks the HOW TO PLAY page"; exit 1; }
+          grep -aq 'low memory: sprite cache emptied' "$SO" && echo "feature check: the low-memory handler is in libmain.so" || { echo "::error::libmain.so lacks the low-memory handler"; exit 1; }
           if [ -n "$NM" ] && [ -n "$SO" ]; then
             "$NM" -D --defined-only "$SO" | grep -E ' SDL_main$' || { echo "::error::libmain.so does not export SDL_main: SDL cannot start the game"; exit 1; }
           else echo "::warning::llvm-nm not found, SDL_main export not checked"; fi
@@ -82,7 +92,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bugstar-apk
-          path: pc/android/app/build/outputs/apk/debug/app-debug.apk
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-debug.apk
 
       # the unstripped libmain.so: the crash report lists "pc <offset> libmain.so", and with this file  llvm-addr2line -f -e libmain.so <offset>  names the line
       - name: Keep the symbols

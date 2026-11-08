@@ -14,6 +14,7 @@ static int fails;
 #define CHECK(c, ...) do { if(!(c)){ fprintf(stderr, "sprgen: FAIL " __VA_ARGS__); fprintf(stderr, "\n"); fails++; } } while(0)
 static int seen(const SgImg *im){ int n = 0; for(int i = 0; i < im->w * im->h; i++) if((im->px[i] >> 24) >= 16) n++; return n; }     // pixels with any real colour (soft glows count)
 static uint64_t hash_of(int gen, uint32_t id, int size){ const SgGen *g = &sg_gens[gen]; int w = size, h = size * g->h / g->w; SgImg *im = sg_img_new(w, h); g->draw(im, id); uint64_t x = sg_img_hash(im); sg_img_free(im); return x; }
+static void disc_make(SgImg *im, void *a){ struct { SgPlanetSpec sp; float r; } *g = a; sg_planet(im, &g->sp, g->r, -0.5f, 0.4f, 0.7f); }
 int main(void){
     int total_pairs = 0, near_pairs = 0;
     for(int gi = 0; gi < sg_ngens; gi++){ const SgGen *g = &sg_gens[gi]; int W = 64, H = 64 * g->h / g->w; enum { N = 40 };
@@ -57,6 +58,15 @@ int main(void){
     { SgPlanetSpec p; sg_planet_spec(&p, 12345, 0); SgImg *a = sg_img_new(96, 96), *b = sg_img_new(96, 96), *c = sg_img_new(96, 96); sg_planet(a, &p, 0.1f, -0.6f, 0.4f, 0.7f); sg_planet(b, &p, 0.1f, -0.6f, 0.4f, 0.7f); sg_planet(c, &p, 0.35f, -0.6f, 0.4f, 0.7f);
       CHECK(sg_img_hash(a) == sg_img_hash(b), "planet: not the same twice"); CHECK(sg_img_diff(a, c) > 3, "planet: a turn does not change it"); sg_img_free(a); sg_img_free(b); sg_img_free(c);
       for(int cls = 0; cls < SG_NCLS; cls++){ sg_planet_spec(&p, 777 + cls, cls); SgImg *x = sg_img_new(64, 64); sg_planet(x, &p, 0.2f, 0.5f, 0.3f, 0.8f); CHECK(sg_img_cover(x) > 800, "planet class %d draws almost nothing", cls); sg_img_free(x); } }
+    // the byte cap: a 256 px picture is 256 KB, so with a 2 MB cap only a few stay; trim gives everything back
+    { sg_cache_clear(); sg_cache_set_cap_mb(2); for(int i = 0; i < 40; i++) (void)sg_cached(0, (uint32_t)i * 13u, 256); CHECK(sg_cache_bytes() <= (2L << 20), "cache cap: %ld bytes held (cap 2 MB)", sg_cache_bytes());
+      int live; sg_cache_stats(0, 0, &live); CHECK(live >= 2 && live <= 8, "cache cap: %d big pictures live", live); sg_cache_trim(); CHECK(sg_cache_bytes() == 0, "cache trim: %ld bytes left", sg_cache_bytes()); sg_cache_set_cap_mb(32); sg_cache_clear(); }
+    // the background worker: a queued picture arrives, and equals the one made at once (also a planet disc, whose surface map the worker makes in its own small cache)
+    { CHECK(sg_async_start(), "async: no worker"); sg_cache_clear(); const SgImg *a = 0; for(long i = 0; i < 20000000L && !a; i++) a = sg_cached_try(5, 77, 64);
+      CHECK(a != 0, "async: the picture never came"); if(a){ CHECK(sg_img_hash(a) == hash_of(5, 77, 64), "async: the picture differs from the one made at once"); }
+      for(int k = 0; k < 8; k++) (void)sg_cached_try(k, 3u + (uint32_t)k, 48); const SgImg *b = sg_cached(3, 3u + 3u, 48); CHECK(b != 0 && sg_img_hash(b) == hash_of(3, 6, 48), "async: waiting for a queued picture gave another one");
+      SgPlanetSpec p; sg_planet_spec(&p, 4242, -1); SgImg *ref = sg_img_new(80, 80); sg_planet(ref, &p, 0.3f, -0.5f, 0.4f, 0.7f); const SgImg *d = 0; struct { SgPlanetSpec sp; float r; } arg = { p, 0.3f };
+      for(long i = 0; i < 20000000L && !d; i++) d = sg_cached_ex_try(0xABCDu, 80, 80, disc_make, &arg, (int)sizeof arg); CHECK(d && sg_img_hash(d) == sg_img_hash(ref), "async: a planet disc made by the worker differs"); sg_img_free(ref); sg_cache_clear(); }
     sg_cache_clear();
     printf("sprgen: %d generators, %d pairs compared, %d look alike, %d failures\n", sg_ngens, total_pairs, near_pairs, fails);
     return fails ? 1 : 0;

@@ -11,6 +11,7 @@
 #include <time.h>
 #include "pc_plat.h"
 extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;
+extern void sg_cache_trim(void);      // pc_sprgen.c: give the sprite cache back (Android low memory)
 
 extern int pc_vid3d, pc_ships_mode, pc_armada_n, pc_quality; extern int pc_q_auto(void), pc_q_cur(void);
 int pc_motor(void);                 // pc_hw.c: is the (cartridge) rumble motor on right now
@@ -111,7 +112,7 @@ static long g_stop_after=-1; static const char *g_wav_path; static FILE *g_wav; 
 static int g_paused_focus, g_fast;
 static volatile int g_bg, g_app_save, g_app_resume, g_pace_reset;      // app in the background / save wanted / back in the foreground / start a fresh clock
 
-static int g_first_run;
+static int g_first_run, g_size_arg, g_help_first, g_quiet;
 static void say_toast_ms(const char *s,int ms){ snprintf(toast,sizeof toast,"%s",s); toast_until=SDL_GetTicks64()+ms; }
 static void say_toast(const char *s){ say_toast_ms(s,2000); }
 
@@ -244,9 +245,9 @@ static void text_at(int x, int y, const char *s, uint32_t col){
 static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(ren,(col>>16)&255,(col>>8)&255,col&255,a); SDL_Rect r={x,y,w,h}; SDL_RenderFillRect(ren,&r); }
 
 // ---- the options screen
-enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_COUNT };
+enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_REBIND=1000 };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
@@ -266,7 +267,7 @@ static void menu_build(Item *it, int *n){
     switch(menu_page){
     case P_MAIN: it[k++]=(Item){0,"RESUME",0,0,0,0,0,A_RESUME}; it[k++]=(Item){0,"VIDEO",0,0,0,0,0,A_VIDEO}; it[k++]=(Item){0,"AUDIO",0,0,0,0,0,A_AUDIO}; it[k++]=(Item){0,"ACCESSIBILITY AND MOUSE",0,0,0,0,0,A_ACCESS};
         it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; TL_MENU_ITEM it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
-        it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
+        it[k++]=(Item){0,"HOW TO PLAY",0,0,0,0,0,A_HELP}; it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
     case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,3,1,v3names,0}; it[k++]=(Item){1,"QUALITY",&C.quality,0,3,1,qnames,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
         it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
         it[k++]=(Item){1,"PAUSE WHEN UNFOCUSED",&C.pause_unfocus,0,1,1,onoff,0}; it[k++]=(Item){0,"WINDOW SIZE: NEXT",0,0,0,0,0,A_WINSIZE}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
@@ -274,7 +275,7 @@ static void menu_build(Item *it, int *n){
     case P_AUDIO: it[k++]=(Item){2,"VOLUME",&C.volume,0,100,5,0,0}; it[k++]=(Item){1,"MUTE",&C.mute,0,1,1,onoff,0}; it[k++]=(Item){1,"RUMBLE (GAMEPAD)",&C.rumble,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_CONTROLS: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+i}; it[k++]=(Item){0,"RESET KEYS",0,0,0,0,0,A_RESETKEYS}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_PAD: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+i}; it[k++]=(Item){2,"STICK DEAD ZONE",&C.deadzone,5,80,5,0,0}; it[k++]=(Item){0,"RESET PAD",0,0,0,0,0,A_RESETPAD}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
-    case P_ABOUT: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
+    case P_ABOUT: case P_HELP: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     }
     *n=k;
 }
@@ -293,7 +294,7 @@ static void menu_do(int act){
     switch(act){
     case A_RESUME: menu_open=0; cfg_save(); break;
     case A_VIDEO: menu_page=P_VIDEO; menu_sel=0; break; case A_AUDIO: menu_page=P_AUDIO; menu_sel=0; break; case A_ACCESS: menu_page=P_ACCESS; menu_sel=0; break;
-    case A_CONTROLS: menu_page=P_CONTROLS; menu_sel=0; break; case A_PAD: menu_page=P_PAD; menu_sel=0; break; case A_ABOUT: menu_page=P_ABOUT; menu_sel=0; break;
+    case A_CONTROLS: menu_page=P_CONTROLS; menu_sel=0; break; case A_PAD: menu_page=P_PAD; menu_sel=0; break; case A_ABOUT: menu_page=P_ABOUT; menu_sel=0; break; case A_HELP: menu_page=P_HELP; menu_sel=0; break;
     case A_MAINBACK: menu_page=P_MAIN; menu_sel=0; cfg_save(); break;
     TL_MENU_CASE case A_QUIT: cfg_save(); pc_quit_now(); break;
     case A_FULLSCREEN: apply_video(); break;
@@ -306,6 +307,13 @@ static void menu_do(int act){
     case A_REBIND: menu_wait = menu_page==P_PAD ? 2 : 1; menu_sel=idx; break;
     }
 }
+static const char *const *help_lines(void){       // (each line fits the narrowest panel: 32 letters)
+#ifdef PC_ANDROID
+    static const char *const ln[]={"THE ON-SCREEN PAD IS THE GBA PAD:","DPAD, A, B, L, R, START, SELECT","MENU (TOP) OPENS THESE OPTIONS","","OPTIONS > TOUCH PAD LAYOUT MOVES","AND RESIZES THE BUTTONS","","OPTIONS > VIDEO > 3D VIEWS:","CLASSIC IS THE LIGHTEST - NATIVE","AND ULTRA NEED A FAST PHONE","","THE GAME SAVES BY ITSELF.",0};
+#else
+    static const char *const ln[]={"ARROWS OR WASD: MOVE AND TURN","X OR SPACE: A     Z OR K: B","Q: L      E: R","ENTER: START   BACKSPACE: SELECT","","ESC: THIS MENU   F11: FULLSCREEN","F12: SCREENSHOT   F3: FPS","","VIDEO > 3D VIEWS: CLASSIC IS THE","GBA LOOK - NATIVE AND ULTRA ARE","SHARP AT ANY WINDOW SIZE","A GAMEPAD WORKS: BACK+START=MENU",0};
+#endif
+    return ln; }
 static int m_x0, m_pw, m_lh, m_y1, m_n, m_gs;
 static void menu_draw(void){
 #ifdef PC_ANDROID
@@ -313,12 +321,16 @@ static void menu_draw(void){
 #endif
     int dw=dw_, dh=dh_; gs_=(dw<dh?dw:dh)/140;      /* patch 39: portrait sizes the text by the narrow side */ if(gs_<2) gs_=2; if(gs_>12) gs_=12; if(C.textsize){ int g2=(dw<dh?dw:dh)/(C.textsize==1?100:75); if(g2>gs_) gs_=g2; if(gs_>16) gs_=16; }
     int hc=C.contrast; rect_fill(0,0,dw,dh,0x000000,hc?200:150);
-    static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY"};
+    static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY"};
     Item it[24]; int n; menu_build(it,&n);
-    int lh=9*gs_, pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"); if(pw>dw-4*gs_) pw=dw-4*gs_; int ph=(n+3)*lh+2*gs_*4; if(menu_page==P_ABOUT) ph=14*lh;
+    int lh=9*gs_, pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"); if(pw>dw-4*gs_) pw=dw-4*gs_; int ph=(n+3)*lh+2*gs_*4; if(menu_page==P_ABOUT) ph=14*lh; if(menu_page==P_HELP){ int nl=0; while(help_lines()[nl]) nl++; ph=(nl+5)*lh; }
     int x0=(dw-pw)/2, y0=(dh-ph)/2; rect_fill(x0,y0,pw,ph,hc?0x000000:0x0B1030,hc?255:235); rect_fill(x0,y0,pw,gs_,0xFFD23C,255); rect_fill(x0,y0+ph-gs_,pw,gs_,0xFFD23C,255);
     text_at(x0+4*gs_,y0+3*gs_,titles[menu_page],0xFFD23C);
-    int y=y0+3*gs_+lh*3/2; m_x0=x0; m_pw=pw; m_lh=lh; m_y1=y; m_n=menu_page==P_ABOUT?0:n; m_gs=gs_;
+    int y=y0+3*gs_+lh*3/2; m_x0=x0; m_pw=pw; m_lh=lh; m_y1=y; m_n=(menu_page==P_ABOUT||menu_page==P_HELP)?0:n; m_gs=gs_;
+    if(menu_page==P_HELP){       // the short tutorial: shown by itself on the first start, and under HOW TO PLAY in the options
+        char b[200]; const char *const *ln=help_lines();
+        for(int i=0;ln[i];i++){ snprintf(b,sizeof b,"%s",ln[i]); int maxc=(pw-8*gs_)/(4*gs_); if((int)strlen(b)>maxc){ b[maxc]=0; } text_at(x0+4*gs_,y,b,0xCCD4FF); y+=lh; }
+        y+=lh/2; text_at(x0+4*gs_,y,"> OK (ENTER OR A)",0xFFFFFF); return; }
     if(menu_page==P_ABOUT){
         char b[1200]; const char *ln[]={"BUGSTAR FOR PC","THE GAME'S OWN GBA CODE RUNS AS NATIVE PC CODE.","","SAVES AND SETTINGS ARE IN:",g_pref,"","KEYS: F11 FULLSCREEN   F12 SCREENSHOT","F3 FPS   ESC THIS MENU","GAMEPAD: BACK+START OPENS THE MENU",0};
         for(int i=0;ln[i];i++){ snprintf(b,sizeof b,"%s",ln[i]); int maxc=(pw-8*gs_)/(4*gs_); if((int)strlen(b)>maxc){ b[maxc]=0; } text_at(x0+4*gs_,y,b,0xCCD4FF); y+=lh; }
@@ -343,6 +355,7 @@ static void menu_key(SDL_Keycode k, SDL_Scancode sc){
     if(menu_wait==1){ if(sc==SDL_SCANCODE_ESCAPE){ menu_wait=0; return; } Item it[24]; int n; menu_build(it,&n); int bi=it[menu_sel].action-A_REBIND; if(bi>=0&&bi<NB){ C.kb[bi][menu_slot]=sc; } menu_wait=0; menu_slot=0; return; }
     if(menu_wait==2) return;
     Item it[24]; int n; menu_build(it,&n);
+    if(g_help_first && menu_page==P_HELP && (k==SDLK_ESCAPE||k==SDLK_F1||k==SDLK_RETURN||k==SDLK_KP_ENTER||k==SDLK_SPACE)){ g_help_first=0; menu_open=0; cfg_save(); return; }      // the first-start tutorial: any of these starts the game
     if(k==SDLK_ESCAPE||k==SDLK_F1){ if(menu_page==P_MAIN){ menu_open=0; cfg_save(); } else { menu_page=P_MAIN; menu_sel=0; cfg_save(); } return; }
     if(k==SDLK_UP){ menu_sel=(menu_sel+n-1)%n; return; } if(k==SDLK_DOWN){ menu_sel=(menu_sel+1)%n; return; }
     Item *s=&it[menu_sel];
@@ -624,6 +637,7 @@ static void pump_events(void){
         case SDL_DISPLAYEVENT: g_pace_reset=1; break;                 // the monitor changed (refresh rate, plugged in/out): the game's clock does not care
         case SDL_APP_WILLENTERBACKGROUND: case SDL_APP_DIDENTERBACKGROUND: case SDL_APP_TERMINATING: app_background(); break;
         case SDL_APP_WILLENTERFOREGROUND: case SDL_APP_DIDENTERFOREGROUND: app_foreground(); break;
+        case SDL_APP_LOWMEMORY: sg_cache_trim(); pc_save_flush(0); fprintf(stderr,"low memory: sprite cache emptied\n"); break;      // Android: the system asks apps to give memory back (BugstarActivity.onTrimMemory sends this too)
         case SDL_WINDOWEVENT:
             g_pace_reset=1;      // any window event (move, size, minimise, restore, focus): the next frame starts a fresh clock, no burst of catch-up frames
             if(e.window.event==SDL_WINDOWEVENT_SIZE_CHANGED && !C.fullscreen && !(SDL_GetWindowFlags(win)&SDL_WINDOW_MINIMIZED)){ int w,h; SDL_GetWindowSize(win,&w,&h); if(w>=240&&h>=160){ C.win_w=w; C.win_h=h; } }
@@ -637,7 +651,7 @@ static void pump_events(void){
                 if(e.type==SDL_MOUSEMOTION){ if(hit>=0) menu_sel=hit; }
                 else if(e.type==SDL_MOUSEBUTTONDOWN){
                     if(e.button.button==SDL_BUTTON_RIGHT) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
-                    else if(e.button.button==SDL_BUTTON_LEFT){ if(menu_page==P_ABOUT) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
+                    else if(e.button.button==SDL_BUTTON_LEFT){ if(menu_page==P_ABOUT||menu_page==P_HELP) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
                         else if(hit>=0){ menu_sel=hit; Item it[24]; int n; menu_build(it,&n); Item *q=&it[hit];
                             if(q->kind==0) menu_key(SDLK_RETURN,0); else if(ex < m_x0+m_pw/2 + (q->kind==2?0:m_pw/4)) menu_key(SDLK_LEFT,0); else menu_key(SDLK_RIGHT,0); } } }
                 break; }
@@ -783,7 +797,9 @@ void plat_frame(void){
     }
     if(was_paused || g_pace_reset || g_app_resume){ g_pace_reset=0; g_app_resume=0; g_due=now_ticks(); }      // a pause, a window move/resize/minimise, a monitor change: a fresh clock, no catch-up burst
     { const char *mp=getenv("BUGSTAR_MENU"); if(mp && fr==30 && !menu_open){ open_menu(); menu_page=atoi(mp); if(getenv("BUGSTAR_MENUSEL")) menu_sel=atoi(getenv("BUGSTAR_MENUSEL")); } }   // (test hook: open the options screen on a page)
-    if(g_first_run && fr==45){ g_first_run=0; say_toast_ms("ARROWS/WASD MOVE  X/SPACE=A  Z/K=B  ENTER=START  ESC=OPTIONS",9000); }
+    if(g_first_run && fr==45){ g_first_run=0;
+        if(g_quiet) say_toast_ms("ARROWS/WASD MOVE  X/SPACE=A  Z/K=B  ENTER=START  ESC=OPTIONS",9000);
+        else { open_menu(); menu_page=P_HELP; menu_sel=0; g_help_first=1; } }
     uint16_t k; fakepad_frame(fr);
     if(pc_script_keys(&k)) pc_set_keys(k); else { k=read_keys(); pc_set_keys(k); if(getenv("BUGSTAR_FAKEPAD") && k) fprintf(stderr,"fakepad: frame %ld keys=%03x pad=%s\n",fr,k,pad?SDL_GameControllerName(pad):"none"); }
     g_lastkeys=k; rumble_frame();
@@ -839,7 +855,7 @@ int plat_open(int argc, char **argv){
     int force_fs=-1; const char *drv=NULL;
     for(int i=1;i<argc;i++){
         if(!strcmp(argv[i],"--fullscreen")) force_fs=1; else if(!strcmp(argv[i],"--windowed")) force_fs=0;
-        else if(!strcmp(argv[i],"--size")&&i+2<argc){ C.win_w=atoi(argv[i+1]); C.win_h=atoi(argv[i+2]); i+=2; }
+        else if(!strcmp(argv[i],"--size")&&i+2<argc){ C.win_w=atoi(argv[i+1]); C.win_h=atoi(argv[i+2]); i+=2; g_size_arg=1; }
         else if(!strcmp(argv[i],"--scale-mode")&&i+1<argc) C.scale_mode=atoi(argv[++i])?SM_SMOOTH:SM_CRISP;
         else if(!strcmp(argv[i],"--no-vsync")) C.vsync=0; else if(!strcmp(argv[i],"--no-audio")) g_no_audio=1;
         else if(!strcmp(argv[i],"--video-driver")&&i+1<argc) drv=argv[++i];
@@ -860,6 +876,9 @@ int plat_open(int argc, char **argv){
 #endif
     if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){
         if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){ fprintf(stderr,"SDL: %s\n",SDL_GetError()); return 1; } g_no_audio=1; }
+    { const char *vd=SDL_GetCurrentVideoDriver(); g_quiet=getenv("BUGSTAR_EVENTS")||getenv("BUGSTAR_MENU")||getenv("BUGSTAR_FAKEPAD")||getenv("BUGSTAR_NOHELP")||g_stop_after>=0||(vd&&(!strcmp(vd,"dummy")||!strcmp(vd,"offscreen"))); }      // a test run (events, a dummy screen, a fixed length): no tutorial, the window keeps the size it was given
+    if(g_first_run && !g_quiet && !g_size_arg && !C.fullscreen){      // first start: the biggest of the usual sizes (3x to 8x the GBA's 240 x 160) that fits the desktop with room for the title bar
+        SDL_Rect r; if(SDL_GetDisplayUsableBounds(0,&r)==0 && r.w>0){ static const int sz[][2]={{720,480},{960,640},{1200,800},{1440,960},{1920,1280}}; int best=0; for(int i=0;i<5;i++) if(sz[i][0]<=r.w*9/10 && sz[i][1]<=r.h*88/100) best=i; C.win_w=sz[best][0]; C.win_h=sz[best][1]; } }
     win=SDL_CreateWindow("BUGSTAR   ARROWS/WASD MOVE   X/SPACE=A   Z/K=B   ENTER=START   ESC=OPTIONS",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,C.win_w,C.win_h,SDL_WINDOW_RESIZABLE|SDL_WINDOW_ALLOW_HIGHDPI|(C.fullscreen?SDL_WINDOW_FULLSCREEN_DESKTOP:0));
     if(!win){ fprintf(stderr,"window: %s\n",SDL_GetError()); return 1; }
     SDL_SetWindowMinimumSize(win,240,160);

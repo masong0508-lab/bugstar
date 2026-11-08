@@ -104,8 +104,8 @@ echo '#include "../pc_ships.inc"' >> main.c
 # --- the native dungeon (pc/pc_dnative.inc): after the game's own 3D pass, a second picture at the window's size; the compositor shows it where the page is unchanged
 sed -i 's|^    if(terr_on) render_terrace(pg,dirx,diry,plx,ply); else render_view(pg,dirx,diry,plx,ply);|&\n    pc_dn_native(pg,dirx,diry,plx,ply);|' main.c
 sed -i 's|^    for(int i=0;i<NPROJ;i++){ Proj \*p=&proj\[i\]; if(!p->alive) continue;|    pc_dn_sprites_done(pg);\n&|' main.c
-sed -i 's|^    spr_bar(pg,o,scx,top,wcols,tY);|    pc_dn_spr(art,aw,ah,x0,wcols,top,bot,tY,tint,dark,o->flash);\n&|' dungeon.inc
-sed -i '1i static void pc_dn_spr(const unsigned char *art, int aw, int ah, int x0, int wcols, int top, int bot, int tY, int tint, int dark, int flash);' dungeon.inc
+sed -i 's|^    spr_bar(pg,o,scx,top,wcols,tY);|    pc_dn_spr(art,aw,ah,x0,wcols,top,bot,tY,tint,dark,o->flash,o);\n&|' dungeon.inc
+sed -i '1i static void pc_dn_spr(const unsigned char *art, int aw, int ah, int x0, int wcols, int top, int bot, int tY, int tint, int dark, int flash, const void *o);' dungeon.inc
 sed -i '1i static void pc_dn_sprites_done(volatile unsigned short *pg);' main.c
 sed -i '1i static void pc_dn_native(volatile unsigned short *pg, int dirx, int diry, int plx, int ply);' main.c
 sed -i 's|^static int terr_roll(int bossfl,int mz_last,int mboss){ *|&\n    if(pc_vt_terr()) return 1;|' dungeon.inc terrace.inc
@@ -138,7 +138,7 @@ sed -i 's|^        s32 sc=8+m\*4; |        if(pc_sg_obj(o,order[k],sx,sy,f,zc)) 
 grep -c "pc_sg_obj(o,order\[k\],sx,sy,f,zc)" planet.inc | grep -qx 1 || { echo "build: sprgen object hook did not apply"; exit 1; }
 sed -i 's|if(r<2) r=2; planet_fill(pg,px,py,r,Lx,Ly,Lz,(pl_rot+(frames>>3))&127,pl_noise+pl_tex);|pc_sg_mark(); &|' space.inc
 grep -c "pc_sg_mark(); if(r<2)" space.inc | grep -qx 1 || { echo "build: sprgen planet mark did not apply"; exit 1; }
-sed -i '1i static int pc_sg_obj(const void *vo, int idx, int sx, int sy, int f, int zc); static void pc_sg_mark(void), pc_sg_space_planet(unsigned int *buf, int W, int hn, double sx, double sy, void *vc, int ci);' main.c
+sed -i '1i static int pc_sg_obj(const void *vo, int idx, int sx, int sy, int f, int zc); static void pc_sg_mark(void), pc_sg_space_planet(unsigned int *buf, int W, int hn, double sx, double sy, void *vc, int ci), pc_sg_space_back(unsigned int *buf, int W, int hn, double sx, double sy); static const void *pc_sg_dn_crit(const void *vo, int side, int *flip);' main.c
 echo '#include "../pc_sprgen_game.inc"' >> main.c
 echo '#include "../pc_laws.inc"' >> main.c
 # --- the kart race NATIVE extras (pc/pc_kartnat.inc, pc_kartnat_r.inc in pc_hw.c): banking, hills, soft shadows. The game's own dithered shadows are skipped when the window picture makes its own.

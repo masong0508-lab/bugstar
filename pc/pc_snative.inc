@@ -52,6 +52,7 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
     int hn=(128*H+159)/160; if(hn>H) hn=H; static unsigned long bcap; unsigned long need=(unsigned long)W*hn; if(need>bcap){ free(pc_sn.buf); free(pc_sn.msk); free(pc_sn.ibuf); pc_sn.buf=malloc(need*4); pc_sn.ibuf=malloc(need*4); pc_sn.msk=malloc(need); bcap=need; } memset(pc_sn.msk,0,need); memset(pc_sn.ibuf,0,need*4);
     for(int i=0;i<256;i++){ u16 c=BG_PAL[i]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; sn_pal[i]=(uint32_t)(r<<3|r>>2)<<16|(uint32_t)(g<<3|g>>2)<<8|(uint32_t)(b<<3|b>>2); }
     double sx=W/240.0, sy=H/160.0; uint32_t *buf=pc_sn.buf; uint32_t bk=sn_pal[0]; for(size_t i=0;i<need;i++) buf[i]=bk;
+    pc_sg_space_back(buf,W,hn,sx,sy);          // nebulae and a far galaxy behind the stars (pc_sprgen_game.inc)
     // stars: exact sub-pixel places, soft dots, streaks when fast
     for(int i=0;i<96;i++){ s16 *d=&star_dir[i*3]; s32 z=(d[0]*bf[0]+d[1]*bf[1]+d[2]*bf[2])>>14; if(z<2000) continue;
         s32 x=(d[0]*br[0]+d[1]*br[1]+d[2]*br[2])>>14, y=(d[0]*bu[0]+d[1]*bu[1]+d[2]*bu[2])>>14;

@@ -560,7 +560,8 @@ static void dc_rows(void *vc,int lo,int hi){
             uint32_t v=src[Xi], sv=sp?sp[Xi]:0;
             if(sv){ if(c->pgb[gi]!=c->sn2[gi]) continue; if(sv&0x80000000u) v=sv; else if(v&0x20000000u) continue; }         // a thing drawn natively: its own pixel (or the world behind it), while the page still holds what the sprite pass left
             else if(c->pgb[gi]!=c->sn1[gi] || (v&0x20000000u)) continue;
-            uint32_t a=pal[v&255], b=pal[(v>>8)&255]; int fr=(v>>16)&255; uint32_t rb=((a&0xFF00FF)*(256-fr)+(b&0xFF00FF)*fr)>>8, g=((a&0xFF00)*(256-fr)+(b&0xFF00)*fr)>>8; uint32_t col=(rb&0xFF00FF)|(g&0xFF00);
+            uint32_t col; if((v&0x90000000u)==0x90000000u) col=v&0xFFFFFF;          // a generated creature's own colour (pc_dnative.inc)
+            else { uint32_t a=pal[v&255], b=pal[(v>>8)&255]; int fr=(v>>16)&255; uint32_t rb=((a&0xFF00FF)*(256-fr)+(b&0xFF00FF)*fr)>>8, g=((a&0xFF00)*(256-fr)+(b&0xFF00)*fr)>>8; col=(rb&0xFF00FF)|(g&0xFF00); }
             if(fadeop==2){ uint32_t r2=(col>>16&255)+((255-(col>>16&255))*ev>>4), g2=(col>>8&255)+((255-(col>>8&255))*ev>>4), b2=(col&255)+((255-(col&255))*ev>>4); col=r2<<16|g2<<8|b2; }
             else if(fadeop==3){ uint32_t r2=(col>>16&255)*(16-ev)>>4, g2=(col>>8&255)*(16-ev)>>4, b2=(col&255)*(16-ev)>>4; col=r2<<16|g2<<8|b2; }
             out[q]=col; nv_op[q]|=0x40; } }

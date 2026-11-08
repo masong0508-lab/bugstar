@@ -72,10 +72,12 @@ static void dn_rows(void *vc, int lo, int hi){
 }
 // ---- the things (monsters, items, lamps, crates) at the window's size. draw_sprite (the game's) hands each one over after it has drawn it; they go in the sprite layer,
 // with the game's own art, tint, darkness and hit flash, one texel per window pixel, hidden behind the wall columns exactly as the game hides them.
-typedef struct { const u8 *art; int aw, ah, x0, wcols, top, bot, tint, dark, flash; s32 tY; } DnSpr;
+typedef struct { int w, h; uint32_t *px; } DnImg;          // (the layout of SgImg in pc_sprgen.h)
+typedef struct { const u8 *art; int aw, ah, x0, wcols, top, bot, tint, dark, flash; s32 tY; const DnImg *im; int side, flip; } DnSpr;
 static DnSpr dn_sp[96]; static int dn_nsp, dn_active; static int *dn_perp; static int dn_perp_cap;
-static void pc_dn_spr(const u8 *art, int aw, int ah, int x0, int wcols, int top, int bot, s32 tY, int tint, int dark, int flash){
-    if(!dn_active || dn_nsp>=96) return; DnSpr *s=&dn_sp[dn_nsp++]; s->art=art; s->aw=aw; s->ah=ah; s->x0=x0; s->wcols=wcols; s->top=top; s->bot=bot; s->tY=tY; s->tint=tint; s->dark=dark; s->flash=flash; }
+static void pc_dn_spr(const u8 *art, int aw, int ah, int x0, int wcols, int top, int bot, s32 tY, int tint, int dark, int flash, const void *obj){
+    if(!dn_active || dn_nsp>=96) return; DnSpr *s=&dn_sp[dn_nsp++]; s->art=art; s->aw=aw; s->ah=ah; s->x0=x0; s->wcols=wcols; s->top=top; s->bot=bot; s->tY=tY; s->tint=tint; s->dark=dark; s->flash=flash;
+    s->im=0; s->side=0; s->flip=0; { int side=(int)((bot-top)*(pc_dn_h/160.0)*1.12); if(side>=12){ s->side=side; s->im=(const DnImg*)pc_sg_dn_crit(obj,side,&s->flip); } } }      // a monster: a generated creature of this size, or 0 (the game's own art)
 static void pc_dn_sprites_done(volatile u16 *pg){
     if(!dn_active) return; int W=pc_dn_w, H=pc_dn_h, Y0=(18*H+159)/160; double sy=H/160.0, sx=W/240.0; int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0;
     memcpy(pc_dn_snap2[t],(const void*)pg,240*160);
@@ -84,6 +86,17 @@ static void pc_dn_sprites_done(volatile u16 *pg){
     for(int n=0;n<dn_nsp;n++){ const DnSpr *s=&dn_sp[n];
         int XA=(int)(s->x0*2*sx), XB=(int)((s->x0+s->wcols)*2*sx+0.999); int YA=(int)(s->top*sy), YB=(int)(s->bot*sy+0.999);
         if(XA<0) XA=0; if(XB>W) XB=W; if(YA<Y0) YA=Y0; if(YB>H) YB=H;
+        if(s->im){ const DnImg *im=s->im; int side=s->side; double cx=(s->x0+s->wcols*0.5)*2*sx, ix0=cx-side*0.5, iy0=s->bot*sy-side*0.95;       // the creature stands in the sprite's box: centred, feet on its bottom edge
+            int xa=(int)ix0, xb=(int)(ix0+side)+1, ya=(int)iy0, yb=(int)(iy0+side)+1; if(xa<XA) XA=xa; if(xb>XB) XB=xb; if(ya<YA) YA=ya; if(yb>YB) YB=yb; if(XA<0) XA=0; if(XB>W) XB=W; if(YA<Y0) YA=Y0; if(YB>H) YB=H;
+            static const int dm[6]={256,200,150,100,100,100}; int dk=s->dark; int dmul = dk<0 ? 256+(-dk)*32 : dm[dk>5?5:dk]; int fl=s->flash;
+            for(int Y=YA;Y<YB;Y++){ uint32_t *row=pc_dn_spl+(unsigned long)(Y-Y0)*W; int v=(int)((Y+0.5-iy0)*im->h/side);
+                for(int X=XA;X<XB;X++){ if(terr_on ? ((s->tY>>13)>(s32)dn_tz[(unsigned long)(Y-Y0)*W+X]+1) : s->tY>=dn_perp[X]){ if(!row[X]) row[X]=0x40000000u; continue; }
+                    int u=(int)((X+0.5-ix0)*im->w/side); uint32_t p=0; if(u>=0&&u<im->w&&v>=0&&v<im->h) p=im->px[(unsigned long)v*im->w+(s->flip?im->w-1-u:u)];
+                    if((p>>24)<110){ if(!row[X]) row[X]=0x40000000u; continue; }
+                    int r=(p>>16&255)*dmul>>8, g=(p>>8&255)*dmul>>8, b=(p&255)*dmul>>8;
+                    if(fl){ if(fl>=5){ r=g=b=255; } else { r+=70; g+=70; b+=70; } } if(r>255) r=255; if(g>255) g=255; if(b>255) b=255;
+                    row[X]=0x90000000u|(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; } }
+            continue; }
         double iu=s->aw/((double)s->wcols*2*sx), iv=s->ah/((double)(s->bot-s->top)*sy); double u0=(s->x0*2*sx), v0=(s->top*sy);
         u8 lut[256]; for(int i=0;i<256;i++){ int ix=i; if(ix==1) ix=s->tint; else if(s->dark && ix>=64 && ix<216){ int l=(ix&7)-s->dark; ix=(ix&~7)+(l<0?0:l>7?7:l); }
             if(s->flash){ if(s->flash>=5) ix=R_UP+7; else if(ix>=64 && ix<216){ int l=(ix&7)+3; ix=(ix&~7)+(l>7?7:l); } } lut[i]=(u8)ix; }

@@ -262,24 +262,87 @@ void sg_blit(uint32_t *dst, int dw, int dh, const SgImg *src, const SgBlit *b){
             dst[(size_t)Y * dw + X] = (uint32_t)(int)(dr + 0.5f) << 16 | (uint32_t)(int)(dg + 0.5f) << 8 | (uint32_t)(int)(db + 0.5f); } }
 }
 
-// ---------------------------------------------------------------- the cache (least recently used)
+// ---------------------------------------------------------------- the cache (least recently used, with a size cap in bytes)
+// Two limits: at most SG_CACHE pictures and at most cap_ bytes of pixels (default 32 MB, 12 MB on Android; BUGSTAR_SG_CACHE_MB or sg_cache_set_cap_mb change it).
+// Only the thread that plays (the "main" thread) touches this list. The optional worker thread (sg_async_start) makes pictures for it in the background:
+// a picture that is not there yet is queued and the caller gets 0 (draw the game's own sprite, or nothing, for a frame or two); finished pictures are put into the list
+// by the main thread at its next cache call, so no picture is ever freed while somebody draws it. Without the worker (the default, and always in the tests unless
+// BUGSTAR_SG_ASYNC=1) every call makes its picture at once, exactly as before.
 #define SG_CACHE 192
-typedef struct { uint64_t key; SgImg *im; uint32_t stamp; } SgEnt;
-static SgEnt cache_[SG_CACHE]; static uint32_t cache_clock; static int c_hits, c_miss;
-static const SgImg *cache_get(uint64_t key, int w, int h, void (*mk)(SgImg *, void *), void *arg){
-    cache_clock++; int free_i = -1, old_i = 0; uint32_t old_s = 0xFFFFFFFFu;
-    for(int i = 0; i < SG_CACHE; i++){ if(cache_[i].im && cache_[i].key == key){ cache_[i].stamp = cache_clock; c_hits++; return cache_[i].im; }
-        if(!cache_[i].im){ if(free_i < 0) free_i = i; } else if(cache_[i].stamp < old_s){ old_s = cache_[i].stamp; old_i = i; } }
-    int slot = free_i >= 0 ? free_i : old_i; sg_img_free(cache_[slot].im); cache_[slot].im = 0; c_miss++;
-    SgImg *im = sg_img_new(w, h); if(!im) return 0; cache_[slot].im = im; cache_[slot].key = key; cache_[slot].stamp = cache_clock;      // (taken before it is drawn: a generator may use the cache itself, e.g. a planet's surface, and must not be given this slot)
-    mk(im, arg); return im;
+#define SG_QMAX 256
+#ifdef PC_ANDROID
+#define SG_CAP_DEFAULT_MB 12
+#else
+#define SG_CAP_DEFAULT_MB 32
+#endif
+#include <pthread.h>
+typedef struct { uint64_t key; SgImg *im; uint32_t stamp; int pending; } SgEnt;
+static SgEnt cache_[SG_CACHE]; static uint32_t cache_clock; static int c_hits, c_miss, c_dropped; static long c_bytes, c_cap = -1, c_peak;
+typedef struct { uint64_t key; int w, h; void (*make)(SgImg *, void *); unsigned char arg[128]; int argn; SgImg *out; int state; } SgJob;      // state 0 free, 1 queued, 2 running, 3 done
+static SgJob q_[SG_QMAX]; static pthread_mutex_t q_m = PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t q_c = PTHREAD_COND_INITIALIZER, q_d = PTHREAD_COND_INITIALIZER; static int q_on, q_run, q_gen_ms_max; static int q_nq;
+static __thread int tls_worker;
+static long cap_bytes(void){ if(c_cap < 0){ long mb = SG_CAP_DEFAULT_MB; const char *e = getenv("BUGSTAR_SG_CACHE_MB"); if(e && atoi(e) > 0) mb = atoi(e); c_cap = mb << 20; } return c_cap; }
+void sg_cache_set_cap_mb(int mb){ c_cap = (long)(mb < 1 ? 1 : mb) << 20; }
+long sg_cache_bytes(void){ return c_bytes; }
+long sg_cache_peak(void){ return c_peak; }
+static void ent_drop(SgEnt *e){ if(e->im){ c_bytes -= (long)e->im->w * e->im->h * 4; sg_img_free(e->im); e->im = 0; } e->pending = 0; e->key = 0; }
+static void evict_to(long limit, const SgEnt *keep){        // drop the least recently used finished pictures until the pixels fit
+    while(c_bytes > limit){ int old = -1; uint32_t os = 0xFFFFFFFFu; for(int i = 0; i < SG_CACHE; i++) if(cache_[i].im && !cache_[i].pending && &cache_[i] != keep && cache_[i].stamp < os){ os = cache_[i].stamp; old = i; }
+        if(old < 0) break; ent_drop(&cache_[old]); c_dropped++; }
+}
+void sg_cache_trim(void){ evict_to(0, 0); }                                               // low memory: give everything back that is not being made
+// a finished background picture goes into its slot (the slot was reserved when the job was queued)
+static void pump(void){
+    if(!q_on) return; pthread_mutex_lock(&q_m);
+    for(int j = 0; j < SG_QMAX; j++){ SgJob *b = &q_[j]; if(b->state != 3) continue; SgEnt *e = 0;
+        for(int i = 0; i < SG_CACHE; i++) if(cache_[i].pending && cache_[i].key == b->key){ e = &cache_[i]; break; }
+        if(e && b->out){ e->im = b->out; e->pending = 0; c_bytes += (long)b->w * b->h * 4; if(c_bytes > c_peak) c_peak = c_bytes; } else { if(b->out) sg_img_free(b->out); if(e) ent_drop(e); }
+        b->out = 0; b->state = 0; q_nq--; }
+    pthread_mutex_unlock(&q_m);
+    evict_to(cap_bytes(), 0);
+}
+static void *worker(void *a){ (void)a; tls_worker = 1;
+    for(;;){ pthread_mutex_lock(&q_m); SgJob *b = 0; for(;;){ int best = -1; for(int j = 0; j < SG_QMAX; j++) if(q_[j].state == 1){ best = j; break; } if(best >= 0){ b = &q_[best]; break; } pthread_cond_wait(&q_c, &q_m); }
+        b->state = 2; pthread_mutex_unlock(&q_m);
+        SgImg *im = sg_img_new(b->w, b->h); if(im) b->make(im, b->argn ? (void *)b->arg : 0);
+        pthread_mutex_lock(&q_m); b->out = im; b->state = 3; pthread_cond_broadcast(&q_d); pthread_mutex_unlock(&q_m); }
+    return 0; }
+int sg_async_start(void){
+    if(q_on) return 1; const char *e = getenv("BUGSTAR_SG_ASYNC"); if(e && e[0] == '0') return 0;
+    pthread_attr_t at; pthread_t th; pthread_attr_init(&at); pthread_attr_setstacksize(&at, 8u << 20); pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+    if(pthread_create(&th, &at, worker, 0)) return 0; q_on = 1; return 1; }
+int sg_async_on(void){ return q_on; }
+void sg_async_stats(int *queued, int *dropped){ if(queued) *queued = q_nq; if(dropped) *dropped = c_dropped; }
+// the worker's own little cache (a planet's surface map is made by sg_planet through sg_cached_ex, and must not touch the main list)
+typedef struct { uint64_t key; SgImg *im; uint32_t stamp; } WEnt;
+static __thread WEnt wc_[6]; static __thread uint32_t wc_clock;
+static const SgImg *wcache_get(uint64_t key, int w, int h, void (*mk)(SgImg *, void *), void *arg){
+    int old = 0; wc_clock++; for(int i = 0; i < 6; i++){ if(wc_[i].im && wc_[i].key == key){ wc_[i].stamp = wc_clock; return wc_[i].im; } if(!wc_[i].im || wc_[i].stamp < wc_[old].stamp) old = i; }
+    sg_img_free(wc_[old].im); wc_[old].im = sg_img_new(w, h); if(!wc_[old].im) return 0; wc_[old].key = key; wc_[old].stamp = wc_clock; mk(wc_[old].im, arg); return wc_[old].im; }
+// look a picture up; make = how to draw it, arg/argn = its numbers (copied for the worker, at most 128 bytes). try_async: queue it instead of waiting for it
+static const SgImg *cache_get(uint64_t key, int w, int h, void (*mk)(SgImg *, void *), void *arg, int argn, int try_async){
+    if(tls_worker) return wcache_get(key, w, h, mk, arg);
+    pump(); cache_clock++; int free_i = -1, old_i = -1; uint32_t old_s = 0xFFFFFFFFu;
+    for(int i = 0; i < SG_CACHE; i++){ if(cache_[i].key == key && (cache_[i].im || cache_[i].pending)){ cache_[i].stamp = cache_clock; if(cache_[i].im){ c_hits++; return cache_[i].im; } if(try_async) return 0; while(cache_[i].pending && q_on){ pthread_mutex_lock(&q_m); int any = 0; for(int j = 0; j < SG_QMAX; j++) if(q_[j].state == 3) any = 1; if(!any) pthread_cond_wait(&q_d, &q_m); pthread_mutex_unlock(&q_m); pump(); } return cache_[i].im; }
+        if(!cache_[i].im && !cache_[i].pending){ if(free_i < 0) free_i = i; } else if(cache_[i].im && cache_[i].stamp < old_s){ old_s = cache_[i].stamp; old_i = i; } }
+    int slot = free_i >= 0 ? free_i : old_i; if(slot < 0) return 0; ent_drop(&cache_[slot]); c_miss++;
+    long need = (long)w * h * 4; if(!try_async || !q_on || argn > 128 || argn < 0){
+        evict_to(cap_bytes() - need, 0);
+        SgImg *im = sg_img_new(w, h); if(!im) return 0; cache_[slot].im = im; cache_[slot].key = key; cache_[slot].stamp = cache_clock; c_bytes += need; if(c_bytes > c_peak) c_peak = c_bytes;      // (taken before it is drawn: a generator may use the cache itself and must not be given this slot)
+        mk(im, arg); return im; }
+    pthread_mutex_lock(&q_m); int jb = -1; for(int j = 0; j < SG_QMAX; j++) if(q_[j].state == 0){ jb = j; break; }
+    if(jb < 0){ pthread_mutex_unlock(&q_m); return 0; }                                    // the queue is full: ask again next frame
+    SgJob *b = &q_[jb]; b->key = key; b->w = w; b->h = h; b->make = mk; b->argn = argn; if(argn) memcpy(b->arg, arg, (size_t)argn); b->out = 0; b->state = 1; q_nq++; pthread_cond_signal(&q_c); pthread_mutex_unlock(&q_m);
+    cache_[slot].key = key; cache_[slot].pending = 1; cache_[slot].stamp = cache_clock; return 0;
 }
 typedef struct { int gen; uint32_t id; } MkArg;
 static void mk_gen(SgImg *im, void *a){ MkArg *m = (MkArg *)a; sg_gens[m->gen].draw(im, m->id); }
-const SgImg *sg_cached(int gen, uint32_t id, int size){
-    if(gen < 0 || gen >= sg_ngens) return 0; if(size < 8) size = 8; if(size > 256) size = 256; const SgGen *g = &sg_gens[gen]; int w = size, h = (int)((long)size * g->h / g->w); if(h < 1) h = 1;
-    uint64_t key = sg_m64(((uint64_t)gen << 40) ^ ((uint64_t)id << 8) ^ (uint64_t)size) | 1; MkArg a = { gen, id }; return cache_get(key, w, h, mk_gen, &a);
-}
-const SgImg *sg_cached_ex(uint32_t key, int w, int h, void (*make)(SgImg *, void *), void *arg){ return cache_get(sg_m64(0xE000000000000000ull ^ ((uint64_t)key << 12) ^ (uint64_t)w * 7919u ^ (uint64_t)h), w, h, make, arg); }
+static uint64_t gen_key(int gen, uint32_t id, int size){ return sg_m64(((uint64_t)gen << 40) ^ ((uint64_t)id << 8) ^ (uint64_t)size) | 1; }
+static int gen_dims(int gen, int size, int *w, int *h){ if(gen < 0 || gen >= sg_ngens) return 0; if(size < 8) size = 8; if(size > 256) size = 256; const SgGen *g = &sg_gens[gen]; *w = size; *h = (int)((long)size * g->h / g->w); if(*h < 1) *h = 1; return 1; }
+const SgImg *sg_cached(int gen, uint32_t id, int size){ int w, h; if(!gen_dims(gen, size, &w, &h)) return 0; MkArg a = { gen, id }; return cache_get(gen_key(gen, id, w), w, h, mk_gen, &a, 0, 0); }
+const SgImg *sg_cached_try(int gen, uint32_t id, int size){ int w, h; if(!gen_dims(gen, size, &w, &h)) return 0; MkArg a = { gen, id }; return cache_get(gen_key(gen, id, w), w, h, mk_gen, &a, (int)sizeof a, 1); }
+static uint64_t ex_key(uint32_t key, int w, int h){ return sg_m64(0xE000000000000000ull ^ ((uint64_t)key << 12) ^ (uint64_t)w * 7919u ^ (uint64_t)h); }
+const SgImg *sg_cached_ex(uint32_t key, int w, int h, void (*make)(SgImg *, void *), void *arg){ return cache_get(ex_key(key, w, h), w, h, make, arg, 0, 0); }
+const SgImg *sg_cached_ex_try(uint32_t key, int w, int h, void (*make)(SgImg *, void *), const void *arg, int argn){ return cache_get(ex_key(key, w, h), w, h, make, (void *)arg, argn, 1); }
 void sg_cache_stats(int *hits, int *misses, int *live){ if(hits) *hits = c_hits; if(misses) *misses = c_miss; if(live){ int n = 0; for(int i = 0; i < SG_CACHE; i++) if(cache_[i].im) n++; *live = n; } }
-void sg_cache_clear(void){ for(int i = 0; i < SG_CACHE; i++){ sg_img_free(cache_[i].im); cache_[i].im = 0; } c_hits = c_miss = 0; }
+void sg_cache_clear(void){ pump(); for(int i = 0; i < SG_CACHE; i++) if(!cache_[i].pending) ent_drop(&cache_[i]); c_hits = c_miss = c_dropped = 0; c_peak = c_bytes; }

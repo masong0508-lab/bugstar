@@ -91,4 +91,12 @@ const SgImg *sg_cached(int gen, uint32_t id, int size);
 const SgImg *sg_cached_ex(uint32_t key, int w, int h, void (*make)(SgImg *, void *), void *arg);   // the same for a caller's own generator (key must be unique for what make draws)
 void sg_cache_stats(int *hits, int *misses, int *live);
 void sg_cache_clear(void);
+// The cache is capped in bytes as well (32 MB, 12 MB on Android; BUGSTAR_SG_CACHE_MB). sg_cache_trim gives back everything that is not being made (low memory).
+void sg_cache_set_cap_mb(int mb); long sg_cache_bytes(void); long sg_cache_peak(void); void sg_cache_trim(void);
+// Background making: sg_async_start starts one worker thread (0 if it cannot, or BUGSTAR_SG_ASYNC=0). After that the *_try calls never wait for a generator: a picture that is not
+// ready is queued and the call returns 0 (draw something else for a frame or two); the next call that finds it finished returns it. Without the worker they make it at once, like sg_cached.
+// arg is copied (at most 128 bytes) and make runs on the worker, so it must only read arg and the generators' own tables.
+int  sg_async_start(void); int sg_async_on(void); void sg_async_stats(int *queued, int *dropped);
+const SgImg *sg_cached_try(int gen, uint32_t id, int size);
+const SgImg *sg_cached_ex_try(uint32_t key, int w, int h, void (*make)(SgImg *, void *), const void *arg, int argn);
 #endif
