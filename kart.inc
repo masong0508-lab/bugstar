@@ -78,7 +78,7 @@ EW static KTrack kt;                               // the track being raced
 EW static u8 kpx[KP_MAX], kpy[KP_MAX];             // its path, in texels
 EW static u8 kmmx[KMM_N], kmmy[KMM_N];             // the same, shrunk to the minimap
 EW static u16 kgate_pi[KG_MAX];                    // where each gate falls on the path
-static int krev=0, kpaint_rev=0;                                  // krev 1: the circuit is driven the other way round (set before kart_go; the path is built backwards)
+static int krev=0, kpaint_rev=0, kfar=0;                                  // krev 1: the circuit is driven the other way round (set before kart_go; the path is built backwards)
 #define KGX(i) (kt.gx[krev ? (kt.n-(i))%kt.n : (i)])                  // gate i in the order you drive them (backwards, from the first gate, when you race the other way)
 #define KGY(i) (kt.gy[krev ? (kt.n-(i))%kt.n : (i)])
 static u16 kter_avg=0;                                              // the land round the road, for the outer kerb's soft edge
@@ -190,7 +190,7 @@ static void kt_build(void){
             knp++; } }
     kt_len=(tot+1)/2;
     kpaint_rev=krev;
-    if(!kt.laps){ int l=(360+kt_len/2)/(kt_len?kt_len:1); kt.laps = l<2?2:l>5?5:l; }
+    if(!kt.laps){ int l=(600+kt_len/2)/(kt_len?kt_len:1); kt.laps = l<3?3:l>6?6:l; }
 }
 static s32 kp_cx(int i){ return ((s32)kpx[i]<<15)+(1<<14); }       // a path point, in 16.16 cells
 static s32 kp_cy(int i){ return ((s32)kpy[i]<<15)+(1<<14); }
@@ -520,7 +520,7 @@ static void kart_go(int riders, int grid_me, int keep, int repaint){
     for(int r=0;r<nrc;r++){ if(r<8) kart_build(r); rc[r].la=0; }
     if(!kr_mode) kfp_keep=cam_fp; kr_mode=1; kcam_apply();
     ppx=rc[0].x; ppy=rc[0].y; khd=heading=rc[0].hd; heading_rays(); cam_h=ground_h(ppx,ppy)+cam_up();
-    kv=0; kdrift=kcharge=kboost_t=kturn=kstall=0; kart_boost=100; k_rocket=0; k_wrong=0; k_lapmsg=0; kair=0; ktrick=0; kwet=0; kalt=ground_h(ppx,ppy); k_lap_t0=0; k_best_lap=0;
+    kfar=0; kv=0; kdrift=kcharge=kboost_t=kturn=kstall=0; kart_boost=100; k_rocket=0; k_wrong=0; k_lapmsg=0; kair=0; ktrick=0; kwet=0; kalt=ground_h(ppx,ppy); k_lap_t0=0; k_best_lap=0;
     kr_mode=1; ks_state=KS_COUNT; k_count=250; k_clock=0; k_finished=0; k_end_t=0; race_on=0; kart_on=1; k_elim_t=0; k_elim_out=0;
     music(6); msg_timer=0; p_last=vbl_count; }
 static void m7_end(void);
@@ -906,6 +906,8 @@ static void kart_tick(int n){
             rc[0].nextg=(u8)((g+1)%kt.n); }
         else { int gp=kgate_pi[g], ahead=(rc[0].pi-gp+knp)%knp; if(rc[0].lap>0 && ahead>8 && ahead<knp/3 && (frames&63)==0){ char b[32]; scpy(b,"MISSED A GATE! GO BACK"); show_msg(b); } }
         int dirn=kp_dir(rc[0].pi), off=((khd-dirn+512)&1023)-512; if(off<0) off=-off; if(off>380 && kv>K_VBASE/4) k_wrong+=n; else k_wrong=0; if(k_wrong>50 && (frames&31)==0) show_msg("WRONG WAY!"); }
+    if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int pi=rc[0].pi, fx=kwrap8(kpx[pi]-((ppx>>15)&255)), fy=kwrap8(kpy[pi]-((ppy>>15)&255)); if(fx*fx+fy*fy>26*26) kfar+=n; else kfar=0;
+        if(kfar>130){ kfar=0; kart_splash(); show_msg("OFF THE TRACK! BACK YOU GO"); } }   // far from the road for a couple of seconds (a long way round the land): put back on it
     if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)]; if(kv<K_VBASE/12 && !kroad(c) && !kstall) kstuck+=n; else kstuck=0; if(kstuck>150){ kstuck=0; kart_splash(); show_msg("STUCK? BACK ON THE ROAD!"); } }   // wedged off the road: a kind fish helps
     for(int r=1;r<nrc;r++) kai(r,n);
     kitems_tick(n); kbump(); kplaces(); kw_elim_tick(n);
