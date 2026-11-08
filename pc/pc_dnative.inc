@@ -6,7 +6,7 @@
 // sparks and text stay as the game drew them. 3D VIEWS = CLASSIC (or no window size known) turns it off. Water and polished-floor reflections: not done.
 #include <stdlib.h>
 extern int pc_nat_w, pc_nat_h, pc_dn_w, pc_dn_h, pc_ships_mode; extern uint32_t *pc_dn_buf, *pc_dn_spl; extern int pc_dn_spl_on; extern uint8_t pc_dn_snap2[2][240*160]; extern long pc_dn_f[2]; extern uint8_t pc_dn_snap[2][240*160];
-extern double pc_now_ms(void); extern void pc_vrec(int,double); extern void pc_dn_report(double,int,int); extern int pc_v3d_classic(void); extern long pc_frames(void);
+extern double pc_now_ms(void); extern void pc_vrec(int,double,double); extern double pc_cpu_ms(void); extern void pc_dn_report(double,int,int); extern int pc_v3d_classic(void); extern long pc_frames(void);
 typedef void (*PcParFn)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn fn, void *ctx);
 typedef struct { double top, bot, inv; int yt, yb; const u16 *rp; int L, edge, perp, mm; u16 hv[48]; u8 nt[48]; } DnCol;
 typedef struct { int W, H, Y0; double sy, hzf; DnCol *col; double *rxc, *ryc; uint32_t *buf; s32 px, py; } DnCtx;
@@ -164,7 +164,7 @@ static void dn_terr_cols(void *vc,int lo,int hi){
 }
 static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply){
     int W=pc_nat_w, H=pc_nat_h; dn_active=0; dn_nsp=0; pc_dn_spl_on=0; if(W<=240 || H<=160 || pc_v3d_classic()) { pc_dn_w=0; return; }
-    double a0=pc_now_ms();
+    double a0=pc_now_ms(), c0=pc_cpu_ms();
     static DnCol *col; static double *rxc, *ryc; static int cap; static unsigned long bcap;
     if(W>cap){ free(col); free(rxc); free(ryc); free(dn_perp); col=malloc(sizeof(DnCol)*W); rxc=malloc(sizeof(double)*W); ryc=malloc(sizeof(double)*W); dn_perp=malloc(sizeof(int)*W); cap=W; }
     int Y0=(18*H+159)/160; unsigned long need=(unsigned long)W*(H-Y0); if(need>bcap){ free(pc_dn_buf); pc_dn_buf=malloc(need*4); bcap=need; }
@@ -172,7 +172,7 @@ static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply)
         TrCtx tc; tc.W=W; tc.H=H; tc.Y0=Y0; tc.sy=H/160.0; tc.dirx=dirx; tc.diry=diry; tc.plx=plx; tc.ply=ply; tc.E=t_eye; tc.CH=(s32)TR_CEIL*TU; tc.buf=pc_dn_buf; tc.tz=dn_tz;
         { s32 c0=camtab[0], c1=camtab[119]; tc.rxl=dirx+(double)(((long long)plx*c0)>>16); tc.rxr=dirx+(double)(((long long)plx*c1)>>16); }
         pc_par_chunk(W,16,dn_terr_cols,&tc);
-        int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_dn_w=W; pc_dn_h=H; memcpy(pc_dn_snap[t],(const void*)pg,240*160); pc_dn_f[t]=pc_frames(); dn_active=1; pc_vrec(0,pc_now_ms()-a0); return; }
+        int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_dn_w=W; pc_dn_h=H; memcpy(pc_dn_snap[t],(const void*)pg,240*160); pc_dn_f[t]=pc_frames(); dn_active=1; pc_vrec(0,pc_now_ms()-a0,pc_cpu_ms()-c0); return; }
     double sy=H/160.0; const double hzf=hz;
     for(int X=0;X<W;X++){ double gc=(X+0.5)*120.0/W-0.5; s32 cam=camtab[0]+(s32)((double)(camtab[119]-camtab[0])*gc/119.0);
         s32 rx=dirx+(s32)(((long long)plx*cam)>>16), ry=diry+(s32)(((long long)ply*cam)>>16); rxc[X]=rx; ryc[X]=ry;
@@ -200,5 +200,5 @@ static void pc_dn_native(volatile u16 *pg, s32 dirx, s32 diry, s32 plx, s32 ply)
     int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_dn_w=W; pc_dn_h=H; memcpy(pc_dn_snap[t],(const void*)pg,240*160); pc_dn_f[t]=pc_frames(); dn_active=1;      // (the page as render_view left it: what changes after is the game's own)
     { double ms=pc_now_ms()-a0; static double ema; static int n, env=-1; if(env<0){ const char *e=getenv("PC_DN_LOW"); env=e?atoi(e):0; }
       ema = n++ ? ema*0.92+ms*0.08 : ms; if(n>30){ if(!dn_low && ema>12.0) dn_low=1; else if(dn_low && ema<3.5) dn_low=0; } if(env) dn_low=env>0;      // slow machine: drop to the cheap mode (an average above 12 ms a frame); back when it is cheap again
-      pc_vrec(0,ms); pc_dn_report(ms,W,H); }
+      pc_vrec(0,ms,pc_cpu_ms()-c0); pc_dn_report(ms,W,H); }
 }

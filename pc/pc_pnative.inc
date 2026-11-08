@@ -7,7 +7,7 @@ typedef struct { int w,h,ya; uint32_t *buf; long f[2]; uint8_t snap[2][240*160];
 extern PcNat pc_pn; extern int pc_nat_w, pc_nat_h; extern int pc_v3d_classic(void); extern long pc_frames(void);
 typedef void (*PcParFn2)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn2 fn, void *ctx);
 static int pn_active; static float *pn_top, *pn_ca, *pn_cb;           // per window column: the first terrain row (sky above it), and how much terrain covers the row above it (ca) and that row itself (cb)
-extern double pc_now_ms(void); extern void pc_vrec(int,double); extern int pc_v3d_ultra(void); static void pc_pn_off(void){ pn_active=0; }
+extern double pc_now_ms(void); extern void pc_vrec(int,double,double); extern double pc_cpu_ms(void); extern int pc_v3d_ultra(void); static void pc_pn_off(void){ pn_active=0; }
 static uint32_t pn_tex[256*256], pn_pal[256];
 typedef struct { int W,H,ya; double sy; double camx,camy; int ck,csh,fk; s32 csub; uint32_t *buf; } PnCtx;
 static inline uint32_t pn_mix(uint32_t a, uint32_t b, int f){ uint32_t rb=((a&0xFF00FF)*(256-f)+(b&0xFF00FF)*f)>>8, g=((a&0xFF00)*(256-f)+(b&0xFF00)*f)>>8; return (rb&0xFF00FF)|(g&0xFF00); }
@@ -136,7 +136,7 @@ static void pn_cols(void *vc, int lo, int hi){
 }
 static void pc_pn_native(volatile u16 *pg){
     pn_roadT = city_r ? city_tech() : 0; pn_L = city_r ? hmap[city_cy*TW+city_cx] : 0;
-    int W=pc_nat_w, H=pc_nat_h; pn_active=0; pc_pn.w=0; if(W<=240 || H<=160 || pc_v3d_classic()) return; double pn_t0=pc_now_ms();
+    int W=pc_nat_w, H=pc_nat_h; pn_active=0; pc_pn.w=0; if(W<=240 || H<=160 || pc_v3d_classic()) return; double pn_t0=pc_now_ms(), pn_c0=pc_cpu_ms();
     static int cap; static unsigned long bcap; if(W>cap){ free(pn_top); free(pn_ca); free(pn_cb); pn_top=malloc(sizeof(float)*W); pn_ca=malloc(sizeof(float)*W); pn_cb=malloc(sizeof(float)*W); cap=W; }
     int ya=(18*H+159)/160; unsigned long need=(unsigned long)W*(H-ya); if(need>bcap){ free(pc_pn.buf); pc_pn.buf=malloc(need*4); bcap=need; }
     for(int i=0;i<256;i++){ u16 c=BG_PAL[i]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; pn_pal[i]=(uint32_t)(r<<3|r>>2)<<16|(uint32_t)(g<<3|g>>2)<<8|(uint32_t)(b<<3|b>>2); }
@@ -149,7 +149,7 @@ static void pc_pn_native(volatile u16 *pg){
       for(int k=0;k<88;k++){ double x=__builtin_fmod(k*83+17-hor+536*4,536); if(x>=120) continue; int y=19+((k*31+5)%50); double px=(x*2+1)*sx, py=(y+0.5)*sy; double tw=0.7+0.3*__builtin_cos(frames*0.1+k*2.3); uint32_t sc=pn_pal[((frames>>3)+k)&7?4:5]; double rad=0.55*sy+0.5;
           for(int Y=(int)(py-rad-1);Y<=(int)(py+rad+1);Y++){ if(Y<ya||Y>=H) continue; for(int X=(int)(px-rad-1);X<=(int)(px+rad+1);X++){ if(X<0||X>=W||Y>=pn_top[X]-0.5f) continue;
               double d=__builtin_sqrt((X+0.5-px)*(X+0.5-px)+(Y+0.5-py)*(Y+0.5-py)); double a=(1.0-d/(rad+0.5))*tw; if(a<=0) continue; uint32_t *p=&pc_pn.buf[(size_t)(Y-ya)*W+X]; *p=pn_mix(*p,sc,(int)(a*255)); } } } }
-    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_pn.w=W; pc_pn.h=H; pc_pn.ya=ya; memcpy(pc_pn.snap[t],(const void*)pg,240*160); pc_pn.f[t]=pc_frames(); pn_active=1; pc_vrec(1,pc_now_ms()-pn_t0);
+    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_pn.w=W; pc_pn.h=H; pc_pn.ya=ya; memcpy(pc_pn.snap[t],(const void*)pg,240*160); pc_pn.f[t]=pc_frames(); pn_active=1; pc_vrec(1,pc_now_ms()-pn_t0,pc_cpu_ms()-pn_c0);
 }
 // the parked ship's shadow (ship_shadow in planet.inc works out where it lies: a dark patch under the hull and a paler, softer far end up or down the slope).
 // Here it is drawn into the picture as a smooth, soft-edged, slightly cool shadow over the ground only; the game's own blocky copy is skipped. 1 = drawn here.

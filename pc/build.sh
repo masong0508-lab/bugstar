@@ -112,7 +112,7 @@ sed -i 's|^static int terr_roll(int bossfl,int mz_last,int mboss){ *|&\n    if(p
 sed -i '1i static int pc_vt_terr(void);' main.c
 echo '#include "../pc_dnative.inc"' >> main.c
 # --- the native planet (pc/pc_pnative.inc, pc_pncomp.inc in pc_hw.c)
-sed -i 's|if(m7_on) m7_frame(); else render_planet(pg); u32 t_r1=TMR();|if(m7_on){ pc_pn_off(); m7_frame(); } else { render_planet(pg); pc_pn_native(pg); } u32 t_r1=TMR();|' planet.inc
+sed -i 's|if(m7_on) m7_frame(); else { if(!rays_ok) rays_build(); render_planet(pg); } u32 t_r1=TMR();|if(m7_on){ pc_pn_off(); m7_frame(); } else { if(!rays_ok) rays_build(); render_planet(pg); pc_pn_native(pg); } u32 t_r1=TMR();|' planet.inc
 sed -i 's|^static void sky_decor(volatile u16 \*pg){$|&\n    if(pc_pn_decor(pg)) return;|; s|^static void hell_sky(volatile u16 \*pg){ .*$|&\n    if(pc_pn_hellsky(pg)) return;|; s|^    rect(pg,ox-R-1,oy-R-1,2\*R+2,2\*R+2,C_DGREY); rect(pg,ox-R,oy-R,2\*R,2\*R,1);$|    if(pc_pn_minimap(ox,oy,R)) return;\n&|' planet.inc
 sed -i 's|^    if(!wd.weather) return; weather_t+=3; u32 s=wd.tseed+(frames>>1)\*7;$|    if(!wd.weather) return; weather_t+=3; if(pc_pn_weather()) return; u32 s=wd.tseed+(frames>>1)*7;|' town.inc
 grep -c "pc_pn_decor(pg)" planet.inc | grep -qx 1 && grep -c "pc_pn_hellsky(pg)" planet.inc | grep -qx 1 && grep -c "pc_pn_minimap(ox,oy,R)" planet.inc | grep -qx 1 && grep -c "pc_pn_weather()" town.inc | grep -qx 1 && grep -c "pc_pn_off();" planet.inc | grep -qx 1 || { echo "build: native planet hooks did not apply"; exit 1; }

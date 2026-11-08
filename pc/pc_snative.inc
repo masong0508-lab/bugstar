@@ -5,7 +5,7 @@
 // pc_sncomp.inc (in pc_hw.c) shows it where the page still holds what was drawn at that moment (ships, rocks, station, HUD, cockpit stay the game's own).
 #include <stdlib.h>
 typedef struct { int w,h,hn; uint32_t *buf; long f[2]; uint8_t snap[2][240*128]; uint8_t ok[256]; int sunx,suny; uint8_t snap2[2][240*128]; uint8_t *msk; long f2[2]; uint32_t *ibuf; uint8_t foot[2][240*128], fval[2][240*128]; long ff[2]; } PcSNat;
-extern double pc_now_ms(void); extern void pc_vrec(int,double); extern PcSNat pc_sn; extern int pc_nat_w, pc_nat_h; extern int pc_v3d_classic(void), pc_v3d_ultra(void); extern long pc_frames(void);
+extern double pc_now_ms(void); extern void pc_vrec(int,double,double); extern double pc_cpu_ms(void); extern PcSNat pc_sn; extern int pc_nat_w, pc_nat_h; extern int pc_v3d_classic(void), pc_v3d_ultra(void); extern long pc_frames(void);
 typedef void (*PcParFn3)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn3 fn, void *ctx);
 typedef struct { int cx,cy,r,Lx,Ly,Lz,rot; const u8 *noise; } SnCall;
 static SnCall sn_calls[40]; static int sn_nc, sn_rec; static uint32_t sn_pal[256];
@@ -48,7 +48,7 @@ static void sn_rows(void *vc, int lo, int hi){
             uint32_t *p=&k->buf[(size_t)Y*W+X]; *p = a>=1 ? col : sn_mix(*p,col,(int)(a*256)); } }
 }
 static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk){
-    int W=pc_nat_w, H=pc_nat_h; pc_sn.w=0; if(W<=240 || H<=160 || pc_v3d_classic()) return; double sn_t0=pc_now_ms();
+    int W=pc_nat_w, H=pc_nat_h; pc_sn.w=0; if(W<=240 || H<=160 || pc_v3d_classic()) return; double sn_t0=pc_now_ms(), sn_c0=pc_cpu_ms();
     int hn=(128*H+159)/160; if(hn>H) hn=H; static unsigned long bcap; unsigned long need=(unsigned long)W*hn; if(need>bcap){ free(pc_sn.buf); free(pc_sn.msk); free(pc_sn.ibuf); pc_sn.buf=malloc(need*4); pc_sn.ibuf=malloc(need*4); pc_sn.msk=malloc(need); bcap=need; } memset(pc_sn.msk,0,need); memset(pc_sn.ibuf,0,need*4);
     for(int i=0;i<256;i++){ u16 c=BG_PAL[i]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; sn_pal[i]=(uint32_t)(r<<3|r>>2)<<16|(uint32_t)(g<<3|g>>2)<<8|(uint32_t)(b<<3|b>>2); }
     double sx=W/240.0, sy=H/160.0; uint32_t *buf=pc_sn.buf; uint32_t bk=sn_pal[0]; for(size_t i=0;i<need;i++) buf[i]=bk;
@@ -75,7 +75,7 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
         int y0=(int)((c->cy+0.5-c->r-1.5)*sy); if(y0<0) y0=0; int y1=(int)((c->cy+0.5+c->r+1.5)*sy)+1; if(y1>hn) y1=hn; if(y1<=y0) continue;
         pc_par_chunk(y1-y0,8,sn_rows,&k); }
     memset(pc_sn.ok,0,256); static const unsigned char okv[]={0,3,4,5,40,41,42,43,44,45,46,47,48,49,50}; for(unsigned i=0;i<sizeof okv;i++) pc_sn.ok[okv[i]]=1;
-    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames(); pc_vrec(2,pc_now_ms()-sn_t0);
+    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames(); pc_vrec(2,pc_now_ms()-sn_t0,pc_cpu_ms()-sn_c0);
 }
 
 // the rest of the space view's wireframes (dust, station, rocks) at window resolution: drawn onto the same picture as the background (anti-aliased), and a mask

@@ -258,11 +258,11 @@ void pc_render(uint8_t *rgb){
     for(int y=0;y<160;y++) for(int x=0;x<240;x++){ uint16_t c=screen[y][x]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; uint8_t *p=rgb+(y*240+x)*3;
         p[0]=(uint8_t)(r<<3|r>>2); p[1]=(uint8_t)(g<<3|g>>2); p[2]=(uint8_t)(b<<3|b>>2); }
 }
-double pc_now_ms(void); void pc_vrec(int,double); extern double pc_vms[4], pc_vmin[4];
+double pc_now_ms(void); void pc_vrec(int,double,double); double pc_cpu_ms(void); extern double pc_vms[4], pc_vmin[4], pc_vcpu[4], pc_vcmin[4];
 int pc_write_ppm(const char *path, int scale){
     if(getenv("PC_NATIVE")){                                   // test: make the picture with the native path (pc_compose_native) at scale x 240x160
         int W=240*scale, H=160*scale; uint32_t *b=malloc((size_t)W*H*4); pc_compose_native(b,W,H,atoi(getenv("PC_NATIVE"))>1);
-        if(getenv("PC_NBENCH")){ int n=atoi(getenv("PC_NBENCH")); double mn=1e9,sum=0,wmn=1e9,wsum=0; for(int i=0;i<n;i++){ struct timespec a,c; double w0=pc_now_ms(); clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&a); pc_compose_native(b,W,H,1); clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&c); double ww=pc_now_ms()-w0; if(ww<wmn) wmn=ww; wsum+=ww; double ms=(c.tv_sec-a.tv_sec)*1e3+(c.tv_nsec-a.tv_nsec)/1e6; if(ms<mn) mn=ms; sum+=ms; } fprintf(stderr,"native compose %dx%d: wall best %.2f avg %.2f ms, cpu best %.2f avg %.2f ms (all threads) over %d (frame %ld); native pass in the game frame: dungeon %.2f planet %.2f space %.2f ms (best %.2f %.2f %.2f)\n",W,H,wmn,wsum/n,mn,sum/n,n,g_frame,pc_vms[0],pc_vms[1],pc_vms[2],pc_vmin[0]<1e8?pc_vmin[0]:0,pc_vmin[1]<1e8?pc_vmin[1]:0,pc_vmin[2]<1e8?pc_vmin[2]:0); }   // (test: time the whole native picture)
+        if(getenv("PC_NBENCH")){ int n=atoi(getenv("PC_NBENCH")); double mn=1e9,sum=0,wmn=1e9,wsum=0; for(int i=0;i<n;i++){ struct timespec a,c; double w0=pc_now_ms(); clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&a); pc_compose_native(b,W,H,1); clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&c); double ww=pc_now_ms()-w0; if(ww<wmn) wmn=ww; wsum+=ww; double ms=(c.tv_sec-a.tv_sec)*1e3+(c.tv_nsec-a.tv_nsec)/1e6; if(ms<mn) mn=ms; sum+=ms; } fprintf(stderr,"native compose %dx%d: wall best %.2f avg %.2f ms, cpu best %.2f avg %.2f ms (all threads) over %d (frame %ld); native pass in the game frame (best wall / best cpu ms): dungeon %.2f/%.2f planet %.2f/%.2f space %.2f/%.2f\n",W,H,wmn,wsum/n,mn,sum/n,n,g_frame,pc_vmin[0]<1e8?pc_vmin[0]:0,pc_vcmin[0]<1e8?pc_vcmin[0]:0,pc_vmin[1]<1e8?pc_vmin[1]:0,pc_vcmin[1]<1e8?pc_vcmin[1]:0,pc_vmin[2]<1e8?pc_vmin[2]:0,pc_vcmin[2]<1e8?pc_vcmin[2]:0); }   // (test: time the whole native picture, and the native passes of the game frame)
         FILE *f=fopen(path,"wb"); if(!f){ free(b); return 0; } fprintf(f,"P6 %d %d 255\n",W,H);
         for(size_t i=0;i<(size_t)W*H;i++){ uint8_t p[3]={(uint8_t)(b[i]>>16),(uint8_t)(b[i]>>8),(uint8_t)b[i]}; fwrite(p,1,3,f); } fclose(f); free(b); return 1; }
     static uint8_t rgb[240*160*3]; pc_render(rgb);
@@ -449,8 +449,9 @@ static void nv_rows(void *vc, int lo, int hi){
     }
 }
 double pc_now_ms(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec*1e3+t.tv_nsec/1e6; }
-double pc_vms[4], pc_vmin[4]={1e9,1e9,1e9,1e9}; static long pc_vn[4];
-void pc_vrec(int id,double ms){ pc_vms[id]=pc_vn[id]++?pc_vms[id]*0.95+ms*0.05:ms; if(ms<pc_vmin[id]) pc_vmin[id]=ms; }       // the game-frame cost of the native 3D passes (0 dungeon, 1 planet, 2 space): a running average and the best frame (shown by PC_NBENCH)
+double pc_vms[4], pc_vmin[4]={1e9,1e9,1e9,1e9}, pc_vcpu[4], pc_vcmin[4]={1e9,1e9,1e9,1e9}; static long pc_vn[4];
+double pc_cpu_ms(void){ struct timespec t; clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&t); return t.tv_sec*1e3+t.tv_nsec/1e6; }
+void pc_vrec(int id,double ms,double cpu){ pc_vms[id]=pc_vn[id]?pc_vms[id]*0.95+ms*0.05:ms; pc_vcpu[id]=pc_vn[id]?pc_vcpu[id]*0.95+cpu*0.05:cpu; pc_vn[id]++; if(ms<pc_vmin[id]) pc_vmin[id]=ms; if(cpu<pc_vcmin[id]) pc_vcmin[id]=cpu; }       // the game-frame cost of the native 3D passes (0 dungeon, 1 planet, 2 space): wall and CPU (all threads) time, a running average and the best frame (shown by PC_NBENCH)
 static double pc_dn_last_ms; void pc_dn_report(double ms,int W,int H){ pc_dn_last_ms=ms; static int on=-1; static double acc; static int n; if(on<0) on=getenv("PC_TIMING")!=0; if(!on) return; acc+=ms; if(++n==200){ fprintf(stderr,"dungeon native %dx%d: %.2f ms per frame\n",W,H,acc/n); n=0; acc=0; } }
 int pc_v3d_classic(void), pc_v3d_ultra(void);
 static int nv_v3(void){ int v3=pc_vid3d; static int env=-2; if(env==-2){ const char *e=getenv("PC_V3D"); env=e?atoi(e):-1; } if(env>=0) v3=env; return v3; }
