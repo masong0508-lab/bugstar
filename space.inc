@@ -397,7 +397,7 @@ static void space_enter(int from_planet){
     ambush_t=0;
     if(!no_ambush && ((beast_stage==0 && (cleared_mask&1)) || (beast_stage==1 && (cleared_mask&4)) || (beast_stage==2 && ant_king))){ ambush_t=160; space_say("WARNING: SOMETHING IS COMING..."); }
     if(hive_card && !no_ambush) show_hive_card();
-    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6);
+    REG_DISPCNT = (REG_DISPCNT&0x10) | 4 | (1<<10) | (1<<12) | (1<<6); page_back = (REG_DISPCNT&0x10) ? 0 : 1;      // (the page on screen stays; the first space picture is drawn on the other: it used to switch to page 0 whatever was on it)
 }
 static void boom(s32 x, s32 y, s32 z, int n, int col){
     for(int i=0;i<NSPP && n;i++) if(spp[i].life<=0){ SPart *p=&spp[i]; p->x=x; p->y=y; p->z=z; p->vx=lr(161)-80; p->vy=lr(161)-80; p->vz=lr(161)-80; p->life=20+lr(25); p->col=col; n--; }
@@ -468,12 +468,12 @@ static u64 beast_damage(int *core){
 }
 static int beast_sc(void){ return beast_fight==1 ? 1 : beast_fight==2 ? 2 : 3; }     // size in thirds
 static void story_card(const char *title, const char *const *ln, int n){
-    volatile u16 *pg=(volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0xA000:0));
+    int sh=shd_begin(); volatile u16 *pg = sh ? VISPG : (volatile u16*)(0x06000000 + ((REG_DISPCNT&0x10)?0xA000:0));
     rect(pg,8,24,224,112,57); rect(pg,8,24,224,1,53); rect(pg,8,135,224,1,53);
     text(pg,120-textlen(title)*2,30,title,53,1);
     for(int i=0;i<n;i++) text(pg,120-textlen(ln[i])*2,48+i*12,ln[i],54,1);
     text(pg,84,124,"A: CONTINUE",55,1);
-    wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)); wait_release();
+    wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)); wait_release(); shd_end(sh);
 }
 static void beast_shot(void){
     int sx,sy; s32 z; if(!sproj(0,0,0,&sx,&sy,&z) || z>30000) return;

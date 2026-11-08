@@ -909,7 +909,8 @@ static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc, s32 ox, s32 oy
 }
 static void planet_enter(void){
     shd_off();
-    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BG2CNT=3; hdma_on=0; REG_BLDCNT=0;
+    while(REG_VCOUNT>=160); while(REG_VCOUNT<160); REG_BLDCNT=0x3F|(3<<6); REG_BLDY=16; scr_black=1;                       // (black first, in a blank: the card, or whatever is on screen, is not wiped line by line under the new colours)
+    REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BG2CNT=3; hdma_on=0;                                              // (the caller fades in)
     planet_tables(); planet_palette(); planet_hud(); page_back=0; p_last=vbl_count;
     volatile u16 *ov=OBJ_VRAM; const u16 *t=obj_tiles; for(unsigned i=0;i<sizeof(obj_tiles)/2;i++) ov[i]=t[i];
     bug_build();

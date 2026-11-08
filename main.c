@@ -233,10 +233,13 @@ static void num(char *b, int v, int digits){ for(int i=digits-1;i>=0;i--){ b[i]=
 static int textlen(const char *s){ int n=0; while(*s++) n++; return n; }
 
 // ---------------------------------------------------------------- fades
+static int scr_black, kg_fadein;                          // scr_black: the screen is faded all the way to black (kart_go then knows to fade in later); kg_fadein: frames of a race to draw (in the dark) before the screen fades in
 static void fade(int out){
+    vsync();                                              // (every BLDY step is set in a blank: the first one used to land in the middle of a picture)
     REG_BLDCNT = 0x3F | (3<<6);
     for(int i=0;i<=16;i++){ REG_BLDY = out? i : 16-i; vsync(); }
     if(!out) REG_BLDCNT = 0;
+    scr_black = out; if(!out) kg_fadein=0;
 }
 
 // ---------------------------------------------------------------- OAM helpers
@@ -1293,7 +1296,7 @@ static int title_screen(void){
 static void arrive_on_planet(void);
 static void landing_screen(int welcome){                   // while a world is being built: a quiet card with its name, instead of a black screen
     volatile u16 *pg=(volatile u16*)0x06000000;
-    REG_BLDCNT=0x3F|(3<<6); REG_BLDY=16;
+    REG_BLDCNT=0x3F|(3<<6); REG_BLDY=16; scr_black=1;
     for(int i=0;i<120*160;i++) pg[i]=0;
     for(int i=1;i<6;i++) BG_PAL[i]=bg_pal[i]; for(int i=30;i<39;i++) BG_PAL[i]=bg_pal[i]; BG_PAL[0]=0;
     { u32 r=0x1234567u+(u32)cur_sys*77; for(int k=0;k<70;k++){ r=r*1664525u+1013904223u; int x=(r>>8)%240, y=8+((r>>20)%150); pix(pg,x,y,(k%7)==0?5:(k&1)?3:2); } }
@@ -1304,7 +1307,7 @@ static void landing_screen(int welcome){                   // while a world is b
     { const char *c = pc_name[wd.cls]; text(pg,120-textlen(c)*2,90,c,C_CYAN,1); }
     text(pg,120-11*2,140,"PLEASE WAIT",C_DGREY,1);
     REG_DISPCNT = 4 | (1<<10);
-    for(int i=16;i>=0;i-=4){ REG_BLDY=i; vsync(); } REG_BLDCNT=0;
+    for(int i=16;i>=0;i-=4){ REG_BLDY=i; vsync(); } REG_BLDCNT=0; scr_black=0;
 }
 static void start_game(int cont){       // fades out, sets the world up from cur_slot (or fresh) and fades in on the planet
     rng_s ^= vbl_count*2654435761u;
@@ -1432,7 +1435,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     restock(); arrow_ship = zone_cleared && !endless;
     landing_screen(cont);
     new_planet(); planet_enter(); show_msg(cont ? "WELCOME BACK" : "");
-    fade(1); REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0);      // the planet is on screen behind the first cards
+    REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0);      // the planet is on screen behind the first cards
     music(0);
     if(!cont && !dbg.go){ static const char *const t[6]={"YOU ARE A LITTLE PILL BUG.","THE ANT KING HAS CAGED YOUR BUG FRIENDS.","","FOLLOW THE YELLOW ARROW TO THE DOOR.","GO DOWN. BEAT THE BOSS AT THE BOTTOM.","THEN FLY YOUR SHIP TO THE NEXT STAR."};
         card(VISPG,"BUGSTAR",t,6); bolt_story(VISPG,0); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
@@ -1538,7 +1541,7 @@ static void arrive_on_planet(void){      // after landing (or the autopilot): se
     g_phz=66;
     land_on_current(); st_planets++; ach_check(); portal_depth=0; scene=0; msg_timer=0;
     landing_screen(0);
-    new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game(); fade(1);
+    new_planet(); planet_enter(); arrow_ship=0; planet_hud(); restock(); save_game();
     char b[40]; scpy(b,world_name()); if(!endless && !zone_cleared) scat(b,": FIND THE DOOR"); if(cur_rock){ scpy(b,rock_nm[cur_rock-1]); scat(b," ROCK: "); scat(b,rock_tip[cur_rock-1]); } show_msg(b); oam_hide_all(); oam_flush(); music(0);
     { REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0); planet_card(VISPG); p_last=vbl_count; }
     if(hum_req){ hum_req=0; human_creator(VISPG,1); planet_hud(); save_game(); p_last=vbl_count; }       // a weird world just made you a humanoid: look in the mirror
@@ -1569,12 +1572,15 @@ static void run_game(void){
         if(scene==0){
             planet_frame();
             vsync(); if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; oam_flush(); }
+            if(kg_fadein && !--kg_fadein) fade(0);                                                          // (a race that started from a menu: the first pictures are drawn in the dark)
             if(launch_flag==2){ launch_flag=0; fade(1); oam_hide_all(); oam_flush();
                 int d=sys_dist(cur_sys,zone+1); char fn[24], tn[24]; sys_name(cur_sys,fn); sys_name(zone+1,tn); u32 t10[LYW]={(u32)d};
                 fuel = d>fuel ? 0 : fuel-d; cur_sys=zone+1; cur_pl=cur_moon=0; visits++;
                 scene=2; page_back=1; build_space_palette(); REG_DISPCNT = 4 | (1<<10) | (1<<12) | (1<<6); REG_BLDY=0; voyage(fn,tn,t10,(u32)d*24/10+1,0);
                 arrive_on_planet(); fade(0); continue; }
-            if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); fade(0); continue; }
+            if(launch_flag){ launch_flag=0; fade(1); oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3);
+                { keys=keys_old=0; int r=space_frame(); (void)r; coil_fx_end(); vsync(); REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1; }       // (the first picture of space is drawn in the dark: the fade-in shows it, not the planet's last picture under space's colours)
+                fade(0); continue; }
             if(enter_dungeon_flag){ int fgs=(enter_dungeon_flag==3); if(enter_dungeon_flag==2) base_mode=1; enter_dungeon_flag=0; save_game(); fade(1); oam_hide_all(); oam_flush();
                 if(fgs) forge_begin();
                 fm_reset(); depth_no=0; fl_max=0; skip_taken=0; arrive_dn=0; if(portal_depth>0 && !base_mode){ depth_no=portal_depth-1; portal_depth=0; }
@@ -1647,17 +1653,19 @@ volatile u32 sweep_n;
 #ifdef TEST_KFUZZ
 static void kfz_run(void);
 #endif
+#define BLACKOUT() do { BG_PAL[0]=0; REG_BLDCNT=0xFF; REG_BLDY=16; REG_DISPCNT=0; } while(0)   // (forced blank shows WHITE on a GBA: a screen that is dark while the next one is drawn is black by blend, never by forced blank, as the boot logo does)
 int main(void){
 #ifdef TEST_STACK
     { extern u32 __bss_end; u32 *p=&__bss_end; u32 sp_now; __asm__ volatile("mov %0, sp":"=r"(sp_now)); while((u32)p<sp_now-0x100) *p++=0xA5A5A5A5u; }   // (testing: paint the free stack so its deepest use can be seen)
 #endif
-    REG_DISPCNT = 0x80;
+    BLACKOUT();
     REG_WAITCNT = 0x4317;
 #ifndef NO_LOGO
     logo_play();
 #endif                                             // the DIPPINN PRODUCTIONS boot logo (logo.c, the same one BORE plays)
-    { volatile u16 *io=(volatile u16*)0x04000000; for(int r=0x08/2;r<0x20/2;r++) io[r]=0; for(int r=0x40/2;r<0x56/2;r++) io[r]=0; }   // undo its layers, scroll, windows and blend
-    { volatile u16 *v=(volatile u16*)0x06000000; for(int i=0;i<0x18000/2;i++) v[i]=0; } REG_DISPCNT = 0x80;
+    { volatile u16 *io=(volatile u16*)0x04000000; for(int r=0x08/2;r<0x20/2;r++) io[r]=0; for(int r=0x40/2;r<0x50/2;r++) io[r]=0; io[0x52/2]=0; }   // undo its layers, scroll and windows (the blend stays black: the next line says so)
+    BLACKOUT();                                      // (and black again at once, in a blank: the logo's picture is wiped under it, not in front of you)
+    { volatile u16 *v=(volatile u16*)0x06000000; for(int i=0;i<0x18000/2;i++) v[i]=0; } BLACKOUT();
     *(volatile u16*)0x04000100=0; *(volatile u16*)0x04000104=0; *(volatile u16*)0x04000106=0x84; *(volatile u16*)0x04000102=0x80;
     sound_init();
     rng_s ^= 0x9E3779B9;
@@ -1708,11 +1716,11 @@ int main(void){
         new_game(); bug_look_default(); humx_default(); ship_default(); ship_build_model();
         int cont=title_screen();
         if(cont==3) cont = (dbg.go==DG_CONT);                                            // the debug menu: a new game, or the slot it picked
-        if(cont==2){ fade(1); kart_world(); oam_hide_all(); oam_flush(); music(-1); REG_BLDCNT=0; REG_BLDY=0; REG_DISPCNT=0x80; continue; }   // Kart World, then back to the title
+        if(cont==2){ fade(1); kart_world(); oam_hide_all(); oam_flush(); music(-1); BLACKOUT(); continue; }   // Kart World, then back to the title
         start_game(cont);
         in_game=1;
         run_game();
         fade(1); oam_hide_all(); oam_flush(); music(-1);
-        REG_BLDCNT=0; REG_BLDY=0; REG_DISPCNT=0x80;      // dark, until the title is painted
+        BLACKOUT();      // dark, until the title is painted
     }
 }

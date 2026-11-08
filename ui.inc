@@ -185,7 +185,9 @@ static void bolt_talk(volatile u16 *pg){
     bolt_card_x(pg,t,n,1);                                                                      // (his lines are long now: the face goes up in the title band)
 }
 // ---------------------------------------------------------------- story cards: a few short lines, then A
-static void card(volatile u16 *pg, const char *title, const char *const *ln, int n){
+static void card_(volatile u16 *pg, const char *title, const char *const *ln, int n);
+static void card(volatile u16 *pg, const char *title, const char *const *ln, int n){ int sh=shd_begin(); card_(sh?VISPG:pg,title,ln,n); shd_end(sh); }       // (steady: drawn on the hidden page, shown in the blank)
+static void card_(volatile u16 *pg, const char *title, const char *const *ln, int n){
     int h=34+n*11+14, y0=88-h/2;
     ui_panel(pg,10,y0,220,h); rect(pg,12,y0+2,216,13,U_RAISE); rect(pg,12,y0+2,216,1,U_SHINE); rect(pg,12,y0+15,216,1,U_EDGE);   // a title band
     { int tw=textlen(title)*4; rect(pg,120-tw/2-8,y0+7,3,3,U_ACCENT); rect(pg,120+tw/2+5,y0+7,3,3,U_ACCENT); stext(pg,120-tw/2,y0+6,title,C_GOLD); }
