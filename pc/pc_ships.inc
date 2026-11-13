@@ -18,7 +18,7 @@ static void pc_sr_space(volatile u16 *pg){
     sr_begin(pc_ships_mode, eye, r, u, f, FOCS, 120, VCY, 128, sn);
     uint32_t cf=pc_sr_rgb(52), ce=pc_sr_rgb(53);
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i];
-        if(pcsr_alive[i] && !p->alive && pcsr_nb<48){ PcBoom *b=&pcsr_b[pcsr_nb++]; b->p[0]=p->x; b->p[1]=p->y; b->p[2]=p->z; b->t0=frames; b->seed=(u32)i*7919u+(u32)frames; }   // it just died
+        if(pcsr_alive[i] && !p->alive && pcsr_nb<48){ PcBoom *b=&pcsr_b[pcsr_nb++]; b->p[0]=p->x; b->p[1]=p->y; b->p[2]=p->z; b->t0=vbl_count; b->seed=(u32)i*7919u+(u32)vbl_count; }   // it just died
         if(p->alive && pcsr_alive[i] && p->hp<pcsr_hp[i]) pcsr_hit[i]=1;                                                   // it was just hit: the shield shines
         pcsr_alive[i]=p->alive; pcsr_hp[i]=p->hp; if(pcsr_hit[i]>0) pcsr_hit[i]-=0.07f;
         if(!p->alive) continue;
@@ -29,10 +29,10 @@ static void pc_sr_space(volatile u16 *pg){
         s.size=110; s.kind = p->team ? SR_FIGHTER : SR_WING; s.team = p->team ? 1 : 0; s.col = p->team ? ce : cf; s.firing = p->fire_t>0; s.hit = pcsr_hit[i]>0 ? pcsr_hit[i] : 0; s.thrust=0.75f;
         if(!pc_sy_foe(i,&s)) sr_ship(&s);
         if(p->fire_t){ float t[3];
-            if(p->tgt==-1){ for(int k=0;k<3;k++) t[k]=eye[k]+f[k]*400-u[k]*((124-VCY)*400.0f/FOCS)+r[k]*(((frames&7)-4)*400.0f/FOCS); sr_beam(s.p,t,s.col,1); }
+            if(p->tgt==-1){ for(int k=0;k<3;k++) t[k]=eye[k]+f[k]*400-u[k]*((124-VCY)*400.0f/FOCS)+r[k]*(((vbl_count&7)-4)*400.0f/FOCS); sr_beam(s.p,t,s.col,1); }
             else if(p->tgt>=0 && pir[p->tgt].alive){ t[0]=pir[p->tgt].x; t[1]=pir[p->tgt].y; t[2]=pir[p->tgt].z; sr_beam(s.p,t,s.col,1); } } }
-    for(int i=0;i<pcsr_nb;i++){ float t=(frames-pcsr_b[i].t0)/45.0f; if(t>=1 || t<0){ pcsr_b[i]=pcsr_b[--pcsr_nb]; i--; continue; } sr_boom(pcsr_b[i].p,160,t,pcsr_b[i].seed); }
-    if(battle_on && pc_armada_n>0) sr_armada(pc_armada_n, sys_id(cur_sys)^0xA4A7u, frames, 14000);                          // the far battle around yours (only drawn)
+    for(int i=0;i<pcsr_nb;i++){ float t=(vbl_count-pcsr_b[i].t0)/45.0f; if(t>=1 || t<0){ pcsr_b[i]=pcsr_b[--pcsr_nb]; i--; continue; } sr_boom(pcsr_b[i].p,160,t,pcsr_b[i].seed); }
+    if(battle_on && pc_armada_n>0) sr_armada(pc_armada_n, sys_id(cur_sys)^0xA4A7u, vbl_count, 14000);                          // the far battle around yours (only drawn)
     sr_run_hooks();                                                                                                     // (more ships: warships and anything else that registered)
 }
 static int pc_sr_tag; static void pc_sr_mark(volatile u16 *pg){ pc_sr_tag=((u32)(uintptr_t)pg)>=GBAA(0x0600A000u) ? 1 : 0; sr_commit(pc_sr_tag); pc_sr_snapshot(pg); }
@@ -54,7 +54,7 @@ static void pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_){
         if(nz>0){ nx=-nx; ny=-ny; nz=-nz; }                              // light the side that faces you (as ship.inc ship_draw)
         float dotf=(-nx*5+ny*11-nz*8)/256.0f;                           // (kept as a float: the window has the pixels for a smooth gradient, the GBA rounds to 15 steps)
         if(!(F->two&1) && area>=0 && 0) continue;
-        int base; float L; if(F->grp==2){ base=SHP_GLOW; L=20+((frames>>2)&1)*8; }
+        int base; float L; if(F->grp==2){ base=SHP_GLOW; L=20+((vbl_count>>2)&1)*8; }
         else { L=8+dotf+dotf*0.125f; if(dotf>9) L+=(dotf-9)*2; L-=zs/32.0f;
             if(F->grp==3){ base=SHP_GLOW; L+=6; } else { int g=F->grp; if(shpx.scheme==SC_TWO){ if(!g && (F->two&2)) g=1; } else if(shpx.scheme==SC_INVERT) g^=1; else if(shpx.scheme==SC_MONO) g=0; base = g ? SHP_TRIM : SHP_PAINT; }
             if(L<0) L=0; if(L>28) L=28; }
@@ -64,12 +64,12 @@ static void pc_sr_player(int cx, int cy, int sc, int yaw_, int pitch_){
         float X[8], Y[8]; for(int k=0;k<F->n;k++){ X[k]=px[F->v[k]]; Y[k]=py[F->v[k]]; }
         sr_poly2d(X,Y,F->n,2.0f+zs/1000.0f,col); }
     if(sh_flame) for(int e=0;e<sh_en;e++){                                                                         // the game's flame: two crossed cones per engine (as ship.inc sh_flames), white-hot inside, at window resolution
-        float ex=sh_eng[e][0], ey=sh_eng[e][1], bz=sh_eng[e][2]+2, R=sh_eng[e][3]; int len=(16+(int)R*4)*(3+sh_flame)/4; len=len*(10+((frames*3+e)&3))/12;
+        float ex=sh_eng[e][0], ey=sh_eng[e][1], bz=sh_eng[e][2]+2, R=sh_eng[e][3]; int len=(16+(int)R*4)*(3+sh_flame)/4; len=len*(10+((vbl_count*3+e)&3))/12;
         #define PCFP(ox,oy,oz,X_,Y_,Z_) { float x_=(ox), y_=(oy), z_=(oz); float rx=x_*cyw+z_*syw, rz=-x_*syw+z_*cyw, ry=y_*cp+rz*sp; rz=-y_*sp+rz*cp; float d=400+rz; if(d<60) d=60; float f=sc*25600.0f/d/16384.0f, X=rx*f, Y=-ry*f; X_=X*rc-Y*rs+cx; Y_=X*rs+Y*rc+cy; Z_=rz; }
         float bX,bY,bZ,tX,tY,tZ,aX,aY,aZ,cX,cY,cZ,dX,dY,dZ,fX,fY,fZ;
         PCFP(ex,ey,bz,bX,bY,bZ) PCFP(ex,ey,bz-len,tX,tY,tZ) PCFP(ex+R,ey,bz,aX,aY,aZ) PCFP(ex-R,ey,bz,cX,cY,cZ) PCFP(ex,ey+R,bz,dX,dY,dZ) PCFP(ex,ey-R,bz,fX,fY,fZ)
         #undef PCFP
-        float dep = tZ>=bZ ? 2.6f : 1.4f; uint32_t oc=pc_sr_rgb(SHP_GLOW+4+((frames+e)&1)), ic=pc_sr_rgb(SHP_GLOW+7);
+        float dep = tZ>=bZ ? 2.6f : 1.4f; uint32_t oc=pc_sr_rgb(SHP_GLOW+4+((vbl_count+e)&1)), ic=pc_sr_rgb(SHP_GLOW+7);
         float mX=bX+(tX-bX)*0.6f, mY=bY+(tY-bY)*0.6f, X3[3], Y3[3];
         X3[0]=aX; Y3[0]=aY; X3[1]=cX; Y3[1]=cY; X3[2]=tX; Y3[2]=tY; sr_poly2d(X3,Y3,3,dep,oc);
         X3[0]=dX; Y3[0]=dY; X3[1]=fX; Y3[1]=fY; sr_poly2d(X3,Y3,3,dep,oc);

@@ -36,8 +36,8 @@ static void sn_rows(void *vc, int lo, int hi){
                 if(nz<10){ s=-1; lit=0; } else {
                     int nx_=(xx-64)*4, ny_=(64-yy)*4; lit=(nx_*c->Lx + ny_*c->Ly - nz*c->Lz)>>14; int v=sph_v[kk], u=sph_u[kk]; int t=c->noise[(v<<7)|((u+c->rot)&127)];
                     int base = t>=8 ? 50+t*4 : 14+t*3; if(v<4 || v>59) base=100+t;
-                    int cl=(pl_noise+16384)[(v<<7)|((u+c->rot+(int)(frames>>5)+40-c->rot)&127)]; (void)cl;
-                    int crot=c->rot+(int)(frames>>5)+40; cl=(pl_noise+16384)[(v<<7)|((u+crot)&127)];
+                    int cl=(pl_noise+16384)[(v<<7)|((u+c->rot+(int)(vbl_count>>5)+40-c->rot)&127)]; (void)cl;
+                    int crot=c->rot+(int)(vbl_count>>5)+40; cl=(pl_noise+16384)[(v<<7)|((u+crot)&127)];
                     if(cl>10) base += ((cl-9)*(124-base))>>3;
                     int dd=lit+40; if(dd<0) dd=0; if(dd>256) dd=256; s=((base*dd)>>8)+4; if(s>127) s=127; }
                 sh+=w*s; nzs+=w*nz; lits+=w*lit; }
@@ -57,7 +57,7 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
     for(int i=0;i<96;i++){ s16 *d=&star_dir[i*3]; s32 z=(d[0]*bf[0]+d[1]*bf[1]+d[2]*bf[2])>>14; if(z<2000) continue;
         s32 x=(d[0]*br[0]+d[1]*br[1]+d[2]*br[2])>>14, y=(d[0]*bu[0]+d[1]*bu[1]+d[2]*bu[2])>>14;
         double fx=120.5+(double)x*FOCS/z, fy=VCY+0.5-(double)y*FOCS/z; int ci=i<20?5 : i<50?4 : 3; uint32_t col=sn_pal[ci]; double rad=(i<20?0.55:i<50?0.45:0.38)*sx+0.3;
-        double tw=0.85+0.15*__builtin_cos(frames*0.05+i*1.7);
+        double tw=0.85+0.15*__builtin_cos(vbl_count*0.05+i*1.7);
         if(stk && i<70){ double ex=fx-((fx-vpx-0.5)*stk/256.0), ey=fy-((fy-vpy-0.5)*stk/256.0); sn_seg(buf,W,hn,fx*sx,fy*sy,ex*sx,ey*sy,rad*0.8,col,1.0,0.35); }
         else sn_seg(buf,W,hn,fx*sx,fy*sy,fx*sx,fy*sy,rad,col,tw,tw); }
     // the sun
@@ -120,7 +120,7 @@ static void so_items(int t){
     // cargo cans: a turning diamond (the game's four lines), with a pulse and, in ULTRA, a glow
     for(int k=0;k<4;k++) if(cans[k].alive){ s32 cx,cy,cz; if(!cam3(cans[k].x,cans[k].y,cans[k].z,&cx,&cy,&cz)) continue; int sx_,sy_; s32 z; if(!sproj(cans[k].x,cans[k].y,cans[k].z,&sx_,&sy_,&z)) continue;
         int r=(int)(60*FOCS/z)+1; line2(so_scr,sx_-r,sy_,sx_,sy_-r,50); line2(so_scr,sx_,sy_-r,sx_+r,sy_,50); line2(so_scr,sx_+r,sy_,sx_,sy_+r,50); line2(so_scr,sx_,sy_+r,sx_-r,sy_,50);
-        double fx=120.5+(double)cx*FOCS/cz, fy=VCY+0.5-(double)cy*FOCS/cz, R=(60.0*FOCS/cz+0.6), pul=0.75+0.25*__builtin_sin(frames*0.12+k*2.0); uint32_t col=sn_pal[50], hot=sn_pal[49];
+        double fx=120.5+(double)cx*FOCS/cz, fy=VCY+0.5-(double)cy*FOCS/cz, R=(60.0*FOCS/cz+0.6), pul=0.75+0.25*__builtin_sin(vbl_count*0.12+k*2.0); uint32_t col=sn_pal[50], hot=sn_pal[49];
         double hw=0.30*sx+0.4; double X=fx*sx, Y=fy*sy, RX=R*sx, RY=R*sy;
         io_line(X-RX,Y,X,Y-RY,hw,col,1.0,ultra?1.6*sx:0,0.45*pul); io_line(X,Y-RY,X+RX,Y,hw,col,1.0,ultra?1.6*sx:0,0.45*pul); io_line(X+RX,Y,X,Y+RY,hw,col,1.0,ultra?1.6*sx:0,0.45*pul); io_line(X,Y+RY,X-RX,Y,hw,col,1.0,ultra?1.6*sx:0,0.45*pul);
         io_dot(X,Y,0.42*sx*pul+0.5,hot,0.9,ultra?3.0*sx:0,0.5);                                                    // a bright core: the thing to scoop
@@ -160,16 +160,16 @@ static void pc_so_native(volatile unsigned short *pg){
     for(int i=0;i<20;i++){ s32 *d=&dust[i*3]; double X,Y,X2,Y2; if(so_proj(d[0],d[1],d[2],&X,&Y)){
         if(speed>14 && so_proj(d[0]-((bf[0]*speed*4)>>14),d[1]-((bf[1]*speed*4)>>14),d[2]-((bf[2]*speed*4)>>14),&X2,&Y2)) so_line(X,Y,X2,Y2,56); else so_line(X,Y,X,Y,56); } }
     if(!in_lair){
-    { s32 v[12*3]; int a=frames*3; s32 S=420, c_=cosx(a>>2), s_=sinx(a>>2);
+    { s32 v[12*3]; int a=vbl_count*3; s32 S=420, c_=cosx(a>>2), s_=sinx(a>>2);
       static const s8 cube[8][3]={{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
       for(int i=0;i<8;i++){ s32 x=cube[i][0]*S, z=cube[i][2]*S; v[i*3]=stx_+((x*c_-z*s_)>>14); v[i*3+1]=sty_+cube[i][1]*S; v[i*3+2]=stz_+((x*s_+z*c_)>>14); }
       static const s8 slot[4][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
       for(int i=0;i<4;i++){ s32 x=slot[i][0]*140, z=-S; v[(8+i)*3]=stx_+((x*c_-z*s_)>>14); v[(8+i)*3+1]=sty_+slot[i][1]*70; v[(8+i)*3+2]=stz_+((x*s_+z*c_)>>14); }
       static const u8 ce[]={0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7}; static const u8 se[]={8,9,9,10,10,11,11,8};
-      so_wire(v,12,ce,12,54); so_wire(v,12,se,4,(frames&16)?55:56); }
+      so_wire(v,12,ce,12,54); so_wire(v,12,se,4,(vbl_count&16)?55:56); }
     for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue;
         static const s8 oc[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
-        s32 v[6*3]; int ang=(frames*2+a->seed*4)&1023; s32 c=cosx(ang>>2), s_=sinx(ang>>2);
+        s32 v[6*3]; int ang=(vbl_count*2+a->seed*4)&1023; s32 c=cosx(ang>>2), s_=sinx(ang>>2);
         for(int k=0;k<6;k++){ int rr=a->r*(10+((a->seed>>k)&3)*2)/14; s32 x=oc[k][0]*rr, y=oc[k][1]*rr*3/4, z=oc[k][2]*rr;
             v[k*3]=a->x+((x*c-z*s_)>>14); v[k*3+1]=a->y+y; v[k*3+2]=a->z+((x*s_+z*c)>>14); }
         static const u8 ae[]={0,2,0,3,0,4,0,5,1,2,1,3,1,4,1,5,2,4,2,5,3,4,3,5};

@@ -140,7 +140,7 @@ static void pc_sg_space_planet(uint32_t *buf, int W, int hn, double sx, double s
     int ismain = (ci == pcg_main); uint64_t seed; int cls; SgPlanetSpec sp; pcg_world();
     uint32_t sid = hmix(sys_id(cur_sys) ^ (u32)(cur_pl + 1) * 0x9E3779B1u ^ (u32)(cur_moon + 3) * 0x85EBCA6Bu ^ (pcg_vkey & 0xFFFFu));
     if(ismain){ seed = ((uint64_t)sid << 32) | hmix(sid ^ 0x1234567u); cls = pcg_cls[pcg_cc].pcls; }
-    else { int mid = (c->rot - (int)(frames >> 3)) & 127; seed = ((uint64_t)hmix(sid ^ (u32)mid * 0x632BE5ABu) << 32) | (uint32_t)(mid * 2654435761u + 9); cls = (mid & 3) == 0 ? 2 : 6; }
+    else { int mid = (c->rot - (int)(vbl_count >> 3)) & 127; seed = ((uint64_t)hmix(sid ^ (u32)mid * 0x632BE5ABu) << 32) | (uint32_t)(mid * 2654435761u + 9); cls = (mid & 3) == 0 ? 2 : 6; }
     sg_planet_spec(&sp, seed, cls); sp.moons = 0; if(!ismain) sp.ring = 0;
     double frac = sg_planet_frac(&sp); if(frac < 0.05) frac = 0.05; int N = (int)(2.0 * Rx / frac) + 1; if(N > 320) N = 320; N = (N + 15) & ~15; if(N < 32) N = 32;
     float Lx = (float)c->Lx, Ly = (float)c->Ly, Lz = -(float)c->Lz, L = sqrtf(Lx * Lx + Ly * Ly + Lz * Lz); if(L < 1) L = 1; Lx /= L; Ly /= L; Lz /= L;

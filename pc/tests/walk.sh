@@ -14,13 +14,13 @@ cat > out/wk/own.txt <<'K'
 2000 2004 S
 2300 2304 A
 2700 2704 A
-3100 3104 U
-3200 3204 A
-3300 3304 S
-shot 3500
+3220 3224 U
+3320 3324 A
+3420 3424 S
+shot 3600
 K
-sed 's/^3100 3104 U/3100 3104 U\n3150 3154 U/' out/wk/own.txt > out/wk/ally.txt
-go(){ local n=$1 s=$2; shift 2; rm -f out/wk/$n.sav*; env BUGSTAR_SIDE=0 BUGSTAR_WS_TEST=mscan,0,0 BUGSTAR_WS_AT=0 BUGSTAR_MS_SYNC=3000 "$@" timeout 300 $B --script out/wk/$s.txt --out out/wk/$n --sav out/wk/$n.sav --frames 4200 2> out/wk/$n.err >/dev/null || { echo "walk: $n CRASHED"; fail=1; }; grep "walk mode" out/wk/$n.err | tail -1; }
+sed 's/^3220 3224 U/3220 3224 U\n3270 3274 U/' out/wk/own.txt > out/wk/ally.txt
+go(){ local n=$1 s=$2; shift 2; rm -f out/wk/$n.sav*; env BUGSTAR_SIDE=0 BUGSTAR_WS_TEST=mscan,0,0 BUGSTAR_WS_AT=0 BUGSTAR_MS_SYNC=3000 "$@" timeout 300 $B --script out/wk/$s.txt --out out/wk/$n --sav out/wk/$n.sav --frames 4400 2> out/wk/$n.err >/dev/null || { echo "walk: $n CRASHED"; fail=1; }; grep "walk mode" out/wk/$n.err | tail -1; }
 g(){ echo "$1" | tr ' ' '\n' | grep "^$2=" | head -1 | cut -d= -f2; }
 own=$(go own own); ally1=$(go ally1 ally BUGSTAR_WS_ALLY=200 BUGSTAR_WS_MIX=1); ally0=$(go ally0 ally BUGSTAR_WS_ALLY=200 BUGSTAR_WS_MIX=0)
 for n in own ally1 ally0; do l=$(eval echo \$$n); [ -n "$l" ] || { echo "walk: $n never walked"; fail=1; continue; }

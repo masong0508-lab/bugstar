@@ -55,12 +55,12 @@ run off sim_ls_idle.txt 8100 BUGSTAR_LS_TIPS=0
 l=$(last off); [ "$(f "$l" cards)" = 0 ] && [ "$(f "$l" toasts)" = 0 ] && [ "$(f "$l" told)" = "$(f "$l" have)" ] && [ "$(f "$l" fresh)" != "-" ] || fail "TIPS OFF: a tip was shown, or the ! marks are gone: $l"
 run few sim_ls_idle.txt 8100 BUGSTAR_LS_POP=0
 l=$(last few); [ "$(f "$l" cards)" = 0 ] && [ "$(f "$l" toasts)" -ge 1 ] || fail "POPUP LEVEL FEW: the clock still stopped the game: $l"
-run many sim_ls_new.txt 8100 BUGSTAR_LS_POP=2
+EVERY=40 run many sim_ls_new.txt 8100 BUGSTAR_LS_POP=2
 l=$(last many); [ "$(f "$l" cards)" -ge 1 ] || fail "POPUP LEVEL MANY: no card: $l"
 run nop sim_ls_idle.txt 8100 BUGSTAR_LS_PAUSE=0
 l=$(last nop); [ "$(f "$l" cards)" = 0 ] && [ "$(f "$l" toasts)" -ge 1 ] || fail "AUTO-PAUSE OFF: a card stopped the game: $l"
 run big sim_ls_new.txt 8100 BUGSTAR_LS_BIG=1
-[ "$(h big 2900)" != "$(h new1 2900)" ] || fail "BIG TIP TEXT: the card looks the same"
+[ "$(h big 4000)" != "$(h new1 4000)" ] || fail "BIG TIP TEXT: the card looks the same"
 # the first 10 minutes: nothing but the basics even with the numbers of a late game
 run early sim_ls_idle.txt 8100 BUGSTAR_LS_PAUSE=0 BUGSTAR_SET_FAME=1300 BUGSTAR_SET_FREED=9 BUGSTAR_SET_GOLD=900
 l=$(last early); n=$(f "$l" names); has "$n" colony || has "$n" gods || has "$n" mayor || has "$n" armada || has "$n" money || [ -n "$n" ] || fail "early: nothing opened"; for x in colony gods mayor armada money fame; do has "$n" $x && fail "the first 10 minutes opened $x ($n)"; done

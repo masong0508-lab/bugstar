@@ -441,7 +441,7 @@ static void kitems_tick(int n){
         s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(ad<sp){ h->x=tx; h->y=ty; } else { h->x+=(sinx(a>>2)*sp)>>14; h->y+=(cosx(a>>2)*sp)>>14; }
         h->x&=(TW<<16)-1; h->y&=(TW<<16)-1; po[h->po].x=h->x; po[h->po].y=h->y;
         if(!h->life) kpo_release(h->po); }
-    for(int s=0;s<6;s++){ if(!kslm_life[s]) continue; PObj *o=&po[kslm_po[s]]; if(frames%8==0) kslm_life[s]--;
+    for(int s=0;s<6;s++){ if(!kslm_life[s]) continue; PObj *o=&po[kslm_po[s]]; if(tk_new && frames%8==0) kslm_life[s]--;
         for(int r=0;r<nrc;r++){ s32 dx=wrapd(rc[r].x-o->x), dy=wrapd(rc[r].y-o->y); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<0xC000 && !rc[r].spin){ kspin(r,"SPLAT! YOU HIT THE SLIME"); kslm_life[s]=0; break; } }
         if(!kslm_life[s]) kpo_release(kslm_po[s]); }
 }
@@ -928,7 +928,7 @@ static void kai(int r, int n){
     if(k->item && !k->fin){ if(k->ai_t>n) k->ai_t-=n; else { int t=kahead(r);
         if(k->item==KI_SHELL && t>=0){ s32 ex=wrapd(rc[t].x-k->x), ey=wrapd(rc[t].y-k->y); if((ex<0?-ex:ex)+(ey<0?-ey:ey)>(12<<16)){ k->ai_t=30; t=-2; } }
         if(t!=-2) kuse_item(r); } }
-    if((frames+r*37)%240==0) k->lane=((s32)rndi(7)-3)<<15; }
+    if(tk_new && (frames+r*37)%240==0) k->lane=((s32)rndi(7)-3)<<15; }
 static void kbump(void){                                           // karts that touch push each other apart; the heavy one wins
     for(int i=0;i<nrc;i++) for(int j=i+1;j<nrc;j++){ if(rc[i].la || rc[j].la || (i==0 && kloop_on)) continue; { int dp=kwp(rc[i].pi-rc[j].pi+knp); if(dp>24 && dp<knp-24) continue; }   // (one on a flyover, the other under it: no touching)
          s32 dx=wrapd(rc[j].x-rc[i].x), dy=wrapd(rc[j].y-rc[i].y); if(dx>0xE000||dx<-0xE000||dy>0xE000||dy<-0xE000) continue;

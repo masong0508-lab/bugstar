@@ -416,6 +416,18 @@ static void story_boss_beaten(void); static int hive_here(void); static int hive
 #define IWRAM_DATA
 #define TMR() (*(volatile u16*)0x04000100 | ((u32)*(volatile u16*)0x04000104<<16))
 static u16 dim15(u16 c, int k){ int r=(c&31)*k/16, g=((c>>5)&31)*k/16, b=((c>>10)&31)*k/16; return r|(g<<5)|(b<<10); }
+// ---- GAME TIME. Each scene that steps its world "once a picture" now steps it on a fixed clock instead, so the game runs at the same speed on every port
+// whatever a picture costs (the GBA draws 8 to 16 a second, a PC or a phone 60). The clock is the screen's own blank count (vbl_count, 59.7275 a second).
+//   planet: 10 steps a second (6 blanks): the pace the timers, hunger, weather and mining windows were made for.   space: 15 a second (4 blanks), like the dungeon's world tick.
+#define PT_BLANKS 6
+#define SP_BLANKS 4
+static int tk_pacc=0, tk_sacc=0; static u32 tk_plast=0, tk_slast=0;
+static int tk_take(u32 *last, int *acc, int per, int maxn){ u32 v=(u32)vbl_count; int d=(int)(v-*last); *last=v; if(d<0 || d>30) d=1;       // (after a menu or a load: no fast-forward)
+    *acc+=d; int n=*acc/per; *acc-=n*per; return n>maxn ? maxn : n; }
+static int tk_new=0;                                                                    // 1: the planet clock stepped in this picture (events that fire on a count of frames must fire once, not once a picture)
+static u32 key_latch=0;                                                                 // space steps 15 a second: a tap shorter than a step is kept here (sampled every blank) and counts as held for the next step
+static int sp_skip=0;                                                                   // 1: a space step that catches up on time: the world moves, nothing is drawn
+static void pet_away_tick(void);
 #include "planet.inc"
 
 #include "dungeon.inc"
@@ -1552,15 +1564,22 @@ static void pet_away_tick(void){
 // plays until the player chooses QUIT TO TITLE
 static void run_game(void){
     while(1){
-        read_keys(); if(scene!=1){ frames++; if(invuln) invuln--; }
+        int sk=0;
+        if(scene==2){ sk=tk_take(&tk_slast,&tk_sacc,SP_BLANKS,3); if(!sk){ vsync(); key_latch |= ~REG_KEYINPUT & 0x3FF; continue; } }      // space steps 15 times a second: until the next step is due, wait for the next blank (the keys are read when a step is due, so no press is lost)
+        read_keys(); keys |= key_latch; key_latch=0;
         dbg_tick();                                                                          // (the live cheats and the info overlay, debug.inc)
         if(dbg_fps || xo_i(XO_FPS)){ static int lv=0; int d=vbl_count-lv; lv=vbl_count; char b[12]; scpy(b,"FPS "); ncat(b, d>0 ? (60+d/2)/d : 60); text(VISPG,208,150,b,C_WHITE,1); }
         if(sys_req){ int rq=sys_req; sys_req=0; if(rq==2) return; start_game(1); continue; }
         rng_s += keys;
-        if(scene!=1) pet_away_tick();
         coil_tick();                                                                         // (the Stormclock Coil quest, coil2.inc)
         if(scene==2){
-            int r=space_frame();
+            int r=0;
+            for(int i=0;i<sk;i++){                                                          // (a slow picture: the missed steps are made up, one picture for all of them)
+                if(i) keys_old=keys;
+                frames++; if(invuln) invuln--; pet_away_tick();
+                sp_skip=(i<sk-1); r=space_frame(); if(r) break;
+            }
+            sp_skip=0;
             if(r==0) coil_fx_post((volatile u16*)(0x06000000 + (page_back?0xA000:0))); else coil_fx_end();
             vsync();
             REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1;

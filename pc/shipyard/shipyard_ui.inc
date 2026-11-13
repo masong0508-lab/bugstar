@@ -315,7 +315,7 @@ static int pc_sy_foe(int i, SrShip *s){      // 1 = drawn here as a mesh (an all
 // the test hook: BUGSTAR_SY_TEST=PRESET[,foes] BUGSTAR_SY_AT=frames: after that many frames in the game, give this slot that preset design and fly into space
 static void pc_sy_autotest(void){
     static int done = 0; if(done || !in_game) return; const char *e = getenv("BUGSTAR_SY_TEST"); if(!e){ done = 1; return; }
-    const char *at = getenv("BUGSTAR_SY_AT"); if(frames < (at ? atoi(at) : 0)) return; done = 1; int p = 0, f = 0; sscanf(e, "%d,%d", &p, &f);
+    const char *at = getenv("BUGSTAR_SY_AT"); if(pc_frames() < (at ? atoi(at) : 0)) return; done = 1; int p = 0, f = 0; sscanf(e, "%d,%d", &p, &f);
     SyDesign d; sy_default(&d); sy_preset(&d, p); d.foes = f; if(pc_sav_path()) sy_slot_save(pc_sav_path(), cur_slot, &d); pc_sy_slot = -1; pc_sy_refresh(); if(pc_sy_on) sy_to_look(&d);
     if(scene != 2){ oam_hide_all(); oam_flush(); scene = 2; page_back = 1; space_enter(1); music(3); }
     if(getenv("BUGSTAR_SY_PIRATES")) spawn_pirates(atoi(getenv("BUGSTAR_SY_PIRATES")));

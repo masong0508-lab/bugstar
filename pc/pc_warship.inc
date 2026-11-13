@@ -73,7 +73,7 @@ static WsShip pcw_ship(void){ WsShip s; memset(&s,0,sizeof s); s.attack=ws_attac
 static int pcw_ehp(void){ int a=ship_armour(); if(a<10) a=10; return (100+shield_max())*100/a; }
 
 // ---------------------------------------------------------------- drawing the craft in space: its hull grammar as a turning wireframe
-static void pcw_rot(float *x, float *y, float *z){ float a=frames*0.004f, b=0.35f; float c=cosf(a), s=sinf(a); float nx=*x*c-*z*s, nz=*x*s+*z*c; *x=nx; *z=nz; float cy=cosf(b), sy=sinf(b); float ny=*y*cy-*z*sy; nz=*y*sy+*z*cy; *y=ny; *z=nz; }
+static void pcw_rot(float *x, float *y, float *z){ float a=vbl_count*0.004f, b=0.35f; float c=cosf(a), s=sinf(a); float nx=*x*c-*z*s, nz=*x*s+*z*c; *x=nx; *z=nz; float cy=cosf(b), sy=sinf(b); float ny=*y*cy-*z*sy; nz=*y*sy+*z*cy; *y=ny; *z=nz; }
 static int pcw_proj(float x, float y, float z, int *sx, int *sy){ pcw_rot(&x,&y,&z); s32 zz; return sproj((s32)(x*PCW_DS),(s32)(y*PCW_DS),(s32)(z*PCW_DS),sx,sy,&zz); }
 static void pcw_seg(volatile u16 *pg, float x0, float y0, float z0, float x1, float y1, float z1, int c){ int a,b,cx,cy; if(pcw_proj(x0,y0,z0,&a,&b) && pcw_proj(x1,y1,z1,&cx,&cy)) line2(pg,a,b,cx,cy,c); }
 static void pcw_circle(volatile u16 *pg, float cx, float cy, float cz, float r, int axis, int n, int c){
@@ -82,7 +82,7 @@ static void pcw_circle(volatile u16 *pg, float cx, float cy, float cz, float r, 
 static void pcw_subpos(const WsCraft *c, int i, float *x, float *y, float *z){ u32 h=hmix(c->seed*31u+(u32)i*0x9E3779B1u+7u); float a=(h&1023)*6.2831853f/1024.0f, zz=((int)((h>>10)&1023)-512)/1400.0f;
     float r = c->shape==WS_SPHERE ? 0.5f*sqrtf(1-4*zz*zz) : 0.32f; *x=cosf(a)*r; *y=sinf(a)*r; *z=zz; }
 static void pcw_draw(volatile u16 *pg){
-    const WsCraft *c=&pcw_f.c; int hullc = pcw_f.phase==4 ? ((frames&8)?53:51) : 56;
+    const WsCraft *c=&pcw_f.c; int hullc = pcw_f.phase==4 ? ((vbl_count&8)?53:51) : 56;
     for(int i=0;i<c->nprim;i++){ const WsPrim *p=&c->prim[i]; float x=p->x, y=p->y, z=p->z;
         switch(p->kind){
         case 0: pcw_circle(pg,x,y,z,p->a,2,14,hullc); pcw_circle(pg,x,y,z,p->a,0,14,hullc); pcw_circle(pg,x,y,z,p->a,1,10,54); break;
@@ -95,9 +95,9 @@ static void pcw_draw(volatile u16 *pg){
     for(int i=0;i<c->nsub;i++){ float x,y,z; pcw_subpos(c,i,&x,&y,&z); int sx,sy; if(!pcw_proj(x,y,z,&sx,&sy)) continue; const WsSub *s=&c->sub[i];
         int col = !s->alive ? 57 : s->sec==pcw_f.sec ? sc[s->kind] : 56; int r = i==pcw_target ? 5 : 3;
         line2(pg,sx-r,sy,sx,sy-r,col); line2(pg,sx,sy-r,sx+r,sy,col); line2(pg,sx+r,sy,sx,sy+r,col); line2(pg,sx,sy+r,sx-r,sy,col); if(!s->alive){ line2(pg,sx-2,sy-2,sx+2,sy+2,57); } }
-    if(pcw_f.layers_up>0){ int sx,sy; s32 zz; if(sproj(0,0,0,&sx,&sy,&zz) && zz>100){ int r=(int)(PCW_DS*62LL/100*FOCS/zz); for(int k=0;k<64;k++){ if((k+frames/4)%(7-pcw_f.layers_up>1?7-pcw_f.layers_up:1)) continue; int a=k*4;
+    if(pcw_f.layers_up>0){ int sx,sy; s32 zz; if(sproj(0,0,0,&sx,&sy,&zz) && zz>100){ int r=(int)(PCW_DS*62LL/100*FOCS/zz); for(int k=0;k<64;k++){ if((k+vbl_count/4)%(7-pcw_f.layers_up>1?7-pcw_f.layers_up:1)) continue; int a=k*4;
         dot2(pg,sx+((cosx(a&255)*r)>>14),sy+((sinx(a&255)*r)>>14),55); } } }
-    if(pcw_beam_t){ pcw_beam_t--; for(int i=0;i<c->nsub;i++) if(c->sub[i].alive && c->sub[i].kind==WSS_TURRET && ((i+frames/40)&1)){ float x,y,z; pcw_subpos(c,i,&x,&y,&z); int sx,sy; if(pcw_proj(x,y,z,&sx,&sy)) line2(pg,sx,sy,120+(frames&7)-4,124,53); } }
+    if(pcw_beam_t){ pcw_beam_t--; for(int i=0;i<c->nsub;i++) if(c->sub[i].alive && c->sub[i].kind==WSS_TURRET && ((i+vbl_count/40)&1)){ float x,y,z; pcw_subpos(c,i,&x,&y,&z); int sx,sy; if(pcw_proj(x,y,z,&sx,&sy)) line2(pg,sx,sy,120+(vbl_count&7)-4,124,53); } }
 }
 static void pcw_bar(volatile u16 *pg, int x, int y, int w, double frac, int c){ rect(pg,x,y,w,3,57); int k=(int)(w*frac); if(k<0) k=0; if(k>w) k=w; if(!k && frac>0) k=1; rect(pg,x,y,k,3,c); }
 static double pcw_frac(WN a, WN b){ if(wn_is_zero(b)) return 0; double f=wn_to_d(wn_div(a,b)); return f<0?0:f>1?1:f; }
@@ -113,7 +113,7 @@ static void pcw_hud(volatile u16 *pg){
     { int w=pcw_weapon; scpy(b,ws_wpn_name(w)); if(pcw_f.ammo[w]>=0){ scat(b," "); ncat(b,pcw_f.ammo[w]); } scat(b,"  KITS "); ncat(b,pcw_kits); text(pg,4,112,b,pcw_f.overheat?53:54,1);
       text(pg,120,112,"HEAT",56,1); pcw_bar(pg,140,113,60,pcw_f.heat/wf_heat_max(),pcw_f.overheat?53:50); }
     if(pcw_board_ok) text(pg,120-textlen("A: BOARD THROUGH A HANGAR")*2,100,"A: BOARD THROUGH A HANGAR",52,1);
-    else if(!(frames&64)) text(pg,4,104,"START: WEAPON  SELECT: RETREAT  R NEAR: BOARD",56,1);
+    else if(!(vbl_count&64)) text(pg,4,104,"START: WEAPON  SELECT: RETREAT  R NEAR: BOARD",56,1);
 }
 
 // ---------------------------------------------------------------- starting, leaving, winning
@@ -123,16 +123,16 @@ static void pcw_engage(u32 seed, int z, int cheat){
     if(c.cheat){ pcw_cheated=1; plw_set_cheated(1); }
     int resume = pcw_f.c.seed==c.seed && pcw_f.c.z==c.z && pcw_f.state==WF_FLED;
     music(4); no_ambush=1; space_enter(0); no_ambush=0; in_lair=1; beast_fight=0; ambush_t=0; pc_ws_on=1;
-    if(resume){ double away = pcw_left_at>=0 ? (frames-pcw_left_at)/60.0 : 1e9; wf_away(&pcw_f,away); pcw_f.ship=pcw_ship(); for(int i=0;i<WW_N;i++) pcw_f.ammo[i]=pcw_ammo[i]; space_say(away>90?"THE CREWS REBUILT EVERYTHING":"THE CREWS PATCHED IT. GO AGAIN"); }
+    if(resume){ double away = pcw_left_at>=0 ? (vbl_count-pcw_left_at)/60.0 : 1e9; wf_away(&pcw_f,away); pcw_f.ship=pcw_ship(); for(int i=0;i<WW_N;i++) pcw_f.ammo[i]=pcw_ammo[i]; space_say(away>90?"THE CREWS REBUILT EVERYTHING":"THE CREWS PATCHED IT. GO AGAIN"); }
     else { WsShip s=pcw_ship(); wf_start(&pcw_f,&c,&s); space_say("A COLOSSUS TURNS TOWARD YOU"); }
     pcw_f.ext=1; pcw_target=-1; pcw_acc=0;
     for(int i=0;i<NPIR;i++) if(pir[i].team==1) pir[i].alive=0;
     shx=0; shy=0; shz=-(PCW_DS*4); yaw=0; pitch=0; speed=0; svx_=svy_=svz_=0;
     BG_PAL[57]=rgb15(14,16,30); BG_PAL[58]=rgb15(60,70,120);
 }
-static void pcw_end(int how){ if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws end %d at %d\n",how,frames);                                            // 0 retreat, 1 won, 2 lost
+static void pcw_end(int how){ if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws end %d at %d\n",how,vbl_count);                                            // 0 retreat, 1 won, 2 lost
     pc_ws_on=0; in_lair=0; pcw_board_ok=0; pcw_ammo[0]=-1; for(int i=1;i<WW_N;i++) if(pcw_ammo[i]>0 || pcw_f.ammo[i]>=0) pcw_ammo[i]=pcw_f.ammo[i];
-    if(how==0){ pcw_f.state=WF_FLED; pcw_left_at=frames; }
+    if(how==0){ pcw_f.state=WF_FLED; pcw_left_at=vbl_count; }
     if(how==2){ wf_away(&pcw_f,1e9); pcw_f.state=WF_FLED; pcw_left_at=-1; }
     music(3); no_ambush=1; space_enter(0); no_ambush=0;
     space_say(how==0?"YOU PULL BACK. ITS CREWS START REPAIRS":how==1?"THE COLOSSUS IS GONE":"");
@@ -145,7 +145,7 @@ static void pcw_victory(void){
     volatile u16 *pg=(volatile u16*)(GBAA(0x06000000) + (page_back?0:0xA000)); WsCraft c=pcw_f.c; pcw_end(1);
     pc_ws_breakdown(pg,&c,&p); build_space_palette();
 }
-static void pc_ws_lost(void){ if(!pc_ws_on) return; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws lost at %d\n",frames); pc_ws_on=0; wf_away(&pcw_f,1e9); pcw_f.state=WF_FLED; pcw_left_at=-1; music(3); }
+static void pc_ws_lost(void){ if(!pc_ws_on) return; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws lost at %d\n",vbl_count); pc_ws_on=0; wf_away(&pcw_f,1e9); pcw_f.state=WF_FLED; pcw_left_at=-1; music(3); }
 static int pc_ws_sel(void){ if(!pc_ws_on) return 0; pcw_end(0); return 1; }
 static void pc_ws_board(void);
 static void pc_ws_shot(void){                                           // the trigger (A) while fighting: the chosen weapon, at whatever the crosshair is on
@@ -477,7 +477,7 @@ static int pc_vt_terr(void){ return pc_vt_terr_force; }
 static void pc_vt_tick(void){
     static int st=-1; static char mode[16]; static int a[6]; const char *e=getenv("BUGSTAR_VT"); if(!e) return;
     if(st<0){ st=0; memset(a,0,sizeof a); a[1]=-1; a[2]=-1; a[3]=-1; a[4]=-1; sscanf(e,"%15[a-z],%d,%d,%d,%d,%d",mode,&a[0],&a[1],&a[2],&a[3],&a[4]); }
-    const char *at=getenv("BUGSTAR_VT_AT"); if(!in_game || frames < (at?atoi(at):650)) return;
+    const char *at=getenv("BUGSTAR_VT_AT"); if(!in_game || pc_frames() < (at?atoi(at):650)) return;
     if(st==0 && scene==0){ st=1;
         if(!strcmp(mode,"space")){ chase_cam=a[0]; oam_hide_all(); oam_flush(); scene=2; page_back=1; space_enter(1); music(3); shx=PR*3; shy=0; shz=0; yaw=a[1]>=0?a[1]:0; pitch=a[2]>=0?a[2]:0; speed=a[3]>=0?a[3]:0; basis(); }
         else if(!strcmp(mode,"planet")){ int seed=a[4]>=0?a[4]:5; ant_king=1; zones_open=6; cleared_mask=63; endless=1; galaxy_no=4000000000u; for(int w=0;w<NCW;w++) clus[w]=hmix(w*77+seed); u_settle(); gen_cluster(); cur_sys=7+seed%20; dbg_cls=a[0]; dbg_weird=a[1]; dbg_weather=a[2]; dbg_hour=a[3]; fade(0); arrive_on_planet();
@@ -489,7 +489,7 @@ static void pc_vt_tick(void){
     if(st==1 && scene==2 && getenv("BUGSTAR_VT_FX")){                                           // space: things to look at, kept in front of the ship
         s32 *o; Can *c=cans; (void)o; for(int k=0;k<3;k++){ c[k].alive=1; c[k].good=(u8)(3+k); int f=700+k*500, r=(k-1)*260, u=(k==1?-120:90);
             c[k].x=shx+((bf[0]*f+br[0]*r+bu[0]*u)>>14); c[k].y=shy+((bf[1]*f+br[1]*r+bu[1]*u)>>14); c[k].z=shz+((bf[2]*f+br[2]*r+bu[2]*u)>>14); }
-        if((frames%12)==0){ int f=1500; boom(shx+((bf[0]*f+br[0]*300)>>14), shy+((bf[1]*f+br[1]*300)>>14), shz+((bf[2]*f+br[2]*300)>>14), 6, 54); } }
+        if((vbl_count%12)==0){ int f=1500; boom(shx+((bf[0]*f+br[0]*300)>>14), shy+((bf[1]*f+br[1]*300)>>14), shz+((bf[2]*f+br[2]*300)>>14), 6, 54); } }
     if(st==1 && scene==1 && getenv("BUGSTAR_VT_FX") && a[2]==1){ st=2;                          // dungeon: a pond and polished tiles in front of you
         int cx=px_>>16, cy=py_>>16, k=(pang>>8)&3; static const int dx[4]={1,0,-1,0}, dy[4]={0,1,0,-1};
         for(int d=2;d<=7;d++) for(int sd=-3;sd<=3;sd++){ int x=cx+dx[k]*d-dy[k]*sd, y=cy+dy[k]*d+dx[k]*sd; if(x<1||y<1||x>=MW-1||y>=MW-1) continue; int i=y*MW+x; if(dmap[i]!=D_FLOOR) continue;
@@ -499,7 +499,7 @@ static void pc_vt_tick(void){
 static void pc_ws_autotest(void){
     pc_vt_tick(); pc_sg_tick();
     static int done=0; if(in_game){ pcm_tick(); pcm_mp_tick(); } if(done || !in_game) return; const char *e=getenv("BUGSTAR_WS_TEST"); if(!e){ done=1; return; }
-    const char *at=getenv("BUGSTAR_WS_AT"); const char *sy=getenv("BUGSTAR_MS_SYNC"); if(frames < (at?atoi(at):0) || (scene!=0 && !(scene==2 && !strncmp(e,"mscan",5))) || (sy && pc_frames()<atol(sy))) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
+    const char *at=getenv("BUGSTAR_WS_AT"); const char *sy=getenv("BUGSTAR_MS_SYNC"); if(pc_frames() < (at?atoi(at):0) || (scene!=0 && !(scene==2 && !strncmp(e,"mscan",5))) || (sy && pc_frames()<atol(sy))) return; done=1; if(getenv("BUGSTAR_WS_DEBUG")) fprintf(stderr,"ws autotest at game frame %d scene %d script frame %ld\n",frames,scene,pc_frames());
     char mode[16]={0}; int z=WS_ZREF; unsigned seed=0; sscanf(e,"%15[a-z],%d,%u",mode,&z,&seed);
     if(!strcmp(mode,"lab")){ pc_ws_lab((volatile u16*)GBAA(0x06000000)); fprintf(stderr,"screen lab returned\n"); return; }
     { const char *g=getenv("BUGSTAR_AFT_GOLD"); if(g) gold=atoll(g); }

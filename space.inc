@@ -778,6 +778,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; p->life--; p->x+=p->vx; p->y+=p->vy; p->z+=p->vz; }
     if(hull<=0){ if(in_lair){ in_lair=0; no_ambush=1; space_enter(0); no_ambush=0; } hull=100; for(int i=0;i<8;i++) cargo[i]=0; gold=sdiv(gold,2); for(int i=0;i<NPIR;i++) pir[i].alive=0; battle_on=0;
         shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=10; svx_=svy_=svz_=0; space_say("SHIP WRECKED! CARGO LOST"); sfx(9); }
+    if(sp_skip){ if(space_msg_t) space_msg_t--; if(laser_t) laser_t--; return 0; }       // (a step that makes up lost time: the world has moved, the picture is made once, by the last step)
     // ---- draw
     int sv_yaw=yaw, sv_pit=pitch;
     if(sshake && opt_shake){ yaw=(yaw+((frames&1)?sshake:-sshake)/2)&1023; pitch+=((frames&2)?sshake:-sshake)/3; basis(); apply_roll(); }          // (a hit shakes the view on top of the bank)

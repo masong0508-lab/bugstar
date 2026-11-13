@@ -161,7 +161,10 @@ static int hm_bil(s32 x, s32 y){                            // height between ce
     return (top*(256-fy)+bot*fy)>>8;                          // 0..255<<8
 }
 static int g_hs=3;                                          // how tall the land is: 255 -> g_hs cells (mountain worlds are tall, meadows flat)
-static s32 ground_h(s32 x, s32 y){ return hfine[((y>>15)&HMASK)*HW + ((x>>15)&HMASK)]*g_hs; }
+#define CITY_K 3                 // a building's height above its street counts this many times, in the picture and for the camera: a block is a few people tall, a tower many (it was a squat box)
+static int city_L=0, city_on=0;             // the street level of the city (hmap at its centre; 0: no city)
+static s32 hh_of(int ti, int h){ if(city_on){ int c=cmap[ti]; if(c>=BLD_B && c<BLD_B+8 && h>city_L) return city_L*g_hs + (h-city_L)*g_hs*CITY_K; } return h*g_hs; }     // 8.8 cells
+static s32 ground_h(s32 x, s32 y){ int ti=((y>>15)&HMASK)*HW + ((x>>15)&HMASK); return hh_of(ti,hfine[ti]); }
 static inline __attribute__((always_inline)) int hell_paint(int c, int h, int x, int y){            // the hell worlds' own ground patterns: lava veins, crusts, neon cracks, ribs, frost cracks
     int d=bay4[((y&3)<<2)|(x&3)];
     switch(wd.cls){
@@ -323,8 +326,11 @@ static void new_planet(void){
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_ROCK && ore_of(po[i].x,po[i].y)>=0 && ore_mined_recently(ore_id(po[i].x,po[i].y))) po[i].alive=0;      // veins you mined lately are still empty (the list holds the last 16, so they regrow as you mine others)
     ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;
 #ifdef TEST_CITY
+#ifndef TEST_DY
+#define TEST_DY 2
+#endif
     { static const u8 tk[11]={0,O_MARKET,O_CANTINA,O_OFFICE,O_RACE,O_LOCAL,O_RUIN,O_FOSSIL,O_CRIT,O_BEETLE,O_SHRINE}; int want=tk[TEST_CITY%11];
-      if(TEST_CITY==0 && city_r){ ppx=city_cx<<16; ppy=((city_cy+city_r+2)&TMASK)<<16; }
+      if(TEST_CITY==0 && city_r){ ppx=city_cx<<16; ppy=((city_cy+city_r+TEST_DY)&TMASK)<<16; }
       else for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==want){ ppx=po[i].x; ppy=po[i].y+(TEST_CITY>=8?(3<<16):(1<<16)); if(TEST_CITY==10){ for(int j=0;j<NPO;j++) if(j!=i && po[j].alive && po[j].kind>O_SHIP && po[j].kind<=O_LAST_USE) po[j].alive=0; ppy=po[i].y-(1<<16); } break; }
       { int n=0,f=0; for(int i=0;i<NPO;i++){ if(po[i].alive) n++; if(po[i].alive&&po[i].kind==want) f++; } scpy(tdbg,"TEST K"); ncat(tdbg,n); scat(tdbg," F"); ncat(tdbg,f); scat(tdbg," W"); ncat(tdbg,wd.weird); }
       cam_h=ground_h(ppx,ppy)+CAM_UP; }
@@ -358,7 +364,7 @@ static void planet_tables(void){
 // ---------------------------------------------------------------- city looks (the PC version's shading, in 8-bit palette colours)
 __attribute__((noinline)) static int bld_face(int px,int py,int qx,int qy,s32 vx,s32 vy){                       // the ray crossed a texel edge in x (the lit face) or in y (the shaded face)
     if(px!=qx && py==qy) return 0; if(py!=qy && px==qx) return 1; s32 ax=vx<0?-vx:vx, ay=vy<0?-vy:vy; return ay>ax; }
-__attribute__((noinline)) static int rise_of(int h,int cL){ return (h-cL)*g_hs; }
+__attribute__((noinline)) static int rise_of(int h,int cL){ return (h-cL)*g_hs*CITY_K; }
 __attribute__((noinline)) static int street_ix(int ix, s32 mx, s32 my){                                          // streets: shadowed under the walls and along the kerb; a plaza: contact shadow and a pale kerb
     int tx=(mx>>15)&HMASK, ty=(my>>15)&HMASK, tr=(tx+1)&HMASK, tl=(tx-1)&HMASK, td=(ty+1)&HMASK, tu=(ty-1)&HMASK;
     int cr=cmap[ty*HW+tr], cl=cmap[ty*HW+tl], cd=cmap[td*HW+tx], cu=cmap[tu*HW+tx], fx=(mx>>11)&15, fy=(my>>11)&15;
@@ -375,8 +381,8 @@ __attribute__((noinline)) static int street_ix(int ix, s32 mx, s32 my){         
 // sills, mullions, the sky mirrored in the panes. Thumb code in IWRAM (small and fast). hd = height below the roof edge, hag = height above the street.
 __attribute__((section(".iwram"), long_call, noinline)) static void bld_col(volatile u16 *col, int y, int y0, int ytop, int ix, int rise, s32 zz, s32 mx, s32 my, int face){
     int t=(ix-BLD_B)>>1, wall0=BLD_B+t*2, shd=wall0+1, roof=76+t, glass=t&1, hi=96+t*3, ao=97+t*3, wall1=98+t*3, wallm=face?wall1:wall0;
-    int u=((mx+my)>>11)&15, uc=(mx+my)>>16, near_=zz<=(32*FOCP*2/3), lastfl=-1, lastuq=-1; u32 hq=0;
-    for(int yy=y0; yy<ytop; yy++){ int hd=(((yy-y)*zz*273)>>15), c2, hag=rise-hd;           // (x273>>15 = divide by FOCP: the ARM7 has no divide)
+    int u=((mx+my)>>11)&15, uc=(mx+my)>>16, near_=zz<=(32*FOCP*5/4), lastfl=-1, lastuq=-1; u32 hq=0;
+    for(int yy=y0; yy<ytop; yy++){ int hd0=(((yy-y)*zz*273)>>15), hd=(hd0*171)>>9, c2, hag=((rise-hd0)*171)>>9;           // (x273>>15 = divide by FOCP: the ARM7 has no divide. The windows and floors are drawn in units of CITY_K (=3): a floor is a person and a half tall, a window is not a thin slit)
         int band = hag<40 ? ao : (hag>60 && !face) ? hi : wallm;                          // dark at the street, lighter toward the sky
         if(hd<5) c2 = face ? wall0 : roof;                                                // roof lip
         else if(hd<7) c2 = shd;                                                           // its shadow line
@@ -407,7 +413,7 @@ IWRAM static void render_planet(volatile u16 *pg){
             s32 mx = cam_x + vx*z, my = cam_y + vy*z;
             int ti = ((my>>15)&HMASK)*HW + ((mx>>15)&HMASK);                             // texel: half a cell
             int h = hfine[ti]; if(g_wob){ h += wob64[(i*3+c)&63]; if(h<0) h=0; if(h>255) h=255; }
-            s32 hh = h*g_hs;                                                           // 8.8 cells
+            s32 hh = city_r ? hh_of(ti,h) : h*g_hs;                                    // 8.8 cells
             int y = PHZ + ((stp_base[i] - ((hh*stp_f[i])>>8))>>8);
             if(y<ytop){
                 int ix = cmap[ti];
@@ -508,6 +514,10 @@ static void weird_frame(int n){
     g_fog = WL(MW_FOG)!=0; g_nst = g_fog ? NSTEP-WL(MW_FOG) : NSTEP; if(g_nst<22) g_nst=22;
     g_wob = WL(MW_WOBBLE)!=0;
     if(g_wob){ int a=WL(MW_WOBBLE), sp=2+a/4; for(int k=0;k<64;k++) wob64[k]=(s8)((sinx((k*8+frames*sp)&255)*a*3)>>14); }
+    (void)n;
+}
+static void weird_tick(void){                                                      // the world laws that act with time (palette cycles, healing air...): once per step of the planet clock
+    if(!wd.weird) return;
     if(WL(MW_RAINBOW)){ int every=1+(25-WL(MW_RAINBOW))/4; if(frames%every==0){                                     // RAINBOW: the ground's colours roll
         if(WL(MW_RAINBOW)&1){ u16 c0=BG_PAL[GND_B]; for(int i=0;i<15;i++) BG_PAL[GND_B+i]=BG_PAL[GND_B+i+1]; BG_PAL[GND_B+15]=c0; }
         else { u16 c0=BG_PAL[GND_B+15]; for(int i=15;i>0;i--) BG_PAL[GND_B+i]=BG_PAL[GND_B+i-1]; BG_PAL[GND_B]=c0; } } }
@@ -524,15 +534,14 @@ static void weird_frame(int n){
         int j=-1; for(int i=0;i<NPO;i++) if((!po[i].alive && po[i].kind<O_KART) || po[i].kind==O_PEBBLE || po[i].kind==O_TUFT){ j=i; break; }
         if(j>=0){ int a=rndi(256), d=3+rndi(4); po[j].kind=O_ROCK; po[j].alive=1; po[j].hp=3; po[j].x=(ppx+cosx(a)*d*4)&((TW<<16)-1); po[j].y=(ppy+sinx(a)*d*4)&((TW<<16)-1);
             sfx(12); show_msg("A METEOR LANDED! A CRYSTAL ROCK NEARBY"); } } }
-    (void)n;
 }
 static void hell_sky(volatile u16 *pg){                                                 // a great sun or moon hangs over every hell world
     static const u8 rr[6]={14,9,12,13,15,8}; int k=wd.cls-PC_INFERNO, r=rr[k], cx=sky_col(30+k*17), cy=38+(k&1)*6; if(cx<-40) return;
     for(int dy=-r;dy<=r;dy++) for(int dx=-r;dx<=r;dx++){ int d=dx*dx*4+dy*dy; if(d<=r*r) sky_put(pg,cx+dx,cy+dy, d<r*r/3?94:d<r*r*2/3?89:88); }
     if(wd.cls==PC_BONE){ sky_put(pg,cx-2,cy-1,94); sky_put(pg,cx+2,cy-1,94); sky_put(pg,cx-2,cy,94); sky_put(pg,cx+2,cy,94); sky_put(pg,cx,cy+2,94); sky_put(pg,cx,cy+3,94); }   // the moon is a skull
 }
-static void hell_frame(int n){                                                          // what the six hell worlds do to you; every hit grows with the tier (hell_tier)
-    (void)n; if(!hellw()) return; int T=hell_tier(); u32 f=frames; int sea = hm_at(ppx,ppy)<water_lv && !(form==FORM_CREATURE && form_body==2);
+static void hell_tick(void){                                                          // what the six hell worlds do to you; every hit grows with the tier (hell_tier)
+    if(!hellw()) return; int T=hell_tier(); u32 f=frames; int sea = hm_at(ppx,ppy)<water_lv && !(form==FORM_CREATURE && form_body==2);
     if((wd.cls==PC_INFERNO || wd.cls==PC_BLOODSEA) && f%8==0){ u16 c0=BG_PAL[WAT_B+1]; for(int i=1;i<6;i++) BG_PAL[WAT_B+i]=BG_PAL[WAT_B+i+1]; BG_PAL[WAT_B+6]=c0; }   // the lava and the blood slowly churn
     if(wd.cls==PC_INFERNO && (f&3)==0){ int t=(sinx((f*3)&255)+16384)>>11; for(int i=5;i<8;i++) BG_PAL[SKY_B+i]=lerp15(skybase[i],rgb15(255,120,30),t>16?16:t); }
     if(wd.cls==PC_COCYTUS && (f&3)==0) for(int i=0;i<4;i++){ int s=sinx((f*2+i*40)&255); int t=((s+16384)*8)>>15; BG_PAL[SKY_B+i]=lerp15(skybase[i],rgb15(80,255,200),t>16?16:t); }
@@ -578,6 +587,14 @@ static void planet_oremap(volatile u16 *pg){
 #ifdef TEST_KLOG
 u32 klog[64]; static int ks_state;                                                   // (test builds: where the race frames' time goes: harness reads it)
 #endif
+static void planet_tick(void){                                                          // ONE STEP OF THE PLANET'S CLOCK (10 a second on every port, see tk_take in main.c)
+    frames++; if(invuln) invuln--; pet_away_tick();
+    if(frames%600==0){ for(int i=0;i<NPO;i++) if(po[i].kind==O_PLANT && !po[i].alive){ place(&po[i],O_PLANT,4,64); break; } }
+    tick_timers(); hunger_tick(240); regen_tick(120);
+    weird_tick(); hell_tick(); rock_frame();
+    if(mine_t){ if(!--mine_t) mine_gap=0; } else if(mine_gap<99) mine_gap++;
+    if(opt_autosave && frames%1000==999){ save_game(); show_msg("GAME SAVED"); }          // a quiet save every few minutes on the surface
+}
 static void planet_frame(void){
     u32 t_f0=TMR();
 #ifdef TEST_FPS
@@ -585,9 +602,9 @@ static void planet_frame(void){
 #endif
     { int want = kr_mode && !(in_menu&0xFFFF); if(want && !m7_on) m7_begin(); else if(!want && m7_on) m7_end(); }      // a kart race: the hardware ground (m7.inc)
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
-    int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>4) n=4;           // the view takes a few 60ths to draw: move by that much
+    int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>30) n=1; else if(n>12) n=12;           // the view takes a few 60ths to draw: move by that much (real time; after a menu or a load: no fast-forward)
 #ifdef TEST_KLOG
-    static u32 kl_last=0; int kl_on = kr_mode==1 && ks_state==1 && m7_on; if(kl_on){ klog[0]++; klog[n]+=1; klog[5]+=t_f0-kl_last; } kl_last=t_f0;
+    static u32 kl_last=0; int kl_on = kr_mode==1 && ks_state==1 && m7_on; if(kl_on){ klog[0]++; klog[n>4?4:n]+=1; klog[5]+=t_f0-kl_last; } kl_last=t_f0;
 #endif
     int moved=0;
     int th = HELD(K_LEFT) ? -16 : HELD(K_RIGHT) ? 16 : 0, tv = HELD(K_UP) ? -16 : HELD(K_DOWN) ? 16 : 0;
@@ -702,8 +719,8 @@ static void planet_frame(void){
                 break; }
         }
     }
-    if(frames%600==0){ for(int i=0;i<NPO;i++) if(po[i].kind==O_PLANT && !po[i].alive){ place(&po[i],O_PLANT,4,64); break; } }
-    if(!kart_on) bag_input(); tick_timers(); hunger_tick(240); regen_tick(120);
+    { int tk=tk_take(&tk_plast,&tk_pacc,kr_mode?3:PT_BLANKS,2); tk_new=tk>0; while(tk-->0) planet_tick(); }     // (the clock: what counts time, not distance. It does not depend on how long a picture takes)
+    if(!kart_on) bag_input();
     if(HIT(K_START) && !kr_mode){ oam_hide_all(); oam_flush(); char_screen(VISPG); planet_hud(); msg_timer=0; p_last=vbl_count; if(kart_req){ kart_req=0; kart_menu(0); } return; }
     if(cast_flag>=0){ cam_fp^=1; planet_tables(); show_msg(cam_fp?"FIRST PERSON. SELECT: SWITCH VIEW":"THIRD PERSON. HOLD SELECT + LEFT/RIGHT: TURN"); sfx(2); }
     escape_flag=call_flag=blast_flag=0; cast_flag=-1;
@@ -711,9 +728,8 @@ static void planet_frame(void){
     if(msg_timer){ msg_timer-=n; if(msg_timer<0) msg_timer=0; }
     if(hud_sig()!=phud_sig) planet_hud();                                              // every frame: the top bar answers the same frame a number changes
     hud_live(m7_on ? (volatile u16*)0x06000000 : pg);                                  // ...and its bars glide, trail and flash (game.inc; a race keeps the top bar on page 0)
-    if(opt_autosave && frames%6000==5999){ save_game(); show_msg("GAME SAVED"); }          // a quiet save every few minutes on the surface
     // ---- draw the world
-    weird_frame(n); hell_frame(n); rock_frame();
+    weird_frame(n);
     if(m7_on) m7_sky_now();                                                             // (a race: the sky, loops and HUD of the frame on show, once the beam is past them)
     u32 t_r0=TMR(); if(m7_on) m7_frame(); else { if(!rays_ok) rays_build(); render_planet(pg); } u32 t_r1=TMR();
 #ifdef TEST_FPS
@@ -762,7 +778,6 @@ sprites:;
       int sy=bug_sy;
       int bob = moved ? ((frames>>3)&1) : 0; if(WL(MW_ZEROG)) bob += 3+WL(MW_ZEROG)/3+(sinx((frames*3)&255)>>11);
       int pvis = !(invuln && (frames&4));
-      if(mine_t){ if(!--mine_t) mine_gap=0; } else if(mine_gap<99) mine_gap++;
       int lean = moved ? 10 : (mine_t ? 24 : 0), sq = (moved && ((frames>>3)&1)) || mine_t ? 8 : 0;
       int up = tv<0 && !th && form==FORM_BUG;
       int shr=WL(MW_SHRINK)*5+64;   /* 64 = standing at two thirds of the old size */                                                          // SHRINK RAY: you are smaller

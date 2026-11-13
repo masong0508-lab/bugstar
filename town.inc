@@ -272,12 +272,16 @@ static void city_flatten(void){                                                 
             else if(o<=ow) t=256; else if(o<ow+10) t=256-(o-ow)*256/10; else t=0; }      // level over the outskirts, then a slope back to the land
         hmap[i]=(hmap[i]*(256-t)+L*t)>>8; }
 }
-static int city_tech(void){                                                          // how advanced the city is, 0 huts .. 5 megacity: its size, its world's economy (tech and mining build tall), a city planet most of all
+static int city_tech(void){
+#ifdef TEST_TECH
+    return TEST_TECH;                                                                  // (test builds: force the city's tech, 0 huts .. 5 megacity)
+#endif
+                                                             // how advanced the city is, 0 huts .. 5 megacity: its size, its world's economy (tech and mining build tall), a city planet most of all
     int t = wd.cls==PC_ECUMENOPOLIS ? 5 : wd.csize; int eco = endless ? sys[cur_sys].eco : zone%4; static const u8 eb[4]={0,1,2,1};   // farming, mining, tech, hive
     t += eb[eco&3]; return t>5 ? 5 : t; }
 static void city_stamp(void){                                                         // after smoothing: streets, blocks, towers, a plaza, the border, the outskirts
-    if(!city_r) return;
-    int L = hmap[city_cy*TW+city_cx]; int tx0=city_cx*2, ty0=city_cy*2, R=city_r*2; int TT=city_tech();   // the roads come from the tech: huts get wandering one-texel tracks, towns a plain two-texel grid, big cities wide avenues every fourth block
+    if(!city_r){ city_L=0; city_on=0; return; }
+    int L = hmap[city_cy*TW+city_cx]; city_L=L; city_on=1; int tx0=city_cx*2, ty0=city_cy*2, R=city_r*2; int TT=city_tech();   // the roads come from the tech: huts get wandering one-texel tracks, towns a plain two-texel grid, big cities wide avenues every fourth block
     int eco=wd.cls==PC_ECUMENOPOLIS, OW=city_ow(), BW=city_bw(), E=BW+12, RM=eco?R:R*14/10+OW+2;
     for(int y=-RM;y<=RM;y++) for(int x=-RM;x<=RM;x++){ int d=city_depth(x,y); if(d<=-OW) continue;
         int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK, i=ty*HW+tx;
@@ -381,7 +385,7 @@ static void planet_life(int *k){
 }
 static int crit_count(int s){ int n=0; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_CRIT && po[i].var==s) n++; return n; }
 static void life_tick(int n){                                                         // every frame: creatures move, beetles hunt, herds breed
-    if(kr_mode){ if(!(frames&1)) return; n*=2; }                                        // (in a race the land's creatures only stroll: every other frame is plenty)
+    if(kr_mode){ static u8 lt_odd; lt_odd^=1; if(!lt_odd) return; n*=2; }                                        // (in a race the land's creatures only stroll: every other frame is plenty)
     for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive) continue;
         if(o->kind==O_CRIT){ Species *p=&spc[o->var]; s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
             if(ctim[i]>n) ctim[i]-=n; else { ctim[i]=40+wr(80); int a=wr(256); int sp = p->body==2 ? 900 : 500;
@@ -403,7 +407,7 @@ static void life_tick(int n){                                                   
         s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(ad>(10<<16)) continue;
         int lv = WL(MW_MAGNET) ? WL(MW_MAGNET) : -WL(MW_SHYORE); if(lv>0 && ad<0x18000) continue;
         o->x=(o->x+((dx>>9)*n*lv)/4)&((TW<<16)-1); o->y=(o->y+((dy>>9)*n*lv)/4)&((TW<<16)-1); }
-    if(frames%900==0){ for(int s=0;s<2;s++){ int c=crit_count(s); if(c>0 && c<spc[s].maxpop){ for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_CRIT && po[i].var==s){
+    if(tk_new && frames%900==0){ for(int s=0;s<2;s++){ int c=crit_count(s); if(c>0 && c<spc[s].maxpop){ for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_CRIT && po[i].var==s){
         for(int j=0;j<NPO;j++) if(!po[j].alive){ int k=j; spawn_crit(s, po[i].x+(1<<16), po[i].y, &k); break; } break; } } } }
 }
 // ---------------------------------------------------------------- talking: locals, gossip, Bolt's quips

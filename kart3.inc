@@ -259,7 +259,7 @@ static int kw_my_tracks(volatile u16 *pg){                         // race any s
 
 // ---------------------------------------------------------------- the whole mode
 static void kw_run(void){                                          // the planet, with a race on it, until the race says we are done
-    while(!kw_quit){ read_keys(); frames++; if(invuln) invuln--; rng_s+=keys; planet_frame();
+    while(!kw_quit){ read_keys(); rng_s+=keys; planet_frame();
         vsync(); if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?(1<<4):0); page_back^=1; oam_flush(); }
         if(kg_fadein && !--kg_fadein) fade(0); }                                                         // (a race that has just started: its first pictures are drawn in the dark, then it fades in)
     fade(1); oam_hide_all(); oam_flush(); music(2); }

@@ -41,7 +41,7 @@ static inline uint32_t pn_dim(uint32_t c, int f){ return pn_mix(c,0x000000,f); }
 static inline uint32_t pn_lite(uint32_t c, int f){ return pn_mix(c,0xFFFFFF,f); }
 static inline uint32_t pn_bld(int ix, double dy, int z, double u, double gc, int face, double hag, double sy){
     int t=(ix-BLD_B)>>1; uint32_t base=pn_pal[BLD_B+t*2], shd=pn_pal[BLD_B+t*2+1], roof=pn_pal[76+t];
-    double hd=dy*z/(double)FOCP, pxf=32.0*FOCP/z*sy;                          // pxf = screen pixels per floor
+    double hd=dy*z/(double)FOCP/CITY_K, pxf=32.0*CITY_K*FOCP/z*sy; hag/=CITY_K;   // pxf = screen pixels per floor (a floor and its windows are CITY_K times taller than the old thin slits)
     // each face has its own light: face 0 (x) is the lit side, face 1 (y) is in shade; walls get lighter toward the roof and darker at the street (contact shadow)
     int fdim = face ? 30 : 0; int ao = hag<40 ? (int)((40-hag)*0.9) : 0; if(ao>38) ao=38; int sky = hag>60 ? (int)((hag-60)*0.12) : 0; if(sky>22) sky=22;
     if(hd<5){ return face ? pn_dim(roof,12) : pn_lite(roof,16); }                // roof: a bright lip
@@ -113,6 +113,7 @@ static void pn_cols(void *vc, int lo, int hi){
             int i=j/3, s=j%3; if(s && pn_cheap && i>=g_nst/3) continue;                    // (MEDIUM and LOW: the far two thirds of the steps are sampled once, not three times)
             double zf = s? stp_z[i]+(stp_z[i+1]-stp_z[i])*s/3.0 : stp_z[i]; s32 z=(s32)zf; if(z<16) z=16;
             double zc=z/256.0, mx=c->camx+vx*zc, my=c->camy+vy*zc; double h=pn_hgtb(mx*2,my*2); if(g_wob){ h+=wob64[(i*3+(int)gc)&63]; if(h<0) h=0; if(h>255) h=255; }
+            if(city_r && h>city_L && pn_isb(cmap[(ifl(my*2)&HMASK)*HW+(ifl(mx*2)&HMASK)])) h=city_L+(h-city_L)*CITY_K;              // (a building: its height above the street counts CITY_K times, as in the GBA renderer)
             s32 curve=((((z*z)>>14)*c->ck)>>c->csh)-c->csub; double yi=PHZ+((double)(cam_h+curve)-h*g_hs)*FOCP/z;
             if(yi>=ytopf){ zprev=z; continue; }
             double e=yi*sy; int r0=(int)__builtin_ceil(e-0.5); int clamped=r0<ya; if(r0<ya) r0=ya; if(r0>=rtop){ ytopf=yi; zprev=z; continue; }
@@ -133,7 +134,7 @@ static void pn_cols(void *vc, int lo, int hi){
                 else { if(farseg && (r&1) && r>r0){ c->buf[(size_t)(r-ya)*W+X]=c->buf[(size_t)(r-1-ya)*W+X]; continue; }
                     double t=(yg-yi)*ispan; if(t>1) t=1; double izz=iz0+(iz1-iz0)*t; double zz=1.0/izz; double zcc=zz/256.0; double px=c->camx+vx*zcc, py=c->camy+vy*zcc; int ci;
                     col=pn_gnd(px*2,py*2,zcc,&ci);
-                    if(zcc<20){ if(ci<GND_B){ double w=pn_fsin(px*47+frames*0.06)*pn_fsin(py*53-frames*0.05); if(w>0.96) col=pn_mix(col,0xFFFFFF,(int)((w-0.96)*25*128)); }
+                    if(zcc<20){ if(ci<GND_B){ double w=pn_fsin(px*47+vbl_count*0.06)*pn_fsin(py*53-vbl_count*0.05); if(w>0.96) col=pn_mix(col,0xFFFFFF,(int)((w-0.96)*25*128)); }
                         else if(ci>GND_B && ci<GND_B+15 && zcc<14){ uint32_t hh=(uint32_t)ifl(px*24)*2654435761u ^ (uint32_t)ifl(py*24)*2246822519u; hh^=hh>>15; hh*=2246822519u; hh^=hh>>13; int d=(int)(hh&15)-8; d=d*(int)(14-zcc)/14;
                             int rr_=((col>>16)&255)+d, gg_=((col>>8)&255)+d, bb_=(col&255)+d; rr_=rr_<0?0:rr_>255?255:rr_; gg_=gg_<0?0:gg_>255?255:gg_; bb_=bb_<0?0:bb_>255?255:bb_; col=rr_<<16|gg_<<8|bb_; } }
                     if(hz256) col=pn_mix(col,hz,hz256); }
@@ -159,7 +160,7 @@ static void pc_pn_native(volatile u16 *pg){
     pc_par_chunk(W,16,pn_cols,&c);
     // stars: soft dots on the sky rows only
     { double hor=heading*536/1024.0; double sx=W/240.0, sy=H/160.0;
-      for(int k=0;k<88;k++){ double x=__builtin_fmod(k*83+17-hor+536*4,536); if(x>=120) continue; int y=19+((k*31+5)%50); double px=(x*2+1)*sx, py=(y+0.5)*sy; double tw=0.7+0.3*__builtin_cos(frames*0.1+k*2.3); uint32_t sc=pn_pal[((frames>>3)+k)&7?4:5]; double rad=0.55*sy+0.5;
+      for(int k=0;k<88;k++){ double x=__builtin_fmod(k*83+17-hor+536*4,536); if(x>=120) continue; int y=19+((k*31+5)%50); double px=(x*2+1)*sx, py=(y+0.5)*sy; double tw=0.7+0.3*__builtin_cos(vbl_count*0.1+k*2.3); uint32_t sc=pn_pal[((vbl_count>>3)+k)&7?4:5]; double rad=0.55*sy+0.5;
           for(int Y=(int)(py-rad-1);Y<=(int)(py+rad+1);Y++){ if(Y<ya||Y>=H) continue; for(int X=(int)(px-rad-1);X<=(int)(px+rad+1);X++){ if(X<0||X>=W||Y>=pn_top[X]-0.5f) continue;
               double d=__builtin_sqrt((X+0.5-px)*(X+0.5-px)+(Y+0.5-py)*(Y+0.5-py)); double a=(1.0-d/(rad+0.5))*tw; if(a<=0) continue; uint32_t *p=&pc_pn.buf[(size_t)(Y-ya)*W+X]; *p=pn_mix(*p,sc,(int)(a*255)); } } } }
     int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_pn.w=W; pc_pn.h=H; pc_pn.ya=ya; memcpy(pc_pn.snap[t],(const void*)pg,240*160); pc_pn.f[t]=pc_frames(); pn_active=1; pc_vrec(1,pc_now_ms()-pn_t0,pc_cpu_ms()-pn_c0);
@@ -202,8 +203,8 @@ static int pc_pn_disc(int cx, int cy, int rc, int dd, int lit, int dark, int sun
 // streaks and soft flakes at the window's resolution. The nearer a drop (the faster it falls), the bigger and brighter it is. 1 = done here, the game's own marks are skipped.
 static int pc_pn_weather(void){
     if(!pn_active || !wd.weather) return 0; int W=pc_pn.w, H=pc_pn.h, ya=pc_pn.ya; double sx=W/240.0, sy=H/160.0, su=(sx+sy)*0.5; int ultra=pc_v3d_ultra();
-    u32 s=wd.tseed+(frames>>1)*7; int n = wd.weather==3 ? 24 : 40;
-    for(int k=0;k<n;k++){ s=s*1664525u+1013904223u; int x=(s>>8)%120, y=20+((s>>20)%138 + (wd.weather==2 ? (frames>>1) : frames*3)*(k+1))%138;
+    u32 s=wd.tseed+(vbl_count>>1)*7; int n = wd.weather==3 ? 24 : 40;
+    for(int k=0;k<n;k++){ s=s*1664525u+1013904223u; int x=(s>>8)%120, y=20+((s>>20)%138 + (wd.weather==2 ? (vbl_count>>1) : vbl_count*3)*(k+1))%138;
         int ix = wd.weather==1 ? 13 : wd.weather==2 ? C_WHITE : wd.weather==4 ? ((k&1)?C_GOLD:C_RED) : wd.weather==5 ? ((k&1)?C_GREY:C_DGREY) : C_GOLD;
         uint32_t col=pn_pal[ix]; double near=0.55+0.45*(k+1)/(double)n, cx=(x*2+1.0)*sx, cy=(y+0.5)*sy;
         int X0=(int)(cx-6*su), X1=(int)(cx+6*su)+1, Y0=(int)(cy-6*su), Y1=(int)(cy+6*su)+1; if(X0<0) X0=0; if(X1>W) X1=W; if(Y0<ya) Y0=ya; if(Y1>H) Y1=H;
@@ -240,7 +241,7 @@ static int pc_pn_decor(volatile u16 *pg){
         for(int X=0;X<W;X++){ double c=(X+0.5)*120.0/W-0.5; double dc=__builtin_fmod(c+hor+536-60+268,536.0)-268; double y=26+t/2+dc*dc*(4+t/4)/900.0; if(y>150) continue;
             for(int b=0;b<3;b++){ if(b==2 && t<=12) break; double yb0= b==0 ? y : b==1 ? y+1 : y+3; uint32_t col= b==1 ? pn_pal[93] : pn_pal[90]; double a0=yb0*sy, a1=(yb0+1)*sy;
                 for(int Y=(int)a0;Y<=(int)a1;Y++){ if(Y<ya||Y>=H) continue; double lo=a0>Y?a0:Y, hi=a1<Y+1?a1:Y+1, cv=hi-lo; if(cv<=0) continue; pn_sky_over(X,Y,col,cv*0.92); } } } }
-    if(WL(MW_METEOR)){ int tt=(frames*3)%200; int x0=(frames/67*37)%120; int cs=(x0+tt/2)%120; { 
+    if(WL(MW_METEOR)){ int tt=(vbl_count*3)%200; int x0=(vbl_count/67*37)%120; int cs=(x0+tt/2)%120; { 
         double hx=((cs+7)*2+1.0)*sx, hy=(20+tt/3+7+0.5)*sy, tx=(cs*2+1.0)*sx, ty=(20+tt/3+0.5)*sy; double dx=hx-tx, dy=hy-ty, l2=dx*dx+dy*dy; int X0=(int)(tx-4*su), X1=(int)(hx+4*su)+1, Y0=(int)(ty-4*su), Y1=(int)(hy+4*su)+1; if(X0<0) X0=0; if(X1>W) X1=W; if(Y0<ya) Y0=ya; if(Y1>H) Y1=H;
         for(int Y=Y0;Y<Y1;Y++) for(int X=X0;X<X1;X++){ double px=X+0.5-tx, py=Y+0.5-ty, t=(px*dx+py*dy)/l2; if(t<0) t=0; if(t>1) t=1; double ex=px-t*dx, ey=py-t*dy, d=__builtin_sqrt(ex*ex+ey*ey), w=(0.25+0.45*t)*sx, c=w-d+0.5; if(c>0){ if(c>1) c=1; pn_sky_over(X,Y,pn_pal[94],c*t*t); }
             if(ultra && d<w*5){ double g=1-d/(w*5); pn_sky_add(X,Y,pn_pal[94],g*g*0.35*t); } } } }
@@ -276,7 +277,7 @@ static int pc_pn_minimap(int ox,int oy,int R){
     for(int k=0;k<om_n;k++){ PObj *o=&po[om_i[k]]; if(!o->alive || o->kind!=O_ROCK) continue;
         s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); double fx=(((double)(dx>>8)*hcs - (double)(dy>>8)*hsn))/65536.0, fy=-(((double)(dx>>8)*hsn + (double)(dy>>8)*hcs))/65536.0;
         if(fx<-R+1||fx>R-1||fy<-R+1||fy>R-1) continue; int ov=ore_of(o->x,o->y); if(ov<0) continue; int c=om_col[ov];
-        if(om_i[k]==scan_i && holding(TL_SCANNER) && (frames&8)) c=C_WHITE;
+        if(om_i[k]==scan_i && holding(TL_SCANNER) && (vbl_count&8)) c=C_WHITE;
         pn_mmdot((ox+0.5+fx+0.5)*sx,(oy+0.5+fy+0.5)*sy,0.95*su,pn_pal[c],1.0,1); }
     { double cx=(ox+0.5)*sx, cy=(oy+0.5)*sy; double ax=cx, ay=cy-2.7*su, bx=cx-1.9*su, by=cy+1.8*su, ccx=cx+1.9*su, ccy=cy+1.8*su;                                           // you: a small arrow, the way you face is up
         int XX0=(int)(cx-4*su), XX1=(int)(cx+4*su)+1, YY0=(int)(cy-4*su), YY1=(int)(cy+4*su)+1; uint32_t white=pn_pal[C_WHITE];

@@ -361,7 +361,7 @@ static void sim_frame(int n){
     { static int nk=-2, until=-1; if(nk==-2){ const char *e=sim_io_env("BUGSTAR_SIM_NEAR"); nk = e && *e ? e[0]-'0' : -1;   // a test hook: keep the player beside townsperson k ...
         e=sim_io_env("BUGSTAR_SIM_NEAR_UNTIL"); { until=-1; if(e && *e){ until=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<9;i++) until=until*10+(e[i]-'0'); } } }                                          // ... until this frame (then the script walks away)
       if(nk>=0 && nk<sim_w.nfolk && (until<0 || (int)frames<until)){ ppx=sim_fx[nk]+0xC000; ppy=sim_fy[nk]; } }
-    if(frames%30==0){ sim_unlock_msgs(); sim_colony_tick(); sim_stand_tick(); sim_ls_tick(); }
+    { static u32 s30=0; if(vbl_count-s30>=30){ s30=vbl_count; sim_unlock_msgs(); sim_colony_tick(); sim_stand_tick(); sim_ls_tick(); } }
     if(sim_dump_at && sim_w.tick>=sim_dump_at){ sim_dump_at=sim_w.tick+sim_dump_gap; sim_dump_all(); }
 }
 
