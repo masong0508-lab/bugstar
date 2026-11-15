@@ -405,6 +405,7 @@ IWRAM static void render_planet(volatile u16 *pg){
     for(int i=0;i<NSTEP;i++){ s32 z=stp_z[i]; s32 curve = ((((z*z)>>14)*ck)>>curv_sh()) - csub;     // the world drops away
         stp_base[i] = ((cam_h + curve) * stp_f[i])>>8; }                             // (8.8 cells) * (8.8 px/cell) >> 8 = 8.8 px
     u32 sparkle=frames; int cL = city_r ? hmap[city_cy*TW+city_cx] : 0;                          // the city's ground level (a building's height above the street = its texel height - this)
+    const int cty = city_r && city_on;
     for(int c=0;c<120;c++){
         int ytop=160; s32 vx=rayvx[c], vy=rayvy[c]; int bin=0;
         volatile u16 *col=pg+c;
@@ -413,7 +414,7 @@ IWRAM static void render_planet(volatile u16 *pg){
             s32 mx = cam_x + vx*z, my = cam_y + vy*z;
             int ti = ((my>>15)&HMASK)*HW + ((mx>>15)&HMASK);                             // texel: half a cell
             int h = hfine[ti]; if(g_wob){ h += wob64[(i*3+c)&63]; if(h<0) h=0; if(h>255) h=255; }
-            s32 hh = city_r ? hh_of(ti,h) : h*g_hs;                                    // 8.8 cells
+            s32 hh = h*g_hs; if(cty){ int c0=cmap[ti]; if(c0>=BLD_B && c0<BLD_B+8 && h>city_L) hh = city_L*g_hs + (h-city_L)*g_hs*CITY_K; }   // 8.8 cells (a town's tall buildings; the open land takes the short way: a call here cost a quarter of the picture)
             int y = PHZ + ((stp_base[i] - ((hh*stp_f[i])>>8))>>8);
             if(y<ytop){
                 int ix = cmap[ti];
