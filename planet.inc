@@ -602,7 +602,7 @@ static void planet_frame(void){
 #endif
     { int want = kr_mode && !(in_menu&0xFFFF); if(want && !m7_on) m7_begin(); else if(!want && m7_on) m7_end(); }      // a kart race: the hardware ground (m7.inc)
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0xA000:0));
-    int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>30) n=1; else if(n>12) n=12;           // the view takes a few 60ths to draw: move by that much (real time; after a menu or a load: no fast-forward)
+    int n = vbl_count - p_last; p_last=vbl_count; if(n<1) n=1; if(n>30) n=1; else if(n>4) n=4;           // the view takes a few 60ths to draw: move by that much (real time; after a menu or a load: no fast-forward)
 #ifdef TEST_KLOG
     static u32 kl_last=0; int kl_on = kr_mode==1 && ks_state==1 && m7_on; if(kl_on){ klog[0]++; klog[n>4?4:n]+=1; klog[5]+=t_f0-kl_last; } kl_last=t_f0;
 #endif
