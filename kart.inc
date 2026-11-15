@@ -229,7 +229,7 @@ static void kart_palette(void){
 #define NKJ 10
 #define NKL 3
 static s16 klp[NKL]; static int nkl=0;             // the loop-de-loops: where each one stands on the path
-static int kloop_j=0, kloop_t=0, kloop_dir=0, kloop_sd=1, kloop_ph=0, kloop_prev=-1, kdraft=0, kstuck=0, kdrift_t=0, kstar=0, kroul=0; static s32 kla=0, kloop_v=0, kloop_da=0;   // your ride round one (see below)
+static int kloop_j=0, kloop_t=0, kloop_dir=0, kloop_sd=1, kloop_ph=0, kloop_prev=-1, kdraft=0, kstuck=0, kdrift_t=0, kstar=0, kroul=0; static s32 kloop_v=0, kloop_da=0;   // your ride round one (see below)
 static int k_stunts=0;                             // Kart World's STUNTS option: 0 as the track comes, 1 lots, 2 none
 EW static u8 kpf[KP_MAX];                          // what each point of the path is
 
@@ -614,7 +614,25 @@ static int kproj2(s32 wx, s32 wy, s32 h1, s32 h2, int *sx, int *sy1, int *sy2, s
 static int klat(s32 L, s32 f){ return (int)((((L*f)>>16)*kpc_fi)>>16); }      // how many pixels wide L (8.8 cells) is at a spot whose scale is f
 #define KLSEG 28
 #define KLSH 256                                                    // the loop is a little corkscrew: it comes out a cell to the right of where it went in
-static void kloop_one(volatile u16 *pg, int j, int cy0, int cy1){                     // one loop: 28 pieces of ribbon, far ones first
+static void kloop_one_cam(volatile u16 *pg, int cy0, int cy1){                                   // the loop you are in, seen from the kart's own seat: the view tips up with the road
+    int a=(int)(kla>>8); if(a>1024) a=1024; s32 R=kloop_r(), sa=sinx((a&1023)>>2), ca=cosx((a&1023)>>2), B=cam_back()>>8, H=cam_up();
+    s32 kfw=(R*sa)>>14, kup=R-((R*ca)>>14), clat=KLSH*(a-512)/512;
+    s32 cfw=kfw-((B*ca)>>14)-((H*sa)>>14), cup=kup-((B*sa)>>14)+((H*ca)>>14);                  // the camera: back along the road, a little toward the middle of the loop
+    int pi=klp[kloop_j], d=kp_dir(pi); (void)d; int fk=fov_k(); if(fk<64) fk=64;
+    EW static s16 px[KLSEG+1][2], py[KLSEG+1][2]; EW static s32 zz[KLSEG+1]; u8 ok[KLSEG+1];
+    for(int i=0;i<=KLSEG;i++){ int ai=i*256/KLSEG; s32 fw=(R*sinx(ai&255))>>14, up=R-((R*cosx(ai&255))>>14), lat=KLSH*(2*i-KLSEG)/KLSEG, dfw=fw-cfw, dup=up-cup;
+        s32 dep=(dfw*(ca>>2)+dup*(sa>>2))>>12, vert=(dup*(ca>>2)-dfw*(sa>>2))>>12; ok[i]=1; zz[i]=dep;
+        if(dep<40){ ok[i]=0; continue; }
+        for(int e=0;e<2;e++){ s32 side=lat+(e?290:-290)-clat; s32 X=side*FOCP/dep, Y=vert*FOCP/dep; if(X>7000) X=7000; if(X<-7000) X=-7000; X=X*256/fk; if(X>2000) X=2000; if(X<-2000) X=-2000; if(Y>2000) Y=2000; if(Y<-2000) Y=-2000;
+            px[i][e]=(s16)(120+X); py[i][e]=(s16)(kloop_phz0-Y); } }
+    int s0=a*KLSEG/1024-1; if(s0<0) s0=0; while(s0<KLSEG && !ok[s0]) s0++; int e0=s0; while(e0<KLSEG && ok[e0+1] && zz[e0+1]>zz[e0]) e0++;   // only the road AHEAD, out to where it stops getting further away: it always narrows into the distance (past that, the overhead part grows again and the picture flips like an illusion)
+    u8 ord[KLSEG]; int n=0; for(int i=s0;i<e0;i++) ord[n++]=(u8)i;
+    for(int k=n-1;k>=0;k--){ int i=ord[k], i2=i+1; int qx[4]={px[i][0],px[i][1],px[i2][1],px[i2][0]}, qy[4]={py[i][0],py[i][1],py[i2][1],py[i2][0]};   // far to near
+        int col=(i&1)?KRC_A:KRC_B, kc=(i&1)?KRC_KR:KRC_KW; polyfill(pg,qx,qy,4,kc,0,cy0,240,cy1);
+        int ix[4]={qx[0]+2,qx[1]-2,qx[2]-2,qx[3]+2}; if(ix[0]<ix[1] && ix[3]<ix[2]) polyfill(pg,ix,qy,4,col,0,cy0,240,cy1);
+        if((i&3)==1) linep(pg,(qx[0]+qx[1])/2,(qy[0]+qy[1])/2,(qx[2]+qx[3])/2,(qy[2]+qy[3])/2,KRC_LINE,0,cy0,240,cy1); } }
+static void kloop_one(volatile u16 *pg, int j, int cy0, int cy1){
+    if(kloop_on){ if(j==kloop_j) kloop_one_cam(pg,cy0,cy1); return; }                     // one loop: 28 pieces of ribbon, far ones first
     int pi=klp[j], d=kp_dir(pi); s32 ex=kp_cx(pi), ey=kp_cy(pi), R=kloop_r(), g=ground_h(ex,ey);
     { s32 cb=cam_back(), dxw=wrapd(ex-(ppx-((hsn*cb)>>8))), dyw=wrapd(ey-(ppy-((hcs*cb)>>8))), dz=((dxw*hsn)>>8)+((dyw*hcs)>>8), dx=((dxw*hcs)>>8)-((dyw*hsn)>>8);
       if(dz>(56<<16) || dz<-(8<<16) || dx>(48<<16) || dx<-(48<<16)) return; }               // too far away to matter
@@ -771,30 +789,31 @@ static void kloop_begin(int j){
     s32 vmax=k_vmax(&kl);
     if(kv<vmax*2/5){ kv=-kv/2-0x400; kstall=30; show_msg("TOO SLOW FOR THE LOOP! GO FASTER"); sfx(4); return; }   // not enough speed: it spits you back
     kloop_on=1; kloop_j=j; kloop_t=0; kloop_ph=1; kla=0; kloop_v=kv; kloop_dir=kp_dir(klp[j]);
-    ppx=kp_cx(klp[j]); ppy=kp_cy(klp[j]); khd=kloop_dir; kdrift=0; kcharge=0; kair=0; rc[0].spin=0; kboost_t=0;
-    { s32 zs=kloop_zs(); s32 lo=0x7FFFFFFF; int best=1;                                      // watch from whichever side is lower, so no hill is in the way
-      for(int sd=-1;sd<=1;sd+=2){ int hh=(kloop_dir+(sd>0?768:256))&1023; s32 ox=(sinx(hh>>2)>>6)*(zs>>8), oy=(cosx(hh>>2)>>6)*(zs>>8);
-          s32 h1=ground_h(ppx-ox,ppy-oy), h2=ground_h(ppx-ox/2,ppy-oy/2), m=h1>h2?h1:h2; if(m<lo){ lo=m; best=sd; } }
-      kloop_sd=best; }
+    khd=kloop_dir; kdrift=0; kcharge=0; kair=0; rc[0].spin=0; kboost_t=0; kloop_phz0=g_phz; heading=kloop_dir; heading_rays();
     { s32 C=(kloop_r()*1608)>>8; kloop_da=(kloop_v>>8)*262144/(C?C:1); kloop_da=kloop_da*4/3; if(kloop_da<KLOOP_FULL/112) kloop_da=KLOOP_FULL/112; if(kloop_da>KLOOP_FULL/42) kloop_da=KLOOP_FULL/42; }   // (a little slower over the top, so a bit quicker round the bottom)
     kloop_cam(); show_msg("LOOP-DE-LOOP!"); sfx(11); }
 static void kloop_end(void){
-    kloop_on=0; kla=0; kloop_ph=0; khd=heading=kloop_dir; kv=kloop_v;
-    ppx=(ppx+(cosx(kloop_dir>>2)>>6)*KLSH)&((TW<<16)-1); ppy=(ppy-(sinx(kloop_dir>>2)>>6)*KLSH)&((TW<<16)-1); kloop_hide=kloop_j+1;   // out in the exit lane, beside the way in
-    kcam_apply(); cam_h=ground_h(ppx,ppy)+cam_up(); kalt=ground_h(ppx,ppy);
+    kloop_on=0; kla=0; kloop_ph=0; khd=heading=kloop_dir; kv=kloop_v; kbr_cur=0; kloop_hide=kloop_j+1;   // out in the exit lane, beside the way in
+    kcam_apply(); cam_h=ground_h(ppx,ppy)+cam_up(); kalt=ground_h(ppx,ppy); heading_rays();
     kboost_t=28+(int)(((kloop_v>>8)>40?40:(kloop_v>>8))/4)+6; show_msg("WHEEE! LOOP TURBO!"); sfx(10); kloop_prev=rc[0].pi; }
-static void kloop_cam(void){                                        // the side camera: level with the middle of the loop, far enough back to see all of it
-    s32 R=kloop_r(), zs=kloop_zs();
-    heading=(kloop_dir+(kloop_sd>0?768:256))&1023; g_phz=64; kloop_fov(256); kloop_cb=zs;
-    s32 g=ground_h(ppx,ppy); cam_h=g+R;
-    { s32 ox=(hsn*kloop_cb)>>8, oy=(hcs*kloop_cb)>>8; s32 gc=ground_h(ppx-ox,ppy-oy)+(1<<8); if(cam_h<gc) cam_h=gc; }   // never under the ground
-    kv=0; kalt=g; }
+static void kloop_cam(void){                                        // you, a step further round: the place on the loop, the camera behind you and the horizon tipped with the road
+    int pi=klp[kloop_j], d=kp_dir(pi); s32 ex=kp_cx(pi), ey=kp_cy(pi), R=kloop_r(), g=ground_h(ex,ey);
+    int a=(int)(kla>>8); if(a>1024) a=1024; s32 sa=sinx((a&1023)>>2), ca=cosx((a&1023)>>2), fw=(R*sa)>>14, up=R-((R*ca)>>14), lat=KLSH*(a-512)/512;
+    s32 fx=sinx(d>>2)>>6, fy=cosx(d>>2)>>6, rx=cosx(d>>2)>>6, ry=-(sinx(d>>2)>>6);
+    ppx=(ex+fx*fw+rx*lat)&((TW<<16)-1); ppy=(ey+fy*fw+ry*lat)&((TW<<16)-1);
+    kbr_cur=up; kalt=g+up; kv=kloop_v; khd=kloop_dir; if(heading!=kloop_dir){ heading=kloop_dir; heading_rays(); }
+    kloop_cb=kcam_back(); cam_h=ground_h(ppx,ppy)+up+cam_up();
+    { int foc=FOCP*256/(kfovk>64?kfovk:64); int ph=kloop_phz0;                       // the horizon falls as the nose tips up, rises as it tips down; over the top the view just rolls by
+      if(a<=256 || a>=768){ int off = ca>256 ? foc*(sa>>4)/(ca>>4) : (sa>0 ? 999 : -999); ph=kloop_phz0+off; if(ph>150) ph=150; if(ph<24) ph=24; }
+      else ph=150-(150-24)*(a-256)/512;
+      if(ph!=g_phz){ g_phz=ph; for(int y=0;y<160;y++){ int t = y<18 ? 0 : (y-18)*8/(PHZ+30-18); if(t>7) t=7; skyrow[y]=SKY_B+t; } } } }
 static void kloop_step(void){                                       // one 60th of a loop: round you go, then a moment at the bottom, then back behind you
     kloop_t++;
     if(kloop_ph==1){ s32 ca=cosx(((kla>>8)&1023)>>2); int f=192+(int)(ca>>8); if(f>256) f=256; int ei=96+kloop_t*16; if(ei<f) f=ei;   // gravity: slow over the top, quick at the bottom, eased in at the start
         kla+=kloop_da*f/256; if(kla>=KLOOP_FULL){ kla=KLOOP_FULL; kloop_ph=2; kloop_t=0; sfx(12); } }
-    else if(kloop_t>=8){ kloop_end(); return; }
+    else if(kloop_t>=2){ kloop_end(); return; }
     kloop_cam(); }
+#if 0
 static int kloop_draw_me(int slot){                                 // you, going round: the kart from the side, turned with the loop
     s32 R=kloop_r(), hk=154; int pi=klp[kloop_j], d=kp_dir(pi); s32 ex=kp_cx(pi), ey=kp_cy(pi), g=ground_h(ex,ey);
     int a = kloop_ph==2 ? 1023 : (int)((kla>>8)&1023); s32 sa=sinx(a>>2), ca=cosx(a>>2), rr=R-hk, fw=(rr*sa)>>14, up=R-((rr*ca)>>14);
@@ -817,6 +836,7 @@ static int kloop_draw_me(int slot){                                 // you, goin
     else if(form==FORM_CREATURE && form_body!=2){ int bi=inv*200/150; s32 qa=-pa*bi/inv, qb=-pb*bi/inv, qc=pc*bi/inv, qd=pd*bi/inv; set_affine(31,(s16)qa,(s16)qb,(s16)qc,(s16)qd);
         int dx=(int)(ux*off/256), dy=(int)(uy*off/256); shadow_oam[slot].a0=((y+dy-16)&255)|(1<<8)|(1<<9); shadow_oam[slot].a1=((x+dx-16)&511)|(31<<9)|(1<<14); shadow_oam[slot].a2=(form_body==0?T_HOPPER:T_GRAZER)|(6<<12); slot++; }
     return slot; }
+#endif
 #ifdef TEST_KFUZZ
 static int kfz_auto=0;                                             // (the kart fuzz test: 1 = the test driver steers, 0 = the keys do)
 #endif
@@ -965,6 +985,9 @@ static void kart_tick(int n){
     if(ks_state==KS_RACE && !kloop_on && !rc[0].fin){ int p0=rc[0].pi; for(int d=-2;d<=4;d++){ int i=kwp(p0+d+knp); if(!kstar_at(i)) continue; s32 x,y,h; kstar_xy(i,&x,&y,&h);
             s32 dx=wrapd(x-ppx)>>8, dy=wrapd(y-ppy)>>8, pz=(kair?kalt:ground_h(ppx,ppy))+kbr_cur+150, dz=h-pz; if(dz<0) dz=-dz; if(dz>300 || dx*dx+dy*dy>94000) continue;
             kpf[i]|=KPF_TAKEN; sfx(7); if(kstar<10){ kstar++; if(kstar==10){ kboost_t=60; show_msg("STAR RUSH!"); sfx(10); } } } }   // scoop up star bits
+#ifdef TEST_KLOOPGO
+    if(nkl && !kloop_on && ks_state==KS_RACE && k_clock>TEST_KLOOPGO && k_clock<TEST_KLOOPGO+4 && kv>0){ kv=k_vmax(&kl); kloop_begin(0); }
+#endif
     if(nkl && !kloop_on && !kair){ int p=rc[0].pi;                                                // driving onto a loop-de-loop
         if(kloop_prev>=0) for(int j=0;j<nkl;j++){ int d0=kwp(klp[j]-kloop_prev+knp), d1=kwp(klp[j]-p+knp); if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ if(kroad(cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)])) kloop_begin(j); break; } }
         kloop_prev=rc[0].pi; }
@@ -1000,7 +1023,6 @@ static void kart_tick(int n){
 static s16 ksh_x[NRC], ksh_y[NRC], ksh_w[NRC]; static int ksh_n=0;      // where each rival's blob shadow goes (drawn with the dust)
 static int kart_draw_me(int slot, int sy){
     ksh_n=0;
-    if(kloop_on) return kloop_draw_me(slot);
     if(nkb && kunder(ppx,ppy,rc[0].pi)) return slot;                                          // driving under a flyover: out of sight for a moment
     int sz=kl.part[KP_SIZE], inv = sz==0 ? 232 : sz==2 ? 160 : 190, view=0, flip=0, spin=rc[0].spin;
     inv = (int)((s32)inv*(cam_back()>>12)/(6<<4)); if(inv<100) inv=100;                       // a far camera sees a smaller kart
@@ -1026,7 +1048,7 @@ static int kart_draw_me(int slot, int sy){
     if(rc[0].cloud && slot<124){ shadow_oam[slot].a0=((sy-kh-36)&255)|(1<<14); shadow_oam[slot].a1=((120-16)&511)|(1<<14); shadow_oam[slot].a2=T_CLOUD; slot++; }
     return slot; }
 static int kart_draw_obj(int slot, PObj *o, int sx, int sy, int m, s32 f){
-    if(o->kind!=O_KART || slot>122) return slot;
+    if(o->kind!=O_KART || slot>122 || kloop_on) return slot;
     int r=o->var; if(r<1||r>=nrc) return slot; Racer *k=&rc[r];
     if(nkj){ int z=kjump_z(k->pi); if(z) sy-=(int)(((s32)z*f)>>16); }
     if(nkb){ int z=kbr_h(k->pi); if(z) sy-=(int)(((s32)z*f)>>16); else if(kunder(k->x,k->y,k->pi)) return slot; }   // up on a flyover; or under one, out of sight                       // flying over a jump

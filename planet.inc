@@ -43,7 +43,7 @@ static void ship_shadow(volatile u16 *pg, int cx, int cy, int sc, s32 ox, s32 oy
 static u8 kcam[8]={0,1,1,1,1,0,1,1};                       // the kart camera (kart.inc): view, distance, height, field of view, swing, look into turns, speed zoom, bump shake
 static int kfovk=180;                                      // the kart camera's field of view: sideways cells per cell of depth at the screen's edge (8.8)
 static s32 kcam_back(void); static s32 kcam_up(void); static s32 kcam_base(void);
-static int kloop_on=0, kloop_hide=0; static s32 kbr_cur=0, kloop_cb=0;  // (kbr_cur: how far up a flyover you are, 8.8)                        // riding a loop-de-loop (kart.inc): the camera swings out to watch from the side
+static s32 kla=0, m7_skla=0, kloop_phz0=64; static int kloop_on=0, kloop_hide=0; static s32 kbr_cur=0, kloop_cb=0;  // (kbr_cur: how far up a flyover you are, 8.8)                        // riding a loop-de-loop (kart.inc): the camera swings out to watch from the side
 static s32 cam_back(void){ if(m7_snap) return m7_cb_snap; if(kloop_on) return kloop_cb; if(kr_mode && !cam_fp) return kcam_back(); return cam_fp ? (1<<16)/2 : CAM_BACK; }
 static s32 cam_up(void){ if(kr_mode && !cam_fp) return kcam_up(); return cam_fp ? (5<<8)/4 : CAM_UP; }
 static int kfov_add=0;                                     // the kart camera widens as you speed up and boost (kart.inc): the world rushes past
@@ -68,7 +68,7 @@ static u16 gbase[16], skybase[8];                          // the ground and sky
 // how fast the horizon falls away: the planet's size, and TINY PLANET
 static int curv_k(void){ static const u8 ks[6]={12,7,4,3,2,1}; int k=ks[wd.psz%6]; if(WL(MW_TINY)){ int t=8<<(WL(MW_TINY)/7); if(t>k) k=t; }
     return k; }
-static int curv_sh(void){ return kr_mode==1 && !kloop_on ? 7 : 3; }   // racing: the world bends away a quarter as fast, so the road ahead stays in view
+static int curv_sh(void){ return kr_mode==1 ? 7 : 3; }   // racing: the world bends away a quarter as fast, so the road ahead stays in view
 static s32 curv(s32 z){ return (((z*z)>>14)*curv_k())>>curv_sh(); }                          // how far the ground has dropped out of sight at distance z (8.8 cells); 4 is the old z*z/32768
 static s32 tiny_sub(void){ return curv_k()>4 ? curv(cam_back()>>8) : 0; }
 static void pknock(s32 dx, s32 dy, int k){                    // push the bug away along (dx,dy) (map direction, bug minus enemy), in walk-input terms
@@ -771,7 +771,7 @@ sprites:;
     int slot=0;
     s32 bug_sy;
     { s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy)+kbr_cur; s32 curve=curv(dz>>8) - tiny_sub();
-      bug_sy = PHZ + (((cam_h + curve - gh) * f)>>16); }
+      bug_sy = PHZ + (((cam_h + curve - gh) * f)>>16); if(kloop_on) bug_sy -= PHZ-kloop_phz0; }   // (round a loop the horizon swings but the kart stays put on the screen)
     if(kr_mode && (!cam_fp || kloop_on)){ slot=kart_draw_me(slot,bug_sy); if(!kart_glow() && !kloop_on && slot<120){ shadow_oam[slot].a0=((bug_sy-6)&255)|(1<<14); shadow_oam[slot].a1=((120-8)&511); shadow_oam[slot].a2=T_SHADOW; slot++; } }   // in a kart
     else if(kr_mode){}
     else if(!cam_fp){                                                                   // the bug, standing on the ground ahead of the camera
@@ -821,7 +821,7 @@ sprites:;
     s32 near_z = cam_fp ? (1<<16) : (5<<16);
     EW static s32 odx[NPO]; s32 fovq=65536/fov_k();
     if(m7_on){ ov_k(); cnt=spr_scan(cam_x,cam_y,near_z,order,odz,odx); }                  // (a race: the same scan, in the kart overlay's ARM code)
-    else for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive) continue; s32 wx=wrapd(o->x-cam_x), wy=wrapd(o->y-cam_y);
+    else if(!kloop_on) for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive) continue; s32 wx=wrapd(o->x-cam_x), wy=wrapd(o->y-cam_y);
         s32 dz=((wx*hsn)>>8)+((wy*hcs)>>8), dx=((wx*hcs)>>8)-((wy*hsn)>>8);
         if(dz<near_z || dz>(40<<16)) continue; odz[i]=dz; odx[i]=dx; order[cnt++]=i; }
     for(int i=1;i<cnt;i++){ u8 t=order[i]; int j=i; while(j>0 && odz[order[j-1]]<odz[t]){ order[j]=order[j-1]; j--; } order[j]=t; }
