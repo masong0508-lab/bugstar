@@ -639,11 +639,44 @@ static void dn_compose(uint32_t *out,int W,int H,uint16_t dc,int bmode,int ev,ui
     c.fadeop=(bmode>=2 && ev>0 && (bldcnt&4)) ? bmode : 0; c.ev=ev; bl_y0=c.Y0; bl_y1=H; c.spl=pc_dn_spl_on?pc_dn_spl:0; c.sn1=pc_dn_snap[t]; c.sn2=pc_dn_snap2[t]; c.sx=240.0/W; c.sy=160.0/H;
     pc_par_chunk(H-c.Y0,16,dc_rows,&c);
 }
+// Opt-in kart scanline diagnostic for headless/dummy-window CI. Captures
+// both the emulated 240x160 output and the underlying Mode-4 HBlank page
+// selection so blank CLASSIC pictures cannot be hidden by native geometry.
+static void pc_kart_scan_diag(void){
+    static int enabled=-1; static long prev=-1;
+    if(enabled<0) enabled=getenv("PC_KART_SCAN_DIAG")!=NULL;
+    if(!enabled || prev==g_frame ||
+       (g_frame!=96 && g_frame!=160 && g_frame!=240 && g_frame!=320)) return;
+    prev=g_frame;
+    int bg=0, pg1=0, valid=0, colored=0, nonblack=0;
+    for(int y=0;y<160;y++){
+        const LineSt *L=&lst[y];
+        if((L->dc&0x410)!=0x410) continue;
+        bg++; if(L->dc&0x10) pg1++;
+        for(int x=0;x<240;x+=4){
+            int tx=(int)(((long long)L->rx+(long long)L->pa*x)>>8);
+            int ty=(int)(((long long)L->ry+(long long)L->pc*x)>>8);
+            if(tx<0 || ty<0 || tx>=240 || ty>=160) continue;
+            valid++;
+            uintptr_t addr=VRAMB+((L->dc&0x10)?0xA000:0)+(size_t)ty*240+tx;
+            int idx=*(volatile uint8_t*)addr;
+            if(idx && (R16(PALRAM+idx*2)&0x7FFF)) colored++;
+        }
+    }
+    compose();
+    for(int y=0;y<160;y++) for(int x=0;x<240;x++) if(screen[y][x]&0x7FFF) nonblack++;
+    fprintf(stderr,"KART_SCANLINE frame=%ld dc=%04x bld=%04x alpha=%04x bg_rows=%d page1_rows=%d valid_samples=%d colored_samples=%d gba_nonblack=%d palette0=%04x first=%04x mid=%04x last=%04x\n",
+        (long)g_frame,(unsigned)R16(IOREG),(unsigned)R16(IOREG+0x50),
+        (unsigned)R16(IOREG+0x52),bg,pg1,valid,colored,nonblack,
+        (unsigned)R16(PALRAM),(unsigned)lst[30].dc,(unsigned)lst[90].dc,
+        (unsigned)lst[150].dc);
+}
 void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     double q_t0=pc_now_ms();
     if(W<240||H<160){ W=240; H=160; }
     if(W>240 && H>160){ pc_nat_w=W; pc_nat_h=H; }       // (the game's own native renderers, e.g. the dungeon, make their picture at this size)
     build_lines();
+    pc_kart_scan_diag();
     size_t need=(size_t)W*H;
     // Resizing a large native window must never leave the compositor with
     // dangling buffers or a NULL opacity/depth map. Allocate replacements
