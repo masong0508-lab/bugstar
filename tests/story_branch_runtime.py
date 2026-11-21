@@ -30,7 +30,7 @@ scene = ui[start:end]
 # The scene now correctly references the boss reward ROM table. Include that
 # real source table in this standalone C harness instead of using a mock.
 reward_start = ui.index("static const char *const story_boss_reward[6]={")
-reward_end = ui.index("static const char *const bolt_zone[6][2]", reward_start)
+reward_end = ui.index("};", reward_start) + 2
 rewards = ui[reward_start:reward_end]
 assert "PRISON INFIRMARY: HEALTH RESTORED." in rewards
 
