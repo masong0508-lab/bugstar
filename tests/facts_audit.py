@@ -41,6 +41,10 @@ assert value("CONFIRMED EXOPLANETS, 2026") == 6400
 assert value("KNOWN ASTEROIDS, NOV 2026") == 1360000
 assert value("ENGLISH WIKIPEDIA ARTICLES") == 7260000
 assert "ACKERMANN(4,3)" in items and "ACKERMANN(4,2)" not in items
+# Exactly sixty GAME frames, not a literal wall-clock second: real GBA is
+# 16,777,216 / 280,896 = 59.7275 frames each second.
+assert facts.BIGN_SRC == "EVERY 60 GBA SCREEN FRAMES"
+assert "59.7275 FPS" in items[facts.BIGN_SRC][3]
 assert "MERSENNE PRIME 2^1279" in items
 assert "MERSENNE PRIME 2^2203" in items
 assert "NOVEMBER 18, 2026" in str(items["KM IN A LIGHT DAY"][3])
@@ -51,6 +55,8 @@ if os.environ.get("BUGSTAR_PC"):
     assert "PC: UNIVERSES" in items
     assert value("PC: UNIVERSES") == 2**2048
     assert "PC: STAR CLUSTERS A UNIVERSE" in items
+    assert items["PC: DIGITS IN THE STARS"][4] == 0
+    assert items["PC: DIGITS IN THE PLANETS"][4] == 0
     # Both dimensions are exact combinatorics, not scientific estimates.
     assert value("PC: LAW SETS X UNIVERSES") == value("GBA MAP: LAW SETS X UNIS") * 2 ** (2048 - 256)
 print("HOW BIG IS IT: %d unique pages, valid GBA glyphs, dated estimates and formulas verified" % len(facts.F))
