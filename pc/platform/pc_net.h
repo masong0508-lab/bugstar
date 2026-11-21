@@ -43,5 +43,6 @@ void pc_mp_frame(uint32_t frame);
 int pc_mp_remote(uint32_t frame, PcNetShip *out);
 void pc_mp_close(void);
 void pc_mp_fired(void);
+int pc_mp_role(void); /* 1 host, 2 guest, 0 disabled */
 int pc_mp_duel(uint8_t *host_hp, uint8_t *guest_hp, uint8_t *host_wins, uint8_t *guest_wins);
 #endif
