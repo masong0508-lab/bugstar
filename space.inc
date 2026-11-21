@@ -498,8 +498,8 @@ static void story_card(const char *title, const char *const *ln, int n){
     rect(pg,8,24,224,112,57); rect(pg,8,24,224,1,53); rect(pg,8,135,224,1,53);
     text(pg,120-textlen(title)*2,30,title,53,1);
     for(int i=0;i<n;i++) text(pg,120-textlen(ln[i])*2,48+i*12,ln[i],54,1);
-    text(pg,84,124,"A: CONTINUE",55,1);
-    wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)); wait_release(); shd_end(sh);
+    text(pg,78,124,"A/START: CONTINUE",55,1);
+    wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)&&!HIT(K_START)); wait_release(); shd_end(sh);
 }
 // Completing Bolt's story is separate from counting Technobeast victories.
 // A player who defeats the beast early must still be able to reach the true
