@@ -32,7 +32,7 @@ typedef struct PcNetSession {
     uint8_t local_shots, host_seen_shots, guest_seen_shots;
     uint8_t have_guest_fire, event_seen, state_seen, input_seen;
     uint8_t coop, raider_seen;  /* 1: co-op, 0: sparring */
-    uint8_t local_ready, peer_ready, manual_ready, reconnecting;
+    uint8_t local_ready, peer_ready, manual_ready, reconnecting, world_known;
     uint32_t last_ready_tx;
 } PcNetSession;
 int pcnet_host(PcNetSession *s, uint16_t port);
