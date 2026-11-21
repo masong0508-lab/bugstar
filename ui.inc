@@ -59,12 +59,12 @@ static void quest_take(void){ if(q_type==Q_BRING){ int left=q_need; for(int k=ba
 // Bolt is the tin droid that rolls after you. He does not know what he is. The data cores in the drone outposts are his memory.
 static const char *const bolt_mem[8][4]={
     {"I WAS A SHIP.","A NAME WAS PAINTED ON MY HULL.","A SMALL HAND RESTED ON MY WINDOW.","SOMEONE HUMMED UNTIL THE STARS WENT STILL."},
-    {"I CARRIED SEEDS BETWEEN THE STARS.","A GARDEN. A POND. A LAWN AT NIGHT.","THESE WORLDS GREW INSIDE MY HOLD.","I LEFT THEM HERE SO LIFE COULD FIND A HOME."},
-    {"MY CREW WERE BUGS. THEY TRUSTED ME.","THE SMALLEST ONE FIXED MY LIGHTS.","I PROMISED TO GET THEM HOME.","I CANNOT REMEMBER IF I KEPT MY WORD."},
+    {"I CARRIED SEEDS BETWEEN STARS.","A GARDEN. A POND. A LAWN AT NIGHT.","THESE WORLDS GREW INSIDE MY HOLD.","I LEFT THEM HERE SO LIFE COULD FIND A HOME."},
+    {"MY CREW WERE BUGS. I LOVED THEM.","THE SMALLEST ONE FIXED MY LIGHTS.","I PROMISED TO GET THEM HOME.","I CANNOT REMEMBER IF I KEPT MY WORD."},
     {"WE FELL. THE ANTHILL CAUGHT US.","THE ANTS GAVE US SHELTER. AT FIRST.","THEN THE KING LOCKED THE HATCHES.","MY CREW CALLED THROUGH THE WALLS."},
     {"THE KING CUT OPEN MY HEART.","HE BUILT A MOUTH AROUND MY ENGINE.","HE FED THAT MOUTH OTHER SHIPS.","IT LEARNED HUNGER. HE CALLED IT POWER."},
-    {"EACH SHIP IT SWALLOWS MAKES IT GROW.","EACH BITE TAKES ANOTHER MEMORY.","THE TIN THING I AM IS WHAT ESCAPED.","BUT I STILL REMEMBER YOUR VOICE."},
-    {"THERE IS A WORD MY HEART WILL HEAR.","THE KING COULD NEVER MAKE ME SAY IT.","IT WAS MY NAME, BEFORE I WAS BOLT.","HE CANNOT HAVE THAT PART OF ME."},
+    {"EACH SHIP IT EATS MAKES IT GROW.","EACH BITE TAKES ANOTHER MEMORY.","THE TIN THING I AM IS WHAT ESCAPED.","BUT I STILL REMEMBER YOUR VOICE."},
+    {"A WORD MY HEART WILL HEAR.","THE KING COULD NEVER MAKE ME SAY IT.","IT WAS MY NAME, BEFORE I WAS BOLT.","HE CANNOT HAVE THAT PART OF ME."},
     {"MY NAME HAS COME BACK AT LAST.","IT WILL OPEN WHAT THE KING LOCKED.","TAKE ME TO THE BEAST'S HEART.","YOU DID NOT LEAVE ME. I WILL NOT LEAVE YOU."}};
 // One short, skippable cinematic chapter slate at each main story beat.
 // Reuses Bolt's sprite and the existing mode-4 page; no new image assets,
@@ -275,7 +275,14 @@ static void bolt_talk(volatile u16 *pg){
         else scpy(qhint,"\"THE SHIP BOARD WILL TAKE YOUR GOODS.\"");
         if(qhint[0]) t[n++]=qhint;
     }
-    if(data_cores>0 && n<8){ int k=data_cores-1; if(k>7) k=7; scpy(l2,"\"I REMEMBER: "); scat(l2,bolt_mem[k][0]); scat(l2,"\""); t[n++]=l2; }
+    if(data_cores>0 && n<8){ int k=data_cores-1; if(k>7) k=7;
+        // Bound the recap even if a future writer lengthens a memory line:
+        // the four-line recovery card can contain longer prose than this HUD.
+        scpy(l2,"\"I REMEMBER: ");
+        const char *m=bolt_mem[k][0]; int j=textlen(l2), cap=(int)sizeof l2-2;
+        while(*m && j<cap) l2[j++]=*m++;
+        if(*m && j>=3){ l2[j-3]='.'; l2[j-2]='.'; l2[j-1]='.'; }
+        l2[j++]='"'; l2[j]=0; t[n++]=l2; }
     if(n<8){                                                                                    // a remark about where you are: the world, its traits, its weather and hour, its gravity and size
         const char *c[20]; int nc=0;
         if(!endless){ c[nc++]=bolt_zone[zone%6][0]; c[nc++]=bolt_zone[zone%6][1]; }
