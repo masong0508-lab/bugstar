@@ -38,7 +38,8 @@ names = re.findall(r'"([^"]+)"', name_def.group(1))
 assert len(names) == len(set(names)) == 6
 require(ui, "q_need=1+rndi(6)", "champion bounty lacks a persistent target identity")
 require(ui, "quest_champ_names[q_need-1]", "board doesn't use the target identity")
-require(main, "quest_champ_names[q_need-1]", "combat HUD doesn't use the target identity")
+require(main, "quest_champ_id()", "combat HUD doesn't recover the advertised target identity")
+require(game, "const char *a=q_name+5", "older champion saves do not recover their recorded name")
 
 # Shards now appear only once at their *next* advertised dungeon depth.
 require(dungeon, "depth_no==q_floor-q_need+q_have+1",
