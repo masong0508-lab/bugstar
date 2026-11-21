@@ -466,11 +466,32 @@ static void cockpit(volatile u16 *pg){
     for(int i=0;i<4;i++) if(cans[i].alive) blip(pg,cans[i].x,cans[i].y,cans[i].z,50);
     if(!in_lair) for(int i=0;i<nast;i++) if(ast[i].alive) blip(pg,ast[i].x,ast[i].y,ast[i].z,56);
     // bars on the left: shield, hull, fuel; speed on the right
-    static const char *const lab[3]={"SHLD","HULL","FUEL"}; int val[3]={shield,hull,fuel}, mx[3]={shield_max(),100,fuel_max()}, col[3]={55,53,50};
-    static LBar sb[3] EW; static int sv; int dt=vbl_count-sv; sv=vbl_count; if(dt<1) dt=1; if(dt>8) dt=8;     // living bars (game.inc): a hit leaves a trail, a refill glides in, low ones pulse
-    for(int k=0;k<3;k++){ text(pg,4,131+k*9,lab[k],58,1); lb_to(&sb[k],lb_px(val[k],mx[k],40),40,0); lb_step(&sb[k],dt); lb_draw(pg,24,132+k*9,40,3,&sb[k],col[k],51,54,56,49,val[k]*4<mx[k]); }
-    text(pg,180,131,HELD(K_L)&&fuel>0?"BURN!":"SPEED",HELD(K_L)&&fuel>0?53:58,1); rect(pg,180,140,52,3,56); { int w=speed*52/ship_top_speed(); if(w>52) w=52; rect(pg,180,140,w,3,52); }
-    char b[24]; sys_name(cur_sys,b); b[12]=0; text(pg,180,148,b,54,1);
+    /* Native 240x160 cockpit, shared by GBA/PC/Android. Spell out SHIELD
+     * and explain the location/radar instead of squeezing unexplained
+     * abbreviations into the left bar. No new bitmaps or RAM buffers. */
+    static const char *const lab[3]={"SHIELD","HULL","FUEL"}; int val[3]={shield,hull,fuel}, mx[3]={shield_max(),100,fuel_max()}, col[3]={55,53,50};
+    static LBar sb[3] EW; static int sv; int dt=vbl_count-sv; sv=vbl_count; if(dt<1) dt=1; if(dt>8) dt=8;
+    for(int k=0;k<3;k++){
+        text(pg,4,131+k*9,lab[k],58,1);
+        lb_to(&sb[k],lb_px(val[k],mx[k],40),40,0);
+        lb_step(&sb[k],dt);
+        lb_draw(pg,33,132+k*9,40,3,&sb[k],col[k],51,54,56,49,
+                mx[k]>0 && val[k]*4<mx[k]);
+    }
+    text(pg,105,129,"RADAR",58,1);
+    { int top=ship_top_speed(),pct=top>0?speed*100/top:0;
+      if(pct<0)pct=0; if(pct>100)pct=100;
+      char sbuf[20]; scpy(sbuf,"SPEED ");ncat(sbuf,pct);scat(sbuf,"%");
+      text(pg,180,131,HELD(K_L)&&fuel>0?"BOOST ACTIVE":sbuf,
+           HELD(K_L)&&fuel>0?53:58,1);
+      rect(pg,180,140,52,3,56);
+      { int w=top>0?speed*52/top:0;
+        if(w<0)w=0;if(w>52)w=52;
+        rect(pg,180,140,w,3,52); }
+    }
+    char b[24]; sys_name(cur_sys,b); b[12]=0;
+    text(pg,171,148,"AT:",58,1);
+    text(pg,187,148,b,54,1);
 }
 
 
