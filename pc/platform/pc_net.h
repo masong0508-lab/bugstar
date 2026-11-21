@@ -24,7 +24,7 @@ typedef struct PcNetSession {
     PcNetShip other;
     PcDuel duel;                 /* session-only sparring HP and score */
     PcCoop coop_enemy;           /* host-authored shared star-system raider */
-    uint32_t last_host_shot_tick, last_guest_shot_tick;
+    uint32_t last_host_shot_tick, last_guest_shot_tick, last_raider_rx;
     uint16_t last_state_tick, last_event_tick, last_raider_tick; /* reordering */
     uint8_t local_shots, host_seen_shots, guest_seen_shots;
     uint8_t have_guest_fire, event_seen, state_seen;
