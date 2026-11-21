@@ -11,16 +11,17 @@ printf 'pause_unfocus=0\nvsync=0\n' > out/lan_live/client/settings.ini
 rm -f out/lan_live/{host,client}.log out/lan_live/{host,client}.png
 # The normal shipyard script taps A only a few times: both games can remain
 # blocked in Bolt's first dialogue (verified from real CI screenshots).
+# BUGSTAR_LAN_BOOT skips only that opening story during this automated test.
 # Send plenty of separated confirmation presses, then stop inputs well
 # before taking the two actual 3D space screenshots.
 : > out/lan_live/boot.txt
-for ((f=24; f<1900; f+=20)); do
+for ((f=24; f<800; f+=20)); do
     printf '%d %d A\\n' "$f" "$((f+2))" >> out/lan_live/boot.txt
 done
 host_pid=''
 cleanup(){ if [[ -n "$host_pid" ]]; then kill "$host_pid" 2>/dev/null || :; fi; }
 trap cleanup EXIT
-env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_TRACE=1 \
+env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_TRACE=1 BUGSTAR_LAN_BOOT=1 \
     BUGSTAR_SY_TEST=9,0 BUGSTAR_SY_AT=100 \
     timeout -k 3 95 "$GAME" --window --video-driver dummy --no-audio \
     --no-vsync --size 240 160 --lan-host --lan-port 33777 \
@@ -29,7 +30,7 @@ env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_TRACE=1 \
     > out/lan_live/host.log 2>&1 &
 host_pid=$!
 sleep 0.3
-env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_TRACE=1 \
+env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_TRACE=1 BUGSTAR_LAN_BOOT=1 \
     BUGSTAR_SY_TEST=9,0 BUGSTAR_SY_AT=100 \
     timeout -k 3 95 "$GAME" --window --video-driver dummy --no-audio \
     --no-vsync --size 240 160 --lan-join 127.0.0.1 --lan-port 33777 \
