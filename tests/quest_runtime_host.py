@@ -50,7 +50,7 @@ enum { Q_NONE, Q_HUNT, Q_CHAMP, Q_FETCH, Q_RESCUE, Q_BOSS,
 static int q_type,q_need,q_have,q_floor,q_done,q_zone,q_world;
 static char q_name[24];
 static int zone,world_no,depth_no,forge_on,base_mode;
-static Gear bag[BAGMAX]; static int bag_n,bag_sel;
+static Gear bag[BAGMAX]; static int bag_n;
 static char last_msg[128];
 static void scpy(char*d,const char*s){ strcpy(d,s); }
 static void scat(char*d,const char*s){ strcat(d,s); }
@@ -66,7 +66,7 @@ static void reset(void){
     zone=2; world_no=4; q_zone=2; q_world=4;
     forge_on=0; base_mode=0; depth_no=3;
     q_type=Q_NONE; q_need=0; q_have=0; q_floor=3; q_done=0;
-    bag_n=0; bag_sel=0; last_msg[0]=0;
+    bag_n=0; last_msg[0]=0;
 }
 int main(void){
     Gear relic={IT_QUEST,0,0,0,0,0}, potion={IT_POTION,0,0,0,0,0};
