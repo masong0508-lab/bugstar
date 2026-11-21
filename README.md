@@ -4,6 +4,8 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 
 **Play:** open `bugstar.gba` in mGBA (or any GBA emulator, or a flash cart). It saves on the cartridge (3 save slots).
 
+**In development:** [Multiplayer roadmap](MULTIPLAYER_PLAN.md) covers PC/Android LAN and online co-op and GBA/GBC link-cable sessions; networking is **not playable yet**. The 3D space work includes depth-aware station docking geometry and native PC/Android perspective fixes.
+
 ## Controls
 - On a planet, **UP walks into the screen** (away from the camera) in both third and first person.
 | Button | On a planet | In a dungeon |
