@@ -177,11 +177,21 @@ for phrase in ("FIVE TECH HIVES", "WARP OUT WHEN NEEDED", "HOLD B TO THRUST",
 
 # At least one in five neutral NPCs should acknowledge the journey, while
 # love/hate moods retain the original distinctive mood-specific speeches.
-rumors = literals(section(town, "static const char *const story_rumor[4][3]={",
+rumors = literals(section(town, "static const char *const story_rumor[5][3]={",
                           "static const char *const bolt_quip[12]"))
-assert len(rumors) == 12, "expected three grounded rumors for each of four story phases"
+assert len(rumors) == 15, "expected three grounded rumors for five story phases"
 assert all(0 < len(line) <= 54 for line in rumors), "town dialog exceeds native card width"
-for phrase in ("data_cores>=8?3:ant_king?2:bugs_freed>0?1:0",
+
+assert "SOMEONE IN SPACE IS SINGING US HOME." not in rumors[:12], (
+    "townsfolk must not announce Dawn's liberation before the true finale"
+)
+assert "THE OLD SHIP'S HEART IS STILL LOCKED AWAY." in rumors[9:12], (
+    "eight-memory townsfolk need to acknowledge the remaining boss objective"
+)
+assert "SOMEONE IN SPACE IS SINGING US HOME." in rumors[12:], (
+    "post-finale townsfolk should celebrate the ending"
+)
+for phrase in ("dawn_free?4:data_cores>=8?3:ant_king?2:bugs_freed>0?1:0",
                "wd.mood!=MOOD_LOVE && wd.mood!=MOOD_HATE",
                "ln[0]=story_rumor[stage][(li/5)%3]",
                "(u32)(rumor_seed%NTALK)"):
