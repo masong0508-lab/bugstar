@@ -30,6 +30,11 @@ mkdir -p out/lan_menu/saves
     # Confirm Ready on JOIN, then Leave again safely.
     printf '0 key down Down\n0 key down Return\n0 dump\n'
     printf '0 key down Down\n0 key down Return\n0 dump\n'
+    # The integrated tutorial (item 7) must display real mission rules
+    # and return to the same lobby without dropping network resources.
+    printf '0 key down Down\n0 key down Return\n0 dump\n'
+    printf '0 shot out/lan_menu/mission-help.png\n'
+    printf '0 key down Escape\n0 dump\n'
     printf '10 quit\n'
 } > out/lan_menu/events.txt
 env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_BOOT=1 \
@@ -53,5 +58,11 @@ if [[ "$count" -lt 2 ]]; then
     echo "LAN menu: expected two separate successful LEAVE actions, found $count"
     tail -80 out/lan_menu/game.log; exit 1
 fi
+grep -Eq 'EV dump: menu=1 page=11 ' out/lan_menu/game.log || {
+    echo 'LAN menu: HOW THE CO-OP MISSION WORKS was not reachable'
+    tail -60 out/lan_menu/game.log;exit 1; }
+grep -Eq 'EV dump: menu=1 page=10 ' out/lan_menu/game.log || {
+    echo 'LAN menu: multiplayer tutorial could not return to lobby';exit 1; }
+test -s out/lan_menu/mission-help.png
 test -s out/lan_menu/host-options.png
 echo "LAN SDL options: host, leave, IPv4 editor, join and leave PASS"
