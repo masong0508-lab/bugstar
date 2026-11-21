@@ -11,7 +11,31 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
     mine.world=sys_id(cur_sys); mine.yaw=(unsigned short)(yaw&1023);
     mine.pitch=(short)pitch;
     pc_mp_submit(&mine);
-    if(!pc_mp_remote((unsigned)pc_frames(),&other) || other.world!=mine.world)return;
+    /* Visual-only smoothing: positions arrive around 20 Hz, draw at ~60 Hz.
+     * A large movement is a teleport/reconnect: snap rather than fly through
+     * intervening planets. No changes to local movement or hit authority.
+     */
+    static PcNetShip shown;
+    static int shown_valid;
+    if(!pc_mp_remote((unsigned)pc_frames(),&other) || other.world!=mine.world){
+        shown_valid=0; return;
+    }
+    if(!shown_valid || shown.world!=other.world ||
+       other.x-shown.x>2048 || other.x-shown.x< -2048 ||
+       other.y-shown.y>2048 || other.y-shown.y< -2048 ||
+       other.z-shown.z>2048 || other.z-shown.z< -2048){
+        shown=other; shown_valid=1;
+    }else{
+        shown.x+=(other.x-shown.x)/3;
+        shown.y+=(other.y-shown.y)/3;
+        shown.z+=(other.z-shown.z)/3;
+        {int d=((int)other.yaw-(int)shown.yaw+512)&1023;
+         d-=512; int step=d/3;
+         if(!step && d)step=d>0?1:-1;
+         shown.yaw=(unsigned short)((shown.yaw+step)&1023);}
+        shown.pitch+=(short)((other.pitch-shown.pitch)/3);
+    }
+    other=shown;
     /* The same 3D projection and camera plane as stations, fighters and rocks:
      * five transformed vertices, eight edges, no heap allocations.
      */
@@ -32,6 +56,9 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
     }
     static const u8 edges[]={0,1,0,2,1,4,2,4,0,3,1,3,2,3,3,4};
     wire(pg,v,5,edges,8,55);
+    /* Reuse the native line layer when available; the GBA-sized fallback
+     * is still drawn for CLASSIC and keeps the gameplay camera identical. */
+    if(pc_sn.w && pc_sn.msk)so_wire(v,5,edges,8,55);
     {int sx,sy_; if(sproj(other.x,other.y,other.z,&sx,&sy_,0)){
         dot2(pg,sx,sy_,50);
         /* A compact ID cue; do not cover the aiming reticle in the middle. */
