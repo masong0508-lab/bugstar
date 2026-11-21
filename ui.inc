@@ -156,8 +156,8 @@ static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, a
         "\"I KNOW THE NEXT VERSE. I DON'T KNOW WHY.\""}; bolt_card(pg,t,6); break; }
     case 6: { static const char *const t[6]={"THE ANT KING FALLS. HIS CROWN BREAKS.",
         "\"YOU CAME FOR YOUR FRIENDS? GOOD.",
-        "I TOLD MYSELF I WAS SAVING MY PEOPLE.","I OPENED THE DAWN'S HEART. IT OPENED MINE.",
-        "NOW IT WILL EAT WHAT IS LEFT.\"",
+        "I TOLD MYSELF I WAS SAVING MY PEOPLE.","I CUT OPEN A SHIP TO FEED THEM.",
+        "ITS HUNGER OUTGREW MINE.\"",
         "BEYOND THE STARS, A VAST ENGINE WAKES."}; bolt_card(pg,t,6);
         { static const char *const after[3]={"BOLT WATCHES THE EMPTY THRONE.",
             "\"WE STOPPED HIM. BUT WHAT DID HE WAKE?\"",
@@ -224,7 +224,7 @@ static const char *const bolt_zone[6][2]={{"\"THE GARDEN IS WHERE I WOKE UP. IT 
     {"\"SOMEONE LEFT A PICNIC. ALL OF IT. ODD.\"","\"THE ANTS LIKE THIS PLACE. I WONDER WHY.\""},
     {"\"THE NIGHT LAWN GLOWS. THE GLOWFLIES WATCH US.\"","\"I DO NOT LIKE THE WRAITHS. THEY KNOW ME.\""},
     {"\"THE BEES SING. I KNOW THE TUNE. HELP.\"","\"DUST AND HONEY. MY SENSORS ARE CONFUSED.\""},
-    {"\"THE ANTHILL. THE DAWN FELL HERE. SO DID I.\"","\"THE KING WAITS. LET US NOT KEEP HIM.\""}};
+    {"\"THE ANTHILL. SOMETHING FELL. SO DID I.\"","\"THE KING WAITS. LET US NOT KEEP HIM.\""}};
 static const char *const bolt_cls[16][2]={{"\"A PLAIN GOOD WORLD. I WILL TAKE IT.\"","\"NOTHING HERE WANTS US DEAD. SUSPICIOUS.\""},
     {"\"MORE HILLS THAN A SHIP SHOULD LAND ON.\"","\"I ROLL UP. I ROLL DOWN. I ROLL UP AGAIN.\""},
     {"\"GRASS AS FAR AS MY SENSORS GO.\"","\"A FLAT WORLD. MY KIND OF WORLD.\""},
@@ -750,7 +750,7 @@ static void credits(void){
     text(pg,120-7*6+1,9,"THE END",C_DGREY,3); text(pg,120-7*6,8,"THE END",C_GOLD,3);
     char b[48];
     char l1[40]; scpy(l1,bug_name); scat(l1," FREED THE BUGS.");
-    const char *ln[6]={"...OF THE BEGINNING.",l1,"THE ANT KING IS BEATEN. THE DAWN STIRS.","BUGSTAR","A GAME BY DIPPINN PRODUCTIONS","MADE WITH CLAUDE (AI)"};
+    const char *ln[6]={"...OF THE BEGINNING.",l1,"THE ANT KING IS BEATEN. THE BEAST STIRS.","BUGSTAR","A GAME BY DIPPINN PRODUCTIONS","MADE WITH CLAUDE (AI)"};
     static const u8 ly[6]={28,42,50,64,72,80};
     for(int i=0;i<6;i++){ int c = i==3?C_GOLD : i==0?C_GREY : C_WHITE; text(pg,120-textlen(ln[i])*2,ly[i],ln[i],c,1); }
     scpy(b,"LEVEL "); ncat(b,level); scat(b,"   BUGS FREED "); ncat(b,bugs_freed); scat(b,"   FAME "); ncat(b,fame); text(pg,120-textlen(b)*2,94,b,C_CYAN,1);
