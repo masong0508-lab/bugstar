@@ -39,6 +39,9 @@ assert "if(kart_recovery_slow(kv) && !kroad(c) && !kstall)" in source, (
 assert 'show_msg("STUCK? DOWN: REVERSE OR WAIT")' in source, (
     "player should get one clear recovery hint before teleport"
 )
+assert 'scpy(b,kv<0?"REV ":"");' in source, (
+    "cockpit speed display must clearly label reverse movement"
+)
 
 harness=r"""
 #include <stdint.h>
