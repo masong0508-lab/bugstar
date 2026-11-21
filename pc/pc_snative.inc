@@ -16,7 +16,31 @@ static void pc_sn_rec(int cx,int cy,int r,int Lx,int Ly,int Lz,int rot,const u8 
 // repeating divisions and coordinate-to-sphere lookups in every pixel.
 typedef struct { double nx, nx2, fx; int kx0; } SnXCol;
 static SnXCol *sn_xcols; static size_t sn_xcap;
-typedef struct { int W,H; double sx,sy; SnCall *c; uint32_t *buf; const SnXCol *xcols; } SnCtx;
+// Per-texel surface colour and light response are constant throughout a
+// rendered sphere, but otherwise recalculated four times for every output
+// pixel. One reusable 128x128 table (128 KiB) serves all bodies in a frame;
+// it is filled before dispatching workers, then read-only while they draw.
+typedef struct { int shade, lit; } SnShade;
+static SnShade *sn_shade_tab;
+typedef struct { int W,H; double sx,sy; SnCall *c; uint32_t *buf; const SnXCol *xcols; const SnShade *shade; } SnCtx;
+static inline SnShade sn_shade_sample(const SnCall *c,int xx,int yy,int cloud_rot){
+    const int kk=(yy<<7)|xx, nz=sph_z[kk]; SnShade p;
+    if(nz<10){ p.shade=-1; p.lit=0; return p; }
+    const int nx_=(xx-64)*4, ny_=(64-yy)*4;
+    int lit=(nx_*c->Lx + ny_*c->Ly - nz*c->Lz)>>14;
+    int v=sph_v[kk], u=sph_u[kk], t=c->noise[(v<<7)|((u+c->rot)&127)];
+    int base=t>=8 ? 50+t*4 : 14+t*3;
+    if(v<4 || v>59) base=100+t;
+    int cl=(pl_noise+16384)[(v<<7)|((u+cloud_rot)&127)];
+    if(cl>10) base += ((cl-9)*(124-base))>>3;
+    int dd=lit+40; if(dd<0) dd=0; if(dd>256) dd=256;
+    int shade=((base*dd)>>8)+4; if(shade>127) shade=127;
+    p.shade=shade; p.lit=lit; return p;
+}
+static void sn_shade_prepare(const SnCall *c,int cloud_rot){
+    for(int yy=0;yy<128;yy++) for(int xx=0;xx<128;xx++)
+        sn_shade_tab[(yy<<7)|xx]=sn_shade_sample(c,xx,yy,cloud_rot);
+}
 static inline uint32_t sn_mix(uint32_t a, uint32_t b, int f){ if(f<0) f=0; if(f>256) f=256; uint32_t rb=((a&0xFF00FF)*(256-f)+(b&0xFF00FF)*f)>>8, g=((a&0xFF00)*(256-f)+(b&0xFF00)*f)>>8; return (rb&0xFF00FF)|(g&0xFF00); }
 // a soft round dot / thick segment with coverage, over what is there
 static void sn_seg(uint32_t *buf, int W, int H, double x0, double y0, double x1, double y1, double rad, uint32_t col, double a0, double a1){
@@ -43,14 +67,9 @@ static void sn_rows(void *vc, int lo, int hi){
             double a=(1.0-d)*R*sx+0.5; if(a<=0) continue; if(a>1) a=1;
             double sh=0, nzs=0, lits=0;
             for(int j=0;j<4;j++){ int xx=kx0+(j&1), yy=ky0+(j>>1); double w=((j&1)?fx:1-fx)*((j>>1)?fy:1-fy); if(xx<0) xx=0; if(xx>127) xx=127; if(yy<0) yy=0; if(yy>127) yy=127;
-                int kk=(yy<<7)|xx, nz=sph_z[kk]; double s; int lit;
-                if(nz<10){ s=-1; lit=0; } else {
-                    int nx_=(xx-64)*4, ny_=(64-yy)*4; lit=(nx_*c->Lx + ny_*c->Ly - nz*c->Lz)>>14; int v=sph_v[kk], u=sph_u[kk]; int t=c->noise[(v<<7)|((u+c->rot)&127)];
-                    int base = t>=8 ? 50+t*4 : 14+t*3; if(v<4 || v>59) base=100+t;
-                    int cl=(pl_noise+16384)[(v<<7)|((u+cloud_rot)&127)];
-                    if(cl>10) base += ((cl-9)*(124-base))>>3;
-                    int dd=lit+40; if(dd<0) dd=0; if(dd>256) dd=256; s=((base*dd)>>8)+4; if(s>127) s=127; }
-                sh+=w*s; nzs+=w*nz; lits+=w*lit; }
+                int kk=(yy<<7)|xx, nz=sph_z[kk];
+                SnShade sample=k->shade ? k->shade[kk] : sn_shade_sample(c,xx,yy,cloud_rot);
+                sh+=w*sample.shade; nzs+=w*nz; lits+=w*sample.lit; }
             uint32_t col;
             if(sh<0 || nzs<10) col=sn_pal[48]; else {
                 double lv=sh*113.0/128.0/16.0; if(lv<0) lv=0; if(lv>7) lv=7; int i=(int)lv; if(i>6) i=6; col=sn_mix(sn_pal[40+i],sn_pal[41+i],(int)((lv-i)*256));
@@ -106,12 +125,25 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
         SnXCol *next=realloc(sn_xcols,(size_t)W*sizeof(*sn_xcols));
         if(next){ sn_xcols=next; sn_xcap=(size_t)W; }
     }
-    for(int i=0;i<sn_nc;i++){ SnCall *c=&sn_calls[i]; SnCtx k; k.W=W; k.H=hn; k.sx=sx; k.sy=sy; k.c=c; k.buf=buf; k.xcols=xcache_on && sn_xcap>=(size_t)W ? sn_xcols : NULL;
+    // Tiny moons use fewer than 16k output samples; preparing the whole
+    // texture for those would be slower. Large visible bodies amortize the
+    // per-texel work across thousands of four-sample output pixels.
+    static int shadecache_on=-1;
+    if(shadecache_on<0){ const char *e=getenv("BUGSTAR_SN_SHADECACHE"); shadecache_on=!(e && e[0]=='0' && !e[1]); }
+    int shade_tables=0;
+    for(int i=0;i<sn_nc;i++){ SnCall *c=&sn_calls[i]; SnCtx k; k.W=W; k.H=hn; k.sx=sx; k.sy=sy; k.c=c; k.buf=buf; k.xcols=xcache_on && sn_xcap>=(size_t)W ? sn_xcols : NULL; k.shade=NULL;
         int y0=(int)((c->cy+0.5-c->r-1.5)*sy); if(y0<0) y0=0; int y1=(int)((c->cy+0.5+c->r+1.5)*sy)+1; if(y1>hn) y1=hn; if(y1<=y0) continue;
+        double R=c->r+0.5, cxp=c->cx+0.5;
+        int x0=(int)((cxp-R-1)*sx), x1=(int)((cxp+R+1)*sx)+1;
+        if(x0<0) x0=0; if(x1>W) x1=W;
+        if(shadecache_on && (size_t)(x1-x0)*(size_t)(y1-y0)>=16384u){
+            if(!sn_shade_tab) sn_shade_tab=malloc(128u*128u*sizeof(*sn_shade_tab));
+            if(sn_shade_tab){
+                sn_shade_prepare(c,c->rot+(int)(vbl_count>>5)+40);
+                k.shade=sn_shade_tab; shade_tables++;
+            }
+        }
         if(k.xcols){
-            const double R=c->r+0.5, cxp=c->cx+0.5;
-            int x0=(int)((cxp-R-1)*sx), x1=(int)((cxp+R+1)*sx)+1;
-            if(x0<0) x0=0; if(x1>W) x1=W;
             for(int X=x0;X<x1;X++){ SnXCol *v=&sn_xcols[X];
                 double gx=(X+0.5)/sx, nx=(gx-cxp)/R, kx=(nx+1)*64-0.5;
                 v->nx=nx; v->nx2=nx*nx; v->kx0=(int)__builtin_floor(kx); v->fx=kx-v->kx0;
@@ -124,14 +156,14 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
     pc_vrec(2,render_ms,render_cpu_ms);
     // Optional native-space benchmark records time spent building actual
     // space frames, not merely the final GPU/bitmap compositor pass.
-    static int bench_on=-1; static double bench_wall, bench_cpu; static int bench_frames;
+    static int bench_on=-1; static double bench_wall, bench_cpu; static int bench_frames, bench_tables;
     if(bench_on<0) bench_on=getenv("PC_SN_BENCH")!=NULL;
     if(bench_on){
-        bench_wall+=render_ms; bench_cpu+=render_cpu_ms;
+        bench_wall+=render_ms; bench_cpu+=render_cpu_ms; bench_tables+=shade_tables;
         if(++bench_frames==120){
-            fprintf(stderr,"space-native bench %dx%d: avg wall %.3f ms cpu %.3f ms over %d frames\n",
-                W,H,bench_wall/bench_frames,bench_cpu/bench_frames,bench_frames);
-            bench_wall=bench_cpu=0; bench_frames=0;
+            fprintf(stderr,"space-native bench %dx%d: avg wall %.3f ms cpu %.3f ms over %d frames (shade tables %d)\n",
+                W,H,bench_wall/bench_frames,bench_cpu/bench_frames,bench_frames,bench_tables);
+            bench_wall=bench_cpu=0; bench_frames=bench_tables=0;
         }
     }
 }
