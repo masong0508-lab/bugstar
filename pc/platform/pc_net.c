@@ -186,6 +186,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
     if(s->world!=local->world){
         s->world=local->world;
         s->connected=0;s->received=0;s->event_seen=0;s->state_seen=0;
+        s->input_seen=0;s->last_ship_rx=0;
         s->raider_seen=0;pc_coop_reset(&s->coop_enemy);
         s->last_hello=0;s->last_send=0;
         s->host_seen_shots=s->local_shots;s->have_guest_fire=0;
@@ -228,6 +229,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                 s->peer_addr=peer.sin_addr.s_addr;s->peer_port=peer.sin_port;
                 s->connected=1;s->last_rx=frame;s->received=0;
                 s->event_seen=0;s->state_seen=0;s->raider_seen=0;
+                s->input_seen=0;s->last_ship_rx=0;
                 pc_coop_reset(&s->coop_enemy);
                 s->host_seen_shots=s->local_shots;s->have_guest_fire=0;
                 s->last_host_shot_tick=0;s->last_guest_shot_tick=0;
@@ -238,6 +240,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                  p.payload[0]==(s->coop?2:1)){
             if(!s->connected){
                 pc_duel_reset(&s->duel);s->event_seen=0;s->state_seen=0;
+                s->input_seen=0;s->last_ship_rx=0;
                 s->raider_seen=0;pc_coop_reset(&s->coop_enemy);
             }
             s->connected=1;s->last_rx=frame;
@@ -246,8 +249,13 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                 continue; /* reordered or duplicated unreliable UDP state */
             s->last_state_tick=p.tick;s->state_seen=1;
             net_decode(&s->other,&p,s->world);
-            s->last_rx=frame;s->received=1;
+            s->last_rx=frame;s->last_ship_rx=frame;s->received=1;
         }else if(p.type==BSNET_INPUT && s->role==1 && s->connected){
+            /* A packet with an old frame may still have a plausible CRC
+             * and a higher fire counter. Never reapply reordered inputs. */
+            if(s->input_seen && (int16_t)(p.tick-s->last_input_tick)<=0)
+                continue;
+            s->input_seen=1;s->last_input_tick=p.tick;
             uint8_t shots=p.payload[0];
             if(!s->have_guest_fire){
                 s->guest_seen_shots=shots;s->have_guest_fire=1;
@@ -255,7 +263,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                 uint8_t delta=(uint8_t)(shots-s->guest_seen_shots);
                 if(delta>0 && delta<128u){
                     s->guest_seen_shots=shots;
-                    if(s->received && frame-s->last_rx<=NET_SNAPSHOT_TICKS &&
+                    if(s->received && frame-s->last_ship_rx<=NET_SNAPSHOT_TICKS &&
                        (!s->last_guest_shot_tick ||
                         frame-s->last_guest_shot_tick>=6u)){
                         s->last_guest_shot_tick=frame;
@@ -299,12 +307,14 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
             s->last_raider_rx=frame;s->last_rx=frame;
         }else if(p.type==BSNET_BYE && s->connected){
             s->connected=0;s->received=0;s->event_seen=0;s->state_seen=0;
+        s->input_seen=0;s->last_ship_rx=0;
             s->raider_seen=0;
             if(s->role==1){s->peer_addr=0;s->peer_port=0;}
         }
     }
     if(s->connected && frame-s->last_rx>NET_TIMEOUT_TICKS){
         s->connected=0;s->received=0;s->event_seen=0;s->state_seen=0;
+        s->input_seen=0;s->last_ship_rx=0;
         s->raider_seen=0;
         if(s->role==1){s->peer_addr=0;s->peer_port=0;}
     }
@@ -318,7 +328,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
         else pc_duel_step(&s->duel,frame);
         if(s->local_shots!=s->host_seen_shots){
             s->host_seen_shots=s->local_shots;
-            if(frame-s->last_rx<=NET_SNAPSHOT_TICKS &&
+            if(frame-s->last_ship_rx<=NET_SNAPSHOT_TICKS &&
                (!s->last_host_shot_tick ||
                 frame-s->last_host_shot_tick>=6u)){
                 s->last_host_shot_tick=frame;
@@ -360,7 +370,7 @@ int pcnet_duel(const PcNetSession *s,uint8_t *host_hp,uint8_t *guest_hp,
 }
 int pcnet_remote(const PcNetSession *s,uint32_t frame,PcNetShip *out){
     if(!s || !out || !s->connected || !s->received ||
-       frame-s->last_rx>NET_SNAPSHOT_TICKS)return 0;
+       frame-s->last_ship_rx>NET_SNAPSHOT_TICKS)return 0;
     *out=s->other;
     return 1;
 }
