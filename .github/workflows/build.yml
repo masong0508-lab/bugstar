@@ -20,6 +20,9 @@ jobs:
       - name: Check 3D cockpit near-plane projection and ship/station wireframes
         run: python3 tests/space_projection_audit.py
 
+      - name: Check GBA and PC station docking perspective geometry
+        run: python3 tests/space_station_depth_audit.py
+
       - name: Check shared monster roster, generated art and biome spawn pools
         run: python3 tests/monster_roster.py
 
