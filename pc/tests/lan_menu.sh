@@ -65,4 +65,23 @@ grep -Eq 'EV dump: menu=1 page=10 ' out/lan_menu/game.log || {
     echo 'LAN menu: multiplayer tutorial could not return to lobby';exit 1; }
 test -s out/lan_menu/mission-help.png
 test -s out/lan_menu/host-options.png
-echo "LAN SDL options: host, leave, IPv4 editor, join and leave PASS"
+# Prove the newly height-bounded options page can be drawn without crashing
+# at actual 240x160 pixels AND a narrow mobile portrait display.
+for layout in compact portrait; do
+    mkdir -p "out/lan_menu/${layout}"
+    if [[ "$layout" == compact ]]; then dims=(240 160); else dims=(320 480); fi
+    printf '170 nop\n0 shot out/lan_menu/%s.png\n0 dump\n1 quit\n' "$layout" > "out/lan_menu/${layout}.txt"
+    env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_BOOT=1 BUGSTAR_MENU=10 \
+        BUGSTAR_EVENTS="out/lan_menu/${layout}.txt" \
+        timeout -k 3 30 "$GAME" --window --video-driver dummy --no-audio \
+        --no-vsync --size "${dims[0]}" "${dims[1]}" \
+        --data "out/lan_menu/${layout}" \
+        > "out/lan_menu/${layout}.log" 2>&1 || {
+            echo "LAN menu: ${layout} screen crash";
+            tail -70 "out/lan_menu/${layout}.log";exit 1; }
+    grep -q 'EV dump: menu=1 page=10' "out/lan_menu/${layout}.log" || {
+        echo "LAN menu: ${layout} didn't show multiplayer page";exit 1; }
+    test -s "out/lan_menu/${layout}.png" || {
+        echo "LAN menu: ${layout} screenshot missing";exit 1; }
+done
+echo "LAN SDL options: host, join, Ready, in-game guide, compact and portrait layouts PASS"
