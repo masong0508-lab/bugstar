@@ -589,6 +589,10 @@ int pc_mp_peer_ready(void){return g_active && g_peer.peer_ready;}
 int pc_mp_both_confirmed(void){return g_active && g_peer.connected && g_peer.received && g_peer.local_ready && g_peer.peer_ready;}
 int pc_mp_match_ready(void){return g_active && pcnet_match_ready(&g_peer);}
 int pc_mp_reconnecting(void){return g_active && g_peer.reconnecting;}
+int pc_mp_space_ready(void){
+    return g_active && g_last_space_frame &&
+           g_last_game_frame-g_last_space_frame<=20u;
+}
 int pc_mp_coop_complete(void){
     return g_clear_drawn && g_active && pcnet_match_ready(&g_peer) &&
            g_peer.coop && g_peer.coop_enemy.phase==4 &&
