@@ -175,12 +175,13 @@ static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, a
         "I CUT OPEN A SHIP TO HEAT THE NEST.",
         "THEN I FED THE FURNACE LIVING SHIPS.",
         "IT LEARNED MY HUNGER.\""}; bolt_card(pg,t,6);
-        { const char *after[3]={
+        { const char *after[4]={
             have_bug[BUG_ANT] ? "RUNAWAY ANT: WE NEVER ASKED FOR THIS." :
                                 "BOLT WATCHES THE EMPTY THRONE.",
+            story_boss_reward[5],
             "\"WE STOPPED HIM. BUT HIS MACHINE LIVES.\"",
             "BEYOND THE STARS, A VAST ENGINE WAKES."};
-          bolt_card(pg,after,3); }
+          bolt_card(pg,after,4); }
         break; }
     case 10: { static const char *const t[6]={"THE MOUTH FALLS APART.",
         "INSIDE IT, A SHIP. OLD. WHOLE. SINGING.","BOLT'S VOICE COMES FROM EVERYWHERE AT ONCE.",
