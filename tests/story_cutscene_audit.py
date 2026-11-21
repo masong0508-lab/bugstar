@@ -118,7 +118,7 @@ require(scenes, "THE FIRST MORNING WITHOUT THE KING.",
         "true Dawn ending needs an epilogue beyond the fight")
 require(scenes, 'bugs_freed ? "THE BUGS YOU FREED WATCH THE SUN RISE."',
         "epilogue must reflect actual rescues, not assume every bug was freed")
-require(scenes, '"WHERE SHOULD WE GO FIRST?"',
+require(scenes, "WHERE SHOULD WE GO FIRST?",
         "finale should return player agency to the open galaxy")
 
 reactions = section(ui, "static void bolt_memory_reaction(", "// what Bolt says when")
