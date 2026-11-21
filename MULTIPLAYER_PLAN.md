@@ -9,7 +9,7 @@
 - **GBC (separate `bugstar-gbc` repo):** real serial link multiplayer is also not implemented. The intended two-Game-Boy-Color link test is documented in its own `MULTIPLAYER_PLAN.md`, not equivalent to PC UDP or GBA four-player SIO.
 - **Other ports/build variants:** port the same *observable* acceptance requirements, but do not share SDL socket code with cable-only hardware. Treat unsupported transport as disabled, never an apparent success.
 
-**Protocol version:** the READY confirmation flag is a wire compatibility change. The new implementation uses version 4 and rejects v3 peers; the 3-wave implementation described in prior paragraphs was originally tested under v3.
+**Protocol version:** READY and ACTIVE are separate wire flags. Current version 5 rejects v3/v4 peers; SDL menus exchange UDP packets while gameplay physics are paused. Android backgrounding invalidates stale session state and requires a new Ready handshake. Historical three-wave implementation was originally tested under v3.
 
 **Preflight rule:** Joining a network socket is not Ready. Each player explicitly selects **CONFIRM READY** in the LAN options; simulation starts only after both have fresh ship state and mutually confirmed readiness. A leave, world change or stale peer pose clears manual Ready, preventing a ghost pilot from continuing the co-op wave. Reconnection needs both confirmations again, and retains separate campaign saves.
 
@@ -56,7 +56,7 @@ a stretch target, not a first release requirement.
 
 ## Shared session rules (engine independent of transport)
 
-- **Shared semantic protocol, version 4 (LAN Ready handshake); older v3 clients must update.** `HELLO` (protocol/build/content
+- **Shared semantic protocol, version 5 (LAN Ready + Active handshake); older v3/v4 clients must update.** `HELLO` (protocol/build/content
   hash, port capability mask, world seed), `READY`, `INPUT` (tick/sequence/
   held keys), `STATE` (tick/positions/orientation/hull/shield/HP), `EVENT`
   (hit/kill/pickup/dock/result), `ACK`, `PING`, `BYE`. Avoid sending
