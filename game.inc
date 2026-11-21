@@ -658,6 +658,10 @@ static int pet_xp_next(void){ return 40+pet_lv*pet_lv*12; }
 // ---------------------------------------------------------------- quests and fame
 enum { Q_NONE, Q_HUNT, Q_CHAMP, Q_FETCH, Q_RESCUE, Q_BOSS, Q_SHARDS, Q_BRING, Q_GOODS, NQ };
 static int q_type, q_need, q_have, q_floor, q_done, q_gold, q_fame, q_zone, q_world; static char q_name[24];
+// One shared identity for the bounty board and the actual named dungeon foe.
+// q_need stores champion ID + 1 on Q_CHAMP (0 is an older save fallback).
+static const char *const quest_champ_names[6]={"GRIMFANG","MOLDJAW","SKITTERMAW","VILEWING","THE PALE ONE","OLD CRUNCH"};
+static int quest_home(void){ return q_zone==zone && q_world==world_no; }
 static const char *fame_rank(void){
     return fame>=1200?"BUG LEGEND": fame>=700?"CHAMPION": fame>=350?"HERO": fame>=150?"BRAVE BUG": fame>=50?"KNOWN BUG":"NOBODY";
 }
@@ -855,7 +859,12 @@ static void free_bug(int t){
     if(t==BUG_PILL) earn(10);
     recalc(); if(t==BUG_LADY) hearts=maxh;
     char b[40]; scpy(b,"FREED A "); scat(b,friend_name[t]); say(b); sfx(2);
-    if(q_type==Q_RESCUE){ q_have++; if(q_have>=q_need) q_done=1; }
+    // A rescue contract belongs to the world that posted it. Freeing bugs
+    // on an unrelated world or in a special outpost never advances it.
+    if(q_type==Q_RESCUE && !q_done && !forge_on && !base_mode && quest_home()){
+        q_have++;
+        if(q_have>=q_need){ q_done=1; say("RESCUE QUEST DONE! RETURN TO YOUR SHIP"); }
+    }
     ach_check(); hud_now();
 }
 
@@ -890,7 +899,21 @@ static void regen_tick(int every){          // slow healing and mana
 
 // ---------------------------------------------------------------- the bag
 static int add_gear(Gear g){
-    if(g.it==IT_QUEST){ if(q_type==Q_SHARDS){ q_have++; if(q_have>=q_need){ q_done=1; say("ALL SHARDS FOUND! GO TO YOUR SHIP"); } else { char sb[32]; scpy(sb,"SHARD "); ncat(sb,q_have); scat(sb,"/"); ncat(sb,q_need); say(sb); } } else { q_done=1; say("FOUND THE LOST TREASURE!"); } sfx(2); return 1; }
+    if(g.it==IT_QUEST){
+        // Quest relics must never finish an unrelated job. Shards follow the
+        // floor sequence shown on the board; revisiting the same floor
+        // cannot manufacture extra progress on a new generation pass.
+        int in_world=!forge_on && !base_mode && quest_home();
+        if(in_world && !q_done && q_type==Q_SHARDS &&
+           q_have<q_need && depth_no==q_floor-q_need+q_have+1){
+            q_have++;
+            if(q_have>=q_need){ q_done=1; say("ALL SHARDS FOUND! GO TO YOUR SHIP"); }
+            else { char sb[32]; scpy(sb,"SHARD "); ncat(sb,q_have); scat(sb,"/"); ncat(sb,q_need); say(sb); }
+        } else if(in_world && !q_done && q_type==Q_FETCH && depth_no==q_floor){
+            q_done=1; say("FOUND THE LOST TREASURE!");
+        } else say("THAT RELIC IS NOT YOUR QUEST TARGET");
+        sfx(2); return 1;
+    }
     if(bag_n>=BAGMAX){ say("YOUR BAG IS FULL"); return 0; }
     bag[bag_n++]=g;
     char b[48], nm[40]; gear_name(&g,nm); scpy(b,"GOT "); scat(b,nm); b[39]=0; say(b); sfx(2); hud_now(); return 1;
