@@ -22,6 +22,8 @@ on:
       - 'gen.py'
       - 'tests/space_native_projection_audit.py'
       - 'tests/space_station_depth_audit.py'
+      - 'net/**'
+      - 'tests/multiplayer_protocol_test.c'
       - 'tests/monster_roster.py'
       - 'pc/facts/**'
       - 'tests/facts_audit.py'
@@ -69,6 +71,9 @@ jobs:
 
       - name: Check GBA and native station docking geometry parity
         run: python3 tests/space_station_depth_audit.py
+
+      - name: Host-check packet bounds and corruption before Android cross-play work
+        run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/multiplayer_protocol_test.c net/session.c -o /tmp/bugstar-nettest && /tmp/bugstar-nettest
 
       - name: Check the 24 additional cross-port monster species
         run: python3 tests/monster_roster.py
