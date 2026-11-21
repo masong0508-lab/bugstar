@@ -1,0 +1,35 @@
+name: Story continuity and Dawn ending safety
+
+on:
+  push:
+    paths:
+      - 'ui.inc'
+      - 'town.inc'
+      - 'main.c'
+      - 'space.inc'
+      - 'game.inc'
+      - 'tests/story_cutscene_audit.py'
+      - 'tests/story_finale_runtime.py'
+      - '.github/workflows/story-continuity.yml'
+  pull_request:
+    paths:
+      - 'ui.inc'
+      - 'town.inc'
+      - 'main.c'
+      - 'space.inc'
+      - 'game.inc'
+      - 'tests/story_cutscene_audit.py'
+      - 'tests/story_finale_runtime.py'
+      - '.github/workflows/story-continuity.yml'
+  workflow_dispatch:
+
+jobs:
+  story-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check story text, 240x160 scene bounds, controls, and spoilers
+        run: python3 tests/story_cutscene_audit.py
+      - name: Compile and execute real save code with UndefinedBehaviorSanitizer
+        run: python3 tests/story_finale_runtime.py
