@@ -38,6 +38,8 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
           }
       }
     }
+    /* Draw the mission result last, above the partner ship model. */
+    int result_banner=0;
     PcNetShip mine,other;
     mine.x=shx; mine.y=shy; mine.z=shz;
     mine.world=sys_id(cur_sys); mine.yaw=(unsigned short)(yaw&1023);
@@ -220,15 +222,15 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                                  "DRONE AHEAD - FIRE!";
                 text(pg,10,90,hint,53,1);
             }
-            if(raider.phase==2)
-                text(pg,66,84,"WAVE CLEARED!",54,2);
-            if(raider.phase==3)
-                text(pg,65,70,"MISSION FAILED",53,2);
-            if(raider.phase==4){
-                text(pg,38,64,"MISSION COMPLETE",54,2);
-                text(pg,69,84,"BOTH PILOTS WIN!",50,1);
-                pc_mp_note_clear_draw();
+            if(raider.phase==2){
+                text(pg,65,77,"WAVE CLEARED!",54,2);
+                text(pg,68,91,"NEXT WAVE SOON",50,1);
             }
+            if(raider.phase==3){
+                text(pg,61,73,"MISSION FAILED",53,2);
+                text(pg,72,91,"RESTARTING SOON",50,1);
+            }
+            if(raider.phase==4)result_banner=1;
         }else text(pg,4,112,"LOADING SHARED MISSION...",50,1);
     }else if(!pc_mp_coop_mode() && pc_mp_match_ready()){
         uint8_t hh,gh,wh,wg;
@@ -296,6 +298,20 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
         if(sx>15 && sx<208 && sy_>18 && sy_<115)
             text(pg,sx+5,sy_-6,pc_mp_role()==1?"P2":"P1",50,1);
       }
+    }
+    if(result_banner){
+        /* Overlay AFTER all 3D ships and labels. A solid high-contrast
+         * plate keeps the planet's detailed scene visible around it, but
+         * prevents wireframes/pilot labels from cutting through the title.
+         * Static rect/text only; zero allocations or sprite resources. */
+        rect(pg,47,59,146,37,0);
+        rect(pg,47,59,146,2,54);
+        rect(pg,47,94,146,2,54);
+        rect(pg,47,59,2,37,55);
+        rect(pg,191,59,2,37,55);
+        text(pg,55,65,"MISSION COMPLETE",54,2);
+        text(pg,87,84,"BOTH PILOTS WIN!",50,1);
+        pc_mp_note_clear_draw();
     }
 #else
     (void)pg;
