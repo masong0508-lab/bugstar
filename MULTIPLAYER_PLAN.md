@@ -9,6 +9,8 @@
 - **GBC (separate `bugstar-gbc` repo):** real serial link multiplayer is also not implemented. The intended two-Game-Boy-Color link test is documented in its own `MULTIPLAYER_PLAN.md`, not equivalent to PC UDP or GBA four-player SIO.
 - **Other ports/build variants:** port the same *observable* acceptance requirements, but do not share SDL socket code with cable-only hardware. Treat unsupported transport as disabled, never an apparent success.
 
+**Protocol version:** the READY confirmation flag is a wire compatibility change. The new implementation uses version 4 and rejects v3 peers; the 3-wave implementation described in prior paragraphs was originally tested under v3.
+
 **Preflight rule:** Joining a network socket is not Ready. Each player explicitly selects **CONFIRM READY** in the LAN options; simulation starts only after both have fresh ship state and mutually confirmed readiness. A leave, world change or stale peer pose clears manual Ready, preventing a ghost pilot from continuing the co-op wave. Reconnection needs both confirmations again, and retains separate campaign saves.
 
 **Performance and evidence gate:** run packet codec tests, localhost Ready/reconnect test, real two-SDL-instance full playthrough with 3 wave and per-peer screenshot assertions, sparring regression, ordinary speed guard and GBA ROM/GBC budget checks where toolchains are available. The test-only aim-following pilot is controlled by `BUGSTAR_LAN_TEST_PILOT`; it never enables in a normal game. Do not claim passed/available until the target platform's own emulator/hardware build and multiplayer session pass.
@@ -54,7 +56,7 @@ a stretch target, not a first release requirement.
 
 ## Shared session rules (engine independent of transport)
 
-- **Shared semantic protocol, version 3.** `HELLO` (protocol/build/content
+- **Shared semantic protocol, version 4 (LAN Ready handshake); older v3 clients must update.** `HELLO` (protocol/build/content
   hash, port capability mask, world seed), `READY`, `INPUT` (tick/sequence/
   held keys), `STATE` (tick/positions/orientation/hull/shield/HP), `EVENT`
   (hit/kill/pickup/dock/result), `ACK`, `PING`, `BYE`. Avoid sending
@@ -93,7 +95,7 @@ a stretch target, not a first release requirement.
 ### M0 — contract, budgets, instrumentation (codec implemented; PC UDP prototype exists)
 - Land this document and the GBC companion `MULTIPLAYER_PLAN.md`.
 - **Started (codec, not transport):** `net/session.h` and `net/session.c`
-  implement the allocation-free v3 packet layout with nine message types, including RAIDER, 
+  implement the allocation-free v4 packet layout with nine message types, including RAIDER, 
   explicit lengths, a CRC8 and version checks. `tests/multiplayer_protocol_test.c`
   exercises 90,000 round trips and malformed data (PC/Android CI).
   This does not connect players or make a multiplayer mode playable.
