@@ -928,12 +928,24 @@ static int list_pick_(volatile u16 *pg, const char *title, int n, void (*row)(in
 static int list_pick(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help){ int sh=shd_begin(); int r=list_pick_(sh?VISPG:pg,title,n,row,sel,help); shd_end(sh); return r; }
 static int list_pick_(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help){
     int dirty=1;
+    // Clamp stale menu selections before any row callback sees an index.
+    if(n<=0 || *sel<0 || *sel>=n) *sel=0;
     wait_release();
     while(1){
         if(dirty){ dirty=0; char b[64]; int c;
             panel(pg,12,20,216,136,title);
             { char g[16]=""; ncat(g,gold); scat(g,"G"); int gx=222-textlen(g)*4; rect(pg,gx-9,26,5,5,C_GOLD); rect(pg,gx-8,26,2,1,U_GLGOLD); stext(pg,gx,25,g,C_GOLD); }   // your gold, with a coin
-            for(int i=0;i<n;i++){ c=C_GREY; row(i,b,&c); b[48]=0; if(i==*sel){ ui_sel(pg,16,36+i*8,208,8,U_SEL); if(c==C_GREY) c=C_WHITE; } text(pg,22,37+i*8,b,c,1); }
+            // Keep large lists inside the 240x160 panel. Selection remains an
+            // absolute item index, so all saved tracks and full inventories
+            // remain reachable without drawing rows over the help/description.
+            int shown=n>10?10:n, first=*sel>=shown && shown?*sel-shown+1:0;
+            for(int i=first;i<first+shown;i++){ int y=37+(i-first)*8;
+                c=C_GREY; row(i,b,&c); b[48]=0;
+                if(i==*sel){ ui_sel(pg,16,y-1,208,8,U_SEL); if(c==C_GREY) c=C_WHITE; }
+                text(pg,22,y,b,c,1);
+            }
+            if(first>0) text(pg,214,37,"^",C_CYAN,1);
+            if(first+shown<n) text(pg,214,109,"V",C_CYAN,1);
             rect(pg,14,141,212,1,U_RAISE); ui_hints(pg,20,145,help,U_SOFT,1);
             if(list_desc && n){ int c2=C_GREY; list_desc(*sel,b,&c2); b[52]=0; rect(pg,18,120,204,1,U_RAISE); text(pg,20,124,b,c2,1); }
             if(menu_msg[0]) text(pg,20,132,menu_msg,C_GREEN,1); else if(list_desc && n){ int c2=C_GREY; list_desc(-1-*sel,b,&c2); b[52]=0; text(pg,20,132,b,c2,1); }
