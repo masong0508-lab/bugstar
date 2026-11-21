@@ -585,6 +585,19 @@ static void make_floor(void){
             dob[k]=dob[--ndo];
         }
     }
+    // One real, searchable piece of evidence on each first-clear story boss
+    // floor. Reuse an ordinary chest if the object budget is crowded; never
+    // consume slots reserved for quest objectives or interfere with keycards.
+    // A defeated boss's saved cleared-mask bit keeps this out of repeat tiers.
+    if(last && !endless && !base_mode && !forge_on && !zone_cleared && zone<6){
+        int evidence=-1;
+        for(int i=0;i<ndo;i++) if(dob[i].kind==K_CHEST && dob[i].sub==0){
+            evidence=i; break;
+        }
+        if(evidence>=0) dob[evidence].sub=7;
+        else if(ndo<NDO-4)
+            SPAWN(K_CHEST,room_floor_cell(&rooms[nrooms>1?1:0]),1,7);
+    }
     FMH->nbase=ndo;  // quest-specific objects below are regenerated; normal changes are remembered
     if(qhere && q_type==Q_CHAMP && ndo<NDO){
         SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0);
@@ -1245,6 +1258,10 @@ static void dungeon_enter(void){ auto_run=0;
 #endif
 #endif
     dungeon_hud_both();
+    if(!endless && !base_mode && !forge_on && !zone_cleared &&
+       zone>=0 && zone<6 && depth_no>=zone_floors() && boss_floor()){
+        say(story_boss_warning[zone]); msg_timer=110;
+    }
     if(fl_ev){ char b[40]; scpy(b,fe_name[fl_ev]); scat(b,"!"); say(b); msg_timer=60;
         if(fl_ev==FE_BLESSED){ int mk=rndi(MK_GOOD); mark_t[mk]=150; recalc(); scpy(b,"BLESSED: "); scat(b,mk_name[mk]); scat(b," FOR A WHILE"); say(b); msg_timer=60; } }
 }
