@@ -363,7 +363,7 @@ static inline uint32_t nv_grain(uint32_t c, float u, float v, int strength){   /
 #include <unistd.h>
 #endif
 typedef void (*ParFn)(void*,int,int);
-static struct { pthread_t th[15]; int n, inited; pthread_mutex_t m; pthread_cond_t go, done; ParFn fn; void *ctx; int total, next, gen, left, chunk, active; } PP;
+static struct { pthread_t th[15]; int n, inited; pthread_mutex_t m; pthread_cond_t go[15], done; ParFn fn; void *ctx; int total, next, gen, left, chunk, active; } PP;
 static int par_take(int *lo, int *hi){ pthread_mutex_lock(&PP.m); int a=PP.next; if(a>=PP.total){ pthread_mutex_unlock(&PP.m); return 0; } int b=a+PP.chunk; if(b>PP.total) b=PP.total; PP.next=b; pthread_mutex_unlock(&PP.m); *lo=a; *hi=b; return 1; }
 // Give every worker a stable index. An idle worker tracks generations but
 // does not join or decrement PP.left for jobs too small to need its help.
@@ -371,7 +371,7 @@ static void *par_worker(void *u){ int id=(int)(uintptr_t)u, seen=0;
     for(;;){ pthread_mutex_lock(&PP.m);
         while(PP.gen==seen || id>=PP.active){
             seen=PP.gen;
-            pthread_cond_wait(&PP.go,&PP.m);
+            pthread_cond_wait(&PP.go[id],&PP.m);
         }
         seen=PP.gen; pthread_mutex_unlock(&PP.m);
         int lo,hi; while(par_take(&lo,&hi)) PP.fn(PP.ctx,lo,hi);
@@ -389,7 +389,7 @@ void pc_par(int total, ParFn fn, void *ctx){ pc_par_chunk(total,8,fn,ctx); }
 int pc_par_threads(void){ pc_par_init(); return PP.n+1; }
 static void pc_par_init(void){
     if(!PP.inited){ PP.inited=1; int n=pc_ncpu()-1; const char *e=getenv("PC_THREADS"); if(e) n=atoi(e)-1; if(n<0) n=0; if(n>15) n=15;
-        pthread_mutex_init(&PP.m,0); pthread_cond_init(&PP.go,0); pthread_cond_init(&PP.done,0);
+        pthread_mutex_init(&PP.m,0); for(int i=0;i<15;i++) pthread_cond_init(&PP.go[i],0); pthread_cond_init(&PP.done,0);
         for(int i=0;i<n;i++) if(pthread_create(&PP.th[PP.n],0,par_worker,(void*)(uintptr_t)PP.n)==0) PP.n++; } }
 // PC_PAR_LEGACY=1 retains the original wake-every-worker policy for A/B
 // benchmarks. No heaps, graphics or gameplay timing are affected.
@@ -412,7 +412,10 @@ void pc_par_chunk(int total, int chunk, ParFn fn, void *ctx){
     }
     if(report){ saved+=(unsigned)(PP.n-active); if(++calls%128==0)
         fprintf(stderr,"row workers: pool=%d active=%d jobs=%d saved wakes=%llu after %u calls\n",PP.n,active,jobs,saved,calls); }
-    pthread_mutex_lock(&PP.m); PP.chunk=chunk; PP.fn=fn; PP.ctx=ctx; PP.total=total; PP.next=0; PP.active=active; PP.left=active; PP.gen++; pthread_cond_broadcast(&PP.go); pthread_mutex_unlock(&PP.m);
+    pthread_mutex_lock(&PP.m); PP.chunk=chunk; PP.fn=fn; PP.ctx=ctx; PP.total=total; PP.next=0; PP.active=active; PP.left=active; PP.gen++;
+    // Targeted condition variables: do not wake workers that won't join.
+    for(int i=0;i<active;i++) pthread_cond_signal(&PP.go[i]);
+    pthread_mutex_unlock(&PP.m);
     int lo,hi; while(par_take(&lo,&hi)) fn(ctx,lo,hi);
     pthread_mutex_lock(&PP.m); while(PP.left>0) pthread_cond_wait(&PP.done,&PP.m); pthread_mutex_unlock(&PP.m);
 }
