@@ -151,12 +151,17 @@ static void sz_sort(void){                                        // the order: 
         if(i==SZ_BIG){ kn[i]=0xFFFFFFFFu; kl[i]=0; }
         else if(i>=NSOLD){ kn[i]=fact_nd[i-NSOLD]; kl[i]=fact_lead[i-NSOLD]; }
         else { size_id(i); kn[i]=(u32)nb_n; u32 l=0; for(int k=0;k<5;k++) l=l*10+(u32)(k<nb_n?nb_dig(k):0); kl[i]=l; } }
-    // The list previously recomputed EVERY big-number page on each opening,
-    // even though sz_sort has just computed every digit count. Reuse the
-    // result: no extra storage, no repeated 24-word multiplications on GBA.
-    for(int i=0;i<NSIZE;i++) sz_nd[i]=i==SZ_BIG ? 2000000001 : (int)kn[i];
+    // Cache the TRUE digit length for the player's travel log before forcing
+    // that page to the front. This length must not become zero on the list.
+    int travel_digits=(int)kn[SZ_TRAVEL];
     kn[SZ_TRAVEL]=0; kl[SZ_TRAVEL]=0;
-    for(int i=1;i<NSIZE;i++){ u16 t=sz_ord[i]; int j=i; while(j>0 && (kn[sz_ord[j-1]]>kn[t] || (kn[sz_ord[j-1]]==kn[t] && kl[sz_ord[j-1]]>kl[t]))){ sz_ord[j]=sz_ord[j-1]; j--; } sz_ord[j]=t; } }
+    for(int i=1;i<NSIZE;i++){ u16 t=sz_ord[i]; int j=i; while(j>0 && (kn[sz_ord[j-1]]>kn[t] || (kn[sz_ord[j-1]]==kn[t] && kl[sz_ord[j-1]]>kl[t]))){ sz_ord[j]=sz_ord[j-1]; j--; } sz_ord[j]=t; }
+    // The on-screen list uses SORTED row indices, not source-page IDs.
+    // Populate its cached lengths AFTER sorting to keep labels accurate.
+    // This replaces an expensive full recalculation each time SELECT opens
+    // the list and uses only the scratch words already reserved for it.
+    for(int i=0;i<NSIZE;i++){ int id=sz_ord[i]; sz_nd[i]=id==SZ_BIG ? 2000000001 : id==SZ_TRAVEL ? travel_digits : (int)kn[id]; }
+}
 
 // ---- THE BUGSTARILLION: BIG_N parts (11.9 million), each a group of three digits at its own place, so the names grow from THOUSAND to the long ones.
 // Part j counts from the top (the biggest); q=BIG_N-1-j counts from the bottom. The lowest BIG_N0 parts sit side by side (places 0, 1, 2...).
