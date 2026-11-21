@@ -10,8 +10,10 @@ on:
       - 'tests/quest_integrity_audit.py'
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
+      - 'tests/kart_world_save_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'tests/rect_clip_runtime_host.py'
+      - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
       - 'town.inc'
@@ -49,8 +51,10 @@ on:
       - 'tests/quest_integrity_audit.py'
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
+      - 'tests/kart_world_save_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'tests/rect_clip_runtime_host.py'
+      - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
       - 'town.inc'
@@ -90,10 +94,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential
       - name: Exercise 50-slot menu scrolling and selection with UndefinedBehaviorSanitizer
         run: python3 tests/list_picker_runtime_host.py
+      - name: Exercise Kart World saved settings and 18-driver navigation with UBSan
+        run: python3 tests/kart_world_save_runtime.py
       - name: Guard shared signed division against overflow and zero denominators
         run: python3 tests/shared_math_runtime_host.py
       - name: Detect off-screen shared rectangle VRAM writes under ASan and UBSan
         run: python3 tests/rect_clip_runtime_host.py
+      - name: Verify kart HUD DMA palette words under UndefinedBehaviorSanitizer
+        run: python3 tests/kart_dma_palette_runtime_host.py
       - name: Audit quest targets, world gates and guaranteed rewards
         run: python3 tests/quest_integrity_audit.py
       - name: Execute real quest pickup code with UndefinedBehaviorSanitizer
