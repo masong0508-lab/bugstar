@@ -67,10 +67,15 @@ int main(void){
         pcnet_step(&client,t,&g);
     }
     assert(pcnet_raider(&host,419,&enemy) && enemy.hp==100 && enemy.wins==1);
+    assert(enemy.wave==1 && enemy.wing_hp==60 && enemy.completed==0);
+    int32_t wing_host_x=enemy.wing_x,wing_host_z=enemy.wing_z;
     assert(pcnet_raider(&client,419,&enemy) && enemy.hp==100 && enemy.wins==1);
+    assert(enemy.wave==1 && enemy.wing_hp==60 && enemy.completed==0);
+    assert(enemy.wing_x-wing_host_x<=16 && enemy.wing_x-wing_host_x>=-16);
+    assert(enemy.wing_z-wing_host_z<=16 && enemy.wing_z-wing_host_z>=-16);
     pcnet_close(&client);pcnet_step(&host,421,&h);
     assert(!pcnet_raider(&host,421,&enemy));
     pcnet_close(&host);
-    puts("LAN co-op UDP: mode gate, two pilots damaging one raider, replicated HP and victory, respawn PASS");
+    puts("LAN co-op UDP: mode gate, joint damage, next-wave drone 3D pose/HP replication and respawn PASS");
     return 0;
 }
