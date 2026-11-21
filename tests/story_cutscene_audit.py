@@ -101,7 +101,18 @@ assert all(len(s) <= 54 for s in literals(scenes)), (
     "story dialogue exceeds the existing text-card width"
 )
 require(scenes, "THE ANT KING FALLS. HIS CROWN BREAKS.", "King's defeat has no scene")
-require(scenes, "I OPENED THE DAWN'S HEART", "King's final confession is lost")
+require(scenes, "I CUT OPEN A SHIP TO FEED THEM.", "King's final confession is lost")
+assert "THE DAWN" not in scenes.split("case 10:", 1)[0], (
+    "King's chapter or earlier story dialogue reveals Bolt's final name prematurely"
+)
+credits = section(ui, "static void credits(void)", "// ---------------------------------------------------------------- the character screen")
+assert "THE DAWN" not in credits, (
+    "first credits appear after the Ant King, before the last memories"
+)
+bolt_zone = section(ui, "static const char *const bolt_zone[6][2]=", "static const char *const bolt_cls")
+assert "THE DAWN" not in bolt_zone, (
+    "anthill arrival dialogue reveals Bolt's final name prematurely"
+)
 require(scenes, "THE MOUTH FALLS APART.", "beast conclusion is missing")
 
 reactions = section(ui, "static void bolt_memory_reaction(", "// what Bolt says when")
