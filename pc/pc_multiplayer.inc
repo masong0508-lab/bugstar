@@ -205,6 +205,7 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
             if(raider.phase==4){
                 text(pg,38,68,"MISSION COMPLETE",54,2);
                 text(pg,50,91,"BOTH PILOTS WIN!",50,1);
+                pc_mp_note_clear_draw();
             }
         }else text(pg,4,112,"CO-OP: SYNCING RAIDER",50,1);
     }else if(!pc_mp_coop_mode() && pc_mp_match_ready()){
