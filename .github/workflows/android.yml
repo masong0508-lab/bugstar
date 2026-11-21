@@ -18,6 +18,9 @@ on:
       - 'facts.bin'
       - 'facts.py'
       - 'facts_more.py'
+      - 'monsters.py'
+      - 'gen.py'
+      - 'tests/monster_roster.py'
       - 'pc/facts/**'
       - 'tests/facts_audit.py'
       - 'main.c'
@@ -55,6 +58,9 @@ jobs:
 
       - name: Python deps for the generators
         run: python3 -m pip install numpy pillow
+
+      - name: Check the 24 additional cross-port monster species
+        run: python3 tests/monster_roster.py
 
       - name: Check GBA and expanded PC How Big Is It values
         run: BUGSTAR_PC=1 python3 tests/facts_audit.py
