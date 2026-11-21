@@ -33,6 +33,8 @@ typedef struct PcNetSession {
     uint8_t have_guest_fire, event_seen, state_seen, input_seen;
     uint8_t coop, raider_seen;  /* 1: co-op, 0: sparring */
     uint8_t local_ready, peer_ready, manual_ready, reconnecting, world_known;
+    uint8_t local_active, peer_active, ready_seen;
+    uint16_t last_peer_ready_tick;
     uint32_t last_ready_tx;
 } PcNetSession;
 int pcnet_host(PcNetSession *s, uint16_t port);
@@ -43,6 +45,8 @@ void pcnet_close(PcNetSession *s);
 void pcnet_fire(PcNetSession *s);
 void pcnet_set_coop(PcNetSession *s,int enabled);
 void pcnet_set_ready(PcNetSession *s,int ready);
+void pcnet_set_active(PcNetSession *s,int active); /* preflight lobby never advances combat */
+void pcnet_suspend(PcNetSession *s); /* Android lifecycle: require fresh handshake and Ready */
 int pcnet_match_ready(const PcNetSession *s);
 int pcnet_raider(const PcNetSession *s,uint32_t frame,PcCoop *out);
 int pcnet_duel(const PcNetSession *s, uint8_t *host_hp, uint8_t *guest_hp,
@@ -53,6 +57,8 @@ int pc_mp_host(uint16_t port);
 int pc_mp_join(const char *ip, uint16_t port);
 void pc_mp_submit(const PcNetShip *local);
 void pc_mp_frame(uint32_t frame);
+void pc_mp_lobby_pump(void); /* nonblocking transport on paused menu tick */
+void pc_mp_suspend(void); /* Android background: drop unsafe old session */
 int pc_mp_remote(uint32_t frame, PcNetShip *out);
 void pc_mp_close(void);
 void pc_mp_set_coop(int enabled);
