@@ -567,12 +567,45 @@ static void make_floor(void){
         }
     }
     if(endless && cur_moon && !mboss){ char mb[40]; scpy(mb,"MOON TIER "); ncat(mb,moon_tier()); scat(mb,". GUARDIAN ON B"); ncat(mb,moon_tier()*5); say(mb); msg_timer=70; }
-    FMH->nbase=ndo;                                                                         // (the floor memory counts the objects above here; the quest items below depend on the quest, not the seed)
-    // quests that live on this floor
-    int qhere = !forge_on && q_type>0 && !q_done && depth_no==q_floor && q_zone==zone && q_world==world_no;
-    if(qhere && q_type==Q_CHAMP){ SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0); dob[ndo-1].champ=2; }
-    if(qhere && q_type==Q_FETCH) SPAWN_GEAR(room_floor_cell(&rooms[far]), ((Gear){IT_QUEST,0,0,0,0,0}));
-    if(!forge_on && q_type==Q_SHARDS && !q_done && q_have<q_need && q_zone==zone && q_world==world_no && depth_no>q_floor-q_need) SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), ((Gear){IT_QUEST,0,0,0,0,0}));   // one star shard per floor near the quest depth
+    // This quest's world and floor must agree with the posting. An earlier
+    // or later floor cannot spawn repeat shards or substitute a boss.
+    int quest_local = !forge_on && !base_mode && q_type>0 && !q_done && quest_home();
+    int qhere = quest_local && depth_no==q_floor;
+    int qshard = quest_local && q_type==Q_SHARDS && q_have<q_need &&
+                 depth_no==q_floor-q_need+q_have+1;
+    // Preserve a few quest-object slots even on crowded floors. If the
+    // object budget fills, remove decoration, never the boss, keycard or
+    // mission-critical monsters. Do this before capturing floor memory.
+    if((qhere && (q_type==Q_CHAMP || q_type==Q_FETCH || q_type==Q_RESCUE)) || qshard){
+        while(ndo>NDO-4){
+            int k=-1;
+            for(int j=ndo-1;j>=0;j--)
+                if(dob[j].kind==K_LAMP || dob[j].kind==K_BARREL || dob[j].kind==K_CHEST){ k=j; break; }
+            if(k<0) break;
+            dob[k]=dob[--ndo];
+        }
+    }
+    FMH->nbase=ndo;  // quest-specific objects below are regenerated; normal changes are remembered
+    if(qhere && q_type==Q_CHAMP && ndo<NDO){
+        SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0);
+        dob[ndo-1].champ=2;
+        { int cid=quest_champ_id(); dob[ndo-1].cname=cid>=0?(u8)cid:0; }
+    }
+    if(qhere && q_type==Q_FETCH && ndo<NDO)
+        SPAWN_GEAR(room_floor_cell(&rooms[far]), ((Gear){IT_QUEST,0,0,0,0,0}));
+    if(qshard && ndo<NDO)
+        SPAWN_GEAR(room_floor_cell(&rooms[rndi(nrooms)]), ((Gear){IT_QUEST,0,0,0,0,0}));
+    if(qhere && q_type==Q_RESCUE){
+        // There is always a reachable opportunity to free the remaining
+        // number of bugs on this floor. Natural cages count toward it.
+        int cages_here=0, remaining=q_need-q_have;
+        for(int j=0;j<ndo;j++) if(dob[j].alive && dob[j].kind==K_CAGE) cages_here++;
+        while(cages_here<remaining && ndo<NDO){
+            int room=nrooms>1 ? 1+rndi(nrooms-1) : 0;
+            SPAWN(K_CAGE,room_floor_cell(&rooms[room]),1,rndi(6));
+            cages_here++;
+        }
+    }
     if(forge_on) rng_s ^= vbl_count*2654435761u;                                          // the floor is fixed by the seed; the fight is not
 }
 static u16 fm_chk(const FloorMem *m){                                      // a check sum of one record (and of the trip it belongs to)

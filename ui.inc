@@ -58,7 +58,7 @@ static void quest_take(void){ if(q_type==Q_BRING){ int left=q_need; for(int k=ba
 // ---------------------------------------------------------------- the story, told by Bolt
 // Bolt is the tin droid that rolls after you. He does not know what he is. The data cores in the drone outposts are his memory.
 static const char *const bolt_mem[8][4]={
-    {"I WAS A SHIP.","I WAS CALLED THE DAWN.","I REMEMBER THE DARK, AND THE STARS,","AND SOMEONE SMALL WHO SANG."},
+    {"I WAS A SHIP.","A NAME WAS PAINTED ON MY HULL.","I REMEMBER THE DARK, AND THE STARS,","AND SOMEONE SMALL WHO SANG."},
     {"I CARRIED SEEDS.","A GARDEN. A POND. A LAWN AT NIGHT.","I PLANTED THEM ONE BY ONE.","YOUR WORLDS. I MADE THEM."},
     {"MY CREW WERE BUGS.","SMALL. STUBBORN. BRAVE.","THEY SLEPT IN MY HEART ON THE LONG WAY.","ONE OF THEM LOOKED LIKE YOU."},
     {"WE FELL.","THE ANTHILL CAUGHT US.","THE ANTS WERE KIND AT FIRST.","THEN THEY WERE HUNGRY."},
@@ -163,6 +163,27 @@ static void bolt_talk(volatile u16 *pg){
     else if(beast_stage>=3 && data_cores<8){ scpy(l1,"\"THE OUTPOSTS HOLD MY MEMORY. "); ncat(l1,data_cores); scat(l1," OF 8.\""); t[n++]=l1; t[n++]="\"RED MARKS ON THE MAP. HATCHES ON THE GROUND.\""; t[n++]="\"BRING ME BACK TO MYSELF.\""; }
     else if(beast_stage>=3){ t[n++]="\"I KNOW MY NAME. THE DAWN.\""; t[n++]="\"FLY INTO THE BEAST. SHOOT ITS CORE.\""; t[n++]="\"I WILL DO THE REST.\""; }
     else { t[n++]="\"THE GALAXY IS OPEN. GO ANYWHERE.\""; t[n++]="\"THE BEAST IS OUT THERE. SO ARE ITS OUTPOSTS.\""; }
+    // Make the companion's advice match the job the player actually took.
+    // qhint lives until the card finishes; no new global RAM is needed.
+    char qhint[48];
+    if(q_type>0 && n<8){
+        qhint[0]=0;
+        if(q_done) scpy(qhint,"\"QUEST DONE. CLAIM YOUR REWARD AT THE SHIP.\"");
+        else if(q_type!=Q_BRING && q_type!=Q_GOODS && !quest_home()){
+            scpy(qhint,"\"QUEST: RETURN TO ");
+            if(q_world==0 && q_zone>=0 && q_zone<6) scat(qhint,tint_name[q_zone]);
+            else { scat(qhint,"WORLD "); ncat(qhint,(u16)q_world); }
+            scat(qhint,".\"");
+        }
+        else if(q_type==Q_SHARDS){ scpy(qhint,"\"NEXT SHARD: DUNGEON FLOOR B"); ncat(qhint,q_floor-q_need+q_have+1); scat(qhint,".\""); }
+        else if(q_type==Q_RESCUE){ scpy(qhint,"\"EXTRA CAGES WAIT ON FLOOR B"); ncat(qhint,q_floor); scat(qhint,".\""); }
+        else if(q_type==Q_CHAMP){ scpy(qhint,"\"THE NAMED FOE WAITS ON FLOOR B"); ncat(qhint,q_floor); scat(qhint,".\""); }
+        else if(q_type==Q_FETCH){ scpy(qhint,"\"THE LOST TREASURE LIES ON B"); ncat(qhint,q_floor); scat(qhint,".\""); }
+        else if(q_type==Q_BOSS) scpy(qhint,"\"DEFEAT EVERY BOSS AT THE BOTTOM.\"");
+        else if(q_type==Q_HUNT) scpy(qhint,"\"SLAY THE MONSTERS IN THIS WORLD.\"");
+        else scpy(qhint,"\"THE SHIP BOARD WILL TAKE YOUR GOODS.\"");
+        if(qhint[0]) t[n++]=qhint;
+    }
     if(data_cores>0 && n<8){ int k=data_cores-1; if(k>7) k=7; scpy(l2,"\"I REMEMBER: "); scat(l2,bolt_mem[k][0]); scat(l2,"\""); t[n++]=l2; }
     if(n<8){                                                                                    // a remark about where you are: the world, its traits, its weather and hour, its gravity and size
         const char *c[20]; int nc=0;
@@ -775,12 +796,24 @@ static void char_screen_(volatile u16 *pg){
                 foot="A: MAKE IT YOUR SPELL";
             } else if(page==3){
                 quest_refresh();
-                ui_panel(pg,4,38,232,30); ui_head(pg,9,41,140,"QUEST",C_GOLD);
+                ui_panel(pg,4,38,232,34); ui_head(pg,9,41,140,"QUEST",C_GOLD);
                 scpy(b,"FAME "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); rtext(pg,231,41,b,C_GOLD);
                 if(q_type==Q_NONE) text(pg,12,51,"NONE. VISIT YOUR SHIP'S QUEST BOARD.",C_DGREY,1);
                 else { text(pg,12,51,q_name,C_WHITE,1); scpy(b, q_done ? "DONE! GO BACK TO YOUR SHIP" : "IN PROGRESS"); text(pg,12,59,b,q_done?C_GREEN:U_SOFT,1);
-                    if(!q_done && q_counted(q_type)){ ui_bar(pg,130,59,70,5,q_have,q_need,C_GOLD); scpy(b,""); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); text(pg,204,59,b,C_WHITE,1); } }
-                ui_panel(pg,4,70,232,78); y=73;
+                    if(!q_done && q_counted(q_type)){ ui_bar(pg,130,59,70,5,q_have,q_need,C_GOLD); scpy(b,""); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); text(pg,204,59,b,C_WHITE,1); }
+                    if(!q_done && q_type>0 && q_type!=Q_BRING && q_type!=Q_GOODS){
+                        if(!quest_home()){
+                            scpy(b,"RETURN TO ");
+                            if(q_world==0 && q_zone>=0 && q_zone<6) scat(b,tint_name[q_zone]);
+                            else { scat(b,"WORLD "); ncat(b,(u16)q_world); }
+                        }
+                        else if(q_type==Q_RESCUE){ scpy(b,"EXTRA CAGES ON FLOOR B"); ncat(b,q_floor); }
+                        else if(q_type==Q_SHARDS){ scpy(b,"NEXT SHARD ON FLOOR B"); ncat(b,q_floor-q_need+q_have+1); }
+                        else b[0]=0;
+                        if(b[0]) text(pg,12,65,b,C_CYAN,1);
+                    }
+                }
+                ui_panel(pg,4,74,232,74); y=77;
                 if(endless){ scpy(b,"ENDLESS GALAXY  WORLD "); ncat(b,world_no); scat(b,"  DEEPEST B"); ncat(b,best_depth); text(pg,12,y,b,C_CYAN,1); y+=10; }
                 ui_head(pg,9,y,222,"WHAT YOU HAVE LEARNED",C_GREEN); y+=10;
                 text(pg,12,y,"BERRIES",U_GLOW,1); y+=8;
@@ -877,14 +910,13 @@ static void make_quest(void){
     int maxf = endless ? (best_depth>3?best_depth:3) : zone_floors();
     q_floor = 1+rndi(maxf);
     q_gold = 60 + dlv()*40 + q_floor*10; q_fame = 15 + dlv()*6;
-    static const char *const cn[6]={"GRIMFANG","MOLDJAW","SKITTERMAW","VILEWING","THE PALE ONE","OLD CRUNCH"};
     char b[40];
     switch(q_type){
         case Q_HUNT: q_need=8+dlv()*2+rndi(6); scpy(b,"SLAY "); ncat(b,q_need); scat(b," MONSTERS"); break;
-        case Q_CHAMP: scpy(b,"SLAY "); scat(b,cn[rndi(6)]); scat(b," ON B"); ncat(b,q_floor); q_gold+=60; q_fame+=10; break;
+        case Q_CHAMP: q_need=1+rndi(6); scpy(b,"SLAY "); scat(b,quest_champ_names[q_need-1]); scat(b," ON B"); ncat(b,q_floor); q_gold+=60; q_fame+=10; break;
         case Q_FETCH: scpy(b,"FIND THE LOST TREASURE ON B"); ncat(b,q_floor); break;
         case Q_BOSS: q_floor=zone_floors(); q_gold+=150; q_fame+=25; scpy(b,"SLAY THE BOSS ON B"); ncat(b,q_floor); break;        // the zone boss waits on the last floor
-        case Q_SHARDS: q_need=2+rndi(2); if(q_need>q_floor) q_need=q_floor; q_gold+=q_need*15; scpy(b,"FIND "); ncat(b,q_need); scat(b," SHARDS B"); ncat(b,q_floor-q_need+1); scat(b,"-"); ncat(b,q_floor); break;
+        case Q_SHARDS: q_need=2+rndi(2); if(q_need>maxf) q_need=maxf; if(q_floor<q_need) q_floor=q_need; q_gold+=q_need*15; scpy(b,"FIND "); ncat(b,q_need); scat(b,q_need==1?" SHARD B":" SHARDS B"); ncat(b,q_floor-q_need+1); scat(b,"-"); ncat(b,q_floor); break;
         case Q_BRING: q_floor=rndi(4); q_need=2+rndi(3); q_gold=60+dlv()*40+q_need*20; scpy(b,"BRING "); ncat(b,q_need); scat(b," "); scat(b,bring_nm[q_floor]); break;
         case Q_GOODS: q_floor=rndi(8); q_need=3+rndi(4); q_gold=60+dlv()*40+q_need*25; scpy(b,"BRING "); ncat(b,q_need); scat(b," "); scat(b,goods[q_floor]); break;
         default: q_need=2+rndi(2); scpy(b,"FREE "); ncat(b,q_need); scat(b," CAGED BUGS"); break;
@@ -1324,13 +1356,33 @@ static int shop_menu_(void){   // returns 1 to fly on, 2 for autopilot
                     if(q_type<0) ui_lhint(pg,20,70,"A: TAKE THIS QUEST   B: NOT NOW",C_CYAN);
                     else if(q_done) text(pg,20,70,"DONE! A: CLAIM YOUR REWARD",C_GREEN,1);
                     else { scpy(b,"IN PROGRESS"); if(q_counted(t)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,20,70,b,C_WHITE,1); ui_lhint(pg,20,80,"A: GIVE UP   B: BACK",C_CYAN); }
+                    if(t==Q_RESCUE){ scpy(b,"EXTRA CAGES ON B"); ncat(b,q_floor); text(pg,20,99,b,C_CYAN,1); }
+                    else if(t==Q_SHARDS && !q_done){ scpy(b,"NEXT SHARD: B"); ncat(b,q_floor-q_need+q_have+1); text(pg,20,99,b,C_CYAN,1); }
+                    if(q_type>0 && t!=Q_BRING && t!=Q_GOODS && !quest_home()){
+                        scpy(b,"RETURN TO ");
+                        if(q_world==0 && q_zone>=0 && q_zone<6) scat(b,tint_name[q_zone]);
+                        else { scat(b,"WORLD "); ncat(b,(u16)q_world); }
+                        text(pg,20,110,b,C_GOLD,1);
+                    }
                     scpy(b,"YOUR FAME: "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); text(pg,20,140,b,C_GOLD,1); }
                 vsync(); read_keys(); if(keys!=keys_old) dirty2=1;
                 if(HIT(K_B)){ if(q_type<0) q_type=Q_NONE; break; }
                 if(HIT(K_A)){
                     if(q_type<0){ q_type=-q_type; say("QUEST TAKEN"); save_game(); break; }
-                    if(q_done){ quest_take(); gold=sadd(gold,q_gold); fame+=q_fame; Gear pz=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, dlv()*3+clampi(level)+2, 30); add_gear(pz); q_type=Q_NONE; say("REWARD CLAIMED!"); sfx(6); save_game(); hud_now(); break; }
-                    q_type=Q_NONE; say("QUEST DROPPED"); break;
+                    if(q_done){
+                        // Claim is atomic: never take the quest goods, gold/fame
+                        // and completion flag if its promised equipment cannot
+                        // fit. The player can sell, stash, then return safely.
+                        if(bag_n>=BAGMAX){ say("BAG FULL! MAKE ROOM FOR YOUR PRIZE"); dirty2=1; continue; }
+                        Gear pz=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, dlv()*3+clampi(level)+2, 30);
+                        if(!add_gear(pz)){ dirty2=1; continue; }
+                        quest_take(); gold=sadd(gold,q_gold); fame+=q_fame; q_type=Q_NONE;
+                        say("REWARD CLAIMED!"); sfx(6); save_game(); hud_now(); break;
+                    }
+                    if(confirm(pg,"ABANDON THIS QUEST?","ALL QUEST PROGRESS WILL BE LOST")){
+                        q_type=Q_NONE; say("QUEST DROPPED"); break;
+                    }
+                    dirty2=1;
                 }
             }
         }

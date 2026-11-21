@@ -517,9 +517,21 @@ static void kill_mon(DObj *o){
     if(nm_of(o->kind)) xpv=xpv*nm_of(o->kind)->xpm/8;
     if(o->champ) xpv*=3;
     earn(boss ? 100+depth_no*10 : 6+dlv()*4+(o->champ?40:0));
-    if(!forge_on && q_type==Q_HUNT){ q_have++; if(q_have>=q_need && !q_done){ q_done=1; say("QUEST DONE! GO BACK TO YOUR SHIP"); } }
-    if(o->champ==2 && q_type==Q_CHAMP){ q_done=1; say("QUEST TARGET SLAIN!"); }
-    if(!forge_on && boss && q_type==Q_BOSS && !q_done && q_zone==zone && q_world==world_no){ q_done=1; say("BOSS QUEST DONE! GO TO YOUR SHIP"); }
+    // Monster contracts are for the world that posted them; ordinary kills
+    // elsewhere, special outposts and bonus labyrinth bosses do not count.
+    if(!forge_on && !base_mode && !q_done && quest_home() && q_type==Q_HUNT){
+        q_have++; if(q_have>=q_need){ q_done=1; say("QUEST DONE! GO BACK TO YOUR SHIP"); }
+    }
+    if(!forge_on && !base_mode && !q_done && quest_home() &&
+       o->champ==2 && q_type==Q_CHAMP && depth_no==q_floor){
+        q_done=1; say("QUEST TARGET SLAIN!");
+    }
+    // On higher difficulties multiple bosses share the last room. Only
+    // defeating the final remaining one completes the zone-boss contract.
+    if(!forge_on && !base_mode && boss && !mboss && nbo==0 && q_type==Q_BOSS &&
+       !q_done && quest_home() && depth_no==q_floor){
+        q_done=1; say("BOSS QUEST DONE! GO TO YOUR SHIP");
+    }
     sfx(9); debris(o->x,o->y,0x6000,boss?16:10,3,o->kvx,o->kvy); burst(o->x,o->y,0x6000,4,1);
     if(o->kind==K_SLIME && !o->sub){                                                  // a slime splits into two small ones
         for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=K_SLIME; b->sub=1; b->alive=1; b->hp=b->maxhp=o->maxhp/3+1; b->x=o->x+((k?1:-1)<<14); b->y=o->y+(1<<14); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } b->kvx=(k?1:-1)*0x1400; b->kvy=0x0800; } }
@@ -1191,7 +1203,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
 #endif
     PPT(2);
     if(FILM){} else { hud3d(pg); fl_draw(pg);
-    if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,"QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
+    if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2){ int cid=quest_champ_id(); scpy(b,cid>=0?quest_champ_names[cid]:"QUEST TARGET"); } else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
 #ifdef TEST_MEM
     { char tb[56]; int al=0,sn=0, hc=(py_>>16)*MW+(px_>>16); for(int i=0;i<ndo;i++) if(dob[i].alive && is_mon(dob[i].kind)) al++; for(int i=0;i<MW*MW;i++) sn+=seen[i];
