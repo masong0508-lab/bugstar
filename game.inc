@@ -876,7 +876,17 @@ static void free_bug(int t){
     bugs_freed++; have_bug[t]++;
     if(t==BUG_PILL) earn(10);
     recalc(); if(t==BUG_LADY) hearts=maxh;
-    char b[40]; scpy(b,"FREED A "); scat(b,friend_name[t]); say(b); sfx(2);
+    // The first bug of each kind introduces what they actually contribute.
+    // Later rescues use the familiar short feedback, without repeating dialogue.
+    static const char *const first_rescue[6]={
+        "PILL BUG: TAKE MY LAST TEN GOLD.",
+        "LADYBUG: LET ME PATCH YOU UP.",
+        "FIREFLY: I'LL LIGHT THE DARK.",
+        "BEE: ANYONE HURTS YOU, I STING.",
+        "CRICKET: KEEP UP! I'LL HELP YOU RUN.",
+        "RUNAWAY ANT: I KNOW THE STAIRS."};
+    char b[40]; scpy(b,"FREED A "); scat(b,friend_name[t]);
+    say(have_bug[t]==1?first_rescue[t]:b); sfx(2);
     // A rescue contract belongs to the world that posted it. Freeing bugs
     // on an unrelated world or in a special outpost never advances it.
     if(q_type==Q_RESCUE && !q_done && !forge_on && !base_mode && quest_home()){
