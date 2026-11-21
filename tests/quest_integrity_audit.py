@@ -19,7 +19,7 @@ def require(src, phrase, explanation):
 
 
 # Quest targets may not complete in an unrelated zone or alternate world.
-require(game, "q_zone==zone && q_world==world_no", "missing quest-world gate")
+require(game, "q_zone==zone && (s16)q_world==(s16)world_no", "quest-world comparison must match signed 16-bit SRAM field")
 require(game, "q_type==Q_RESCUE && !q_done && !forge_on && !base_mode && quest_home()",
         "rescued bugs can finish a contract in an unrelated place")
 require(main, "!q_done && quest_home() && q_type==Q_HUNT",
