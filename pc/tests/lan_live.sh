@@ -16,7 +16,7 @@ rm -f out/lan_live/{host,client}.log out/lan_live/{host,client}.png
 # before taking the two actual 3D space screenshots.
 : > out/lan_live/boot.txt
 for ((f=24; f<800; f+=20)); do
-    printf '%d %d A\\n' "$f" "$((f+2))" >> out/lan_live/boot.txt
+    printf '%d %d A\n' "$f" "$((f+2))" >> out/lan_live/boot.txt
 done
 host_pid=''
 cleanup(){ if [[ -n "$host_pid" ]]; then kill "$host_pid" 2>/dev/null || :; fi; }
