@@ -4,7 +4,7 @@
 #include <string.h>
 
 static int payload_length(int type) {
-    static const unsigned char lens[9]={0,5,1,3,8,4,0,2,0};
+    static const unsigned char lens[10]={0,5,1,3,8,4,0,2,0,12};
     return lens[type];
 }
 static void round_trip(int type, unsigned tick) {
@@ -60,10 +60,10 @@ int main(void) {
     b[6]=4;
     assert(bsnet_unpack(&parsed,b,11)==BSNET_E_LENGTH);
     assert(memcmp(b,zero,1)!=0);
-    for (t=1;t<=8;t++) {
+    for (t=1;t<=9;t++) {
         unsigned i;
         for (i=0;i<10000u;i++) round_trip(t,i*17u);
     }
-    puts("Bugstar multiplayer packet contract: 8 types, 80,000 round trips, corruption/version/length checks PASS");
+    puts("Bugstar multiplayer packet contract: 9 types, 90,000 round trips, corruption/version/length checks PASS");
     return 0;
 }
