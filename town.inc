@@ -440,6 +440,22 @@ static const char *const talk_ln[NTALK]={"I HAVE SEEN THINGS. MOSTLY MUD.","DO N
     "THE BOUNTY OFFICE PAYS LATE. BUT IT PAYS.","I DREAMED I WAS A PEBBLE. IT WAS RESTFUL.","SELL YOUR SILK HERE. WE LOVE SILK. WE ARE SPIDERS. KIDDING.","EVERYONE HERE IS FAMOUS FOR SOMETHING.","THE PLAZA IS FOR STANDING. YOU ARE DOING IT RIGHT.",
     "I HAVE NEVER LEFT. THE VIEW IS THE SAME.","THE FLYERS STEAL BUTTONS. GUARD YOUR BUTTONS.","THE TOWER IS TALL SO WE CAN SEE THE OTHER TOWER.","THERE IS A SECRET. I FORGOT IT.","I AM TWELVE. IN BUG YEARS. SO, OLD.",
     "WELCOME! PLEASE DO NOT EAT THE MAYOR.","OUR MOTTO: WE ARE HERE.","THE TECHNOBEAST? NEVER HEARD OF IT. GULP.","BOLT? I KNEW A BOLT. HE WAS SHINY.","GO AWAY. KIDDING. STAY. KIDDING. GO."};
+// A few ordinary locals notice the changing world. These are deterministic,
+// not quest flags: saved progress already tells us what rumors can be known.
+static const char *const story_rumor[4][3]={
+    {"THE ANTS TOOK MY COUSIN. HE WAS ONLY A LARVA.",
+     "THE CAGES WENT TOWARD THE OLD ANTHILL.",
+     "KEEP AN EYE ON YOUR TIN FRIEND. HE IS KIND."},
+    {"YOU OPENED A CAGE? THAT BUG MADE IT HOME.",
+     "WE SAW YOUR SHIP. WE KNEW HELP WAS COMING.",
+     "THE QUEENS ARE AFRAID. I HOPE THEY ARE."},
+    {"THE KING IS GONE. HIS MACHINES ARE NOT.",
+     "RED MARKS IN SPACE? THEY ARE HIS OUTPOSTS.",
+     "SOMETIMES THE SKY HUMS AFTER MIDNIGHT."},
+    {"BOLT DOES NOT SOUND SO LOST ANYMORE.",
+     "A SHIP ONCE PLANTED THE SEEDS OF OUR WORLD.",
+     "SOMEONE IN SPACE IS SINGING US HOME."}
+};
 static const char *const bolt_quip[12]={"I DID NOT PACK A TOWEL.","MY SENSORS SAY: HILLS. GOOD WORK, SENSORS.","A CITY. TRY NOT TO GET US ARRESTED.","IT IS NIGHT. MY NIGHT MODE IS JUST ME, DARKER.",
     "IT RAINS HERE. I AM TIN. THIS IS A PROBLEM.","SNOW. I HAVE DECIDED I LIKE SNOW.","DUST. IN MY GEARS. LOVELY.","THE LOCALS LOOK NICE. THE LOCALS LOOK AT US.",
     "I SMELL SOUP. I CANNOT SMELL.","GRAVITY FEELS WRONG. OR I AM TIRED.","THE CREATURES HERE HAVE OPINIONS ABOUT US.","HOME WAS LIKE THIS. BEFORE THE FALL. I THINK."};
@@ -523,7 +539,13 @@ static void local_talk(PObj *o){
     static const char *const hate_ln[12]={"GO AWAY.","WE DO NOT LIKE BUGS. OR YOU.","YOUR SHIP IS UGLY.","THE LAST BUG HERE NEVER LEFT. JUST SAYING.","NO.",
         "PRICES DOUBLE WHEN YOU LOOK AT THEM.","DO NOT TOUCH ANYTHING.","I AM CALLING THE MAYOR. SHE BITES.","YOU SMELL LIKE SPACE.","LEAVE. NOW. PLEASE. NO, NOT PLEASE. LEAVE.",
         "WE HAD A NICE DAY UNTIL YOU CAME.","EVERYTHING HERE BITES. ME TOO."};
-    int li=(int)((o->x>>16)*7+(o->y>>16)*13+wd.tseed)%NTALK; ln[0] = wd.mood==MOOD_LOVE ? love_ln[li%12] : wd.mood==MOOD_HATE ? hate_ln[li%12] : talk_ln[li];
+    u32 rumor_seed=(u32)(o->x>>16)*7u+(u32)(o->y>>16)*13u+(u32)wd.tseed;
+    int li=(int)(rumor_seed%NTALK);  // unsigned modulo: no negative dialogue-table index
+    ln[0] = wd.mood==MOOD_LOVE ? love_ln[li%12] : wd.mood==MOOD_HATE ? hate_ln[li%12] : talk_ln[li];
+    if(wd.mood!=MOOD_LOVE && wd.mood!=MOOD_HATE && li%5==0){
+        int stage=data_cores>=8?3:ant_king?2:bugs_freed>0?1:0;
+        ln[0]=story_rumor[stage][(li/5)%3];
+    }
     if(wd.mood==MOOD_HATE || cooling) o->hp=0; else if(wd.mood==MOOD_LOVE && rndi(3)==0) o->hp=1;
     if(o->hp){ o->hp=0; if(++gift_n[gi]>=GIFT_MAX) gift_until[gi]=vbl_count+GIFT_COOL; int r=wr(4);
         if(r==0){ gold+=5+dlv()*3; scpy(g,"HERE, TAKE "); ncat(g,5+dlv()*3); scat(g,"G. FOR THE LEGS."); }
