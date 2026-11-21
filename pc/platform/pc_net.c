@@ -131,6 +131,7 @@ void pcnet_suspend(PcNetSession *s){
     s->reconnecting=1;
     pc_duel_reset(&s->duel);pc_coop_reset(&s->coop_enemy);
     s->have_guest_fire=0;s->host_seen_shots=s->local_shots;
+    s->combat_tick=0;
     if(s->role==1){s->peer_addr=0;s->peer_port=0;}
 }
 static void net_hello(PcNetSession *s,uint32_t world,uint32_t frame){
@@ -248,6 +249,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
         s->host_seen_shots=s->local_shots;s->have_guest_fire=0;
         s->last_host_shot_tick=0;s->last_guest_shot_tick=0;
         pc_duel_reset(&s->duel);
+        s->combat_tick=0;
         if(s->role==1){s->peer_addr=0;s->peer_port=0;}
     }
     for(int i=0;i<12;i++){
@@ -290,7 +292,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                 pc_coop_reset(&s->coop_enemy);
                 s->host_seen_shots=s->local_shots;s->have_guest_fire=0;
                 s->last_host_shot_tick=0;s->last_guest_shot_tick=0;
-                pc_duel_reset(&s->duel);
+                pc_duel_reset(&s->duel);s->combat_tick=0;
             }
             net_ready(s,frame);
         }else if(p.type==BSNET_READY &&
@@ -328,12 +330,15 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                 uint8_t delta=(uint8_t)(shots-s->guest_seen_shots);
                 if(delta>0 && delta<128u){
                     s->guest_seen_shots=shots;
-                    if(s->received && frame-s->last_ship_rx<=NET_SNAPSHOT_TICKS &&
+                    /* Guest packets may still arrive while either options
+                     * menu is open. Never apply damage to paused encounters. */
+                    if(pcnet_match_ready(s) &&
+                       frame-s->last_ship_rx<=NET_SNAPSHOT_TICKS &&
                        (!s->last_guest_shot_tick ||
                         frame-s->last_guest_shot_tick>=6u)){
                         s->last_guest_shot_tick=frame;
-                        if(s->coop)(void)pc_coop_fire(&s->coop_enemy,1,&s->other,frame);
-                        else (void)pc_duel_fire(&s->duel,1,&s->other,local,frame);
+                        if(s->coop)(void)pc_coop_fire(&s->coop_enemy,1,&s->other,s->combat_tick);
+                        else (void)pc_duel_fire(&s->duel,1,&s->other,local,s->combat_tick);
                     }
                 }
             }
@@ -419,16 +424,19 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
         frame-s->last_ready_tx>=15u))net_ready(s,frame);
     if(pcnet_match_ready(s))s->reconnecting=0;
     if(s->role==1 && pcnet_match_ready(s)){
-        if(s->coop)pc_coop_step(&s->coop_enemy,frame,local,&s->other);
-        else pc_duel_step(&s->duel,frame);
+        /* Wait screens, focus pauses and temporarily missing peers do not
+         * consume wave-clear holds, attack telegraphs or respawn timers. */
+        uint32_t sim=++s->combat_tick;
+        if(s->coop)pc_coop_step(&s->coop_enemy,sim,local,&s->other);
+        else pc_duel_step(&s->duel,sim);
         if(s->local_shots!=s->host_seen_shots){
             s->host_seen_shots=s->local_shots;
             if(frame-s->last_ship_rx<=NET_SNAPSHOT_TICKS &&
                (!s->last_host_shot_tick ||
                 frame-s->last_host_shot_tick>=6u)){
                 s->last_host_shot_tick=frame;
-                if(s->coop)(void)pc_coop_fire(&s->coop_enemy,0,local,frame);
-                else (void)pc_duel_fire(&s->duel,0,local,&s->other,frame);
+                if(s->coop)(void)pc_coop_fire(&s->coop_enemy,0,local,sim);
+                else (void)pc_duel_fire(&s->duel,0,local,&s->other,sim);
             }
         }
     }else if(s->role==1){ s->host_seen_shots=s->local_shots; }
