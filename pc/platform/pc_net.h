@@ -26,9 +26,11 @@ typedef struct PcNetSession {
     PcDuel duel;                 /* session-only sparring HP and score */
     PcCoop coop_enemy;           /* host-authored shared star-system raider */
     uint32_t last_host_shot_tick, last_guest_shot_tick, last_raider_rx;
-    uint16_t last_state_tick, last_event_tick, last_raider_tick; /* reordering */
+    uint32_t last_ship_rx;       /* fresh peer pose, not a recent score/raider message */
+    uint16_t last_state_tick, last_event_tick, last_raider_tick;
+    uint16_t last_input_tick;    /* reject replayed guest laser counters */
     uint8_t local_shots, host_seen_shots, guest_seen_shots;
-    uint8_t have_guest_fire, event_seen, state_seen;
+    uint8_t have_guest_fire, event_seen, state_seen, input_seen;
     uint8_t coop, raider_seen;  /* 1: co-op against one shared raider, 0: sparring */
 } PcNetSession;
 int pcnet_host(PcNetSession *s, uint16_t port);
