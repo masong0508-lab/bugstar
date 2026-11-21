@@ -12,6 +12,7 @@ on:
       - 'tests/list_picker_runtime_host.py'
       - 'tests/kart_world_save_runtime.py'
       - 'tests/shared_math_runtime_host.py'
+      - 'tests/rect_clip_runtime_host.py'
       - 'tests/kart_steering_runtime.py'
       - 'tests/kart_turn_cue_runtime.py'
       - 'tests/kart_dma_clip_runtime.py'
@@ -55,6 +56,7 @@ on:
       - 'tests/list_picker_runtime_host.py'
       - 'tests/kart_world_save_runtime.py'
       - 'tests/shared_math_runtime_host.py'
+      - 'tests/rect_clip_runtime_host.py'
       - 'tests/kart_steering_runtime.py'
       - 'tests/kart_turn_cue_runtime.py'
       - 'tests/kart_dma_clip_runtime.py'
@@ -102,6 +104,8 @@ jobs:
         run: python3 tests/kart_world_save_runtime.py
       - name: Guard shared signed division against overflow and zero denominators
         run: python3 tests/shared_math_runtime_host.py
+      - name: Detect off-screen shared rectangle VRAM writes under ASan and UBSan
+        run: python3 tests/rect_clip_runtime_host.py
       - name: Test responsive kart steering, reverse, and stuck recovery under UBSan
         run: python3 tests/kart_steering_runtime.py
       - name: Test priority of first corner, S-bend warnings, and minimap heading
