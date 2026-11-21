@@ -13,5 +13,5 @@ static void pc_kn_snapshot(void){
     s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy)+kbr_cur; s32 curve=curv(dz>>8)-tiny_sub(); int sy=PHZ+(((cam_h+curve-gh)*f)>>16);
     int pw = !(nkb && kunder(ppx,ppy,rc[0].pi)) ? 16*256/ (kl.part[KP_SIZE]==0?232:kl.part[KP_SIZE]==2?160:190) + 4 : 0;
     short qx[64], qy[64], qw[64]; int qn=0; for(int i=0;i<ksh_n && qn<24;i++){ qx[qn]=ksh_x[i]; qy[qn]=ksh_y[i]; qw[qn]=ksh_w[i]; qn++; } for(int i=0;i<kno_n && qn<64;i++){ qx[qn]=kno_x[i]; qy[qn]=kno_y[i]; qw[qn]=kno_w[i]; qn++; } kno_n=0;
-    pc_kn_frame(m7_rowz,1,pi*256+fr,heading,kcv,elev,(unsigned)(wd.tseed*2654435761u)^(unsigned)(k_trk*40503u+1),knp,qn,qx,qy,qw,120,sy,pw);
+    pc_kn_frame(m7_rowz,1,pi*256+fr,heading,kcv,kv,elev,(unsigned)(wd.tseed*2654435761u)^(unsigned)(k_trk*40503u+1),knp,qn,qx,qy,qw,120,sy,pw);
 }
