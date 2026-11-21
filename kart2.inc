@@ -33,7 +33,11 @@ typedef struct { Fav at; u8 n, laps, riv, cls, flags, surf, medal, shape; u16 be
 _Static_assert(sizeof(KRec)==128, "a saved track is 128 bytes");
 _Static_assert(0x7000+30*128 <= SET_OFF && 0x6010+20*128 <= FG_OFF && FAV_HDR+4 <= 0x6010, "your tracks must fit in the spare cartridge memory");
 static int krec_off(int i){ return i<30 ? 0x7000+i*128 : 0x6010+(i-30)*128; }
-static int krec_get(int i, KRec *r){ sram_read(krec_off(i),r,128); if(!((r->at.used&0xE0)==0xA0 && r->sum==fnv(r,124))) return 0; r->at.used^=0xA5; return 1; }   // (on the cartridge 'used' is 0xA5 ^ the universe's table number, so old tracks, in universe 0-2^32, still read)
+static int krec_get(int i, KRec *r){ sram_read(krec_off(i),r,128); if(!((r->at.used&0xE0)==0xA0 && r->sum==fnv(r,124))) return 0;
+    // A checksum-valid old or damaged record is not necessarily a playable circuit.
+    // Reject impossible settings BEFORE path generation or indexing the gates.
+    if(r->n<4 || r->n>KG_MAX || r->laps>9 || r->riv>7 || r->cls>4 || r->surf>=6) return 0;
+    r->at.used^=0xA5; return 1; }   // (on the cartridge 'used' is 0xA5 ^ the universe's table number, so old tracks, in universe 0-2^32, still read)
 static void krec_put(int i, KRec *r){ KRec t=*r; if(t.at.used>UT_N) t.at.used=0; t.at.used^=0xA5; t.at.chk=fav_chk(&t.at); t.sum=fnv(&t,124); sram_write(krec_off(i),&t,128); }
 static int uni_alloc(const u32 *u){                                    // the table number for universe u (adds it if new); -1 if the 31 slots are all in use by favourites and tracks
     int k=ut_find(u); if(k>=0) return k; ut_ensure();
