@@ -519,12 +519,12 @@ static void beast_shot(void){
     if(!beast_hp && beast_fight<3){
         boom(0,0,0,40,49); sfx(9); beast_stage=beast_fight; lair_out=1;
         int g = beast_fight==1 ? 300 : 3000; gold+=g; gain_xp(beast_fight==1 ? 60 : 400);
-        if(beast_fight==1){ static const char *const t[5]={"IT BREAKS APART... AND FLEES.","YOU GRAB A PIECE OF ITS TECH.","STATIONS CAN NOW BUILD TECH CORES.","EACH ONE MAKES YOUR LASER 4X","STRONGER AGAINST THE BEAST."}; story_card("THE HATCHLING ESCAPES",t,5); }
-        else { static const char *const t[5]={"IT FLEES TOWARD THE ANTHILL.","IT WAS FEEDING TECH TO THE ANT KING!","THAT IS WHY THE ANTS GOT SO STRONG.","BEAT THE ANT KING","TO CUT THE BEAST OFF."}; story_card("THE BEAST ESCAPES AGAIN",t,5); }
+        if(beast_fight==1){ static const char *const t[5]={"THE LITTLE MOUTH CRACKS. IT ESCAPES.","BOLT HEARS A TUNE IN THE WRECKAGE.","YOU SALVAGE A PIECE OF ITS ENGINE.","STATIONS CAN NOW BUILD TECH CORES.","EACH CORE BOOSTS YOUR LASER 4X."}; story_card("THE HATCHLING ESCAPES",t,5); }
+        else { static const char *const t[5]={"IT LEAVES AN EMPTY FLEET IN ITS WAKE.","ITS SIGNAL RUNS TOWARD THE ANTHILL.","IT HAS BEEN FEEDING THE ANT KING TECH.","THE KING AND THE BEAST NEED EACH OTHER.","STOP THE KING TO BREAK THEIR SUPPLY."}; story_card("THE BEAST ESCAPES AGAIN",t,5); }
         return;
     }
     if(!beast_hp){
-        if(!beast_kills){ if(data_cores>=8){ static const char *const t[5]={"THE MOUTH FALLS APART.","INSIDE IT: A SHIP. OLD. WHOLE. SINGING.","BOLT'S VOICE COMES FROM EVERYWHERE AT ONCE.","\"I REMEMBER ALL OF IT. THANK YOU.\"","\"NOW LET ME CARRY YOU HOME.\""}; story_card("THE DAWN",t,5); dawn_free=1; }
+        if(!beast_kills){ if(data_cores>=8){ bolt_story(VISPG,10); dawn_free=1; }
                           else { static const char *const t[4]={"THE TECHNOBEAST FALLS!","BUT ITS CORE STILL HUMS...","IT WILL REBUILD ITSELF","TEN TIMES STRONGER."}; story_card("VICTORY",t,4); } }
         beast_kills++; int g=100000*beast_kills; gold+=g; gain_xp(2000*beast_kills);
         boom(0,0,0,40,49); sfx(9);
@@ -587,10 +587,10 @@ static void lair_enter(void){
     shd_off();
     music(4); no_ambush=1; space_enter(0); no_ambush=0; in_lair=1; ambush_t=0;
     beast_fight = beast_stage>=2 ? 3 : beast_stage+1;
-    if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"WITHOUT ITS KING. THE BEAST WAKES.","IT ATE A WHOLE MOON. 1 TRILLION HP.","YOU CANNOT WIN TODAY. HIT IT AND WARP OUT.","GET STRONGER. AND COME BACK.","ITS WOUNDS WILL NEVER HEAL."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); hive_card=1; hive_done=0; }
+    if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"THE KING IS GONE. THE BEAST IS NOT.","IT HAS SWALLOWED A MOON. 1 TRILLION HP.","FIVE TECH HIVES KEEP ITS WOUNDS CLOSED.","BREAK THE HIVES. STRIKE ITS CORE.","WARP OUT WHEN NEEDED. DAMAGE PERSISTS."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); hive_card=1; hive_done=0; }
         beast_stage=3; beast_max=b3_max; beast_hp=b3_hp; }
-    else if(beast_fight==1){ beast_max=beast_hp=600; static const char *const t[5]={"A SIGNAL FROM THE DARK...","A TINY MACHINE BUG BUILT FROM SCRAP.","IT EATS SHIPS TO GROW BIGGER.","SHOOT ITS GLOWING CORE!","STOP IT WHILE IT IS SMALL."}; story_card("THE TECHNOBEAST - HATCHLING",t,5); }
-    else { beast_max=beast_hp=40000; static const char *const t[5]={"IT IS BACK. AND MUCH BIGGER.","IT ATE A WHOLE PIRATE FLEET.","NOW IT HAS A BEAM.","WHEN IT CHARGES. HOLD B","TO FLY FAST AND DODGE."}; story_card("THE TECHNOBEAST - GROWN",t,5); } beast_t=1; beast_charge=0; beast_fire=0;
+    else if(beast_fight==1){ beast_max=beast_hp=600; static const char *const t[5]={"A SIGNAL PULSES BETWEEN THE STARS.","A SMALL IRON MOUTH OPENS IN THE DARK.","INSIDE IT: SCRAP FROM A DOZEN SHIPS.","IT TURNS TOWARD BOLT. HE GOES SILENT.","SHOOT THE GLOWING CORE. MAKE IT FLEE."}; story_card("THE TECHNOBEAST - HATCHLING",t,5); }
+    else { beast_max=beast_hp=40000; static const char *const t[5]={"IT HAS RETURNED. BIGGER. LOUDER.","THE PIRATE FLEET IS GONE. NO WRECKS.","A BEAM BUILDS INSIDE ITS THROAT.","HOLD B TO THRUST WHEN IT CHARGES.","HOLD L TOO FOR EXTRA BURN IF FUELED."}; story_card("THE TECHNOBEAST - GROWN",t,5); } beast_t=1; beast_charge=0; beast_fire=0;
     for(int i=0;i<NPIR;i++) pir[i].alive=0;
     shx=0; shy=0; shz=beast_fight==1?-7000:beast_fight==2?-11000:-15000; yaw=0; pitch=0; speed=0;
     BG_PAL[57]=rgb15(34,12,16); BG_PAL[58]=rgb15(130,50,60);
