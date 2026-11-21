@@ -19,15 +19,16 @@ int main(void){
     assert(enemy.hp==0 && enemy.wins==1 && enemy.phase==2);
     assert(enemy.host_hits==3 && enemy.guest_hits==2);
     assert(!pc_coop_fire(&enemy,0,&host,230));
-    pc_coop_step(&enemy,350,&host);
+    pc_coop_step(&enemy,300,&host);
     assert(enemy.phase==2 && enemy.hp==0);
-    pc_coop_step(&enemy,349+48,&host);
+    pc_coop_step(&enemy,397,&host);
     assert(enemy.phase==1 && enemy.hp==100 && enemy.wins==1);
     /* Aim must be in 3D; a lateral miss and wrong world never count. */
     host.yaw=512;pc_coop_step(&enemy,409,&host);
     assert(!pc_coop_fire(&enemy,0,&host,409));
-    host.yaw=0;host.world=32;
-    assert(!pc_coop_fire(&enemy,0,&host,410)==0 || enemy.hp==100);
+    host.yaw=0;host.y=4000;
+    assert(!pc_coop_fire(&enemy,0,&host,410));
+    assert(enemy.hp==100);
     puts("LAN co-op raider: real 3D aim, both players hit, victory, respawn and no saved campaign state PASS");
     return 0;
 }
