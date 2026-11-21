@@ -218,6 +218,20 @@ require(main, "int evidence=o->sub==7", "physical evidence must be distinguished
 require(main, "card(VISPG,story_boss_title[zone],story_boss_evidence[zone],3)",
         "opening evidence must reveal clues in-game instead of only awarding loot")
 require(main, "story_boss_reward[z]", "player must be told what resource liberation recovered")
+# Boss silhouettes must communicate which warden is present in the actual
+# 3D gameplay, reusing existing art with the original collision geometry.
+sprite_art = section(dungeon, "static SprArt sprite_art(DObj *o)",
+                     "#define DIV9(d)")
+boss_art = section(sprite_art, "case K_BOSS:", "case K_CHEST:")
+for art in ("art_crab", "beetle_art", "art_ghost", "art_wasp",
+            "art_ant", "spider_art"):
+    require(boss_art, art, "one of the six warden silhouettes is missing: " + art)
+require(boss_art, "if(!endless && !forge_on && !base_mode && zone>=0 && zone<6)",
+        "story boss silhouettes must not alter forge or endless guardians")
+require(boss_art, "hw=0x11000;", "all six boss silhouettes must preserve projected height")
+require(main, "story_boss_title[zone]:\"THE QUEEN\"",
+        "live boss HUD must show the correct warden name")
+
 require(ui, "t[n++]=story_boss_aftermath[zone];",
         "returning to a liberated world should acknowledge the defeated warden")
 require(space, "int first=!(cleared_mask&(1<<zone))",
