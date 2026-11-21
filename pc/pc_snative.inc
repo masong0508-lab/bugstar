@@ -230,9 +230,15 @@ static void pc_so_native(volatile unsigned short *pg){
       static const s8 cube[8][3]={{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
       for(int i=0;i<8;i++){ s32 x=cube[i][0]*S, z=cube[i][2]*S; v[i*3]=stx_+((x*c_-z*s_)>>14); v[i*3+1]=sty_+cube[i][1]*S; v[i*3+2]=stz_+((x*s_+z*c_)>>14); }
       static const s8 slot[4][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
-      for(int i=0;i<4;i++){ s32 x=slot[i][0]*140, z=-S; v[(8+i)*3]=stx_+((x*c_-z*s_)>>14); v[(8+i)*3+1]=sty_+slot[i][1]*70; v[(8+i)*3+2]=stz_+((x*s_+z*c_)>>14); }
+      for(int i=0;i<4;i++){ s32 x=slot[i][0]*140, z=-S-160; v[(8+i)*3]=stx_+((x*c_-z*s_)>>14); v[(8+i)*3+1]=sty_+slot[i][1]*70; v[(8+i)*3+2]=stz_+((x*s_+z*c_)>>14); }
       static const u8 ce[]={0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7}; static const u8 se[]={8,9,9,10,10,11,11,8};
-      so_wire(v,12,ce,12,54); so_wire(v,12,se,4,(vbl_count&16)?55:56); }
+      so_wire(v,12,ce,12,54); so_wire(v,12,se,4,(vbl_count&16)?55:56);
+      // The port ring is 160 units ahead of the hull, not painted flat on it.
+      // Near the station, four perspective spokes reveal the actual dock depth.
+      { s32 cx,cy,cz; if(cam3(stx_,sty_,stz_,&cx,&cy,&cz) && cz<8000){
+          static const u8 throat[]={0,8,1,9,2,10,3,11};
+          so_wire(v,12,throat,4,56);
+        } } }
     for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue;
         static const s8 oc[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
         s32 v[6*3]; int ang=(vbl_count*2+a->seed*4)&1023; s32 c=cosx(ang>>2), s_=sinx(ang>>2);
