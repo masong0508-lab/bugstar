@@ -395,7 +395,7 @@ static void pc_par_init(void){
 // benchmarks. No heaps, graphics or gameplay timing are affected.
 void pc_par_chunk(int total, int chunk, ParFn fn, void *ctx){
     pc_par_init();
-    static int legacy=-1, report=-1; static unsigned calls; static unsigned long long saved;
+    static int legacy=-1, report=-1; static unsigned calls, full_jobs, limited_jobs; static unsigned long long saved;
     if(legacy<0){ const char *e=getenv("PC_PAR_LEGACY"); legacy=e && e[0]=='1' && !e[1];
                   report=getenv("PC_PAR_STATS")!=NULL; }
     if(chunk<1) chunk=1;
@@ -407,11 +407,13 @@ void pc_par_chunk(int total, int chunk, ParFn fn, void *ctx){
     if(active>PP.n) active=PP.n;
     if(!PP.n || total<16 || !active){
         if(report){ saved+=PP.n; if(++calls%128==0)
-            fprintf(stderr,"row workers: pool=%d active=0 jobs=%d saved wakes=%llu after %u calls\n",PP.n,jobs,saved,calls); }
+            fprintf(stderr,"row workers: pool=%d active=0 jobs=%d saved wakes=%llu full=%u limited=%u after %u calls\n",PP.n,jobs,saved,full_jobs,limited_jobs,calls); }
         fn(ctx,0,total); return;
     }
-    if(report){ saved+=(unsigned)(PP.n-active); if(++calls%128==0)
-        fprintf(stderr,"row workers: pool=%d active=%d jobs=%d saved wakes=%llu after %u calls\n",PP.n,active,jobs,saved,calls); }
+    if(report){ saved+=(unsigned)(PP.n-active);
+        if(active==PP.n) full_jobs++; else limited_jobs++;
+        if(++calls%128==0)
+            fprintf(stderr,"row workers: pool=%d active=%d jobs=%d saved wakes=%llu full=%u limited=%u after %u calls\n",PP.n,active,jobs,saved,full_jobs,limited_jobs,calls); }
     pthread_mutex_lock(&PP.m); PP.chunk=chunk; PP.fn=fn; PP.ctx=ctx; PP.total=total; PP.next=0; PP.active=active; PP.left=active; PP.gen++;
     // Targeted condition variables: do not wake workers that won't join.
     for(int i=0;i<active;i++) pthread_cond_signal(&PP.go[i]);
