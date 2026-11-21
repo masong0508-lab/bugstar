@@ -114,6 +114,12 @@ assert "THE DAWN" not in bolt_zone, (
     "anthill arrival dialogue reveals Bolt's final name prematurely"
 )
 require(scenes, "THE MOUTH FALLS APART.", "beast conclusion is missing")
+require(scenes, "THE FIRST MORNING WITHOUT THE KING.",
+        "true Dawn ending needs an epilogue beyond the fight")
+require(scenes, 'bugs_freed ? "THE BUGS YOU FREED WATCH THE SUN RISE."',
+        "epilogue must reflect actual rescues, not assume every bug was freed")
+require(scenes, '"WHERE SHOULD WE GO FIRST?"',
+        "finale should return player agency to the open galaxy")
 
 reactions = section(ui, "static void bolt_memory_reaction(", "// what Bolt says when")
 require(reactions, "cores==1", "first recovered memory has no emotional response")
@@ -157,6 +163,8 @@ require(space, "dawn_free=(b.stage&0x8000u)!=0",
         "old and new save records must decode story completion")
 require(ui, 'if(dawn_free){ t[n++]=', "post-finale Bolt must not demand another boss victory")
 require(space, 'story_card("VICTORY",t,4)', "partial-victory ending must remain distinct")
+require(space, "RECOVER ALL 8 OF BOLT'S MEMORIES.",
+        "partial victory must explain how to unlock the real ending")
 require(space, 'text(pg,78,124,"A/START: CONTINUE",55,1)',
         "beast cutscenes must describe their confirm/skip inputs")
 require(space, 'while(!HIT(K_A)&&!HIT(K_START))',
