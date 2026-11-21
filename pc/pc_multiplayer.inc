@@ -16,9 +16,10 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
      * intervening planets. No changes to local movement or hit authority.
      */
     static PcNetShip shown;
-    static int shown_valid;
+    static int shown_valid, hit_flash, have_hp;
+    static int previous_remote_hp;
     if(!pc_mp_remote((unsigned)pc_frames(),&other) || other.world!=mine.world){
-        shown_valid=0; return;
+        shown_valid=0; hit_flash=0; have_hp=0; return;
     }
     if(!shown_valid || shown.world!=other.world ||
        other.x-shown.x>2048 || other.x-shown.x< -2048 ||
@@ -36,6 +37,20 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
         shown.pitch+=(short)((other.pitch-shown.pitch)/3);
     }
     other=shown;
+    {
+        uint8_t hh,gh,wh,wg;
+        if(pc_mp_duel(&hh,&gh,&wh,&wg)){
+            int remote_hp=(pc_mp_role()==1)?gh:hh;
+            if(have_hp && remote_hp<previous_remote_hp)hit_flash=8;
+            previous_remote_hp=remote_hp;have_hp=1;
+            char status[64];
+            snprintf(status,sizeof status,"LAN SPAR P1:%u P2:%u  W:%u-%u",
+                     (unsigned)hh,(unsigned)gh,(unsigned)wh,(unsigned)wg);
+            text(pg,4,113,status,50,1);
+            if(!hh || !gh)text(pg,65,102,hh?"P1 WINS":"P2 WINS",54,1);
+        }else have_hp=0;
+    }
+    if(hit_flash)hit_flash--;
     /* The same 3D projection and camera plane as stations, fighters and rocks:
      * five transformed vertices, eight edges, no heap allocations.
      */
@@ -55,15 +70,15 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
         v[i*3+j]=(j==0?other.x:j==1?other.y:other.z)+d;
     }
     static const u8 edges[]={0,1,0,2,1,4,2,4,0,3,1,3,2,3,3,4};
-    wire(pg,v,5,edges,8,55);
+    wire(pg,v,5,edges,8,hit_flash?49:55);
     /* Reuse the native line layer when available; the GBA-sized fallback
      * is still drawn for CLASSIC and keeps the gameplay camera identical. */
-    if(pc_sn.w && pc_sn.msk)so_wire(v,5,edges,8,55);
+    if(pc_sn.w && pc_sn.msk)so_wire(v,5,edges,8,hit_flash?49:55);
     {int sx,sy_; if(sproj(other.x,other.y,other.z,&sx,&sy_,0)){
         dot2(pg,sx,sy_,50);
         /* A compact ID cue; do not cover the aiming reticle in the middle. */
         if(sx>15 && sx<208 && sy_>18 && sy_<115)
-            text(pg,sx+5,sy_-6,"P2",50,1);
+            text(pg,sx+5,sy_-6,pc_mp_role()==1?"P2":"P1",50,1);
     }}
 #else
     (void)pg;
