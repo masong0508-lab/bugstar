@@ -1203,7 +1203,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
 #endif
     PPT(2);
     if(FILM){} else { hud3d(pg); fl_draw(pg);
-    if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2) scpy(b,q_type==Q_CHAMP && q_need>=1 && q_need<=6 ? quest_champ_names[q_need-1] : "QUEST TARGET"); else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
+    if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2){ int cid=quest_champ_id(); scpy(b,cid>=0?quest_champ_names[cid]:"QUEST TARGET"); } else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
 #ifdef TEST_MEM
     { char tb[56]; int al=0,sn=0, hc=(py_>>16)*MW+(px_>>16); for(int i=0;i<ndo;i++) if(dob[i].alive && is_mon(dob[i].kind)) al++; for(int i=0;i<MW*MW;i++) sn+=seen[i];
