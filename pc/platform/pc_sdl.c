@@ -10,6 +10,7 @@
 #include <math.h>
 #include <time.h>
 #include "pc_plat.h"
+#include "pc_net.h"
 extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;
 extern void sg_cache_trim(void);      // pc_sprgen.c: give the sprite cache back (Android low memory)
 
@@ -846,6 +847,7 @@ void plat_frame(void){
     else if(now>g_due){ g_catchups++; g_due=now; }            // drop missed time, do not run rapid catch-up simulation ticks
     else { g_waits++; wait_until(g_due); }
     sim_stall(fr);
+    pc_mp_frame((uint32_t)fr);   // nonblocking LAN ship snapshots; no effect without --lan-host/join
     pump_events();
     int was_paused=0;
     while(menu_open || g_paused_focus || g_bg){                // paused: the game does not step; the window keeps being drawn (not while the app is in the background)
@@ -870,7 +872,7 @@ void plat_frame(void){
     { static long saved_at; if(fr-saved_at>=120){ saved_at=fr; pc_save_flush(0); } }
     if(g_stop_after>=0 && fr>=g_stop_after && !(g_autoshot_path && g_autoshot_frame>=0)){ pace_stats(); pc_quit_now(); }   // (a screenshot still waiting is taken first)
 }
-void plat_close(void){ pc_save_flush(1); cfg_save(); wav_close(); if(adev) SDL_CloseAudioDevice(adev); if(pad) SDL_GameControllerClose(pad); if(ren) SDL_DestroyRenderer(ren); if(win) SDL_DestroyWindow(win); SDL_Quit(); }
+void plat_close(void){ pc_mp_close(); pc_save_flush(1); cfg_save(); wav_close(); if(adev) SDL_CloseAudioDevice(adev); if(pad) SDL_GameControllerClose(pad); if(ren) SDL_DestroyRenderer(ren); if(win) SDL_DestroyWindow(win); SDL_Quit(); }
 
 // ------------------------------------------------------------------------------------------------ start-up
 #ifdef _WIN32
@@ -920,6 +922,7 @@ int plat_open(int argc, char **argv){
 #endif
     cfg_defaults(); { FILE *tf=fopen(g_cfgpath,"r"); if(tf) fclose(tf); else g_first_run=1; } cfg_load();
     int force_fs=-1; const char *drv=NULL;
+    int lan_host=0; const char *lan_join_ip=NULL; unsigned lan_port=33777;
     for(int i=1;i<argc;i++){
         if(!strcmp(argv[i],"--fullscreen")) force_fs=1; else if(!strcmp(argv[i],"--windowed")) force_fs=0;
         else if(!strcmp(argv[i],"--size")&&i+2<argc){ C.win_w=atoi(argv[i+1]); C.win_h=atoi(argv[i+2]); i+=2; g_size_arg=1; }
@@ -930,6 +933,9 @@ int plat_open(int argc, char **argv){
         else if(!strcmp(argv[i],"--stop-after")&&i+1<argc) g_stop_after=atol(argv[++i]);
         else if(!strcmp(argv[i],"--wav")&&i+1<argc){ g_wav_path=argv[++i]; }
         else if(!strcmp(argv[i],"--fast")) g_fast=1;
+        else if(!strcmp(argv[i],"--lan-host")) lan_host=1;
+        else if(!strcmp(argv[i],"--lan-join")&&i+1<argc) lan_join_ip=argv[++i];
+        else if(!strcmp(argv[i],"--lan-port")&&i+1<argc){ int p=atoi(argv[++i]); if(p>=1024 && p<=65535) lan_port=(unsigned)p; }
         else if(!strcmp(argv[i],"--touch")) g_touch=2;      // preview the on-screen touch pad in the PC window (it stays up, whatever keys are pressed)
         else if(!strcmp(argv[i],"--touch-6")&&i+1<argc) g_t6=atoi(argv[++i])?1:0;
     }
@@ -974,6 +980,14 @@ int plat_open(int argc, char **argv){
     SDL_AddEventWatch(app_watch,NULL);      // the app's life cycle events arrive at once, even while the game thread sleeps inside SDL (Android in the background)
     if(g_wav_path){ g_wav=fopen(g_wav_path,"wb"); if(g_wav){ uint8_t h[44]={0}; fwrite(h,1,44,g_wav); } }
     audio_open();
+    if(lan_host || lan_join_ip){
+        if(lan_host && lan_join_ip) fprintf(stderr,"lan: specify host OR join, not both\\n");
+        else { int ok=lan_host ? pc_mp_host((uint16_t)lan_port) : pc_mp_join(lan_join_ip,(uint16_t)lan_port);
+            fprintf(stderr,"lan: %s %s port %u (%s); ship presence only, NO synced combat/saves\\n",
+                    lan_host?"HOST":"JOIN",lan_host?"0.0.0.0":lan_join_ip,lan_port,ok?"ready":"FAILED");
+            if(ok) say_toast_ms("LAN SPACE TEST: PEER SHIP ONLY",5000);
+        }
+    }
     atexit(wav_close);
     return 0;
 }
