@@ -20,6 +20,7 @@ typedef struct PcNetSession {
     uint32_t peer_addr;  /* IPv4 in network byte order */
     uint32_t world;
     uint32_t last_rx, last_send, last_hello;
+    uint32_t combat_tick; /* advances ONLY while both Ready and actively flying */
     uint16_t peer_port, local_port;
     uint8_t role, connected, received, seq;
     PcNetShip other;
