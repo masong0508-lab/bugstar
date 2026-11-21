@@ -30,6 +30,15 @@ for marker in [
     assert marker in coop, f"Game-view label or victory rendering missing: {marker}"
 for misleading in ('"P1 SH', '"DRONE %u H:', '"WAVE %u/3  CLEAR', '"LAN SPAR P1:'):
     assert misleading not in coop, f"Cryptic or misleading HUD label reappeared: {misleading}"
+assert '"DEFEAT RAIDER AND DRONE"' in coop
+assert '"DESTROY THE DRONE TO CLEAR WAVE"' in coop
+assert '"NEXT WAVE SOON"' in coop
+assert '"NEXT MATCH SOON"' in coop
+assert 'rect(pg,47,55,146,42,0);' in coop
+assert 'text(pg,55,61,"MISSION COMPLETE",54,2);' in coop
+assert coop.index('text(pg,55,61,"MISSION COMPLETE"') > coop.index('wire(pg,v,8,edges,14')
+assert 'P_LANHELP' in menu and '"HOW THE CO-OP MISSION WORKS"' in menu
+assert 'if(ph<=dh-4 || gs_<=1)break;' in menu
 assert 'rect(pg,3,98,234,29,0);' in coop
 assert 'rect(pg,119,100,1,26,56);' in coop
 
