@@ -10,10 +10,11 @@ cd "$(dirname "$0")/.."
 GAME="${1:-./bugstar_pc}"
 mkdir -p out/native_space
 run(){
-    local name="$1" columns="$2" shading="$3" threads="$4" dirty="$5"
+    local name="$1" columns="$2" shading="$3" threads="$4" dirty="$5" legacy="$6"
     rm -f "out/native_space/${name}.sav" out/native_space/"${name}"_*.ppm
     env PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_SHIPS=1 PC_THREADS="$threads" PC_SN_BENCH=1 \
         PC_SN_DIRTY="$dirty" PC_SN_DIRTY_LOG=1 PC_NBENCH=12 \
+        PC_PAR_LEGACY="$legacy" PC_PAR_STATS=1 \
         BUGSTAR_SN_XCACHE="$columns" BUGSTAR_SN_SHADECACHE="$shading" BUGSTAR_SIDE=0 \
         BUGSTAR_VT_AT=100 BUGSTAR_VT=space,0,896,0,0 \
         timeout -k 3 240 "$GAME" --headless --script tests/vt_idle.txt \
@@ -28,31 +29,37 @@ run(){
     grep 'space-native bench 960x640:' "out/native_space/${name}.log" | tail -1
     grep -m1 'space effects .* scan ' "out/native_space/${name}.log"
 }
-run reference 0 0 4 0
-run baseline  1 0 4 0
-run full      1 1 4 0
-run optimized 1 1 4 1
-run single    1 1 1 1
+run reference 0 0 4 0 0
+run baseline  1 0 4 0 0
+run full      1 1 4 0 0
+run optimized 1 1 4 1 0
+run single    1 1 1 1 0
+# Same real game, rendered with twelve available threads: prove that small
+# jobs stay bit-identical when sleeping workers aren't all woken.
+run legacy   1 1 12 1 1
+run adaptive 1 1 12 1 0
 cmp out/native_space/reference_003140.ppm out/native_space/baseline_003140.ppm
 cmp out/native_space/baseline_003140.ppm out/native_space/full_003140.ppm
 cmp out/native_space/full_003140.ppm out/native_space/optimized_003140.ppm
 cmp out/native_space/optimized_003140.ppm out/native_space/single_003140.ppm
+cmp out/native_space/optimized_003140.ppm out/native_space/legacy_003140.ppm
+cmp out/native_space/legacy_003140.ppm out/native_space/adaptive_003140.ppm
 python3 - <<'PY'
 from pathlib import Path
 import re,statistics
-for name in ("reference","baseline","full","optimized","single"):
+for name in ("reference","baseline","full","optimized","single","legacy","adaptive"):
     log=(Path("out/native_space")/(name+".log")).read_text()
     times=[float(m) for m in re.findall(r"space-native bench 960x640: avg wall ([0-9.]+) ms",log)]
     assert times, f"{name} did not render any measured space frames"
     tables=[int(m) for m in re.findall(r"space-native bench 960x640:.*shade tables ([0-9]+)",log)]
     assert tables, f"{name}: missing actual shade-table coverage measurements"
-    if name in ("full","optimized","single"):
+    if name in ("full","optimized","single","legacy","adaptive"):
         assert sum(tables)>0, f"{name}: the test never exercised a cached planet shader"
     else:
         assert sum(tables)==0, f"{name}: cache-disabled reference unexpectedly prepared shading"
     areas=[(mode,int(a),int(b)) for mode,a,b in re.findall(r"space effects (clipped|full) scan ([0-9]+)/([0-9]+) pixels",log)]
     assert areas, f"{name}: the snapshot test never ran the effects compositor"
-    if name in ("optimized","single"):
+    if name in ("optimized","single","legacy","adaptive"):
         assert any(mode=="clipped" and a<b for mode,a,b in areas), f"{name}: the effects scan wasn't narrowed"
     else:
         assert all(mode=="full" and a==b for mode,a,b in areas), f"{name}: diagnostic full effects scan missing"
@@ -60,5 +67,16 @@ for name in ("reference","baseline","full","optimized","single"):
     assert compose, f"{name}: missing full-compositor samples"
     # Report the median of completed 120-frame windows, not a single fastest frame.
     print(f"{name}: native space {statistics.median(times):.3f} ms; compositor {statistics.median(compose):.3f} ms; effects scan {areas[0][1]}/{areas[0][2]} pixels")
-print("native space: cached/uncached, shaded/unshaded, dirty/full effects and one/four-thread pictures MATCH at 960x640")
+# A/B schedule coverage: original path wakes all workers even for a tiny
+# scan, while the adaptive path uses fewer on at least one parallel job.
+def rows(name):
+    txt=(Path("out/native_space")/(name+".log")).read_text()
+    return [(int(a),int(b),int(c),int(d)) for a,b,c,d in
+        re.findall(r"row workers: pool=([0-9]+) active=([0-9]+) jobs=([0-9]+) saved wakes=([0-9]+)",txt)]
+old,new=rows("legacy"),rows("adaptive")
+assert old and new, "worker pool did not report scheduling evidence"
+assert any(pool==11 and active==11 for pool,active,jobs,saved in old), "no legacy all-worker dispatch"
+assert any(pool==11 and 0<active<11 for pool,active,jobs,saved in new), "no adaptive limited-worker dispatch"
+print("worker schedule: legacy all-worker and adaptive fewer-worker paths exercised; last saved wakes:",old[-1][3],new[-1][3])
+print("native space: all cached/uncached, shaded/unshaded, dirty/full and 1/4/12-thread pictures MATCH at 960x640")
 PY
