@@ -9,6 +9,10 @@ mkdir -p out/speed_guard
 run() {
     local name="$1"; shift
     rm -rf "out/speed_guard/${name}.txt" "out/speed_guard/data_${name}"
+    mkdir -p "out/speed_guard/data_${name}"
+    # Dummy/offscreen windows are intentionally unfocused. Do not let the
+    # ordinary pause-on-focus-loss option stop the test clock forever.
+    printf 'pause_unfocus=0\n' > "out/speed_guard/data_${name}/settings.ini"
     env "$@" SDL_AUDIODRIVER=dummy PC_FRAMELOG="out/speed_guard/${name}.txt" \
         timeout 40 "$B" --window --video-driver dummy --no-audio \
         --size 240 160 --data "out/speed_guard/data_${name}" \
