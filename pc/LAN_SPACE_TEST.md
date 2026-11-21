@@ -4,7 +4,7 @@
 
 The earlier real SDL smoke reached a shared first-raider victory, but was insufficient evidence of all three waves on both rendered game clients. This branch extends `pc/tests/lan_live.sh ./bugstar_pc coop` to drive the ordinary A-laser cadence in two actual SDL game processes, with an opt-in test-only aim-following camera; it requires log evidence of waves 1, 2 and 3, all three wins, both players' contribution and both final graphical victory PNGs. The successful captures will appear in the `bugstar-lan-graphical-smoke` CI artifact under `pc/out/lan_live`. The test does not pretend to simulate human flight or an Android touchscreen.
 
-This branch upgrades the shared LAN packet version from **v3 to v4** for the new READY flag; both peers must use v4 binaries. Earlier v3 test results below are historical, not evidence for this change.
+This branch upgrades the LAN packet version to **v5**, with separate Ready and ACTIVE (in-flight) flags; both peers must use v5 binaries. The SDL options menu now exchanges UDP HELLO/READY/STATE during a pause without advancing physics. Android backgrounding invalidates session state and requires fresh Ready confirmations. Earlier v3 test results below are historical, not evidence for this change.
 
 The **MULTIPLAYER LAN** options now include **CONFIRM READY / CANCEL READY**. HOST/JOIN establish the UDP socket, but each client must independently confirm Ready and stay in the same star 3D view for combat to begin. Leaving, switching world or losing current ship snapshots clears readiness. A rejoined client must confirm again; no network reward writes to a campaign save. The command-line `--lan-host`/`--lan-join` test path intentionally auto-confirms to preserve existing automated sparring tests.
 
