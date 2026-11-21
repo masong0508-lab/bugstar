@@ -153,7 +153,7 @@ static void net_raider(PcNetSession *s,uint32_t frame){
     BsNetPacket p;const PcCoop *c=&s->coop_enemy;
     int16_t q[3]={qpos(c->x),qpos(c->y),qpos(c->z)};
     memset(&p,0,sizeof p);p.type=BSNET_RAIDER;p.sequence=s->seq++;
-    p.tick=(uint16_t)frame;p.length=16;
+    p.tick=(uint16_t)frame;p.length=24;
     for(int i=0;i<3;i++){
         p.payload[i*2]=(uint8_t)((uint16_t)q[i]&255u);
         p.payload[i*2+1]=(uint8_t)((uint16_t)q[i]>>8);
@@ -168,6 +168,16 @@ static void net_raider(PcNetSession *s,uint32_t frame){
      * No larger datagram or extra per-frame allocation is needed. */
     p.payload[15]=(uint8_t)(((c->charge?c->charge_target:c->beam_target)?128:0) |
                             (((c->charge+1u)/2u)<<4) | (c->beam&15));
+    /* Second enemy plus the mission's wave/completion/state flags, all
+     * inside the codec's existing fixed 24-byte payload budget. */
+    int16_t wing[3]={qpos(c->wing_x),qpos(c->wing_y),qpos(c->wing_z)};
+    for(int i=0;i<3;i++){
+        p.payload[16+i*2]=(uint8_t)((uint16_t)wing[i]&255u);
+        p.payload[17+i*2]=(uint8_t)((uint16_t)wing[i]>>8);
+    }
+    p.payload[22]=c->wing_hp;
+    p.payload[23]=(uint8_t)((c->wave&3u) | ((c->completed&31u)<<2) |
+                   ((c->charge?c->charge_source:c->beam_source)?128u:0u));
     net_send(s,&p);
 }
 static void net_decode(PcNetShip *v,const BsNetPacket *p,uint32_t world){
@@ -212,7 +222,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
           case BSNET_STATE: if(p.length!=8) continue; break;
           case BSNET_INPUT: if(p.length!=3) continue; break;
           case BSNET_EVENT: if(p.length!=4) continue; break;
-          case BSNET_RAIDER: if(p.length!=16) continue; break;
+          case BSNET_RAIDER: if(p.length!=24) continue; break;
           case BSNET_BYE: if(p.length!=0) continue; break;
           default: continue;
         }
@@ -283,7 +293,8 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                  s->role==2 && s->connected){
             if(s->raider_seen && (int16_t)(p.tick-s->last_raider_tick)<=0)
                 continue;
-            if(p.payload[6]>100 || p.payload[8]>3 || p.payload[9]>10 ||
+            if(p.payload[6]>100 || p.payload[8]>4 || p.payload[9]>10 ||
+               p.payload[22]>100 || (p.payload[23]&3u)>2 ||
                p.payload[12]>100 || p.payload[13]>100 ||
                (p.payload[15]&15u)>8)
                 continue;
@@ -303,6 +314,18 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
             c->beam=p.payload[15]&15u;c->beam_target=p.payload[15]>>7;
             c->charge=(uint8_t)(((p.payload[15]>>4)&7u)*2u);
             c->charge_target=p.payload[15]>>7;
+            for(int k=0;k<3;k++){
+                int16_t q=(int16_t)((uint16_t)p.payload[16+k*2]|
+                                      ((uint16_t)p.payload[17+k*2]<<8));
+                if(k==0)c->wing_x=(int32_t)q*16;
+                else if(k==1)c->wing_y=(int32_t)q*16;
+                else c->wing_z=(int32_t)q*16;
+            }
+            c->wing_hp=p.payload[22];
+            c->wave=p.payload[23]&3u;
+            c->completed=(p.payload[23]>>2)&31u;
+            c->charge_source=p.payload[23]>>7;
+            c->beam_source=p.payload[23]>>7;
             s->last_raider_tick=p.tick;s->raider_seen=1;
             s->last_raider_rx=frame;s->last_rx=frame;
         }else if(p.type==BSNET_BYE && s->connected){
@@ -431,12 +454,15 @@ void pc_mp_frame(uint32_t frame){
             if(g_peer.connected && g_peer.coop && g_peer.coop_enemy.phase &&
                (raider_hp!=g_peer.coop_enemy.hp ||
                 raider_wins!=g_peer.coop_enemy.wins || frame%300u==0u))
-                fprintf(stderr,"lan: raider HP %u wins %u phase %u hits %u/%u frame %u\n",
+                fprintf(stderr,"lan: raider HP %u wins %u phase %u hits %u/%u wave %u wing %u cleared %u frame %u\n",
                         (unsigned)g_peer.coop_enemy.hp,
                         (unsigned)g_peer.coop_enemy.wins,
                         (unsigned)g_peer.coop_enemy.phase,
                         (unsigned)g_peer.coop_enemy.host_hits,
-                        (unsigned)g_peer.coop_enemy.guest_hits,(unsigned)frame);
+                        (unsigned)g_peer.coop_enemy.guest_hits,
+                        (unsigned)(g_peer.coop_enemy.wave+1),
+                        (unsigned)g_peer.coop_enemy.wing_hp,
+                        (unsigned)g_peer.coop_enemy.completed,(unsigned)frame);
             if(g_peer.connected && !g_peer.coop &&
                (hp0!=g_peer.duel.host_hp || hp1!=g_peer.duel.guest_hp))
                 fprintf(stderr,"lan: duel P1=%u P2=%u wins=%u/%u frame %u\n",
