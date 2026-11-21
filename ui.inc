@@ -144,7 +144,7 @@ static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, a
         "NOW IT WILL EAT WHAT IS LEFT.\"",
         "BEYOND THE STARS, A VAST ENGINE WAKES."}; bolt_card(pg,t,6);
         { static const char *const after[3]={"BOLT WATCHES THE EMPTY THRONE.",
-            "\"WE GOT THEM OUT. BUT WHAT DID HE WAKE?\"",
+            "\"WE STOPPED HIM. BUT WHAT DID HE WAKE?\"",
             "SOMETHING FAR AWAY ANSWERS WITH A HUM."};
           bolt_card(pg,after,3); }
         break; }
@@ -153,6 +153,28 @@ static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, a
         "\"I REMEMBER ALL OF IT.","THANK YOU FOR CARRYING ME.",
         "NOW LET ME CARRY YOU. ALL OF YOU. HOME.\""}; bolt_card(pg,t,6); break; }
     }
+}
+// Three deliberate breathers among the eight outpost memories: the first
+// recognition, the betrayal, and the complete identity. No extra save flags;
+// the already-persisted data-core count determines when they play.
+static void bolt_memory_reaction(volatile u16 *pg, int cores){
+    if(cores==1){ static const char *const t[3]={
+        "BOLT PUTS A WHEEL AGAINST YOUR FOOT.",
+        "\"I THINK SOMEONE ONCE DID THAT FOR ME.\"",
+        "\"THANK YOU FOR WAITING WHILE I REMEMBER.\""};
+        bolt_card(pg,t,3); }
+    else if(cores==4){ static const char *const t[4]={
+        "BOLT'S LITTLE LIGHTS GO DARK.",
+        "\"MY CREW TRUSTED THE ANTS. SO DID I.\"",
+        "\"THE KING LOCKED US IN OUR OWN SHIP.\"",
+        "\"I DON'T WANT TO FORGET THEM AGAIN.\""};
+        bolt_card(pg,t,4); }
+    else if(cores>=8){ static const char *const t[4]={
+        "\"THE LAST PIECE HAS COME HOME.\"",
+        "\"I AM THE DAWN. THAT WAS MY NAME.\"",
+        "\"THE KING LOCKED MY HEART IN THE BEAST.\"",
+        "\"TAKE ME THERE. WE CAN OPEN IT TOGETHER.\""};
+        bolt_card(pg,t,4); }
 }
 // what Bolt says when you talk to him at the ship: what worries him, the next thing to do, what he remembers, and a remark
 static int fuel_max(void);
