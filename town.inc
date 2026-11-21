@@ -442,7 +442,7 @@ static const char *const talk_ln[NTALK]={"I HAVE SEEN THINGS. MOSTLY MUD.","DO N
     "WELCOME! PLEASE DO NOT EAT THE MAYOR.","OUR MOTTO: WE ARE HERE.","THE TECHNOBEAST? NEVER HEARD OF IT. GULP.","BOLT? I KNEW A BOLT. HE WAS SHINY.","GO AWAY. KIDDING. STAY. KIDDING. GO."};
 // A few ordinary locals notice the changing world. These are deterministic,
 // not quest flags: saved progress already tells us what rumors can be known.
-static const char *const story_rumor[4][3]={
+static const char *const story_rumor[5][3]={
     {"THE ANTS TOOK MY COUSIN. HE WAS ONLY A LARVA.",
      "THE CAGES WENT TOWARD THE OLD ANTHILL.",
      "KEEP AN EYE ON YOUR TIN FRIEND. HE IS KIND."},
@@ -452,6 +452,9 @@ static const char *const story_rumor[4][3]={
     {"THE KING IS GONE. HIS MACHINES ARE NOT.",
      "RED MARKS IN SPACE? THEY ARE HIS OUTPOSTS.",
      "SOMETIMES THE SKY HUMS AFTER MIDNIGHT."},
+    {"BOLT KNOWS HIS PAST. BUT HE IS STILL WORRIED.",
+     "THE OLD SHIP'S HEART IS STILL LOCKED AWAY.",
+     "THE SKY SOUNDS LIKE IT IS HOLDING ITS BREATH."},
     {"BOLT DOES NOT SOUND SO LOST ANYMORE.",
      "A SHIP ONCE PLANTED THE SEEDS OF OUR WORLD.",
      "SOMEONE IN SPACE IS SINGING US HOME."}
@@ -543,7 +546,7 @@ static void local_talk(PObj *o){
     int li=(int)(rumor_seed%NTALK);  // unsigned modulo: no negative dialogue-table index
     ln[0] = wd.mood==MOOD_LOVE ? love_ln[li%12] : wd.mood==MOOD_HATE ? hate_ln[li%12] : talk_ln[li];
     if(wd.mood!=MOOD_LOVE && wd.mood!=MOOD_HATE && li%5==0){
-        int stage=data_cores>=8?3:ant_king?2:bugs_freed>0?1:0;
+        int stage=dawn_free?4:data_cores>=8?3:ant_king?2:bugs_freed>0?1:0;
         ln[0]=story_rumor[stage][(li/5)%3];
     }
     if(wd.mood==MOOD_HATE || cooling) o->hp=0; else if(wd.mood==MOOD_LOVE && rndi(3)==0) o->hp=1;
