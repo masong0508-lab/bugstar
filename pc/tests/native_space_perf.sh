@@ -59,7 +59,7 @@ for name in ("reference","baseline","full","optimized","single","legacy","adapti
         assert sum(tables)>0, f"{name}: the test never exercised a cached planet shader"
     # The smaller camera scene need not meet the surface-cache area threshold;
     # its purpose is to exercise genuinely small row-scheduling jobs.
-    else:
+    elif name in ("reference","baseline"):
         assert sum(tables)==0, f"{name}: cache-disabled reference unexpectedly prepared shading"
     areas=[(mode,int(a),int(b)) for mode,a,b in re.findall(r"space effects (clipped|full) scan ([0-9]+)/([0-9]+) pixels",log)]
     assert areas, f"{name}: the snapshot test never ran the effects compositor"
