@@ -15,6 +15,7 @@ static void kfz_run(void){
     int maxf=TEST_KFUZZ; long races=getenv("KFUZZ_RACES")?atol(getenv("KFUZZ_RACES")):40; u32 first=getenv("KFUZZ_FIRST")?(u32)atol(getenv("KFUZZ_FIRST")):0;
     signal(SIGALRM,kfz_alarm);
     kw_load(); kw_mode=1; kw.unlocked=1; kw.cls_open=5;
+    printf("KFUZZ RENDER ENTRY: Kart World race driver active\n"); fflush(stdout);
     int tot_done=0, tot_to=0;
     for(u32 n=first;n<first+(u32)races;n++){
         kfz_race=(int)n; kfz_s=n*7919u+1;
