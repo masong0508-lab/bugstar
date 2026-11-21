@@ -253,7 +253,7 @@ static void kbuild_finish(void){
 static int ksv_sel; static void ksv_row(int i, char *b, int *c){ KRec r; if(krec_get(i,&r)){ scpy(b,""); ncat(b,i+1); scat(b,". "); scat(b,r.name); } else { scpy(b,""); ncat(b,i+1); scat(b,". (EMPTY)"); *c=C_DGREY; } }
 static void kbuild_save(volatile u16 *pg){
     KRec r; int pick=-1; for(int i=0;i<NKREC;i++) if(!krec_get(i,&r)){ pick=i; break; }
-    if(pick<0){ ksv_sel=0; list_desc=0; int k=list_pick(pg,"ALL 50 SPOTS ARE FULL. REPLACE WHICH?",NKREC>13?13:NKREC,ksv_row,&ksv_sel,"A: REPLACE   B: BACK"); if(k<0) return; pick=k; }
+    if(pick<0){ ksv_sel=0; list_desc=0; int k=list_pick(pg,"ALL 50 SPOTS ARE FULL. REPLACE WHICH?",NKREC,ksv_row,&ksv_sel,"A: REPLACE   B: BACK"); if(k<0) return; pick=k; }
     memset(&r,0,sizeof r); if(kw_mode) kw_fav(&r.at); else { if(uni_alloc(uni_w)<0){ say("TOO MANY UNIVERSES SAVED. DELETE A FAVOURITE"); return; } fav_here(&r.at); } r.n=kt.n; r.laps=kt.laps; r.riv=kt.riv; r.cls=kt.cls; r.flags=kt.flags; r.surf=kt.surf; r.shape=255;
     for(int i=0;i<KG_MAX;i++){ r.gx[i]=kt.gx[i]; r.gy[i]=kt.gy[i]; } memcpy(r.name,kt.name,16); r.name[15]=0; krec_put(pick,&r); k_rec=pick;
     char b[40]; scpy(b,"SAVED AS TRACK "); ncat(b,pick+1); scat(b,". RACE IT ANYTIME"); say(b); sfx(6); kart_save(); }
@@ -272,7 +272,7 @@ static void kmy_tracks_(volatile u16 *pg){
     int sel=0;
     while(1){ KRec r; kmy_n=0; for(int i=0;i<NKREC;i++) if(krec_get(i,&r)) kmy_idx[kmy_n++]=i;
         if(!kmy_n){ const char *ln[2]={"YOU HAVE NOT SAVED ANY TRACKS YET.","PICK BUILD A TRACK TO MAKE ONE."}; card(pg,"YOUR TRACKS",ln,2); return; }
-        if(sel>=kmy_n) sel=kmy_n-1; list_desc=kmy_desc; int k=list_pick(pg,"YOUR TRACKS",kmy_n>11?11:kmy_n,kmy_row,&sel,"A: PICK   B: BACK"); list_desc=0; if(k<0) return;
+        if(sel>=kmy_n) sel=kmy_n-1; list_desc=kmy_desc; int k=list_pick(pg,"YOUR TRACKS",kmy_n,kmy_row,&sel,"A: PICK   B: BACK"); list_desc=0; if(k<0) return;
         int ri=kmy_idx[k]; krec_get(ri,&r); int here=krec_here(&r);
         static const char *const oh[4]={"RACE IT","TIME TRIAL","DELETE IT","BACK"}, *const ot[4]={"SAVE THE PLANET AS A FAVOURITE","DELETE IT","BACK",""};
         const char *const *op = here ? oh : ot; int on = here ? 4 : 3;

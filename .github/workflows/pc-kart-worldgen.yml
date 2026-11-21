@@ -9,6 +9,8 @@ on:
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
       - 'tests/quest_runtime_host.py'
+      - 'tests/list_picker_runtime_host.py'
+      - 'ui.inc'
       - 'planet.inc'
       - 'town.inc'
       - 'pc/pc_kartnat*.inc'
@@ -44,6 +46,8 @@ on:
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
       - 'tests/quest_runtime_host.py'
+      - 'tests/list_picker_runtime_host.py'
+      - 'ui.inc'
       - 'planet.inc'
       - 'town.inc'
       - 'pc/pc_kartnat*.inc'
@@ -80,6 +84,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install procedural asset generator requirements
         run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential
+      - name: Exercise 50-slot menu scrolling and selection with UndefinedBehaviorSanitizer
+        run: python3 tests/list_picker_runtime_host.py
       - name: Audit quest targets, world gates and guaranteed rewards
         run: python3 tests/quest_integrity_audit.py
       - name: Execute real quest pickup code with UndefinedBehaviorSanitizer
