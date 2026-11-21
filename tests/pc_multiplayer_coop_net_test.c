@@ -77,6 +77,9 @@ int main(void){
      * The host moves to line up with the flank drone; the guest fires
      * from its own independently reported position at the main raider.
      * The guest must receive the same final mission-clear phase. */
+    /* Pilot two independently lines up with the migrating raider;
+     * forcing an unchanged heading from the original spawn is a real miss. */
+    g.x=-150;
     for(unsigned t=420;t<800;t++){
         h.x=((t<462) || (t>=664 && t<715))?900:0;
         if(t==430||t==443||t==456||t==674||t==686||
