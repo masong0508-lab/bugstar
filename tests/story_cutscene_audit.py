@@ -246,9 +246,9 @@ require(ui, "t[n++]=story_boss_aftermath[zone];",
         "returning to a liberated world should acknowledge the defeated warden")
 require(space, "int first=!(cleared_mask&(1<<zone))",
         "boss supply recovery must be driven by legacy-compatible saved progression")
-for reward in ("case 0: food=100", "case 1: { int fm=fuel_max()",
+for reward in ("case 0: if(food<100) food=100", "case 1: { int fm=fuel_max()",
                "case 2: earn(150)", "case 3: if(hull<100)",
-               "case 4: scrap+=24", "case 5: hearts=maxh"):
+               "case 4: scrap+=24", "case 5: if(hearts<maxh) hearts=maxh"):
     require(space, reward, "boss first-clear reward is not wired to gameplay: " + reward)
 
 
