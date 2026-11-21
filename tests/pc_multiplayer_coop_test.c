@@ -57,6 +57,52 @@ int main(void){
     assert(lock && fire && fire>lock+5);
     assert(enemy.host_hp==100 && enemy.guest_hp==100);
     assert(enemy.phase==1 && enemy.wins==0 && enemy.losses==0);
-    puts("LAN co-op raider: real 3D aim, both players hit, victory, respawn and no saved campaign state PASS");
+    /* A complete three-stage contract: first one raider, then both raider
+     * and mobile flank drone, then a harder two-enemy final wave. The
+     * victory must be reached by actual 3D laser aiming at both enemies. */
+    pc_coop_reset(&enemy);
+    host.x=0;host.y=0;host.z=0;host.yaw=0;
+    guest.x=192;guest.y=0;guest.z=1720;guest.yaw=0;
+    unsigned tick=700;
+    pc_coop_step(&enemy,tick,&host,&guest);
+    for(unsigned i=0;i<5;i++){
+        tick+=8;pc_coop_step(&enemy,tick,&host,&guest);
+        assert(pc_coop_fire(&enemy,i%2,i%2?&guest:&host,tick));
+    }
+    assert(enemy.phase==2 && enemy.wave==0 && enemy.wins==1);
+    tick+=151;pc_coop_step(&enemy,tick,&host,&guest);
+    assert(enemy.phase==1 && enemy.wave==1 && enemy.wing_hp==60);
+    assert(enemy.wing_x!=enemy.x && enemy.wing_z!=enemy.z);
+    for(unsigned i=0;i<3;i++){
+        tick+=8;pc_coop_step(&enemy,tick,&host,&guest);
+        PcNetShip aim=host;aim.x=enemy.wing_x;aim.y=enemy.wing_y;
+        assert(pc_coop_fire(&enemy,i%2,&aim,tick));
+    }
+    assert(enemy.wing_hp==0 && enemy.hp==100 && enemy.phase==1);
+    for(unsigned i=0;i<5;i++){
+        tick+=8;pc_coop_step(&enemy,tick,&host,&guest);
+        assert(pc_coop_fire(&enemy,i%2,i%2?&guest:&host,tick));
+    }
+    assert(enemy.phase==2 && enemy.wave==1 && enemy.wins==2);
+    tick+=151;pc_coop_step(&enemy,tick,&host,&guest);
+    assert(enemy.phase==1 && enemy.wave==2 && enemy.wing_hp==80);
+    for(unsigned i=0;i<4;i++){
+        tick+=8;pc_coop_step(&enemy,tick,&host,&guest);
+        PcNetShip aim=host;aim.x=enemy.wing_x;aim.y=enemy.wing_y;
+        assert(pc_coop_fire(&enemy,i%2,&aim,tick));
+    }
+    assert(enemy.wing_hp==0 && enemy.hp==100);
+    for(unsigned i=0;i<5;i++){
+        tick+=8;pc_coop_step(&enemy,tick,&host,&guest);
+        assert(pc_coop_fire(&enemy,i%2,i%2?&guest:&host,tick));
+    }
+    assert(enemy.phase==4 && enemy.completed==1);
+    assert(enemy.wins==3 && enemy.wave==2 && enemy.hp==0);
+    pc_coop_step(&enemy,tick+250,&host,&guest);
+    assert(enemy.phase==4 && enemy.completed==1);
+    pc_coop_step(&enemy,tick+301,&host,&guest);
+    assert(enemy.phase==1 && enemy.wave==0 && enemy.hp==100);
+    assert(enemy.wing_hp==0 && enemy.completed==1);
+    puts("LAN co-op: 3 waves, two independently hittable enemies, mission completion and reset PASS");
     return 0;
 }
