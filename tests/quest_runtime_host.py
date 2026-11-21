@@ -41,6 +41,7 @@ prefix = r"""
 #include <string.h>
 #include <stdlib.h>
 typedef unsigned char u8;
+typedef int16_t s16;
 typedef struct { u8 it,sub,rar,pre,suf,lvl; } Gear;
 #define BAGMAX 120
 enum { IT_NONE, IT_BERRY, IT_SEED, IT_SHELL, IT_THORN, IT_CRUMB,
@@ -88,6 +89,11 @@ int main(void){
     forge_on=0; base_mode=1;
     CHECK(add_gear(relic)==1 && !q_done); // outpost not valid
     base_mode=0; CHECK(add_gear(relic)==1 && q_done); // correct floor/world
+    // Saves store q_world as a signed 16-bit field even when world_no grows.
+    reset(); world_no=40000; q_world=(s16)world_no; q_type=Q_FETCH;
+    q_floor=3; CHECK(quest_home());
+    CHECK(add_gear(relic)==1 && q_done);
+    world_no=40001; CHECK(!quest_home());
     reset(); q_type=Q_HUNT; CHECK(add_gear(relic)==1 && !q_done);
     CHECK(strstr(last_msg,"NOT YOUR QUEST TARGET")!=NULL);
     reset(); bag_n=BAGMAX; CHECK(add_gear(potion)==0 && bag_n==BAGMAX);
