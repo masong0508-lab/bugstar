@@ -449,18 +449,18 @@ void pcnet_close(PcNetSession *s){
 /* Singleton game adapter: submit only when space.inc actually draws a frame. */
 static PcNetSession g_peer;
 static PcNetShip g_local;
-static uint8_t g_active,g_submitted;
+static uint8_t g_active,g_submitted,g_clear_drawn;
 static uint32_t g_last_space_frame; /* recent real flight submission, not this single VBlank */
 int pc_mp_host(uint16_t port){
     if(g_active)return 0;
     g_active=(uint8_t)pcnet_host(&g_peer,port);
-    if(g_active)pcnet_set_ready(&g_peer,0); /* in-game lobby needs an explicit confirmation */
+    if(g_active){pcnet_set_ready(&g_peer,0);g_clear_drawn=0;} /* UI preflight */
     return g_active;
 }
 int pc_mp_join(const char *ip,uint16_t port){
     if(g_active)return 0;
     g_active=(uint8_t)pcnet_join(&g_peer,ip,port);
-    if(g_active)pcnet_set_ready(&g_peer,0);
+    if(g_active){pcnet_set_ready(&g_peer,0);g_clear_drawn=0;}
     return g_active;
 }
 void pc_mp_submit(const PcNetShip *local){
@@ -514,6 +514,8 @@ void pc_mp_frame(uint32_t frame){
                         (unsigned)g_peer.duel.guest_wins,(unsigned)frame);
         }
     }
+    if(!pcnet_match_ready(&g_peer) ||
+       !g_peer.coop || g_peer.coop_enemy.phase!=4)g_clear_drawn=0;
     g_submitted=0;
 }
 int pc_mp_remote(uint32_t frame,PcNetShip *out){
@@ -530,9 +532,19 @@ int pc_mp_peer_ready(void){return g_active && g_peer.peer_ready;}
 int pc_mp_match_ready(void){return g_active && pcnet_match_ready(&g_peer);}
 int pc_mp_reconnecting(void){return g_active && g_peer.reconnecting;}
 int pc_mp_coop_complete(void){
-    return g_active && pcnet_match_ready(&g_peer) && g_peer.coop &&
-           g_peer.coop_enemy.phase==4 && g_peer.coop_enemy.completed &&
+    return g_clear_drawn && g_active && pcnet_match_ready(&g_peer) &&
+           g_peer.coop && g_peer.coop_enemy.phase==4 &&
+           g_peer.coop_enemy.completed &&
            (g_peer.role==1 || g_peer.raider_seen);
+}
+void pc_mp_note_clear_draw(void){
+    if(!g_active || !pcnet_match_ready(&g_peer) || !g_peer.coop ||
+       g_peer.coop_enemy.phase!=4 || !g_peer.coop_enemy.completed)
+        return;
+    if(!g_clear_drawn && getenv("BUGSTAR_LAN_TRACE"))
+        fprintf(stderr,"lan: victory overlay rendered role %u frame %u\n",
+                (unsigned)g_peer.role,(unsigned)g_last_space_frame);
+    g_clear_drawn=1;
 }
 int pc_mp_coop_mode(void){return g_active && g_peer.coop;}
 int pc_mp_raider(uint32_t frame,PcCoop *out){
@@ -543,5 +555,5 @@ int pc_mp_duel(uint8_t *host_hp,uint8_t *guest_hp,uint8_t *host_wins,uint8_t *gu
 }
 void pc_mp_close(void){
     if(g_active)pcnet_close(&g_peer);
-    g_active=0;g_submitted=0;g_last_space_frame=0;
+    g_active=0;g_submitted=0;g_last_space_frame=0;g_clear_drawn=0;
 }
