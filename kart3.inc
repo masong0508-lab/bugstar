@@ -16,7 +16,34 @@ EW static KWSave kw;
 static int kw_quit=0, kw_tour=0, kw_endless_n=0;
 static void kw_defaults(int unlocked){ memset(&kw,0,sizeof kw); kw.magic=0x444C524Bu; kw.unlocked=(u8)unlocked; kw.cls=1; kw.riv=11; kw.items=1; kw.skill=1; kw.catchup=1; kw.seed=1000; kw.coins=500; kw.cls_open=2;
     kw.look.part[KP_SIZE]=1; kw.look.part[KP_EXH]=1; kw.look.number=1; kw.look.col[0]=C15(60,140,255); kw.look.col[1]=C15(250,250,250); kw.look.col[2]=C15(255,200,40); scpy(kw.look.name,"STARKART"); { static const u8 dc[8]={0,1,1,1,1,0,1,1}; for(int i=0;i<8;i++) kw.cam[i]=dc[i]; } }
-static void kw_load(void){ sram_read(KW_OFF,&kw,sizeof kw); if(kw.magic!=0x444C524Bu || kw.sum!=fnv(&kw,sizeof kw-4)) kw_defaults(0); }
+static void kw_load(void){
+    sram_read(KW_OFF,&kw,sizeof kw);
+    if(kw.magic!=0x444C524Bu || kw.sum!=fnv(&kw,sizeof kw-4)){ kw_defaults(0); return; }
+    // Even a checksum-valid older save can have out-of-range options. Never
+    // pass them to the driver, shape, kart-part or class lookup tables.
+    for(int p=0;p<NKPART;p++) if(kw.look.part[p]>=kpart_n[p])
+        kw.look.part[p]=(u8)(p==KP_SIZE ? 1 : 0);
+    kw.look.name[sizeof kw.look.name-1]=0;
+    kw.look.number%=100;
+    if(kw.driver>=NKWD) kw.driver=0;
+    if(kw.cls_open<1) kw.cls_open=1;
+    if(kw.cls_open>5) kw.cls_open=5;
+    if(kw.cls>=kw.cls_open) kw.cls=(u8)(kw.cls_open>1 ? 1 : 0);
+    if(kw.ftype>NPC) kw.ftype=0;
+    if(kw.fsize>6) kw.fsize=0;
+    if(kw.track>=KW_TRACKS) kw.track=0;
+    if(kw.laps>9) kw.laps=0;
+    if(kw.riv>=NRC) kw.riv=NRC-1;
+    if(kw.items>2) kw.items=1;
+    if(kw.skill>3) kw.skill=1;
+    if(kw.stunts>2) kw.stunts=0;
+    if(kw.hour>3) kw.hour=0;
+    if(kw.weather>5) kw.weather=0;
+    kw.catchup=(u8)!!kw.catchup; kw.mirror=(u8)!!kw.mirror;
+    kw.reverse=(u8)!!kw.reverse; kw.weird=(u8)!!kw.weird;
+    kw.cam[0]&=1; kw.cam[1]%=5; kw.cam[2]%=5;
+    kw.cam[3]&=3; kw.cam[4]&=3;
+}
 static void kw_store(void){ kw.sum=fnv(&kw,sizeof kw-4); sram_write(KW_OFF,&kw,sizeof kw); }
 static int kw_unlocked(void){ kw_load(); return kw.unlocked; }
 static void kw_unlock(void){ if(kw_mode) return; KWSave keep=kw; kw_load(); if(!kw.unlocked){ kw.unlocked=1; kw_store(); } kw=keep; }
@@ -277,7 +304,7 @@ static void kart_world(void){
         if(m==13){ kcam_menu(pg,0); kw_keep(); continue; }
         if(m==10){ kw_records(pg); continue; }
         if(m==8){ in_menu++; kgarage(pg); in_menu--; kw.look=kl; for(int p=0;p<NKPART;p++) kw.own[p]=kown[p]; kw.coins=(u32)gold; kw_store(); continue; }
-        if(m==9){ int s=kw.driver; list_desc=0; while(1){ int k=list_pick(pg,"WHO DRIVES?",NKWD>13?13:NKWD,kwd_row,&s,"A: PICK   B: BACK"); if(k<0) break; if(kw_trophies(0)<kwd_need[k]){ say("WIN MORE TROPHIES FOR THIS DRIVER"); continue; } kw.driver=(u8)k; kw_store(); sfx(6); break; } continue; }
+        if(m==9){ int s=kw.driver; list_desc=0; while(1){ int k=list_pick(pg,"WHO DRIVES?",NKWD,kwd_row,&s,"A: PICK   B: BACK"); if(k<0) break; if(kw_trophies(0)<kwd_need[k]){ say("WIN MORE TROPHIES FOR THIS DRIVER"); continue; } kw.driver=(u8)k; kw_store(); sfx(6); break; } continue; }
         if(m==0){ kwt_sel=0; list_desc=kwt_desc; int t=list_pick(pg,"GRAND TOUR: PICK A TOUR",NKWT,kwt_row,&kwt_sel,"A: PICK   B: BACK"); list_desc=0; if(t<0) continue;
             int c=kpick_class(pg); if(c<0) continue; k_cls=c; kw_tour=t; kw_tour_start(); kw_run(); continue; }
         if(m==1 || m==3 || m==4){ int mode = m==1?0 : m==3?1 : 2; if(!kw_options(pg,mode)) continue; k_cls = mode==1 ? 1 : kw.cls;

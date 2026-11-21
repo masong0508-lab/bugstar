@@ -7,9 +7,10 @@
 // (the painting calls below are the kart overlay's ARM copies, ship.inc / paint.inc: see ov_k in main.c)
 #define polyfill kpolyfill
 #define linep klinep
+static u32 krect_dma_word(int c){ return (u32)(u8)c * 0x01010101u; }  // repeat the 8-bit palette index safely; signed c<<24 is undefined above 127
 static void krect(volatile u16 *pg, int x, int y, int w, int h, int c){       // rect() for the HUD: the middle of every row is a DMA fill (a boxed minimap is 44 rows of 22 pixel pairs)
     if(w<16){ rect(pg,x,y,w,h,c); return; }
-    volatile u32 v=(u32)(c|(c<<8)|(c<<16)|(c<<24));
+    volatile u32 v=krect_dma_word(c);
     for(int j=0;j<h;j++){ int i=0; if(x&1){ pix(pg,x,y+j,c); i=1; }
         int pairs=(w-i)>>1; volatile u16 *p=pg+(((y+j)*240+x+i)>>1);
         *(volatile u32*)0x040000D4=(u32)&v; *(volatile u32*)0x040000D8=(u32)p; *(volatile u32*)0x040000DC=(u32)pairs|(2<<23)|(1u<<31);
