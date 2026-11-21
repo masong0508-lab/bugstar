@@ -1,7 +1,8 @@
 # PC pages for HOW BIG IS IT?
 
-The GBA game has 363 pages (37 of the game's own numbers, 325 in facts.py and facts_more.py, and the Bugstarillion; `NSOLD`, `NFACT` in assets.h). The PC build adds the pages in this folder (files `NN_name.py`, NN = 01..99), so the PC
-version has 363 + the pages here (1,609 in all on 8 Nov 2026; the checker counts 1,246 PC pages: earth, cosmos, maths, tech, people, game, life, bugs, PC addresses, x16 content, laws, meaning, creator, giant number, shipyard, missions, warships with threats, hellscape, the native views and the colony mine). `pc/build.sh` sets `BUGSTAR_PC=1` and `facts.py` loads every `pc/facts/[0-9]*.py`.
+The GBA game contains the original live game counts, the shared `facts.py` and `facts_more.py` pages, and the Bugstarillion. The PC build adds the pages in this folder (files `NN_name.py`, NN = 01..99). **Page totals change as the game evolves:** `NSOLD` and `NFACT` in generated `assets.h` are authoritative, and the `tests/facts_audit.py` output reports the current number. Do not copy old page-count totals into new UI text. `pc/build.sh` sets `BUGSTAR_PC=1` and `facts.py` loads every `pc/facts/[0-9]*.py`.
+
+The number viewer itself now caches page digit counts when sorting them, so opening its complete index no longer recalculates every giant integer. A small `EST.`/`EXACT` label distinguishes measured or rounded entries from exact combinatoric counts and defined constants. The original **GBA MAP:** counts and extended **PC:** content-library counts are explicitly separate mathematical spaces.
 
 ## A page
 `(value, title, line1, line2, about)`
@@ -22,3 +23,5 @@ version has 363 + the pages here (1,609 in all on 8 Nov 2026; the checker counts
 
 ## Check your file
 `python3 pc/facts/check.py pc/facts/05_yourfile.py`  (no argument = all files). It must say `0 problems`.
+
+For the complete shared-and-PC viewer, run `python3 tests/facts_audit.py` and `BUGSTAR_PC=1 python3 tests/facts_audit.py`. The audit rejects duplicated page names, unsupported GBA-font characters, overlong labels, inconsistent population-derived statistics, and the incorrect 256-bit scaling of the PC universe-law count. GBA and Android CI run this audit before building.
