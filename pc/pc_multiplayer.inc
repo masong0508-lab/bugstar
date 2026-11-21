@@ -1,7 +1,7 @@
 /* Opt-in PC/Android LAN prototype: a second independently flown ship.
  * The remote ship is a camera-correct world-space wireframe, not a HUD dot.
- * It is presence only: shots, rewards, docking and saves remain solo until
- * host-authoritative multiplayer events are added and verified.
+ * Sparring and the opt-in shared-raider co-op encounter are session-only;
+ * campaign rewards, docking, missions and saves remain solo.
  */
 #include "pc_net.h"
 /* The LAN guest enters near, but not inside, the host's spawn. This offset
@@ -101,10 +101,9 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
             if(!hh || !gh)text(pg,65,102,hh?"P1 WINS":"P2 WINS",54,1);
         }else have_hp=0;
     }
-    }
     if(hit_flash)hit_flash--;
     /* The same 3D projection and camera plane as stations, fighters and rocks:
-     * five transformed vertices, eight edges, no heap allocations.
+     * eight transformed vertices, fourteen edges, no heap allocations.
      */
     s32 v[8*3];
     s32 sy=sinx(other.yaw>>2), cy=cosx(other.yaw>>2);
