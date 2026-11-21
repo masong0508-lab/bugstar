@@ -119,7 +119,21 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
         }
         pc_par_chunk(y1-y0,8,sn_rows,&k); pc_sg_space_planet(buf,W,hn,sx,sy,c,i); }
     memset(pc_sn.ok,0,256); static const unsigned char okv[]={0,3,4,5,40,41,42,43,44,45,46,47,48,49,50}; for(unsigned i=0;i<sizeof okv;i++) pc_sn.ok[okv[i]]=1;
-    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames(); pc_vrec(2,pc_now_ms()-sn_t0,pc_cpu_ms()-sn_c0);
+    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames();
+    double render_ms=pc_now_ms()-sn_t0, render_cpu_ms=pc_cpu_ms()-sn_c0;
+    pc_vrec(2,render_ms,render_cpu_ms);
+    // Optional native-space benchmark records time spent building actual
+    // space frames, not merely the final GPU/bitmap compositor pass.
+    static int bench_on=-1; static double bench_wall, bench_cpu; static int bench_frames;
+    if(bench_on<0) bench_on=getenv("PC_SN_BENCH")!=NULL;
+    if(bench_on){
+        bench_wall+=render_ms; bench_cpu+=render_cpu_ms;
+        if(++bench_frames==120){
+            fprintf(stderr,"space-native bench %dx%d: avg wall %.3f ms cpu %.3f ms over %d frames\\n",
+                W,H,bench_wall/bench_frames,bench_cpu/bench_frames,bench_frames);
+            bench_wall=bench_cpu=0; bench_frames=0;
+        }
+    }
 }
 
 // the rest of the space view's wireframes (dust, station, rocks) at window resolution: drawn onto the same picture as the background (anti-aliased), and a mask
