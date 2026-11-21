@@ -171,6 +171,11 @@ H() { python3 ../sim/hook.py "$@"; }
 # normal world setup, without consuming minutes on the opening Bolt story.
 # Without this opt-in environment flag, every intro frame is unchanged.
 H main.c 'if(!cont && !dbg.go){ static const char *const t[6]' 'if(!cont && !dbg.go && !getenv("BUGSTAR_LAN_BOOT")){ static const char *const t[6]'
+# The live two-process LAN regression must reach real gameplay; synthetic A
+# presses got trapped by character/ship creation. Skip ONLY interactive
+# boot menus with BUGSTAR_LAN_BOOT, then run the unmodified real space loop.
+H main.c '        int cont=title_screen();' '        int cont=getenv("BUGSTAR_LAN_BOOT") ? 0 : title_screen();'
+H main.c '        in_game=1;' '        in_game=1; if(getenv("BUGSTAR_LAN_BOOT")){ scene=2; page_back=1; space_enter(1); music(3); }'
 H main.c 'typedef long long s64;' $'\n#include "sim/sim_proto.h"' after
 H main.c 'XO_PVIS, NXOPT };' 'XO_PVIS, XO_SIDE, NXOPT };'
 H main.c '  [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),' $'\n  [XO_SIDE]   =XR("SIDE GAME","PC ONLY: NAMED TOWNSFOLK, A JOURNAL AND GOD POWERS. OFF GIVES THE PLAIN GAME",xl_yn,1,XG_LIFE),' after
