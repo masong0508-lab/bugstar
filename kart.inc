@@ -21,6 +21,7 @@ static int krect_clip(int *x, int *y, int *w, int *h){
 }
 static void krect(volatile u16 *pg, int x, int y, int w, int h, int c){       // rect() for the HUD: the middle of every row is a DMA fill (a boxed minimap is 44 rows of 22 pixel pairs)
     if(!krect_clip(&x,&y,&w,&h)) return;
+    c=(u8)c;  // border pixels use pix(): keep its signed shift in 0..255
     if(w<16){ rect(pg,x,y,w,h,c); return; }
     volatile u32 v=krect_dma_word(c);
     for(int j=0;j<h;j++){ int i=0; if(x&1){ pix(pg,x,y+j,c); i=1; }
