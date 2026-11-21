@@ -95,17 +95,26 @@ a stretch target, not a first release requirement.
 
 ### M1 — PC ↔ Android, LAN, *two real ships*
 
-**Prototype implemented (not yet validated on two full running games):** `pc/platform/pc_net.c` has
-nonblocking IPv4 UDP host/join (one peer), HELLO/READY, world-ID gate,
-quantized 3D state, timeout and BYE. `pc/pc_multiplayer.inc` draws a
-perspective-correct P2 ship from received snapshots, including render-only
-interpolation and native-resolution wireframe edges. `pc/build.sh` attaches
-these only to desktop/Android native builds, not GBA. On desktop opt in
-using `--lan-host` / `--lan-join IPv4` and optional `--lan-port N`.
-`tests/pc_multiplayer_net_test.c` exercises real loopback UDP and both
-directions; the CI check must pass. Android's equivalent host/join UI
-has **not** been built. **No synced damage, missions, landing, collision,
-save or persistent rewards yet**; do not call this cooperative gameplay.
+**Experimental LAN sparring prototype (not yet verified on two full running game instances):**
+`pc/platform/pc_net.c` exchanges real UDP HELLO/READY, positions,
+cumulative laser-input counters and host-written duel HP/wins; its
+`pc/platform/pc_duel.c` validates the 3D firing direction and range.
+The two players can independently move and fire A-lasers that cause
+20 **sparring-only** damage; a five-hit knockout awards a round and
+respawns duel HP after 120 game ticks. `pc/pc_multiplayer.inc` draws
+the remote ship with camera-correct native-resolution wireframes,
+movement smoothing, a short hit flash, score and correct P1/P2 labels.
+The game uses its ordinary firing cooldown, but no shared real hull,
+enemies or loot. The host approves all sparring hits (no client-provided
+damage values). Match scores and HP are never written to single-player
+saves. `pc/build.sh` includes this only for PC/Android builds, **not**
+GBA; desktop opt in via `--lan-host` or `--lan-join IPv4`.
+`tests/pc_multiplayer_net_test.c` tests localhost host/guest shots,
+both victories, world checks and reconnect. The unit test covers misses
+and respawn. Android's host/join UI is **not** built, and LAN has no
+Internet-facing authentication. Campaign co-op, enemy synchronization,
+docking, progression, and cross-port cable support are **not implemented**.
+All current code still awaits full game build/runtime verification.
 [Developer instructions](pc/LAN_SPACE_TEST.md).
 - First vertical slice: connect, leave, move in independent 3D space,
   see the other ship, shoot a moving target, damage, death, respawn,
