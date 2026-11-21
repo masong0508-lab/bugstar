@@ -1,9 +1,9 @@
 # BUGSTAR multiplayer: cross-port implementation plan
-_Status: DESIGN / ENGINE PREP, NOT YET PLAYABLE. Updated 20 November 2026._
+_Status: EXPERIMENTAL LAN SPARRING + SINGLE SHARED-RAIDER ENCOUNTER, two-game verification pending. Updated 20 November 2026._
 
 This is the actionable multiplayer milestone plan for `masong0508-lab/bugstar`
 (GBA core, Windows/Linux PC, Android) and `masong0508-lab/bugstar-gbc`
-(Game Boy Color). It does **not** imply that networking has been implemented.
+(Game Boy Color). The first LAN networking pieces now exist, but this is not complete multiplayer on every port.
 The intent is for each supported port to have *real, usable multiplayer*,
 rather than a menu entry that cannot connect.
 
@@ -78,9 +78,9 @@ a stretch target, not a first release requirement.
 ### M0 — contract, budgets, instrumentation (NOW; not multiplayer yet)
 - Land this document and the GBC companion `MULTIPLAYER_PLAN.md`.
 - **Started (codec, not transport):** `net/session.h` and `net/session.c`
-  implement the allocation-free v1 packet layout with eight message types,
+  implement the allocation-free v1 packet layout with nine message types, including RAIDER, 
   explicit lengths, a CRC8 and version checks. `tests/multiplayer_protocol_test.c`
-  exercises 80,000 round trips and malformed data (PC/Android CI).
+  exercises 90,000 round trips and malformed data (PC/Android CI).
   This does not connect players or make a multiplayer mode playable.
 - **Still to do:** add a deterministic replay fixture, bounded ACK/retransmit
   session state and per-platform transport adapters before connecting game AI.
@@ -95,7 +95,7 @@ a stretch target, not a first release requirement.
 
 ### M1 — PC ↔ Android, LAN, *two real ships*
 
-**Experimental LAN sparring prototype (not yet verified on two full running game instances):**
+**Experimental LAN sparring and shared-raider co-op (full two-game smoke verification pending):**
 `pc/platform/pc_net.c` exchanges real UDP HELLO/READY, positions,
 cumulative laser-input counters and host-written duel HP/wins; its
 `pc/platform/pc_duel.c` validates the 3D firing direction and range.
@@ -111,9 +111,7 @@ saves. `pc/build.sh` includes this only for PC/Android builds, **not**
 GBA; desktop opt in via `--lan-host` or `--lan-join IPv4`.
 `tests/pc_multiplayer_net_test.c` tests localhost host/guest shots,
 both victories, world checks and reconnect. The unit test covers misses
-and respawn. Android's host/join UI is **not** built, and LAN has no
-Internet-facing authentication. Campaign co-op, enemy synchronization,
-docking, progression, and cross-port cable support are **not implemented**.
+and respawn. The new `--lan-coop` flag on **both** PC peers enables one shared moving 3D raider, separate from sparring: `pc/platform/pc_coop.c` owns its short-range 3D patrol and HP, the host validates both ships' A-laser shots, then broadcasts a `RAIDER` packet with target coordinates, health, hit counts and shared victories. `pc/pc_multiplayer.inc` draws the raider in its 3D world and displays a joint HP/win HUD. After five combined hits, it is defeated and respawns after 150 ticks. It does not attack yet and does not alter campaign hull, loot or saves. The dedicated unit and UDP tests cover both pilots hitting, mode mismatches and a shared round result. Android's host/join UI is **not** built, and LAN has no Internet-facing authentication. Campaign enemy AI, cooperative mission scripting, docking, progression and cross-port cable support remain **unimplemented**.
 All current code still awaits full game build/runtime verification.
 [Developer instructions](pc/LAN_SPACE_TEST.md).
 - First vertical slice: connect, leave, move in independent 3D space,
