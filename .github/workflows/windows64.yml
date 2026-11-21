@@ -27,6 +27,11 @@ jobs:
         run: |
           export PC_WIN=/mingw64 PC_WIN64=1 PC_OUT=BUGSTAR.exe PC_OBJ=64
           bash pc/build.sh
+      - name: Confirm PC number pages are embedded in the Windows release
+        run: |
+          for title in 'EVERY 60 GBA SCREEN FRAMES' 'PC: LAW SETS X UNIVERSES'; do
+            grep -aq "$title" pc/BUGSTAR.exe || { echo "Windows executable missing current HOW BIG IS IT page: $title"; exit 1; }
+          done
       - name: Check the exe header (64-bit, not large-address-aware, low base)
         run: |
           python3 - <<'PY'
