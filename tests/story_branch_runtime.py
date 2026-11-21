@@ -27,6 +27,12 @@ for i in range(begin, len(ui)):
             break
 assert end is not None, "unbalanced bolt_story C handler"
 scene = ui[start:end]
+# The scene now correctly references the boss reward ROM table. Include that
+# real source table in this standalone C harness instead of using a mock.
+reward_start = ui.index("static const char *const story_boss_reward[6]={")
+reward_end = ui.index("static const char *const bolt_zone[6][2]", reward_start)
+rewards = ui[reward_start:reward_end]
+assert "PRISON INFIRMARY: HEALTH RESTORED." in rewards
 
 prelude = r"""
 #include <stdint.h>
@@ -146,7 +152,7 @@ int main(void){
 with tempfile.TemporaryDirectory(prefix="bugstar-branch-runtime-") as tmp:
     source = Path(tmp) / "story_branch_runtime.c"
     executable = Path(tmp) / "story_branch_runtime"
-    source.write_text(prelude + "\n" + scene + "\n" + checks)
+    source.write_text(prelude + "\n" + rewards + "\n" + scene + "\n" + checks)
     subprocess.run(["cc", "-std=c11", "-O1", "-Wall", "-Wextra", "-Werror",
                     "-fsanitize=undefined", "-fno-sanitize-recover=all",
                     str(source), "-o", str(executable)], check=True)
