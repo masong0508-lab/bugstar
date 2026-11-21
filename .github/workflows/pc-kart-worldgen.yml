@@ -11,6 +11,7 @@ on:
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
       - 'tests/kart_steering_runtime.py'
+      - 'tests/kart_turn_cue_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
@@ -50,6 +51,7 @@ on:
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
       - 'tests/kart_steering_runtime.py'
+      - 'tests/kart_turn_cue_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
@@ -92,6 +94,8 @@ jobs:
         run: python3 tests/list_picker_runtime_host.py
       - name: Verify real kart steering, reverse handling and stuck recovery under UBSan
         run: python3 tests/kart_steering_runtime.py
+      - name: Verify steady predictive kart bend cues and safe speed thresholds
+        run: python3 tests/kart_turn_cue_runtime.py
       - name: Guard shared signed division against overflow and zero denominators
         run: python3 tests/shared_math_runtime_host.py
       - name: Audit quest targets, world gates and guaranteed rewards
