@@ -58,7 +58,7 @@ static void quest_take(void){ if(q_type==Q_BRING){ int left=q_need; for(int k=ba
 // ---------------------------------------------------------------- the story, told by Bolt
 // Bolt is the tin droid that rolls after you. He does not know what he is. The data cores in the drone outposts are his memory.
 static const char *const bolt_mem[8][4]={
-    {"I WAS A SHIP.","I WAS CALLED THE DAWN.","I REMEMBER THE DARK, AND THE STARS,","AND SOMEONE SMALL WHO SANG."},
+    {"I WAS A SHIP.","A NAME WAS PAINTED ON MY HULL.","I REMEMBER THE DARK, AND THE STARS,","AND SOMEONE SMALL WHO SANG."},
     {"I CARRIED SEEDS.","A GARDEN. A POND. A LAWN AT NIGHT.","I PLANTED THEM ONE BY ONE.","YOUR WORLDS. I MADE THEM."},
     {"MY CREW WERE BUGS.","SMALL. STUBBORN. BRAVE.","THEY SLEPT IN MY HEART ON THE LONG WAY.","ONE OF THEM LOOKED LIKE YOU."},
     {"WE FELL.","THE ANTHILL CAUGHT US.","THE ANTS WERE KIND AT FIRST.","THEN THEY WERE HUNGRY."},
@@ -169,8 +169,12 @@ static void bolt_talk(volatile u16 *pg){
     if(q_type>0 && n<8){
         qhint[0]=0;
         if(q_done) scpy(qhint,"\"QUEST DONE. CLAIM YOUR REWARD AT THE SHIP.\"");
-        else if(q_type!=Q_BRING && q_type!=Q_GOODS && !quest_home())
-            scpy(qhint,"\"YOUR QUEST IS ON THE WORLD WE LEFT.\"");
+        else if(q_type!=Q_BRING && q_type!=Q_GOODS && !quest_home()){
+            scpy(qhint,"\"QUEST: RETURN TO ");
+            if(q_world==0 && q_zone>=0 && q_zone<6) scat(qhint,tint_name[q_zone]);
+            else { scat(qhint,"WORLD "); ncat(qhint,(u16)q_world); }
+            scat(qhint,".\"");
+        }
         else if(q_type==Q_SHARDS){ scpy(qhint,"\"NEXT SHARD: DUNGEON FLOOR B"); ncat(qhint,q_floor-q_need+q_have+1); scat(qhint,".\""); }
         else if(q_type==Q_RESCUE){ scpy(qhint,"\"EXTRA CAGES WAIT ON FLOOR B"); ncat(qhint,q_floor); scat(qhint,".\""); }
         else if(q_type==Q_CHAMP){ scpy(qhint,"\"THE NAMED FOE WAITS ON FLOOR B"); ncat(qhint,q_floor); scat(qhint,".\""); }
@@ -798,7 +802,11 @@ static void char_screen_(volatile u16 *pg){
                 else { text(pg,12,51,q_name,C_WHITE,1); scpy(b, q_done ? "DONE! GO BACK TO YOUR SHIP" : "IN PROGRESS"); text(pg,12,59,b,q_done?C_GREEN:U_SOFT,1);
                     if(!q_done && q_counted(q_type)){ ui_bar(pg,130,59,70,5,q_have,q_need,C_GOLD); scpy(b,""); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); text(pg,204,59,b,C_WHITE,1); }
                     if(!q_done && q_type>0 && q_type!=Q_BRING && q_type!=Q_GOODS){
-                        if(!quest_home()) scpy(b,"RETURN TO THE WORLD THAT POSTED THE QUEST");
+                        if(!quest_home()){
+                            scpy(b,"RETURN TO ");
+                            if(q_world==0 && q_zone>=0 && q_zone<6) scat(b,tint_name[q_zone]);
+                            else { scat(b,"WORLD "); ncat(b,(u16)q_world); }
+                        }
                         else if(q_type==Q_RESCUE){ scpy(b,"EXTRA CAGES ON FLOOR B"); ncat(b,q_floor); }
                         else if(q_type==Q_SHARDS){ scpy(b,"NEXT SHARD ON FLOOR B"); ncat(b,q_floor-q_need+q_have+1); }
                         else b[0]=0;
@@ -1350,7 +1358,12 @@ static int shop_menu_(void){   // returns 1 to fly on, 2 for autopilot
                     else { scpy(b,"IN PROGRESS"); if(q_counted(t)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,20,70,b,C_WHITE,1); ui_lhint(pg,20,80,"A: GIVE UP   B: BACK",C_CYAN); }
                     if(t==Q_RESCUE){ scpy(b,"EXTRA CAGES ON B"); ncat(b,q_floor); text(pg,20,99,b,C_CYAN,1); }
                     else if(t==Q_SHARDS && !q_done){ scpy(b,"NEXT SHARD: B"); ncat(b,q_floor-q_need+q_have+1); text(pg,20,99,b,C_CYAN,1); }
-                    if(q_type>0 && t!=Q_BRING && t!=Q_GOODS && !quest_home()) text(pg,20,110,"RETURN TO THE QUEST WORLD",C_GOLD,1);
+                    if(q_type>0 && t!=Q_BRING && t!=Q_GOODS && !quest_home()){
+                        scpy(b,"RETURN TO ");
+                        if(q_world==0 && q_zone>=0 && q_zone<6) scat(b,tint_name[q_zone]);
+                        else { scat(b,"WORLD "); ncat(b,(u16)q_world); }
+                        text(pg,20,110,b,C_GOLD,1);
+                    }
                     scpy(b,"YOUR FAME: "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); text(pg,20,140,b,C_GOLD,1); }
                 vsync(); read_keys(); if(keys!=keys_old) dirty2=1;
                 if(HIT(K_B)){ if(q_type<0) q_type=Q_NONE; break; }
