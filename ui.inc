@@ -169,12 +169,13 @@ static void bolt_memory_reaction(volatile u16 *pg, int cores){
         "\"THE KING LOCKED US IN OUR OWN SHIP.\"",
         "\"I DON'T WANT TO FORGET THEM AGAIN.\""};
         bolt_card(pg,t,4); }
-    else if(cores>=8){ static const char *const t[4]={
+    else if(cores>=8){ static const char *const t[5]={
         "\"THE LAST PIECE HAS COME HOME.\"",
         "\"I AM THE DAWN. THAT WAS MY NAME.\"",
         "\"THE KING LOCKED MY HEART IN THE BEAST.\"",
-        "\"TAKE ME THERE. WE CAN OPEN IT TOGETHER.\""};
-        bolt_card(pg,t,4); }
+        "\"TAKE ME THERE. WE CAN OPEN IT TOGETHER.\"",
+        "GALAXY MAP: PRESS L TO FIND THE BEAST."};
+        bolt_card(pg,t,5); }
 }
 // what Bolt says when you talk to him at the ship: what worries him, the next thing to do, what he remembers, and a remark
 static int fuel_max(void);
