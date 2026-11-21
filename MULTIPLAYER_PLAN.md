@@ -39,7 +39,7 @@ a stretch target, not a first release requirement.
 
 ## Shared session rules (engine independent of transport)
 
-- **Shared semantic protocol, version 1.** `HELLO` (protocol/build/content
+- **Shared semantic protocol, version 2.** `HELLO` (protocol/build/content
   hash, port capability mask, world seed), `READY`, `INPUT` (tick/sequence/
   held keys), `STATE` (tick/positions/orientation/hull/shield/HP), `EVENT`
   (hit/kill/pickup/dock/result), `ACK`, `PING`, `BYE`. Avoid sending
@@ -78,7 +78,7 @@ a stretch target, not a first release requirement.
 ### M0 — contract, budgets, instrumentation (NOW; not multiplayer yet)
 - Land this document and the GBC companion `MULTIPLAYER_PLAN.md`.
 - **Started (codec, not transport):** `net/session.h` and `net/session.c`
-  implement the allocation-free v1 packet layout with nine message types, including RAIDER, 
+  implement the allocation-free v2 packet layout with nine message types, including RAIDER, 
   explicit lengths, a CRC8 and version checks. `tests/multiplayer_protocol_test.c`
   exercises 90,000 round trips and malformed data (PC/Android CI).
   This does not connect players or make a multiplayer mode playable.
