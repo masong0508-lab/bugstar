@@ -41,3 +41,33 @@ jobs:
           name: pc-kart-regression-logs
           path: pc/out/kz.log
           if-no-files-found: ignore
+
+  pc-native-kart-window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build requirements and SDL2
+        run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential libsdl2-2.0-0
+      - name: Build PC window with scripted kart fuzz
+        run: cd pc && PC_CFLAGS="-DTEST_KFUZZ=600" ./build.sh
+      - name: Render real native kart frames in SDL dummy window
+        run: |
+          cd pc
+          mkdir -p out
+          : > out/empty.keys
+          SDL_AUDIODRIVER=dummy PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
+            ./bugstar_pc --window --video-driver dummy --no-audio --fast \
+            --size 960 640 --script out/empty.keys --sav out/kart-native-smoke.sav \
+            --auto-shot 128 out/kart-native-smoke.png --stop-after 132 \
+            > out/kart-native-smoke.log 2>&1
+          test -s out/kart-native-smoke.png
+      - name: Upload native window screenshot and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pc-native-kart-window
+          path: |
+            pc/out/kart-native-smoke.png
+            pc/out/kart-native-smoke.log
+          if-no-files-found: ignore
