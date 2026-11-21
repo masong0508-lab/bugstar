@@ -27,6 +27,8 @@ jobs:
         run: bash pc/build.sh
       - name: Real SDL Host/Join/Ready/Leave menu
         run: bash pc/tests/lan_menu.sh ./bugstar_pc
+      - name: Two live SDL instances exchange Ready in paused lobby and resume
+        run: bash pc/tests/lan_lobby_live.sh ./bugstar_pc
       - name: Full three-wave live graphical UDP mission
         run: bash pc/tests/lan_live.sh ./bugstar_pc coop
       - name: Sparring mode regression
@@ -43,4 +45,7 @@ jobs:
             pc/out/lan_live/*.log
             pc/out/lan_menu/*.png
             pc/out/lan_menu/*.log
+            pc/out/lan_lobby/*.png
+            pc/out/lan_lobby/*.log
+            pc/out/lan_lobby/*events.txt
           if-no-files-found: ignore
