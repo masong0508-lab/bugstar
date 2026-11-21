@@ -215,9 +215,15 @@ static int tex_ensure(int w, int h, int linear){
     tex=next; tex_w=w; tex_h=h; tex_linear=linear; return 1;
 }
 #ifdef PC_ANDROID
-static int cap_pixels(void){ return C.max_mp ? C.max_mp*1000000 : 450000; }      // patch 37: phone CPUs cannot do the native 3D at 2.4 MP
+static int cap_pixels(void){ // bound temporary renderer RAM even if old settings requested 40 megapixels
+    int want=C.max_mp ? C.max_mp*1000000 : 450000;
+    return want>650000 ? 650000 : want;
+}
 #else
-static int cap_pixels(void){ return C.max_mp ? C.max_mp*1000000 : 2400000; }
+static int cap_pixels(void){
+    int want=C.max_mp ? C.max_mp*1000000 : 2400000;
+    return want>8300000 ? 8300000 : want; // permits near-4K on PC without 40MP out-of-memory crashes
+}
 #endif
 static void present_game(int with_overlay);
 static void touch_draw(void);          // patch 30.1: defined further down (clang refuses an implicit declaration)
@@ -379,11 +385,21 @@ static void sim_vsync(void);          // test hook, defined with the pacing belo
 static void present_game(int with_overlay){
     SDL_GetRendererOutputSize(ren,&dw_,&dh_);
     int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth);
-    if(!tex_ensure(W,H,linear)) return;  // keep the previous good texture when a resize fails
+    if(!tex_ensure(W,H,linear)){
+        // Keep the game playable at the original GBA resolution if a large
+        // texture cannot be created (Android app resumes / GPU memory pressure).
+        W=240; H=160; linear=1; smooth=1;
+        if(!tex_ensure(W,H,linear)) return;
+    }
     pc_vid3d=C.video3d; pc_quality=C.quality; pc_compose_native(pix,W,H,smooth);
     if(C.contrast){ for(size_t i=0,n=(size_t)W*H;i<n;i++){ uint32_t c=pix[i]; int r=c>>16&255,g=c>>8&255,b=c&255; int m=(r+g+b)/3; r=m+(r-m)*3/2; g=m+(g-m)*3/2; b=m+(b-m)*3/2;
             r=(r-128)*3/2+128; g=(g-128)*3/2+128; b=(b-128)*3/2+128; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; b=b<0?0:b>255?255:b; pix[i]=(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; } }
-    SDL_UpdateTexture(tex,NULL,pix,W*4);
+    if(SDL_UpdateTexture(tex,NULL,pix,W*4)!=0){
+        // A lost Android EGL context may invalidate this texture despite the
+        // renderer still existing. Recreate it cleanly on the next frame.
+        fprintf(stderr,"video: texture upload failed: %s\n",SDL_GetError());
+        SDL_DestroyTexture(tex); tex=0; tex_w=tex_h=0; return;
+    }
     SDL_SetRenderDrawColor(ren,0,0,0,255); SDL_RenderClear(ren);
     SDL_RenderCopy(ren,tex,NULL,&dst);
     gs_=dh_/180; if(gs_<2) gs_=2; if(gs_>10) gs_=10;
