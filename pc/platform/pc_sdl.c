@@ -984,7 +984,14 @@ void plat_frame(void){
     }
     if(was_paused || g_pace_reset || g_app_resume){ g_pace_reset=0; g_app_resume=0; g_due=now_ticks(); }      // a pause, a window move/resize/minimise, a monitor change: a fresh clock, no catch-up burst
     if(getenv("BUGSTAR_TOUCHEDIT") && fr==30 && g_touch && !ted_on){ open_menu(); ted_open(); }      // test hook: open the touch pad layout editor
-    { const char *mp=getenv("BUGSTAR_MENU"); if(mp && fr==30 && !menu_open){ open_menu(); menu_page=atoi(mp); if(getenv("BUGSTAR_MENUSEL")) menu_sel=atoi(getenv("BUGSTAR_MENUSEL")); } }   // (test hook: open the options screen on a page)
+    { const char *mp=getenv("BUGSTAR_MENU");
+      if(mp && !menu_open){
+          const char *when=getenv("BUGSTAR_MENU_FRAME");
+          long at=when?atol(when):30;
+          if(fr==at){ open_menu(); menu_page=atoi(mp);
+              if(getenv("BUGSTAR_MENUSEL")) menu_sel=atoi(getenv("BUGSTAR_MENUSEL")); }
+      }
+    }   // (test hook: configurable frame so live flight can initialize before pausing)
     if(g_first_run && fr==45){ g_first_run=0;
         if(g_quiet) say_toast_ms("ARROWS/WASD MOVE  X/SPACE=A  Z/K=B  ENTER=START  ESC=OPTIONS",9000);
         else { open_menu(); menu_page=P_HELP; menu_sel=0; g_help_first=1; } }
