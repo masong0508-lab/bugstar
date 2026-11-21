@@ -127,6 +127,18 @@ The actual two-PC-game test passed in sparring **and** co-op mode: both machines
 - Phase 2: direct-Internet/relay and input validation hardening.
 
 ### M2 — GBA link cable, two-player space combat
+
+**Implementation foundation (separate draft PR):** `link/gba_link.h/.c`
+provides the GBA-only 16-bit SIO packet/Ready semantics (six 16-bit
+words, seed/tick/seq, CRC16, separate Ready/Active, timeout and recovery);
+`link/gba_sio.h/.c` implements optional register-mode 16-bit MULTIPLAYER
+transport with a minimal IRQ handoff. `tests/gba_link_test.c` and the
+`GBA SIO link foundations` workflow check host protocol logic and ARM
+compilation. These are **not yet linked into the normal GBA ROM**. The
+existing IRQ handler must be extended safely, and two real linked
+emulator instances must exchange packets, movement and mission hits.
+No multiplayer menu is exposed and no live 3-wave GBA victory is claimed.
+
 - Add an isolated SIO transport with VBlank-safe bounded exchange,
   connect/ready UI, timeout, clear disconnect and no save writes during
   battle. Use memory already budgeted by the single-player renderer.
