@@ -18,6 +18,8 @@ on:
       - 'town.inc'
       - 'pc/pc_kartnat*.inc'
       - 'pc/pc_hw.c'
+      - 'pc/platform/pc_sdl.c'
+      - 'pc/tests/speed_guard.sh'
       - 'pc/tests/kart.sh'
       - '.github/workflows/pc-kart-worldgen.yml'
   workflow_dispatch:
@@ -61,10 +63,17 @@ jobs:
           SDL_AUDIODRIVER=dummy PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
             ./bugstar_pc --window --video-driver dummy --no-audio --fast \
             --size 960 640 --script out/empty.keys --sav out/kart-native-smoke.sav \
-            --auto-shot 128 out/kart-native-smoke.png --stop-after 132 \
+            --auto-shot 320 out/kart-native-smoke.png --stop-after 324 \
             > out/kart-native-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-native-smoke.log
           test -s out/kart-native-smoke.png
+          SDL_AUDIODRIVER=dummy PC_V3D=2 KFUZZ_RACES=1 timeout 120 \
+            ./bugstar_pc --window --video-driver dummy --no-audio --fast \
+            --size 960 640 --script out/empty.keys --sav out/kart-classic-smoke.sav \
+            --auto-shot 320 out/kart-classic-smoke.png --stop-after 324 \
+            > out/kart-classic-smoke.log 2>&1
+          grep -q 'KFUZZ RENDER ENTRY' out/kart-classic-smoke.log
+          test -s out/kart-classic-smoke.png
       - name: Upload native window screenshot and logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -73,6 +82,8 @@ jobs:
           path: |
             pc/out/kart-native-smoke.png
             pc/out/kart-native-smoke.log
+            pc/out/kart-classic-smoke.png
+            pc/out/kart-classic-smoke.log
           if-no-files-found: ignore
 
   pc-speed-parity:
