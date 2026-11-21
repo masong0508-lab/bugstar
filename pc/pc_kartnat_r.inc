@@ -19,7 +19,7 @@ void pc_kn_frame(const short *rowz, int active, int pi256, int heading, int curv
     memcpy(KN.rowz,rowz,sizeof KN.rowz); KN.s0=pi256/256.0; KN.elev=elev; KN.seed=seed; KN.knp=knp; KN.curv=curvahead;
     int dh=0; if(KN.hinit){ dh=((heading-(int)KN.prevh+512)&1023)-512; } KN.prevh=heading; KN.hinit=1;
     double tgt=(-dh*0.010 - curvahead*0.0007); if(tgt>0.13) tgt=0.13; if(tgt<-0.13) tgt=-0.13; KN.roll+=(tgt-KN.roll)*0.12; if(getenv("PC_KNLOG")) fprintf(stderr,"KNLOG heading %d dh %d curv %d roll %.3f\n",heading,dh,curvahead,KN.roll);
-    int n=0; if(pcw>0){ KN.shx[n]=pcx; KN.shy[n]=pcy; KN.shw[n]=pcw; n++; } for(int i=0;i<nsh && n<72;i++){ KN.shx[n]=shx[i]; KN.shy[n]=shy[i]; KN.shw[n]=shw[i]; n++; } KN.nsh=n;
+    int n=0; if(pcw>0){ KN.shx[n]=pcx; KN.shy[n]=pcy; KN.shw[n]=pcw; n++; } for(int i=0;i<nsh && n<32;i++){ if(shw[i]<2) continue; KN.shx[n]=shx[i]; KN.shy[n]=shy[i]; KN.shw[n]=shw[i]; n++; } KN.nsh=n; // cap soft-shadow work without hiding any gameplay sprites
 }
 static double kn_shi(double L){ if(L<=0) return KN.sh[0]; if(L>=159) return KN.sh[159]; int l=(int)L; double f=L-l; return KN.sh[l]*(1-f)+KN.sh[l+1]*f; }
 static void kn_fwd(double x, double y, double *ox, double *oy){ double yh=y+kn_shi(y-0.5), dx=x-120, dy=yh-KN.piv; *ox=120+dx*KN.cs-dy*KN.sn; *oy=KN.piv+dx*KN.sn+dy*KN.cs; }
@@ -61,7 +61,7 @@ static inline uint32_t kn_bilx(double u, double v, int ifx){
     return ((((rb0*(256-wy)+rb1*wy)>>8)&0xFF00FF)|(((g0*(256-wy)+g1*wy)>>8)&0xFF00)); }
 static int8_t kn_gt[65536]; static int kn_gt_ok;
 static inline uint32_t kn_grain(uint32_t c, float u, float v, float F){      // nv_grain with its hash made once into a table (same look, no hashing per pixel)
-    double k=(0.5-F)/0.5; int iu=(int)(u*5), iv=(int)(v*5); int d=(int)kn_gt[(iu&255)<<8|(iv&255)]*(int)(k*9)/128;
+    double k=(0.5-F)/0.5; int iu=(int)(u*5), iv=(int)(v*5); int d=(int)kn_gt[(iu&255)<<8|(iv&255)]*(int)(k*4)/128;
     int r=(c>>16&255)+d, g=(c>>8&255)+d, b=(c&255)+d; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; b=b<0?0:b>255?255:b; return (uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; }
 static void kn_gtab(void){ if(kn_gt_ok) return; kn_gt_ok=1; for(int iu=0;iu<256;iu++) for(int iv=0;iv<256;iv++){ uint32_t h=(uint32_t)iu*2654435761u ^ (uint32_t)iv*2246822519u; h^=h>>15; h*=2246822519u; h^=h>>13; kn_gt[iu<<8|iv]=(int8_t)((int)(h&255)-128); } }
 static uint32_t kn_skycol[1300];
@@ -124,8 +124,10 @@ static void kn_shadows(int W, int H){
         for(int Y=Y0;Y<Y1;Y++) for(int X=X0;X<X1;X++){ uint32_t *p=&kn_buf[(size_t)Y*W+X]; if(!(*p&0x40000000u)) continue;
             double ex=((X+0.5)*kn_sx-fx)/w, ey=((Y+0.5)*kn_sy-fy)/h, r2=ex*ex+ey*ey; if(r2>=1.7) continue; double t=(1.7-r2)/1.3; if(t>1) t=1; double d=0.55*t*t*(3-2*t);
             uint32_t col=*p; int r=(int)((col>>16&255)*(1-d)), g=(int)((col>>8&255)*(1-d)), b=(int)((col&255)*(1-d*0.8)); *p=(*p&0xFF000000u)|(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; } } }
-static void kn_pass(int W, int H, double sx, double sy, uint16_t bd){
-    size_t need=(size_t)W*H; if(need>kn_cap){ free(kn_buf); kn_buf=malloc(need*4); kn_cap=need; }
+static int kn_pass(int W, int H, double sx, double sy, uint16_t bd){
+    // Preserve the previous buffer on allocation failure and fall back to the standard renderer.
+    if(W<=0 || H<=0 || (size_t)W>SIZE_MAX/(size_t)H/sizeof(*kn_buf)) return 0;
+    size_t need=(size_t)W*H; if(need>kn_cap){ uint32_t *next=realloc(kn_buf,need*sizeof(*kn_buf)); if(!next) return 0; kn_buf=next; kn_cap=need; }
     kn_W=W; kn_H_=H; kn_sx=sx; kn_sy=sy; kn_bd888=(uint32_t)((bd&31)<<3|(bd&31)>>2)<<16 | (uint32_t)(((bd>>5)&31)<<3|((bd>>5)&31)>>2)<<8 | (((bd>>10)&31)<<3|((bd>>10)&31)>>2);
     kn_hill[0]=R16(PALRAM+108*2); kn_hill[1]=R16(PALRAM+109*2); kn_hill[0]=rgbpix(kn_hill[0]); kn_hill[1]=rgbpix(kn_hill[1]);
-    kn_x=getenv("PC_KNX")?atoi(getenv("PC_KNX")):0; double t0=pc_now_ms(); double c0=kn_cpu(); kn_tab(); kn_fine(); kn_skytab(); kn_gtab(); pc_par(H,kn_rows,0); double t1=pc_now_ms(); kn_shadows(W,H); if(getenv("PC_KNT")) fprintf(stderr,"roll %.3f curv %.0f kn rows %.2f ms (wall) %.2f ms (cpu, all threads) shadows %.2f\n",KN.roll,KN.curv,t1-t0,kn_cpu()-c0,pc_now_ms()-t1); }
+    kn_x=getenv("PC_KNX")?atoi(getenv("PC_KNX")):0; double t0=pc_now_ms(); double c0=kn_cpu(); kn_tab(); kn_fine(); kn_skytab(); kn_gtab(); pc_par(H,kn_rows,0); double t1=pc_now_ms(); kn_shadows(W,H); if(getenv("PC_KNT")) fprintf(stderr,"roll %.3f curv %.0f kn rows %.2f ms (wall) %.2f ms (cpu, all threads) shadows %.2f\n",KN.roll,KN.curv,t1-t0,kn_cpu()-c0,pc_now_ms()-t1); return 1; }
