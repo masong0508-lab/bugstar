@@ -18,6 +18,7 @@ on:
       - 'pc/platform/pc_coop.c'
       - 'pc/platform/pc_coop.h'
       - 'pc/tests/lan_live.sh'
+      - 'pc/tests/lan_menu.sh'
       - 'net/**'
       - 'tests/multiplayer_protocol_test.c'
       - 'tests/space_native_projection_audit.py'
@@ -45,6 +46,7 @@ on:
       - 'pc/platform/pc_coop.c'
       - 'pc/platform/pc_coop.h'
       - 'pc/tests/lan_live.sh'
+      - 'pc/tests/lan_menu.sh'
       - 'net/**'
       - 'tests/multiplayer_protocol_test.c'
       - 'tests/space_native_projection_audit.py'
@@ -143,6 +145,8 @@ jobs:
         run: cd pc && PC_OUT=bugstar_pc_rate ./build.sh
       - name: Verify real GBA-speed gameplay, high refresh and stall recovery
         run: cd pc && bash tests/speed_guard.sh ./bugstar_pc_rate
+      - name: Verify real SDL options HOST, JOIN, IPv4 entry and LEAVE
+        run: cd pc && bash tests/lan_menu.sh ./bugstar_pc_rate
       - name: Run two real PC space games with LAN and render both viewpoints
         run: cd pc && bash tests/lan_live.sh ./bugstar_pc_rate spar
       - name: Run two real PC space games with one shared co-op raider
@@ -153,6 +157,9 @@ jobs:
         with:
           name: pc-lan-space-smoke
           path: |
+            pc/out/lan_menu/host-options.png
+            pc/out/lan_menu/game.log
+            pc/out/lan_menu/events.txt
             pc/out/lan_live/host.png
             pc/out/lan_live/client.png
             pc/out/lan_live/spar_host.png
