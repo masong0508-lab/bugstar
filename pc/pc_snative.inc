@@ -49,7 +49,22 @@ static void sn_rows(void *vc, int lo, int hi){
 }
 static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk){
     int W=pc_nat_w, H=pc_nat_h; pc_sn.w=0; if(W<=240 || H<=160 || pc_v3d_classic()) return; double sn_t0=pc_now_ms(), sn_c0=pc_cpu_ms();
-    int hn=(128*H+159)/160; if(hn>H) hn=H; static unsigned long bcap; unsigned long need=(unsigned long)W*hn; if(need>bcap){ free(pc_sn.buf); free(pc_sn.msk); free(pc_sn.ibuf); pc_sn.buf=malloc(need*4); pc_sn.ibuf=malloc(need*4); pc_sn.msk=malloc(need); bcap=need; } memset(pc_sn.msk,0,need); memset(pc_sn.ibuf,0,need*4);
+    int hn=(128*H+159)/160; if(hn>H) hn=H;
+    static size_t bcap; if(hn<=0 || (size_t)W>SIZE_MAX/(size_t)hn) return;
+    size_t need=(size_t)W*hn; if(need>SIZE_MAX/sizeof(*pc_sn.buf)) return;
+    if(need>bcap){
+        // Don't free the working buffers before replacement allocations succeed.
+        // If any allocation fails, keep the old capacity and retry next frame,
+        // rather than dereferencing NULL or disabling the game permanently.
+        uint32_t *next_buf=realloc(pc_sn.buf,need*sizeof(*pc_sn.buf));
+        if(!next_buf) return; pc_sn.buf=next_buf;
+        uint32_t *next_ibuf=realloc(pc_sn.ibuf,need*sizeof(*pc_sn.ibuf));
+        if(!next_ibuf) return; pc_sn.ibuf=next_ibuf;
+        uint8_t *next_msk=realloc(pc_sn.msk,need);
+        if(!next_msk) return; pc_sn.msk=next_msk;
+        bcap=need;
+    }
+    memset(pc_sn.msk,0,need); memset(pc_sn.ibuf,0,need*sizeof(*pc_sn.ibuf));
     for(int i=0;i<256;i++){ u16 c=BG_PAL[i]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; sn_pal[i]=(uint32_t)(r<<3|r>>2)<<16|(uint32_t)(g<<3|g>>2)<<8|(uint32_t)(b<<3|b>>2); }
     double sx=W/240.0, sy=H/160.0; uint32_t *buf=pc_sn.buf; uint32_t bk=sn_pal[0]; for(size_t i=0;i<need;i++) buf[i]=bk;
     pc_sg_space_back(buf,W,hn,sx,sy);          // nebulae and a far galaxy behind the stars (pc_sprgen_game.inc)
@@ -91,8 +106,48 @@ static void so_line(double x0,double y0,double x1,double y1,int ci){
     if(!pc_sn.w) return; int W=pc_sn.w, H=pc_sn.hn; double sx=W/240.0, sy=pc_nat_h/160.0;
     sn_seg(pc_sn.buf,W,H,x0*sx,y0*sy,x1*sx,y1*sy,0.5*sx+0.15,sn_pal[ci],1.0,1.0); sn_mseg(pc_sn.msk,W,H,x0*sx,y0*sy,x1*sx,y1*sy,1.1*sx+0.5);
 }
-static void so_wire(const s32 *v,int nv,const u8 *e,int ne,int c){ double X[16],Y[16]; u8 ok[16]; for(int i=0;i<nv;i++) ok[i]=so_proj(v[i*3],v[i*3+1],v[i*3+2],&X[i],&Y[i]);
-    for(int i=0;i<ne;i++){ int a=e[i*2], b=e[i*2+1]; if(ok[a]&&ok[b]) so_line(X[a],Y[a],X[b],Y[b],c); } }
+// Clip native-resolution edges to the same camera near plane as space.inc.
+// In particular, don't drop an entire station/asteroid edge when the cockpit
+// passes one endpoint. Ordinary front-facing edges keep the fast path.
+static int so_screenclip(double *x0,double *y0,double *x1,double *y1){
+    // A two-pixel margin retains anti-aliasing at the edge of the 240x128 view.
+    if(*x0>=-2 && *x0<=241 && *x1>=-2 && *x1<=241 &&
+       *y0>=-2 && *y0<=129 && *y1>=-2 && *y1<=129) return 1;
+    double x=*x0,y=*y0,dx=*x1-x,dy=*y1-y,lo=0,hi=1;
+    double p[4]={-dx,dx,-dy,dy},q[4]={x+2,241-x,y+2,129-y};
+    for(int i=0;i<4;i++){
+        if(p[i]==0){ if(q[i]<0) return 0; continue; }
+        double t=q[i]/p[i];
+        if(p[i]<0){ if(t>hi) return 0; if(t>lo) lo=t; }
+        else { if(t<lo) return 0; if(t<hi) hi=t; }
+    }
+    *x0=x+lo*dx; *y0=y+lo*dy; *x1=x+hi*dx; *y1=y+hi*dy;
+    return 1;
+}
+static void so_wire(const s32 *v,int nv,const u8 *e,int ne,int c){
+    s32 cx[16],cy[16],cz[16];
+    for(int i=0;i<nv;i++)
+        cam3(v[i*3],v[i*3+1],v[i*3+2],&cx[i],&cy[i],&cz[i]);
+    for(int i=0;i<ne;i++){
+        int a=e[i*2],b=e[i*2+1];
+        s32 ax=cx[a],ay=cy[a],az=cz[a],bx=cx[b],by=cy[b],bz=cz[b];
+        if(az<=20 && bz<=20) continue;
+        if(az<=20){
+            ax+=(s32)(((long long)(bx-ax)*(21-az))/(bz-az));
+            ay+=(s32)(((long long)(by-ay)*(21-az))/(bz-az));
+            az=21;
+        } else if(bz<=20){
+            bx+=(s32)(((long long)(ax-bx)*(21-bz))/(az-bz));
+            by+=(s32)(((long long)(ay-by)*(21-bz))/(az-bz));
+            bz=21;
+        }
+        double x0=120.5+(double)ax*FOCS/az,y0=VCY+0.5-(double)ay*FOCS/az;
+        double x1=120.5+(double)bx*FOCS/bz,y1=VCY+0.5-(double)by*FOCS/bz;
+        // Avoid enormous raster bounding boxes for near-plane intersections.
+        // Clipping the segment, not its endpoints independently, preserves perspective.
+        if(so_screenclip(&x0,&y0,&x1,&y1)) so_line(x0,y0,x1,y1,c);
+    }
+}
 
 // ---- the things the game draws AFTER the wireframes (cargo cans, sparks, the cockpit's laser bolts, the crosshair, and in the chase view the bolts): drawn here into a
 // separate layer (pc_sn.ibuf: premultiplied colour, alpha in the top byte; alpha 0 with colour = pure glow), at the window's own resolution. The game's own blocky copy is
