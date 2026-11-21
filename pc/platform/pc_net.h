@@ -65,6 +65,7 @@ void pc_mp_set_coop(int enabled);
 void pc_mp_set_ready(int ready);
 int pc_mp_local_ready(void);
 int pc_mp_peer_ready(void);
+int pc_mp_both_confirmed(void); /* Ready flags may show in paused lobby */
 int pc_mp_match_ready(void);
 int pc_mp_reconnecting(void);
 int pc_mp_coop_complete(void);
