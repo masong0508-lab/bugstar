@@ -153,7 +153,7 @@ static void net_raider(PcNetSession *s,uint32_t frame){
     BsNetPacket p;const PcCoop *c=&s->coop_enemy;
     int16_t q[3]={qpos(c->x),qpos(c->y),qpos(c->z)};
     memset(&p,0,sizeof p);p.type=BSNET_RAIDER;p.sequence=s->seq++;
-    p.tick=(uint16_t)frame;p.length=12;
+    p.tick=(uint16_t)frame;p.length=16;
     for(int i=0;i<3;i++){
         p.payload[i*2]=(uint8_t)((uint16_t)q[i]&255u);
         p.payload[i*2+1]=(uint8_t)((uint16_t)q[i]>>8);
@@ -161,6 +161,9 @@ static void net_raider(PcNetSession *s,uint32_t frame){
     p.payload[6]=c->hp;p.payload[7]=c->wins;
     p.payload[8]=c->phase;p.payload[9]=c->flash;
     p.payload[10]=c->host_hits;p.payload[11]=c->guest_hits;
+    p.payload[12]=c->host_hp;p.payload[13]=c->guest_hp;
+    p.payload[14]=c->losses;
+    p.payload[15]=(uint8_t)((c->beam_target?128:0) | (c->beam&15));
     net_send(s,&p);
 }
 static void net_decode(PcNetShip *v,const BsNetPacket *p,uint32_t world){
@@ -204,7 +207,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
           case BSNET_STATE: if(p.length!=8) continue; break;
           case BSNET_INPUT: if(p.length!=3) continue; break;
           case BSNET_EVENT: if(p.length!=4) continue; break;
-          case BSNET_RAIDER: if(p.length!=12) continue; break;
+          case BSNET_RAIDER: if(p.length!=16) continue; break;
           case BSNET_BYE: if(p.length!=0) continue; break;
           default: continue;
         }
@@ -268,7 +271,9 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                  s->role==2 && s->connected){
             if(s->raider_seen && (int16_t)(p.tick-s->last_raider_tick)<=0)
                 continue;
-            if(p.payload[6]>100 || p.payload[8]>2 || p.payload[9]>10)
+            if(p.payload[6]>100 || p.payload[8]>3 || p.payload[9]>10 ||
+               p.payload[12]>100 || p.payload[13]>100 ||
+               (p.payload[15]&127u)>8)
                 continue;
             PcCoop *c=&s->coop_enemy;
             for(int k=0;k<3;k++){
@@ -281,6 +286,9 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
             c->hp=p.payload[6];c->wins=p.payload[7];
             c->phase=p.payload[8];c->flash=p.payload[9];
             c->host_hits=p.payload[10];c->guest_hits=p.payload[11];
+            c->host_hp=p.payload[12];c->guest_hp=p.payload[13];
+            c->losses=p.payload[14];
+            c->beam=p.payload[15]&127u;c->beam_target=p.payload[15]>>7;
             s->last_raider_tick=p.tick;s->raider_seen=1;
             s->last_raider_rx=frame;s->last_rx=frame;
         }else if(p.type==BSNET_BYE && s->connected){
@@ -300,7 +308,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
         s->last_hello=frame;
     }
     if(s->role==1 && s->connected && s->received){
-        if(s->coop)pc_coop_step(&s->coop_enemy,frame,local);
+        if(s->coop)pc_coop_step(&s->coop_enemy,frame,local,&s->other);
         else pc_duel_step(&s->duel,frame);
         if(s->local_shots!=s->host_seen_shots){
             s->host_seen_shots=s->local_shots;
