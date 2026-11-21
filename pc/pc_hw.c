@@ -579,14 +579,38 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(W<240||H<160){ W=240; H=160; }
     if(W>240 && H>160){ pc_nat_w=W; pc_nat_h=H; }       // (the game's own native renderers, e.g. the dungeon, make their picture at this size)
     build_lines();
-    size_t need=(size_t)W*H; if(need>nv_cap){ free(nv_oc); free(nv_op); nv_oc=malloc(need*2); nv_op=malloc(need); nv_cap=need; }
-    if(W+H>nv_fcap){ free(nv_fx); nv_fcap=W+H; nv_fx=malloc(sizeof(float)*(W+H)); } nv_fy=nv_fx+W;      // (nv_fy must follow every new W: after a resize it used to point past the end of the buffer)
+    size_t need=(size_t)W*H;
+    // Resizing a large native window must never leave the compositor with
+    // dangling buffers or a NULL opacity/depth map. Allocate replacements
+    // first and keep the previous allocation if memory is exhausted.
+    if(need>SIZE_MAX/sizeof(*nv_oc) || need>SIZE_MAX/sizeof(*out)) return;
+    if(need>nv_cap){
+        uint16_t *next_oc=malloc(need*sizeof(*nv_oc));
+        uint8_t *next_op=malloc(need*sizeof(*nv_op));
+        if(!next_oc || !next_op){
+            free(next_oc); free(next_op);
+            memset(out,0,need*sizeof(*out)); return;
+        }
+        free(nv_oc); free(nv_op); nv_oc=next_oc; nv_op=next_op; nv_cap=need;
+    }
+    if(W+H>nv_fcap){
+        float *next_fx=malloc((size_t)(W+H)*sizeof(*nv_fx));
+        if(!next_fx){ memset(out,0,need*sizeof(*out)); return; }
+        free(nv_fx); nv_fx=next_fx; nv_fcap=W+H;
+    }
+    nv_fy=nv_fx+W; // refresh the Y-table pointer after every window resize
     uint16_t dc=R16(IOREG), mode=dc&7; int one_d=(dc>>6)&1;
     uint16_t bd=rgbpix(R16(PALRAM));
     uint8_t lut5[32]; for(int i=0;i<32;i++) lut5[i]=(uint8_t)(i<<3|i>>2);
     #define XRGB(c) ((uint32_t)lut5[(c)&31]<<16 | (uint32_t)lut5[((c)>>5)&31]<<8 | lut5[((c)>>10)&31])
     if(dc&0x80){ for(size_t i=0;i<need;i++) out[i]=0xFFFFFF; return; }
-    { static uint32_t *ovl; static size_t ovl_cap; nv_ovl=0; if(pc_ovl_fn){ if(need>ovl_cap){ free(ovl); ovl=malloc(need*4); ovl_cap=need; } pc_ovl_fn(ovl,W,H); nv_ovl=ovl; } }
+    { static uint32_t *ovl; static size_t ovl_cap; nv_ovl=0; if(pc_ovl_fn){
+        if(need>ovl_cap){
+            uint32_t *next=realloc(ovl,need*sizeof(*ovl));
+            if(next){ ovl=next; ovl_cap=need; }
+        }
+        if(ovl && ovl_cap>=need){ pc_ovl_fn(ovl,W,H); nv_ovl=ovl; }
+    } }
     const double sx=240.0/W, sy=160.0/H;                       // game pixels per output pixel
     bl_y0=bl_y1=0;
     struct timespec T0,T1,T2,T3,T4; clock_gettime(CLOCK_MONOTONIC,&T0);
