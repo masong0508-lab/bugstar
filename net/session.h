@@ -1,7 +1,7 @@
 #ifndef BUGSTAR_NET_SESSION_H
 #define BUGSTAR_NET_SESSION_H
 /* Multiplayer protocol v1: transport-independent, allocation-free packets.
- * Not yet connected to any gameplay/menu/socket or handheld link cable.
+ * Used by opt-in PC/Android LAN space combat, not yet by handheld cables.
  * Fixed byte order and explicit lengths: never send native C structs.
  * CRC8 detects accidental corruption; it is NOT a security/authentication MAC.
  */
