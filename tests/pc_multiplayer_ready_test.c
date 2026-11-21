@@ -44,17 +44,28 @@ int main(void){
     assert(g.coop_enemy.phase==1 && g.coop_enemy.hp==100);
     /* Opening either real lobby pauses both pilots without dropping UDP.
      * Host must not advance waves or accept new hits during the pause. */
+    /* Exercise the wave-clear hold specifically: pausing for 48 network
+     * ticks must NOT consume any of the 150 gameplay-tick wait. */
+    h.coop_enemy.phase=2;
+    h.coop_enemy.down_tick=h.combat_tick;
     uint8_t phase=h.coop_enemy.phase, hp=h.coop_enemy.hp;
     uint32_t down_tick=h.coop_enemy.down_tick;
+    uint32_t sim_before=h.combat_tick;
     pcnet_set_active(&h,0);
+    /* Guest can still have a buffered A shot when host enters options.
+     * The host must discard it instead of damaging a paused encounter. */
+    pcnet_fire(&g);
     step_both(&h,&g,&hs,&gs,191,238);
     assert(h.connected && g.connected);
     assert(!pcnet_match_ready(&h) && !pcnet_match_ready(&g));
     assert(h.coop_enemy.phase==phase && h.coop_enemy.hp==hp);
     assert(h.coop_enemy.down_tick==down_tick);
+    assert(h.combat_tick==sim_before);
     pcnet_set_active(&h,1);
     step_both(&h,&g,&hs,&gs,239,260);
     assert(pcnet_match_ready(&h) && pcnet_match_ready(&g));
+    assert(h.combat_tick>sim_before && h.combat_tick-sim_before<40u);
+    assert(h.coop_enemy.phase==2); /* not the next wave after a menu pause */
 
     /* Leave is never a save write and must reopen the host for new peers.
      * A reconnection must not re-arm either manually confirmed pilot. */
