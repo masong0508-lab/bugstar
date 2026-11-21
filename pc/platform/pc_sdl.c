@@ -412,7 +412,26 @@ static void menu_draw(void){
     int hc=C.contrast; rect_fill(0,0,dw,dh,0x000000,hc?200:150);
     static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND","MULTIPLAYER LAN","MULTIPLAYER GUIDE"};
     Item it[24]; int n; menu_build(it,&n);
-    int lh=9*gs_, pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"); if(pw>dw-4*gs_) pw=dw-4*gs_; int ph=(n+3)*lh+2*gs_*4; if(menu_page==P_LAN) ph+=4*lh; if(menu_page==P_ABOUT) ph=14*lh; if(menu_page==P_HELP||menu_page==P_TLEGEND||menu_page==P_LANHELP){ int nl=0; while(help_lines()[nl]) nl++; ph=(nl+5)*lh; }
+    /* Keep ALL menu items and Ready/connection explanations on screen
+     * even on narrow Android portrait and large-text accessibility modes.
+     * Scale the UI font only as far as needed; never crop invisible controls.
+     * No allocations or extra frames are introduced by this small loop. */
+    int lh,ph,pw;
+    do {
+        lh=9*gs_;
+        ph=(n+3)*lh+2*gs_*4;
+        if(menu_page==P_LAN)ph+=4*lh;
+        if(menu_page==P_ABOUT)ph=14*lh;
+        if(menu_page==P_HELP||menu_page==P_TLEGEND||menu_page==P_LANHELP){
+            int nl=0;while(help_lines()[nl])nl++;
+            ph=(nl+5)*lh;
+        }
+        if(ph<=dh-4 || gs_<=1)break;
+        gs_--;
+    } while(1);
+    pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":
+             "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM");
+    if(pw>dw-4*gs_)pw=dw-4*gs_;
     int x0=(dw-pw)/2, y0=(dh-ph)/2; rect_fill(x0,y0,pw,ph,hc?0x000000:0x0B1030,hc?255:235); rect_fill(x0,y0,pw,gs_,0xFFD23C,255); rect_fill(x0,y0+ph-gs_,pw,gs_,0xFFD23C,255);
     text_at(x0+4*gs_,y0+3*gs_,titles[menu_page],0xFFD23C);
     int y=y0+3*gs_+lh*3/2; m_x0=x0; m_pw=pw; m_lh=lh; m_y1=y; m_n=(menu_page==P_ABOUT||menu_page==P_HELP||menu_page==P_TLEGEND||menu_page==P_LANHELP)?0:n; m_gs=gs_;
