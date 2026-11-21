@@ -365,6 +365,16 @@ static const u8 kcls_pct[5]={85,100,115,130,150};
 static const char *const kcls_name[5]={"LARVA","PUPA","IMAGO","STARBUG","HYPER"};
 #define K_VBASE 0x3200                             // a balanced kart's top speed in the PUPA class: 0.2 cells a 60th
 static s32 k_vmax(const KLook *l){ return (s32)K_VBASE*kcls_pct[k_cls]/100*(82+kstat(l,KST_SPD)*3)/100; }
+ // Low-speed steering should remain usable, but a fully stopped kart must not
+ // spin in place. The same fixed-tick steering applies on GBA, PC and Android.
+static inline int kart_turn_rate(int base, s32 speed, s32 vmax){
+    s32 moving=speed<0?-speed:speed;
+    int f=(int)((moving*768)/(vmax?vmax:1)); if(f>256) f=256;
+    int turn=(base*f)>>8;
+    if(moving>=vmax/32 && turn<2) turn=2;
+    return turn; }
+static inline int kart_turn_direction(int steer, s32 speed){ return speed<0?-steer:steer; }
+static inline int kart_recovery_slow(s32 speed){ return (speed<0?-speed:speed)<K_VBASE/12; }
 static const char *kplace_s(int p){ static const char *const s[13]={"","1ST","2ND","3RD","4TH","5TH","6TH","7TH","8TH","9TH","10TH","11TH","12TH"}; return s[p<0?0:p>12?12:p]; }
 static void kfmt_time(char *b, int fr){ int cs=fr*100/60, s=cs/100; b[0]=0; ncat(b,s/60); scat(b,":"); if(s%60<10) scat(b,"0"); ncat(b,s%60); scat(b,"."); ncat(b,(cs%100)/10); }
 
@@ -876,10 +886,10 @@ static void kart_step(void){
     else if(rc[0].spin){ kv -= kv/16; s=0; }
     else if(kair){ kair_t++; khd=(khd+s*(tr/3))&1023; kturn=s; if(HIT(K_R) && !ktrick && kair_t<30){ ktrick=1; sfx(2); } }   // flying: a little steering; R does a trick
     else {
-        s32 spd=kv<0?-kv:kv; int fa=(int)((spd*768)/(vmax?vmax:1)); if(fa>256) fa=256; tr=(tr*fa)>>8;
+        tr=kart_turn_rate(tr,kv,vmax);
         if(HELD(K_R) && s && kv>vmax/2){ if(!kdrift){ kdrift=s; sfx(11); } if(s==kdrift){ tr=tr*3/2; if(kcharge<200) kcharge += 1 + (kcharge<110 && (frames&1)); } else tr=tr*3/4; }
         if(kdrift && !(HELD(K_R) && s==kdrift)){ if(kcharge>170){ kboost_t=72; show_msg("ULTRA MINI-TURBO!"); sfx(10); } else if(kcharge>110){ kboost_t=50; show_msg("SUPER MINI-TURBO!"); sfx(10); } else if(kcharge>50){ kboost_t=28; sfx(10); } kdrift=0; kcharge=0; }
-        khd=(khd+s*tr)&1023; kturn=s; kdrift_t = kdrift ? kdrift_t+1 : 0; if(kdrift) rum_hum(kcharge>170?110:kcharge>110?80:kcharge>50?55:35);
+        int steer=kart_turn_direction(s,kv); khd=(khd+steer*tr)&1023; kturn=steer; kdrift_t = kdrift ? kdrift_t+1 : 0; if(kdrift) rum_hum(kcharge>170?110:kcharge>110?80:kcharge>50?55:35);
         int acc=(int)(vmax/(110-kstat(&kl,KST_ACC)*7)); if(acc<16) acc=16;
         if(kstall){ kstall--; up=0; }
         if(up) kv+=acc; else if(dn){ if(kv>0) kv-=vmax/30; else if(kv>-vmax/3) kv-=acc/2; } else kv-=kv/40;
@@ -999,7 +1009,7 @@ static void kart_tick(int n){
         int dirn=kp_dir(rc[0].pi), off=((khd-dirn+512)&1023)-512; if(off<0) off=-off; if(off>380 && kv>K_VBASE/4) k_wrong+=n; else k_wrong=0; if(k_wrong>50 && (frames&31)==0) show_msg("WRONG WAY!"); }
     if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int pi=rc[0].pi, fx=kwrap8(kpx[pi]-((ppx>>15)&255)), fy=kwrap8(kpy[pi]-((ppy>>15)&255)); if(fx*fx+fy*fy>26*26) kfar+=n; else kfar=0;
         if(kfar>130){ kfar=0; kart_splash(); show_msg("OFF THE TRACK! BACK YOU GO"); } }   // far from the road for a couple of seconds (a long way round the land): put back on it
-    if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)]; if(kv<K_VBASE/12 && !kroad(c) && !kstall) kstuck+=n; else kstuck=0; if(kstuck>150){ kstuck=0; kart_splash(); show_msg("STUCK? BACK ON THE ROAD!"); } }   // wedged off the road: a kind fish helps
+    if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)]; if(kart_recovery_slow(kv) && !kroad(c) && !kstall) kstuck+=n; else kstuck=0; if(kstuck>=90 && kstuck-n<90) show_msg("STUCK? DOWN: REVERSE OR WAIT"); if(kstuck>150){ kstuck=0; kart_splash(); show_msg("STUCK? BACK ON THE ROAD!"); } }   // wedged off the road: a kind fish helps
     for(int r=1;r<nrc;r++) kai(r,n);
 #ifdef TEST_KAUDIT
     if(ks_state==KS_RACE){ int fin=0, sl=0, mn=999, mx=0; if(k_clock<12) for(int i=0;i<knp;i++) klogb[48+i*16/knp]|=kpf[i]; if(k_clock<12) for(int i=0;i<knp;i++) klogk[i*2]=kpx[i], klogk[i*2+1]=kpy[i];                                  // (test: how the rivals drive: where they are, how many stray, how many finish)
