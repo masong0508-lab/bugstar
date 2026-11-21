@@ -22,7 +22,7 @@ The initial implementation supports:
   P1/P2 HP (100 each), wins and a timed 2-second round reset. A disconnect
   or different star hides the session overlay. The real campaign hull, HP,
   cargo, save files, enemy AI and rewards are not shared or modified.
-- A separate `--lan-coop` opt-in encounter: one moving 3D RAIDER target is simulated **only on the host**. Both pilots fire real A-lasers; the host validates each aim and sends quantized target position, one shared HP meter, two pilots' hit counts, and shared round victories to both screens. A five-hit defeat yields a 2.5-second respawn. The raider does **not** fight back yet; this is a shared-target encounter, **not** complete campaign co-op. No loot, enemy AI integration, mission progress, or saves are shared.
+- A separate `--lan-coop` opt-in encounter: one moving 3D RAIDER target is simulated **only on the host**. Both pilots fire real A-lasers; the host validates each aim and sends quantized target position, one shared HP meter, two pilots' hit counts, and shared round victories to both screens. A five-hit defeat yields a 2.5-second respawn. The raider now fires dodgeable, host-approved shots against each pilot's **temporary co-op shields**. The host shares a win on defeat of the raider or a loss when both pilots are knocked out. No real ship hull, loot or saves are changed; this remains a small trial encounter, **not** complete campaign co-op. No loot, enemy AI integration, mission progress, or saves are shared.
 - A clean loss of the remote silhouette after stale/lost packets; BYE on
   normal shutdown. No cartridge SRAM/save modifications.
 
@@ -65,7 +65,7 @@ peer silhouette intentionally disappears until both instances match.
 
 ## Opt in to the shared-raider encounter
 
-Start the same two PC processes shown above, but add `--lan-coop` **on both sides**. Use the same star and separate save directories. The guest spawns nearby and faces the same direction as the host; the target patrols ahead in 3D space. A correct connection displays `CO-OP RAID HP` and a moving RAIDER. Five combined hits produce `RAIDER DOWN!`, then a fresh encounter; both pilots should see the same win count. A sparring client and a co-op host deliberately cannot connect.
+Start the same two PC processes shown above, but add `--lan-coop` **on both sides**. Use the same star and separate save directories. The guest spawns nearby and faces the same direction as the host; the armed target patrols and fires ahead in 3D space. A correct connection displays `RAID`, the enemy HP, P1/P2 temporary HP, wins/losses and a moving RAIDER. Five combined hits produce `RAIDER DOWN!`, then a fresh encounter; the enemy can also win by depleting both players' co-op shields. Both pilots should see the same win/loss count. A sparring client and a co-op host deliberately cannot connect.
 
 ## Verification commands
 
