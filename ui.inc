@@ -248,6 +248,62 @@ static const char *const bolt_idle[64]={"\"I COUNTED MY WHEELS. STILL TWO.\"","\
     "\"BEWARE OF SLIME. IT HAS A LONG MEMORY.\"","\"GOOD GEAR BEATS GOOD LUCK. USUALLY.\"","\"I PRACTICED SAYING YOUR NAME. IT IS BUG.\"",
     "\"ASK ME ANYTHING. I MAY ANSWER.\"","\"PLAN: GO. FIGHT. LOOT. NAP. REPEAT.\"","\"I DREAM OF A BIGGER SHIP. NO OFFENSE.\"",
     "\"THAT WAS A GOOD DAY. I WROTE IT DOWN.\""};
+// The six story bosses are parts of the same operation. These small ROM-only
+// tables are read at boss-floor arrival, from a searchable evidence chest, and
+// after the first victory. Cleared-mask bits already persist the consequences;
+// revisiting a world never grants the first-clear reward again.
+static const char *const story_boss_title[6]={
+    "GARDEN: THE CAGE KEEPER",
+    "POND: THE LOCKKEEPER",
+    "PICNIC: THE QUARTERMASTER",
+    "NIGHT LAWN: THE WATCHER",
+    "HONEY: THE CHOIR WARDEN",
+    "ANTHILL: THE KING'S FURNACE"
+};
+static const char *const story_boss_warning[6]={
+    "CAGE CHAINS. THE KEEPER IS NEAR.",
+    "WARM PIPES. THE LOCKKEEPER IS NEAR.",
+    "STOLEN RATIONS. A GUARD IS NEAR.",
+    "THE NIGHT WATCHER IS LISTENING.",
+    "THE CHOIR WARDEN HEARS OUR STEPS.",
+    "THE FURNACE THRUMS. THE KING IS NEAR."
+};
+static const char *const story_boss_evidence[6][3]={
+    {"CAGE MANIFEST: SHIPPED TO THE POND.",
+     "THE PRISONERS WERE MARKED AS SEED.",
+     "THE KEEPER SIGNED EACH TRANSFER."},
+    {"WARM WATER DIVERTED TO THE NEST.",
+     "TEMPERATURES KEPT FALLING ANYWAY.",
+     "THE KING DEMANDED MORE PRISONERS."},
+    {"RATIONS SENT TO WORK CREWS BELOW.",
+     "THE CAPTIVES DIG UNDER THE LAWN.",
+     "THEIR NAMES WERE CROSSED OUT."},
+    {"SHIP METAL MOVED THROUGH THE DARK.",
+     "IT HUMMED EVEN WHEN NO ONE TOUCHED IT.",
+     "NEXT TRANSFER: THE HONEY FORGES."},
+    {"THE FURNACE REQUIRES A SONG.",
+     "THE WORKERS RECORDED A SHIP'S CALL.",
+     "THE KING ORDERED THE TAPE ERASED."},
+    {"THE KING LOCKED A HEART IN THE BEAST.",
+     "PRISONERS STILL FILL THE LOWER CELLS.",
+     "THE MACHINE MUST NEVER LEARN ITS NAME."}
+};
+static const char *const story_boss_aftermath[6]={
+    "THE GARDEN'S CAGE ROUTE IS BROKEN.",
+    "THE POND'S TRANSFER LOCKS ARE OPEN.",
+    "THE STOLEN RATION LINE IS CLOSED.",
+    "THE NIGHT WATCH NO LONGER HUNTS BUGS.",
+    "THE HONEY FORGES HAVE FALLEN SILENT.",
+    "THE KING'S FURNACE HAS LOST ITS MASTER."
+};
+static const char *const story_boss_reward[6]={
+    "SUPPLY CACHE: FOOD RESTORED.",
+    "COOLANT CACHE: FUEL TOPPED UP.",
+    "RATIONS RECOVERED: +150 GOLD.",
+    "REPAIR BENCH: HULL PATCHED.",
+    "ENGINE PARTS RECOVERED: +24 SCRAP.",
+    "PRISON INFIRMARY: HEALTH RESTORED."
+};
 static const char *const bolt_zone[6][2]={{"\"THE GARDEN IS WHERE I WOKE UP. IT FEELS KIND.\"","\"BEE HUM AND WET GRASS. I COULD STAY.\""},
     {"\"THE POND IS CALM. I DO NOT TRUST CALM.\"","\"DEEP WATER. I AM ONLY WATERPROOF IN SPIRIT.\""},
     {"\"SOMEONE LEFT A PICNIC. ALL OF IT. ODD.\"","\"THE ANTS LIKE THIS PLACE. I WONDER WHY.\""},
@@ -297,7 +353,9 @@ static void bolt_talk(volatile u16 *pg){
         t[n++]=bugs_freed ? "\"WE SAVED FRIENDS. WE CAN KEEP LOOKING.\"" :
                             "\"SOME CAGES ARE STILL OUT THERE. LET'S GO.\""; }
     else if(!endless && !zone_cleared){ t[n++]="\"THE DOOR IS THE WAY DOWN.\""; t[n++]="\"THE ARROW KNOWS. FOLLOW IT.\""; t[n++]="\"THE BOSS SITS AT THE BOTTOM.\""; }
-    else if(!endless && zone<5){ scpy(l1,"\"THIS WORLD IS FREE. NEXT IS "); scat(l1,tint_name[zone+1]); scat(l1,".\""); t[n++]=l1; t[n++]="\"PICK AUTOPILOT AND I'LL FLY US.\""; if(zone>=1) t[n++]="\"OR GO DOWN AGAIN. IT'S HARDER. IT PAYS.\""; }
+    else if(!endless && zone<5){ scpy(l1,"\"THIS WORLD IS FREE. NEXT IS "); scat(l1,tint_name[zone+1]); scat(l1,".\""); t[n++]=l1;
+        t[n++]=story_boss_aftermath[zone];
+        t[n++]="\"PICK AUTOPILOT AND I'LL FLY US.\""; if(zone>=1) t[n++]="\"OR GO DOWN AGAIN. IT'S HARDER. IT PAYS.\""; }
     else if(!ant_king){ t[n++]="\"THE ANT KING WAITS BELOW.\"";
         t[n++]="\"HE KNOWS WHERE THE CAPTIVES WERE TAKEN.\"";
         t[n++]="\"I'M SCARED. LET'S GO ANYWAY.\""; }
