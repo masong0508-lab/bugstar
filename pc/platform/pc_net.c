@@ -173,6 +173,18 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
         BsNetPacket p;
         if(count<=0) break;
         if(bsnet_unpack(&p,buffer,(uint8_t)count)!=0) continue;
+        /* CRC validates transport integrity, not the message schema:
+         * zero/short STATE or EVENT packets must never teleport a peer
+         * or overwrite the authoritative duel score. */
+        switch(p.type){
+          case BSNET_HELLO: if(p.length!=5) continue; break;
+          case BSNET_READY: if(p.length!=1) continue; break;
+          case BSNET_STATE: if(p.length!=8) continue; break;
+          case BSNET_INPUT: if(p.length!=3) continue; break;
+          case BSNET_EVENT: if(p.length!=4) continue; break;
+          case BSNET_BYE: if(p.length!=0) continue; break;
+          default: continue;
+        }
         if(s->role==2 && (peer.sin_addr.s_addr!=s->peer_addr ||
                           peer.sin_port!=s->peer_port)) continue;
         if(s->role==1 && s->connected &&
