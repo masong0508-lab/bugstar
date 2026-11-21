@@ -792,7 +792,7 @@ static void char_screen_(volatile u16 *pg){
                 foot="A: MAKE IT YOUR SPELL";
             } else if(page==3){
                 quest_refresh();
-                ui_panel(pg,4,38,232,30); ui_head(pg,9,41,140,"QUEST",C_GOLD);
+                ui_panel(pg,4,38,232,34); ui_head(pg,9,41,140,"QUEST",C_GOLD);
                 scpy(b,"FAME "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); rtext(pg,231,41,b,C_GOLD);
                 if(q_type==Q_NONE) text(pg,12,51,"NONE. VISIT YOUR SHIP'S QUEST BOARD.",C_DGREY,1);
                 else { text(pg,12,51,q_name,C_WHITE,1); scpy(b, q_done ? "DONE! GO BACK TO YOUR SHIP" : "IN PROGRESS"); text(pg,12,59,b,q_done?C_GREEN:U_SOFT,1);
@@ -805,7 +805,7 @@ static void char_screen_(volatile u16 *pg){
                         if(b[0]) text(pg,12,65,b,C_CYAN,1);
                     }
                 }
-                ui_panel(pg,4,70,232,78); y=73;
+                ui_panel(pg,4,74,232,74); y=77;
                 if(endless){ scpy(b,"ENDLESS GALAXY  WORLD "); ncat(b,world_no); scat(b,"  DEEPEST B"); ncat(b,best_depth); text(pg,12,y,b,C_CYAN,1); y+=10; }
                 ui_head(pg,9,y,222,"WHAT YOU HAVE LEARNED",C_GREEN); y+=10;
                 text(pg,12,y,"BERRIES",U_GLOW,1); y+=8;
