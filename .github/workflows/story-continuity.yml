@@ -10,6 +10,7 @@ on:
       - 'game.inc'
       - 'tests/story_cutscene_audit.py'
       - 'tests/story_finale_runtime.py'
+      - 'tests/story_frame_capture.py'
       - '.github/workflows/story-continuity.yml'
   pull_request:
     paths:
@@ -20,6 +21,7 @@ on:
       - 'game.inc'
       - 'tests/story_cutscene_audit.py'
       - 'tests/story_finale_runtime.py'
+      - 'tests/story_frame_capture.py'
       - '.github/workflows/story-continuity.yml'
   workflow_dispatch:
 
@@ -33,3 +35,11 @@ jobs:
         run: python3 tests/story_cutscene_audit.py
       - name: Compile and execute real save code with UndefinedBehaviorSanitizer
         run: python3 tests/story_finale_runtime.py
+      - name: Capture native-size story chapter layouts under UBSan
+        run: python3 tests/story_frame_capture.py out/story-layouts
+      - name: Upload story layout contact sheet and eight frames
+        uses: actions/upload-artifact@v4
+        with:
+          name: story-layouts-240x160
+          path: out/story-layouts
+          retention-days: 14
