@@ -88,6 +88,9 @@ require(ui, 'confirm(pg,"ABANDON THIS QUEST?"',
 require(ui, "EXTRA CAGES ON B", "player doesn't know where to find rescue targets")
 require(ui, "NEXT SHARD: B", "player doesn't know which shard floor is next")
 require(ui, "RETURN TO THE QUEST WORLD", "player gets no warning about world-restricted goals")
+require(ui, "char qhint[48]", "Bolt needs a bounded local quest hint without consuming static GBA RAM")
+require(ui, "if(q_type>0 && n<8)", "Bolt's extra line could overflow the eight-line story card")
+require(ui, "QUEST DONE. CLAIM YOUR REWARD AT THE SHIP.", "Bolt omits quest turn-in guidance")
 
 print("Quest integrity: location gates, champion identity, exact shard floors,",
       "guaranteed rescues, inventory-safe rewards and navigation hints: PASS")
