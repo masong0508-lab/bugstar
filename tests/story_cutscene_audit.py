@@ -55,7 +55,7 @@ assert "THE KING CUT OPEN MY HEART." in memlines, (
     "the King causing the Technobeast must remain explicit"
 )
 
-cinema = section(ui, "static void bolt_chapter_open(", "static void bolt_card_x(")
+cinema = section(ui, "static int bolt_chapter_open(", "static void bolt_card_x(")
 title = literals(section(cinema, "title[8]=", "sub[8]"))
 sub = literals(section(cinema, "sub[8]=", "int k=beat"))
 assert len(title) == len(sub) == 8, "missing a chapter title or subtitle"
@@ -63,7 +63,7 @@ assert all(len(t) <= 28 for t in title), "2x chapter title would exceed 240px"
 assert all(len(t) <= 55 for t in sub), "chapter subtitle would exceed 240px"
 for phrase in ("int k=beat==10?7:beat", "shd_begin()", "shd_end(sh)",
                "oam_hide_all()", "T_BOLT", "wait_release()", "vsync()",
-               "HIT(K_A)||HIT(K_START)", "for(int t=0;t<90;t++)"):
+               "HIT(K_A)", "HIT(K_START)", "for(int t=0;t<90;t++)"):
     require(cinema, phrase, "cutscene lacks safe 240x160 drawing, skip or page handling: " + phrase)
 assert "malloc(" not in cinema and "calloc(" not in cinema, "chapter slates must not allocate"
 
@@ -80,11 +80,17 @@ assert "switch(k){" in cinema and all(
 ), "each chapter should have its own illustrated scene motif"
 assert "if((t&7)==0)" in cinema, "chapter twinkle animation is missing"
 
+assert "A: STORY  START: SKIP ALL" in cinema, "cutscene controls no longer explain full skip"
+assert "if(HIT(K_START)){ skip=1; break; }" in cinema, "START should skip dialogue too"
+assert "if(HIT(K_A)) break;" in cinema, "A should still continue into dialogue"
+assert "return skip;" in cinema, "cutscene skip request is not returned to story handler"
+
+
 
 scenes = section(ui, "static void bolt_story(", "// Three deliberate breathers")
 for beat in [0, 1, 2, 3, 4, 5, 6, 10]:
     require(scenes, f"case {beat}:", f"missing story beat {beat}")
-require(scenes, "bolt_chapter_open(pg,beat);", "chapter slate not wired into the story")
+require(scenes, "if(bolt_chapter_open(pg,beat)) return;", "chapter skip not wired into scene progression")
 require(ui, "int j=textlen(l2), cap=(int)sizeof l2-2;",
         "Bolt recap needs bounded text copy, not unsafe strcat")
 require(ui, "while(*m && j<cap)", "Bolt recap could overflow its fixed 48-byte buffer")
