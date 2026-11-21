@@ -167,6 +167,10 @@ grep -q 'pc_kn_obj' planet.inc || { echo "build.sh: pc_kn_obj hook anchor not fo
 echo '#include "../pc_kartnat.inc"' >> main.c
 # --- the side game (pc/sim, DEPTH_PLAN): hooks into the copies in pc/gen, never the repo root. Each hook must find its anchor exactly once or the build fails.
 H() { python3 ../sim/hook.py "$@"; }
+# A test-only shortcut: LAN integration smoke launches directly after the
+# normal world setup, without consuming minutes on the opening Bolt story.
+# Without this opt-in environment flag, every intro frame is unchanged.
+H main.c 'if(!cont && !dbg.go){ static const char *const t[6]' 'if(!cont && !dbg.go && !getenv("BUGSTAR_LAN_BOOT")){ static const char *const t[6]'
 H main.c 'typedef long long s64;' $'\n#include "sim/sim_proto.h"' after
 H main.c 'XO_PVIS, NXOPT };' 'XO_PVIS, XO_SIDE, NXOPT };'
 H main.c '  [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),' $'\n  [XO_SIDE]   =XR("SIDE GAME","PC ONLY: NAMED TOWNSFOLK, A JOURNAL AND GOD POWERS. OFF GIVES THE PLAIN GAME",xl_yn,1,XG_LIFE),' after
