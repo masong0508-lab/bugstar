@@ -50,7 +50,7 @@ jobs:
       - name: Install build requirements and SDL2
         run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential libsdl2-2.0-0
       - name: Build PC window with scripted kart fuzz
-        run: cd pc && PC_CFLAGS="-DTEST_KFUZZ=600" ./build.sh
+        run: cd pc && PC_CFLAGS="-DTEST_KW -DTEST_KFUZZ=600" ./build.sh
       - name: Render real native kart frames in SDL dummy window
         run: |
           cd pc
@@ -61,6 +61,7 @@ jobs:
             --size 960 640 --script out/empty.keys --sav out/kart-native-smoke.sav \
             --auto-shot 128 out/kart-native-smoke.png --stop-after 132 \
             > out/kart-native-smoke.log 2>&1
+          grep -q 'KFUZZ RENDER ENTRY' out/kart-native-smoke.log
           test -s out/kart-native-smoke.png
       - name: Upload native window screenshot and logs
         if: always()
