@@ -1142,6 +1142,16 @@ static void kframe(volatile u16 *pg, int x, int y, int w, int h, int c){        
     u16 cc=(u16)(c|(c<<8)); volatile u16 *p=pg+y*120+(x>>1); int n=w>>1;
     for(int i=0;i<n;i++){ p[i]=cc; p[(h-1)*120+i]=cc; }
     for(int j=1;j<h-1;j++){ volatile u16 *r=p+j*120; r[0]=(u16)((r[0]&0xFF00)|c); r[n-1]=(u16)((r[n-1]&0x00FF)|(c<<8)); } }
+// Steady bend advisory: visibility depends on motion, not frame blinking.
+// Negative means left, positive right; magnitude 2 means brake for a sharp bend.
+static inline int kart_bend_cue(int d0, int d1, int d2, s32 speed){
+    if(speed<K_VBASE/6) return 0;
+    int a1=((d1-d0+512)&1023)-512, a2=((d2-d1+512)&1023)-512;
+    int a=(a2<0?-a2:a2)>(a1<0?-a1:a1)?a2:a1;
+    if(a>=-45 && a<=45) return 0;
+    int sharp=(a>120 || a<-120) && speed>K_VBASE/2;
+    return (a>0?1:-1)*(sharp?2:1);
+}
 static void kart_hud(volatile u16 *pg){
     s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=curv(dz>>8)-tiny_sub(); int sy=PHZ+(((cam_h+curve-gh)*f)>>16);
     m7_sy=sy;
@@ -1186,9 +1196,10 @@ static void kart_hud(volatile u16 *pg){
 #endif
     rect(pg,56,58,50,3,C_DGREY); if(kart_boost>0) rect(pg,56,58,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED);
     if(kdraft>0){ rect(pg,56,62,50,2,C_DGREY); rect(pg,56,62,kdraft*50/90,2,C_CYAN); }
-    if(ks_state==KS_RACE && !kloop_on && !kair && kv>K_VBASE/4 && knp>40){ int p=rc[0].pi, d0=kp_dir((p+4)%knp), d1=kp_dir((p+16)%knp), d2=kp_dir((p+30)%knp);   // a sharp bend ahead: arrows say which way
-        int a1=((d1-d0+512)&1023)-512, a2=((d2-d1+512)&1023)-512, a=(a1*3/2>a2*3/2 ? a1 : a2); if((a2>0?a2:-a2)>(a1>0?a1:-a1)) a=a2; else a=a1;
-        if((a>70 || a<-70) && ((frames>>3)&1)){ int big=(a>140||a<-140); text(pg,a>0?196:22,78,a>0?">>":"<<",big?C_GOLD:C_WHITE,2); if(big) text(pg,a>0?180:38,78,a>0?">":"<",C_RED,2); } }
+    if(ks_state==KS_RACE && !kloop_on && !kair && knp>40){ int p=rc[0].pi;
+        int cue=kart_bend_cue(kp_dir((p+4)%knp),kp_dir((p+16)%knp),kp_dir((p+30)%knp),kv);
+        if(cue){ int sharp=cue==2 || cue==-2; text(pg,cue>0?198:22,78,cue>0?">>":"<<",sharp?C_GOLD:C_WHITE,2);
+            if(sharp) text(pg,cue>0?198:22,93,"SLOW",C_RED,1); } }
 #if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h6=TMR(); kh_t[0]=h1-h0; kh_t[1]=h2-h1; kh_t[2]=h3-h2; kh_t[3]=h4-h3; kh_t[4]=h5-h4; kh_t[5]=h6-h5;
 #ifdef TEST_KLOG
