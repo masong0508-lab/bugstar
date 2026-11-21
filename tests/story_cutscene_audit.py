@@ -137,9 +137,9 @@ require(main, "bolt_memory_reaction(VISPG,data_cores)",
         "outpost exit does not play new story reaction")
 require(main, "bolt_card(VISPG,bolt_mem[k],4)", "original four-line memory is missing")
 zone = section(main, "if(zone_card){ int z=", "planet_hud(); show_msg(\"GO TO YOUR SHIP\")")
-assert zone.index("bolt_story(VISPG,1+z)") < zone.index(
-    'card(VISPG,"NEXT STAR UNLOCKED"'), "travel directions interrupt emotional aftermath"
-)
+assert (
+    zone.index("bolt_story(VISPG,1+z)") < zone.index('card(VISPG,"NEXT STAR UNLOCKED"')
+), "travel directions interrupt emotional aftermath"
 require(main, "FOLLOW THE YELLOW ARROW TO THE DOOR.",
         "opening cutscene must still teach the first objective")
 
