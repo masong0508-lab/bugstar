@@ -33,7 +33,7 @@ env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_BOOT=1 \
     BUGSTAR_EVENTS=out/lan_menu/events.txt \
     timeout -k 3 75 "$GAME" --window --video-driver dummy --no-audio \
     --no-vsync --size 960 640 --data out/lan_menu/saves \
-    --stop-after 1200 > out/lan_menu/game.log 2>&1 || {
+    > out/lan_menu/game.log 2>&1 || {
         tail -100 out/lan_menu/game.log; exit 1;
     }
 grep -Eq 'EV dump: menu=1 page=10 .*lan_role=1 .*lan_coop=1' out/lan_menu/game.log || {
