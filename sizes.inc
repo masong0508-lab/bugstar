@@ -144,12 +144,17 @@ static void size_id(int i){
         while(cols--) bn_mul(v,32768); } }
     nb_from(v,about); }
 
+#define sz_nd ((int*)(SZ_SCR+2*NSIZE))               // cached digit lengths, alongside sort scratch (no new RAM)
 static void sz_sort(void){                                        // the order: worked out from the numbers themselves, so new ones always land in place
     u32 *kn=SZ_SCR, *kl=SZ_SCR+NSIZE;   // (the world builder's scratch: nothing else needs it while you look at numbers)
     for(int i=0;i<NSIZE;i++){ sz_ord[i]=(u16)i;
         if(i==SZ_BIG){ kn[i]=0xFFFFFFFFu; kl[i]=0; }
         else if(i>=NSOLD){ kn[i]=fact_nd[i-NSOLD]; kl[i]=fact_lead[i-NSOLD]; }
         else { size_id(i); kn[i]=(u32)nb_n; u32 l=0; for(int k=0;k<5;k++) l=l*10+(u32)(k<nb_n?nb_dig(k):0); kl[i]=l; } }
+    // The list previously recomputed EVERY big-number page on each opening,
+    // even though sz_sort has just computed every digit count. Reuse the
+    // result: no extra storage, no repeated 24-word multiplications on GBA.
+    for(int i=0;i<NSIZE;i++) sz_nd[i]=i==SZ_BIG ? 2000000001 : (int)kn[i];
     kn[SZ_TRAVEL]=0; kl[SZ_TRAVEL]=0;
     for(int i=1;i<NSIZE;i++){ u16 t=sz_ord[i]; int j=i; while(j>0 && (kn[sz_ord[j-1]]>kn[t] || (kn[sz_ord[j-1]]==kn[t] && kl[sz_ord[j-1]]>kl[t]))){ sz_ord[j]=sz_ord[j-1]; j--; } sz_ord[j]=t; } }
 
@@ -282,7 +287,6 @@ static void sz_short_view(volatile u16 *pg, int pi){
     if(pi==SZ_TRAVEL){ char b[64], d[40];
         scpy(b,""); kcomma(b,tv_trips); scat(b,tv_trips==1?" TRIP. LONGEST: ":" TRIPS. LONGEST: "); ly_fmt(d,tv_best); d[26]=0; scat(b,d); ctext(pg,120,130,b,C_GOLD);
         hours_fmt(d,tv_hours); scpy(b,"TIME BETWEEN THE STARS: "); scat(b,d); ctext(pg,120,138,b,C_GOLD); } }
-#define sz_nd ((int*)(SZ_SCR+2*NSIZE))
 static int sz_lsel, sz_ltop;                      // the list: which number is picked, the top row, and how many digits each one has
 static void sz_list_view(volatile u16 *pg){
     for(int k=0;k<12;k++){ int i=sz_ltop+k, on=i==sz_lsel; if(i>=NSIZE) break; int y=SZ_TOP+2+k*9;
@@ -356,7 +360,7 @@ static void size_screen_(volatile u16 *pg, int from_title){       // LEFT/RIGHT:
             if(HIT(K_A)){ pi=sz_lsel; view=0; set=-1; dirty=1; sfx(2); }
             else if(HIT(K_B)||HIT(K_SEL)){ view=0; set=-1; dirty=1; sfx(4); }
             continue; }
-        if(HIT(K_SEL) && !view){ for(int k=0;k<NSIZE;k++){ size_set(k); sz_nd[k]=nb_n; } set=-1;        // the list of them all (every number worked out again, for its length)
+        if(HIT(K_SEL) && !view){ set=-1;        // digit counts already cached by sz_sort; open the list immediately
             sz_lsel=pi; sz_ltop = pi>5 ? pi-5 : 0; if(sz_ltop>NSIZE-12) sz_ltop=NSIZE-12; view=3; dirty=1; sfx(2); continue; }
         if(HIT(K_B)){ if(!view) break; view=0; pos=ridx=gcur=0; roll=0; dirty=1; sfx(4); continue; }
         if(HIT(K_A)){ view=(view+1)%3; pos=ridx=gcur=0; roll=0; dirty=1; sfx(2); continue; }
