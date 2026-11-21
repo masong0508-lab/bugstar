@@ -163,7 +163,11 @@ static void net_raider(PcNetSession *s,uint32_t frame){
     p.payload[10]=c->host_hits;p.payload[11]=c->guest_hits;
     p.payload[12]=c->host_hp;p.payload[13]=c->guest_hp;
     p.payload[14]=c->losses;
-    p.payload[15]=(uint8_t)((c->beam_target?128:0) | (c->beam&15));
+    /* A single byte carries the current fire phase and its target.
+     * bit 7: targeted pilot, bits 4..6: countdown/2, low nibble: beam.
+     * No larger datagram or extra per-frame allocation is needed. */
+    p.payload[15]=(uint8_t)(((c->charge?c->charge_target:c->beam_target)?128:0) |
+                            (((c->charge+1u)/2u)<<4) | (c->beam&15));
     net_send(s,&p);
 }
 static void net_decode(PcNetShip *v,const BsNetPacket *p,uint32_t world){
@@ -273,7 +277,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                 continue;
             if(p.payload[6]>100 || p.payload[8]>3 || p.payload[9]>10 ||
                p.payload[12]>100 || p.payload[13]>100 ||
-               (p.payload[15]&127u)>8)
+               (p.payload[15]&15u)>8)
                 continue;
             PcCoop *c=&s->coop_enemy;
             for(int k=0;k<3;k++){
@@ -288,7 +292,9 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
             c->host_hits=p.payload[10];c->guest_hits=p.payload[11];
             c->host_hp=p.payload[12];c->guest_hp=p.payload[13];
             c->losses=p.payload[14];
-            c->beam=p.payload[15]&127u;c->beam_target=p.payload[15]>>7;
+            c->beam=p.payload[15]&15u;c->beam_target=p.payload[15]>>7;
+            c->charge=(uint8_t)(((p.payload[15]>>4)&7u)*2u);
+            c->charge_target=p.payload[15]>>7;
             s->last_raider_tick=p.tick;s->raider_seen=1;
             s->last_raider_rx=frame;s->last_rx=frame;
         }else if(p.type==BSNET_BYE && s->connected){
