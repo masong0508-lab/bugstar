@@ -23,8 +23,9 @@ typedef struct PcNetSession {
     PcNetShip other;
     PcDuel duel;                 /* session-only sparring HP and score */
     uint32_t last_host_shot_tick, last_guest_shot_tick;
+    uint16_t last_state_tick, last_event_tick; /* reject older UDP snapshots */
     uint8_t local_shots, host_seen_shots, guest_seen_shots;
-    uint8_t have_guest_fire, event_seen;
+    uint8_t have_guest_fire, event_seen, state_seen;
 } PcNetSession;
 int pcnet_host(PcNetSession *s, uint16_t port);
 int pcnet_join(PcNetSession *s, const char *numeric_ipv4, uint16_t port);
