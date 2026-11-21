@@ -143,7 +143,9 @@ echo '#include "../pc_multiplayer.inc"' >> main.c
 # A single GBA laser shot is also an optional LAN sparring shot: existing solo damage, cargo and saves are unchanged.
 sed -i 's|laser_cool=10-laser_lv; laser_t=4; sfx(10);|& pc_mp_fired();|' space.inc
 grep -c 'sfx(10); pc_mp_fired();' space.inc | grep -qx 1 || { echo "build: LAN fire event hook did not apply"; exit 1; }
-sed -i '1i static void pc_mp_fired(void);' main.c
+# Headless builds deliberately omit the socket transport, so the laser hook
+# must resolve to a no-op there. SDL builds call the external LAN adapter.
+sed -i '1i #ifdef PC_SDL\nvoid pc_mp_fired(void);\n#else\nvoid pc_mp_fired(void){}\n#endif' main.c
 # --- procedural sprites (pc/pc_sprgen_game.inc): the planet's objects drawn by the generators in NATIVE/ULTRA, generated discs in the space view, the gallery in the PC LAB
 sed -i 's|^        s32 sc=8+m\*4; |        if(pc_sg_obj(o,order[k],sx,sy,f,zc)) continue;\n&|' planet.inc
 grep -c "pc_sg_obj(o,order\[k\],sx,sy,f,zc)" planet.inc | grep -qx 1 || { echo "build: sprgen object hook did not apply"; exit 1; }
