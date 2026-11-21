@@ -133,6 +133,13 @@ sed -i 's|int vpx=120, vpy=VCY, vdrift=0, stk=0;|pc_sn_begin(); &|' space.inc
 grep -c "pc_sn_rec(cx" space.inc | grep -qx 1 && grep -c "pc_sn_native(pg" space.inc | grep -qx 1 && grep -c "pc_sn_begin()" space.inc | grep -qx 1 || { echo "build: native space hooks did not apply"; exit 1; }
 sed -i '1i static void pc_so_bolt(int tx,int ty,int hx,int hy), pc_so_late(volatile unsigned short *pg), pc_sn_begin(void), pc_so_native(volatile unsigned short *pg), pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk), pc_sn_rec(int cx,int cy,int r,int Lx,int Ly,int Lz,int rot,const unsigned char *noise);' main.c
 echo '#include "../pc_snative.inc"' >> main.c
+# --- opt-in LAN space-presence prototype, PC/Android only. No GBA source edits.
+# Keep the isolated renderer in the generated main.c where space globals and
+# wire() projection are visible; the socket transport lives in platform/.
+sed -i '1i static void pc_mp_space_draw(volatile unsigned short *pg);' main.c
+sed -i '/^    \/\/ crosshair$/i\    pc_mp_space_draw(pg);' space.inc
+grep -c '^    pc_mp_space_draw(pg);' space.inc | grep -qx 1 || { echo "build: LAN space drawing hook did not apply"; exit 1; }
+echo '#include "../pc_multiplayer.inc"' >> main.c
 # --- procedural sprites (pc/pc_sprgen_game.inc): the planet's objects drawn by the generators in NATIVE/ULTRA, generated discs in the space view, the gallery in the PC LAB
 sed -i 's|^        s32 sc=8+m\*4; |        if(pc_sg_obj(o,order[k],sx,sy,f,zc)) continue;\n&|' planet.inc
 grep -c "pc_sg_obj(o,order\[k\],sx,sy,f,zc)" planet.inc | grep -qx 1 || { echo "build: sprgen object hook did not apply"; exit 1; }
@@ -290,7 +297,7 @@ CF="-std=gnu11 $OPT $WARN -include string.h -include stdio.h -include stdlib.h -
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 # --- patch 30 (Android step 3): PC_ANDROID_PREP=1 bash pc/build.sh does NOT compile. It writes pc/gen/sources.txt (every .c file, relative to pc/) and
 # pc/gen/cflags.txt (the flags used here, with absolute include paths) for pc/android/app/jni/src/Android.mk, so the APK build and this script never drift apart.
-SRCS="gen/main.c ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../platform/pc_crash.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/mine.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c ../pc_sprgen.c ../pc_sprgen_flora.c ../pc_sprgen_build.c ../pc_sprgen_people.c ../pc_sprgen_crit.c ../pc_sprgen_critx.c ../pc_sprgen_crit2.c ../pc_sprgen_craft.c ../pc_sprgen_space.c ../pc_sprgen_gal.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c || true )"   # patch 35: "|| true": with PC_SDL=0 the test is false, and set -e ended the whole script right here, silently
+SRCS="gen/main.c ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../platform/pc_crash.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/mine.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c ../pc_sprgen.c ../pc_sprgen_flora.c ../pc_sprgen_build.c ../pc_sprgen_people.c ../pc_sprgen_crit.c ../pc_sprgen_critx.c ../pc_sprgen_crit2.c ../pc_sprgen_craft.c ../pc_sprgen_space.c ../pc_sprgen_gal.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ../platform/pc_net.c ../net/session.c || true )"   # patch 35: "|| true": with PC_SDL=0 the test is false, and set -e ended the whole script right here, silently
 if [ -n "$PC_ANDROID_PREP" ]; then
   sed -i 's|facts\.bin\\"|'"$PCD"'/gen/facts.bin\\"|' sizes.inc          # the NDK compiles from another folder: give .incbin the full path
   echo "$SRCS" | tr ' ' '\n' | grep -v '^$' | sed -e 's|^\.\./||' > sources.txt
@@ -298,10 +305,10 @@ if [ -n "$PC_ANDROID_PREP" ]; then
   echo "prepared pc/gen: $(wc -l < sources.txt) sources, flags in pc/gen/cflags.txt"; exit 0
 fi
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_kartnat.inc ../pc_pnative.inc ../pc_pncomp.inc ../pc_snative.inc ../pc_sncomp.inc ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../pc_sprgen.h ../pc_sprgen_i.h ../pc_sprgen_game.inc ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_kartnat.inc ../pc_pnative.inc ../pc_pncomp.inc ../pc_snative.inc ../pc_sncomp.inc ../pc_multiplayer.inc ../platform/pc_net.h ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../pc_sprgen.h ../pc_sprgen_i.h ../pc_sprgen_game.inc ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
 for f in $SRCS; do [ "$f" = gen/main.c ] && continue; o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
-$CC $ARCH ${PC_PIE:+-pie} $OBJS $SDLL -lm -lpthread -o ../$OUT
+$CC $ARCH ${PC_PIE:+-pie} $OBJS $SDLL ${PC_WIN:+-lws2_32} -lm -lpthread -o ../$OUT
 if [ -n "$PC_WIN64" ]; then python3 "$PCD/tools/pe_lowaddr.py" ../$OUT || exit 1; fi
 echo "built pc/$OUT ($([ "${PC_SDL:-1}" != "0" ] && echo "with window" || echo "headless only"))"
