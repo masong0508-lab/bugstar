@@ -80,6 +80,8 @@ int main(void){
     // Recovery must never lower a previously upgraded value.
     setup(1); fuel=125; story_boss_beaten(); CHECK(fuel==125);
     setup(3); hull=120; story_boss_beaten(); CHECK(hull==120);
+    setup(0); food=155; story_boss_beaten(); CHECK(food==155);
+    setup(5); hearts=120; story_boss_beaten(); CHECK(hearts==120);
 
     puts("Boss progression runtime: six one-time recoveries, old saves, repeat tiers, unlocks PASS");
     return 0;
