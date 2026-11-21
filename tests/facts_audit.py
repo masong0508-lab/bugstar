@@ -8,13 +8,22 @@ root = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root))
 import facts
 
+# This is the actual 3x5 GBA font character set, not generic ASCII.
+# The asset generator previously checked text lengths but not glyph coverage.
+# Bad slash/semicolon text rendered as missing or unrelated glyphs.
+ALLOWED = set(" ',():-.^0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 items = {entry[1]: entry for entry in facts.F}
+assert len(items) == len(facts.F), "Duplicate page titles hide entries in the index"
 for value, title, line1, line2, approx in facts.F:
     assert title and len(title) <= 28, (title, len(title))
     assert line1 is None or len(line1) <= 58, (title, line1)
     assert line2 is None or len(line2) <= 58, (title, line2)
     assert approx in (0, 1), (title, approx)
     assert isinstance(value, int) or callable(value), title
+    for label, string in (("title", title), ("line1", line1), ("line2", line2)):
+        if string is not None:
+            unsupported = set(string) - ALLOWED
+            assert not unsupported, (title, label, sorted(unsupported))
 
 def value(title):
     v = items[title][0]
@@ -31,6 +40,9 @@ assert value("METRES IN ONE AU") == 149597870700
 assert value("CONFIRMED EXOPLANETS, 2026") == 6400
 assert value("KNOWN ASTEROIDS, NOV 2026") == 1360000
 assert value("ENGLISH WIKIPEDIA ARTICLES") == 7260000
+assert "ACKERMANN(4,3)" in items and "ACKERMANN(4,2)" not in items
+assert "MERSENNE PRIME 2^1279" in items
+assert "MERSENNE PRIME 2^2203" in items
 assert "NOVEMBER 18, 2026" in str(items["KM IN A LIGHT DAY"][3])
 assert items["ONE MODEL OF BEYOND THE SKY"][4] == 1
 assert "GBA MAP: UNIVERSES" in (root / "sizes.inc").read_text()
@@ -39,4 +51,6 @@ if os.environ.get("BUGSTAR_PC"):
     assert "PC: UNIVERSES" in items
     assert value("PC: UNIVERSES") == 2**2048
     assert "PC: STAR CLUSTERS A UNIVERSE" in items
-print("HOW BIG IS IT: %d pages verified, dated estimates and derived figures consistent" % len(facts.F))
+    # Both dimensions are exact combinatorics, not scientific estimates.
+    assert value("PC: LAW SETS X UNIVERSES") == value("GBA MAP: LAW SETS X UNIS") * 2 ** (2048 - 256)
+print("HOW BIG IS IT: %d unique pages, valid GBA glyphs, dated estimates and formulas verified" % len(facts.F))
