@@ -31,7 +31,9 @@ typedef struct PcNetSession {
     uint16_t last_input_tick;    /* reject replayed guest laser counters */
     uint8_t local_shots, host_seen_shots, guest_seen_shots;
     uint8_t have_guest_fire, event_seen, state_seen, input_seen;
-    uint8_t coop, raider_seen;  /* 1: co-op against one shared raider, 0: sparring */
+    uint8_t coop, raider_seen;  /* 1: co-op, 0: sparring */
+    uint8_t local_ready, peer_ready, manual_ready, reconnecting;
+    uint32_t last_ready_tx;
 } PcNetSession;
 int pcnet_host(PcNetSession *s, uint16_t port);
 int pcnet_join(PcNetSession *s, const char *numeric_ipv4, uint16_t port);
@@ -40,6 +42,8 @@ int pcnet_remote(const PcNetSession *s, uint32_t frame, PcNetShip *out);
 void pcnet_close(PcNetSession *s);
 void pcnet_fire(PcNetSession *s);
 void pcnet_set_coop(PcNetSession *s,int enabled);
+void pcnet_set_ready(PcNetSession *s,int ready);
+int pcnet_match_ready(const PcNetSession *s);
 int pcnet_raider(const PcNetSession *s,uint32_t frame,PcCoop *out);
 int pcnet_duel(const PcNetSession *s, uint8_t *host_hp, uint8_t *guest_hp,
                uint8_t *host_wins, uint8_t *guest_wins);
@@ -52,6 +56,12 @@ void pc_mp_frame(uint32_t frame);
 int pc_mp_remote(uint32_t frame, PcNetShip *out);
 void pc_mp_close(void);
 void pc_mp_set_coop(int enabled);
+void pc_mp_set_ready(int ready);
+int pc_mp_local_ready(void);
+int pc_mp_peer_ready(void);
+int pc_mp_match_ready(void);
+int pc_mp_reconnecting(void);
+int pc_mp_coop_complete(void);
 int pc_mp_coop_mode(void);
 int pc_mp_raider(uint32_t frame,PcCoop *out);
 void pc_mp_fired(void);
