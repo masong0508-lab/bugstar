@@ -114,5 +114,54 @@ M = [
 ("PYRE","PYRE",["...F......","..FfF.F...",".FfyfFfF..",".FfyyfyF..","..kkkkkk..","..kxwxwk..","..kxxxxk..","..kxrrxk..","..kxxxxk..","..kkkkkk..","..kxoxok..","..kxxxxk..",".kkkkkkkk.","kxxxxxxxxk"],
   "0x7800,0x0000,0x2C00,0x1600,18, 9,18,4,30, NF_SHOOT|NF_ARMOR, 7,50, 2,3"),
 ]
+
+# Twenty-four more silhouettes and combat profiles, four for each broad biome.
+# All these pictures are deterministic remixes of hand-drawn base species:
+# body stripes, highlight flecks and antennae change on the generated sprite.
+# The byte arrays live only in ROM (shared by GBA, PC and Android).
+EXTRA_MONSTERS = [["BRAMBLE","BRAMBLE","EARWIG","0x5000,0x0700,0x2C00,0, 9,10,14,3, 4, NF_CHARGE, 0,0,1,2",0],
+    ["POLLENIMP","POLLEN IMP","APHID","0x3400,0x0600,0x2000,0, 4, 6, 8,2, 1, NF_PACK, 0,0,0,1",0],
+    ["BLOOMWASP","BLOOM WASP","HORNET","0x5000,0x0700,0x2400,0x1800, 8, 9,14,4, 2, NF_FLY|NF_SHOOT, 5,55,2,3",0],
+    ["ROOTTITAN","ROOT TITAN","STRANGLER","0x8800,0x0180,0x3400,0, 28,14,24,7, 25, NF_ARMOR|NF_LEECH, 0,0,3,4",0],
+    ["ABYSSEEL","ABYSS EEL","EEL","0x4800,0x0A00,0x2800,0, 10,12,18,3, 3, NF_CHARGE, 0,0,2,3",1],
+    ["CORALSTALK","CORAL STALKER","CRAYFISH","0x6000,0x0480,0x3000,0, 19,10,20,5, 12, NF_ARMOR, 0,0,2,3",1],
+    ["STORMMEDUSA","STORM MEDUSA","JELLY","0x6800,0x0600,0x3000,0x1800, 9, 9,18,4, 2, NF_FLY|NF_SHOOT, 7,58,3,4",1],
+    ["REEFLURKER","REEF LURKER","ANGLER","0x7000,0x0500,0x3000,0, 16,13,20,4, 6, NF_LEECH, 0,0,2,3",1],
+    ["DUSTSCARAB","DUST SCARAB","SCARAB","0x5800,0x0580,0x3000,0, 15, 9,16,4, 7, NF_ARMOR|NF_PACK, 0,0,1,2",2],
+    ["SANDSPECTER","SAND SPECTER","WRAITH","0x6000,0x0700,0x2C00,0, 8,11,20,4, 2, NF_FLY|NF_LEECH, 0,0,3,4",2],
+    ["THORNWORM","THORN WORM","SANDWM","0x8800,0x0600,0x3800,0, 19,14,20,5, 9, NF_CHARGE, 0,0,2,3",2],
+    ["IRONSCORP","IRON SCORPION","SOLIFUGE","0x6400,0x0780,0x2C00,0, 16,14,20,5, 8, NF_CHARGE|NF_ARMOR, 0,0,3,4",2],
+    ["RIMEMOTH","RIME MOTH","MONARCH","0x6000,0x0780,0x2800,0x1200, 6, 7,12,3, 1, NF_FLY|NF_PACK, 0,0,1,2",3],
+    ["FROSTWARD","FROST SENTINEL","ICICLE","0x8000,0x0000,0x2800,0x2800, 16,11,18,5, 22, NF_SHOOT|NF_ARMOR, 6,38,3,4",3],
+    ["GLACIERBRUTE","GLACIER BRUTE","YETI","0xA000,0x0480,0x4800,0, 38,20,44,8, 25, NF_ARMOR|NF_CHARGE, 0,0,4,6",3],
+    ["BLIZZARDBAT","BLIZZARD BAT","CROW","0x5800,0x0B00,0x2400,0, 7, 9,12,3, 1, NF_FLY|NF_PACK, 0,0,1,2",3],
+    ["FANGVINE","FANG VINE","PITCHER","0x7800,0x0180,0x3000,0x1000, 18,12,22,4, 25, NF_SHOOT|NF_LEECH, 8,75,2,3",4],
+    ["SPOREWIDOW","SPORE WIDOW","TARANTULA","0x7000,0x0580,0x3000,0, 20,15,26,5, 8, NF_SPLIT|NF_LEECH, 0,0,3,4",4],
+    ["CANOPYPHANT","CANOPY PHANTOM","BANSHEE","0x7000,0x0680,0x2800,0x1700, 10,10,18,4, 2, NF_FLY|NF_SHOOT, 7,50,2,3",4],
+    ["VENOMBLOOM","VENOM BLOOM","TREEFROG","0x5000,0x0600,0x2400,0x1400, 9,10,16,4, 2, NF_SHOOT|NF_PACK, 8,48,2,3",4],
+    ["BONEREAPER","BONE REAPER","REAPER","0x9000,0x0600,0x3800,0, 24,18,28,5, 10, NF_LEECH|NF_CHARGE, 0,0,4,5",5],
+    ["CRYPTLOCUST","CRYPT LOCUST","ROACH","0x4800,0x0A00,0x2000,0, 6, 8,12,2, 1, NF_PACK|NF_BOOM, 0,0,1,2",5],
+    ["GRAVEWARD","GRAVE SENTINEL","TURRET","0x6800,0x0000,0x3400,0x2400, 19,13,20,5, 25, NF_SHOOT|NF_ARMOR, 8,36,3,4",5],
+    ["SHADEHOUND","SHADE HOUND","HELLHOUND","0x7000,0x0A00,0x3400,0, 17,16,22,3, 8, NF_CHARGE|NF_PACK, 0,0,3,4",5]]
+_VARIANT_COLOURS = (("G", "y"), ("q", "Q"), ("C", "Y"), ("w", "q"), ("g", "r"), ("h", "r"))
+def _variant_art(rows, accent, light, seed):
+    out = []
+    for y, row in enumerate(rows):
+        pix = list(row)
+        for x, ch in enumerate(pix):
+            if ch not in (".", "k"):
+                if (x + 3 * y + seed) % 7 == 0: pix[x] = light
+                elif (x + y * 2 + seed) % 4 == 0: pix[x] = accent
+        if len(pix) >= 10 and y == 0:
+            # Horns, a crown or wing tips on the upper edge.
+            for x in ((seed % 3) + 1, len(pix) - 2 - (seed % 3)):
+                if pix[x] == ".": pix[x] = "k" if seed & 1 else light
+        out.append("".join(pix))
+    return out
+
+_base = {key: rows for key, name, rows, stats in M}
+for _i, (_key, _name, _src, _stats, _biome) in enumerate(EXTRA_MONSTERS):
+    _a, _b = _VARIANT_COLOURS[_biome]
+    M.append((_key, _name, _variant_art(_base[_src], _a, _b, _i), _stats))
 ART = {"MN_" + key: rows for key, name, rows, stats in M}
-assert len(M) == 50 and len(set(k for k, _, _, _ in M)) == 50
+assert len(M) == 74 and len(set(k for k, _, _, _ in M)) == 74
