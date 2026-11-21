@@ -11,7 +11,7 @@ static void pc_mp_arrive(void){
 #ifdef PC_SDL
     if(pc_mp_role()==2){
         shx+=192; shz+=1720;
-        yaw=512; pitch=0; speed=0;
+        yaw=pc_mp_coop_mode()?0:512; pitch=0; speed=0;
     }
 #endif
 }
@@ -53,7 +53,42 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
         shown.pitch+=(short)((other.pitch-shown.pitch)/3);
     }
     other=shown;
-    {
+    if(pc_mp_coop_mode()){
+        PcCoop raider;
+        if(pc_mp_raider((uint32_t)pc_frames(),&raider)){
+            /* A shared in-world patrol ship, not a reticle painted on the
+             * screen. Host and guest use the same world-space coordinates. */
+            s32 rv[6*3];
+            static const s16 rm[6][3]={
+                {0,0,135},{-125,0,-45},{125,0,-45},
+                {0,55,-50},{0,-35,-50},{0,0,-105}
+            };
+            static const u8 re[]={
+                0,1,0,2,0,3,0,4,1,3,2,3,1,4,2,4,3,5,4,5,1,5,2,5
+            };
+            for(int k=0;k<6;k++){
+                rv[k*3]=raider.x+rm[k][0];
+                rv[k*3+1]=raider.y+rm[k][1];
+                rv[k*3+2]=raider.z+rm[k][2];
+            }
+            if(raider.phase==1){
+                int ci=raider.flash?49:53;
+                wire(pg,rv,6,re,12,ci);
+                if(pc_sn.w && pc_sn.msk)so_wire(rv,6,re,12,ci);
+                int sx,sy_;s32 range;
+                if(sproj(raider.x,raider.y,raider.z,&sx,&sy_,&range) &&
+                   range>100 && range<10000 && sx>15 && sx<205 &&
+                   sy_>14 && sy_<107)
+                    text(pg,sx+7,sy_-8,"RAIDER",ci,1);
+            }
+            char hud[64];
+            snprintf(hud,sizeof hud,"CO-OP RAID HP:%u  WINS:%u",
+                     (unsigned)raider.hp,(unsigned)raider.wins);
+            text(pg,4,112,hud,50,1);
+            if(raider.phase==2)
+                text(pg,66,99,"RAIDER DOWN!",54,1);
+        }else text(pg,4,112,"CO-OP: SYNCING RAIDER",50,1);
+    }else {
         uint8_t hh,gh,wh,wg;
         if(pc_mp_duel(&hh,&gh,&wh,&wg)){
             int remote_hp=(pc_mp_role()==1)?gh:hh;
@@ -65,6 +100,7 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
             text(pg,4,113,status,50,1);
             if(!hh || !gh)text(pg,65,102,hh?"P1 WINS":"P2 WINS",54,1);
         }else have_hp=0;
+    }
     }
     if(hit_flash)hit_flash--;
     /* The same 3D projection and camera plane as stations, fighters and rocks:
