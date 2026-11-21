@@ -5,6 +5,8 @@
 #include "pc_net.h"
 #include "../../net/session.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #ifdef _WIN32
 # define WIN32_LEAN_AND_MEAN
 # include <winsock2.h>
@@ -288,7 +290,25 @@ void pc_mp_submit(const PcNetShip *local){
     if(g_active && local){g_local=*local;g_submitted=1;}
 }
 void pc_mp_frame(uint32_t frame){
-    if(g_active && g_submitted)pcnet_step(&g_peer,frame,&g_local);
+    if(g_active && g_submitted){
+        uint8_t before=g_peer.connected;
+        uint8_t hp0=g_peer.duel.host_hp,hp1=g_peer.duel.guest_hp;
+        pcnet_step(&g_peer,frame,&g_local);
+        if(getenv("BUGSTAR_LAN_TRACE")){
+            if(before!=g_peer.connected)
+                fprintf(stderr,"lan: peer %s frame %u world %u role %u\\n",
+                        g_peer.connected?"CONNECTED":"DISCONNECTED",
+                        (unsigned)frame,(unsigned)g_peer.world,
+                        (unsigned)g_peer.role);
+            if(g_peer.connected &&
+               (hp0!=g_peer.duel.host_hp || hp1!=g_peer.duel.guest_hp))
+                fprintf(stderr,"lan: duel P1=%u P2=%u wins=%u/%u frame %u\\n",
+                        (unsigned)g_peer.duel.host_hp,
+                        (unsigned)g_peer.duel.guest_hp,
+                        (unsigned)g_peer.duel.host_wins,
+                        (unsigned)g_peer.duel.guest_wins,(unsigned)frame);
+        }
+    }
     g_submitted=0;
 }
 int pc_mp_remote(uint32_t frame,PcNetShip *out){
