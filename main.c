@@ -1461,7 +1461,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     new_planet(); planet_enter(); show_msg(cont ? "WELCOME BACK" : "");
     REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0);      // the planet is on screen behind the first cards
     music(0);
-    if(!cont && !dbg.go){ static const char *const t[6]={"YOU ARE A LITTLE PILL BUG.","THE ANT KING HAS CAGED YOUR BUG FRIENDS.","","FOLLOW THE YELLOW ARROW TO THE DOOR.","GO DOWN. BEAT THE BOSS AT THE BOTTOM.","THEN FLY YOUR SHIP TO THE NEXT STAR."};
+    if(!cont && !dbg.go){ static const char *const t[6]={"YOUR FRIENDS WERE TAKEN BELOW THE GARDEN.","SOMEWHERE UNDER THE GRASS, CAGES RATTLE.","YOU ARE SMALL. YOU ARE NOT HELPLESS.","FOLLOW THE YELLOW ARROW TO THE DOOR.","OPEN CAGES. BEAT THE BOSS BELOW.","THEN FLY TO THE NEXT STAR TO FIND THE REST."};
         card(VISPG,"BUGSTAR",t,6); bolt_story(VISPG,0); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
 #ifdef TEST_DUNGEON
     enter_dungeon_flag=1;
@@ -1671,8 +1671,9 @@ static void run_game(void){
                        planet_hud(); }
                    if(zone_card){ int z=zone_card-1; zone_card=0;
                        if(z==5){ bolt_story(VISPG,6); fade(1); credits(); planet_enter(); fade(0); }
-                       else { static const char *const t[6]={"A NEW STAR IS OPEN.","","1. GO TO YOUR SHIP. FOLLOW THE ARROW.","2. PICK LAUNCH INTO SPACE.","3. PRESS SELECT FOR THE GALAXY MAP.","4. PICK THE NEW STAR AND PRESS A."};
-                           card(VISPG,"BOSS BEATEN! ZONE CLEARED",t,6); bolt_story(VISPG,1+z); }
+                       else { static const char *const t[6]={"THE BOSS IS DOWN. THE NEXT STAR IS OPEN.","THE CAGES HERE ARE NO LONGER GUARDED.","1. FOLLOW THE ARROW TO YOUR SHIP.","2. PICK LAUNCH INTO SPACE.","3. SELECT: OPEN THE GALAXY MAP.","4. PICK THE NEW STAR. KEEP LOOKING."};
+                           bolt_story(VISPG,1+z);  // let the rescue aftermath land BEFORE instructions
+                           card(VISPG,"NEXT STAR UNLOCKED",t,6); }
                        planet_hud(); show_msg("GO TO YOUR SHIP"); } }
         }
     }
