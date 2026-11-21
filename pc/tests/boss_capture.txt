@@ -1,4 +1,4 @@
 # Real GBA-style boss gameplay screenshots. No synthetic sprite drawings.
 # PC headless harness saves the composited 240x160 frame.
 shot 240
-shot 360
+shot 302
