@@ -1,14 +1,16 @@
 # BUGSTAR experimental LAN sparring + three-wave co-op mission (developer test)
 
-**Status (21 November 2026):** the PC ↔ PC two-process SDL smoke test now **passes in both sparring and co-op**. In the first verified co-op smoke, the host and guest each logged three synchronized raider kills, and both pilots contributed real laser hits. Windows PC, Android APK and GBA ROM **builds** were green at protocol v2 commit `e4aca761a2`; this does not mean an Android device was tested for multiplayer, or that GBA has link networking. The newer ship-model, network hardening and tick-decoupling work is under CI re-verification.
-This mode is opt-in via command-line arguments. It is disabled in the
-normal game. There is no in-game host/join menu, shared campaign pirate/enemy AI, campaign hull
-damage, inventory transfer, co-op saves, kart networking, or verified
-Internet support. Do not advertise this as completed campaign multiplayer.
+**Status (21 November 2026):** the PC ↔ PC two-process SDL game smoke now **passes in both sparring and co-op**, including the expanded protocol-v3 three-wave encounter at `49495e1024`. The two-real-UDP-socket mission test confirms host and guest receive the same final result. Builds for Windows, Android APK and GBA ROM were successful on that commit. **The new in-game LAN menu is committed but is still undergoing its own SDL event and cross-platform build verification.** Android hardware-to-PC networking has not been tested, and neither GBA nor GBC supports LAN UDP.
+LAN mode is opt-in, available from the platform options overlay and from
+command-line arguments. Normal play stays offline. This is not shared
+campaign multiplayer: no campaign hull damage, inventory transfers,
+persistent co-op rewards, co-op saves, kart networking, or Internet
+matchmaking. Do not expose the UDP port to the public Internet.
 
 The initial implementation supports:
-- Two independently running PC instances (Windows/Linux; Android shares
-  the transport C code but has no host/join UI yet).
+- Two independently running PC instances (Windows/Linux). Android shares
+  the SDL options UI and the UDP transport C code but still needs
+  actual-device Wi-Fi / suspend / lifecycle testing.
 - A real nonblocking UDP socket on each instance, versioned HELLO/READY,
   CRC8 packet checking and world-system ID matching.
 - A compact 16-byte state datagram about every **three gameplay ticks**
@@ -26,7 +28,27 @@ The initial implementation supports:
 - A clean loss of the remote silhouette after stale/lost packets; BYE on
   normal shutdown. A recent enemy score cannot make an old 3D ship position fresh, and replayed guest shot counters are rejected. Game-clock networking continues between rendered flight frames. No cartridge SRAM/save modifications.
 
-**Version compatibility:** The expanded co-op mission uses a fixed 24-byte RAIDER payload and LAN **protocol v3**. Both PCs must run the same updated build; v2 peers are rejected instead of misreading enemy data. The previous full-game verification was on v2; this three-wave revision still requires its own CI pass.
+**Version compatibility:** The expanded co-op mission uses a fixed 24-byte RAIDER payload and LAN **protocol v3**. Both PCs must run the same updated build; v2 peers are rejected. Both real PC instances completed their co-op combat smoke and the full 3-wave socket test at commit `49495e1024`. Future UI changes are gated by a separate SDL menu smoke test.
+
+## Start from the in-game options menu
+
+On PC, press **Esc** (gamepad: Back+Start); on Android, open the touchscreen
+**MENU/MODE** options overlay. Select **MULTIPLAYER LAN**. Set **MATCH TYPE**
+to **3-WAVE CO-OP** or **SPARRING** and pick UDP port 33777, 33778 or 33779.
+Choose **HOST MATCH** on the first player. On the second machine, choose
+**JOIN ADDRESS**, enter the host's numeric local IPv4 address using the
+keyboard or Android text input, confirm with Enter, then choose **JOIN MATCH**.
+**127.0.0.1** works only when both running games share a computer. Both
+players must then enter 3D flight in the same star system. The overlay
+shows HOST/JOIN, WAITING/CONNECTED and match type. Select **LEAVE MATCH**
+from the same menu to disconnect and return to normal solo play without
+writing any multiplayer state to the campaign save. Menu controls use SDL
+mouse, keyboard, gamepad, and the Android touch overlay; menu behavior
+is currently checked by a scripted SDL event test, with hardware testing
+still required.
+
+The port picker offers three known local ports for quick play. The command
+line below remains available for arbitrary UDP ports.
 
 ## Test on one computer first
 
@@ -86,7 +108,7 @@ world rejection, timeout/disconnect, handshake rejoin, both players
 hitting each other, HP updates and round victories. The independent
 `tests/pc_multiplayer_duel_test.c` checks front/back/side aim, range,
 match wins and respawn. `tests/pc_multiplayer_coop_test.c` and `tests/pc_multiplayer_coop_net_test.c` additionally test three-stage mission completion, two independently aimable targets, and the second drone's synchronized 3D pose, HP and wave status. PC and Android CI compile the tests. The PC test also boots two complete SDL game windows in sparring and co-op modes, captures screenshots and checks both entered 3D space. Existing renderer tests and
-`pc/tests/speed_guard.sh` must continue to pass with LAN disabled. The separate `pc/tests/lan_live.sh` must also pass a **real combat victory on each running game**, not just establish a UDP connection.
+`pc/tests/speed_guard.sh` must continue to pass with LAN disabled. The separate `pc/tests/lan_live.sh` must also pass a **real combat victory on each running game**, not just establish a UDP connection. `pc/tests/lan_menu.sh` exercises the actual SDL options panel through keyboard and text events: HOST, LEAVE, numeric IPv4 edit, JOIN, LEAVE.
 
 ## What makes the next iteration truly playable
 
@@ -95,8 +117,9 @@ match wins and respawn. `tests/pc_multiplayer_coop_test.c` and `tests/pc_multipl
 3. Harden existing INPUT/EVENT/RAIDER exchanges with sequencing,
    reconnect/clock-skew handling, acknowledgement and rate controls;
    turn the one shared training raider into real AI with attacks and joint objectives, without trusting a client-supplied damage number.
-4. UI with HOST/JOIN/READY/LEAVE, visible connection status and a LAN
-   address on PC and Android. Same session can recover from suspend.
+4. Evolve the new options HOST/JOIN/LEAVE interface into an in-world
+   preflight lobby with READY confirmations, latency indication and more
+   descriptive timeout/error messages. Test Android suspend/reconnect.
 5. Independent runtime screenshots and gameplay footage, packet-loss/
    latency tests, plus Windows/Android hardware smoke testing.
 6. Separate GBA and GBC cable transports, with their own link budgets;
