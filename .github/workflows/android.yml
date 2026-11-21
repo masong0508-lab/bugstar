@@ -21,6 +21,7 @@ on:
       - 'monsters.py'
       - 'gen.py'
       - 'tests/space_native_projection_audit.py'
+      - 'tests/space_station_depth_audit.py'
       - 'tests/monster_roster.py'
       - 'pc/facts/**'
       - 'tests/facts_audit.py'
@@ -65,6 +66,9 @@ jobs:
 
       - name: Exercise native PC/Android 3D near-plane edges with UBSan
         run: python3 tests/space_native_projection_audit.py
+
+      - name: Check GBA and native station docking geometry parity
+        run: python3 tests/space_station_depth_audit.py
 
       - name: Check the 24 additional cross-port monster species
         run: python3 tests/monster_roster.py
