@@ -2,6 +2,9 @@
  * Runs a host and a client with independent movement and world IDs.
  */
 #include "../pc/platform/pc_net.h"
+#include "../net/session.h"
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -69,6 +72,28 @@ int main(void){
       assert(hh==100 && gh==0 && hw==1 && gw==0);
       assert(pcnet_duel(&client,&hh,&gh,&hw,&gw));
       assert(hh==100 && gh==0 && hw==1 && gw==0);}
+    /* Inject valid but stale host packets after a knockout. The client
+     * must reject UDP reordering rather than restore old HP or teleport. */
+    {
+        BsNetPacket old={0}; uint8_t wire[BSNET_MAX_FRAME];
+        struct sockaddr_in dst={0};
+        dst.sin_family=AF_INET;dst.sin_port=htons(client.local_port);
+        dst.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
+        old.type=BSNET_EVENT;old.tick=500;old.length=4;
+        old.payload[0]=100;old.payload[1]=100;
+        int n=bsnet_pack(&old,wire,sizeof wire);assert(n==12);
+        assert(sendto((int)host.sock,wire,(size_t)n,0,
+                      (struct sockaddr*)&dst,sizeof dst)==n);
+        old.type=BSNET_STATE;old.length=8;old.tick=500;
+        old.payload[0]=0x71;old.payload[1]=0x02; /* stale x=10000 */
+        n=bsnet_pack(&old,wire,sizeof wire);assert(n==16);
+        assert(sendto((int)host.sock,wire,(size_t)n,0,
+                      (struct sockaddr*)&dst,sizeof dst)==n);
+        pcnet_step(&client,630,&bc);
+        uint8_t hh,gh,hw,gw;
+        assert(pcnet_duel(&client,&hh,&gh,&hw,&gw) && gh==0 && hw==1);
+        assert(pcnet_remote(&client,630,&got) && abs_i(got.x-ah.x)<40);
+    }
     for(unsigned t=630;t<750;t++){
         pcnet_step(&client,t,&bc);
         pcnet_step(&host,t,&ah);
