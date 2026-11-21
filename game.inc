@@ -879,12 +879,12 @@ static void free_bug(int t){
     // The first bug of each kind introduces what they actually contribute.
     // Later rescues use the familiar short feedback, without repeating dialogue.
     static const char *const first_rescue[6]={
-        "PILL BUG: TAKE MY LAST TEN GOLD.",
-        "LADYBUG: LET ME PATCH YOU UP.",
-        "FIREFLY: I'LL LIGHT THE DARK.",
-        "BEE: ANYONE HURTS YOU, I STING.",
-        "CRICKET: KEEP UP! I'LL HELP YOU RUN.",
-        "RUNAWAY ANT: I KNOW THE STAIRS."};
+        "PILL BUG: TEN GOLD. MY WHOLE FORTUNE.",
+        "LADYBUG: HOLD STILL. LET ME HELP.",
+        "FIREFLY: NO MORE DARK. FOLLOW MY LIGHT.",
+        "BEE: THEY TOOK OUR HIVE. I CAN STING.",
+        "CRICKET: I RAN ONCE. NOW I RUN WITH YOU.",
+        "RUNAWAY ANT: I KNOW THEIR HIDDEN STAIRS."};
     char b[40]; scpy(b,"FREED A "); scat(b,friend_name[t]);
     say(have_bug[t]==1?first_rescue[t]:b); sfx(2);
     // A rescue contract belongs to the world that posted it. Freeing bugs
