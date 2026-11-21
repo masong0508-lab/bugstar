@@ -8,6 +8,7 @@ on:
       - 'ui.inc'
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
+      - 'tests/story_cutscene_audit.py'
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
       - 'ui.inc'
@@ -45,6 +46,7 @@ on:
       - 'ui.inc'
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
+      - 'tests/story_cutscene_audit.py'
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
       - 'ui.inc'
@@ -88,6 +90,8 @@ jobs:
         run: python3 tests/list_picker_runtime_host.py
       - name: Audit quest targets, world gates and guaranteed rewards
         run: python3 tests/quest_integrity_audit.py
+      - name: Audit story continuity, cutscene skips and memory reveal gates
+        run: python3 tests/story_cutscene_audit.py
       - name: Execute real quest pickup code with UndefinedBehaviorSanitizer
         run: python3 tests/quest_runtime_host.py
       - name: Exercise native 3D perspective and near-plane regression with UBSan
