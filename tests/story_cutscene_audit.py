@@ -67,6 +67,20 @@ for phrase in ("int k=beat==10?7:beat", "shd_begin()", "shd_end(sh)",
     require(cinema, phrase, "cutscene lacks safe 240x160 drawing, skip or page handling: " + phrase)
 assert "malloc(" not in cinema and "calloc(" not in cinema, "chapter slates must not allocate"
 
+# The OAM bit 14 on attribute 0 switches to 8bpp. Bolt's original sprites
+# are 4bpp; the new chapter scene must preserve this rather than scrambling
+# its pixels/palette on GBA hardware.
+sprite_attributes = re.findall(r"shadow_oam\[0\]\.a0\s*=\s*([^;]+);", cinema)
+assert len(sprite_attributes) >= 2, "chapter sprite has no initial/animated attr0"
+assert all("(1<<14)" not in bits for bits in sprite_attributes), (
+    "chapter scene incorrectly sets the 8bpp sprite bit for 4bpp Bolt artwork"
+)
+assert "switch(k){" in cinema and all(
+    f"case {k}:" in cinema for k in range(8)
+), "each chapter should have its own illustrated scene motif"
+assert "if((t&7)==0)" in cinema, "chapter twinkle animation is missing"
+
+
 scenes = section(ui, "static void bolt_story(", "// Three deliberate breathers")
 for beat in [0, 1, 2, 3, 4, 5, 6, 10]:
     require(scenes, f"case {beat}:", f"missing story beat {beat}")
