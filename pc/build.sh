@@ -137,9 +137,13 @@ echo '#include "../pc_snative.inc"' >> main.c
 # Keep the isolated renderer in the generated main.c where space globals and
 # wire() projection are visible; the socket transport lives in platform/.
 sed -i '1i static void pc_mp_space_draw(volatile unsigned short *pg);' main.c
-sed -i '/^    \/\/ crosshair$/i\    pc_mp_space_draw(pg);' space.inc
-grep -c '^    pc_mp_space_draw(pg);' space.inc | grep -qx 1 || { echo "build: LAN space drawing hook did not apply"; exit 1; }
+sed -i 's|pc_sr_done: pc_sr_mark(pg); pc_so_native(pg);|pc_sr_done: pc_sr_mark(pg); pc_mp_space_draw(pg); pc_so_native(pg);|' space.inc
+grep -c 'pc_sr_mark(pg); pc_mp_space_draw(pg); pc_so_native(pg);' space.inc | grep -qx 1 || { echo "build: LAN space drawing hook did not apply"; exit 1; }
 echo '#include "../pc_multiplayer.inc"' >> main.c
+# A single GBA laser shot is also an optional LAN sparring shot: existing solo damage, cargo and saves are unchanged.
+sed -i 's|laser_cool=10-laser_lv; laser_t=4; sfx(10);|& pc_mp_fired();|' space.inc
+grep -c 'sfx(10); pc_mp_fired();' space.inc | grep -qx 1 || { echo "build: LAN fire event hook did not apply"; exit 1; }
+sed -i '1i static void pc_mp_fired(void);' main.c
 # --- procedural sprites (pc/pc_sprgen_game.inc): the planet's objects drawn by the generators in NATIVE/ULTRA, generated discs in the space view, the gallery in the PC LAB
 sed -i 's|^        s32 sc=8+m\*4; |        if(pc_sg_obj(o,order[k],sx,sy,f,zc)) continue;\n&|' planet.inc
 grep -c "pc_sg_obj(o,order\[k\],sx,sy,f,zc)" planet.inc | grep -qx 1 || { echo "build: sprgen object hook did not apply"; exit 1; }
@@ -297,7 +301,7 @@ CF="-std=gnu11 $OPT $WARN -include string.h -include stdio.h -include stdlib.h -
 # the game itself (main.c + the .inc files) is the slow part (about 35 s): it is compiled again only when it, or the flags, changed
 # --- patch 30 (Android step 3): PC_ANDROID_PREP=1 bash pc/build.sh does NOT compile. It writes pc/gen/sources.txt (every .c file, relative to pc/) and
 # pc/gen/cflags.txt (the flags used here, with absolute include paths) for pc/android/app/jni/src/Android.mk, so the APK build and this script never drift apart.
-SRCS="gen/main.c ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../platform/pc_crash.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/mine.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c ../pc_sprgen.c ../pc_sprgen_flora.c ../pc_sprgen_build.c ../pc_sprgen_people.c ../pc_sprgen_crit.c ../pc_sprgen_critx.c ../pc_sprgen_crit2.c ../pc_sprgen_craft.c ../pc_sprgen_space.c ../pc_sprgen_gal.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ../platform/pc_net.c ../platform/pc_net_codec.c || true )"   # patch 35: "|| true": with PC_SDL=0 the test is false, and set -e ended the whole script right here, silently
+SRCS="gen/main.c ../pc_main.c ../pc_hw.c ../shipr/shipr.c ../platform/pc_psg.c ../platform/pc_crash.c ../content/pc_content.c ../content/pcx.c ../content/flora.c ../creator/cr_recipe.c ../creator/cr_bio.c ../creator/cr_files.c ../shipyard/sy_design.c ../shipyard/sy_files.c ../meaning/meaning.c ../giant/giant.c ../warship/ws.c ../warship/ws_fight.c ../warship/ws_deck.c ../warship/ws_view.c ../warship/ms.c ../sim/god.c ../sim/lv.c ../sim/lvxp.c ../sim/sim_core.c ../sim/colony.c ../sim/mine.c ../sim/sim_io.c ../laws/laws.c ../laws/lawmodel.c ../laws/lawtext.c ../laws/lawx.c ../pc_sprgen.c ../pc_sprgen_flora.c ../pc_sprgen_build.c ../pc_sprgen_people.c ../pc_sprgen_crit.c ../pc_sprgen_critx.c ../pc_sprgen_crit2.c ../pc_sprgen_craft.c ../pc_sprgen_space.c ../pc_sprgen_gal.c $( [ "${PC_SDL:-1}" != "0" ] && echo ../platform/pc_sdl.c ../platform/pc_net.c ../platform/pc_duel.c ../platform/pc_net_codec.c || true )"   # patch 35: "|| true": with PC_SDL=0 the test is false, and set -e ended the whole script right here, silently
 if [ -n "$PC_ANDROID_PREP" ]; then
   sed -i 's|facts\.bin\\"|'"$PCD"'/gen/facts.bin\\"|' sizes.inc          # the NDK compiles from another folder: give .incbin the full path
   echo "$SRCS" | tr ' ' '\n' | grep -v '^$' | sed -e 's|^\.\./||' > sources.txt
@@ -305,7 +309,7 @@ if [ -n "$PC_ANDROID_PREP" ]; then
   echo "prepared pc/gen: $(wc -l < sources.txt) sources, flags in pc/gen/cflags.txt"; exit 0
 fi
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_kartnat.inc ../pc_pnative.inc ../pc_pncomp.inc ../pc_snative.inc ../pc_sncomp.inc ../pc_multiplayer.inc ../platform/pc_net.h ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../pc_sprgen.h ../pc_sprgen_i.h ../pc_sprgen_game.inc ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_kartnat.inc ../pc_pnative.inc ../pc_pncomp.inc ../pc_snative.inc ../pc_sncomp.inc ../pc_multiplayer.inc ../platform/pc_net.h ../platform/pc_duel.h ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../pc_sprgen.h ../pc_sprgen_i.h ../pc_sprgen_game.inc ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
 for f in $SRCS; do [ "$f" = gen/main.c ] && continue; o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done
