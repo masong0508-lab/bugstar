@@ -1541,7 +1541,21 @@ static int load_ext(void){
     beast_load(); trophy_load(); tv_load(); dp_load(); addr_load(); u_settle(); hum_load(); kart_load(); ore_load(); gen_cluster(); if(ant_king) kw_unlock(); return 1;
 }
 static void story_boss_beaten(void){
+    int first=!(cleared_mask&(1<<zone));
     cleared_mask|=1<<zone; if(zones_open<zone+2) zones_open=zone+2; if(zones_open>6) zones_open=6;
+    // Recover a different, practical resource from each warden's operation.
+    // The existing cleared_mask marks first victories in legacy saves too;
+    // repeat-tier bosses can never farm the introductory story reward.
+    if(first){
+        switch(zone){
+            case 0: food=100; break;                    // garden supply store
+            case 1: { int fm=fuel_max(); if(fuel<fm){ fuel+=20; if(fuel>fm) fuel=fm; } break; }
+            case 2: earn(150); break;                  // stolen picnic rations
+            case 3: if(hull<100){ hull+=25; if(hull>100) hull=100; } break;
+            case 4: scrap+=24; break;                 // dismantled honey forge
+            case 5: hearts=maxh; break;               // infirmary under the throne
+        }
+    }
     if(zone==5 && !ant_king){ ant_king=1; uni_set32(rnd()|1); gen_cluster(); }
 }
 
