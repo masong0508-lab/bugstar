@@ -15,11 +15,19 @@ int main(void){
     pcnet_close(&client);
     assert(pcnet_join(&client,"127.0.0.1",host.local_port));
     pcnet_set_coop(&client,1);
+    int guest_saw_lock=0;
     for(unsigned t=101;t<150;t++){
         pcnet_step(&client,t,&g);pcnet_step(&host,t,&h);
         pcnet_step(&client,t,&g);
+        PcCoop peer_seen,host_seen;
+        if(pcnet_raider(&client,t,&peer_seen) && peer_seen.charge){
+            assert(pcnet_raider(&host,t,&host_seen));
+            assert(peer_seen.charge_target==host_seen.charge_target);
+            guest_saw_lock=1;
+        }
     }
     assert(host.connected && client.connected);
+    assert(guest_saw_lock);
     assert(pcnet_raider(&host,149,&enemy) && enemy.hp==100);
     assert(pcnet_raider(&client,149,&enemy) && enemy.hp==100);
     assert(enemy.z==3504 || enemy.z==3488 || enemy.z==3500);
@@ -32,7 +40,9 @@ int main(void){
     assert(pcnet_raider(&host,239,&enemy));
     assert(enemy.hp==0 && enemy.phase==2 && enemy.wins==1);
     assert(enemy.host_hits==3 && enemy.guest_hits==2);
+    uint8_t p1hp=enemy.host_hp,p2hp=enemy.guest_hp;
     assert(pcnet_raider(&client,239,&enemy));
+    assert(enemy.host_hp==p1hp && enemy.guest_hp==p2hp);
     assert(enemy.hp==0 && enemy.phase==2 && enemy.wins==1);
     assert(enemy.host_hits==3 && enemy.guest_hits==2);
     for(unsigned t=240;t<420;t++){
