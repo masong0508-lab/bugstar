@@ -301,6 +301,13 @@ void pc_mp_submit(const PcNetShip *local){
     if(g_active && local){g_local=*local;g_submitted=1;}
 }
 void pc_mp_frame(uint32_t frame){
+    /* The opt-in trace distinguishes transport failure from a game scene
+     * that never entered 3D space. It is silent in normal play. */
+    if(g_active && getenv("BUGSTAR_LAN_TRACE") && frame%300u==0u)
+        fprintf(stderr,"lan: status frame %u role %u space %u world %u connected %u remote %u port %u\n",
+                (unsigned)frame,(unsigned)g_peer.role,(unsigned)g_submitted,
+                (unsigned)g_local.world,(unsigned)g_peer.connected,
+                (unsigned)g_peer.received,(unsigned)g_peer.local_port);
     if(g_active && g_submitted){
         uint8_t before=g_peer.connected;
         uint8_t hp0=g_peer.duel.host_hp,hp1=g_peer.duel.guest_hp;
