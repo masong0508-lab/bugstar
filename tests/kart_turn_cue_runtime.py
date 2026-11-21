@@ -48,9 +48,10 @@ static int ref(int d0,int d1,int d2,int speed){
     while(a1<-512) a1+=1024;
     while(a2>511) a2-=1024;
     while(a2<-512) a2+=1024;
-    int a=(a2<0?-a2:a2)>(a1<0?-a1:a1)?a2:a1;
+    int near=a1<0?-a1:a1,far=a2<0?-a2:a2;
+    int a=near>45?a1:a2;
     if(a>=-45 && a<=45) return 0;
-    int sharp=(a>120||a<-120)&&speed>K_VBASE/2;
+    int sharp=(near>120||far>150)&&speed>K_VBASE/2;
     return (a>0?1:-1)*(sharp?2:1);
 }
 static int check(int a,int b,int c,int speed){
@@ -68,7 +69,12 @@ int main(void){
     if(kart_bend_cue(100,260,400,12000)!=2) return 4;
     if(kart_bend_cue(500,300,160,12000)!=-2) return 5;
     if(kart_bend_cue(100,260,400,500)!=0) return 6; // no useless stationary warnings
-    unsigned state=0xacc34597u; int checks=6;
+    // The FIRST direction wins on an S-bend; a sharper second bend can
+    // still trigger SLOW while the current arrow points the correct way.
+    if(kart_bend_cue(0,60,924,10000)!=2) return 8; // right first, later sharp left
+    if(kart_bend_cue(0,964,100,10000)!=-2) return 9; // left first, later sharp right
+    if(kart_bend_cue(0,10,864,10000)!=-2) return 10; // first stretch straight, then left
+    unsigned state=0xacc34597u; int checks=9;
     for(int i=0;i<20000;i++){
         state^=state<<13;state^=state>>17;state^=state<<5; int a=(int)(state&1023u);
         state^=state<<13;state^=state>>17;state^=state<<5; int b=(int)(state&1023u);
