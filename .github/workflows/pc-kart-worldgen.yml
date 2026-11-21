@@ -155,14 +155,14 @@ jobs:
           mkdir -p out
           : > out/empty.keys
           printf 'shot 96\nshot 160\nshot 240\nshot 320\n' > out/kart-visual.keys
-          SDL_AUDIODRIVER=dummy PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
+          SDL_AUDIODRIVER=dummy PC_KART_SCAN_DIAG=1 PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
             ./bugstar_pc --window --video-driver dummy --no-audio --fast \
             --size 960 640 --script out/kart-visual.keys --out out/kart-native-visual --sav out/kart-native-smoke.sav \
             --auto-shot 320 out/kart-native-smoke.png --stop-after 324 \
             > out/kart-native-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-native-smoke.log
           test -s out/kart-native-smoke.png
-          SDL_AUDIODRIVER=dummy PC_SCALE=4 PC_V3D=2 KFUZZ_RACES=1 timeout 120 \
+          SDL_AUDIODRIVER=dummy PC_KART_SCAN_DIAG=1 PC_SCALE=4 PC_V3D=2 KFUZZ_RACES=1 timeout 120 \
             ./bugstar_pc --window --video-driver dummy --no-audio --fast \
             --size 960 640 --script out/kart-visual.keys --out out/kart-classic-visual --sav out/kart-classic-smoke.sav \
             --auto-shot 320 out/kart-classic-smoke.png --stop-after 324 \
@@ -176,6 +176,8 @@ jobs:
             --out out/kart-classic-240 --sav out/kart-classic-debug.sav --frames 324 \
             > out/kart-classic-registers.log 2>&1
           grep '^dbg DISPCNT=' out/kart-classic-registers.log
+          grep 'KART_SCANLINE' out/kart-native-smoke.log | tail -4
+          grep 'KART_SCANLINE' out/kart-classic-smoke.log | tail -4
           python3 ../tests/kart_visual_capture_audit.py out/kart-native-visual out/kart-classic-visual
       - name: Benchmark native kart composition and verify single/multithread picture parity
         run: |
