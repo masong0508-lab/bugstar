@@ -37,6 +37,8 @@ static int krec_get(int i, KRec *r){ sram_read(krec_off(i),r,128); if(!((r->at.u
     // A checksum-valid old or damaged record is not necessarily a playable circuit.
     // Reject impossible settings BEFORE path generation or indexing the gates.
     if(r->n<4 || r->n>KG_MAX || r->laps>9 || r->riv>7 || r->cls>4 || r->surf>=6) return 0;
+    // Track lists display this directly; do not trust a saved name's terminator.
+    r->name[sizeof r->name-1]=0;
     r->at.used^=0xA5; return 1; }   // (on the cartridge 'used' is 0xA5 ^ the universe's table number, so old tracks, in universe 0-2^32, still read)
 static void krec_put(int i, KRec *r){ KRec t=*r; if(t.at.used>UT_N) t.at.used=0; t.at.used^=0xA5; t.at.chk=fav_chk(&t.at); t.sum=fnv(&t,124); sram_write(krec_off(i),&t,128); }
 static int uni_alloc(const u32 *u){                                    // the table number for universe u (adds it if new); -1 if the 31 slots are all in use by favourites and tracks
