@@ -1136,7 +1136,7 @@ static void kart_cockpit(volatile u16 *pg){                        // the cockpi
     int a=(kturn*24+(kdrift?kdrift*20:0)+256)&255; s32 c=cosx(a), sn=sinx(a);
     for(int k=0;k<48;k++){ int an=k*16/3; int x=120+((cosx(an)*15)>>14), y=153+((sinx(an)*9)>>14); if(y>141 && y<160){ pix(pg,x,y,C_GREY); pix(pg,x+1,y,C_DGREY); } }
     for(int t=-14;t<=14;t++){ int x=120+((c*t)>>14), y=153+((sn*t*9/15)>>14); if(y>141 && y<160) pix(pg,x,y,C_WHITE); }
-    { char b[20]; int kmh=(int)((kv>0?kv:-kv)*600/65536); scpy(b,""); ncat(b,kmh); scat(b," KM/H"); text(pg,30,150,b,kboost_t?C_GOLD:C_CYAN,1); }
+    { char b[20]; int kmh=(int)((kv>0?kv:-kv)*600/65536); scpy(b,kv<0?"REV ":""); ncat(b,kmh); scat(b," KM/H"); text(pg,30,150,b,kboost_t?C_GOLD:C_CYAN,1); }
     rect(pg,170,149,50,4,C_DGREY); if(kart_boost>0) rect(pg,170,149,kart_boost/2,4,kart_boost>20?C_GOLD:C_RED); text(pg,170,143,"BOOST",C_DGREY,1); }
 static void kframe(volatile u16 *pg, int x, int y, int w, int h, int c){         // frame1() for the HUD boxes (x and w even, in the sky rows): whole halfwords, no pix() calls
     u16 cc=(u16)(c|(c<<8)); volatile u16 *p=pg+y*120+(x>>1); int n=w>>1;
