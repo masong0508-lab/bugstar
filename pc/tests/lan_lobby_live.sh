@@ -55,8 +55,14 @@ for side in host client; do
     grep -Eq 'EV dump: menu=1 page=10 .*lan_connected=1 .*lan_ready=1 lan_peer_ready=1 lan_live=0' "$log" || {
         echo "LAN lobby: ${side} did not see BOTH Ready peers while combat paused"
         tail -90 "$log";exit 1; }
-    grep -Eq 'EV dump: menu=0 .*lan_connected=1 .*lan_ready=1 lan_peer_ready=1 lan_live=1' "$log" || {
-        echo "LAN lobby: ${side} did not resume active flight after leaving options"
+    # SDL event injection is processed before pc_mp_frame updates ACTIVE,
+    # so the first menu=0 dump legitimately says lan_live=0. Require the
+    # actual game tick AFTER both menus closed and the handshake propagated.
+    grep -q 'lan: flight resumed both pilots active role' "$log" || {
+        echo "LAN lobby: ${side} never resumed ACTIVE co-op after returning to flight"
+        tail -90 "$log";exit 1; }
+    grep -Eq 'lan: raider HP [0-9]+ wins [0-9]+ phase 1 .*frame ' "$log" || {
+        echo "LAN lobby: ${side} never resumed real in-game mission state"
         tail -90 "$log";exit 1; }
     test -s "out/lan_lobby/${side}.png" || {
         echo "LAN lobby: ${side} did not render actual lobby screenshot";exit 1; }
