@@ -1,24 +1,29 @@
 # BUGSTAR experimental LAN space presence (developer test)
 
-**Status:** first network vertical slice, **not yet full multiplayer**.
+**Status:** experimental two-player LAN **space sparring**, not campaign co-op. The duel logic is newly implemented and must pass the two-socket and game-build tests before being considered validated.
 This mode is opt-in via command-line arguments. It is disabled in the
-normal game. There is no host/join menu, synchronized damage, shared
-enemy AI, inventory transfer, co-op saves, kart networking, or verified
-Internet support. Do not advertise it as a completed multiplayer mode.
+normal game. There is no in-game host/join menu, shared pirate/enemy AI, campaign hull
+damage, inventory transfer, co-op saves, kart networking, or verified
+Internet support. Do not advertise this as completed campaign multiplayer.
 
 The initial implementation supports:
 - Two independently running PC instances (Windows/Linux; Android shares
   the transport C code but has no host/join UI yet).
 - A real nonblocking UDP socket on each instance, versioned HELLO/READY,
   CRC8 packet checking and world-system ID matching.
-- A compact 16-byte state datagram at most every **three gameplay ticks**
+- A compact 16-byte state datagram about every **three gameplay ticks**
   (~20 Hz at the GBA's normal 59.7275 Hz) with 16-unit-quantized world
   coordinates and 4-angle-unit yaw/pitch.
 - A five-vertex 3D silhouette marked **P2** in the same camera and
   perspective as rocks, pirates, and stations.
+- A separate no-rewards **LAN sparring match**: pressing A to fire the
+  real ship laser also submits a shot counter. The host checks aim against
+  both 3D ship poses, grants 20 training damage per hit, and replicates
+  P1/P2 HP (100 each), wins and a timed 2-second round reset. A disconnect
+  or different star hides the session overlay. The real campaign hull, HP,
+  cargo, save files, enemy AI and rewards are not shared or modified.
 - A clean loss of the remote silhouette after stale/lost packets; BYE on
-  normal shutdown. Does not touch cartridge SRAM/save files or solo
-  combat/hit/loot logic.
+  normal shutdown. No cartridge SRAM/save modifications.
 
 ## Test on one computer first
 
@@ -41,9 +46,11 @@ cd pc
 ```
 
 Both players must enter the *same star system* and **3D space flight**.
-They will see a labeled P2 silhouette when reasonably close and inside
-the other's view; each player can fly independently. There is no remote
-damage/mission sync yet. Hit Return to menu or exit normally; the game
+They will see a labeled **P1/P2** silhouette when reasonably close and
+inside the other's view; both can fly independently, aim and shoot at
+each other. The host synchronizes a separate LAN SPAR scoreboard and hit
+points, but normal mission damage, enemy combat and rewards are still
+single-player. Hit Return to menu or exit normally; the game
 should remain playable offline. Two processes on different LAN computers
 can instead use the host's local IPv4 address in `--lan-join`.
 No names, DNS lookup, NAT traversal, public matchmaking or encryption.
@@ -67,18 +74,21 @@ cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined \
 
 The test launches two **real localhost UDP sockets**, proves
 bidirectional independent ship-state exchange, quantization, different
-world rejection, timeout/disconnect and handshake rejoin. PC and
-Android CI compile and execute it. Existing renderer tests and
+world rejection, timeout/disconnect, handshake rejoin, both players
+hitting each other, HP updates and round victories. The independent
+`tests/pc_multiplayer_duel_test.c` checks front/back/side aim, range,
+match wins and respawn. PC and Android CI compile and execute both tests. Existing renderer tests and
 `pc/tests/speed_guard.sh` must continue to pass with LAN disabled.
 
 ## What makes the next iteration truly playable
 
 1. Gameplay-authoritative host assigns distinct safe starting poses and
    prevents a new peer from spawning in the same location.
-2. Proper remote ship mesh/material with native-resolution overlay.
-3. Versioned INPUT and EVENT packets with input sequencing, damage/hit
-   validation and bounded retransmission; both instances display the
-   same target HP, mission result and rewards.
+2. Improve native ship materials, occlusion and render-only smoothing.
+3. Harden the existing INPUT/EVENT sparring exchange with sequencing,
+   reconnect/clock-skew handling, acknowledgement and rate controls;
+   expand from duel-only HP to validated shared enemy/hit/mission events,
+   without trusting a client-supplied damage number.
 4. UI with HOST/JOIN/READY/LEAVE, visible connection status and a LAN
    address on PC and Android. Same session can recover from suspend.
 5. Independent runtime screenshots and gameplay footage, packet-loss/
