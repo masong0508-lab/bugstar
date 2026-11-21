@@ -350,7 +350,7 @@ static void build_space_palette(void){
     BG_PAL[52]=rgb15(120,255,120); BG_PAL[53]=rgb15(255,80,70); BG_PAL[54]=rgb15(220,230,240); BG_PAL[55]=rgb15(90,220,255); BG_PAL[56]=rgb15(90,100,120);
     BG_PAL[57]=rgb15(16,20,34); BG_PAL[58]=rgb15(60,80,120);
 }
-static int beast_stage=0, beast_fight=0, ambush_t=0, no_ambush=0, dawn_free=0, chase_cam=1; static u64 b3_hp, b3_max;
+static int beast_stage=0, beast_fight=0, ambush_t=0, no_ambush=0, chase_cam=1; static u64 b3_hp, b3_max;
 static int in_lair=0, tech_lv=0, beast_kills=0, beast_charge=0, beast_fire=0, beast_t=0, lair_out=0; static u64 beast_hp, beast_max; static char beast_dmg_txt[16]; static int beast_dmg_t=0;
 static int hive_active(void){ return beast_stage>=3 && hive_done<5; }
 static int hive_here(void){ return endless && !forge_on && hive_active() && cur_sys==hive_sys(); }
