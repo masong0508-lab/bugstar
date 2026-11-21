@@ -15,6 +15,7 @@ on:
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
       - 'tests/kart_visual_capture_audit.py'
+      - 'tests/kart_fuzz_fade_runtime.py'
       - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
@@ -58,6 +59,7 @@ on:
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
       - 'tests/kart_visual_capture_audit.py'
+      - 'tests/kart_fuzz_fade_runtime.py'
       - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
@@ -106,6 +108,8 @@ jobs:
         run: python3 tests/kart_native_camera_runtime.py
       - name: Verify native kart sampler keeps pixels identical on flat road textures
         run: python3 tests/kart_native_sampler_runtime.py
+      - name: Confirm fuzz races match real fade-in and clear boot blackout
+        run: python3 tests/kart_fuzz_fade_runtime.py
       - name: Verify kart HUD DMA palette words under UndefinedBehaviorSanitizer
         run: python3 tests/kart_dma_palette_runtime_host.py
       - name: Audit quest targets, world gates and guaranteed rewards
@@ -155,29 +159,20 @@ jobs:
           mkdir -p out
           : > out/empty.keys
           printf 'shot 96\nshot 160\nshot 240\nshot 320\n' > out/kart-visual.keys
-          SDL_AUDIODRIVER=dummy PC_KART_SCAN_DIAG=1 PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
+          SDL_AUDIODRIVER=dummy PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
             ./bugstar_pc --window --video-driver dummy --no-audio --fast \
             --size 960 640 --script out/kart-visual.keys --out out/kart-native-visual --sav out/kart-native-smoke.sav \
             --auto-shot 320 out/kart-native-smoke.png --stop-after 324 \
             > out/kart-native-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-native-smoke.log
           test -s out/kart-native-smoke.png
-          SDL_AUDIODRIVER=dummy PC_KART_SCAN_DIAG=1 PC_SCALE=4 PC_V3D=2 KFUZZ_RACES=1 timeout 120 \
+          SDL_AUDIODRIVER=dummy PC_SCALE=4 PC_V3D=2 KFUZZ_RACES=1 timeout 120 \
             ./bugstar_pc --window --video-driver dummy --no-audio --fast \
             --size 960 640 --script out/kart-visual.keys --out out/kart-classic-visual --sav out/kart-classic-smoke.sav \
             --auto-shot 320 out/kart-classic-smoke.png --stop-after 324 \
             > out/kart-classic-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-classic-smoke.log
           test -s out/kart-classic-smoke.png
-          # Re-run the exact race at GBA resolution and record the Mode-4
-          # display registers, VRAM page coverage and palette at frame 324.
-          KFUZZ_RACES=1 PC_V3D=2 PC_DEBUG=1 timeout 120 \
-            ./bugstar_pc --headless --script out/kart-visual.keys \
-            --out out/kart-classic-240 --sav out/kart-classic-debug.sav --frames 324 \
-            > out/kart-classic-registers.log 2>&1
-          grep '^dbg DISPCNT=' out/kart-classic-registers.log
-          grep 'KART_SCANLINE' out/kart-native-smoke.log | tail -4
-          grep 'KART_SCANLINE' out/kart-classic-smoke.log | tail -4
           python3 ../tests/kart_visual_capture_audit.py out/kart-native-visual out/kart-classic-visual
       - name: Benchmark native kart composition and verify single/multithread picture parity
         run: |
@@ -206,7 +201,6 @@ jobs:
             pc/out/kart-native-visual_*.png
             pc/out/kart-classic-visual_*.png
             pc/out/kart-visual-report.json
-            pc/out/kart-classic-registers.log
             pc/out/kart-bench-1.log
             pc/out/kart-bench-4.log
           if-no-files-found: ignore
