@@ -261,10 +261,36 @@ static void line2(volatile u16 *pg, int x0, int y0, int x1, int y1, int c){
     s32 fx=x0<<16, fy=y0<<16, sx=(dx<<16)/n, sy=(dy<<16)/n;
     for(int i=0;i<=n;i++){ int px=(fx+0x8000)>>16, py=(fy+0x8000)>>16; if((unsigned)px<240u && (unsigned)py<128u) pix(pg,px,py,c); fx+=sx; fy+=sy; }
 }
+// Clip wireframe edges crossing the near plane. Previously an entire edge
+// vanished whenever one end crossed the cockpit eye; this made the Coriolis
+// station, ships and belt rocks pop apart as you flew close to them.
+// The normal case keeps the old two projections and a fast screen-space line;
+// 64-bit interpolation is used only for a rare partly-behind edge.
 static void wire(volatile u16 *pg, const s32 *v, int nv, const u8 *e, int ne, int c){
     int sx[16], sy[16]; u8 ok[16];
     for(int i=0;i<nv;i++) ok[i]=sproj(v[i*3],v[i*3+1],v[i*3+2],&sx[i],&sy[i],0);
-    for(int i=0;i<ne;i++){ int a=e[i*2], b=e[i*2+1]; if(ok[a]&&ok[b]) line2(pg,sx[a],sy[a],sx[b],sy[b],c); }
+    for(int i=0;i<ne;i++){
+        int a=e[i*2], b=e[i*2+1];
+        if(ok[a] && ok[b]){ line2(pg,sx[a],sy[a],sx[b],sy[b],c); continue; }
+        if(!ok[a] && !ok[b]) continue;
+        s32 ax,ay,az,bx,by,bz;
+        cam3(v[a*3],v[a*3+1],v[a*3+2],&ax,&ay,&az);
+        cam3(v[b*3],v[b*3+1],v[b*3+2],&bx,&by,&bz);
+        // A missing endpoint that is merely outside the side of the field
+        // of view is handled by the ordinary screen clipping, not here.
+        if(!((az<=20 && bz>20) || (bz<=20 && az>20))) continue;
+        s32 ix,iy;
+        if(az<=20){ ix=ax+(s32)(((long long)(bx-ax)*(24-az))/(bz-az));
+                    iy=ay+(s32)(((long long)(by-ay)*(24-az))/(bz-az)); }
+        else { ix=bx+(s32)(((long long)(ax-bx)*(24-bz))/(az-bz));
+               iy=by+(s32)(((long long)(ay-by)*(24-bz))/(az-bz)); }
+        s32 ex=120+(s32)(((long long)ix*FOCS)/24);
+        s32 ey=VCY-(s32)(((long long)iy*FOCS)/24);
+        // line2 works with a 20,000px guard; discard impossible rays early.
+        if(ex<-19000 || ex>19000 || ey<-19000 || ey>19000) continue;
+        if(az<=20) line2(pg,(int)ex,(int)ey,sx[b],sy[b],c);
+        else line2(pg,sx[a],sy[a],(int)ex,(int)ey,c);
+    }
 }
 
 // ---------------------------------------------------------------- a round, lit, turning planet
