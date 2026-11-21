@@ -314,14 +314,14 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
          * plate keeps the planet's detailed scene visible around it, but
          * prevents wireframes/pilot labels from cutting through the title.
          * Static rect/text only; zero allocations or sprite resources. */
-        rect(pg,47,59,146,37,0);
-        rect(pg,47,59,146,2,54);
-        rect(pg,47,94,146,2,54);
-        rect(pg,47,59,2,37,55);
-        rect(pg,191,59,2,37,55);
-        text(pg,55,65,"MISSION COMPLETE",54,2);
-        text(pg,87,84,"BOTH PILOTS WIN!",50,1);
-        text(pg,78,91,"NEXT MATCH SOON",55,1);
+        rect(pg,47,55,146,42,0);
+        rect(pg,47,55,146,2,54);
+        rect(pg,47,95,146,2,54);
+        rect(pg,47,55,2,42,55);
+        rect(pg,191,55,2,42,55);
+        text(pg,55,61,"MISSION COMPLETE",54,2);
+        text(pg,87,80,"BOTH PILOTS WIN!",50,1);
+        text(pg,78,88,"NEXT MATCH SOON",55,1);
         pc_mp_note_clear_draw();
     }
 #else
