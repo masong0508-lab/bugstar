@@ -280,14 +280,29 @@ int pc_write_ppm(const char *path, int scale){
 // w = 240*k, h = 160*k gives sharp, even pixels. Other sizes give uneven pixel widths unless smooth=1, which blends the bitmap layer's texel
 // edges over one output pixel ("sharp bilinear": flat inside a texel, soft only at the edge).
 static uint16_t *nv_oc; static uint8_t *nv_op; static size_t nv_cap;
+// Small high-water-mark axis lookup buffers: reuse across PC/Android frames,
+// rather than allocating/freeing two temporary arrays every video frame.
+static int *nv_tab; static int8_t *nv_weight; static size_t nv_axis_cap;
 static uint16_t bgres[160][240]; static uint8_t bghave[160][240];
 static uint16_t bgres2[160][240]; static uint8_t bghave2[160][240];   // page 1, for the line-by-line kart ground
 static float *nv_fx, *nv_fy; static int nv_fcap;
 static void nv_resolve_bg(int mode, uint32_t base, uint16_t dc, int *bw, int *bh, uint16_t bd){
     *bw = mode==5?160:240; *bh = mode==5?128:160;
-    for(int y=0;y<*bh;y++) for(int x=0;x<*bw;x++){
-        if(mode==4){ int idx=*(volatile uint8_t*)(uintptr_t)(base+y*240+x); bghave[y][x]=idx!=0; bgres[y][x]= idx? rgbpix(R16(PALRAM+idx*2)) : bd; }
-        else { bgres[y][x]=rgbpix(R16(VRAMB + (mode==5&&(dc&0x10)?0xA000:0) + (y*(*bw)+x)*2)); bghave[y][x]=1; }
+    if(mode==4){
+        // Composition is synchronous: one palette snapshot is equivalent to
+        // thousands of repeated palette reads, with no per-frame heap cost.
+        uint16_t pal[256]; for(int i=0;i<256;i++) pal[i]=rgbpix(R16(PALRAM+i*2));
+        pal[0]=bd;
+        const volatile uint8_t *pg=(const volatile uint8_t*)(uintptr_t)base;
+        for(int y=0;y<160;y++) for(int x=0;x<240;x++){
+            uint8_t idx=pg[y*240+x];
+            bghave[y][x]=idx!=0; bgres[y][x]=pal[idx];
+        }
+    } else {
+        for(int y=0;y<*bh;y++) for(int x=0;x<*bw;x++){
+            bgres[y][x]=rgbpix(R16(VRAMB + (mode==5&&(dc&0x10)?0xA000:0) + (y*(*bw)+x)*2));
+            bghave[y][x]=1;
+        }
     }
 }
 static uint16_t mix15(uint16_t a, uint16_t b, int t){      // t = 0..16: weight of b
@@ -613,11 +628,13 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     } }
     const double sx=240.0/W, sy=160.0/H;                       // game pixels per output pixel
     bl_y0=bl_y1=0;
-    struct timespec T0,T1,T2,T3,T4; clock_gettime(CLOCK_MONOTONIC,&T0);
+    // Profile calls are opt-in; skip clock sampling while simply playing.
+    static int timing=-1; if(timing<0) timing=getenv("PC_TIMING")!=NULL;
+    struct timespec T0,T1,T2,T3; if(timing) clock_gettime(CLOCK_MONOTONIC,&T0);
     // ---- sprites
     kn_prep(W,H,R16(IOREG)&7); memset(nv_op,4,need); int sprsm = nv_v3()!=2 && lst_dma && W>240;
     if((dc>>12)&1){ SpCtx c={W,H,one_d,sprsm,sx,sy}; nv_sprprep(one_d); pc_par(H,nv_sprites,&c); }
-    clock_gettime(CLOCK_MONOTONIC,&T1);
+    if(timing) clock_gettime(CLOCK_MONOTONIC,&T1);
     // ---- bitmap layer + blend
     uint16_t bldcnt=R16(IOREG+0x50), bldalpha=R16(IOREG+0x52); int ev=R16(IOREG+0x54)&31; if(ev>16) ev=16;
     int bmode=(bldcnt>>6)&3; int ea=bldalpha&31, eb=(bldalpha>>8)&31; if(ea>16)ea=16; if(eb>16)eb=16;
@@ -626,22 +643,38 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     int32_t rx=(int32_t)(R32(IOREG+0x28)<<4)>>4, ry=(int32_t)(R32(IOREG+0x2C)<<4)>>4;
     uint32_t base = VRAMB + ((dc&0x10) ? 0xA000 : 0);
     int have_bg = bg2_on && mode>=3 && mode<=5, bw=240, bh=160;
-    if(have_bg) nv_resolve_bg(mode,base,dc,&bw,&bh,bd);
-    int v3=nv_v3();
-    int dmaln = have_bg && lst_dma && mode==4, nat3 = dmaln && v3!=2;
+    int dmaln = have_bg && lst_dma && mode==4;
+    // Two-page kart scan replaces both background pages. Skip the ordinary
+    // front-page resolve that would otherwise do the same 240x160 work twice.
+    if(have_bg && !dmaln) nv_resolve_bg(mode,base,dc,&bw,&bh,bd);
+    int v3=nv_v3(), nat3 = dmaln && v3!=2;
     if(dmaln){                                                   // both pages: each line says which one it shows
-        for(int y=0;y<160;y++) for(int x=0;x<240;x++){ int i0=*(volatile uint8_t*)(uintptr_t)(VRAMB+y*240+x), i1=*(volatile uint8_t*)(uintptr_t)(VRAMB+0xA000+y*240+x);
-            bghave[y][x]=i0!=0; bgres[y][x]=i0?rgbpix(R16(PALRAM+i0*2)):bd; bghave2[y][x]=i1!=0; bgres2[y][x]=i1?rgbpix(R16(PALRAM+i1*2)):bd; }
+        uint16_t pal[256]; for(int i=0;i<256;i++) pal[i]=rgbpix(R16(PALRAM+i*2));
+        pal[0]=bd;
+        const volatile uint8_t *pg0=(const volatile uint8_t*)(uintptr_t)VRAMB;
+        const volatile uint8_t *pg1=(const volatile uint8_t*)(uintptr_t)(VRAMB+0xA000);
+        for(int y=0;y<160;y++) for(int x=0;x<240;x++){
+            int off=y*240+x; uint8_t i0=pg0[off], i1=pg1[off];
+            bghave[y][x]=i0!=0; bgres[y][x]=pal[i0]; bghave2[y][x]=i1!=0; bgres2[y][x]=pal[i1];
+        }
         if(nat3) nv_ground_prep(bd); if(nat3 && kn_on){ if(!kn_pass(W,H,sx,sy,bd)) kn_on=0; } else kn_on=0; }
     int axis = (pb==0 && pc==0) && !dmaln;                                // no rotation: the bitmap's x depends on X only, y on Y only
     int *tabx=0,*taby=0; int8_t *wx=0,*wy=0;
     if(have_bg && axis){
-        tabx=malloc(sizeof(int)*(W+H)); wx=malloc(W+H);
-        if(!tabx || !wx){
-            free(tabx); free(wx); tabx=taby=0; wx=wy=0;
-            axis=0; // use the slower but safe per-pixel fallback for this frame
-        } else {
-        taby=tabx+W; wy=wx+W;
+        size_t n=(size_t)W+(size_t)H;
+        if(n>nv_axis_cap){
+            int *next_tab=n<=SIZE_MAX/sizeof(*nv_tab) ? malloc(n*sizeof(*nv_tab)) : NULL;
+            int8_t *next_weight=malloc(n*sizeof(*nv_weight));
+            if(!next_tab || !next_weight){
+                free(next_tab); free(next_weight);
+                axis=0; // allocation failed: use the safe per-pixel fallback
+            } else {
+                free(nv_tab); free(nv_weight);
+                nv_tab=next_tab; nv_weight=next_weight; nv_axis_cap=n;
+            }
+        }
+        if(axis){
+        tabx=nv_tab; wx=nv_weight; taby=tabx+W; wy=wx+W;
         double ts_x = fabs(pa)/256.0, ts_y = fabs(pd)/256.0;      // texels per game pixel
         for(int X=0;X<W;X++){ double p=rx/256.0 + (pa/256.0)*(X*sx); double fl=floor(p); tabx[X]=(int)fl; double f=p-fl, d=0;
             if(smooth){ double k = ts_x>0 ? 1.0/(ts_x*sx) : 1; d=(f-0.5)*k; d=d<-0.5?-0.5:d>0.5?0.5:d; }   // (k: output pixels across one texel)
@@ -651,12 +684,11 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
             wy[Y]=(int8_t)lrint(d*16); }
         }
     }
-    clock_gettime(CLOCK_MONOTONIC,&T2);
+    if(timing) clock_gettime(CLOCK_MONOTONIC,&T2);
     if(mode==4 && !lst_dma){ dn_compose(out,W,H,dc,bmode,ev,bldcnt); pn_compose(out,W,H,dc,bmode,ev,bldcnt); sn_compose(out,W,H,dc,bmode,ev,bldcnt); }      // the native 3D pictures first: the bitmap pass skips every pixel they show (nv_op bit 0x40)
     { NvCtx c; c.dmaln=dmaln; c.nat3=nat3; c.have_bg=have_bg; c.W=W; c.H=H; c.bgprio=bgprio; c.axis=axis; c.bw=bw; c.bh=bh; c.ev=ev; c.bmode=bmode; c.ea=ea; c.eb=eb; c.sx=sx; c.sy=sy; c.bldcnt=bldcnt; c.bldalpha=bldalpha; c.bd=bd; c.tabx=tabx; c.taby=taby; c.wx=wx; c.wy=wy; c.rx=rx; c.ry=ry; c.pa=pa; c.pb=pb; c.pc=pc; c.pd=pd; c.out=out; memcpy(c.lut5,lut5,32); pc_par(H,nv_rows,&c); }
-    free(tabx); free(wx);
-    clock_gettime(CLOCK_MONOTONIC,&T3);
-    if(getenv("PC_TIMING")){ double a=(T1.tv_sec-T0.tv_sec)*1e3+(T1.tv_nsec-T0.tv_nsec)/1e6, b=(T2.tv_sec-T1.tv_sec)*1e3+(T2.tv_nsec-T1.tv_nsec)/1e6, c=(T3.tv_sec-T2.tv_sec)*1e3+(T3.tv_nsec-T2.tv_nsec)/1e6; fprintf(stderr,"compose %dx%d: sprites %.2f prep %.2f main %.2f ms\n",W,H,a,b,c); }
+    if(timing) clock_gettime(CLOCK_MONOTONIC,&T3);
+    if(timing){ double a=(T1.tv_sec-T0.tv_sec)*1e3+(T1.tv_nsec-T0.tv_nsec)/1e6, b=(T2.tv_sec-T1.tv_sec)*1e3+(T2.tv_nsec-T1.tv_nsec)/1e6, c=(T3.tv_sec-T2.tv_sec)*1e3+(T3.tv_nsec-T2.tv_nsec)/1e6; fprintf(stderr,"compose %dx%d: sprites %.2f prep %.2f main %.2f ms\n",W,H,a,b,c); }
     if(pc_ships_mode>=0 && mode==4 && !(bmode>=2 && ev>=12)){                 // the ship renderer, under whatever the game drew after its ships (cockpit, HUD, sparks)
         int t=(dc>>4)&1; if(getenv("SR_DBG")) fprintf(stderr,"sr: page %d tag %d snapf %ld/%ld frame %ld n=%d\n",t,sr_shown_tag(),sr_snap_f[0],sr_snap_f[1],g_frame,sr_count());
         if(sr_select(t) && g_frame-sr_snap_f[t]<=4){
