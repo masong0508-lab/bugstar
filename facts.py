@@ -157,7 +157,7 @@ F = [
 (POW2(MILLION_E), "A MILLION DIGITS", "THE SMALLEST POWER OF 2 THAT IS", "A MILLION DIGITS LONG. BRING SNACKS TO READ IT", 0),
 (POW2(6972593, 1), "FIRST MILLION-DIGIT PRIME", "FOUND IN 1999 ON A HOME PC: 2 TO THE", "6,972,593, MINUS 1. 50,000 DOLLARS FOR A HOME PC", 0),
 (POW2(8 * 428032), "EVERY STATE OF THE WHOLE GBA", "ALL 428,032 BYTES: RAM, VIDEO AND SAVE CHIP.", "EACH BIT ON OR OFF: 2 TO THE 3,424,256. SAVE OFTEN", 0),
-(POW2(15 * 240 * 160 * 60), "EVERY SECOND OF THE SCREEN", "60 PICTURES, 240 X 160 DOTS, 32,768 COLOURS:", "EVERY CLIP BUGSTAR COULD SHOW IN 1 SECOND. MOSTLY SNOW", 0),
+(POW2(15 * 240 * 160 * 60), "EVERY 60 GBA SCREEN FRAMES", "60 PICTURES, 240 X 160 DOTS, 32,768 COLOURS:", "60 FRAMES TAKE ABOUT 1.005 SECONDS AT 59.7275 FPS", 0),
 # ---- the game as it is now, and the PC version (see pc/README.md and pc/content: the same numbers, worked out there by test code)
 (900, "LEVELS FOR ALL LADYBUGS", "A NEW LADYBUG BUDDY JOINS YOU EVERY 100 LEVELS,", "UP TO 9. THEY NIP THE FOES AND NEVER GET HURT", 0),
 (24, "PC: UNIVERSE THEMES", "EACH PC UNIVERSE BENDS 2 RULES OF THE GAME", "(LOW GRAVITY, NO MAGIC, HUGE BUGS... CHECK BEFORE A RIFT)", 0),
@@ -217,9 +217,9 @@ OLD = [(1,"0"),(5,"32768"),(5,"38400"),(5,"65536"),(6,"27033"),(10,"42949"),(10,
        (50,"13547"),(56,"10228"),(58,"49039"),(94,"20859"),(95,"66749"),(96,"37600"),(105,"28668"),(106,"16100"),(152,"52205"),(507,"85781"),
        (1492,"22998"),(44004,"22942"),(39457,"40141"),(78914,"16113"),(173394,"18945")]
 
-# THE BUGSTARILLION: S (the "EVERY SECOND OF THE SCREEN" number), then three zeros for every Planck volume in the observable universe.
+# THE BUGSTARILLION: S (the "EVERY 60 GBA SCREEN FRAMES" number), then three zeros for every Planck volume in the observable universe.
 # So BY NAME lists every group of S, each with a name for a power of a thousand that is itself a 185-digit number: about 30 lines each.
-BIGN_SRC = "EVERY SECOND OF THE SCREEN"
+BIGN_SRC = "EVERY 60 GBA SCREEN FRAMES"
 def planck_volumes():                  # a sphere 46.5 billion light years across in radius, cut into boxes one Planck length a side
     from decimal import Decimal, getcontext
     getcontext().prec = 300
