@@ -5,6 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 GAME="${1:-./bugstar_pc}"
+MODE="${2:-spar}"
+LAN_MODE=()
+if [[ "$MODE" == coop ]]; then LAN_MODE=(--lan-coop); fi
 mkdir -p out/lan_live/host out/lan_live/client
 printf 'pause_unfocus=0\nvsync=0\n' > out/lan_live/host/settings.ini
 printf 'pause_unfocus=0\nvsync=0\n' > out/lan_live/client/settings.ini
@@ -24,7 +27,7 @@ trap cleanup EXIT
 env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_TRACE=1 BUGSTAR_LAN_BOOT=1 \
     BUGSTAR_SY_TEST=9,0 BUGSTAR_SY_AT=100 \
     timeout -k 3 95 "$GAME" --window --video-driver dummy --no-audio \
-    --no-vsync --size 240 160 --lan-host --lan-port 33777 \
+    --no-vsync --size 240 160 --lan-host "${LAN_MODE[@]}" --lan-port 33777 \
     --data out/lan_live/host --script out/lan_live/boot.txt \
     --auto-shot 3550 out/lan_live/host.png --stop-after 3600 \
     > out/lan_live/host.log 2>&1 &
@@ -33,7 +36,7 @@ sleep 0.3
 env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_TRACE=1 BUGSTAR_LAN_BOOT=1 \
     BUGSTAR_SY_TEST=9,0 BUGSTAR_SY_AT=100 \
     timeout -k 3 95 "$GAME" --window --video-driver dummy --no-audio \
-    --no-vsync --size 240 160 --lan-join 127.0.0.1 --lan-port 33777 \
+    --no-vsync --size 240 160 --lan-join 127.0.0.1 "${LAN_MODE[@]}" --lan-port 33777 \
     --data out/lan_live/client --script out/lan_live/boot.txt \
     --auto-shot 3550 out/lan_live/client.png --stop-after 3600 \
     > out/lan_live/client.log 2>&1 || {
@@ -54,4 +57,15 @@ done
 if cmp -s out/lan_live/host.png out/lan_live/client.png; then
     echo 'LAN smoke: both camera screenshots are identical (wrong scene or failed P1/P2 view)'; exit 1
 fi
-echo "LAN smoke: two independent full PC games connected, finished and rendered screenshots PASS"
+if [[ "$MODE" == coop ]]; then
+    for side in host client; do
+        grep -q 'lan: raider' "out/lan_live/${side}.log" || {
+            echo "LAN smoke: ${side} did not receive the shared-raider state"
+            tail -70 "out/lan_live/${side}.log"; exit 1; }
+    done
+fi
+for side in host client; do
+    cp "out/lan_live/${side}.png" "out/lan_live/${MODE}_${side}.png"
+    cp "out/lan_live/${side}.log" "out/lan_live/${MODE}_${side}.log"
+done
+echo "LAN smoke: mode ${MODE}, two independent full PC games connected, finished and rendered screenshots PASS"
