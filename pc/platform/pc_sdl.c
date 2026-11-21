@@ -959,7 +959,13 @@ int plat_open(int argc, char **argv){
     SDL_ShowCursor(C.fullscreen?SDL_DISABLE:SDL_ENABLE);
     pad_open();
     if(g_touch==1 && pad) g_thide=1;      // a gamepad is plugged in: no on-screen pad until a finger touches the screen
-    { const char *td=getenv("BUGSTAR_TOUCHDEMO"); if(td&&*td&&g_touch){ int n=0; float x,y; int c; while(n<10 && sscanf(td,"%f,%f%n",&x,&y,&c)==2){ tfing[n].id=100+n; tfing[n].on=1; tfing[n].x=x/1000.f; tfing[n].y=y/1000.f; n++; td+=c; if(*td==';') td++; else break; } } }      // test hook: fingers held down at x,y (in 1/1000 of the window), "x,y;x,y"=SDL_GetPerformanceFrequency(); fps_t0=SDL_GetPerformanceCounter(); g_due=(double)fps_t0;
+    { const char *td=getenv("BUGSTAR_TOUCHDEMO"); if(td&&*td&&g_touch){ int n=0; float x,y; int c; while(n<10 && sscanf(td,"%f,%f%n",&x,&y,&c)==2){ tfing[n].id=100+n; tfing[n].on=1; tfing[n].x=x/1000.f; tfing[n].y=y/1000.f; n++; td+=c; if(*td==';') td++; else break; } } }      // test hook: fingers held down at x,y (in 1/1000 of the window), "x,y;x,y"
+    // Initialize a real monotonic frequency before the first gameplay frame.
+    // The previous line accidentally commented out these assignments, leaving
+    // t_freq == 0 and the fixed-step limiter unable to wait on PC/Android.
+    t_freq=SDL_GetPerformanceFrequency();
+    fps_t0=SDL_GetPerformanceCounter();
+    g_due=(double)fps_t0;
 #ifdef _WIN32
     g_slack_ms=2.0;
 #else
