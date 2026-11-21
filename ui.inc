@@ -167,7 +167,16 @@ static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, a
     case 10: { static const char *const t[6]={"THE MOUTH FALLS APART.",
         "INSIDE IT, A SHIP. OLD. WHOLE. SINGING.","BOLT'S VOICE COMES FROM EVERYWHERE AT ONCE.",
         "\"I REMEMBER ALL OF IT.","THANK YOU FOR CARRYING ME.",
-        "NOW LET ME CARRY YOU. ALL OF YOU. HOME.\""}; bolt_card(pg,t,6); break; }
+        "NOW LET ME CARRY YOU. ALL OF YOU. HOME.\""}; bolt_card(pg,t,6);
+        // The playable galaxy remains open. A final quiet scene connects the
+        // freed crew to that freedom without falsely claiming every cage opened.
+        const char *const after[5]={"THE FIRST MORNING WITHOUT THE KING.",
+            bugs_freed ? "THE BUGS YOU FREED WATCH THE SUN RISE." :
+                         "THE EMPTY CAGES STAND OPEN IN THE LIGHT.",
+            "DAWN'S WINDOWS LIGHT UP ONE BY ONE.",
+            "NOBODY TELLS YOU WHERE TO FLY NEXT.",
+            "\"WHERE SHOULD WE GO FIRST?\""};
+        bolt_card(pg,after,5); break; }
     }
 }
 // Three deliberate breathers among the eight outpost memories: the first
