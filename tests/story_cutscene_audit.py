@@ -102,6 +102,8 @@ assert all(len(s) <= 54 for s in literals(scenes)), (
     "story dialogue exceeds the existing text-card width"
 )
 require(scenes, "THE ANT KING FALLS. HIS CROWN BREAKS.", "King's defeat has no scene")
+require(scenes, "story_boss_reward[5]", "King ending must acknowledge the liberated infirmary")
+require(scenes, "bolt_card(pg,after,4);", "King's reward must appear in the actual ending scene")
 for phrase in ("THE WINTER CAME. OUR EGGS WERE FREEZING.",
                "I MADE YOUR FRIENDS DIG FOR BURIED ENGINES.",
                "I CUT OPEN A SHIP TO HEAT THE NEST.",
