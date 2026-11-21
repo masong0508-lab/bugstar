@@ -13,6 +13,10 @@ on:
       - 'pc/build.sh'
       - 'tests/pc_multiplayer_net_test.c'
       - 'tests/pc_multiplayer_duel_test.c'
+      - 'tests/pc_multiplayer_coop_test.c'
+      - 'tests/pc_multiplayer_coop_net_test.c'
+      - 'pc/platform/pc_coop.c'
+      - 'pc/platform/pc_coop.h'
       - 'pc/tests/lan_live.sh'
       - 'net/**'
       - 'tests/multiplayer_protocol_test.c'
@@ -36,6 +40,10 @@ on:
       - 'pc/build.sh'
       - 'tests/pc_multiplayer_net_test.c'
       - 'tests/pc_multiplayer_duel_test.c'
+      - 'tests/pc_multiplayer_coop_test.c'
+      - 'tests/pc_multiplayer_coop_net_test.c'
+      - 'pc/platform/pc_coop.c'
+      - 'pc/platform/pc_coop.h'
       - 'pc/tests/lan_live.sh'
       - 'net/**'
       - 'tests/multiplayer_protocol_test.c'
@@ -63,7 +71,11 @@ jobs:
       - name: Compile and fuzz the multiplayer packet contract
         run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/multiplayer_protocol_test.c net/session.c -o /tmp/bugstar-nettest && /tmp/bugstar-nettest
       - name: Validate two actual UDP sockets and independently moving LAN ships
-        run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/pc_multiplayer_net_test.c pc/platform/pc_net.c pc/platform/pc_duel.c net/session.c -lm -o /tmp/bugstar-lan && timeout 15 /tmp/bugstar-lan
+        run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/pc_multiplayer_net_test.c pc/platform/pc_net.c pc/platform/pc_duel.c pc/platform/pc_coop.c net/session.c -lm -o /tmp/bugstar-lan && timeout 15 /tmp/bugstar-lan
+      - name: Verify moving shared co-op target, synchronized victories, and enemy respawn
+        run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/pc_multiplayer_coop_test.c pc/platform/pc_coop.c pc/platform/pc_duel.c -lm -o /tmp/bugstar-coop && /tmp/bugstar-coop
+      - name: Verify two actual UDP pilots fighting the SAME host-controlled enemy
+        run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/pc_multiplayer_coop_net_test.c pc/platform/pc_net.c pc/platform/pc_coop.c pc/platform/pc_duel.c net/session.c -lm -o /tmp/bugstar-coop-net && timeout 15 /tmp/bugstar-coop-net
       - name: Verify 3D sparring hits, safe match HP and respawn
         run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/pc_multiplayer_duel_test.c pc/platform/pc_duel.c -lm -o /tmp/bugstar-duel && /tmp/bugstar-duel
       - name: Build PC game without SDL dependency
