@@ -428,7 +428,9 @@ static void menu_draw(void){
                  pc_mp_local_ready()?"READY":"WAIT",pc_mp_peer_ready()?"READY":"WAIT",
                  pc_mp_both_confirmed()?"RETURN TO FLIGHT":"CONFIRM READY");
         text_at(x0+4*gs_,y0+ph-2*lh,msg,0xCBD5FF);
-        text_at(x0+4*gs_,y0+ph-lh,"TRUSTED LAN ONLY - DO NOT PORT-FORWARD",0xE8D890);
+        text_at(x0+4*gs_,y0+ph-lh,
+                role && !pc_mp_space_ready()?"ENTER 3D FLIGHT BEFORE MATCHING":
+                "TRUSTED LAN ONLY - DO NOT PORT-FORWARD",0xE8D890);
     }
 }
 static void menu_key(SDL_Keycode k, SDL_Scancode sc){
