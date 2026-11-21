@@ -136,8 +136,15 @@ for name in ("PILL BUG:", "LADYBUG:", "FIREFLY:", "BEE:", "CRICKET:", "RUNAWAY A
 require(game, "say(have_bug[t]==1?first_rescue[t]:b)", "first-rescue words not shown in gameplay")
 require(game, "q_type==Q_RESCUE && !q_done", "narrative must not break rescue quest progress")
 
-require(space, "if(data_cores>=8){ bolt_story(VISPG,10); dawn_free=1; }",
-        "the true finale must require all eight cores")
+require(space, "if(beast_finale_ready(data_cores,dawn_free))",
+        "true ending must depend on recovered cores and completion, not previous kills")
+require(space, "bolt_story(VISPG,10); dawn_free=1;",
+        "true ending must play and record completion")
+require(space, "b.stage=(u16)(beast_stage|(dawn_free?0x8000u:0))",
+        "true ending must persist through legacy-compatible save layout")
+require(space, "dawn_free=(b.stage&0x8000u)!=0",
+        "old and new save records must decode story completion")
+require(ui, 'if(dawn_free){ t[n++]=', "post-finale Bolt must not demand another boss victory")
 require(space, 'story_card("VICTORY",t,4)', "partial-victory ending must remain distinct")
 for phrase in ("FIVE TECH HIVES", "WARP OUT WHEN NEEDED", "HOLD B TO THRUST",
                "HOLD L TOO FOR EXTRA BURN"):
