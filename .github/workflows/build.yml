@@ -17,6 +17,9 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends python3 python3-numpy
 
+      - name: Check 3D cockpit near-plane projection and ship/station wireframes
+        run: python3 tests/space_projection_audit.py
+
       - name: Check shared monster roster, generated art and biome spawn pools
         run: python3 tests/monster_roster.py
 
