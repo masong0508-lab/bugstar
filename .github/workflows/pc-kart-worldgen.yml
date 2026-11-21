@@ -8,6 +8,7 @@ on:
       - 'pc/pc_kartnat*.inc'
       - 'pc/pc_snative.inc'
       - 'tests/space_native_projection_audit.py'
+      - 'tests/space_station_depth_audit.py'
       - 'pc/pc_hw.c'
       - 'pc/platform/pc_sdl.c'
       - 'pc/tests/speed_guard.sh'
@@ -21,6 +22,7 @@ on:
       - 'pc/pc_kartnat*.inc'
       - 'pc/pc_snative.inc'
       - 'tests/space_native_projection_audit.py'
+      - 'tests/space_station_depth_audit.py'
       - 'pc/pc_hw.c'
       - 'pc/platform/pc_sdl.c'
       - 'pc/tests/speed_guard.sh'
@@ -38,6 +40,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential
       - name: Exercise native 3D perspective and near-plane regression with UBSan
         run: python3 tests/space_native_projection_audit.py
+      - name: Guard space station 3D depth and shared geometry
+        run: python3 tests/space_station_depth_audit.py
       - name: Build PC game without SDL dependency
         run: cd pc && PC_SDL=0 ./build.sh
       - name: Fuzz kart races across random tracks
