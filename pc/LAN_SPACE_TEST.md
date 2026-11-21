@@ -1,6 +1,6 @@
 # BUGSTAR experimental LAN space sparring + shared-raider co-op (developer test)
 
-**Status:** opt-in two-player LAN sparring **and a first shared-raider co-op encounter** (one host-controlled moving target, shared HP and victory). These are experimental; the two-real-game smoke checks must pass before claiming them playable.
+**Status (21 November 2026):** the PC ↔ PC two-process SDL smoke test now **passes in both sparring and co-op**. In the first verified co-op smoke, the host and guest each logged three synchronized raider kills, and both pilots contributed real laser hits. Windows PC, Android APK and GBA ROM **builds** were green at protocol v2 commit `e4aca761a2`; this does not mean an Android device was tested for multiplayer, or that GBA has link networking. The newer ship-model, network hardening and tick-decoupling work is under CI re-verification.
 This mode is opt-in via command-line arguments. It is disabled in the
 normal game. There is no in-game host/join menu, shared campaign pirate/enemy AI, campaign hull
 damage, inventory transfer, co-op saves, kart networking, or verified
@@ -24,7 +24,7 @@ The initial implementation supports:
   cargo, save files, enemy AI and rewards are not shared or modified.
 - A separate `--lan-coop` opt-in encounter: one moving 3D RAIDER target is simulated **only on the host**. Both pilots fire real A-lasers; the host validates each aim and sends quantized target position, one shared HP meter, two pilots' hit counts, and shared round victories to both screens. A five-hit defeat yields a 2.5-second respawn. The raider now fires dodgeable, host-approved shots against each pilot's **temporary co-op shields**. The host shares a win on defeat of the raider or a loss when both pilots are knocked out. No real ship hull, loot or saves are changed; this remains a small trial encounter, **not** complete campaign co-op. No loot, enemy AI integration, mission progress, or saves are shared.
 - A clean loss of the remote silhouette after stale/lost packets; BYE on
-  normal shutdown. No cartridge SRAM/save modifications.
+  normal shutdown. A recent enemy score cannot make an old 3D ship position fresh, and replayed guest shot counters are rejected. Game-clock networking continues between rendered flight frames. No cartridge SRAM/save modifications.
 
 ## Test on one computer first
 
@@ -65,7 +65,7 @@ peer silhouette intentionally disappears until both instances match.
 
 ## Opt in to the shared-raider encounter
 
-Start the same two PC processes shown above, but add `--lan-coop` **on both sides**. Use the same star and separate save directories. The guest spawns nearby and faces the same direction as the host; the armed target patrols and fires ahead in 3D space. A correct connection displays `RAID`, the enemy HP, P1/P2 temporary HP, wins/losses and a moving RAIDER. Five combined hits produce `RAIDER DOWN!`, then a fresh encounter; the enemy can also win by depleting both players' co-op shields. Both pilots should see the same win/loss count. A sparring client and a co-op host deliberately cannot connect.
+Start the same two PC processes shown above, but add `--lan-coop` **on both sides**. Use the same star and separate save directories. The guest spawns nearby and faces the same direction as the host; the armed target patrols and fires ahead in 3D space. A correct connection displays a larger 3D interceptor, a RAIDER health bar, both pilots' temporary shields, wins/losses and each pilot's hit contribution. Five combined hits produce `RAIDER DOWN!`, then a fresh encounter; the enemy can also win by depleting both players' co-op shields. Both pilots should see the same win/loss count. A sparring client and a co-op host deliberately cannot connect.
 
 ## Verification commands
 
@@ -84,11 +84,11 @@ world rejection, timeout/disconnect, handshake rejoin, both players
 hitting each other, HP updates and round victories. The independent
 `tests/pc_multiplayer_duel_test.c` checks front/back/side aim, range,
 match wins and respawn. `tests/pc_multiplayer_coop_test.c` and `tests/pc_multiplayer_coop_net_test.c` verify both pilots damaging the same target, replicated HP and victories, respawn and mismatched-mode rejection. PC and Android CI compile the tests. The PC test also boots two complete SDL game windows in sparring and co-op modes, captures screenshots and checks both entered 3D space. Existing renderer tests and
-`pc/tests/speed_guard.sh` must continue to pass with LAN disabled.
+`pc/tests/speed_guard.sh` must continue to pass with LAN disabled. The separate `pc/tests/lan_live.sh` must also pass a **real combat victory on each running game**, not just establish a UDP connection.
 
 ## What makes the next iteration truly playable
 
-1. Verify both real PC instances reach space and connect reliably; add a host-controlled safe starting pose instead of the current small guest-only offset.
+1. Replace the current small guest-only spawn offset with an authoritative, collision-safe co-op assembly position; verify the view in real screenshots.
 2. Improve native ship materials, occlusion and render-only smoothing.
 3. Harden existing INPUT/EVENT/RAIDER exchanges with sequencing,
    reconnect/clock-skew handling, acknowledgement and rate controls;
