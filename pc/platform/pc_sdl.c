@@ -426,7 +426,7 @@ static void menu_draw(void){
         text_at(x0+4*gs_,y0+ph-3*lh,msg,0xA0FFB0);
         snprintf(msg,sizeof msg,"YOU %s   PEER %s - %s",
                  pc_mp_local_ready()?"READY":"WAIT",pc_mp_peer_ready()?"READY":"WAIT",
-                 pc_mp_match_ready()?"PLAY":"CONFIRM READY");
+                 pc_mp_both_confirmed()?"RETURN TO FLIGHT":"CONFIRM READY");
         text_at(x0+4*gs_,y0+ph-2*lh,msg,0xCBD5FF);
         text_at(x0+4*gs_,y0+ph-lh,"TRUSTED LAN ONLY - DO NOT PORT-FORWARD",0xE8D890);
     }
@@ -766,7 +766,11 @@ static void rumble_frame(void){
 // ---- the app's life cycle (Android: home button, another app, screen off; also SDL_APP_TERMINATING). In the background the game does not step and makes no sound; coming back
 // starts a fresh clock (g_pace_reset): the minutes it was away are not played catch-up. The save is flushed on the game's own thread (g_app_save, in pump_events).
 static void touch_release_all(void);
-static void app_background(void){ g_bg=1; g_app_save=1; if(adev) SDL_PauseAudioDevice(adev,1); }
+static void app_background(void){
+    if(!g_bg)pc_mp_suspend(); /* no stale Ready/shots after sleep */
+    g_bg=1; g_app_save=1;
+    if(adev) SDL_PauseAudioDevice(adev,1);
+}
 static void app_foreground(void){
     if(!g_bg && !g_app_resume) return;
     g_bg=0; g_app_resume=0; g_pace_reset=1; memset(kst,0,sizeof kst); touch_release_all();
@@ -960,8 +964,9 @@ void plat_frame(void){
     pc_mp_frame((uint32_t)fr);   // nonblocking LAN ship snapshots; no effect without --lan-host/join
     pump_events();
     int was_paused=0;
-    while(menu_open || g_paused_focus || g_bg){                // paused: the game does not step; the window keeps being drawn (not while the app is in the background)
+    while(menu_open || g_paused_focus || g_bg){                // paused: no world tick or physics, network lobby still communicates
         was_paused=1; uint64_t t0=SDL_GetPerformanceCounter();
+        if(!g_bg)pc_mp_lobby_pump();  // HELLO/READY/STATE while both players use menu
         if(!g_bg) present_game(1);
         pump_events();
         if(g_bg) SDL_Delay(50);
