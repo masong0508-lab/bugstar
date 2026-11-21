@@ -172,8 +172,10 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
              * was completed mission count, not waves won. Keep them distinct.
              * No dynamic allocations, bitmap assets or extra framebuffers. */
             rect(pg,3,98,234,29,0);
-            rect(pg,3,98,234,1,53);
-            rect(pg,119,100,1,26,56);
+            rect(pg,3,98,234,1,53); /* red enemy/mission border */
+            rect(pg,4,108,232,1,56); /* separate boss, pilot, and support rows */
+            rect(pg,4,117,232,1,56);
+            rect(pg,119,100,1,26,56); /* two stable readable columns */
             char hud[72];
             if(raider.phase==4){
                 text(pg,7,101,"RAIDER DEFEATED",54,1);
@@ -188,9 +190,9 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                 text(pg,145,101,hud,50,1);
             }
             snprintf(hud,sizeof hud,"P1 HEALTH: %u",(unsigned)raider.host_hp);
-            text(pg,7,110,hud,raider.host_hp<=20?49:50,1);
+            text(pg,7,110,hud,raider.host_hp<=20?49:54,1); /* P1 gold */
             snprintf(hud,sizeof hud,"P2 HEALTH: %u",(unsigned)raider.guest_hp);
-            text(pg,126,110,hud,raider.guest_hp<=20?49:50,1);
+            text(pg,126,110,hud,raider.guest_hp<=20?49:50,1); /* P2 cyan */
             if(raider.phase==4)
                 snprintf(hud,sizeof hud,"MISSIONS WON: %u",
                          (unsigned)raider.completed);
