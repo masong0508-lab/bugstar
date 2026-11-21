@@ -141,16 +141,27 @@ static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, a
     case 2: { static const char *const t[6]={"\"I DREAMED AGAIN. DROIDS DON'T DREAM.",
         "THERE WAS WATER AGAINST MY WINDOW.","SOMEONE WAS SINGING TO STAY AWAKE.",
         "I THINK I HAD A SHIP ONCE.","OR I WAS THE SHIP.",
-        "PLEASE DON'T LAUGH. I'M TRYING TO REMEMBER.\""}; bolt_card(pg,t,6); break; }
-    case 3: { static const char *const t[6]={"THE MACHINE SWALLOWS A PIRATE SHIP.",
-        "ITS METAL SKIN SHIFTS LIKE SOMETHING ALIVE.","\"WHEN IT TURNED, I KNEW THAT SOUND.",
+        "PLEASE DON'T LAUGH. I'M TRYING TO REMEMBER.\""}; bolt_card(pg,t,6);
+        if(have_bug[BUG_LADY]){
+            static const char *const comfort[2]={
+                "LADYBUG: REMEMBERING CAN HURT TOO.",
+                "\"WE'LL BE HERE WHEN YOU'RE READY.\""};
+            bolt_card(pg,comfort,2);
+        }
+        break; }
+    case 3: { const char *t[6]={"THE MACHINE SWALLOWS A PIRATE SHIP.",
+        have_bug[BUG_FIRE] ? "THE FIREFLY'S LIGHT GOES OUT FOR A MOMENT." :
+                             "ITS METAL SKIN SHIFTS LIKE SOMETHING ALIVE.",
+        "\"WHEN IT TURNED, I KNEW THAT SOUND.",
         "IT LOOKED STRAIGHT AT ME.","I THINK IT REMEMBERS ME.",
         "I WISH I KNEW WHY.\""}; bolt_card(pg,t,6); break; }
     case 4: { const char *t[6]={"\"THE ANTS ARE DIGGING FOR OLD METAL.",
         have_bug[BUG_ANT] ? "RUNAWAY ANT: I SAW THEM SEAL THE HATCHES." :
                            "THEY BUILD OUTPOSTS AROUND WHAT THEY FIND.",
         "ONE OF THOSE MACHINES HUMMED MY TUNE.",
-        "THE SAME TUNE I HUM WHEN YOU SLEEP.","MY HEAD HURTS. CAN TIN GET HEADACHES?",
+        have_bug[BUG_CRICKET] ? "CRICKET: THEY MADE US MARCH TO THAT TUNE." :
+                                 "THE SAME TUNE I HUM WHEN YOU SLEEP.",
+        "MY HEAD HURTS. CAN TIN GET HEADACHES?",
         "PLEASE. FIND THE OUTPOSTS.\""}; bolt_card(pg,t,6); break; }
     case 5: { const char *t[6]={"THE BEES SING OVER THE RUINED HIVES.",
         "THEIR SONG IS ABOUT A FALLEN STAR.","A SHIP THAT CARRIED GARDENS IN ITS HEART.",
@@ -319,6 +330,8 @@ static void bolt_talk(volatile u16 *pg){
         else scpy(qhint,"\"THE SHIP BOARD WILL TAKE YOUR GOODS.\"");
         if(qhint[0]) t[n++]=qhint;
     }
+    if(n<8 && have_bug[BUG_PILL] && gold<30)
+        t[n++]="\"THE PILL BUG SAVED HIS LAST TEN GOLD FOR US.\"";
     if(data_cores>0 && n<8){ int k=data_cores-1; if(k>7) k=7;
         // Bound the recap even if a future writer lengthens a memory line:
         // the four-line recovery card can contain longer prose than this HUD.
