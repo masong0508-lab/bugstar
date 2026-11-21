@@ -163,6 +163,23 @@ static void bolt_talk(volatile u16 *pg){
     else if(beast_stage>=3 && data_cores<8){ scpy(l1,"\"THE OUTPOSTS HOLD MY MEMORY. "); ncat(l1,data_cores); scat(l1," OF 8.\""); t[n++]=l1; t[n++]="\"RED MARKS ON THE MAP. HATCHES ON THE GROUND.\""; t[n++]="\"BRING ME BACK TO MYSELF.\""; }
     else if(beast_stage>=3){ t[n++]="\"I KNOW MY NAME. THE DAWN.\""; t[n++]="\"FLY INTO THE BEAST. SHOOT ITS CORE.\""; t[n++]="\"I WILL DO THE REST.\""; }
     else { t[n++]="\"THE GALAXY IS OPEN. GO ANYWHERE.\""; t[n++]="\"THE BEAST IS OUT THERE. SO ARE ITS OUTPOSTS.\""; }
+    // Make the companion's advice match the job the player actually took.
+    // qhint lives until the card finishes; no new global RAM is needed.
+    char qhint[48];
+    if(q_type>0 && n<8){
+        qhint[0]=0;
+        if(q_done) scpy(qhint,"\"QUEST DONE. CLAIM YOUR REWARD AT THE SHIP.\"");
+        else if(q_type!=Q_BRING && q_type!=Q_GOODS && !quest_home())
+            scpy(qhint,"\"YOUR QUEST IS ON THE WORLD WE LEFT.\"");
+        else if(q_type==Q_SHARDS){ scpy(qhint,"\"NEXT SHARD: DUNGEON FLOOR B"); ncat(qhint,q_floor-q_need+q_have+1); scat(qhint,".\""); }
+        else if(q_type==Q_RESCUE){ scpy(qhint,"\"EXTRA CAGES WAIT ON FLOOR B"); ncat(qhint,q_floor); scat(qhint,".\""); }
+        else if(q_type==Q_CHAMP){ scpy(qhint,"\"THE NAMED FOE WAITS ON FLOOR B"); ncat(qhint,q_floor); scat(qhint,".\""); }
+        else if(q_type==Q_FETCH){ scpy(qhint,"\"THE LOST TREASURE LIES ON B"); ncat(qhint,q_floor); scat(qhint,".\""); }
+        else if(q_type==Q_BOSS) scpy(qhint,"\"DEFEAT EVERY BOSS AT THE BOTTOM.\"");
+        else if(q_type==Q_HUNT) scpy(qhint,"\"SLAY THE MONSTERS IN THIS WORLD.\"");
+        else scpy(qhint,"\"THE SHIP BOARD WILL TAKE YOUR GOODS.\"");
+        if(qhint[0]) t[n++]=qhint;
+    }
     if(data_cores>0 && n<8){ int k=data_cores-1; if(k>7) k=7; scpy(l2,"\"I REMEMBER: "); scat(l2,bolt_mem[k][0]); scat(l2,"\""); t[n++]=l2; }
     if(n<8){                                                                                    // a remark about where you are: the world, its traits, its weather and hour, its gravity and size
         const char *c[20]; int nc=0;
