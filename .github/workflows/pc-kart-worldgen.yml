@@ -48,6 +48,7 @@ on:
       - 'tests/quest_integrity_audit.py'
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
+      - 'tests/shared_math_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
       - 'town.inc'
