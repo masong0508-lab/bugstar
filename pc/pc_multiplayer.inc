@@ -212,6 +212,16 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
             /* The main target must disappear after destruction. The
              * surviving flank drone becomes the explicit objective, not
              * a misleading ghost RAIDER label or empty boss bar. */
+            /* The mission states what to DO, not just enemy hit points.
+             * A thin 4-pixel-font cue above the mission panel only, preserving
+             * the 3D view and all existing solo/handheld rendering budgets. */
+            if(raider.phase==1 && !raider.charge){
+                const char *goal=!raider.hp && raider.wing_hp?
+                    "DESTROY THE DRONE TO CLEAR WAVE":
+                    raider.wing_hp?"DEFEAT RAIDER AND DRONE":
+                    "DEFEAT THE RAIDER";
+                text(pg,6,89,goal,54,1);
+            }
             if(raider.phase==1 && !raider.hp && raider.wing_hp){
                 s32 dx=raider.wing_x-shx,dy=raider.wing_y-shy,
                     dz=raider.wing_z-shz;
@@ -311,6 +321,7 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
         rect(pg,191,59,2,37,55);
         text(pg,55,65,"MISSION COMPLETE",54,2);
         text(pg,87,84,"BOTH PILOTS WIN!",50,1);
+        text(pg,78,91,"NEXT MATCH SOON",55,1);
         pc_mp_note_clear_draw();
     }
 #else
