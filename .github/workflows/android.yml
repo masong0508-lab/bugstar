@@ -87,6 +87,10 @@ jobs:
           NM=$(find "$ANDROID_NDK_HOME" "$ANDROID_NDK_LATEST_HOME" -name llvm-nm 2>/dev/null | head -1)
           RE=$(find "$ANDROID_NDK_HOME" "$ANDROID_NDK_LATEST_HOME" -name llvm-readelf 2>/dev/null | head -1)
           grep -aq 'HOW TO PLAY' "$SO" && echo "feature check: the tutorial page is in libmain.so" || { echo "::error::libmain.so lacks the HOW TO PLAY page"; exit 1; }
+          for title in 'EVERY 60 GBA SCREEN FRAMES' 'PC: LAW SETS X UNIVERSES'; do
+            grep -aq "$title" "$SO" || { echo "::error::Android library is missing current HOW BIG IS IT page: $title"; exit 1; }
+          done
+          echo "feature check: updated 60-frame and 2,048-bit PC number pages are in the Android APK"
           grep -aq 'low memory: sprite cache emptied' "$SO" && echo "feature check: the low-memory handler is in libmain.so" || { echo "::error::libmain.so lacks the low-memory handler"; exit 1; }
           if [ -n "$NM" ] && [ -n "$SO" ]; then
             "$NM" -D --defined-only "$SO" | grep -E ' SDL_main$' || { echo "::error::libmain.so does not export SDL_main: SDL cannot start the game"; exit 1; }
