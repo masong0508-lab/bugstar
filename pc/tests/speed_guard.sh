@@ -14,7 +14,7 @@ run() {
     # ordinary pause-on-focus-loss option stop the test clock forever.
     printf 'pause_unfocus=0\n' > "out/speed_guard/data_${name}/settings.ini"
     env "$@" SDL_AUDIODRIVER=dummy PC_FRAMELOG="out/speed_guard/${name}.txt" \
-        timeout 40 "$B" --window --video-driver dummy --no-audio \
+        timeout -k 3 25 "$B" --window --video-driver dummy --no-audio \
         --size 240 160 --data "out/speed_guard/data_${name}" \
         --stop-after 275 > "out/speed_guard/${name}.log" 2>&1
 }
