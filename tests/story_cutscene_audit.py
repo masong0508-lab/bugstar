@@ -14,6 +14,7 @@ game = (root / "game.inc").read_text()
 main = (root / "main.c").read_text()
 space = (root / "space.inc").read_text()
 town = (root / "town.inc").read_text()
+dungeon = (root / "dungeon.inc").read_text()
 
 
 def section(text, begin, end):
@@ -175,6 +176,57 @@ assert (
 ), "travel directions interrupt emotional aftermath"
 require(main, "FOLLOW THE YELLOW ARROW TO THE DOOR.",
         "opening cutscene must still teach the first objective")
+
+# The central plot must be discovered in actual boss floors, before victory,
+# and the resulting first-clear state must change resources and return dialogue.
+boss_titles = literals(section(ui, "static const char *const story_boss_title[6]={",
+                               "static const char *const story_boss_warning[6]"))
+boss_warnings = literals(section(ui, "static const char *const story_boss_warning[6]={",
+                                 "static const char *const story_boss_evidence[6][3]"))
+boss_evidence = literals(section(ui, "static const char *const story_boss_evidence[6][3]={",
+                                 "static const char *const story_boss_aftermath[6]"))
+boss_aftermath = literals(section(ui, "static const char *const story_boss_aftermath[6]={",
+                                  "static const char *const story_boss_reward[6]"))
+boss_reward = literals(section(ui, "static const char *const story_boss_reward[6]={",
+                               "static const char *const bolt_zone[6][2]"))
+assert len(boss_titles) == len(boss_warnings) == len(boss_aftermath) == len(boss_reward) == 6, (
+    "all six story bosses must have a unique title, warning, aftermath, and recovery"
+)
+assert len(boss_evidence) == 18, "six bosses need three discoverable clues each"
+assert all(0 < len(line) <= 54 for line in boss_evidence), "boss intel overflows the story card"
+assert all(0 < len(line) < 40 for line in boss_warnings), (
+    "boss-floor warning overflows the 39-character gameplay message"
+)
+assert all(0 < len(line) <= 54 for line in boss_reward + boss_aftermath)
+assert all(0 < len(t) <= 54 for t in boss_titles)
+for hint in ("CAGE MANIFEST:", "WARM WATER DIVERTED", "RATIONS SENT",
+             "SHIP METAL MOVED", "FURNACE REQUIRES A SONG",
+             "THE KING LOCKED A HEART"):
+    assert any(hint in line for line in boss_evidence), "one of the six warden ledgers is missing: " + hint
+assert all("THE DAWN" not in line for line in boss_evidence), (
+    "boss-floor intel must not spoil the eighth-memory identity reveal"
+)
+require(dungeon, "if(last && !endless && !base_mode && !forge_on && !zone_cleared && zone<6)",
+        "first-time boss floors are not assigned searchable evidence")
+require(dungeon, "if(evidence>=0) dob[evidence].sub=7;",
+        "story evidence must reuse ordinary chests to respect NDO limits")
+require(dungeon, "else if(ndo<NDO-4)", "evidence chest must leave space for quest objectives")
+require(dungeon, "SPAWN(K_CHEST,room_floor_cell(&rooms[nrooms>1?1:0]),1,7);",
+        "boss floor has no physical evidence chest fallback")
+require(dungeon, "say(story_boss_warning[zone]);", "wardens need a pre-fight gameplay warning")
+require(main, "int evidence=o->sub==7", "physical evidence must be distinguished on chest pickup")
+require(main, "card(VISPG,story_boss_title[zone],story_boss_evidence[zone],3)",
+        "opening evidence must reveal clues in-game instead of only awarding loot")
+require(main, "story_boss_reward[z]", "player must be told what resource liberation recovered")
+require(ui, "t[n++]=story_boss_aftermath[zone];",
+        "returning to a liberated world should acknowledge the defeated warden")
+require(space, "int first=!(cleared_mask&(1<<zone))",
+        "boss supply recovery must be driven by legacy-compatible saved progression")
+for reward in ("case 0: food=100", "case 1: { int fm=fuel_max()",
+               "case 2: earn(150)", "case 3: if(hull<100)",
+               "case 4: scrap+=24", "case 5: hearts=maxh"):
+    require(space, reward, "boss first-clear reward is not wired to gameplay: " + reward)
+
 
 first_rescue = section(game, "static const char *const first_rescue[6]={",
                        'char b[40]; scpy(b,"FREED A ");')
