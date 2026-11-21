@@ -259,7 +259,13 @@ static void sz_head(volatile u16 *pg, int pi, int view){         // view 3 is th
     const char *t = view==3 ? "ALL THE NUMBERS" : szt(pi,0); text(pg,121-textlen(t)*4,16,t,U_EDGE,2); text(pg,120-textlen(t)*4,15,t,C_GOLD,2);
     static const char *const vn[3]={"IN SHORT","EVERY DIGIT","BY NAME"}; static const u8 vx[3]={50,100,162};
     if(view==3) ctext(pg,120,27,"YOURS FIRST, THEN SMALLEST TO BIGGEST",U_SOFT);
-    else for(int k=0;k<3;k++){ int w=textlen(vn[k])*4+7; if(k==view){ rect(pg,vx[k]-3,25,w,9,U_RAISE); rect(pg,vx[k]-3,25,w,1,U_SHINE); rect(pg,vx[k]-3,33,w,1,U_ACCENT); text(pg,vx[k],27,vn[k],C_WHITE,1); } else text(pg,vx[k],27,vn[k],U_GLOW,1); }
+    else {
+        for(int k=0;k<3;k++){ int w=textlen(vn[k])*4+7; if(k==view){ rect(pg,vx[k]-3,25,w,9,U_RAISE); rect(pg,vx[k]-3,25,w,1,U_SHINE); rect(pg,vx[k]-3,33,w,1,U_ACCENT); text(pg,vx[k],27,vn[k],C_WHITE,1); } else text(pg,vx[k],27,vn[k],U_GLOW,1); }
+        // Provenance at a glance: the full-digit pages are exact counts or
+        // dated/rounded estimates. Only 5 glyphs, drawn on page changes, not
+        // on every scrolling frame; no extra RAM or assets on GBA.
+        rect(pg,202,25,34,9,U_PANEL); text(pg,209,27,nb_about ? "EST." : "EXACT",nb_about ? C_GOLD : C_CYAN,1);
+    }
     rect(pg,0,SZ_Y0-1,240,1,U_EDGE); rect(pg,0,SZ_Y0,240,SZ_Y1-SZ_Y0,U_INK); rect(pg,0,SZ_Y1,240,1,U_RAISE);
     static const char *const help[4]={"LEFT/RIGHT: MORE  SEL: LIST  A: DIGITS  B: BACK","UP/DOWN: SCROLL  L/R: FAST  SEL: ROLL  A: NAMES","UP/DOWN: SCROLL  L/R: FAST  SEL: ROLL  A: SHORT","UP/DOWN: PICK  L/R: FAST  A: SEE IT  B: BACK"};
     rect(pg,0,SZ_Y1+1,240,160-SZ_Y1-1,U_BG0); ui_chint(pg,120,152,help[view],U_SOFT); }
