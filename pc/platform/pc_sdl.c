@@ -258,9 +258,9 @@ static void text_at(int x, int y, const char *s, uint32_t col){
 static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(ren,(col>>16)&255,(col>>8)&255,col&255,a); SDL_Rect r={x,y,w,h}; SDL_RenderFillRect(ren,&r); }
 
 // ---- the options screen
-enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_LAN, P_COUNT };
+enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_LAN, P_LANHELP, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_READY, A_LAN_LEAVE, A_REBIND=1000 };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_READY, A_LAN_LEAVE, A_LANHELP, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
@@ -322,8 +322,9 @@ static void menu_build(Item *it, int *n){
         it[k++]=(Item){0,"JOIN FRIEND",0,0,0,0,0,A_LAN_JOIN};
         it[k++]=(Item){0,pc_mp_local_ready()?"NOT READY ANYMORE":"I AM READY",0,0,0,0,0,A_LAN_READY};
         it[k++]=(Item){0,"DISCONNECT",0,0,0,0,0,A_LAN_LEAVE};
+        it[k++]=(Item){0,"HOW THE CO-OP MISSION WORKS",0,0,0,0,0,A_LANHELP};
         it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK};break;
-    case P_ABOUT: case P_HELP: case P_TLEGEND: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
+    case P_ABOUT: case P_HELP: case P_TLEGEND: case P_LANHELP: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     }
     *n=k;
 }
@@ -342,6 +343,7 @@ static void menu_do(int act){
     switch(act){
     case A_RESUME: menu_open=0; cfg_save(); break;
     case A_LAN: menu_page=P_LAN;menu_sel=0;break;
+    case A_LANHELP: menu_page=P_LANHELP;menu_sel=0;break;
     case A_LAN_IP: lan_ip_edit=1;SDL_StartTextInput();say_toast("TYPE FRIEND'S HOST IP - ENTER TO FINISH");break;
     case A_LAN_HOST: case A_LAN_JOIN:{
         if(pc_mp_role()){say_toast("LEAVE CURRENT LAN MATCH FIRST");break;}
@@ -364,7 +366,11 @@ static void menu_do(int act){
     case A_LAN_LEAVE: pc_mp_close();say_toast("DISCONNECTED - SINGLE PLAYER RESUMED");break;
     case A_VIDEO: menu_page=P_VIDEO; menu_sel=0; break; case A_AUDIO: menu_page=P_AUDIO; menu_sel=0; break; case A_ACCESS: menu_page=P_ACCESS; menu_sel=0; break;
     case A_CONTROLS: menu_page=P_CONTROLS; menu_sel=0; break; case A_PAD: menu_page=P_PAD; menu_sel=0; break; case A_ABOUT: menu_page=P_ABOUT; menu_sel=0; break; case A_HELP: menu_page=P_HELP; menu_sel=0; break;
-    case A_MAINBACK: if(menu_page==P_TLEGEND){ menu_page=P_TOUCH; menu_sel=0; } else { menu_page=P_MAIN; menu_sel=0; } cfg_save(); break;
+    case A_MAINBACK:
+        if(menu_page==P_TLEGEND)menu_page=P_TOUCH;
+        else if(menu_page==P_LANHELP)menu_page=P_LAN;
+        else menu_page=P_MAIN;
+        menu_sel=0;cfg_save();break;
     case A_TOUCH: menu_page=P_TOUCH; menu_sel=0; break; case A_TLEGEND: menu_page=P_TLEGEND; menu_sel=0; break; case A_TOUCHEDIT: ted_open(); break;
     case A_TRESET: memset(g_tl,0,sizeof g_tl); g_talpha=80; say_toast("TOUCH PAD RESET"); break;
     case A_QUIT: cfg_save(); pc_quit_now(); break;
@@ -382,6 +388,20 @@ static const char *const *help_lines(void){       // (each line fits the narrowe
     static const char *const lg[]={"MEGA PAD         GBA","D-PAD            D-PAD","B                A (OK)","A                B (BACK)","C                A (OK)","X                L","Y                R","Z                SELECT","START            START","MODE             OPTIONS","","3 BUTTON PAD: L R AT THE TOP,","MODE = SELECT, MENU AT THE TOP",0};
     static const char *const tp[]={"THE ON-SCREEN PAD IS A MEGA PAD:","D-PAD, A B C, X Y Z, START, MODE","MODE OPENS THESE OPTIONS","","OPTIONS > TOUCH PAD: BUTTON LEGEND,","LAYOUT, SIZE, OPACITY, HAPTICS","","OPTIONS > VIDEO > 3D VIEWS:","CLASSIC IS THE LIGHTEST - NATIVE","AND ULTRA NEED A FAST PHONE","","THE GAME SAVES BY ITSELF.",0};
     static const char *const ln[]={"ARROWS OR WASD: MOVE AND TURN","X OR SPACE: A     Z OR K: B","Q: L      E: R","ENTER: START   BACKSPACE: SELECT","","ESC: THIS MENU   F11: FULLSCREEN","F12: SCREENSHOT   F3: FPS","","VIDEO > 3D VIEWS: CLASSIC IS THE","GBA LOOK - NATIVE AND ULTRA ARE","SHARP AT ANY WINDOW SIZE","A GAMEPAD WORKS: BACK+START=MENU",0};
+    static const char *const ml[]={
+        "CREATE GAME ON ONE DEVICE",
+        "JOIN FRIEND ON THE OTHER",
+        "USE THE SAME STAR IN 3D SPACE",
+        "BOTH PLAYERS CHOOSE I AM READY",
+        "",
+        "CO-OP: DEFEAT THE RAIDER",
+        "WAVES 2-3 ALSO HAVE A DRONE",
+        "LASER HITS = SUCCESSFUL SHOTS",
+        "P1/P2 HEALTH = MISSION ONLY",
+        "SHIELD/HULL = YOUR REAL SHIP",
+        "FINISH THREE WAVES TO WIN",0
+    };
+    if(menu_page==P_LANHELP)return ml;
     if(menu_page==P_TLEGEND) return lg;
     if(g_touch) return tp;
     return ln; }
@@ -390,13 +410,13 @@ static void menu_draw(void){
     if(ted_on){ ted_draw(); return; }
     int dw=dw_, dh=dh_; gs_=(dw<dh?dw:dh)/140;      /* patch 39: portrait sizes the text by the narrow side */ if(gs_<2) gs_=2; if(gs_>12) gs_=12; if(C.textsize){ int g2=(dw<dh?dw:dh)/(C.textsize==1?100:75); if(g2>gs_) gs_=g2; if(gs_>16) gs_=16; }
     int hc=C.contrast; rect_fill(0,0,dw,dh,0x000000,hc?200:150);
-    static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND","MULTIPLAYER LAN"};
+    static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND","MULTIPLAYER LAN","MULTIPLAYER GUIDE"};
     Item it[24]; int n; menu_build(it,&n);
-    int lh=9*gs_, pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"); if(pw>dw-4*gs_) pw=dw-4*gs_; int ph=(n+3)*lh+2*gs_*4; if(menu_page==P_LAN) ph+=4*lh; if(menu_page==P_ABOUT) ph=14*lh; if(menu_page==P_HELP||menu_page==P_TLEGEND){ int nl=0; while(help_lines()[nl]) nl++; ph=(nl+5)*lh; }
+    int lh=9*gs_, pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"); if(pw>dw-4*gs_) pw=dw-4*gs_; int ph=(n+3)*lh+2*gs_*4; if(menu_page==P_LAN) ph+=4*lh; if(menu_page==P_ABOUT) ph=14*lh; if(menu_page==P_HELP||menu_page==P_TLEGEND||menu_page==P_LANHELP){ int nl=0; while(help_lines()[nl]) nl++; ph=(nl+5)*lh; }
     int x0=(dw-pw)/2, y0=(dh-ph)/2; rect_fill(x0,y0,pw,ph,hc?0x000000:0x0B1030,hc?255:235); rect_fill(x0,y0,pw,gs_,0xFFD23C,255); rect_fill(x0,y0+ph-gs_,pw,gs_,0xFFD23C,255);
     text_at(x0+4*gs_,y0+3*gs_,titles[menu_page],0xFFD23C);
-    int y=y0+3*gs_+lh*3/2; m_x0=x0; m_pw=pw; m_lh=lh; m_y1=y; m_n=(menu_page==P_ABOUT||menu_page==P_HELP||menu_page==P_TLEGEND)?0:n; m_gs=gs_;
-    if(menu_page==P_HELP||menu_page==P_TLEGEND){       // the short tutorial: shown by itself on the first start, and under HOW TO PLAY in the options
+    int y=y0+3*gs_+lh*3/2; m_x0=x0; m_pw=pw; m_lh=lh; m_y1=y; m_n=(menu_page==P_ABOUT||menu_page==P_HELP||menu_page==P_TLEGEND||menu_page==P_LANHELP)?0:n; m_gs=gs_;
+    if(menu_page==P_HELP||menu_page==P_TLEGEND||menu_page==P_LANHELP){       // the short tutorial: shown by itself on the first start, and under HOW TO PLAY in the options
         char b[200]; const char *const *ln=help_lines();
         for(int i=0;ln[i];i++){ snprintf(b,sizeof b,"%s",ln[i]); int maxc=(pw-8*gs_)/(4*gs_); if((int)strlen(b)>maxc){ b[maxc]=0; } text_at(x0+4*gs_,y,b,0xCCD4FF); y+=lh; }
         y+=lh/2; text_at(x0+4*gs_,y,"> OK (ENTER OR A)",0xFFFFFF); return; }
@@ -451,7 +471,11 @@ static void menu_key(SDL_Keycode k, SDL_Scancode sc){
     if(menu_wait==2) return;
     Item it[24]; int n; menu_build(it,&n);
     if(g_help_first && menu_page==P_HELP && (k==SDLK_ESCAPE||k==SDLK_F1||k==SDLK_RETURN||k==SDLK_KP_ENTER||k==SDLK_SPACE)){ g_help_first=0; menu_open=0; cfg_save(); return; }      // the first-start tutorial: any of these starts the game
-    if(k==SDLK_ESCAPE||k==SDLK_F1){ if(menu_page==P_MAIN){ menu_open=0; cfg_save(); } else { menu_page=P_MAIN; menu_sel=0; cfg_save(); } return; }
+    if(k==SDLK_ESCAPE||k==SDLK_F1){
+        if(menu_page==P_MAIN)menu_open=0;
+        else menu_page=menu_page==P_LANHELP?P_LAN:P_MAIN;
+        menu_sel=0;cfg_save();return;
+    }
     if(k==SDLK_UP){ menu_sel=(menu_sel+n-1)%n; return; } if(k==SDLK_DOWN){ menu_sel=(menu_sel+1)%n; return; }
     Item *s=&it[menu_sel];
     if(k==SDLK_LEFT||k==SDLK_RIGHT){ int d=k==SDLK_LEFT?-1:1;
