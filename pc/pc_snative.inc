@@ -11,7 +11,12 @@ typedef struct { int cx,cy,r,Lx,Ly,Lz,rot; const u8 *noise; } SnCall;
 static SnCall sn_calls[40]; static int sn_nc, sn_rec; static uint32_t sn_pal[256];
 static void pc_sn_begin(void){ sn_nc=0; sn_rec = pc_nat_w>240 && pc_nat_h>160 && !pc_v3d_classic(); }
 static void pc_sn_rec(int cx,int cy,int r,int Lx,int Ly,int Lz,int rot,const u8 *noise){ if(!sn_rec || sn_nc>=40) return; SnCall *c=&sn_calls[sn_nc++]; c->cx=cx; c->cy=cy; c->r=r; c->Lx=Lx; c->Ly=Ly; c->Lz=Lz; c->rot=rot; c->noise=noise; }
-typedef struct { int W,H; double sx,sy; SnCall *c; uint32_t *buf; } SnCtx;
+// Planet longitude sampling is the same for every output row. Keep one
+// small, reusable column table (about 24 KiB at 960 pixels), instead of
+// repeating divisions and coordinate-to-sphere lookups in every pixel.
+typedef struct { double nx, nx2, fx; int kx0; } SnXCol;
+static SnXCol *sn_xcols; static size_t sn_xcap;
+typedef struct { int W,H; double sx,sy; SnCall *c; uint32_t *buf; const SnXCol *xcols; } SnCtx;
 static inline uint32_t sn_mix(uint32_t a, uint32_t b, int f){ if(f<0) f=0; if(f>256) f=256; uint32_t rb=((a&0xFF00FF)*(256-f)+(b&0xFF00FF)*f)>>8, g=((a&0xFF00)*(256-f)+(b&0xFF00)*f)>>8; return (rb&0xFF00FF)|(g&0xFF00); }
 // a soft round dot / thick segment with coverage, over what is there
 static void sn_seg(uint32_t *buf, int W, int H, double x0, double y0, double x1, double y1, double rad, uint32_t col, double a0, double a1){
@@ -25,19 +30,24 @@ static void sn_seg(uint32_t *buf, int W, int H, double x0, double y0, double x1,
 static void sn_rows(void *vc, int lo, int hi){
     SnCtx *k=(SnCtx*)vc; SnCall *c=k->c; int W=k->W; double sx=k->sx, sy=k->sy; double R=c->r+0.5, cxp=c->cx+0.5, cyp=c->cy+0.5;
     int y0=(int)((cyp-R-1)*sy); if(y0<0) y0=0; int x0=(int)((cxp-R-1)*sx); if(x0<0) x0=0; int x1=(int)((cxp+R+1)*sx)+1; if(x1>W) x1=W;
-    static const double dummy=0; (void)dummy;
+    // These values depend on the sphere or scanline, not the pixel.
+    const int cloud_rot=c->rot+(int)(vbl_count>>5)+40;
     for(int Y=y0+lo;Y<y0+hi;Y++){ double gy=(Y+0.5)/sy, ny=(gy-cyp)/R;
-        for(int X=x0;X<x1;X++){ double gx=(X+0.5)/sx, nx=(gx-cxp)/R, q=nx*nx+ny*ny; if(q>=1.0) continue; double d=__builtin_sqrt(q);
+        double ny2=ny*ny, ky=(ny+1)*64-0.5; int ky0=(int)__builtin_floor(ky); double fy=ky-ky0;
+        for(int X=x0;X<x1;X++){
+            double nx,nx2,fx; int kx0;
+            if(k->xcols){ const SnXCol *v=&k->xcols[X]; nx=v->nx; nx2=v->nx2; fx=v->fx; kx0=v->kx0; }
+            else { double gx=(X+0.5)/sx; nx=(gx-cxp)/R; nx2=nx*nx;
+                   double kx=(nx+1)*64-0.5; kx0=(int)__builtin_floor(kx); fx=kx-kx0; }
+            double q=nx2+ny2; if(q>=1.0) continue; double d=__builtin_sqrt(q);
             double a=(1.0-d)*R*sx+0.5; if(a<=0) continue; if(a>1) a=1;
-            double kx=(nx+1)*64-0.5, ky=(ny+1)*64-0.5; int kx0=(int)__builtin_floor(kx), ky0=(int)__builtin_floor(ky); double fx=kx-kx0, fy=ky-ky0;
             double sh=0, nzs=0, lits=0;
             for(int j=0;j<4;j++){ int xx=kx0+(j&1), yy=ky0+(j>>1); double w=((j&1)?fx:1-fx)*((j>>1)?fy:1-fy); if(xx<0) xx=0; if(xx>127) xx=127; if(yy<0) yy=0; if(yy>127) yy=127;
                 int kk=(yy<<7)|xx, nz=sph_z[kk]; double s; int lit;
                 if(nz<10){ s=-1; lit=0; } else {
                     int nx_=(xx-64)*4, ny_=(64-yy)*4; lit=(nx_*c->Lx + ny_*c->Ly - nz*c->Lz)>>14; int v=sph_v[kk], u=sph_u[kk]; int t=c->noise[(v<<7)|((u+c->rot)&127)];
                     int base = t>=8 ? 50+t*4 : 14+t*3; if(v<4 || v>59) base=100+t;
-                    int cl=(pl_noise+16384)[(v<<7)|((u+c->rot+(int)(vbl_count>>5)+40-c->rot)&127)]; (void)cl;
-                    int crot=c->rot+(int)(vbl_count>>5)+40; cl=(pl_noise+16384)[(v<<7)|((u+crot)&127)];
+                    int cl=(pl_noise+16384)[(v<<7)|((u+cloud_rot)&127)];
                     if(cl>10) base += ((cl-9)*(124-base))>>3;
                     int dd=lit+40; if(dd<0) dd=0; if(dd>256) dd=256; s=((base*dd)>>8)+4; if(s>127) s=127; }
                 sh+=w*s; nzs+=w*nz; lits+=w*lit; }
@@ -86,12 +96,44 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
               if(d>12.3){ double g=1.0-(d-12.3)/5.7; if(g>0){ g=g*g*0.4; *p=sn_mix(*p,sn_pal[50],(int)(g*256)); } continue; }
               uint32_t col = d<4.5 ? sn_pal[49] : d<7.5 ? sn_mix(sn_pal[49],sn_pal[50],(int)((d-4.5)/3*256)) : d<10.5 ? sn_mix(sn_pal[50],sn_pal[51],(int)((d-7.5)/3*256)) : sn_pal[51];
               double a=(12.3-d)*sx; if(a>1) a=1; *p=sn_mix(*p,col,(int)(a*256)); } } } }
-    // planets and moons, in the order the game drew them
-    for(int i=0;i<sn_nc;i++){ SnCall *c=&sn_calls[i]; SnCtx k; k.W=W; k.H=hn; k.sx=sx; k.sy=sy; k.c=c; k.buf=buf;
+    // planets and moons, in the order the game drew them. Build the shared
+    // longitude table BEFORE dispatching workers; workers only read it.
+    // BUGSTAR_SN_XCACHE=0 retains the original per-pixel path for exact
+    // visual and performance A/B regression tests.
+    static int xcache_on=-1;
+    if(xcache_on<0){ const char *e=getenv("BUGSTAR_SN_XCACHE"); xcache_on=!(e && e[0]=='0' && !e[1]); }
+    if(xcache_on && (size_t)W>sn_xcap && (size_t)W<=SIZE_MAX/sizeof(*sn_xcols)){
+        SnXCol *next=realloc(sn_xcols,(size_t)W*sizeof(*sn_xcols));
+        if(next){ sn_xcols=next; sn_xcap=(size_t)W; }
+    }
+    for(int i=0;i<sn_nc;i++){ SnCall *c=&sn_calls[i]; SnCtx k; k.W=W; k.H=hn; k.sx=sx; k.sy=sy; k.c=c; k.buf=buf; k.xcols=xcache_on && sn_xcap>=(size_t)W ? sn_xcols : NULL;
         int y0=(int)((c->cy+0.5-c->r-1.5)*sy); if(y0<0) y0=0; int y1=(int)((c->cy+0.5+c->r+1.5)*sy)+1; if(y1>hn) y1=hn; if(y1<=y0) continue;
+        if(k.xcols){
+            const double R=c->r+0.5, cxp=c->cx+0.5;
+            int x0=(int)((cxp-R-1)*sx), x1=(int)((cxp+R+1)*sx)+1;
+            if(x0<0) x0=0; if(x1>W) x1=W;
+            for(int X=x0;X<x1;X++){ SnXCol *v=&sn_xcols[X];
+                double gx=(X+0.5)/sx, nx=(gx-cxp)/R, kx=(nx+1)*64-0.5;
+                v->nx=nx; v->nx2=nx*nx; v->kx0=(int)__builtin_floor(kx); v->fx=kx-v->kx0;
+            }
+        }
         pc_par_chunk(y1-y0,8,sn_rows,&k); pc_sg_space_planet(buf,W,hn,sx,sy,c,i); }
     memset(pc_sn.ok,0,256); static const unsigned char okv[]={0,3,4,5,40,41,42,43,44,45,46,47,48,49,50}; for(unsigned i=0;i<sizeof okv;i++) pc_sn.ok[okv[i]]=1;
-    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames(); pc_vrec(2,pc_now_ms()-sn_t0,pc_cpu_ms()-sn_c0);
+    int t=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; pc_sn.w=W; pc_sn.h=H; pc_sn.hn=hn; memcpy(pc_sn.snap[t],(const void*)pg,240*128); pc_sn.f[t]=pc_frames();
+    double render_ms=pc_now_ms()-sn_t0, render_cpu_ms=pc_cpu_ms()-sn_c0;
+    pc_vrec(2,render_ms,render_cpu_ms);
+    // Optional native-space benchmark records time spent building actual
+    // space frames, not merely the final GPU/bitmap compositor pass.
+    static int bench_on=-1; static double bench_wall, bench_cpu; static int bench_frames;
+    if(bench_on<0) bench_on=getenv("PC_SN_BENCH")!=NULL;
+    if(bench_on){
+        bench_wall+=render_ms; bench_cpu+=render_cpu_ms;
+        if(++bench_frames==120){
+            fprintf(stderr,"space-native bench %dx%d: avg wall %.3f ms cpu %.3f ms over %d frames\n",
+                W,H,bench_wall/bench_frames,bench_cpu/bench_frames,bench_frames);
+            bench_wall=bench_cpu=0; bench_frames=0;
+        }
+    }
 }
 
 // the rest of the space view's wireframes (dust, station, rocks) at window resolution: drawn onto the same picture as the background (anti-aliased), and a mask

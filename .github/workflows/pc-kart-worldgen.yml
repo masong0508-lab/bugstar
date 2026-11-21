@@ -26,6 +26,7 @@ on:
       - 'pc/pc_hw.c'
       - 'pc/platform/pc_sdl.c'
       - 'pc/tests/speed_guard.sh'
+      - 'pc/tests/native_space_perf.sh'
       - 'pc/tests/kart.sh'
       - '.github/workflows/pc-kart-worldgen.yml'
   pull_request:
@@ -54,6 +55,7 @@ on:
       - 'pc/pc_hw.c'
       - 'pc/platform/pc_sdl.c'
       - 'pc/tests/speed_guard.sh'
+      - 'pc/tests/native_space_perf.sh'
       - 'pc/tests/kart.sh'
       - '.github/workflows/pc-kart-worldgen.yml'
   workflow_dispatch:
@@ -148,6 +150,25 @@ jobs:
             pc/out/kart-classic-smoke.log
             pc/out/kart-bench-1.log
             pc/out/kart-bench-4.log
+          if-no-files-found: ignore
+
+  pc-native-space:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2 and native build requirements
+        run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential libsdl2-2.0-0
+      - name: Build normal native-space PC game
+        run: cd pc && PC_OUT=bugstar_pc_space ./build.sh
+      - name: Verify 3D planet visuals with and without cached camera columns
+        run: cd pc && bash tests/native_space_perf.sh ./bugstar_pc_space
+      - name: Upload native 3D space frame timing and image parity logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pc-native-space-perf
+          path: pc/out/native_space/*.log
           if-no-files-found: ignore
 
   pc-speed-parity:
