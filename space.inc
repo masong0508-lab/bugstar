@@ -532,8 +532,9 @@ static void beast_shot(void){
             bolt_story(VISPG,10); dawn_free=1;
         } else if(!beast_kills && data_cores<8){
             static const char *const t[4]={"THE TECHNOBEAST FALLS!",
-                "BUT ITS CORE STILL HUMS...","IT WILL REBUILD ITSELF",
-                "TEN TIMES STRONGER."};
+                "BUT ITS HEART IS STILL LOCKED.",
+                "RECOVER ALL 8 OF BOLT'S MEMORIES.",
+                "RETURN TO OPEN IT. THE BEAST WILL REGROW."};
             story_card("VICTORY",t,4);
         }
         beast_kills++; int g=100000*beast_kills; gold+=g; gain_xp(2000*beast_kills);
