@@ -296,13 +296,13 @@ void pc_mp_frame(uint32_t frame){
         pcnet_step(&g_peer,frame,&g_local);
         if(getenv("BUGSTAR_LAN_TRACE")){
             if(before!=g_peer.connected)
-                fprintf(stderr,"lan: peer %s frame %u world %u role %u\\n",
+                fprintf(stderr,"lan: peer %s frame %u world %u role %u\n",
                         g_peer.connected?"CONNECTED":"DISCONNECTED",
                         (unsigned)frame,(unsigned)g_peer.world,
                         (unsigned)g_peer.role);
             if(g_peer.connected &&
                (hp0!=g_peer.duel.host_hp || hp1!=g_peer.duel.guest_hp))
-                fprintf(stderr,"lan: duel P1=%u P2=%u wins=%u/%u frame %u\\n",
+                fprintf(stderr,"lan: duel P1=%u P2=%u wins=%u/%u frame %u\n",
                         (unsigned)g_peer.duel.host_hp,
                         (unsigned)g_peer.duel.guest_hp,
                         (unsigned)g_peer.duel.host_wins,
