@@ -125,24 +125,35 @@ static int so_screenclip(double *x0,double *y0,double *x1,double *y1){
     return 1;
 }
 static void so_wire(const s32 *v,int nv,const u8 *e,int ne,int c){
-    s32 cx[16],cy[16],cz[16];
-    for(int i=0;i<nv;i++)
+    s32 cx[16],cy[16],cz[16]; double X[16],Y[16];
+    // Most frames have all vertices in front. Project them once, not per edge:
+    // dense asteroid belts otherwise multiply the divisions on Android.
+    for(int i=0;i<nv;i++){
         cam3(v[i*3],v[i*3+1],v[i*3+2],&cx[i],&cy[i],&cz[i]);
+        if(cz[i]>20){ X[i]=120.5+(double)cx[i]*FOCS/cz[i];
+                      Y[i]=VCY+0.5-(double)cy[i]*FOCS/cz[i]; }
+    }
     for(int i=0;i<ne;i++){
         int a=e[i*2],b=e[i*2+1];
         s32 ax=cx[a],ay=cy[a],az=cz[a],bx=cx[b],by=cy[b],bz=cz[b];
         if(az<=20 && bz<=20) continue;
-        if(az<=20){
-            ax+=(s32)(((long long)(bx-ax)*(21-az))/(bz-az));
-            ay+=(s32)(((long long)(by-ay)*(21-az))/(bz-az));
-            az=21;
-        } else if(bz<=20){
-            bx+=(s32)(((long long)(ax-bx)*(21-bz))/(az-bz));
-            by+=(s32)(((long long)(ay-by)*(21-bz))/(az-bz));
-            bz=21;
+        double x0,y0,x1,y1;
+        if(az>20 && bz>20){
+            x0=X[a]; y0=Y[a]; x1=X[b]; y1=Y[b];
+        } else {
+            // Rare camera-plane crossing: retain the visible half of the edge.
+            if(az<=20){
+                ax+=(s32)(((long long)(bx-ax)*(21-az))/(bz-az));
+                ay+=(s32)(((long long)(by-ay)*(21-az))/(bz-az));
+                az=21;
+            } else {
+                bx+=(s32)(((long long)(ax-bx)*(21-bz))/(az-bz));
+                by+=(s32)(((long long)(ay-by)*(21-bz))/(az-bz));
+                bz=21;
+            }
+            x0=120.5+(double)ax*FOCS/az; y0=VCY+0.5-(double)ay*FOCS/az;
+            x1=120.5+(double)bx*FOCS/bz; y1=VCY+0.5-(double)by*FOCS/bz;
         }
-        double x0=120.5+(double)ax*FOCS/az,y0=VCY+0.5-(double)ay*FOCS/az;
-        double x1=120.5+(double)bx*FOCS/bz,y1=VCY+0.5-(double)by*FOCS/bz;
         // Avoid enormous raster bounding boxes for near-plane intersections.
         // Clipping the segment, not its endpoints independently, preserves perspective.
         if(so_screenclip(&x0,&y0,&x1,&y1)) so_line(x0,y0,x1,y1,c);
