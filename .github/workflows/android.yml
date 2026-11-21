@@ -20,6 +20,7 @@ on:
       - 'facts_more.py'
       - 'monsters.py'
       - 'gen.py'
+      - 'tests/space_native_projection_audit.py'
       - 'tests/monster_roster.py'
       - 'pc/facts/**'
       - 'tests/facts_audit.py'
@@ -61,6 +62,9 @@ jobs:
 
       - name: Check shared 3D camera clipping
         run: python3 tests/space_projection_audit.py
+
+      - name: Exercise native PC/Android 3D near-plane edges with UBSan
+        run: python3 tests/space_native_projection_audit.py
 
       - name: Check the 24 additional cross-port monster species
         run: python3 tests/monster_roster.py
