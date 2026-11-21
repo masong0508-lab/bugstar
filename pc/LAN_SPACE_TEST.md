@@ -1,5 +1,18 @@
 # BUGSTAR experimental LAN sparring + three-wave co-op mission (developer test)
 
+## Graphical three-wave and Ready/reconnect milestone (experimental, pending CI)
+
+The earlier real SDL smoke reached a shared first-raider victory, but was insufficient evidence of all three waves on both rendered game clients. This branch extends `pc/tests/lan_live.sh ./bugstar_pc coop` to drive the ordinary A-laser cadence in two actual SDL game processes, with an opt-in test-only aim-following camera; it requires log evidence of waves 1, 2 and 3, all three wins, both players' contribution and both final graphical victory PNGs. The successful captures will appear in the `bugstar-lan-graphical-smoke` CI artifact under `pc/out/lan_live`. The test does not pretend to simulate human flight or an Android touchscreen.
+
+This branch upgrades the LAN packet version to **v5**, with separate Ready and ACTIVE (in-flight) flags; both peers must use v5 binaries. The SDL options menu now exchanges UDP HELLO/READY/STATE during a pause without advancing physics. Android backgrounding invalidates session state and requires fresh Ready confirmations. Earlier v3 test results below are historical, not evidence for this change.
+
+**Paused encounter timing:** the host now uses a separate combat tick that increments only while both pilots are Ready and actively flying. LAN heartbeats keep their own tick advancing inside the options menu. Host-authoritative guest-shot validation also checks both ACTIVE flags, preventing damage, wave-clear timers or enemy attacks from running under a paused lobby. The two-socket Ready test asserts all three protections.
+
+The **MULTIPLAYER LAN** options now include **CONFIRM READY / CANCEL READY**. HOST/JOIN establish the UDP socket, but each client must independently confirm Ready and stay in the same star 3D view for combat to begin. Leaving, switching world or losing current ship snapshots clears readiness. A rejoined client must confirm again; no network reward writes to a campaign save. The command-line `--lan-host`/`--lan-join` test path intentionally auto-confirms to preserve existing automated sparring tests.
+
+These are **source changes awaiting build/runtime verification**, not a verified Android, Windows, GBA or GBC multiplayer release. Run `tests/pc_multiplayer_ready_test.c` and `pc/tests/lan_menu.sh` as well as the full SDL smoke. Recheck any regressions to frame pacing and ordinary offline play.
+
+
 **Status (21 November 2026):** the PC ↔ PC two-process SDL game smoke now **passes in both sparring and co-op**, including the expanded protocol-v3 three-wave encounter at `49495e1024`. The two-real-UDP-socket mission test confirms host and guest receive the same final result. Builds for Windows, Android APK and GBA ROM were successful on that commit. **The new in-game LAN menu is committed but is still undergoing its own SDL event and cross-platform build verification.** Android hardware-to-PC networking has not been tested, and neither GBA nor GBC supports LAN UDP.
 LAN mode is opt-in, available from the platform options overlay and from
 command-line arguments. Normal play stays offline. This is not shared

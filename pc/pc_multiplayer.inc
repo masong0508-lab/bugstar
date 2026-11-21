@@ -4,6 +4,7 @@
  * campaign rewards, docking, missions and saves remain solo.
  */
 #include "pc_net.h"
+#include <math.h>
 /* The LAN guest enters near, but not inside, the host's spawn. This offset
  * is applied only in opt-in LAN mode, after the normal space spawn and before
  * the camera basis is calculated; solo and GBA space_enter are unchanged. */
@@ -20,6 +21,23 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
     /* Zero multiplayer work in ordinary single-player flight; never overlay
      * a network sparring ship during cinematic or beast-interior scenes. */
     if(!pc_mp_role() || in_lair || FILM) return;
+    /* Test-only stationary tracking pilot: exercises real SDL, laser input,
+     * three enemy waves and independent UDP sockets without game cheats
+     * or campaign mutations. Normal gameplay has zero autopilot work. */
+    { static int pilot=-1;
+      if(pilot<0)pilot=(getenv("BUGSTAR_LAN_TEST_PILOT")!=0);
+      if(pilot && pc_mp_coop_mode()){
+          PcCoop c; speed=0;
+          if(pc_mp_raider((uint32_t)pc_frames(),&c) && c.phase==1){
+              s32 tx=c.hp?c.x:c.wing_x,ty=c.hp?c.y:c.wing_y,
+                  tz=c.hp?c.z:c.wing_z;
+              double dx=(double)tx-shx,dy=(double)ty-shy,dz=(double)tz-shz;
+              double h=sqrt(dx*dx+dz*dz);
+              yaw=((int)lrint(atan2(dx,dz)*1024.0/6.2831853071795864769))&1023;
+              pitch=(int)lrint(atan2(dy,h)*1024.0/6.2831853071795864769);
+          }
+      }
+    }
     PcNetShip mine,other;
     mine.x=shx; mine.y=shy; mine.z=shz;
     mine.world=sys_id(cur_sys); mine.yaw=(unsigned short)(yaw&1023);
@@ -34,7 +52,8 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
     static int previous_remote_hp;
     if(!pc_mp_remote((unsigned)pc_frames(),&other) || other.world!=mine.world){
         shown_valid=0; hit_flash=0; have_hp=0;
-        text(pg,5,112,pc_mp_role()==1?"LAN: WAITING FOR P2":"LAN: JOINING P1",50,1);
+        text(pg,5,112,pc_mp_reconnecting()?"LAN: RECONNECT - CONFIRM READY":
+             pc_mp_role()==1?"LAN: WAITING FOR P2":"LAN: JOINING P1",50,1);
         return;
     }
     if(!shown_valid || shown.world!=other.world ||
@@ -53,7 +72,11 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
         shown.pitch+=(short)((other.pitch-shown.pitch)/3);
     }
     other=shown;
-    if(pc_mp_coop_mode()){
+    if(!pc_mp_match_ready()){
+        text(pg,5,102,pc_mp_local_ready()?"YOU READY - WAIT P2":"YOU NOT READY - LAN OPTIONS",53,1);
+        text(pg,5,112,pc_mp_peer_ready()?"PEER READY":"PEER NOT READY",50,1);
+    }
+    if(pc_mp_coop_mode() && pc_mp_match_ready()){
         PcCoop raider;
         if(pc_mp_raider((uint32_t)pc_frames(),&raider)){
             /* A readable 3D hostile interceptor: delta-wing tips, raised
@@ -182,9 +205,10 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
             if(raider.phase==4){
                 text(pg,38,68,"MISSION COMPLETE",54,2);
                 text(pg,50,91,"BOTH PILOTS WIN!",50,1);
+                pc_mp_note_clear_draw();
             }
         }else text(pg,4,112,"CO-OP: SYNCING RAIDER",50,1);
-    }else {
+    }else if(!pc_mp_coop_mode() && pc_mp_match_ready()){
         uint8_t hh,gh,wh,wg;
         if(pc_mp_duel(&hh,&gh,&wh,&wg)){
             int remote_hp=(pc_mp_role()==1)?gh:hh;

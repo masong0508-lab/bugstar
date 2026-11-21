@@ -1,0 +1,51 @@
+name: LAN gameplay and Ready regression
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lan-game:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL runtime and asset generation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev python3-numpy
+      - name: Compile and run real UDP Ready/reconnect test
+        run: |
+          cc -std=gnu11 -O1 -g -Wall -Wextra -fno-omit-frame-pointer \
+            -fsanitize=undefined tests/pc_multiplayer_ready_test.c \
+            pc/platform/pc_net.c pc/platform/pc_duel.c pc/platform/pc_coop.c \
+            net/session.c -lm -o /tmp/bugstar-ready-test
+          /tmp/bugstar-ready-test
+      - name: Compile native SDL game
+        run: bash pc/build.sh
+      - name: Real SDL Host/Join/Ready/Leave menu
+        run: bash pc/tests/lan_menu.sh ./bugstar_pc
+      - name: Two live SDL instances exchange Ready in paused lobby and resume
+        run: bash pc/tests/lan_lobby_live.sh ./bugstar_pc
+      - name: Full three-wave live graphical UDP mission
+        run: bash pc/tests/lan_live.sh ./bugstar_pc coop
+      - name: Sparring mode regression
+        run: bash pc/tests/lan_live.sh ./bugstar_pc spar
+      - name: Upload live per-peer screenshots and diagnostic logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bugstar-lan-graphical-smoke
+          path: |
+            pc/out/lan_live/*_host.png
+            pc/out/lan_live/*_client.png
+            pc/out/lan_live/*clear.png
+            pc/out/lan_live/*.log
+            pc/out/lan_menu/*.png
+            pc/out/lan_menu/*.log
+            pc/out/lan_lobby/*.png
+            pc/out/lan_lobby/*.log
+            pc/out/lan_lobby/*events.txt
+          if-no-files-found: ignore

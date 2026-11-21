@@ -260,7 +260,7 @@ static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRender
 // ---- the options screen
 enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_LAN, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_REBIND=1000 };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_READY, A_LAN_LEAVE, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
@@ -320,6 +320,7 @@ static void menu_build(Item *it, int *n){
         it[k++]=(Item){0,"JOIN ADDRESS",0,0,0,0,0,A_LAN_IP};
         it[k++]=(Item){0,"HOST MATCH",0,0,0,0,0,A_LAN_HOST};
         it[k++]=(Item){0,"JOIN MATCH",0,0,0,0,0,A_LAN_JOIN};
+        it[k++]=(Item){0,pc_mp_local_ready()?"CANCEL READY":"CONFIRM READY",0,0,0,0,0,A_LAN_READY};
         it[k++]=(Item){0,"LEAVE MATCH",0,0,0,0,0,A_LAN_LEAVE};
         it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK};break;
     case P_ABOUT: case P_HELP: case P_TLEGEND: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
@@ -350,10 +351,16 @@ static void menu_do(int act){
         int ok=act==A_LAN_HOST?pc_mp_host((uint16_t)lan_port_num()):
                pc_mp_join(lan_ui_ip,(uint16_t)lan_port_num());
         if(ok){pc_mp_set_coop(lan_ui_coop);
-            say_toast(act==A_LAN_HOST?"HOST READY - ENTER SAME STAR SPACE":"JOINING - ENTER SAME STAR SPACE");
+            say_toast(act==A_LAN_HOST?"HOST OPEN - CONFIRM READY IN LOBBY":"JOINING - CONFIRM READY IN LOBBY");
         }else say_toast("LAN SOCKET FAILED - CHECK ADDRESS/PORT");
         break;
     }
+    case A_LAN_READY:
+        if(!pc_mp_role()){say_toast("HOST OR JOIN A LAN MATCH FIRST");break;}
+        pc_mp_set_ready(!pc_mp_local_ready());
+        say_toast(pc_mp_local_ready()?"READY CONFIRMED - WAITING FOR PEER":
+                                 "READY CANCELLED - COMBAT PAUSED");
+        break;
     case A_LAN_LEAVE: pc_mp_close();say_toast("LAN LEFT - SOLO GAME UNCHANGED");break;
     case A_VIDEO: menu_page=P_VIDEO; menu_sel=0; break; case A_AUDIO: menu_page=P_AUDIO; menu_sel=0; break; case A_ACCESS: menu_page=P_ACCESS; menu_sel=0; break;
     case A_CONTROLS: menu_page=P_CONTROLS; menu_sel=0; break; case A_PAD: menu_page=P_PAD; menu_sel=0; break; case A_ABOUT: menu_page=P_ABOUT; menu_sel=0; break; case A_HELP: menu_page=P_HELP; menu_sel=0; break;
@@ -414,10 +421,16 @@ static void menu_draw(void){
         snprintf(msg,sizeof msg,"IP %s%s",lan_ui_ip,lan_ip_edit?"  [EDIT]":"");
         text_at(x0+4*gs_,y0+ph-4*lh,msg,0xFFD23C);
         snprintf(msg,sizeof msg,"%s %s  UDP %u",role==1?"HOST":role==2?"JOIN":"OFFLINE",
-                 pc_mp_connected()?"CONNECTED":role?"WAITING":"",lan_port_num());
+                 pc_mp_match_ready()?"LIVE":pc_mp_reconnecting()?"RECONNECT":
+                 pc_mp_connected()?"LINKED":role?"WAITING":"",lan_port_num());
         text_at(x0+4*gs_,y0+ph-3*lh,msg,0xA0FFB0);
-        text_at(x0+4*gs_,y0+ph-2*lh,"SAME STAR + 3D SPACE REQUIRED",0xCBD5FF);
-        text_at(x0+4*gs_,y0+ph-lh,"TRUSTED LAN ONLY - DO NOT PORT-FORWARD",0xE8D890);
+        snprintf(msg,sizeof msg,"YOU %s   PEER %s - %s",
+                 pc_mp_local_ready()?"READY":"WAIT",pc_mp_peer_ready()?"READY":"WAIT",
+                 pc_mp_both_confirmed()?"RETURN TO FLIGHT":"CONFIRM READY");
+        text_at(x0+4*gs_,y0+ph-2*lh,msg,0xCBD5FF);
+        text_at(x0+4*gs_,y0+ph-lh,
+                role && !pc_mp_space_ready()?"ENTER 3D FLIGHT BEFORE MATCHING":
+                "TRUSTED LAN ONLY - DO NOT PORT-FORWARD",0xE8D890);
     }
 }
 static void menu_key(SDL_Keycode k, SDL_Scancode sc){
@@ -481,6 +494,26 @@ static void present_game(int with_overlay){
         if(menu_open) menu_draw();
         touch_draw();
         if(g_paused_focus && !menu_open){ rect_fill(0,0,dw_,dh_,0,120); gs_*=2; const char *s="PAUSED"; text_at((dw_-text_w(s))/2,dh_/2-3*gs_,s,0xFFFFFF); }
+    }
+    /* Live two-instance co-op acceptance: capture the ACTUAL rendered victory
+     * on each SDL peer the first time its authoritative mission clears. */
+    { static int clear_shot_done;
+      static unsigned victory_presents;
+      /* 3 displayed frames after a real 3D overlay draw, not merely a UDP
+       * state transition; the display buffer may lag the simulation. */
+      if(!pc_mp_coop_complete())victory_presents=0;
+      else if(victory_presents<3u)victory_presents++;
+      if(!clear_shot_done && victory_presents>=3u){
+        const char *p=getenv("BUGSTAR_LAN_CLEAR_SHOT");
+        if(p && *p){
+            SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,dw_,dh_,32,SDL_PIXELFORMAT_ARGB8888);
+            if(s && SDL_RenderReadPixels(ren,NULL,SDL_PIXELFORMAT_ARGB8888,s->pixels,s->pitch)==0 &&
+               plat_write_png(p,s->pixels,dw_,dh_))
+                fprintf(stderr,"lan: graphical mission complete -> %s\n",p);
+            if(s)SDL_FreeSurface(s);
+            clear_shot_done=1;
+        }
+      }
     }
     if(shot_pending){ shot_pending=0; char p[1200]; time_t t=time(0); struct tm *tm=localtime(&t); char ts[64]; strftime(ts,sizeof ts,"%Y%m%d_%H%M%S",tm);
         snprintf(p,sizeof p,"%sbugstar_%s.png",g_shotdir,ts); if(plat_write_png(p,pix,W,H)){ char m[200]; snprintf(m,sizeof m,"SAVED %s",p); say_toast("SCREENSHOT SAVED"); fprintf(stderr,"%s\n",m); } }
@@ -735,7 +768,12 @@ static void rumble_frame(void){
 // ---- the app's life cycle (Android: home button, another app, screen off; also SDL_APP_TERMINATING). In the background the game does not step and makes no sound; coming back
 // starts a fresh clock (g_pace_reset): the minutes it was away are not played catch-up. The save is flushed on the game's own thread (g_app_save, in pump_events).
 static void touch_release_all(void);
-static void app_background(void){ g_bg=1; g_app_save=1; if(adev) SDL_PauseAudioDevice(adev,1); }
+static void app_background(void){
+    /* SDL app-watch may have set g_bg on another thread already. */
+    pc_mp_suspend();
+    g_bg=1; g_app_save=1;
+    if(adev) SDL_PauseAudioDevice(adev,1);
+}
 static void app_foreground(void){
     if(!g_bg && !g_app_resume) return;
     g_bg=0; g_app_resume=0; g_pace_reset=1; memset(kst,0,sizeof kst); touch_release_all();
@@ -815,8 +853,8 @@ static void pump_events(void){
 // ---- test hook (BUGSTAR_EVENTS=file): events pushed into SDL's own queue (dummy video driver works), to test keyboard, mouse, gamepad, Esc options, F11, F12, rebinding.
 //   each line: "<pumps to wait> <command>"; commands: key down|up NAME | pad attach | pad button NAME 0|1 | pad axis NAME VALUE | mouse X Y | click L|R 0|1 | wheel N | dump | quit
 static FILE *inj_f; static int inj_wait=-1, inj_mx, inj_my; static char inj_cmd[200]; static int inj_vid=-1; static int inj_init;
-static void inj_dump(void){ fprintf(stderr,"EV dump: menu=%d page=%d sel=%d wait=%d fs=%d keys=%03x mouse=%d,%d b=%d pad=%s vol=%d shots=%d kb_A=%s/%s pad_A=%s lan_role=%d lan_connected=%d lan_coop=%d\n",menu_open,menu_page,menu_sel,menu_wait,C.fullscreen,g_lastkeys,pc_mouse_x,pc_mouse_y,pc_mouse_b,pad?"yes":"no",C.volume,
-    (int)(shot_pending),C.kb[0][0]?SDL_GetScancodeName(C.kb[0][0]):"-",C.kb[0][1]?SDL_GetScancodeName(C.kb[0][1]):"-",SDL_GameControllerGetStringForButton(C.pad[0]),pc_mp_role(),pc_mp_connected(),pc_mp_coop_mode()); }
+static void inj_dump(void){ fprintf(stderr,"EV dump: menu=%d page=%d sel=%d wait=%d fs=%d keys=%03x mouse=%d,%d b=%d pad=%s vol=%d shots=%d kb_A=%s/%s pad_A=%s lan_role=%d lan_connected=%d lan_coop=%d lan_ready=%d lan_peer_ready=%d lan_live=%d\n",menu_open,menu_page,menu_sel,menu_wait,C.fullscreen,g_lastkeys,pc_mouse_x,pc_mouse_y,pc_mouse_b,pad?"yes":"no",C.volume,
+    (int)(shot_pending),C.kb[0][0]?SDL_GetScancodeName(C.kb[0][0]):"-",C.kb[0][1]?SDL_GetScancodeName(C.kb[0][1]):"-",SDL_GameControllerGetStringForButton(C.pad[0]),pc_mp_role(),pc_mp_connected(),pc_mp_coop_mode(),pc_mp_local_ready(),pc_mp_peer_ready(),pc_mp_match_ready()); }
 static void inject_step(void){
     if(!inj_init){ inj_init=1; const char *e=getenv("BUGSTAR_EVENTS"); if(e&&*e) inj_f=fopen(e,"r"); }
     if(!inj_f) return;
@@ -929,8 +967,9 @@ void plat_frame(void){
     pc_mp_frame((uint32_t)fr);   // nonblocking LAN ship snapshots; no effect without --lan-host/join
     pump_events();
     int was_paused=0;
-    while(menu_open || g_paused_focus || g_bg){                // paused: the game does not step; the window keeps being drawn (not while the app is in the background)
+    while(menu_open || g_paused_focus || g_bg){                // paused: no world tick or physics, network lobby still communicates
         was_paused=1; uint64_t t0=SDL_GetPerformanceCounter();
+        if(!g_bg)pc_mp_lobby_pump();  // HELLO/READY/STATE while both players use menu
         if(!g_bg) present_game(1);
         pump_events();
         if(g_bg) SDL_Delay(50);
@@ -1063,7 +1102,7 @@ int plat_open(int argc, char **argv){
     if(lan_host || lan_join_ip){
         if(lan_host && lan_join_ip) fprintf(stderr,"lan: specify host OR join, not both\n");
         else { int ok=lan_host ? pc_mp_host((uint16_t)lan_port) : pc_mp_join(lan_join_ip,(uint16_t)lan_port);
-            if(ok)pc_mp_set_coop(lan_coop);
+            if(ok){pc_mp_set_coop(lan_coop);pc_mp_set_ready(1);} /* CLI intentionally auto-readies */
             fprintf(stderr,"lan: %s %s port %u (%s); %s, campaign saves and rewards remain solo\n",
                     lan_host?"HOST":"JOIN",lan_host?"0.0.0.0":lan_join_ip,lan_port,ok?"ready":"FAILED",lan_coop?"shared raider co-op":"space sparring");
             if(ok) say_toast_ms(lan_coop?"LAN CO-OP: SHARED RAIDER":"LAN SPACE: TWO-PLAYER SPARRING",5000);
