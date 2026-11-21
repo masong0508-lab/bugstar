@@ -318,13 +318,21 @@ static void city_stamp(void){                                                   
           if(sx<wxw || sy<wyw){ int dash = (sx==(wxw==3) && sx<wxw && sy>=wyw && (gys&3)==1) || (sy==(wyw==3) && sy<wyw && sx>=wxw && (gxs&3)==1);   // a dotted line down the middle that stops at crossings
               cmap[i] = dash ? 75 : 74; continue; } }
         int bx=gxs>>3, by=gys>>3; u32 h=hsh(bx+wd.tseed, by); int kind=h&15;
-        if(kind<3){ cmap[i]=80; continue; }                                            // an empty lot: a little square
+        // Neighbourhoods occupy 4x4 connected blocks: a coherent, seeded land-use
+        // pattern rather than independent towers scattered randomly in every lot.
+        int district=(hsh(((u32)(bx>>2))^wd.tseed^0x51C1A7u,(u32)(by>>2))>>29)&7;
+        if(kind<3 || (district==0 && kind<10)){
+            // True green parks use the world's own ground ramp; paths and the
+            // protected landing field remain open and walkable.
+            cmap[i]=district==0 ? GND_B+9+((h>>10)&3) : 80; continue; }                                            // an empty lot: a little square
         if(!eco && d<E && (int)((h>>12)&15) < (E-d)*9/12){ cmap[i]=80; continue; }     // toward the edge more lots stand empty
-        int T=TT; int tower = kind >= 15-(T+1)/2; if(!eco && d<E) tower=0;               // higher tech: more towers (none at the edge)
+        int T=TT; int tower = kind >= 15-(T+1)/2; if(district==1 || district==5) tower=0; if(district==6 && T>=2) tower=kind>=11; if(!eco && d<E) tower=0;               // higher tech: more towers (none at the edge)
         int fx=2+(((h>>4)&3)*(2+T))/5, fy=2+(((h>>6)&3)*(2+T))/5; if(fx>6) fx=6; if(fy>6) fy=6;   // and bigger footprints (huts 2-3 texels, megacity blocks up to 6)
         if(sx-2>=fx || sy-2>=fy){ cmap[i]=80+((h>>8)&1); continue; }                  // the yard around it
         int cen=R*R-(x*x+y*y); int sp=50+T*18, bs=40+T*14; int tall = bs + ((h>>10)&127)*sp/128*(cen/2+R*R/2)/(R*R+1);   // taller near the middle, taller with tech
         if(tower){ tall = 80 + ((h>>10)&127)*(30+T*20)/128; if(((sx-2)>=1 && (sx-2)<fx-1 && (sy-2)>=1 && (sy-2)<fy-1) && fx>=4 && fy>=4) tall += tall/4; }   // a tower; wide ones step in at the top
+        if(district==1 || district==5) tall = 22+(tall-22)*2/3;                    // lower residential and garden neighbourhoods
+        if(district==6 && T>=2) tall += tall/4;                                // industrial and commercial centre
         if(!eco && d<E) tall = 28 + (tall-28)*(d-BW+1)/(E-BW+1);                        // lower toward the edge
         int hh=L+tall; if(hh>255) hh=255; hfine[i]=hh;
         int tn=(h>>17)&3; if(T==0) tn&=2; else if(T>=3 && ((h>>20)&1)) tn|=1;           // tint: glass (odd) only from a city of some size, more of it with tech
@@ -344,6 +352,18 @@ static void city_people(int *k){                                                
     for(int t=0;t<900 && nloc && *k<NPO-20;t++){ int x=wr(2*R+1)-R, y=wr(2*R+1)-R; if(city_depth(x,y)<=0) continue;      /* patch 40 */
         int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK; int c=cmap[ty*HW+tx]; if(c!=74 && c!=75 && c!=80) continue;
         PObj *o=&po[(*k)++]; o->kind=O_LOCAL; o->alive=1; o->hp=wr(3)==0; o->var=wr(2); o->x=(tx<<15)+(1<<14); o->y=(ty<<15)+(1<<14); nloc--; }
+    // Streets, doors and stalls are already placed. Green blocks can now host
+    // small groves rather than appearing as empty coloured squares. This uses
+    // the existing sprite pool and never allocates a second world map.
+    { int planted=0, want=3+wd.csize*2;
+      for(int tries=0;tries<600 && planted<want && *k<NPO-32;tries++){
+        int x=wr(2*R+1)-R, y=wr(2*R+1)-R; if(city_depth(x,y)<city_bw()+4) continue;
+        int tx=(tx0+x)&HMASK, ty=(ty0+y)&HMASK, ci=ty*HW+tx, c=cmap[ci];
+        if(c<GND_B+9 || c>GND_B+12 || hfine[ci]<water_lv+2) continue;
+        PObj *o=&po[(*k)++]; o->kind=(planted&3)==3?O_FLOWER:O_TREE;
+        o->alive=1; o->hp=3; o->var=0; o->x=(tx<<15)+(1<<14); o->y=(ty<<15)+(1<<14);
+        planted++;
+      } }
     if(wd.csize>=2){ PObj *o=&po[(*k)++]; o->kind=O_STALL; o->alive=1; o->hp=1; o->x=(tx0<<15)+(3<<16); o->y=(ty0<<15)+(1<<16); }
 }
 // ---------------------------------------------------------------- creatures, fossils, beetles, ruins
