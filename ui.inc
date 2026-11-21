@@ -134,7 +134,7 @@ static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, a
         "BUT I HEARD THE CAGES CLANG SHUT.","YOUR FRIENDS ARE DOWN THERE.",
         "WE CAN BE AFRAID LATER. COME ON.\""}; bolt_card(pg,t,6); break; }
     case 1: { const char *t[6]={"\"THE QUEEN KEPT A MAP OF CAGES.",
-        "EVERY ARROW POINTS TOWARD THE ANTHILL.","THE ANTS NEED BUGS TO DIG FOR SOMETHING.",
+        have_bug[BUG_ANT] ? "RUNAWAY ANT: THE WORKERS HID A PASSAGE." : "EVERY ARROW POINTS TOWARD THE ANTHILL.","THE ANTS NEED BUGS TO DIG FOR SOMETHING.",
         bugs_freed ? "YOU SAVED SOME. THE OTHERS ARE STILL GONE." : "WE HAVE TO FIND THE OTHERS.",
         "I WISH I KNEW WHAT THEY WERE DIGGING FOR.","THE NEXT STAR MAY KNOW.\""};
         bolt_card(pg,t,6); break; }
@@ -146,22 +146,29 @@ static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, a
         "ITS METAL SKIN SHIFTS LIKE SOMETHING ALIVE.","\"WHEN IT TURNED, I KNEW THAT SOUND.",
         "IT LOOKED STRAIGHT AT ME.","I THINK IT REMEMBERS ME.",
         "I WISH I KNEW WHY.\""}; bolt_card(pg,t,6); break; }
-    case 4: { static const char *const t[6]={"\"THE ANTS ARE DIGGING FOR OLD METAL.",
-        "THEY BUILD OUTPOSTS AROUND WHAT THEY FIND.","ONE OF THOSE MACHINES HUMMED MY TUNE.",
+    case 4: { const char *t[6]={"\"THE ANTS ARE DIGGING FOR OLD METAL.",
+        have_bug[BUG_ANT] ? "RUNAWAY ANT: I SAW THEM SEAL THE HATCHES." :
+                           "THEY BUILD OUTPOSTS AROUND WHAT THEY FIND.",
+        "ONE OF THOSE MACHINES HUMMED MY TUNE.",
         "THE SAME TUNE I HUM WHEN YOU SLEEP.","MY HEAD HURTS. CAN TIN GET HEADACHES?",
         "PLEASE. FIND THE OUTPOSTS.\""}; bolt_card(pg,t,6); break; }
-    case 5: { static const char *const t[6]={"THE BEES SING OVER THE RUINED HIVES.",
+    case 5: { const char *t[6]={"THE BEES SING OVER THE RUINED HIVES.",
         "THEIR SONG IS ABOUT A FALLEN STAR.","A SHIP THAT CARRIED GARDENS IN ITS HEART.",
-        "IT GAVE SMALL THINGS A PLACE TO LIVE.","BOLT STOPS ROLLING. HE KNOWS THE TUNE.",
+        "IT GAVE SMALL THINGS A PLACE TO LIVE.",
+        have_bug[BUG_BEE] ? "THE RESCUED BEE SINGS. BOLT STOPS ROLLING." :
+                            "BOLT STOPS ROLLING. HE KNOWS THE TUNE.",
         "\"I KNOW THE NEXT VERSE. I DON'T KNOW WHY.\""}; bolt_card(pg,t,6); break; }
     case 6: { static const char *const t[6]={"THE ANT KING FALLS. HIS CROWN BREAKS.",
-        "\"YOU CAME FOR YOUR FRIENDS? GOOD.",
-        "I TOLD MYSELF I WAS SAVING MY PEOPLE.","I CUT OPEN A SHIP TO FEED THEM.",
-        "ITS HUNGER OUTGREW MINE.\"",
-        "BEYOND THE STARS, A VAST ENGINE WAKES."}; bolt_card(pg,t,6);
-        { static const char *const after[3]={"BOLT WATCHES THE EMPTY THRONE.",
-            "\"WE STOPPED HIM. BUT WHAT DID HE WAKE?\"",
-            "SOMETHING FAR AWAY ANSWERS WITH A HUM."};
+        "\"THE WINTER CAME. OUR EGGS WERE FREEZING.",
+        "I MADE YOUR FRIENDS DIG FOR BURIED ENGINES.",
+        "I CUT OPEN A SHIP TO HEAT THE NEST.",
+        "THEN I FED THE FURNACE LIVING SHIPS.",
+        "IT LEARNED MY HUNGER.\""}; bolt_card(pg,t,6);
+        { const char *after[3]={
+            have_bug[BUG_ANT] ? "RUNAWAY ANT: WE NEVER ASKED FOR THIS." :
+                                "BOLT WATCHES THE EMPTY THRONE.",
+            "\"WE STOPPED HIM. BUT HIS MACHINE LIVES.\"",
+            "BEYOND THE STARS, A VAST ENGINE WAKES."};
           bolt_card(pg,after,3); }
         break; }
     case 10: { static const char *const t[6]={"THE MOUTH FALLS APART.",
@@ -170,13 +177,15 @@ static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, a
         "NOW LET ME CARRY YOU. ALL OF YOU. HOME.\""}; bolt_card(pg,t,6);
         // The playable galaxy remains open. A final quiet scene connects the
         // freed crew to that freedom without falsely claiming every cage opened.
-        const char *const after[5]={"THE FIRST MORNING WITHOUT THE KING.",
+        const char *after[6]={"THE FIRST MORNING WITHOUT THE KING.",
             bugs_freed ? "THE BUGS YOU FREED WATCH THE SUN RISE." :
-                         "THE EMPTY CAGES STAND OPEN IN THE LIGHT.",
+                         "OPEN CAGES WAIT FOR FRIENDS STILL MISSING.",
+            have_bug[BUG_ANT] ? "THE RUNAWAY ANT WALKS HOME WITHOUT FEAR." :
+                                "THE LAST ROYAL BANNERS COME DOWN.",
             "DAWN'S WINDOWS LIGHT UP ONE BY ONE.",
             "NOBODY TELLS YOU WHERE TO FLY NEXT.",
             "\"WHERE SHOULD WE GO FIRST?\""};
-        bolt_card(pg,after,5); break; }
+        bolt_card(pg,after,6); break; }
     }
 }
 // Three deliberate breathers among the eight outpost memories: the first
@@ -273,13 +282,22 @@ static void bolt_talk(volatile u16 *pg){
       if(fuel*4<fuel_max() && w<2){ scpy(c1,"\"FUEL IS AT "); ncat(c1,fuel*100/fuel_max()); scat(c1," PERCENT. CAREFUL.\""); t[n++]=c1; w++; }
       if(hull<40 && w<2){ scpy(c2,"\"THE HULL IS AT "); ncat(c2,hull); scat(c2," PERCENT. I AM WORRIED.\""); t[n++]=c2; w++; }
       if(cargo_n()>=cargo_cap+ship_hold_bonus() && w<2){ t[n++]="\"THE HOLD IS FULL. SELL LOOT.\""; w++; } }
-    if(dawn_free){ t[n++]="\"I REMEMBER THE WAY HOME NOW.\""; t[n++]="\"YOU CAN GO ANYWHERE. I AM WITH YOU.\""; }
+    if(dawn_free){ t[n++]="\"I AM DAWN. BUT YOU CAN STILL CALL ME BOLT.\"";
+        t[n++]=bugs_freed ? "\"WE SAVED FRIENDS. WE CAN KEEP LOOKING.\"" :
+                            "\"SOME CAGES ARE STILL OUT THERE. LET'S GO.\""; }
     else if(!endless && !zone_cleared){ t[n++]="\"THE DOOR IS THE WAY DOWN.\""; t[n++]="\"THE ARROW KNOWS. FOLLOW IT.\""; t[n++]="\"THE BOSS SITS AT THE BOTTOM.\""; }
     else if(!endless && zone<5){ scpy(l1,"\"THIS WORLD IS FREE. NEXT IS "); scat(l1,tint_name[zone+1]); scat(l1,".\""); t[n++]=l1; t[n++]="\"PICK AUTOPILOT AND I'LL FLY US.\""; if(zone>=1) t[n++]="\"OR GO DOWN AGAIN. IT'S HARDER. IT PAYS.\""; }
-    else if(!ant_king){ t[n++]="\"THE ANT KING WAITS BELOW.\""; t[n++]="\"YOUR FRIENDS ARE THERE. ALL OF THEM.\""; t[n++]="\"I'M SCARED. LET'S GO ANYWAY.\""; }
+    else if(!ant_king){ t[n++]="\"THE ANT KING WAITS BELOW.\"";
+        t[n++]="\"HE KNOWS WHERE THE CAPTIVES WERE TAKEN.\"";
+        t[n++]="\"I'M SCARED. LET'S GO ANYWAY.\""; }
     else if(beast_stage>=3 && data_cores<8){ scpy(l1,"\"THE OUTPOSTS HOLD MY MEMORY. "); ncat(l1,data_cores); scat(l1," OF 8.\""); t[n++]=l1; t[n++]="\"RED MARKS ON THE MAP. HATCHES ON THE GROUND.\""; t[n++]="\"BRING ME BACK TO MYSELF.\""; }
     else if(beast_stage>=3){ t[n++]="\"I KNOW MY NAME. THE DAWN.\""; t[n++]="\"FLY INTO THE BEAST. SHOOT ITS CORE.\""; t[n++]="\"I WILL DO THE REST.\""; }
-    else { t[n++]="\"THE GALAXY IS OPEN. GO ANYWHERE.\""; t[n++]="\"THE BEAST IS OUT THERE. SO ARE ITS OUTPOSTS.\""; }
+    else if(ant_king && data_cores>=8){
+        t[n++]="\"MY MEMORIES ARE WHOLE. MY HEART ISN'T.\"";
+        t[n++]="\"OPEN THE MAP. FOLLOW THE BEAST'S SIGNAL.\"";
+    }
+    else { t[n++]="\"THE GALAXY IS OPEN. GO ANYWHERE.\"";
+           t[n++]="\"RED OUTPOSTS ON THE MAP HOLD MY PAST.\""; }
     // Make the companion's advice match the job the player actually took.
     // qhint lives until the card finishes; no new global RAM is needed.
     char qhint[48];
