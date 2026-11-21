@@ -74,6 +74,8 @@ if [[ "$MODE" == coop ]]; then
         done
         grep -Eq 'lan: raider HP 0 wins 3 phase 4 hits [1-9][0-9]*/[1-9][0-9]* wave 3 wing 0 cleared 1' "out/lan_live/${side}.log" || {
             echo "LAN smoke: ${side} missed the three-wave clear";tail -70 "out/lan_live/${side}.log";exit 1; }
+        grep -q 'lan: victory overlay rendered' "out/lan_live/${side}.log" || {
+            echo "LAN smoke: ${side} victory state never drew the actual 3D victory overlay";exit 1; }
         test -s "out/lan_live/${side}-clear.png" || {
             echo "LAN smoke: ${side} did not capture its rendered victory";exit 1; }
     done
