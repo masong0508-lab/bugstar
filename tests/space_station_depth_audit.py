@@ -8,7 +8,6 @@ requiring an emulator.
 """
 from pathlib import Path
 import math
-import re
 
 root = Path(__file__).resolve().parents[1]
 sources = {
@@ -33,7 +32,7 @@ for name, src in sources.items():
             else "wire(pg,v,12,throat,4,56)") in snippet, name
     # The three-dimensional port stays rotated with the original hull,
     # rather than being pasted onto the screen as a HUD decoration.
-    assert re.search(r"v\\[\\(8\\+i\\)\\*3\\]=stx_\\+\\(\\(x\\*c_-z\\*s_\\)>>14\\)", src), name
+    assert "v[(8+i)*3]=stx_+((x*c_-z*s_)>>14)" in src, name
 
 # A representative fly-in: both the near ring and station face must be
 # in front of a camera looking along the local station +Z axis.
