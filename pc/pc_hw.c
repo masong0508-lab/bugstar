@@ -608,7 +608,7 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     if(dmaln){                                                   // both pages: each line says which one it shows
         for(int y=0;y<160;y++) for(int x=0;x<240;x++){ int i0=*(volatile uint8_t*)(uintptr_t)(VRAMB+y*240+x), i1=*(volatile uint8_t*)(uintptr_t)(VRAMB+0xA000+y*240+x);
             bghave[y][x]=i0!=0; bgres[y][x]=i0?rgbpix(R16(PALRAM+i0*2)):bd; bghave2[y][x]=i1!=0; bgres2[y][x]=i1?rgbpix(R16(PALRAM+i1*2)):bd; }
-        if(nat3) nv_ground_prep(bd); if(nat3 && kn_on) kn_pass(W,H,sx,sy,bd); else kn_on=0; }
+        if(nat3) nv_ground_prep(bd); if(nat3 && kn_on){ if(!kn_pass(W,H,sx,sy,bd)) kn_on=0; } else kn_on=0; }
     int axis = (pb==0 && pc==0) && !dmaln;                                // no rotation: the bitmap's x depends on X only, y on Y only
     int *tabx=0,*taby=0; int8_t *wx=0,*wy=0;
     if(have_bg && axis){
