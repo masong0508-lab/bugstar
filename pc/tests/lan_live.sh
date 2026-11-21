@@ -12,33 +12,29 @@ mkdir -p out/lan_live/host out/lan_live/client
 printf 'pause_unfocus=0\nvsync=0\n' > out/lan_live/host/settings.ini
 printf 'pause_unfocus=0\nvsync=0\n' > out/lan_live/client/settings.ini
 rm -f out/lan_live/{host,client}.log out/lan_live/{host,client}.png
-# The normal shipyard script taps A only a few times: both games can remain
-# blocked in Bolt's first dialogue (verified from real CI screenshots).
-# BUGSTAR_LAN_BOOT skips only that opening story during this automated test.
-# Send plenty of separated confirmation presses, then stop inputs well
-# before taking the two actual 3D space screenshots.
+# The generated PC game takes the same normal start_game() path but
+# BUGSTAR_LAN_BOOT skips title/creator menus and enters live space directly.
+# Hold A in short bursts AFTER both game instances are in 3D flight.
 : > out/lan_live/boot.txt
-for ((f=24; f<800; f+=20)); do
-    printf '%d %d A\n' "$f" "$((f+2))" >> out/lan_live/boot.txt
+for ((f=180; f<900; f+=90)); do
+    printf '%d %d A\n' "$f" "$((f+43))" >> out/lan_live/boot.txt
 done
 host_pid=''
 cleanup(){ if [[ -n "$host_pid" ]]; then kill "$host_pid" 2>/dev/null || :; fi; }
 trap cleanup EXIT
 env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_TRACE=1 BUGSTAR_LAN_BOOT=1 \
-    BUGSTAR_SY_TEST=9,0 BUGSTAR_SY_AT=100 \
-    timeout -k 3 95 "$GAME" --window --video-driver dummy --no-audio \
+    timeout -k 3 55 "$GAME" --window --video-driver dummy --no-audio \
     --no-vsync --size 240 160 --lan-host "${LAN_MODE[@]}" --lan-port 33777 \
     --data out/lan_live/host --script out/lan_live/boot.txt \
-    --auto-shot 3550 out/lan_live/host.png --stop-after 3600 \
+    --auto-shot 1020 out/lan_live/host.png --stop-after 1080 \
     > out/lan_live/host.log 2>&1 &
 host_pid=$!
 sleep 0.3
 env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_TRACE=1 BUGSTAR_LAN_BOOT=1 \
-    BUGSTAR_SY_TEST=9,0 BUGSTAR_SY_AT=100 \
-    timeout -k 3 95 "$GAME" --window --video-driver dummy --no-audio \
+    timeout -k 3 55 "$GAME" --window --video-driver dummy --no-audio \
     --no-vsync --size 240 160 --lan-join 127.0.0.1 "${LAN_MODE[@]}" --lan-port 33777 \
     --data out/lan_live/client --script out/lan_live/boot.txt \
-    --auto-shot 3550 out/lan_live/client.png --stop-after 3600 \
+    --auto-shot 1020 out/lan_live/client.png --stop-after 1080 \
     > out/lan_live/client.log 2>&1 || {
       echo 'LAN smoke: client game failed'; tail -50 out/lan_live/client.log; exit 1; }
 wait "$host_pid" || {
