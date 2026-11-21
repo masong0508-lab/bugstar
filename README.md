@@ -54,7 +54,13 @@ The bug's sprite is drawn by the game from your choices, so every bug is differe
 **Humanoids** have their own creator too: body (human or furry), height, build, **10 hair styles** (or 10 kinds of ears), 8 faces (glasses, shades, eyepatch...), beards and moustaches, **10 tops** (t-shirt, hoodie, robe, dress, armour...), 6 bottoms, 5 kinds of shoes, **12 hats** (wizard, cowboy, crown, halo...), and something on your back (cape, wings, backpack, scarf or jetpack). 16 ready-made looks.
 
 ## Even more planet monsters (new)
-50 more creatures, so there are now 66 planet monsters, and every kind of world has 8 of its own (it was 2). About half the monsters in a dungeon now belong to that planet.
+**90 planet monster species** now appear in the GBA dungeon, and thus the shared PC and Android gameplay engine: the original 16, 50 previously added species, and **24 new biome-specific monsters**. Six home-world regions and 16 procedural world classes have expanded from eight to **12 candidate species per environment**, with dangerous kinds appearing on deeper floors. Most new species use a distinctive generated recolouring or silhouette variant of a hand-designed parent, but have their own combat statistics and behavior flags. Existing active monster limits remain unchanged.
+
+- **New garden and jungle creatures:** BRAMBLE, POLLEN IMP, BLOOM WASP, ROOT TITAN; FANG VINE, SPORE WIDOW, CANOPY PHANTOM, VENOM BLOOM.
+- **New ocean and desert creatures:** ABYSS EEL, CORAL STALKER, STORM MEDUSA, REEF LURKER; DUST SCARAB, SAND SPECTER, THORN WORM, IRON SCORPION.
+- **New ice and death-world creatures:** RIME MOTH, FROST SENTINEL, GLACIER BRUTE, BLIZZARD BAT; BONE REAPER, CRYPT LOCUST, GRAVE SENTINEL, SHADE HOUND.
+
+These use the established charging, ranged attacks, packs, explosions, life drain, armor and splitting mechanics. `python3 tests/monster_roster.py` verifies sprite sources, monster IDs and all 22 spawn pools. The procedural PC *creature body-plan* system is separate: its 66 base plans still produce 12,672 content-library creature kinds, not 12,672 additional GBA combat sprites.
 - **Green worlds:** earwig, aphid packs, dragonfly, stinkbug, flatworm, hornet, weevil, hopper, monarch, tick, pixie, puffball.
 - **Water worlds:** crayfish, piranha packs, eel, urchin, squid, mosquito swarms, newt, angler.
 - **Dry and rocky worlds:** antlion, scarab, solifuge, geode, gecko. **Ice:** iceworm, yeti, snowball, icicle, penguins.
