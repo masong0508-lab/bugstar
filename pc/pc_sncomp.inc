@@ -39,11 +39,17 @@ static void sn_items(uint32_t *out,int W,int H,uint16_t dc,int bmode,int ev,uint
     PcSNat *n=&pc_sn; int t=(dc>>4)&1; if(!n->ibuf || n->w!=W || n->h!=H || g_frame-n->ff[t]>4 || g_frame-n->f2[t]>4 || pc_v3d_classic() || ((dc&7)!=4)) return;
     if(bmode>=2 && ev>0 && (bldcnt&4)) return;
     const uint8_t *pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0)), *sn2=n->snap2[t]; double sy=160.0/H, sx=240.0/W;
-    int x0=0,x1=W,y0=0,y1=n->hn;
-    if(pc_sn_dirty_on()){
-        x0=n->ix0; x1=n->ix1; y0=n->iy0; y1=n->iy1;
-        if(x0>=x1 || y0>=y1) return; // no native-space effects this frame
+    int x0=0,x1=W,y0=0,y1=n->hn, clipped=pc_sn_dirty_on();
+    if(clipped){ x0=n->ix0; x1=n->ix1; y0=n->iy0; y1=n->iy1; }
+    // Log the actual scan reduction only during explicit benchmark runs.
+    static int dirty_log=-1, dirty_samples=0;
+    if(dirty_log<0) dirty_log=getenv("PC_SN_DIRTY_LOG")!=NULL;
+    if(dirty_log && dirty_samples++<4){
+        size_t scanned=(x0<x1 && y0<y1) ? (size_t)(x1-x0)*(size_t)(y1-y0) : 0;
+        fprintf(stderr,"space effects %s scan %zu/%zu pixels at frame %ld\n",
+            clipped?"clipped":"full",scanned,(size_t)W*n->hn,g_frame);
     }
+    if(x0>=x1 || y0>=y1) return;
     for(int Y=y0;Y<y1;Y++){ int gy=(int)((Y+0.5)*sy); if(gy>127) break; const uint32_t *src=n->ibuf+(size_t)Y*W;
         for(int X=x0;X<x1;X++){ uint32_t d=src[X]; if(!d) continue; int gx=(int)((X+0.5)*sx); if(gx>239) gx=239; int gi=gy*240+gx; size_t q=(size_t)Y*W+X;
             if((nv_op[q]&7)<4) continue; if(!(pgb[gi]==sn2[gi] || sn_foot_still(t,gi,pgb[gi]))) continue;
