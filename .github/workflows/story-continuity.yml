@@ -8,10 +8,12 @@ on:
       - 'main.c'
       - 'space.inc'
       - 'game.inc'
+      - 'dungeon.inc'
       - 'tests/story_cutscene_audit.py'
       - 'tests/story_finale_runtime.py'
       - 'tests/story_frame_capture.py'
       - 'tests/story_branch_runtime.py'
+      - 'tests/story_boss_runtime.py'
       - '.github/workflows/story-continuity.yml'
   pull_request:
     paths:
@@ -20,10 +22,12 @@ on:
       - 'main.c'
       - 'space.inc'
       - 'game.inc'
+      - 'dungeon.inc'
       - 'tests/story_cutscene_audit.py'
       - 'tests/story_finale_runtime.py'
       - 'tests/story_frame_capture.py'
       - 'tests/story_branch_runtime.py'
+      - 'tests/story_boss_runtime.py'
       - '.github/workflows/story-continuity.yml'
   workflow_dispatch:
 
@@ -39,6 +43,8 @@ jobs:
         run: python3 tests/story_finale_runtime.py
       - name: Execute branching Bolt cutscenes for all rescued-companion states
         run: python3 tests/story_branch_runtime.py
+      - name: Execute real first-clear warden rewards and legacy unlocks
+        run: python3 tests/story_boss_runtime.py
       - name: Capture native-size story chapter layouts under UBSan
         run: python3 tests/story_frame_capture.py out/story-layouts
       - name: Upload story layout contact sheet and eight frames
