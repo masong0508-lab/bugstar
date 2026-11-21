@@ -579,6 +579,7 @@ void pc_mp_set_coop(int enabled){if(g_active)pcnet_set_coop(&g_peer,enabled);}
 void pc_mp_set_ready(int ready){if(g_active)pcnet_set_ready(&g_peer,ready);}
 int pc_mp_local_ready(void){return g_active && g_peer.local_ready;}
 int pc_mp_peer_ready(void){return g_active && g_peer.peer_ready;}
+int pc_mp_both_confirmed(void){return g_active && g_peer.connected && g_peer.received && g_peer.local_ready && g_peer.peer_ready;}
 int pc_mp_match_ready(void){return g_active && pcnet_match_ready(&g_peer);}
 int pc_mp_reconnecting(void){return g_active && g_peer.reconnecting;}
 int pc_mp_coop_complete(void){
