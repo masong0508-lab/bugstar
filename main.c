@@ -1667,7 +1667,8 @@ static void run_game(void){
                    restock(); save_game();
                    planet_enter(); arrow_ship = zone_cleared && !endless; show_msg(mb); oam_flush(); music(0); fade(0);
                    if(base_card){ base_card=0; int k=data_cores-1; if(k<0) k=0; if(k>7) k=7; bolt_card(VISPG,bolt_mem[k],4);
-                       if(data_cores>=8){ static const char *const t[4]={"\"THAT WAS THE LAST OF ME.\"","\"I AM THE DAWN. I KNOW IT NOW.\"","\"FIND THE BEAST. L ON THE GALAXY MAP.\"","\"SHOOT ITS CORE AND I WILL OPEN IT.\""}; bolt_card(VISPG,t,4); }
+                       if(data_cores==1 || data_cores==4 || data_cores>=8)
+                           bolt_memory_reaction(VISPG,data_cores);
                        planet_hud(); }
                    if(zone_card){ int z=zone_card-1; zone_card=0;
                        if(z==5){ bolt_story(VISPG,6); fade(1); credits(); planet_enter(); fade(0); }
