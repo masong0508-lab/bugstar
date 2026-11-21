@@ -14,7 +14,7 @@ shots={}
 hashes=set()
 for zone in range(6):
     for phase in range(2):
-        for frame in (240,360):
+        for frame in (240,302):
             path=root/f"{zone}_{phase}_{frame:06d}.ppm"
             with Image.open(path) as im:
                 assert im.size == (240,160), f"{path}: not GBA native resolution"
@@ -28,11 +28,11 @@ for zone in range(6):
             shots[zone,phase,frame]=rgb
             hashes.add(hashlib.sha256(rgb.tobytes()).hexdigest())
         left=shots[zone,phase,240]
-        right=shots[zone,phase,360]
+        right=shots[zone,phase,302]
         assert ImageChops.difference(left,right).getbbox(), (
             f"zone {zone} phase {phase} gameplay never visually updated"
         )
-    assert ImageChops.difference(shots[zone,0,360],shots[zone,1,360]).getbbox(), (
+    assert ImageChops.difference(shots[zone,0,302],shots[zone,1,302]).getbbox(), (
         f"zone {zone}: normal and half-health gameplay render identically"
     )
 assert len(hashes)>=12, "six arenas and both boss phases did not produce independent frames"
@@ -40,7 +40,7 @@ assert len(hashes)>=12, "six arenas and both boss phases did not produce indepen
 sheet=Image.new("RGB",(240*6,160*2))
 for zone in range(6):
     for phase in range(2):
-        sheet.paste(shots[zone,phase,360],(zone*240,phase*160))
+        sheet.paste(shots[zone,phase,302],(zone*240,phase*160))
 sheet.save(root/"boss_six_contact_sheet.png")
 for (zone,phase,frame),im in shots.items():
     im.save(root/f"{zone}_{phase}_{frame:06d}.png")
