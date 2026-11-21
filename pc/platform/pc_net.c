@@ -479,6 +479,8 @@ int pc_mp_remote(uint32_t frame,PcNetShip *out){
 }
 void pc_mp_fired(void){ if(g_active)pcnet_fire(&g_peer); }
 int pc_mp_role(void){ return g_active ? g_peer.role : 0; }
+int pc_mp_connected(void){ return g_active && g_peer.connected && g_peer.received; }
+uint16_t pc_mp_local_port(void){ return g_active ? g_peer.local_port : 0; }
 void pc_mp_set_coop(int enabled){if(g_active)pcnet_set_coop(&g_peer,enabled);}
 int pc_mp_coop_mode(void){return g_active && g_peer.coop;}
 int pc_mp_raider(uint32_t frame,PcCoop *out){
