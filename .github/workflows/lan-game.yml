@@ -15,7 +15,7 @@ jobs:
       - name: Install SDL runtime and asset generation dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev python3-numpy
+          sudo apt-get install -y libsdl2-dev python3-numpy python3-pil
       - name: Compile and run real UDP Ready/reconnect test
         run: |
           cc -std=gnu11 -O1 -g -Wall -Wextra -fno-omit-frame-pointer \
