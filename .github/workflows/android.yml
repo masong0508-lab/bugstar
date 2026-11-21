@@ -59,6 +59,9 @@ jobs:
       - name: Python deps for the generators
         run: python3 -m pip install numpy pillow
 
+      - name: Check shared 3D camera clipping
+        run: python3 tests/space_projection_audit.py
+
       - name: Check the 24 additional cross-port monster species
         run: python3 tests/monster_roster.py
 
