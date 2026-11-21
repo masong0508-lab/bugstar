@@ -1,0 +1,49 @@
+name: Six boss native-size gameplay capture
+on:
+  push:
+    paths:
+      - 'main.c'
+      - 'dungeon.inc'
+      - 'game.inc'
+      - 'ui.inc'
+      - 'space.inc'
+      - 'pc/build.sh'
+      - 'pc/pc_boss_capture.inc'
+      - 'pc/tests/boss_capture.txt'
+      - 'pc/tests/boss_six.sh'
+      - 'pc/tests/boss_six_review.py'
+      - '.github/workflows/boss-visual.yml'
+  pull_request:
+    paths:
+      - 'main.c'
+      - 'dungeon.inc'
+      - 'game.inc'
+      - 'ui.inc'
+      - 'space.inc'
+      - 'pc/build.sh'
+      - 'pc/pc_boss_capture.inc'
+      - 'pc/tests/boss_capture.txt'
+      - 'pc/tests/boss_six.sh'
+      - 'pc/tests/boss_six_review.py'
+      - '.github/workflows/boss-visual.yml'
+  workflow_dispatch:
+
+jobs:
+  warden-capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install reproducible asset-generator and screenshot dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential
+      - name: Build the real game with GBA renderer and headless PC test harness
+        run: cd pc && PC_SDL=0 ./build.sh
+      - name: Capture all six wardens at full and half health, 240x160
+        run: bash pc/tests/boss_six.sh
+      - name: Upload native-size boss frames, logs and contact sheet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-six-bosses-240x160
+          path: pc/out/boss_six/
+          retention-days: 14
