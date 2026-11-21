@@ -1,0 +1,43 @@
+name: PC kart and world generation regression
+on:
+  push:
+    paths:
+      - 'kart*.inc'
+      - 'planet.inc'
+      - 'town.inc'
+      - 'pc/pc_kartnat*.inc'
+      - 'pc/pc_hw.c'
+      - 'pc/tests/kart.sh'
+      - '.github/workflows/pc-kart-worldgen.yml'
+  pull_request:
+    paths:
+      - 'kart*.inc'
+      - 'planet.inc'
+      - 'town.inc'
+      - 'pc/pc_kartnat*.inc'
+      - 'pc/pc_hw.c'
+      - 'pc/tests/kart.sh'
+      - '.github/workflows/pc-kart-worldgen.yml'
+  workflow_dispatch:
+
+jobs:
+  pc-headless:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install procedural asset generator requirements
+        run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential
+      - name: Build PC game without SDL dependency
+        run: cd pc && PC_SDL=0 ./build.sh
+      - name: Fuzz kart races across random tracks
+        run: cd pc && bash tests/kart.sh 8
+      - name: Check kart races under AddressSanitizer
+        run: cd pc && ASAN=1 bash tests/kart.sh 4
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pc-kart-regression-logs
+          path: pc/out/kz.log
+          if-no-files-found: ignore
