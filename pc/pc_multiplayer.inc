@@ -81,6 +81,21 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                    sy_>14 && sy_<107)
                     text(pg,sx+7,sy_-8,"RAIDER",ci,1);
             }
+            /* Draw an actual pre-shot lock line so the marked player
+             * can dodge laterally before the host resolves the strike. */
+            if(raider.charge && raider.phase==1){
+                PcNetShip *marked=(pc_mp_role()==(raider.charge_target?2:1))
+                                  ? &mine : &other;
+                int ex,ey,tx,ty;
+                if(sproj(raider.x,raider.y,raider.z,&ex,&ey,0) &&
+                   sproj(marked->x,marked->y,marked->z,&tx,&ty,0)){
+                    int ci=(raider.charge&2)?49:53;
+                    line2(pg,ex,ey,tx,ty,ci);
+                    if(pc_sn.w && pc_sn.msk)so_line(ex,ey,tx,ty,ci);
+                }
+                text(pg,5,103,raider.charge_target
+                     ?"RAIDER LOCK P2 - DODGE!":"RAIDER LOCK P1 - DODGE!",53,1);
+            }
             /* The enemy's short real 3D laser is owned and approved by
              * the host. Render the same beam in either player's camera. */
             if(raider.beam && raider.phase==1){
