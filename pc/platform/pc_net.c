@@ -489,7 +489,7 @@ void pcnet_close(PcNetSession *s){
 /* Singleton game adapter: submit only when space.inc actually draws a frame. */
 static PcNetSession g_peer;
 static PcNetShip g_local;
-static uint8_t g_active,g_submitted,g_clear_drawn;
+static uint8_t g_active,g_submitted,g_clear_drawn,g_lobby_resume_logged;
 static uint32_t g_pause_ticks,g_net_tick,g_last_game_frame;
 static uint32_t g_last_space_frame; /* recent real flight submission, not this single VBlank */
 int pc_mp_host(uint16_t port){
@@ -531,6 +531,12 @@ void pc_mp_frame(uint32_t frame){
         uint8_t raider_hp=g_peer.coop_enemy.hp;
         uint8_t raider_wins=g_peer.coop_enemy.wins;
         pcnet_step(&g_peer,g_net_tick,&g_local);
+        if(g_pause_ticks && !g_lobby_resume_logged && pcnet_match_ready(&g_peer)){
+            g_lobby_resume_logged=1;
+            if(getenv("BUGSTAR_LAN_TRACE"))
+                fprintf(stderr,"lan: flight resumed both pilots active role %u frame %u\n",
+                        (unsigned)g_peer.role,(unsigned)frame);
+        }
         if(getenv("BUGSTAR_LAN_TRACE")){
             if(before!=g_peer.connected)
                 fprintf(stderr,"lan: peer %s frame %u world %u role %u\n",
@@ -565,6 +571,7 @@ void pc_mp_frame(uint32_t frame){
 void pc_mp_lobby_pump(void){
     if(!g_active)return;
     uint8_t was_connected=g_peer.connected;
+    if(g_pause_ticks==0u)g_lobby_resume_logged=0;
     if(g_pause_ticks==0u && getenv("BUGSTAR_LAN_TRACE"))
         fprintf(stderr,"lan: lobby entered role %u\n",(unsigned)g_peer.role);
     pcnet_set_active(&g_peer,0);
@@ -627,5 +634,5 @@ int pc_mp_duel(uint8_t *host_hp,uint8_t *guest_hp,uint8_t *host_wins,uint8_t *gu
 void pc_mp_close(void){
     if(g_active)pcnet_close(&g_peer);
     g_active=0;g_submitted=0;g_last_space_frame=0;g_clear_drawn=0;
-    g_pause_ticks=0;g_net_tick=0;g_last_game_frame=0;
+    g_pause_ticks=0;g_net_tick=0;g_last_game_frame=0;g_lobby_resume_logged=0;
 }
