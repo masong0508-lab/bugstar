@@ -287,6 +287,20 @@ static void gen_terrain(u32 seed){
 static void place(PObj *o, int kind, int minr, int maxr){ o->kind=kind; o->alive=1; o->hp=3; int a=wr(256), r=minr+wr(maxr-minr+1); o->x=(64<<16)+cosx(a)*r*4; o->y=(64<<16)+sinx(a)*r*4; }
 static s32 wrapd(s32 d){ return ((d + (64<<16)) & ((TW<<16)-1)) - (64<<16); }        // shortest way round the world, 16.16
 #include "town.inc"
+// Habitat-aware resource placement: keep trees out of water, building footprints,
+// and paved streets, with smooth seeded groves instead of uniform scatter.
+// All decisions happen once when a planet is made, not in the frame renderer.
+static void place_habitat(PObj *o, int kind, int minr, int maxr){
+    for(int tries=0;tries<14;tries++){
+        place(o,kind,minr,maxr);
+        int x=(o->x>>16)&TMASK, y=(o->y>>16)&TMASK;
+        int i=((o->y>>15)&HMASK)*HW+((o->x>>15)&HMASK), c=cmap[i], h=hmap[y*TW+x];
+        if(h<=water_lv+3 || h>=226 || (c>=BLD_B && c<BLD_B+18)) continue;
+        if(kind==O_TREE && cn_noise(x*2,y*2,4,8)<-24) continue;
+        return;
+    }
+    o->alive=0; // a drowned or built-over grove must not block movement
+}
 static char tdbg[40];
 static void new_planet(void){
     water_lv = endless ? 30+wr(60) : (zone==1 ? 100 : zone==0||zone==3 ? 70 : zone==5 ? 10 : 45);
@@ -319,7 +333,13 @@ static void new_planet(void){
     { int eco = endless ? sys[cur_sys].eco : zone%4;                                  // what grows here depends on the world's economy and its DNA
       static const u8 mix[4][4]={{5,2,2,5},{2,7,2,3},{3,4,5,2},{2,3,6,3}};            // farming, mining, tech, hive
       static const u8 moonmix[4]={2,10,1,3};                                              // a moon is a mining rock: crystal and amber everywhere
-      for(int t=0;t<4;t++){ int n=(cur_moon ? moonmix[t] : mix[eco][t])+wd.flora[t]-3; if(n<1) n=1; for(int i=0;i<n && k<NPO-50;i++) place(&po[k++],O_TREE+t,6,64); } }
+      for(int t=0;t<4;t++){ int n=(cur_moon ? moonmix[t] : mix[eco][t])+wd.flora[t]-3; if(n<1) n=1; for(int i=0;i<n && k<NPO-50;i++) place_habitat(&po[k++],O_TREE+t,6,64); }
+      // Secondary forest patches: density follows climate and flora DNA.
+      // The fixed sprite budget is unchanged, leaving room for town NPCs.
+      int grove=(wd.cls==PC_DESERT || hellw() || cur_moon)?1:4+wd.flora[0];
+      if(grove>14) grove=14;
+      for(int i=0;i<grove && k<NPO-74;i++) place_habitat(&po[k++],O_TREE,8,60);
+    }
     city_people(&k); planet_life(&k); pq_type=0; pq_done=0; race_on=0; kart_on=0; kart_won=0; race_best=0; kart_reset();
     while(k<NPO){ place(&po[k],(k&1)?O_PEBBLE:O_TUFT,3,64); k++; }
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind!=O_SHIP && (po[i].kind<O_MARKET || (po[i].kind>=O_FOSSIL && po[i].kind<=O_CRIT)) && hm_at(po[i].x,po[i].y)<water_lv){ po[i].x+=1<<16; if(hm_at(po[i].x,po[i].y)<water_lv) po[i].alive = po[i].kind<=O_CAGE ? 1 : 0; }
