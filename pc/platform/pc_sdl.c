@@ -815,8 +815,8 @@ static void pump_events(void){
 // ---- test hook (BUGSTAR_EVENTS=file): events pushed into SDL's own queue (dummy video driver works), to test keyboard, mouse, gamepad, Esc options, F11, F12, rebinding.
 //   each line: "<pumps to wait> <command>"; commands: key down|up NAME | pad attach | pad button NAME 0|1 | pad axis NAME VALUE | mouse X Y | click L|R 0|1 | wheel N | dump | quit
 static FILE *inj_f; static int inj_wait=-1, inj_mx, inj_my; static char inj_cmd[200]; static int inj_vid=-1; static int inj_init;
-static void inj_dump(void){ fprintf(stderr,"EV dump: menu=%d page=%d sel=%d wait=%d fs=%d keys=%03x mouse=%d,%d b=%d pad=%s vol=%d shots=%d kb_A=%s/%s pad_A=%s\n",menu_open,menu_page,menu_sel,menu_wait,C.fullscreen,g_lastkeys,pc_mouse_x,pc_mouse_y,pc_mouse_b,pad?"yes":"no",C.volume,
-    (int)(shot_pending),C.kb[0][0]?SDL_GetScancodeName(C.kb[0][0]):"-",C.kb[0][1]?SDL_GetScancodeName(C.kb[0][1]):"-",SDL_GameControllerGetStringForButton(C.pad[0])); }
+static void inj_dump(void){ fprintf(stderr,"EV dump: menu=%d page=%d sel=%d wait=%d fs=%d keys=%03x mouse=%d,%d b=%d pad=%s vol=%d shots=%d kb_A=%s/%s pad_A=%s lan_role=%d lan_connected=%d lan_coop=%d\n",menu_open,menu_page,menu_sel,menu_wait,C.fullscreen,g_lastkeys,pc_mouse_x,pc_mouse_y,pc_mouse_b,pad?"yes":"no",C.volume,
+    (int)(shot_pending),C.kb[0][0]?SDL_GetScancodeName(C.kb[0][0]):"-",C.kb[0][1]?SDL_GetScancodeName(C.kb[0][1]):"-",SDL_GameControllerGetStringForButton(C.pad[0]),pc_mp_role(),pc_mp_connected(),pc_mp_coop_mode()); }
 static void inject_step(void){
     if(!inj_init){ inj_init=1; const char *e=getenv("BUGSTAR_EVENTS"); if(e&&*e) inj_f=fopen(e,"r"); }
     if(!inj_f) return;
@@ -835,6 +835,13 @@ static void inject_step(void){
     else if(sscanf(inj_cmd,"mouse %d %d",&x,&y)==2){ inj_mx=x; inj_my=y; e.type=SDL_MOUSEMOTION; e.motion.x=x; e.motion.y=y; SDL_PushEvent(&e); }
     else if(sscanf(inj_cmd,"click %63s %d",a,&k)==2){ e.type=k?SDL_MOUSEBUTTONDOWN:SDL_MOUSEBUTTONUP; e.button.button=a[0]=='R'?SDL_BUTTON_RIGHT:SDL_BUTTON_LEFT; e.button.x=inj_mx; e.button.y=inj_my; e.button.state=k; SDL_PushEvent(&e); }
     else if(sscanf(inj_cmd,"finger %63s %d %d %d",a,&k,&x,&y)==4){ e.type=!strcmp(a,"down")?SDL_FINGERDOWN:!strcmp(a,"up")?SDL_FINGERUP:SDL_FINGERMOTION; e.tfinger.fingerId=k; e.tfinger.x=x/1000.f; e.tfinger.y=y/1000.f; SDL_PushEvent(&e); }      // x,y in 1/1000 of the window
+    else if(!strncmp(inj_cmd,"text ",5)){ e.type=SDL_TEXTINPUT;
+        snprintf(e.text.text,sizeof e.text.text,"%s",inj_cmd+5);
+        size_t n=strlen(e.text.text);
+        while(n&&(e.text.text[n-1]=='\n'||e.text.text[n-1]==' '))
+            e.text.text[--n]=0;
+        SDL_PushEvent(&e);
+    }
     else if(!strncmp(inj_cmd,"shot ",5)){ static char sp[600]; snprintf(sp,sizeof sp,"%s",inj_cmd+5); size_t n=strlen(sp); while(n&&(sp[n-1]=='\n'||sp[n-1]==' ')) sp[--n]=0; g_autoshot_path=sp; g_autoshot_frame=0; }      // take a window shot at the next frame
     else if(sscanf(inj_cmd,"wheel %d",&k)==1){ e.type=SDL_MOUSEWHEEL; e.wheel.y=k; SDL_PushEvent(&e); }
     else if(!strncmp(inj_cmd,"dump",4)) inj_dump();
