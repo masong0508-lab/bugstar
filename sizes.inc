@@ -155,7 +155,18 @@ static void sz_sort(void){                                        // the order: 
     // that page to the front. This length must not become zero on the list.
     int travel_digits=(int)kn[SZ_TRAVEL];
     kn[SZ_TRAVEL]=0; kl[SZ_TRAVEL]=0;
-    for(int i=1;i<NSIZE;i++){ u16 t=sz_ord[i]; int j=i; while(j>0 && (kn[sz_ord[j-1]]>kn[t] || (kn[sz_ord[j-1]]==kn[t] && kl[sz_ord[j-1]]>kl[t]))){ sz_ord[j]=sz_ord[j-1]; j--; } sz_ord[j]=t; }
+    // Shell sort instead of insertion sort: with 1,600+ PC facts, scanning
+    // every preceding page to insert each item was quadratic. This uses
+    // the same in-place u16 index array, no heap, and far fewer comparisons.
+    // Original source ID breaks exact ties, preserving the old stable order.
+    for(int gap=NSIZE/2;gap>0;gap/=2) for(int i=gap;i<NSIZE;i++){
+        u16 t=sz_ord[i]; int j=i;
+        while(j>=gap){ u16 prev=sz_ord[j-gap];
+            if(kn[prev]<kn[t] || (kn[prev]==kn[t] && (kl[prev]<kl[t] || (kl[prev]==kl[t] && prev<=t)))) break;
+            sz_ord[j]=prev; j-=gap;
+        }
+        sz_ord[j]=t;
+    }
     // The on-screen list uses SORTED row indices, not source-page IDs.
     // Populate its cached lengths AFTER sorting to keep labels accurate.
     // This replaces an expensive full recalculation each time SELECT opens
