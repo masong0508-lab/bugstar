@@ -1152,9 +1152,12 @@ static void kframe(volatile u16 *pg, int x, int y, int w, int h, int c){        
 static inline int kart_bend_cue(int d0, int d1, int d2, s32 speed){
     if(speed<K_VBASE/6) return 0;
     int a1=((d1-d0+512)&1023)-512, a2=((d2-d1+512)&1023)-512;
-    int a=(a2<0?-a2:a2)>(a1<0?-a1:a1)?a2:a1;
+    int near=a1<0?-a1:a1, far=a2<0?-a2:a2;
+    // An S-bend must point toward the FIRST corner, never the sharper
+    // opposite corner farther ahead. Still advise braking for either.
+    int a=near>45?a1:a2;
     if(a>=-45 && a<=45) return 0;
-    int sharp=(a>120 || a<-120) && speed>K_VBASE/2;
+    int sharp=(near>120 || far>150) && speed>K_VBASE/2;
     return (a>0?1:-1)*(sharp?2:1);
 }
 static void kart_hud(volatile u16 *pg){
