@@ -7,6 +7,11 @@ on:
       - 'town.inc'
       - 'pc/pc_kartnat*.inc'
       - 'pc/pc_snative.inc'
+      - 'pc/pc_multiplayer.inc'
+      - 'pc/platform/pc_net*.c'
+      - 'pc/platform/pc_net.h'
+      - 'pc/build.sh'
+      - 'tests/pc_multiplayer_net_test.c'
       - 'net/**'
       - 'tests/multiplayer_protocol_test.c'
       - 'tests/space_native_projection_audit.py'
@@ -23,6 +28,11 @@ on:
       - 'town.inc'
       - 'pc/pc_kartnat*.inc'
       - 'pc/pc_snative.inc'
+      - 'pc/pc_multiplayer.inc'
+      - 'pc/platform/pc_net*.c'
+      - 'pc/platform/pc_net.h'
+      - 'pc/build.sh'
+      - 'tests/pc_multiplayer_net_test.c'
       - 'net/**'
       - 'tests/multiplayer_protocol_test.c'
       - 'tests/space_native_projection_audit.py'
@@ -48,6 +58,8 @@ jobs:
         run: python3 tests/space_station_depth_audit.py
       - name: Compile and fuzz the multiplayer packet contract
         run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/multiplayer_protocol_test.c net/session.c -o /tmp/bugstar-nettest && /tmp/bugstar-nettest
+      - name: Validate two actual UDP sockets and independently moving LAN ships
+        run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/pc_multiplayer_net_test.c pc/platform/pc_net.c net/session.c -o /tmp/bugstar-lan && timeout 15 /tmp/bugstar-lan
       - name: Build PC game without SDL dependency
         run: cd pc && PC_SDL=0 ./build.sh
       - name: Fuzz kart races across random tracks
