@@ -55,8 +55,14 @@ if cmp -s out/lan_live/host.png out/lan_live/client.png; then
 fi
 if [[ "$MODE" == coop ]]; then
     for side in host client; do
-        grep -q 'lan: raider' "out/lan_live/${side}.log" || {
-            echo "LAN smoke: ${side} did not receive the shared-raider state"
+        grep -Eq 'lan: raider HP 0 wins [1-9][0-9]* phase 2 hits [1-9][0-9]*/[1-9][0-9]*' "out/lan_live/${side}.log" || {
+            echo "LAN smoke: ${side} has not proven BOTH pilots hit and defeated the SAME raider"
+            tail -70 "out/lan_live/${side}.log"; exit 1; }
+    done
+else
+    for side in host client; do
+        grep -Eq 'lan: duel .* wins=[1-9]' "out/lan_live/${side}.log" || {
+            echo "LAN smoke: ${side} did not see the actual synchronized sparring victory"
             tail -70 "out/lan_live/${side}.log"; exit 1; }
     done
 fi
