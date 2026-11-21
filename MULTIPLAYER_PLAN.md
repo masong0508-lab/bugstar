@@ -77,8 +77,13 @@ a stretch target, not a first release requirement.
 
 ### M0 — contract, budgets, instrumentation (NOW; not multiplayer yet)
 - Land this document and the GBC companion `MULTIPLAYER_PLAN.md`.
-- Define `net/session.h` wire/event types with a platform-independent
-  replay fixture **before** attaching sockets or serial registers.
+- **Started (codec, not transport):** `net/session.h` and `net/session.c`
+  implement the allocation-free v1 packet layout with eight message types,
+  explicit lengths, a CRC8 and version checks. `tests/multiplayer_protocol_test.c`
+  exercises 80,000 round trips and malformed data (PC/Android CI).
+  This does not connect players or make a multiplayer mode playable.
+- **Still to do:** add a deterministic replay fixture, bounded ACK/retransmit
+  session state and per-platform transport adapters before connecting game AI.
 - Record existing single-player state transitions: `space_frame()`,
   station docking, `ship_hit()`, firing, pickups, kart results and
   save/version ownership. Identify multiplayer-safe event hooks.
@@ -151,7 +156,10 @@ a stretch target, not a first release requirement.
 
 - **Already built:** both the GBA path and PC/Android native path clip
   3D station/asteroid wireframe edges at the camera near plane.
-- **Current pass:** station port ring projects 160 world units forward from
+- **Current pass:** native station/asteroid animations now use the same
+  gameplay tick as their original GBA-scale geometry; render frames can vary
+  independently without apparent object rotation drift. Station port ring
+  projects 160 world units forward from
   its hull; at close distance four rotated struts connect that ring to
   its face. No meshes, texture loads, additional framebuffers, new
   procedural arrays or extra work for far-away stations.
