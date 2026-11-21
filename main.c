@@ -408,6 +408,7 @@ static void ore_reset(void); static void ore_save(void); static void ore_load(vo
 #include "ore.inc"
 static void title_restore(volatile u16 *pg, int y0, int y1); static void twinkle(volatile u16 *pg, int t);
 static int beast_stage;
+static int dawn_free;    // true ending completion, restored from SaveB's stage bit
 #include "ui.inc"
 #include "hangar.inc"
 static int launch_flag=0, zone_card=0, arrow_ship=0, base_card=0;
