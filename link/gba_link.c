@@ -83,7 +83,12 @@ int gbal_receive(GbaLinkState *s,const GbaLinkPacket *p,uint16_t now){
         }
         return 1;
     }
-    if(!s->connected)return 0;
+    /* The peer that received our HELLO may immediately answer with READY
+     * rather than another HELLO. A valid same-seed reply also completes
+     * handshake; rejecting it left the clock master waiting forever. */
+    if(!s->connected){
+        s->connected=1;s->peer_ready=0;s->peer_active=0;
+    }
     s->peer_ready=(uint8_t)((p->flags&GBAL_FLAG_READY)!=0u);
     s->peer_active=(uint8_t)((p->flags&GBAL_FLAG_ACTIVE)!=0u);
     if(gbal_can_play(s))s->reconnecting=0;
