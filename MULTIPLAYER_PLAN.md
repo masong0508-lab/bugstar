@@ -39,7 +39,7 @@ a stretch target, not a first release requirement.
 
 ## Shared session rules (engine independent of transport)
 
-- **Shared semantic protocol, version 2.** `HELLO` (protocol/build/content
+- **Shared semantic protocol, version 3.** `HELLO` (protocol/build/content
   hash, port capability mask, world seed), `READY`, `INPUT` (tick/sequence/
   held keys), `STATE` (tick/positions/orientation/hull/shield/HP), `EVENT`
   (hit/kill/pickup/dock/result), `ACK`, `PING`, `BYE`. Avoid sending
@@ -78,7 +78,7 @@ a stretch target, not a first release requirement.
 ### M0 — contract, budgets, instrumentation (codec implemented; PC UDP prototype exists)
 - Land this document and the GBC companion `MULTIPLAYER_PLAN.md`.
 - **Started (codec, not transport):** `net/session.h` and `net/session.c`
-  implement the allocation-free v2 packet layout with nine message types, including RAIDER, 
+  implement the allocation-free v3 packet layout with nine message types, including RAIDER, 
   explicit lengths, a CRC8 and version checks. `tests/multiplayer_protocol_test.c`
   exercises 90,000 round trips and malformed data (PC/Android CI).
   This does not connect players or make a multiplayer mode playable.
@@ -110,7 +110,7 @@ saves. `pc/build.sh` includes this only for PC/Android builds, **not**
 GBA; desktop opt in via `--lan-host` or `--lan-join IPv4`.
 `tests/pc_multiplayer_net_test.c` tests localhost host/guest shots,
 both victories, world checks and reconnect. The unit test covers misses
-and respawn. The new `--lan-coop` flag on **both** PC peers enables one shared moving, armed 3D raider, separate from sparring: `pc/platform/pc_coop.c` owns its short-range 3D patrol and HP, the host validates both ships' A-laser shots, then broadcasts a `RAIDER` packet with target coordinates, health, hit counts and shared victories. `pc/pc_multiplayer.inc` draws the raider in its 3D world and displays a joint HP/win HUD. After five combined hits, it is defeated and respawns after 150 ticks. The raider can shoot back at the two pilots with predictable, dodgeable beams; each pilot has separate encounter-only shields, and the host also synchronizes a shared loss if both reach zero HP. The campaign hull, loot and saves are unchanged. The dedicated unit and UDP tests cover both pilots hitting, mode mismatches and a shared round result. Android's host/join UI is **not** built, and LAN has no Internet-facing authentication. Campaign enemy AI, cooperative mission scripting, docking, progression and cross-port cable support remain **unimplemented**.
+and respawn. The `--lan-coop` flag on **both** PC peers enables a three-wave, host-owned mission. Wave 1 has a moving 3D raider. Waves 2 and 3 add an independently hittable, moving and armed flank drone. Both enemies must be defeated to progress; three clears show a shared mission-complete result. These outcomes are session-only and never alter campaign saves. The first verified build contained the one-raider encounter; the expanded v3 mission is awaiting fresh CI. The previous implementation:  `pc/platform/pc_coop.c` owns its short-range 3D patrol and HP, the host validates both ships' A-laser shots, then broadcasts a `RAIDER` packet with target coordinates, health, hit counts and shared victories. `pc/pc_multiplayer.inc` draws the raider in its 3D world and displays a joint HP/win HUD. After five combined hits, it is defeated and respawns after 150 ticks. The raider can shoot back at the two pilots with predictable, dodgeable beams; each pilot has separate encounter-only shields, and the host also synchronizes a shared loss if both reach zero HP. The campaign hull, loot and saves are unchanged. The dedicated unit and UDP tests cover both pilots hitting, mode mismatches and a shared round result. Android's host/join UI is **not** built, and LAN has no Internet-facing authentication. Campaign enemy AI, cooperative mission scripting, docking, progression and cross-port cable support remain **unimplemented**.
 The actual two-PC-game test passed in sparring **and** co-op mode: both machines reached the same star in 3D, exchanged fire and rendered distinct viewpoints; both logged three joint raider defeats with contributions from P1 and P2. The PC headless tests, native kart window test, GBA ROM, Windows build and Android APK also passed at `e4aca761a2`. Newer appearance, replay checking, stale-pose rejection and fixed-tick work requires a fresh green CI run. Android-on-device host/join and handheld cable multiplayer remain future work.
 [Developer instructions](pc/LAN_SPACE_TEST.md).
 - First vertical slice: connect, leave, move in independent 3D space,
