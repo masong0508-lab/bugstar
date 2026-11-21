@@ -6,6 +6,9 @@
 #include "pc_net.h"
 static void pc_mp_space_draw(volatile unsigned short *pg){
 #ifdef PC_SDL
+    /* Zero multiplayer work in ordinary single-player flight; never overlay
+     * a network sparring ship during cinematic or beast-interior scenes. */
+    if(!pc_mp_role() || in_lair || FILM) return;
     PcNetShip mine,other;
     mine.x=shx; mine.y=shy; mine.z=shz;
     mine.world=sys_id(cur_sys); mine.yaw=(unsigned short)(yaw&1023);
