@@ -62,6 +62,7 @@ int pc_mp_peer_ready(void);
 int pc_mp_match_ready(void);
 int pc_mp_reconnecting(void);
 int pc_mp_coop_complete(void);
+void pc_mp_note_clear_draw(void); /* called only after the victory overlay is actually drawn */
 int pc_mp_coop_mode(void);
 int pc_mp_raider(uint32_t frame,PcCoop *out);
 void pc_mp_fired(void);
