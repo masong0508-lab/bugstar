@@ -1,7 +1,11 @@
-// PC test-only real dungeon/warden capture setup. Included at the END of
-// pc/gen/main.c by build.sh. The retail GBA/Android source never includes it.
+// PC test-only real dungeon/warden capture. The PC build includes this
+// function in its generated game code. Android shares those generated
+// sources, but DPC_ANDROID compiles the hook to a no-op. GBA is untouched.
 // BUGSTAR_BOSS_CAPTURE="zone:phase", 0..5 and 0/1. The normal game is
-// completely unchanged when this variable is absent.
+// unchanged when this variable is absent.
+#ifdef DPC_ANDROID
+static void pc_boss_capture_setup(void){}
+#else
 static void pc_boss_capture_setup(void){
     const char *env=getenv("BUGSTAR_BOSS_CAPTURE");
     if(!env || !*env) return;
@@ -62,3 +66,5 @@ static void pc_boss_capture_setup(void){
         z,phase,count,b->hp,b->maxhp,(int)(px_>>16),(int)(py_>>16),
         (int)(b->x>>16),(int)(b->y>>16));
 }
+
+#endif // DPC_ANDROID
