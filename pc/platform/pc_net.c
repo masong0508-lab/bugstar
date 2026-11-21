@@ -157,9 +157,10 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
     if(!s || !s->role || !local) return;
     if(s->world!=local->world){
         s->world=local->world;
-        s->connected=0;s->received=0;s->event_seen=0;
+        s->connected=0;s->received=0;s->event_seen=0;s->state_seen=0;
         s->last_hello=0;s->last_send=0;
         s->host_seen_shots=s->local_shots;s->have_guest_fire=0;
+        s->last_host_shot_tick=0;s->last_guest_shot_tick=0;
         pc_duel_reset(&s->duel);
         if(s->role==1){s->peer_addr=0;s->peer_port=0;}
     }
@@ -184,14 +185,21 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
             if(!s->connected){
                 s->peer_addr=peer.sin_addr.s_addr;s->peer_port=peer.sin_port;
                 s->connected=1;s->last_rx=frame;s->received=0;
+                s->event_seen=0;s->state_seen=0;
                 s->host_seen_shots=s->local_shots;s->have_guest_fire=0;
+                s->last_host_shot_tick=0;s->last_guest_shot_tick=0;
                 pc_duel_reset(&s->duel);
             }
             net_ready(s,frame);
         }else if(p.type==BSNET_READY && s->role==2 && p.payload[0]==1){
-            if(!s->connected){pc_duel_reset(&s->duel);s->event_seen=0;}
+            if(!s->connected){
+                pc_duel_reset(&s->duel);s->event_seen=0;s->state_seen=0;
+            }
             s->connected=1;s->last_rx=frame;
         }else if(p.type==BSNET_STATE && s->connected){
+            if(s->state_seen && (int16_t)(p.tick-s->last_state_tick)<=0)
+                continue; /* reordered or duplicated unreliable UDP state */
+            s->last_state_tick=p.tick;s->state_seen=1;
             net_decode(&s->other,&p,s->world);
             s->last_rx=frame;s->received=1;
         }else if(p.type==BSNET_INPUT && s->role==1 && s->connected){
@@ -211,16 +219,19 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                 }
             }
         }else if(p.type==BSNET_EVENT && s->role==2 && s->connected){
+            if(s->event_seen && (int16_t)(p.tick-s->last_event_tick)<=0)
+                continue; /* old scoreboard must not revive a destroyed ship */
+            s->last_event_tick=p.tick;
             s->duel.host_hp=p.payload[0];s->duel.guest_hp=p.payload[1];
             s->duel.host_wins=p.payload[2];s->duel.guest_wins=p.payload[3];
             s->event_seen=1;s->last_rx=frame;
         }else if(p.type==BSNET_BYE && s->connected){
-            s->connected=0;s->received=0;
+            s->connected=0;s->received=0;s->event_seen=0;s->state_seen=0;
             if(s->role==1){s->peer_addr=0;s->peer_port=0;}
         }
     }
     if(s->connected && frame-s->last_rx>NET_TIMEOUT_TICKS){
-        s->connected=0;s->received=0;s->event_seen=0;
+        s->connected=0;s->received=0;s->event_seen=0;s->state_seen=0;
         if(s->role==1){s->peer_addr=0;s->peer_port=0;}
     }
     if(!s->connected && s->role==2 && (!s->last_hello ||
