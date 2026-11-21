@@ -1142,7 +1142,8 @@ OVK static void kmm_path(volatile u16 *pg, int ox, int oy, int n){ int lx=-1, ly
 // Up to six bright samples show the direction of the next segment on
 // the tiny minimap. cnt>12 guarantees one wrap subtraction is sufficient.
 static inline int kart_map_ahead_idx(int pi, int step, int cnt){
-    int i=(pi>>1)+step; return i>=cnt?i-cnt:i;
+    int i=pi>>1; if(i>=cnt) i-=cnt; // odd-size tracks can end at index cnt
+    i+=step; return i>=cnt?i-cnt:i;
 }
 static void kart_minimap(volatile u16 *pg){
     int ox=194+(40-kmm_w)/2, oy=20+(40-kmm_h)/2;
@@ -1156,7 +1157,10 @@ static void kart_minimap(volatile u16 *pg){
             if(x>=194 && x<=234 && y>=21 && y<=61) pix(pg,x,y,step<=6?C_GOLD:C_CYAN);
         }
     }
-    if(kr_mode==1) for(int r=nrc-1;r>=0;r--){ int i=(rc[r].pi>>1); if(i>=KMM_N) i=KMM_N-1; int x=ox+kmmx[i], y=oy+kmmy[i], c = r==0 ? C_GOLD : (rc[r].place==1 ? C_RED : C_CYAN);
+    if(kr_mode==1) for(int r=nrc-1;r>=0;r--){ int cnt=(knp>>1)<KMM_N?(knp>>1):KMM_N;
+        if(cnt<1) continue; int i=rc[r].pi>>1;
+        if(i>=cnt) i=cnt-1; if(i<0) i=0; // never read an unbuilt last point on odd tracks
+        int x=ox+kmmx[i], y=oy+kmmy[i], c = r==0 ? C_GOLD : (rc[r].place==1 ? C_RED : C_CYAN);
         if(r==0){ rect(pg,x-1,y-1,3,3,c);
             // A bright nose shows which direction you are actually facing
             // (the track map's X/Y axes match the kart's world axes).
