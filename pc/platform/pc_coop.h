@@ -13,6 +13,7 @@ typedef struct PcCoop {
     uint8_t host_hp,guest_hp,beam,beam_target;
     uint8_t charge,charge_target; /* a short, visible lock-on before firing */
     uint8_t wing_hp,wave,completed; /* waves 0..2, then session-only clear */
+    uint8_t charge_source,beam_source; /* 0 raider, 1 flank drone */
 } PcCoop;
 void pc_coop_reset(PcCoop *c);
 void pc_coop_step(PcCoop *c,uint32_t frame,const struct PcNetShip *host,
