@@ -306,7 +306,7 @@ static void menu_build(Item *it, int *n){
         it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; if(g_touch) it[k++]=(Item){0,"TOUCH PAD",0,0,0,0,0,A_TOUCH}; it[k++]=(Item){0,"MULTIPLAYER LAN",0,0,0,0,0,A_LAN}; it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
         it[k++]=(Item){0,"HOW TO PLAY",0,0,0,0,0,A_HELP}; it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
     case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,3,1,v3names,0}; it[k++]=(Item){1,"QUALITY",&C.quality,0,3,1,qnames,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
-        it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
+        it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FRAME RATE",&C.show_fps,0,1,1,onoff,0};
         it[k++]=(Item){1,"PAUSE WHEN UNFOCUSED",&C.pause_unfocus,0,1,1,onoff,0}; it[k++]=(Item){0,"WINDOW SIZE: NEXT",0,0,0,0,0,A_WINSIZE}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_ACCESS: it[k++]=(Item){1,"MENU TEXT SIZE",&C.textsize,0,2,1,tsnames,0}; it[k++]=(Item){1,"HIGH CONTRAST",&C.contrast,0,1,1,hcnames,0}; it[k++]=(Item){1,"MOUSE PLAYS THE GAME",&C.mouse,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_AUDIO: it[k++]=(Item){2,"VOLUME",&C.volume,0,100,5,0,0}; it[k++]=(Item){1,"MUTE",&C.mute,0,1,1,onoff,0}; it[k++]=(Item){1,"RUMBLE (GAMEPAD)",&C.rumble,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
@@ -315,13 +315,13 @@ static void menu_build(Item *it, int *n){
     case P_TOUCH: it[k++]=(Item){1,"PAD BUTTONS",&g_t6,0,1,1,t6names,0}; it[k++]=(Item){2,"OPACITY",&g_talpha,10,100,5,0,0}; it[k++]=(Item){1,"HAPTICS",&g_thaptic,0,1,1,onoff,0};
         it[k++]=(Item){0,"MOVE AND RESIZE BUTTONS",0,0,0,0,0,A_TOUCHEDIT}; it[k++]=(Item){0,"BUTTON LEGEND",0,0,0,0,0,A_TLEGEND}; it[k++]=(Item){0,"RESET LAYOUT",0,0,0,0,0,A_TRESET}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_LAN:
-        it[k++]=(Item){1,"MATCH TYPE",&lan_ui_coop,0,1,1,lan_modes,0};
-        it[k++]=(Item){1,"UDP PORT",&lan_ui_port,0,2,1,lan_ports,0};
-        it[k++]=(Item){0,"JOIN ADDRESS",0,0,0,0,0,A_LAN_IP};
-        it[k++]=(Item){0,"HOST MATCH",0,0,0,0,0,A_LAN_HOST};
-        it[k++]=(Item){0,"JOIN MATCH",0,0,0,0,0,A_LAN_JOIN};
-        it[k++]=(Item){0,pc_mp_local_ready()?"CANCEL READY":"CONFIRM READY",0,0,0,0,0,A_LAN_READY};
-        it[k++]=(Item){0,"LEAVE MATCH",0,0,0,0,0,A_LAN_LEAVE};
+        it[k++]=(Item){1,"GAME MODE",&lan_ui_coop,0,1,1,lan_modes,0};
+        it[k++]=(Item){1,"NETWORK PORT",&lan_ui_port,0,2,1,lan_ports,0};
+        it[k++]=(Item){0,"HOST IP ADDRESS",0,0,0,0,0,A_LAN_IP};
+        it[k++]=(Item){0,"CREATE GAME",0,0,0,0,0,A_LAN_HOST};
+        it[k++]=(Item){0,"JOIN FRIEND",0,0,0,0,0,A_LAN_JOIN};
+        it[k++]=(Item){0,pc_mp_local_ready()?"NOT READY ANYMORE":"I AM READY",0,0,0,0,0,A_LAN_READY};
+        it[k++]=(Item){0,"DISCONNECT",0,0,0,0,0,A_LAN_LEAVE};
         it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK};break;
     case P_ABOUT: case P_HELP: case P_TLEGEND: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     }
@@ -342,7 +342,7 @@ static void menu_do(int act){
     switch(act){
     case A_RESUME: menu_open=0; cfg_save(); break;
     case A_LAN: menu_page=P_LAN;menu_sel=0;break;
-    case A_LAN_IP: lan_ip_edit=1;SDL_StartTextInput();say_toast("TYPE IPv4 ADDRESS - ENTER TO FINISH");break;
+    case A_LAN_IP: lan_ip_edit=1;SDL_StartTextInput();say_toast("TYPE FRIEND'S HOST IP - ENTER TO FINISH");break;
     case A_LAN_HOST: case A_LAN_JOIN:{
         if(pc_mp_role()){say_toast("LEAVE CURRENT LAN MATCH FIRST");break;}
         if(act==A_LAN_JOIN && !lan_valid_ip(lan_ui_ip)){
@@ -351,17 +351,17 @@ static void menu_do(int act){
         int ok=act==A_LAN_HOST?pc_mp_host((uint16_t)lan_port_num()):
                pc_mp_join(lan_ui_ip,(uint16_t)lan_port_num());
         if(ok){pc_mp_set_coop(lan_ui_coop);
-            say_toast(act==A_LAN_HOST?"HOST OPEN - CONFIRM READY IN LOBBY":"JOINING - CONFIRM READY IN LOBBY");
+            say_toast(act==A_LAN_HOST?"GAME CREATED - SELECT I AM READY":"CONNECTING TO FRIEND - SELECT I AM READY");
         }else say_toast("LAN SOCKET FAILED - CHECK ADDRESS/PORT");
         break;
     }
     case A_LAN_READY:
-        if(!pc_mp_role()){say_toast("HOST OR JOIN A LAN MATCH FIRST");break;}
+        if(!pc_mp_role()){say_toast("CREATE OR JOIN A GAME FIRST");break;}
         pc_mp_set_ready(!pc_mp_local_ready());
-        say_toast(pc_mp_local_ready()?"READY CONFIRMED - WAITING FOR PEER":
-                                 "READY CANCELLED - COMBAT PAUSED");
+        say_toast(pc_mp_local_ready()?"YOU ARE READY - WAIT FOR FRIEND":
+                                 "YOU ARE NOT READY - MISSION PAUSED");
         break;
-    case A_LAN_LEAVE: pc_mp_close();say_toast("LAN LEFT - SOLO GAME UNCHANGED");break;
+    case A_LAN_LEAVE: pc_mp_close();say_toast("DISCONNECTED - SINGLE PLAYER RESUMED");break;
     case A_VIDEO: menu_page=P_VIDEO; menu_sel=0; break; case A_AUDIO: menu_page=P_AUDIO; menu_sel=0; break; case A_ACCESS: menu_page=P_ACCESS; menu_sel=0; break;
     case A_CONTROLS: menu_page=P_CONTROLS; menu_sel=0; break; case A_PAD: menu_page=P_PAD; menu_sel=0; break; case A_ABOUT: menu_page=P_ABOUT; menu_sel=0; break; case A_HELP: menu_page=P_HELP; menu_sel=0; break;
     case A_MAINBACK: if(menu_page==P_TLEGEND){ menu_page=P_TOUCH; menu_sel=0; } else { menu_page=P_MAIN; menu_sel=0; } cfg_save(); break;
@@ -418,19 +418,23 @@ static void menu_draw(void){
     if(menu_page==P_PAD){ text_at(x0+4*gs_,y0+ph-lh-gs_,"ENTER THEN PRESS A BUTTON ON THE PAD",0x8890C8); }
     if(menu_page==P_LAN){
         char msg[90];int role=pc_mp_role();
-        snprintf(msg,sizeof msg,"IP %s%s",lan_ui_ip,lan_ip_edit?"  [EDIT]":"");
+        snprintf(msg,sizeof msg,"FRIEND'S HOST IP: %s%s",lan_ui_ip,lan_ip_edit?"  [EDIT]":"");
         text_at(x0+4*gs_,y0+ph-4*lh,msg,0xFFD23C);
-        snprintf(msg,sizeof msg,"%s %s  UDP %u",role==1?"HOST":role==2?"JOIN":"OFFLINE",
-                 pc_mp_match_ready()?"LIVE":pc_mp_reconnecting()?"RECONNECT":
-                 pc_mp_connected()?"LINKED":role?"WAITING":"",lan_port_num());
+        snprintf(msg,sizeof msg,"%s  %s  PORT %u",
+                 role==1?"YOU ARE HOST":role==2?"YOU JOINED":"NOT CONNECTED",
+                 pc_mp_reconnecting()?"RECONNECTING":
+                 pc_mp_both_confirmed()?"BOTH READY":
+                 pc_mp_connected()?"FRIEND CONNECTED":
+                 role?"WAITING FOR FRIEND":"",lan_port_num());
         text_at(x0+4*gs_,y0+ph-3*lh,msg,0xA0FFB0);
-        snprintf(msg,sizeof msg,"YOU %s   PEER %s - %s",
-                 pc_mp_local_ready()?"READY":"WAIT",pc_mp_peer_ready()?"READY":"WAIT",
-                 pc_mp_both_confirmed()?"RETURN TO FLIGHT":"CONFIRM READY");
+        snprintf(msg,sizeof msg,"YOU: %s   FRIEND: %s",
+                 pc_mp_local_ready()?"READY":"NOT READY",
+                 pc_mp_peer_ready()?"READY":"NOT READY");
         text_at(x0+4*gs_,y0+ph-2*lh,msg,0xCBD5FF);
         text_at(x0+4*gs_,y0+ph-lh,
-                role && !pc_mp_space_ready()?"ENTER 3D FLIGHT BEFORE MATCHING":
-                "TRUSTED LAN ONLY - DO NOT PORT-FORWARD",0xE8D890);
+                role && !pc_mp_space_ready()?"ENTER SPACE FLIGHT ON BOTH DEVICES":
+                pc_mp_both_confirmed()?"BOTH READY - CLOSE MENU TO PLAY":
+                "FRIEND MUST JOIN AND CONFIRM READY",0xE8D890);
     }
 }
 static void menu_key(SDL_Keycode k, SDL_Scancode sc){
@@ -489,7 +493,7 @@ static void present_game(int with_overlay){
     SDL_RenderCopy(ren,tex,NULL,&dst);
     gs_=dh_/180; if(gs_<2) gs_=2; if(gs_>10) gs_=10;
     if(with_overlay){
-        if(C.show_fps){ char b[56]; static const char *const qn[]={"","LOW","MEDIUM","HIGH"}; char qb[24]=""; if(pc_q_auto()) snprintf(qb,sizeof qb,"  AUTO %s",qn[pc_q_cur()&3]); snprintf(b,sizeof b,"%.0f FPS  %dX%d%s",fps_show,W,H,qb); rect_fill(gs_,gs_,text_w(b)+2*gs_,8*gs_,0,160); text_at(2*gs_,2*gs_,b,0x60FF80); }
+        if(C.show_fps){ char b[56]; static const char *const qn[]={"","LOW","MEDIUM","HIGH"}; char qb[24]=""; if(pc_q_auto()) snprintf(qb,sizeof qb,"  AUTO %s",qn[pc_q_cur()&3]); snprintf(b,sizeof b,"FRAME RATE %.0f/s  %dX%d%s",fps_show,W,H,qb); rect_fill(gs_,gs_,text_w(b)+2*gs_,8*gs_,0,160); text_at(2*gs_,2*gs_,b,0x60FF80); }
         if(toast[0] && SDL_GetTicks64()<toast_until){ int w=text_w(toast)+6*gs_; rect_fill((dw_-w)/2,dh_-12*gs_,w,9*gs_,0,170); text_at((dw_-w)/2+3*gs_,dh_-12*gs_+gs_*3/2,toast,0xFFFFFF); }
         if(menu_open) menu_draw();
         touch_draw();
