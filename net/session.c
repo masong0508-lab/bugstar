@@ -10,7 +10,7 @@ static int bsnet_len(uint8_t type) {
     case BSNET_ACK: return 0;
     case BSNET_PING: return 2;
     case BSNET_BYE: return 0;
-    case BSNET_RAIDER: return 16;
+    case BSNET_RAIDER: return 24;
     default: return -1;
     }
 }
