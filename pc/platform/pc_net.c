@@ -557,6 +557,8 @@ void pc_mp_frame(uint32_t frame){
 void pc_mp_lobby_pump(void){
     if(!g_active)return;
     uint8_t was_connected=g_peer.connected;
+    if(g_pause_ticks==0u && getenv("BUGSTAR_LAN_TRACE"))
+        fprintf(stderr,"lan: lobby entered role %u\n",(unsigned)g_peer.role);
     pcnet_set_active(&g_peer,0);
     /* Network handshakes continue at the menu refresh rate while actual
      * world physics/frame counters stay frozen. No extra buffers or threads. */
