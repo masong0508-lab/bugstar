@@ -2,7 +2,7 @@
 # Compare native space rendering with and without column caching. Both use
 # the actual game 3D view (BUGSTAR_VT=space), not a synthetic bitmap.
 # No speed threshold: timing on shared CI workers is noisy; image equality
-# and a real 120-frame timing report are the hard correctness requirements.
+# and at least one real 120-frame timing report are the hard correctness requirements.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 GAME="${1:-./bugstar_pc}"
@@ -10,12 +10,12 @@ mkdir -p out/native_space
 run(){
     local name="$1" cached="$2" threads="$3"
     rm -f "out/native_space/${name}.sav" out/native_space/"${name}"_*.ppm
-    env PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_THREADS="$threads" PC_SN_BENCH=1 \
+    env PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_SHIPS=1 PC_THREADS="$threads" PC_SN_BENCH=1 \
         BUGSTAR_SN_XCACHE="$cached" BUGSTAR_SIDE=0 \
         BUGSTAR_VT_AT=100 BUGSTAR_VT=space,1,150,0,0 \
         timeout -k 3 240 "$GAME" --headless --script tests/vt_idle.txt \
             --out "out/native_space/${name}" --sav "out/native_space/${name}.sav" \
-            --frames 3150 > "out/native_space/${name}.log" 2>&1
+            --frames 3900 > "out/native_space/${name}.log" 2>&1
     if ! grep -q 'space-native bench 960x640:' "out/native_space/${name}.log"; then
         echo "native space: ${name} did not exercise the native 3D renderer" >&2
         tail -35 "out/native_space/${name}.log" >&2
