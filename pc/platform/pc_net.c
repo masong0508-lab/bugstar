@@ -10,6 +10,7 @@
 # include <winsock2.h>
 # include <ws2tcpip.h>
 typedef SOCKET NetSock;
+typedef int NetAddrLen; /* WinSock APIs take int* lengths, not POSIX socklen_t* */
 # define NET_INVALID INVALID_SOCKET
 # define net_close_socket closesocket
 #else
@@ -20,6 +21,7 @@ typedef SOCKET NetSock;
 # include <unistd.h>
 # include <fcntl.h>
 typedef int NetSock;
+typedef socklen_t NetAddrLen;
 # define NET_INVALID (-1)
 # define net_close_socket close
 #endif
@@ -57,7 +59,7 @@ static int net_open(PcNetSession *s, int host, const char *ip, uint16_t port){
     a.sin_port=htons(host?port:0);
     a.sin_addr.s_addr=htonl(INADDR_ANY);
     if(bind(fd,(struct sockaddr*)&a,(int)sizeof a)<0){ net_free(s); return 0; }
-    { socklen_t n=(socklen_t)sizeof a;
+    { NetAddrLen n=(NetAddrLen)sizeof a;
       if(getsockname(fd,(struct sockaddr*)&a,&n)<0){ net_free(s); return 0; }
       s->local_port=ntohs(a.sin_port); }
     if(!host){
@@ -142,7 +144,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
     for(int i=0;i<12;i++){
         uint8_t buffer[BSNET_MAX_FRAME+1];
         struct sockaddr_in peer;
-        socklen_t n=(socklen_t)sizeof peer;
+        NetAddrLen n=(NetAddrLen)sizeof peer;
         int count=(int)recvfrom(net_fd(s),(char*)buffer,sizeof buffer,0,
                                 (struct sockaddr*)&peer,&n);
         BsNetPacket p;
