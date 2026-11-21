@@ -136,6 +136,7 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
         double R=c->r+0.5, cxp=c->cx+0.5;
         int x0=(int)((cxp-R-1)*sx), x1=(int)((cxp+R+1)*sx)+1;
         if(x0<0) x0=0; if(x1>W) x1=W;
+        if(x1<=x0) continue;  // fully off-screen: neither the cache nor the row worker has work
         if(shadecache_on && (size_t)(x1-x0)*(size_t)(y1-y0)>=16384u){
             if(!sn_shade_tab) sn_shade_tab=malloc(128u*128u*sizeof(*sn_shade_tab));
             if(sn_shade_tab){
