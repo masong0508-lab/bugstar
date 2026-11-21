@@ -16,6 +16,10 @@ on:
       - '*.inc'
       - '*.h'
       - 'facts.bin'
+      - 'facts.py'
+      - 'facts_more.py'
+      - 'pc/facts/**'
+      - 'tests/facts_audit.py'
       - 'main.c'
       - '.github/workflows/android.yml'
   workflow_dispatch:
@@ -51,6 +55,9 @@ jobs:
 
       - name: Python deps for the generators
         run: python3 -m pip install numpy pillow
+
+      - name: Check GBA and expanded PC How Big Is It values
+        run: BUGSTAR_PC=1 python3 tests/facts_audit.py
 
       - name: Prepare the game sources (writes pc/gen/sources.txt + cflags.txt for jni/src/Android.mk)
         run: PC_ANDROID_PREP=1 bash pc/build.sh
