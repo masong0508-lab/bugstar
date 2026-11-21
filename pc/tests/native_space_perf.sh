@@ -71,12 +71,14 @@ for name in ("reference","baseline","full","optimized","single","legacy","adapti
 # scan, while the adaptive path uses fewer on at least one parallel job.
 def rows(name):
     txt=(Path("out/native_space")/(name+".log")).read_text()
-    return [(int(a),int(b),int(c),int(d)) for a,b,c,d in
-        re.findall(r"row workers: pool=([0-9]+) active=([0-9]+) jobs=([0-9]+) saved wakes=([0-9]+)",txt)]
+    return [(int(a),int(b),int(c),int(d),int(e),int(f)) for a,b,c,d,e,f in
+        re.findall(r"row workers: pool=([0-9]+) active=([0-9]+) jobs=([0-9]+) saved wakes=([0-9]+) full=([0-9]+) limited=([0-9]+)",txt)]
 old,new=rows("legacy"),rows("adaptive")
 assert old and new, "worker pool did not report scheduling evidence"
-assert any(pool==11 and active==11 for pool,active,jobs,saved in old), "no legacy all-worker dispatch"
-assert any(pool==11 and 0<active<11 for pool,active,jobs,saved in new), "no adaptive limited-worker dispatch"
-print("worker schedule: legacy all-worker and adaptive fewer-worker paths exercised; last saved wakes:",old[-1][3],new[-1][3])
+assert any(row[0]==11 and row[4]>0 for row in old), "legacy never dispatched the full worker pool"
+assert any(row[0]==11 and row[5]>0 for row in new), "adaptive never restricted a multi-worker job"
+assert new[-1][3]>old[-1][3], "adaptive scheduling did not reduce wakeups"
+print("worker schedule: full-pool legacy and limited-worker paths exercised; last saved wakes:",old[-1][3],new[-1][3],
+      "adaptive limited jobs:",new[-1][5])
 print("native space: all cached/uncached, shaded/unshaded, dirty/full and 1/4/12-thread pictures MATCH at 960x640")
 PY
