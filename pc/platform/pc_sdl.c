@@ -922,7 +922,7 @@ int plat_open(int argc, char **argv){
 #endif
     cfg_defaults(); { FILE *tf=fopen(g_cfgpath,"r"); if(tf) fclose(tf); else g_first_run=1; } cfg_load();
     int force_fs=-1; const char *drv=NULL;
-    int lan_host=0; const char *lan_join_ip=NULL; unsigned lan_port=33777;
+    int lan_host=0,lan_coop=0; const char *lan_join_ip=NULL; unsigned lan_port=33777;
     for(int i=1;i<argc;i++){
         if(!strcmp(argv[i],"--fullscreen")) force_fs=1; else if(!strcmp(argv[i],"--windowed")) force_fs=0;
         else if(!strcmp(argv[i],"--size")&&i+2<argc){ C.win_w=atoi(argv[i+1]); C.win_h=atoi(argv[i+2]); i+=2; g_size_arg=1; }
@@ -934,6 +934,7 @@ int plat_open(int argc, char **argv){
         else if(!strcmp(argv[i],"--wav")&&i+1<argc){ g_wav_path=argv[++i]; }
         else if(!strcmp(argv[i],"--fast")) g_fast=1;
         else if(!strcmp(argv[i],"--lan-host")) lan_host=1;
+        else if(!strcmp(argv[i],"--lan-coop")) lan_coop=1;
         else if(!strcmp(argv[i],"--lan-join")&&i+1<argc) lan_join_ip=argv[++i];
         else if(!strcmp(argv[i],"--lan-port")&&i+1<argc){ int p=atoi(argv[++i]); if(p>=1024 && p<=65535) lan_port=(unsigned)p; }
         else if(!strcmp(argv[i],"--touch")) g_touch=2;      // preview the on-screen touch pad in the PC window (it stays up, whatever keys are pressed)
@@ -983,9 +984,10 @@ int plat_open(int argc, char **argv){
     if(lan_host || lan_join_ip){
         if(lan_host && lan_join_ip) fprintf(stderr,"lan: specify host OR join, not both\n");
         else { int ok=lan_host ? pc_mp_host((uint16_t)lan_port) : pc_mp_join(lan_join_ip,(uint16_t)lan_port);
-            fprintf(stderr,"lan: %s %s port %u (%s); ship presence only, NO synced combat/saves\n",
-                    lan_host?"HOST":"JOIN",lan_host?"0.0.0.0":lan_join_ip,lan_port,ok?"ready":"FAILED");
-            if(ok) say_toast_ms("LAN SPACE TEST: PEER SHIP ONLY",5000);
+            if(ok)pc_mp_set_coop(lan_coop);
+            fprintf(stderr,"lan: %s %s port %u (%s); %s, campaign saves and rewards remain solo\n",
+                    lan_host?"HOST":"JOIN",lan_host?"0.0.0.0":lan_join_ip,lan_port,ok?"ready":"FAILED",lan_coop?"shared raider co-op":"space sparring");
+            if(ok) say_toast_ms(lan_coop?"LAN CO-OP: SHARED RAIDER":"LAN SPACE: TWO-PLAYER SPARRING",5000);
         }
     }
     atexit(wav_close);
