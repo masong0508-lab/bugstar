@@ -92,13 +92,34 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                    sy_>14 && sy_<100)
                     text(pg,sx+8,sy_-9,"RAIDER",ci,1);
             }
+            /* The second enemy flies its own flank path, not a HUD
+             * duplicate. Reuse the same 3D vertices and perspective at
+             * three-quarter scale, with no textures or per-frame malloc. */
+            if(raider.wing_hp && raider.phase==1){
+                s32 wing[12*3];
+                for(int k=0;k<12;k++){
+                    wing[k*3]=raider.wing_x+rm[k][0]*3/4;
+                    wing[k*3+1]=raider.wing_y+rm[k][1]*3/4;
+                    wing[k*3+2]=raider.wing_z+rm[k][2]*3/4;
+                }
+                wire(pg,wing,12,re,24,49);
+                if(pc_sn.w && pc_sn.msk)so_wire(wing,12,re,24,49);
+                int wx,wy;s32 wrange;
+                if(sproj(raider.wing_x,raider.wing_y,raider.wing_z,
+                         &wx,&wy,&wrange) && wrange>100 &&
+                   wrange<10000 && wx>20 && wx<204 && wy>10 && wy<100)
+                    text(pg,wx+8,wy-10,"DRONE",49,1);
+            }
             /* Draw an actual pre-shot lock line so the marked player
              * can dodge laterally before the host resolves the strike. */
             if(raider.charge && raider.phase==1){
                 PcNetShip *marked=(pc_mp_role()==(raider.charge_target?2:1))
                                   ? &mine : &other;
                 int ex,ey,tx,ty;
-                if(sproj(raider.x,raider.y,raider.z,&ex,&ey,0) &&
+                s32 ax=raider.charge_source?raider.wing_x:raider.x;
+                s32 ay=raider.charge_source?raider.wing_y:raider.y;
+                s32 az=raider.charge_source?raider.wing_z:raider.z;
+                if(sproj(ax,ay,az,&ex,&ey,0) &&
                    sproj(marked->x,marked->y,marked->z,&tx,&ty,0)){
                     int ci=(raider.charge&2)?49:53;
                     line2(pg,ex,ey,tx,ty,ci);
@@ -113,7 +134,10 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                 PcNetShip *aimed=(pc_mp_role()==(raider.beam_target?2:1))
                                  ? &mine : &other;
                 int ex,ey,tx,ty;
-                if(sproj(raider.x,raider.y,raider.z,&ex,&ey,0) &&
+                s32 ax=raider.beam_source?raider.wing_x:raider.x;
+                s32 ay=raider.beam_source?raider.wing_y:raider.y;
+                s32 az=raider.beam_source?raider.wing_z:raider.z;
+                if(sproj(ax,ay,az,&ex,&ey,0) &&
                    sproj(aimed->x,aimed->y,aimed->z,&tx,&ty,0)){
                     line2(pg,ex,ey,tx,ty,53);
                     if(pc_sn.w && pc_sn.msk)so_line(ex,ey,tx,ty,53);
@@ -128,19 +152,24 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
             if(raider.hp)rect(pg,42,111,(int)raider.hp*79/100,4,
                              raider.hp<=20?49:54);
             char hud[72];
-            snprintf(hud,sizeof hud,"WIN %u  LOSE %u",
-                     (unsigned)raider.wins,(unsigned)raider.losses);
+            snprintf(hud,sizeof hud,"WAVE %u/3  CLEAR %u",
+                     (unsigned)raider.wave+1,(unsigned)raider.completed);
             text(pg,133,109,hud,50,1);
             snprintf(hud,sizeof hud,"P1 SH %u   P2 SH %u",
                      (unsigned)raider.host_hp,(unsigned)raider.guest_hp);
             text(pg,7,118,hud,50,1);
-            snprintf(hud,sizeof hud,"HITS %u/%u",
+            snprintf(hud,sizeof hud,"DRONE %u H:%u/%u",
+                     (unsigned)raider.wing_hp,
                      (unsigned)raider.host_hits,(unsigned)raider.guest_hits);
             text(pg,158,118,hud,50,1);
             if(raider.phase==2)
-                text(pg,75,94,"RAIDER DOWN!",54,2);
+                text(pg,75,91,"WAVE CLEAR!",54,2);
             if(raider.phase==3)
-                text(pg,75,94,"RAID FAILED",53,2);
+                text(pg,75,91,"MISSION FAILED",53,2);
+            if(raider.phase==4){
+                text(pg,38,68,"MISSION COMPLETE",54,2);
+                text(pg,50,91,"BOTH PILOTS WIN!",50,1);
+            }
         }else text(pg,4,112,"CO-OP: SYNCING RAIDER",50,1);
     }else {
         uint8_t hh,gh,wh,wg;
