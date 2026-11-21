@@ -54,7 +54,7 @@ static void ncat(char*d,int v){ char tmp[32]; snprintf(tmp,sizeof tmp,"%d",v); s
 static void say(const char*s){ snprintf(last_msg,sizeof last_msg,"%s",s); }
 static void sfx(int i){ (void)i; }
 static void hud_now(void){}
-static void gear_name(const Gear*g,char*b){ snprintf(b,40,"ITEM %u",g->it); }
+static void gear_name(const Gear*g,char*b){ snprintf(b,40,"ITEM %d",g->it); }
 """
 tests = r"""
 #define CHECK(x) do { if(!(x)){fprintf(stderr,"quest C test failed at line %d: %s\n",__LINE__,#x); return 1;} } while(0)
