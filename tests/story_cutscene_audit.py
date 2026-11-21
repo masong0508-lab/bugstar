@@ -13,6 +13,7 @@ ui = (root / "ui.inc").read_text()
 game = (root / "game.inc").read_text()
 main = (root / "main.c").read_text()
 space = (root / "space.inc").read_text()
+town = (root / "town.inc").read_text()
 
 
 def section(text, begin, end):
@@ -141,6 +142,24 @@ require(space, 'story_card("VICTORY",t,4)', "partial-victory ending must remain 
 for phrase in ("FIVE TECH HIVES", "WARP OUT WHEN NEEDED", "HOLD B TO THRUST",
                "HOLD L TOO FOR EXTRA BURN"):
     require(space, phrase, "boss encounter lacks real gameplay guidance: " + phrase)
+
+
+# At least one in five neutral NPCs should acknowledge the journey, while
+# love/hate moods retain the original distinctive mood-specific speeches.
+rumors = literals(section(town, "static const char *const story_rumor[4][3]={",
+                          "static const char *const bolt_quip[12]"))
+assert len(rumors) == 12, "expected three grounded rumors for each of four story phases"
+assert all(0 < len(line) <= 54 for line in rumors), "town dialog exceeds native card width"
+for phrase in ("data_cores>=8?3:ant_king?2:bugs_freed>0?1:0",
+               "wd.mood!=MOOD_LOVE && wd.mood!=MOOD_HATE",
+               "ln[0]=story_rumor[stage][(li/5)%3]",
+               "(u32)(rumor_seed%NTALK)"):
+    if phrase == "(u32)(rumor_seed%NTALK)":
+        continue
+    require(town, phrase, "missing story-aware local dialogue: " + phrase)
+require(town, "int li=(int)(rumor_seed%NTALK)", "town dialogue index must use unsigned modulo")
+require(town, "wd.mood==MOOD_LOVE ? love_ln[li%12]", "love-mood speech overridden by rumor")
+require(town, "wd.mood==MOOD_HATE ? hate_ln[li%12]", "hate-mood speech overridden by rumor")
 
 print("Story/cutscene audit: 8 memories, 8 intertitles, conditional rescue voices,")
 print("character reactions, reveal gating, scene order and action hints: PASS")
