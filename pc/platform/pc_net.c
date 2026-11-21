@@ -386,6 +386,8 @@ void pc_mp_frame(uint32_t frame){
     if(g_active && g_submitted){
         uint8_t before=g_peer.connected;
         uint8_t hp0=g_peer.duel.host_hp,hp1=g_peer.duel.guest_hp;
+        uint8_t raider_hp=g_peer.coop_enemy.hp;
+        uint8_t raider_wins=g_peer.coop_enemy.wins;
         pcnet_step(&g_peer,frame,&g_local);
         if(getenv("BUGSTAR_LAN_TRACE")){
             if(before!=g_peer.connected)
@@ -393,7 +395,16 @@ void pc_mp_frame(uint32_t frame){
                         g_peer.connected?"CONNECTED":"DISCONNECTED",
                         (unsigned)frame,(unsigned)g_peer.world,
                         (unsigned)g_peer.role);
-            if(g_peer.connected &&
+            if(g_peer.connected && g_peer.coop && g_peer.coop_enemy.phase &&
+               (raider_hp!=g_peer.coop_enemy.hp ||
+                raider_wins!=g_peer.coop_enemy.wins || frame%300u==0u))
+                fprintf(stderr,"lan: raider HP %u wins %u phase %u hits %u/%u frame %u\n",
+                        (unsigned)g_peer.coop_enemy.hp,
+                        (unsigned)g_peer.coop_enemy.wins,
+                        (unsigned)g_peer.coop_enemy.phase,
+                        (unsigned)g_peer.coop_enemy.host_hits,
+                        (unsigned)g_peer.coop_enemy.guest_hits,(unsigned)frame);
+            if(g_peer.connected && !g_peer.coop &&
                (hp0!=g_peer.duel.host_hp || hp1!=g_peer.duel.guest_hp))
                 fprintf(stderr,"lan: duel P1=%u P2=%u wins=%u/%u frame %u\n",
                         (unsigned)g_peer.duel.host_hp,
