@@ -79,6 +79,10 @@ if [[ "$MODE" == coop ]]; then
         test -s "out/lan_live/${side}-clear.png" || {
             echo "LAN smoke: ${side} did not capture its rendered victory";exit 1; }
     done
+    # Pixel evidence, not just a logged phase-4 transition, catches 3D
+    # partner sprites obscuring the MISSION COMPLETE title again.
+    python3 tests/victory_pixel_assert.py \
+        out/lan_live/host-clear.png out/lan_live/client-clear.png
 else
     for side in host client; do
         grep -Eq 'lan: duel .* wins=[1-9]' "out/lan_live/${side}.log" || {
