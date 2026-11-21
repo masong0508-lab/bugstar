@@ -32,8 +32,10 @@ jobs:
       - name: Two live SDL instances exchange Ready in paused lobby and resume
         run: bash pc/tests/lan_lobby_live.sh ./bugstar_pc
       - name: Full three-wave live graphical UDP mission
+        if: ${{ !cancelled() }}
         run: bash pc/tests/lan_live.sh ./bugstar_pc coop
       - name: Sparring mode regression
+        if: ${{ !cancelled() }}
         run: bash pc/tests/lan_live.sh ./bugstar_pc spar
       - name: Upload live per-peer screenshots and diagnostic logs
         uses: actions/upload-artifact@v4
