@@ -613,7 +613,7 @@ static void lair_leave(void){ int f=beast_fight; in_lair=0; music(3); { u32 t10[
     // The first true finale is permanent, even if the monster's repeatable
     // combat challenges remain. Never tell a player to return for a fight
     // after Bolt has already brought Dawn home.
-    space_say(dawn_free ? "DAWN IS FREE. THE GALAXY IS OURS TO EXPLORE" :
+    space_say(dawn_free ? "DAWN IS FREE. THE GALAXY IS OPEN." :
               f<3 && beast_stage>=f ? "IT GOT AWAY... FOR NOW" :
               "WARPED OUT. COME BACK STRONGER");
     do_save(); }
