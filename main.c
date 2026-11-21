@@ -509,10 +509,11 @@ static void kill_mon(DObj *o){
     if(o->kind>=0 && o->kind<11) st_kills[o->kind]++;
     if(o->kind==K_CORE){                                                              // the outpost dies: Bolt gets a memory back, the beast loses a feeding node
         o->alive=0; sfx(9); debris(o->x,o->y,0x8000,16,3,0,0); burst(o->x,o->y,0x8000,12,2); if(opt_shake) shake_t=8;
-        base_mask |= 1u<<(cur_sys&31); outposts_done++; if(data_cores<8) data_cores++;
+        int new_memory=data_cores<8;
+        base_mask |= 1u<<(cur_sys&31); outposts_done++; if(new_memory) data_cores++;
         scrap+=8; earn(150+outposts_done*60); gain_xp(40+dlv()*8);
         b3_max = b3_max*96/100; if(b3_hp>b3_max) b3_hp=b3_max; if(beast_stage>=3){ beast_max=b3_max; if(beast_hp>beast_max) beast_hp=beast_max; }
-        base_card=1; escape_flag=1; say("THE CORE SHATTERS! BOLT: I'LL BEAM US OUT"); hud_now(); return; }
+        base_card=new_memory?1:2; escape_flag=1; say("THE CORE SHATTERS! BOLT: I'LL BEAM US OUT"); hud_now(); return; }
     int xpv = (4+dlv()*2+depth_no) * (o->kind==K_BEETLE?2 : o->kind==K_WASP?3 : boss?10 : 1) / (o->kind==K_WASP?2:1);
     if(o->kind==K_SCORP||o->kind==K_GHOST) xpv=xpv*2; else if(o->kind==K_TOAD) xpv=xpv*3/2; else if(o->kind==K_SLIME) xpv = o->sub ? xpv/2+1 : xpv*3/2; else if(o->kind==K_GOLEM) xpv=xpv*4; else if(o->kind==K_DRONE) xpv=xpv*2; else if(o->kind==K_SHROOM) xpv=xpv*3/2; else if(o->kind==K_CRAB) xpv=xpv*3; else if(o->kind==K_WISP) xpv=xpv*2;
     if(nm_of(o->kind)) xpv=xpv*nm_of(o->kind)->xpm/8;
@@ -1667,9 +1668,18 @@ static void run_game(void){
                    if(base_mode){ base_mode=0; portal_depth=0; for(int k=0;k<bag_n;k++) if(bag[k].it==IT_KEY){ drop_at(k); break; } }
                    restock(); save_game();
                    planet_enter(); arrow_ship = zone_cleared && !endless; show_msg(mb); oam_flush(); music(0); fade(0);
-                   if(base_card){ base_card=0; int k=data_cores-1; if(k<0) k=0; if(k>7) k=7; bolt_card(VISPG,bolt_mem[k],4);
-                       if(data_cores==1 || data_cores==4 || data_cores>=8)
-                           bolt_memory_reaction(VISPG,data_cores);
+                   if(base_card){ int new_memory=base_card==1; base_card=0;
+                       if(new_memory){ int k=data_cores-1; if(k<0) k=0; if(k>7) k=7;
+                           bolt_card(VISPG,bolt_mem[k],4);
+                           if(data_cores==1 || data_cores==4 || data_cores>=8)
+                               bolt_memory_reaction(VISPG,data_cores);
+                       } else {
+                           static const char *const t[4]={"THE OUTPOST'S ENGINE FALLS SILENT.",
+                               "BOLT'S EIGHT MEMORIES ARE ALREADY WHOLE.",
+                               "ANOTHER FEEDING LINE TO THE BEAST IS GONE.",
+                               "THE SHIP BEAMS YOU BACK TO THE SURFACE."};
+                           bolt_card(VISPG,t,4);
+                       }
                        planet_hud(); }
                    if(zone_card){ int z=zone_card-1; zone_card=0;
                        if(z==5){ bolt_story(VISPG,6); fade(1); credits(); planet_enter(); fade(0); }
