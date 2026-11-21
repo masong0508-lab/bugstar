@@ -264,7 +264,8 @@ static void bolt_talk(volatile u16 *pg){
       if(fuel*4<fuel_max() && w<2){ scpy(c1,"\"FUEL IS AT "); ncat(c1,fuel*100/fuel_max()); scat(c1," PERCENT. CAREFUL.\""); t[n++]=c1; w++; }
       if(hull<40 && w<2){ scpy(c2,"\"THE HULL IS AT "); ncat(c2,hull); scat(c2," PERCENT. I AM WORRIED.\""); t[n++]=c2; w++; }
       if(cargo_n()>=cargo_cap+ship_hold_bonus() && w<2){ t[n++]="\"THE HOLD IS FULL. SELL LOOT.\""; w++; } }
-    if(!endless && !zone_cleared){ t[n++]="\"THE DOOR IS THE WAY DOWN.\""; t[n++]="\"THE ARROW KNOWS. FOLLOW IT.\""; t[n++]="\"THE BOSS SITS AT THE BOTTOM.\""; }
+    if(dawn_free){ t[n++]="\"I REMEMBER THE WAY HOME NOW.\""; t[n++]="\"YOU CAN GO ANYWHERE. I AM WITH YOU.\""; }
+    else if(!endless && !zone_cleared){ t[n++]="\"THE DOOR IS THE WAY DOWN.\""; t[n++]="\"THE ARROW KNOWS. FOLLOW IT.\""; t[n++]="\"THE BOSS SITS AT THE BOTTOM.\""; }
     else if(!endless && zone<5){ scpy(l1,"\"THIS WORLD IS FREE. NEXT IS "); scat(l1,tint_name[zone+1]); scat(l1,".\""); t[n++]=l1; t[n++]="\"PICK AUTOPILOT AND I'LL FLY US.\""; if(zone>=1) t[n++]="\"OR GO DOWN AGAIN. IT'S HARDER. IT PAYS.\""; }
     else if(!ant_king){ t[n++]="\"THE ANT KING WAITS BELOW.\""; t[n++]="\"YOUR FRIENDS ARE THERE. ALL OF THEM.\""; t[n++]="\"I'M SCARED. LET'S GO ANYWAY.\""; }
     else if(beast_stage>=3 && data_cores<8){ scpy(l1,"\"THE OUTPOSTS HOLD MY MEMORY. "); ncat(l1,data_cores); scat(l1," OF 8.\""); t[n++]=l1; t[n++]="\"RED MARKS ON THE MAP. HATCHES ON THE GROUND.\""; t[n++]="\"BRING ME BACK TO MYSELF.\""; }
