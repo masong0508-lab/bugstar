@@ -72,6 +72,7 @@ static int net_open(PcNetSession *s, int host, const char *ip, uint16_t port){
         s->peer_port=htons(port);
     }
     s->role=(uint8_t)(host?1:2);
+    pc_duel_reset(&s->duel);
     return 1;
 }
 int pcnet_host(PcNetSession *s,uint16_t port){ return net_open(s,1,0,port); }
@@ -122,6 +123,23 @@ static void net_state(PcNetSession *s,const PcNetShip *local,uint32_t frame){
     p.payload[7]=(uint8_t)(int8_t)pitch;
     net_send(s,&p);
 }
+/* Three bytes of input: cumulative fired-laser counter, held buttons, reserved.
+ * Counter survives a lost datagram; the host validates aim and cooldown.
+ */
+static void net_input(PcNetSession *s,uint32_t frame){
+    BsNetPacket p;
+    memset(&p,0,sizeof p);p.type=BSNET_INPUT;p.sequence=s->seq++;
+    p.tick=(uint16_t)frame;p.length=3;p.payload[0]=s->local_shots;
+    net_send(s,&p);
+}
+static void net_score(PcNetSession *s,uint32_t frame){
+    BsNetPacket p;
+    memset(&p,0,sizeof p);p.type=BSNET_EVENT;p.sequence=s->seq++;
+    p.tick=(uint16_t)frame;p.length=4;
+    p.payload[0]=s->duel.host_hp;p.payload[1]=s->duel.guest_hp;
+    p.payload[2]=s->duel.host_wins;p.payload[3]=s->duel.guest_wins;
+    net_send(s,&p);
+}
 static void net_decode(PcNetShip *v,const BsNetPacket *p,uint32_t world){
     int16_t q[3];
     for(int i=0;i<3;i++)q[i]=(int16_t)((uint16_t)p->payload[2*i]|
@@ -137,8 +155,10 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
     if(!s || !s->role || !local) return;
     if(s->world!=local->world){
         s->world=local->world;
-        s->connected=0;s->received=0;
+        s->connected=0;s->received=0;s->event_seen=0;
         s->last_hello=0;s->last_send=0;
+        s->host_seen_shots=s->local_shots;s->have_guest_fire=0;
+        pc_duel_reset(&s->duel);
         if(s->role==1){s->peer_addr=0;s->peer_port=0;}
     }
     for(int i=0;i<12;i++){
@@ -159,21 +179,46 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
             uint32_t their_world=0;
             for(int k=0;k<4;k++)their_world|=(uint32_t)p.payload[k]<<(8*k);
             if(their_world!=s->world || p.payload[4]!=1)continue;
-            s->peer_addr=peer.sin_addr.s_addr;s->peer_port=peer.sin_port;
-            s->connected=1;s->last_rx=frame;s->received=0;
+            if(!s->connected){
+                s->peer_addr=peer.sin_addr.s_addr;s->peer_port=peer.sin_port;
+                s->connected=1;s->last_rx=frame;s->received=0;
+                s->host_seen_shots=s->local_shots;s->have_guest_fire=0;
+                pc_duel_reset(&s->duel);
+            }
             net_ready(s,frame);
         }else if(p.type==BSNET_READY && s->role==2 && p.payload[0]==1){
+            if(!s->connected){pc_duel_reset(&s->duel);s->event_seen=0;}
             s->connected=1;s->last_rx=frame;
         }else if(p.type==BSNET_STATE && s->connected){
             net_decode(&s->other,&p,s->world);
             s->last_rx=frame;s->received=1;
+        }else if(p.type==BSNET_INPUT && s->role==1 && s->connected){
+            uint8_t shots=p.payload[0];
+            if(!s->have_guest_fire){
+                s->guest_seen_shots=shots;s->have_guest_fire=1;
+            }else{
+                uint8_t delta=(uint8_t)(shots-s->guest_seen_shots);
+                if(delta>0 && delta<128u){
+                    s->guest_seen_shots=shots;
+                    if(s->received &&
+                       (!s->last_guest_shot_tick ||
+                        frame-s->last_guest_shot_tick>=6u)){
+                        s->last_guest_shot_tick=frame;
+                        (void)pc_duel_fire(&s->duel,1,&s->other,local,frame);
+                    }
+                }
+            }
+        }else if(p.type==BSNET_EVENT && s->role==2 && s->connected){
+            s->duel.host_hp=p.payload[0];s->duel.guest_hp=p.payload[1];
+            s->duel.host_wins=p.payload[2];s->duel.guest_wins=p.payload[3];
+            s->event_seen=1;s->last_rx=frame;
         }else if(p.type==BSNET_BYE && s->connected){
             s->connected=0;s->received=0;
             if(s->role==1){s->peer_addr=0;s->peer_port=0;}
         }
     }
     if(s->connected && frame-s->last_rx>NET_TIMEOUT_TICKS){
-        s->connected=0;s->received=0;
+        s->connected=0;s->received=0;s->event_seen=0;
         if(s->role==1){s->peer_addr=0;s->peer_port=0;}
     }
     if(!s->connected && s->role==2 && (!s->last_hello ||
@@ -181,10 +226,34 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
         net_hello(s,s->world,frame);
         s->last_hello=frame;
     }
+    if(s->role==1 && s->connected && s->received){
+        pc_duel_step(&s->duel,frame);
+        if(s->local_shots!=s->host_seen_shots){
+            s->host_seen_shots=s->local_shots;
+            if(!s->last_host_shot_tick ||
+               frame-s->last_host_shot_tick>=6u){
+                s->last_host_shot_tick=frame;
+                (void)pc_duel_fire(&s->duel,0,local,&s->other,frame);
+            }
+        }
+    }else if(s->role==1){ s->host_seen_shots=s->local_shots; }
     if(s->connected && (!s->last_send || frame-s->last_send>=3u)){
         net_state(s,local,frame);
+        if(s->role==1) net_score(s,frame);
+        else net_input(s,frame);
         s->last_send=frame;
     }
+}
+void pcnet_fire(PcNetSession *s){ if(s && s->role) s->local_shots++; }
+int pcnet_duel(const PcNetSession *s,uint8_t *host_hp,uint8_t *guest_hp,
+               uint8_t *host_wins,uint8_t *guest_wins){
+    if(!s || !s->connected || !s->received ||
+       (s->role==2 && !s->event_seen)) return 0;
+    if(host_hp)*host_hp=s->duel.host_hp;
+    if(guest_hp)*guest_hp=s->duel.guest_hp;
+    if(host_wins)*host_wins=s->duel.host_wins;
+    if(guest_wins)*guest_wins=s->duel.guest_wins;
+    return 1;
 }
 int pcnet_remote(const PcNetSession *s,uint32_t frame,PcNetShip *out){
     if(!s || !out || !s->connected || !s->received ||
@@ -224,6 +293,10 @@ void pc_mp_frame(uint32_t frame){
 }
 int pc_mp_remote(uint32_t frame,PcNetShip *out){
     return g_active && pcnet_remote(&g_peer,frame,out);
+}
+void pc_mp_fired(void){ if(g_active)pcnet_fire(&g_peer); }
+int pc_mp_duel(uint8_t *host_hp,uint8_t *guest_hp,uint8_t *host_wins,uint8_t *guest_wins){
+    return g_active && pcnet_duel(&g_peer,host_hp,guest_hp,host_wins,guest_wins);
 }
 void pc_mp_close(void){
     if(g_active)pcnet_close(&g_peer);
