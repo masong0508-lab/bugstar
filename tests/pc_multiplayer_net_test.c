@@ -119,9 +119,27 @@ int main(void){
       assert(hh==0 && gh==100 && hw==1 && gw==1);
       assert(pcnet_duel(&client,&hh,&gh,&hw,&gw));
       assert(hh==0 && gh==100 && hw==1 && gw==1);}
+    /* A fresh scoreboard alone cannot make an old ship position usable.
+     * Pause the host's STATE stream for >90 ticks, then deliver a real
+     * correctly checksummed EVENT from that host port. */
+    {
+        BsNetPacket score={0};uint8_t wire[BSNET_MAX_FRAME];
+        struct sockaddr_in dst={0};
+        dst.sin_family=AF_INET;dst.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
+        dst.sin_port=htons(client.local_port);
+        score.type=BSNET_EVENT;score.tick=900;score.length=4;
+        score.payload[0]=100;score.payload[1]=100;
+        score.payload[2]=1;score.payload[3]=1;
+        int n=bsnet_pack(&score,wire,sizeof wire);assert(n==12);
+        assert(sendto((int)host.sock,wire,(size_t)n,0,
+                      (struct sockaddr*)&dst,sizeof dst)==n);
+        pcnet_step(&client,1000,&bc);
+        assert(client.connected && client.last_rx==1000);
+        assert(!pcnet_remote(&client,1000,&got));
+    }
     pcnet_close(&client);
-    pcnet_step(&host,821,&ah);
-    assert(!host.connected && !pcnet_remote(&host,821,&got));
+    pcnet_step(&host,1001,&ah);
+    assert(!host.connected && !pcnet_remote(&host,1001,&got));
     pcnet_close(&host);
     puts("LAN combat: 2 UDP sockets, world match, rejoin, host/client hits, authoritative HP, both victories PASS");
     return 0;
