@@ -43,6 +43,7 @@ on:
       - 'pc/tests/speed_guard.sh'
       - 'pc/tests/native_space_perf.sh'
       - 'pc/tests/kart.sh'
+      - 'pc/tests/kart_fuzz.inc'
       - '.github/workflows/pc-kart-worldgen.yml'
   pull_request:
     paths:
@@ -87,6 +88,7 @@ on:
       - 'pc/tests/speed_guard.sh'
       - 'pc/tests/native_space_perf.sh'
       - 'pc/tests/kart.sh'
+      - 'pc/tests/kart_fuzz.inc'
       - '.github/workflows/pc-kart-worldgen.yml'
   workflow_dispatch:
 
