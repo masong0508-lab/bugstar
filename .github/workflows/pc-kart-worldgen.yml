@@ -7,6 +7,8 @@ on:
       - 'town.inc'
       - 'pc/pc_kartnat*.inc'
       - 'pc/pc_hw.c'
+      - 'pc/platform/pc_sdl.c'
+      - 'pc/tests/speed_guard.sh'
       - 'pc/tests/kart.sh'
       - '.github/workflows/pc-kart-worldgen.yml'
   pull_request:
@@ -71,4 +73,23 @@ jobs:
           path: |
             pc/out/kart-native-smoke.png
             pc/out/kart-native-smoke.log
+          if-no-files-found: ignore
+
+  pc-speed-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2 and build requirements
+        run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential libsdl2-2.0-0
+      - name: Build normal PC gameplay with SDL
+        run: cd pc && PC_OUT=bugstar_pc_rate ./build.sh
+      - name: Verify real GBA-speed gameplay, high refresh and stall recovery
+        run: cd pc && bash tests/speed_guard.sh ./bugstar_pc_rate
+      - name: Upload timing diagnostics if a test fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pc-speed-guard-logs
+          path: pc/out/speed_guard/
           if-no-files-found: ignore
