@@ -26,7 +26,7 @@ require(main, "!q_done && quest_home() && q_type==Q_HUNT",
         "hunt kills must count only on the posting world")
 require(main, "o->champ==2 && q_type==Q_CHAMP && depth_no==q_floor",
         "champion target must be on the contract floor")
-require(main, "boss && !mboss && q_type==Q_BOSS",
+require(main, "boss && !mboss && nbo==0 && q_type==Q_BOSS",
         "bonus labyrinth bosses must not replace the campaign contract boss")
 require(main, "!q_done && quest_home() && depth_no==q_floor",
         "boss contract must check the correct floor")
