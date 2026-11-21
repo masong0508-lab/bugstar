@@ -69,7 +69,7 @@ static const char *const bolt_mem[8][4]={
 // One short, skippable cinematic chapter slate at each main story beat.
 // Reuses Bolt's sprite and the existing mode-4 page; no new image assets,
 // framebuffer, heap allocation or cost in ordinary gameplay frames.
-static void bolt_chapter_open(volatile u16 *pg, int beat){
+static int bolt_chapter_open(volatile u16 *pg, int beat){
     static const char *const title[8]={"THE GARDEN","THE QUEEN'S MAP","A DREAM OF WATER",
         "THE HUNGRY MACHINE","THE HUMMING OUTPOST","THE SONG OF HOME",
         "THE KING'S LAST WORD","THE LAST VOICE"};
@@ -78,7 +78,7 @@ static void bolt_chapter_open(volatile u16 *pg, int beat){
         "SOMETHING IN THE DARK KNOWS BOLT.","THE MACHINES ARE CALLING HIS NAME.",
         "THE BEES REMEMBER WHAT HE CANNOT.","THE KING'S SECRET OUTLIVES HIM.",
         "A SHIP REMEMBERS WHO CARRIED IT."};
-    int k=beat==10?7:beat; if(k<0 || k>7) return;
+    int k=beat==10?7:beat; if(k<0 || k>7) return 0;
     int sh=shd_begin(); if(sh) pg=VISPG;
     rect(pg,0,0,240,160,0);
     // A quiet fixed star field, with a horizon and the same sprite that
@@ -100,12 +100,12 @@ static void bolt_chapter_open(volatile u16 *pg, int beat){
     }
     text(pg,120-textlen(title[k])*4,10,title[k],C_GOLD,2);
     stext(pg,120-textlen(sub[k])*2,132,sub[k],C_WHITE);
-    stext(pg,83,148,"A: NEXT  START: SKIP",C_GREY);
+    stext(pg,83,148,"A: STORY  START: SKIP ALL",C_GREY);
     oam_hide_all(); set_affine(31,128,0,0,128);
     shadow_oam[0].a0=(58&255)|(1<<8)|(1<<9);  // 4bpp Bolt tile, affine + double-size
     shadow_oam[0].a1=(104&511)|(31<<9)|(1<<14);
     shadow_oam[0].a2=T_BOLT; oam_flush();
-    wait_release();
+    wait_release(); int skip=0;
     for(int t=0;t<90;t++){
         if((t&15)==0){ shadow_oam[0].a0=((58+((t>>4)&1))&255)|(1<<8)|(1<<9);
             oam_flush(); }                                    // two-pixel breathing beat
@@ -113,9 +113,10 @@ static void bolt_chapter_open(volatile u16 *pg, int beat){
         if((t&7)==0) for(int i=0;i<6;i++){ int x=4+((i*73+beat*11)%232), y=18+((i*37+beat*7)%92);
             pix(pg,x,y,(t&8)?C_WHITE:C_DGREY); }
         vsync(); read_keys();
-        if(HIT(K_A)||HIT(K_START)) break;
+        if(HIT(K_START)){ skip=1; break; }
+        if(HIT(K_A)) break;
     }
-    oam_hide_all(); oam_flush(); wait_release(); shd_end(sh);
+    oam_hide_all(); oam_flush(); wait_release(); shd_end(sh); return skip;
 }
 static void bolt_card_x(volatile u16 *pg, const char *const *ln, int n, int small){        // a card with Bolt's little face (small: the face sits in the title band, for cards with long lines)
     oam_hide_all();
@@ -126,7 +127,7 @@ static void bolt_card_x(volatile u16 *pg, const char *const *ln, int n, int smal
 }
 static void bolt_card(volatile u16 *pg, const char *const *ln, int n){ bolt_card_x(pg,ln,n,0); }
 static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, and the final memory
-    bolt_chapter_open(pg,beat);
+    if(bolt_chapter_open(pg,beat)) return; // START skips this whole scene without touching story flags
     switch(beat){
     case 0: { static const char *const t[6]={"A TIN CAN ROLLS OUT OF THE GRASS.",
         "TWO LIGHTS BLINK IN A DENTED FACE.","\"I CAN'T REMEMBER WHERE I CAME FROM.",
