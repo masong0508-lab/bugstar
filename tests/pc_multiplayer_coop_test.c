@@ -40,6 +40,23 @@ int main(void){
     assert(enemy.phase==3 && enemy.losses==1);
     assert(enemy.host_hp==0 && enemy.guest_hp==0);
     assert(enemy.wins==0);
+    /* New combat affordance: a laser target is announced first; lateral
+     * dodging during the countdown must prevent damage to both pilots. */
+    pc_coop_reset(&enemy);host.x=0;host.y=0;
+    guest.x=192;guest.y=0;
+    unsigned lock=0, fire=0;
+    for(unsigned t=1;t<180;t++){
+        pc_coop_step(&enemy,t,&host,&guest);
+        if(enemy.charge && !lock){
+            lock=t;
+            if(enemy.charge_target)guest.x=1500;
+            else host.x=1500;
+        }
+        if(lock && !enemy.charge && t>lock){fire=t;break;}
+    }
+    assert(lock && fire && fire>lock+5);
+    assert(enemy.host_hp==100 && enemy.guest_hp==100);
+    assert(enemy.phase==1 && enemy.wins==0 && enemy.losses==0);
     puts("LAN co-op raider: real 3D aim, both players hit, victory, respawn and no saved campaign state PASS");
     return 0;
 }
