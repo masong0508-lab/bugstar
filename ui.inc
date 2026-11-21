@@ -299,8 +299,8 @@ static const char *const story_boss_aftermath[6]={
 };
 static const char *const story_boss_reward[6]={
     "SUPPLY CACHE: FOOD RESTORED.",
-    "COOLANT CACHE: FUEL TOPPED UP.",
-    "RATIONS RECOVERED: +150 GOLD.",
+    "COOLANT CACHE: UP TO 20 FUEL.",
+    "STOLEN GOLD RECOVERED.",
     "REPAIR BENCH: HULL PATCHED.",
     "ENGINE PARTS RECOVERED: +24 SCRAP.",
     "PRISON INFIRMARY: HEALTH RESTORED."
