@@ -226,13 +226,13 @@ static void pc_so_native(volatile unsigned short *pg){
     for(int i=0;i<20;i++){ s32 *d=&dust[i*3]; double X,Y,X2,Y2; if(so_proj(d[0],d[1],d[2],&X,&Y)){
         if(speed>14 && so_proj(d[0]-((bf[0]*speed*4)>>14),d[1]-((bf[1]*speed*4)>>14),d[2]-((bf[2]*speed*4)>>14),&X2,&Y2)) so_line(X,Y,X2,Y2,56); else so_line(X,Y,X,Y,56); } }
     if(!in_lair){
-    { s32 v[12*3]; int a=vbl_count*3; s32 S=420, c_=cosx(a>>2), s_=sinx(a>>2);
+    { s32 v[12*3]; int a=frames*3; s32 S=420, c_=cosx(a>>2), s_=sinx(a>>2);
       static const s8 cube[8][3]={{-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}};
       for(int i=0;i<8;i++){ s32 x=cube[i][0]*S, z=cube[i][2]*S; v[i*3]=stx_+((x*c_-z*s_)>>14); v[i*3+1]=sty_+cube[i][1]*S; v[i*3+2]=stz_+((x*s_+z*c_)>>14); }
       static const s8 slot[4][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
       for(int i=0;i<4;i++){ s32 x=slot[i][0]*140, z=-S-160; v[(8+i)*3]=stx_+((x*c_-z*s_)>>14); v[(8+i)*3+1]=sty_+slot[i][1]*70; v[(8+i)*3+2]=stz_+((x*s_+z*c_)>>14); }
       static const u8 ce[]={0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7}; static const u8 se[]={8,9,9,10,10,11,11,8};
-      so_wire(v,12,ce,12,54); so_wire(v,12,se,4,(vbl_count&16)?55:56);
+      so_wire(v,12,ce,12,54); so_wire(v,12,se,4,(frames&16)?55:56);
       // The port ring is 160 units ahead of the hull, not painted flat on it.
       // Near the station, four perspective spokes reveal the actual dock depth.
       { s32 cx,cy,cz; if(cam3(stx_,sty_,stz_,&cx,&cy,&cz) && cz<8000){
@@ -241,7 +241,7 @@ static void pc_so_native(volatile unsigned short *pg){
         } } }
     for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue;
         static const s8 oc[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
-        s32 v[6*3]; int ang=(vbl_count*2+a->seed*4)&1023; s32 c=cosx(ang>>2), s_=sinx(ang>>2);
+        s32 v[6*3]; int ang=(frames*2+a->seed*4)&1023; s32 c=cosx(ang>>2), s_=sinx(ang>>2);
         for(int k=0;k<6;k++){ int rr=a->r*(10+((a->seed>>k)&3)*2)/14; s32 x=oc[k][0]*rr, y=oc[k][1]*rr*3/4, z=oc[k][2]*rr;
             v[k*3]=a->x+((x*c-z*s_)>>14); v[k*3+1]=a->y+y; v[k*3+2]=a->z+((x*s_+z*c)>>14); }
         static const u8 ae[]={0,2,0,3,0,4,0,5,1,2,1,3,1,4,1,5,2,4,2,5,3,4,3,5};
