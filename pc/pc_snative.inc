@@ -129,7 +129,7 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
     if(bench_on){
         bench_wall+=render_ms; bench_cpu+=render_cpu_ms;
         if(++bench_frames==120){
-            fprintf(stderr,"space-native bench %dx%d: avg wall %.3f ms cpu %.3f ms over %d frames\\n",
+            fprintf(stderr,"space-native bench %dx%d: avg wall %.3f ms cpu %.3f ms over %d frames\n",
                 W,H,bench_wall/bench_frames,bench_cpu/bench_frames,bench_frames);
             bench_wall=bench_cpu=0; bench_frames=0;
         }
