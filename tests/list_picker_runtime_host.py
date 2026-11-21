@@ -12,6 +12,9 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 source = (root / "ui.inc").read_text()
+kart = (root / "kart2.inc").read_text()
+assert "NKREC,ksv_row" in kart, "replacement menu must expose all 50 slots"
+assert "kmy_n,kmy_row" in kart, "saved-track menu must expose every entry"
 signature = "static int list_pick_(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help)"
 start = source.find(signature + "{")
 assert start >= 0, "actual list_pick_ function missing"
