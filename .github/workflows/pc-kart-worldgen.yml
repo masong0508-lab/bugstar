@@ -161,7 +161,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential libsdl2-2.0-0
       - name: Build normal native-space PC game
         run: cd pc && PC_OUT=bugstar_pc_space ./build.sh
-      - name: Verify 3D planet visuals with and without cached camera columns
+      - name: Benchmark per-body planet shading and verify exact multi-thread visuals
         run: cd pc && bash tests/native_space_perf.sh ./bugstar_pc_space
       - name: Upload native 3D space frame timing and image parity logs
         if: always()
