@@ -73,9 +73,39 @@ int main(void){
     assert(enemy.wave==1 && enemy.wing_hp==60 && enemy.completed==0);
     assert(enemy.wing_x-wing_host_x<=16 && enemy.wing_x-wing_host_x>=-16);
     assert(enemy.wing_z-wing_host_z<=16 && enemy.wing_z-wing_host_z>=-16);
-    pcnet_close(&client);pcnet_step(&host,421,&h);
-    assert(!pcnet_raider(&host,421,&enemy));
+    /* Complete waves two and three through TWO actual UDP sockets.
+     * The host moves to line up with the flank drone; the guest fires
+     * from its own independently reported position at the main raider.
+     * The guest must receive the same final mission-clear phase. */
+    for(unsigned t=420;t<800;t++){
+        h.x=((t<462) || (t>=664 && t<715))?900:0;
+        if(t==430||t==443||t==456||t==674||t==686||
+           t==698||t==710)pcnet_fire(&host); /* flank drone */
+        if(t==466||t==490||t==514||t==722||t==746||t==770)
+            pcnet_fire(&host); /* main raider */
+        if(t==478||t==502||t==734||t==758)
+            pcnet_fire(&client); /* guest's independent aim */
+        pcnet_step(&client,t,&g);
+        pcnet_step(&host,t,&h);
+        pcnet_step(&client,t,&g);
+    }
+    assert(pcnet_raider(&host,799,&enemy));
+    assert(enemy.phase==4 && enemy.completed==1 && enemy.wins==3);
+    assert(enemy.hp==0 && enemy.wing_hp==0 && enemy.wave==2);
+    assert(pcnet_raider(&client,799,&enemy));
+    assert(enemy.phase==4 && enemy.completed==1 && enemy.wins==3);
+    assert(enemy.hp==0 && enemy.wing_hp==0 && enemy.wave==2);
+    for(unsigned t=800;t<1100;t++){
+        pcnet_step(&client,t,&g);pcnet_step(&host,t,&h);
+        pcnet_step(&client,t,&g);
+    }
+    assert(pcnet_raider(&host,1099,&enemy));
+    assert(enemy.phase==1 && enemy.wave==0 && enemy.completed==1);
+    assert(pcnet_raider(&client,1099,&enemy));
+    assert(enemy.phase==1 && enemy.wave==0 && enemy.completed==1);
+    pcnet_close(&client);pcnet_step(&host,1101,&h);
+    assert(!pcnet_raider(&host,1101,&enemy));
     pcnet_close(&host);
-    puts("LAN co-op UDP: mode gate, joint damage, next-wave drone 3D pose/HP replication and respawn PASS");
+    puts("LAN co-op UDP: two pilots, two enemies, 3 mission waves, shared completion, replay PASS");
     return 0;
 }
