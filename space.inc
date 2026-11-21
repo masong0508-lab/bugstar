@@ -280,12 +280,12 @@ static void wire(volatile u16 *pg, const s32 *v, int nv, const u8 *e, int ne, in
         // of view is handled by the ordinary screen clipping, not here.
         if(!((az<=20 && bz>20) || (bz<=20 && az>20))) continue;
         s32 ix,iy;
-        if(az<=20){ ix=ax+(s32)(((long long)(bx-ax)*(24-az))/(bz-az));
-                    iy=ay+(s32)(((long long)(by-ay)*(24-az))/(bz-az)); }
-        else { ix=bx+(s32)(((long long)(ax-bx)*(24-bz))/(az-bz));
-               iy=by+(s32)(((long long)(ay-by)*(24-bz))/(az-bz)); }
-        s32 ex=120+(s32)(((long long)ix*FOCS)/24);
-        s32 ey=VCY-(s32)(((long long)iy*FOCS)/24);
+        if(az<=20){ ix=ax+(s32)(((long long)(bx-ax)*(21-az))/(bz-az));
+                    iy=ay+(s32)(((long long)(by-ay)*(21-az))/(bz-az)); }
+        else { ix=bx+(s32)(((long long)(ax-bx)*(21-bz))/(az-bz));
+               iy=by+(s32)(((long long)(ay-by)*(21-bz))/(az-bz)); }
+        s32 ex=120+(s32)(((long long)ix*FOCS)/21);
+        s32 ey=VCY-(s32)(((long long)iy*FOCS)/21);
         // line2 works with a 20,000px guard; discard impossible rays early.
         if(ex<-19000 || ex>19000 || ey<-19000 || ey>19000) continue;
         if(az<=20) line2(pg,(int)ex,(int)ey,sx[b],sy[b],c);
