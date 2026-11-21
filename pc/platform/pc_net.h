@@ -56,5 +56,7 @@ int pc_mp_coop_mode(void);
 int pc_mp_raider(uint32_t frame,PcCoop *out);
 void pc_mp_fired(void);
 int pc_mp_role(void); /* 1 host, 2 guest, 0 disabled */
+int pc_mp_connected(void); /* true after same-star HELLO/READY */
+uint16_t pc_mp_local_port(void);
 int pc_mp_duel(uint8_t *host_hp, uint8_t *guest_hp, uint8_t *host_wins, uint8_t *guest_wins);
 #endif
