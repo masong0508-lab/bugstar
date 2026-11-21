@@ -1087,8 +1087,14 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             // the boss calls her brood at half health, and gets angry
             if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1; say("THE QUEEN CALLS HER BROOD!"); sfx(9);
                 for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=K_SPIDER; b->alive=1; b->hp=b->maxhp=6+dlv()*4; b->x=o->x+((k?1:-1)<<16); b->y=o->y+(1<<15); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } } }
-        } else if(o->kind==K_CHEST){ if(d<0x9000){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
-                Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now(); } }
+        } else if(o->kind==K_CHEST){ if(d<0x9000){ int evidence=o->sub==7 && !endless && !base_mode && !forge_on && zone>=0 && zone<6;
+                o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
+                Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now();
+                // The player found the King's paper trail inside a genuine
+                // loot chest, before having to fight this world's warden.
+                // Its floor memory already records the opened chest.
+                if(evidence) card(VISPG,story_boss_title[zone],story_boss_evidence[zone],3);
+            } }
         else if(o->kind==K_ITEM){ if(d<0x9000 && (bag_n<BAGMAX || o->it==IT_QUEST)){ Gear g={o->it,o->sub,o->rar,o->pre,o->suf,o->lvl}; if(add_gear(g)) o->alive=0; } }
         else if(o->kind==K_CAGE){ if(d<0xC000) near_cage_p=i; }
     }
@@ -1683,9 +1689,14 @@ static void run_game(void){
                        planet_hud(); }
                    if(zone_card){ int z=zone_card-1; zone_card=0;
                        if(z==5){ bolt_story(VISPG,6); fade(1); credits(); planet_enter(); fade(0); }
-                       else { static const char *const t[6]={"THE BOSS IS DOWN. THE NEXT STAR IS OPEN.","THE CAGES HERE ARE NO LONGER GUARDED.","1. FOLLOW THE ARROW TO YOUR SHIP.","2. PICK LAUNCH INTO SPACE.","3. SELECT: OPEN THE GALAXY MAP.","4. PICK THE NEW STAR. KEEP LOOKING."};
-                           bolt_story(VISPG,1+z);  // let the rescue aftermath land BEFORE instructions
-                           card(VISPG,"NEXT STAR UNLOCKED",t,6); }
+                       else { const char *t[7]={"THE BOSS IS DOWN. THE NEXT STAR IS OPEN.",
+                               story_boss_aftermath[z],story_boss_reward[z],
+                               "1. FOLLOW THE ARROW TO YOUR SHIP.",
+                               "2. PICK LAUNCH INTO SPACE.",
+                               "3. SELECT: OPEN THE GALAXY MAP.",
+                               "4. PICK THE NEW STAR. KEEP LOOKING."};
+                           bolt_story(VISPG,1+z);  // aftermath, then specific reward and navigation
+                           card(VISPG,"NEXT STAR UNLOCKED",t,7); }
                        planet_hud(); show_msg("GO TO YOUR SHIP"); } }
         }
     }
