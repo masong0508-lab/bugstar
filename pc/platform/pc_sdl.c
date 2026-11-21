@@ -199,13 +199,20 @@ static void make_icon(void){
     const int S=64; SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,S,S,32,SDL_PIXELFORMAT_ARGB8888); if(!s) return;
     plat_icon_pixels(s->pixels,S); SDL_SetWindowIcon(win,s); SDL_FreeSurface(s);
 }
-static void tex_ensure(int w, int h, int linear){
-    if(tex && tex_w==w && tex_h==h && tex_linear==linear) return;
-    if(tex) SDL_DestroyTexture(tex);
+static int tex_ensure(int w, int h, int linear){
+    if(w<240 || h<160 || (size_t)w>SIZE_MAX/(size_t)h/sizeof(uint32_t)) return 0;
+    size_t need=(size_t)w*h;
+    if(need>pix_cap){
+        uint32_t *next=(uint32_t*)realloc(pix,need*sizeof(uint32_t));
+        if(!next){ fprintf(stderr,"video: pixel buffer allocation failed (%dx%d)\n",w,h); return 0; }
+        pix=next; pix_cap=need;
+    }
+    if(tex && tex_w==w && tex_h==h && tex_linear==linear) return 1;
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, linear?"linear":"nearest");
-    tex=SDL_CreateTexture(ren,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,w,h);
-    tex_w=w; tex_h=h; tex_linear=linear;
-    if((size_t)w*h>pix_cap){ free(pix); pix=malloc((size_t)w*h*4); pix_cap=(size_t)w*h; }
+    SDL_Texture *next=SDL_CreateTexture(ren,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,w,h);
+    if(!next){ fprintf(stderr,"video: texture allocation failed (%dx%d): %s\n",w,h,SDL_GetError()); return 0; }
+    if(tex) SDL_DestroyTexture(tex);
+    tex=next; tex_w=w; tex_h=h; tex_linear=linear; return 1;
 }
 #ifdef PC_ANDROID
 static int cap_pixels(void){ return C.max_mp ? C.max_mp*1000000 : 450000; }      // patch 37: phone CPUs cannot do the native 3D at 2.4 MP
@@ -372,8 +379,7 @@ static void sim_vsync(void);          // test hook, defined with the pacing belo
 static void present_game(int with_overlay){
     SDL_GetRendererOutputSize(ren,&dw_,&dh_);
     int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth);
-    tex_ensure(W,H,linear);
-    if(!pix || (size_t)W*H>pix_cap){ free(pix); pix=malloc((size_t)W*H*4); pix_cap=(size_t)W*H; if(!pix){ pix_cap=0; return; } }      // (never write a picture into a buffer made for another size)
+    if(!tex_ensure(W,H,linear)) return;  // keep the previous good texture when a resize fails
     pc_vid3d=C.video3d; pc_quality=C.quality; pc_compose_native(pix,W,H,smooth);
     if(C.contrast){ for(size_t i=0,n=(size_t)W*H;i<n;i++){ uint32_t c=pix[i]; int r=c>>16&255,g=c>>8&255,b=c&255; int m=(r+g+b)/3; r=m+(r-m)*3/2; g=m+(g-m)*3/2; b=m+(b-m)*3/2;
             r=(r-128)*3/2+128; g=(g-128)*3/2+128; b=(b-128)*3/2+128; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; b=b<0?0:b>255?255:b; pix[i]=(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; } }
@@ -688,7 +694,11 @@ static void pump_events(void){
             if(e.type!=SDL_MOUSEMOTION){ int bit = e.button.button==SDL_BUTTON_LEFT ? 1 : e.button.button==SDL_BUTTON_RIGHT ? 2 : 0; if(e.type==SDL_MOUSEBUTTONDOWN) pc_mouse_b|=bit; else pc_mouse_b&=~bit; } break; }
         case SDL_MOUSEWHEEL: if(menu_open){ if(e.wheel.y>0) menu_key(SDLK_UP,0); else if(e.wheel.y<0) menu_key(SDLK_DOWN,0); } else pc_mouse_wheel += e.wheel.y; break;
         case SDL_FINGERDOWN: case SDL_FINGERMOTION: case SDL_FINGERUP: touch_event(&e); break;
-        case SDL_RENDER_DEVICE_RESET: case SDL_RENDER_TARGETS_RESET: tg_flush(); break;      // the graphics were lost (Android): the pad's textures are drawn again
+        case SDL_RENDER_DEVICE_RESET: case SDL_RENDER_TARGETS_RESET:
+            tg_flush();  // rebuild the game texture as well as touch graphics after Android EGL loss
+            if(tex){ SDL_DestroyTexture(tex); tex=0; tex_w=tex_h=0; }
+            g_pace_reset=1;
+            break;
         case SDL_CONTROLLERDEVICEADDED: pad_open(); break;
         case SDL_CONTROLLERDEVICEREMOVED: if(pad && e.cdevice.which==SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad))){ SDL_GameControllerClose(pad); pad=0; say_toast("GAMEPAD REMOVED"); pad_open(); } break;
         case SDL_CONTROLLERBUTTONDOWN:
@@ -774,8 +784,15 @@ static inline void cpu_relax(void){
     __asm__ __volatile__("yield");
 #endif
 }
-static double pace_period(void){          // perf-counter ticks of one game frame at the current game speed (UNIVERSE LAWS: GAME SPEED, 100 = the GBA)
-    extern int pc_time_pct; int tp = pc_time_pct < 10 ? 10 : pc_time_pct > 2000 ? 2000 : pc_time_pct;
+static double pace_period(void){          // fixed GBA speed by default, even if a PC-only Universe Law was saved
+    // Parity lock prevents a loaded save's high GAME SPEED setting from silently
+    // racing ahead on PC and Android. Opt in explicitly to the old experimental law.
+    int tp=100;
+    const char *e=getenv("BUGSTAR_ALLOW_SPEED_LAW");
+    if(e && e[0]=='1' && !e[1]){
+        extern int pc_time_pct;
+        tp=pc_time_pct<10?10:pc_time_pct>2000?2000:pc_time_pct;
+    }
     return (double)t_freq*GBA_FRAME_SECONDS*100.0/(double)tp;
 }
 static void wait_until(double due){        // sleep while there is plenty of time (SDL_Delay is 1 ms coarse, or 15 ms on an old Windows timer), spin the last g_slack_ms
@@ -806,11 +823,11 @@ void plat_frame(void){
     int late = now - g_due > period;                          // already more than a whole frame behind: do not spend time showing this one
     if(g_fast ? (fr&15)==0 : (!late || (fr&7)==0)) present_game(1);
     fps_n++; { uint64_t n=SDL_GetPerformanceCounter(); if(n-fps_t0>=t_freq){ fps_show=fps_n*(double)t_freq/(double)(n-fps_t0); fps_n=0; fps_t0=n; } }
-    // ---- pace: the game steps at exactly 59.7275 a second, whatever the screen's refresh rate is
-    g_due += period;                                           // when this frame ends: exactly one GBA frame after it began (the fraction of a tick is kept)
+    // ---- pace: never repay missed display time with a burst of faster gameplay
+    g_due += period;
     now=now_ticks();
-    if(g_fast) g_due=now;                                      // fast-forward (--fast): as quick as it goes, and nothing is owed afterwards
-    else if(now>g_due) g_catchups++;                          // a little behind (less than PACE_MAX_LAG frames): the next frames do not wait until the clock is level again
+    if(g_fast) g_due=now;                                      // only the explicit --fast diagnostic bypasses the limiter
+    else if(now>g_due){ g_catchups++; g_due=now; }            // drop missed time, do not run rapid catch-up simulation ticks
     else { g_waits++; wait_until(g_due); }
     sim_stall(fr);
     pump_events();
