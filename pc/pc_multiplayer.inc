@@ -180,8 +180,8 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                 text(pg,126,101,"ALL 3 WAVES CLEARED",54,1);
             }else{
                 text(pg,7,101,raider.hp?"RAIDER HEALTH":"RAIDER DEFEATED",53,1);
-                rect(pg,78,103,45,5,3);
-                if(raider.hp)rect(pg,79,104,(int)raider.hp*43/100,3,
+                rect(pg,75,103,38,5,3);
+                if(raider.hp)rect(pg,76,104,(int)raider.hp*36/100,3,
                                  raider.hp<=20?49:54);
                 snprintf(hud,sizeof hud,"WAVE %u OF 3",
                          (unsigned)raider.wave+1);
