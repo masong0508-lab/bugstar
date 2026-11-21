@@ -981,9 +981,9 @@ int plat_open(int argc, char **argv){
     if(g_wav_path){ g_wav=fopen(g_wav_path,"wb"); if(g_wav){ uint8_t h[44]={0}; fwrite(h,1,44,g_wav); } }
     audio_open();
     if(lan_host || lan_join_ip){
-        if(lan_host && lan_join_ip) fprintf(stderr,"lan: specify host OR join, not both\\n");
+        if(lan_host && lan_join_ip) fprintf(stderr,"lan: specify host OR join, not both\n");
         else { int ok=lan_host ? pc_mp_host((uint16_t)lan_port) : pc_mp_join(lan_join_ip,(uint16_t)lan_port);
-            fprintf(stderr,"lan: %s %s port %u (%s); ship presence only, NO synced combat/saves\\n",
+            fprintf(stderr,"lan: %s %s port %u (%s); ship presence only, NO synced combat/saves\n",
                     lan_host?"HOST":"JOIN",lan_host?"0.0.0.0":lan_join_ip,lan_port,ok?"ready":"FAILED");
             if(ok) say_toast_ms("LAN SPACE TEST: PEER SHIP ONLY",5000);
         }
