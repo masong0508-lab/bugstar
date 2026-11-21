@@ -136,7 +136,11 @@ echo '#include "../pc_snative.inc"' >> main.c
 # --- opt-in LAN space-presence prototype, PC/Android only. No GBA source edits.
 # Keep the isolated renderer in the generated main.c where space globals and
 # wire() projection are visible; the socket transport lives in platform/.
-sed -i '1i static void pc_mp_space_draw(volatile unsigned short *pg);' main.c
+sed -i '1i static void pc_mp_space_draw(volatile unsigned short *pg), pc_mp_arrive(void);' main.c
+# The original game picks its spawn first; the joined LAN player receives
+# a small visible offset before basis() so aiming and camera agree.
+sed -i 's|^    else { shx=0; shy=0; shz=-(PR\*5); yaw=0; pitch=0; speed=20; }$|&\n    pc_mp_arrive();|' space.inc
+grep -c '^    pc_mp_arrive();' space.inc | grep -qx 1 || { echo "build: LAN spawn hook missing"; exit 1; }
 sed -i 's|pc_sr_done: pc_sr_mark(pg); pc_so_native(pg);|pc_sr_done: pc_sr_mark(pg); pc_mp_space_draw(pg); pc_so_native(pg);|' space.inc
 grep -c 'pc_sr_mark(pg); pc_mp_space_draw(pg); pc_so_native(pg);' space.inc | grep -qx 1 || { echo "build: LAN space drawing hook did not apply"; exit 1; }
 echo '#include "../pc_multiplayer.inc"' >> main.c
