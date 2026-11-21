@@ -10,10 +10,11 @@ printf 'pause_unfocus=0\nvsync=0\n' > out/lan_lobby/host/settings.ini
 printf 'pause_unfocus=0\nvsync=0\n' > out/lan_lobby/client/settings.ini
 rm -f out/lan_lobby/{host,client}.log out/lan_lobby/{host,client}.png
 {
-    # BUGSTAR_MENU=10 opens the real LAN overlay at flight frame 30.
-    # This script waits more than 2s inside the paused options menu, then
-    # proves the UDP peers became connected without advancing the world.
-    printf '190 nop\n0 dump\n0 shot out/lan_lobby/MENU.png\n'
+    # BUGSTAR_MENU_FRAME=150 lets live 3D flight submit the first ship
+    # pose before entering the real paused LAN menu (the old frame-30
+    # hook paused too early, before the shared-world ID was known).
+    # Wait enough extra menu ticks for both live UDP READY handshakes.
+    printf '330 nop\n0 dump\n0 shot out/lan_lobby/MENU.png\n'
     # ESC backs to the main options page; ESC again returns to flight.
     printf '0 key down Escape\n0 key down Escape\n'
     printf '120 nop\n0 dump\n60 nop\n0 quit\n'
@@ -24,7 +25,7 @@ host_pid=''
 cleanup(){ if [[ -n "$host_pid" ]]; then kill "$host_pid" 2>/dev/null || :; fi; }
 trap cleanup EXIT
 env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_BOOT=1 BUGSTAR_LAN_TRACE=1 \
-    BUGSTAR_MENU=10 BUGSTAR_EVENTS=out/lan_lobby/host-events.txt \
+    BUGSTAR_MENU=10 BUGSTAR_MENU_FRAME=150 BUGSTAR_EVENTS=out/lan_lobby/host-events.txt \
     timeout -k 3 45 "$GAME" --window --video-driver dummy --no-audio \
     --no-vsync --size 480 320 --lan-host --lan-coop --lan-port 33779 \
     --data out/lan_lobby/host > out/lan_lobby/host.log 2>&1 &
@@ -38,7 +39,7 @@ grep -q 'lan: lobby entered role 1' out/lan_lobby/host.log || {
     echo 'LAN lobby: host never entered the actual paused options page'
     tail -80 out/lan_lobby/host.log;exit 1; }
 env SDL_AUDIODRIVER=dummy BUGSTAR_LAN_BOOT=1 BUGSTAR_LAN_TRACE=1 \
-    BUGSTAR_MENU=10 BUGSTAR_EVENTS=out/lan_lobby/client-events.txt \
+    BUGSTAR_MENU=10 BUGSTAR_MENU_FRAME=150 BUGSTAR_EVENTS=out/lan_lobby/client-events.txt \
     timeout -k 3 45 "$GAME" --window --video-driver dummy --no-audio \
     --no-vsync --size 480 320 --lan-join 127.0.0.1 --lan-coop --lan-port 33779 \
     --data out/lan_lobby/client > out/lan_lobby/client.log 2>&1 || {
