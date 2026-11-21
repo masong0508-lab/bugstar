@@ -665,6 +665,18 @@ static const char *const quest_champ_names[6]={"GRIMFANG","MOLDJAW","SKITTERMAW"
 // flag, so forward-declare its tentative definition before quest helpers.
 static int forge_on;
 static int quest_home(void){ return q_zone==zone && q_world==world_no; }
+// Before the ID field was reused for named targets, old saves only carried
+// "SLAY <NAME> ON B..." in q_name. The briefing remains authoritative,
+// so the combat label agrees even if an old q_need contained stale data.
+static int quest_champ_id(void){
+    if(q_type!=Q_CHAMP) return -1;
+    for(int i=0;i<6;i++){
+        const char *a=q_name+5, *b=quest_champ_names[i];
+        while(*b && *a==*b){ a++; b++; }
+        if(!*b && *a==' ') return i;
+    }
+    return -1;
+}
 static const char *fame_rank(void){
     return fame>=1200?"BUG LEGEND": fame>=700?"CHAMPION": fame>=350?"HERO": fame>=150?"BRAVE BUG": fame>=50?"KNOWN BUG":"NOBODY";
 }
