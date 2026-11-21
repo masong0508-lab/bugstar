@@ -9,6 +9,7 @@ typedef struct PcCoop {
     uint32_t down_tick,last_attack_tick;
     uint8_t hp,wins,losses,phase,flash,host_hits,guest_hits;
     uint8_t host_hp,guest_hp,beam,beam_target;
+    uint8_t charge,charge_target; /* a short, visible lock-on before firing */
 } PcCoop;
 void pc_coop_reset(PcCoop *c);
 void pc_coop_step(PcCoop *c,uint32_t frame,const struct PcNetShip *host,
