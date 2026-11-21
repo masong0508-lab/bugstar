@@ -11,6 +11,8 @@
 
 **Protocol version:** READY and ACTIVE are separate wire flags. Current version 5 rejects v3/v4 peers; SDL menus exchange UDP packets while gameplay physics are paused. Android backgrounding invalidates stale session state and requires a new Ready handshake. Historical three-wave implementation was originally tested under v3.
 
+**Pause invariants:** host co-op and sparring timers run on an encounter-only tick (not the UDP tick); wave-clear holds and attacks cannot elapse during menu pauses. Incoming guest fire is rejected while either ACTIVE bit is zero. The new Ready test includes a buffered shot and held wave-clear countdown.
+
 **Preflight rule:** Joining a network socket is not Ready. Each player explicitly selects **CONFIRM READY** in the LAN options; simulation starts only after both have fresh ship state and mutually confirmed readiness. A leave, world change or stale peer pose clears manual Ready, preventing a ghost pilot from continuing the co-op wave. Reconnection needs both confirmations again, and retains separate campaign saves.
 
 **Performance and evidence gate:** run packet codec tests, localhost Ready/reconnect test, real two-SDL-instance full playthrough with 3 wave and per-peer screenshot assertions, sparring regression, ordinary speed guard and GBA ROM/GBC budget checks where toolchains are available. The test-only aim-following pilot is controlled by `BUGSTAR_LAN_TEST_PILOT`; it never enables in a normal game. Do not claim passed/available until the target platform's own emulator/hardware build and multiplayer session pass.
