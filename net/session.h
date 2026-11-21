@@ -32,7 +32,7 @@ typedef struct BsNetPacket {
 /* Success: pack returns wire byte count, unpack returns 0.
  * Failure: negative BsNetError; unpack never partially modifies *out.
  * Exact v1 payload lengths: HELLO=5 READY=1 INPUT=3 STATE=8
- * EVENT=4 ACK=0 PING=2 BYE=0 RAIDER=12 (opt-in LAN co-op). Higher-level handlers validate values,
+ * EVENT=4 ACK=0 PING=2 BYE=0 RAIDER=16 (opt-in LAN co-op). Higher-level handlers validate values,
  * session identifiers, ownership and replay windows.
  */
 int bsnet_pack(const BsNetPacket *pkt, uint8_t *out, uint8_t capacity);
