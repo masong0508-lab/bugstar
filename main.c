@@ -526,7 +526,9 @@ static void kill_mon(DObj *o){
        o->champ==2 && q_type==Q_CHAMP && depth_no==q_floor){
         q_done=1; say("QUEST TARGET SLAIN!");
     }
-    if(!forge_on && !base_mode && boss && !mboss && q_type==Q_BOSS &&
+    // On higher difficulties multiple bosses share the last room. Only
+    // defeating the final remaining one completes the zone-boss contract.
+    if(!forge_on && !base_mode && boss && !mboss && nbo==0 && q_type==Q_BOSS &&
        !q_done && quest_home() && depth_no==q_floor){
         q_done=1; say("BOSS QUEST DONE! GO TO YOUR SHIP");
     }
