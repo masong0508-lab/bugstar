@@ -78,7 +78,7 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                 rv[k*3+1]=raider.y+rm[k][1];
                 rv[k*3+2]=raider.z+rm[k][2];
             }
-            if(raider.phase==1){
+            if(raider.phase==1 && raider.hp){
                 int ci=raider.flash?49:53;
                 wire(pg,rv,12,re,24,ci);
                 wire(pg,rv,12,canopy,4,55);
@@ -162,6 +162,19 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                      (unsigned)raider.wing_hp,
                      (unsigned)raider.host_hits,(unsigned)raider.guest_hits);
             text(pg,158,118,hud,50,1);
+            /* The main target must disappear after destruction. The
+             * surviving flank drone becomes the explicit objective, not
+             * a misleading ghost RAIDER label or empty boss bar. */
+            if(raider.phase==1 && !raider.hp && raider.wing_hp){
+                s32 dx=raider.wing_x-shx,dy=raider.wing_y-shy,
+                    dz=raider.wing_z-shz;
+                s32 side=(s32)(((long long)dx*br[0]+
+                       (long long)dy*br[1]+(long long)dz*br[2])>>14);
+                const char *hint=side>250?"DRONE RIGHT - TURN RIGHT":
+                                 side< -250?"DRONE LEFT - TURN LEFT":
+                                 "DRONE AHEAD - FIRE!";
+                text(pg,10,93,hint,53,1);
+            }
             if(raider.phase==2)
                 text(pg,75,91,"WAVE CLEAR!",54,2);
             if(raider.phase==3)
