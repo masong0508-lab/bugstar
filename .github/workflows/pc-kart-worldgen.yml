@@ -144,7 +144,9 @@ jobs:
       - name: Verify real GBA-speed gameplay, high refresh and stall recovery
         run: cd pc && bash tests/speed_guard.sh ./bugstar_pc_rate
       - name: Run two real PC space games with LAN and render both viewpoints
-        run: cd pc && bash tests/lan_live.sh ./bugstar_pc_rate
+        run: cd pc && bash tests/lan_live.sh ./bugstar_pc_rate spar
+      - name: Run two real PC space games with one shared co-op raider
+        run: cd pc && bash tests/lan_live.sh ./bugstar_pc_rate coop
       - name: Upload LAN smoke screenshots and per-peer logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -153,6 +155,14 @@ jobs:
           path: |
             pc/out/lan_live/host.png
             pc/out/lan_live/client.png
+            pc/out/lan_live/spar_host.png
+            pc/out/lan_live/spar_client.png
+            pc/out/lan_live/coop_host.png
+            pc/out/lan_live/coop_client.png
+            pc/out/lan_live/spar_host.log
+            pc/out/lan_live/spar_client.log
+            pc/out/lan_live/coop_host.log
+            pc/out/lan_live/coop_client.log
             pc/out/lan_live/host.log
             pc/out/lan_live/client.log
           if-no-files-found: ignore
