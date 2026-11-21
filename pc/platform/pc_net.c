@@ -411,7 +411,12 @@ void pc_mp_frame(uint32_t frame){
                  (unsigned)(g_last_space_frame && frame-g_last_space_frame<=20u),
                 (unsigned)g_local.world,(unsigned)g_peer.connected,
                 (unsigned)g_peer.received,(unsigned)g_peer.local_port);
-    if(g_active && g_submitted){
+    /* Space render cadence is allowed to vary. Advance LAN simulation,
+     * enemy lock-ons and receive handling on the fixed gameplay tick while
+     * the last actual space sample is recent; publish the latest ship pose.
+     * No work occurs in offline play or after leaving space. */
+    if(g_active && g_last_space_frame &&
+       frame-g_last_space_frame<=20u){
         uint8_t before=g_peer.connected;
         uint8_t hp0=g_peer.duel.host_hp,hp1=g_peer.duel.guest_hp;
         uint8_t raider_hp=g_peer.coop_enemy.hp;
