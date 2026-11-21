@@ -31,6 +31,9 @@ def extract(signature):
 
 
 quest_home = extract("static int quest_home(void)")
+quest_champ_id = extract("static int quest_champ_id(void)")
+name_table = re.search(r"static const char \*const quest_champ_names\[6\]=\{[^}]+\};", source)
+assert name_table, "missing original champion names"
 add_gear = extract("static int add_gear(Gear g)")
 prefix = r"""
 #include <stdio.h>
@@ -45,6 +48,7 @@ enum { IT_NONE, IT_BERRY, IT_SEED, IT_SHELL, IT_THORN, IT_CRUMB,
 enum { Q_NONE, Q_HUNT, Q_CHAMP, Q_FETCH, Q_RESCUE, Q_BOSS,
        Q_SHARDS, Q_BRING, Q_GOODS, NQ };
 static int q_type,q_need,q_have,q_floor,q_done,q_zone,q_world;
+static char q_name[24];
 static int zone,world_no,depth_no,forge_on,base_mode;
 static Gear bag[BAGMAX]; static int bag_n,bag_sel;
 static char last_msg[128];
@@ -89,14 +93,22 @@ int main(void){
     reset(); bag_n=BAGMAX; CHECK(add_gear(potion)==0 && bag_n==BAGMAX);
     CHECK(strstr(last_msg,"BAG IS FULL")!=NULL);
     reset(); CHECK(add_gear(potion)==1 && bag_n==1 && bag[0].it==IT_POTION);
-    puts("Quest C runtime: authentic relic and bag paths PASS");
+    // Old save: q_need may be stale, but the written briefing identifies it.
+    reset(); q_type=Q_CHAMP; q_need=6;
+    strcpy(q_name,"SLAY GRIMFANG ON B3");
+    CHECK(quest_champ_id()==0);
+    strcpy(q_name,"SLAY THE PALE ONE ON B8");
+    CHECK(quest_champ_id()==4);
+    strcpy(q_name,"SLAY UNKNOWN ON B8");
+    CHECK(quest_champ_id()==-1);
+    puts("Quest C runtime: authentic relic, bag and legacy target paths PASS");
     return 0;
 }
 """
 with tempfile.TemporaryDirectory(prefix="bugstar-quest-") as d:
     src = Path(d) / "quest_test.c"
     exe = Path(d) / "quest_test"
-    src.write_text(prefix + "\n" + quest_home + "\n" + add_gear + "\n" + tests)
+    src.write_text(prefix + "\n" + name_table.group(0) + "\n" + quest_home + "\n" + quest_champ_id + "\n" + add_gear + "\n" + tests)
     subprocess.run(["cc", "-std=c11", "-O1", "-Wall", "-Wextra", "-Werror",
                     "-fsanitize=undefined", "-fno-sanitize-recover=all",
                     str(src), "-o", str(exe)], check=True)
