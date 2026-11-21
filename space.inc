@@ -1548,12 +1548,12 @@ static void story_boss_beaten(void){
     // repeat-tier bosses can never farm the introductory story reward.
     if(first){
         switch(zone){
-            case 0: food=100; break;                    // garden supply store
+            case 0: if(food<100) food=100; break;                    // garden supply store
             case 1: { int fm=fuel_max(); if(fuel<fm){ fuel+=20; if(fuel>fm) fuel=fm; } break; }
             case 2: earn(150); break;                  // stolen picnic rations
             case 3: if(hull<100){ hull+=25; if(hull>100) hull=100; } break;
             case 4: scrap+=24; break;                 // dismantled honey forge
-            case 5: hearts=maxh; break;               // infirmary under the throne
+            case 5: if(hearts<maxh) hearts=maxh; break;               // infirmary under the throne
         }
     }
     if(zone==5 && !ant_king){ ant_king=1; uni_set32(rnd()|1); gen_cluster(); }
