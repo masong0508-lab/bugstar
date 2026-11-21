@@ -28,6 +28,12 @@ assert "kart_bend_cue(kp_dir((p+4)%knp)" in src, "live HUD must use this helper"
 assert "if(sharp) text(pg," in src and '"SLOW"' in src, "slow-down warning missing"
 hud = src[src.index("static void kart_hud(") : src.index("static void kart_reset(")]
 assert "((frames>>3)&1)" not in hud, "turn warnings must not blink"
+assert "int nx=x+((sinx(khd>>2)*3)>>14), ny=y+((cosx(khd>>2)*3)>>14);" in src, (
+    "the minimap must show real kart heading, not just a position square"
+)
+assert "if(nx>=194 && nx<=234 && ny>=21 && ny<=61)" in src, (
+    "the kart direction marker must stay inside the 44x44 minimap"
+)
 
 test = r"""
 #include <stdio.h>
