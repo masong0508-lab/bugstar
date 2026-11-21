@@ -1,4 +1,4 @@
-/* BUGSTAR experimental LAN presence: one remote ship, no authority over combat.
+/* BUGSTAR experimental LAN: one peer, host-owned sparring and co-op combat.
  * This file must also compile in the Android NDK and Windows MinGW builds.
  * Internet exposure is intentionally unsupported until auth/rollback exists.
  */
