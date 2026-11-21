@@ -233,6 +233,14 @@ require(boss_art, "if(!endless && !forge_on && !base_mode && zone>=0 && zone<6)"
 require(boss_art, "hw=0x11000;", "all six boss silhouettes must preserve projected height")
 require(main, "story_boss_title[zone]:\"THE QUEEN\"",
         "live boss HUD must show the correct warden name")
+require(main, "static const u8 guards[6]={K_SPIDER,K_TOAD,K_BEETLE,K_GHOST,K_WASP,K_ANT}",
+        "each of the six story bosses needs a distinguishable half-health guard wave")
+require(main, "int guard=story_w ? guards[zone] : K_SPIDER;",
+        "endless/forge bosses must retain their original guard behavior")
+require(main, "for(int k=0;k<2 && ndo<NDO;k++)",
+        "new boss guard waves must retain the existing two-actor/slot limit")
+require(main, "if(boss && !o->ph && o->hp<o->maxhp/2)",
+        "new waves must trigger only once at half health")
 
 require(ui, "t[n++]=story_boss_aftermath[zone];",
         "returning to a liberated world should acknowledge the defeated warden")
