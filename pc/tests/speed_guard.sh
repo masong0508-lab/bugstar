@@ -26,9 +26,9 @@ from pathlib import Path
 import re
 src = Path('platform/pc_sdl.c').read_text()
 for name, expr in [
-    ('SDL frequency', r'^\\s*t_freq\\s*=\\s*SDL_GetPerformanceFrequency\\(\\);'),
-    ('frame timer', r'^\\s*fps_t0\\s*=\\s*SDL_GetPerformanceCounter\\(\\);'),
-    ('due timestamp', r'^\\s*g_due\\s*=\\s*\\(double\\)fps_t0;')
+    ('SDL frequency', r'^\s*t_freq\s*=\s*SDL_GetPerformanceFrequency\(\);'),
+    ('frame timer', r'^\s*fps_t0\s*=\s*SDL_GetPerformanceCounter\(\);'),
+    ('due timestamp', r'^\s*g_due\s*=\s*\(double\)fps_t0;')
 ]:
     assert re.search(expr, src, re.M), name + ' initialization was removed or commented out'
 print('SDL pacing clock initialization: PASS')
