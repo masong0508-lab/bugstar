@@ -72,6 +72,7 @@ static inline uint32_t kn_bilx(double u, double v, int ifx){
     if(ifx>=200 && kn_roadmark(a)) return a;
     if(!wx && !wy) return a;
     uint32_t b=pg888[1][Y0][X1], c=pg888[1][Y1][X0], d=pg888[1][Y1][X1];
+    if(a==b && a==c && a==d) return a;  // flat asphalt/terrain: exact same pixel, no blending work
     uint32_t rb0=((a&0xFF00FF)*(256-wx)+(b&0xFF00FF)*wx)>>8, g0=((a&0xFF00)*(256-wx)+(b&0xFF00)*wx)>>8, rb1=((c&0xFF00FF)*(256-wx)+(d&0xFF00FF)*wx)>>8, g1=((c&0xFF00)*(256-wx)+(d&0xFF00)*wx)>>8;
     rb0&=0xFF00FF; rb1&=0xFF00FF; g0&=0xFF00; g1&=0xFF00;
     return ((((rb0*(256-wy)+rb1*wy)>>8)&0xFF00FF)|(((g0*(256-wy)+g1*wy)>>8)&0xFF00)); }
