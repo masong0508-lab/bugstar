@@ -8,7 +8,19 @@
 #define polyfill kpolyfill
 #define linep klinep
 static u32 krect_dma_word(int c){ return (u32)(u8)c * 0x01010101u; }  // repeat the 8-bit palette index safely; signed c<<24 is undefined above 127
+// The normal rect painter clips to Mode-4 VRAM, but a wide kart HUD
+// rectangle uses DMA3. Clip BEFORE building the DMA destination address,
+// so partially off-screen minimaps and cards cannot spill into other rows.
+static int krect_clip(int *x, int *y, int *w, int *h){
+    if(*w<=0 || *h<=0 || *x>=240 || *y>=160 || *x<=-*w || *y<=-*h) return 0;
+    if(*x<0){ *w+=*x; *x=0; }
+    if(*y<0){ *h+=*y; *y=0; }
+    if(*w>240-*x) *w=240-*x;
+    if(*h>160-*y) *h=160-*y;
+    return *w>0 && *h>0;
+}
 static void krect(volatile u16 *pg, int x, int y, int w, int h, int c){       // rect() for the HUD: the middle of every row is a DMA fill (a boxed minimap is 44 rows of 22 pixel pairs)
+    if(!krect_clip(&x,&y,&w,&h)) return;
     if(w<16){ rect(pg,x,y,w,h,c); return; }
     volatile u32 v=krect_dma_word(c);
     for(int j=0;j<h;j++){ int i=0; if(x&1){ pix(pg,x,y+j,c); i=1; }
