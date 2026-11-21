@@ -767,7 +767,8 @@ static void rumble_frame(void){
 // starts a fresh clock (g_pace_reset): the minutes it was away are not played catch-up. The save is flushed on the game's own thread (g_app_save, in pump_events).
 static void touch_release_all(void);
 static void app_background(void){
-    if(!g_bg)pc_mp_suspend(); /* no stale Ready/shots after sleep */
+    /* SDL app-watch may have set g_bg on another thread already. */
+    pc_mp_suspend();
     g_bg=1; g_app_save=1;
     if(adev) SDL_PauseAudioDevice(adev,1);
 }
