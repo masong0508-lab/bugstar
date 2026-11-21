@@ -87,7 +87,11 @@ require(ui, 'confirm(pg,"ABANDON THIS QUEST?"',
         "quest abandonment lacks confirmation")
 require(ui, "EXTRA CAGES ON B", "player doesn't know where to find rescue targets")
 require(ui, "NEXT SHARD: B", "player doesn't know which shard floor is next")
-require(ui, "RETURN TO THE QUEST WORLD", "player gets no warning about world-restricted goals")
+require(ui, 'scpy(b,"RETURN TO ")', "player gets no clear world-restricted destination")
+require(ui, "tint_name[q_zone]", "quest hints must show story world names")
+require(ui, "ncat(b,(u16)q_world)", "endless-world number is absent from quest directions")
+require(ui, 'A NAME WAS PAINTED ON MY HULL.', "first recovered memory must foreshadow rather than reveal Bolt's real name")
+assert 'I WAS CALLED THE DAWN.' not in ui, "the final name is spoiled by the first recovered memory"
 require(ui, "char qhint[48]", "Bolt needs a bounded local quest hint without consuming static GBA RAM")
 require(ui, "if(q_type>0 && n<8)", "Bolt's extra line could overflow the eight-line story card")
 require(ui, "QUEST DONE. CLAIM YOUR REWARD AT THE SHIP.", "Bolt omits quest turn-in guidance")
