@@ -4,8 +4,8 @@
 // sub-pixel place, the sun as a smooth disc with glow, planets and moons shaded per window pixel from the game's own sphere tables. It only READS the game.
 // pc_sncomp.inc (in pc_hw.c) shows it where the page still holds what was drawn at that moment (ships, rocks, station, HUD, cockpit stay the game's own).
 #include <stdlib.h>
-typedef struct { int w,h,hn; uint32_t *buf; long f[2]; uint8_t snap[2][240*128]; uint8_t ok[256]; int sunx,suny; uint8_t snap2[2][240*128]; uint8_t *msk; long f2[2]; uint32_t *ibuf; uint8_t foot[2][240*128], fval[2][240*128]; long ff[2]; uint8_t snapc[2][240*128]; long fc[2]; int cpmode[2]; } PcSNat;
-extern double pc_now_ms(void); extern void pc_vrec(int,double,double); extern double pc_cpu_ms(void); extern PcSNat pc_sn; extern int pc_nat_w, pc_nat_h; extern int pc_v3d_classic(void), pc_v3d_ultra(void); extern long pc_frames(void);
+typedef struct { int w,h,hn; uint32_t *buf; long f[2]; uint8_t snap[2][240*128]; uint8_t ok[256]; int sunx,suny; uint8_t snap2[2][240*128]; uint8_t *msk; long f2[2]; uint32_t *ibuf; uint8_t foot[2][240*128], fval[2][240*128]; long ff[2]; uint8_t snapc[2][240*128]; long fc[2]; int cpmode[2]; int ix0,iy0,ix1,iy1; } PcSNat;
+extern double pc_now_ms(void); extern void pc_vrec(int,double,double); extern double pc_cpu_ms(void); extern PcSNat pc_sn; extern int pc_nat_w, pc_nat_h; extern int pc_v3d_classic(void), pc_v3d_ultra(void), pc_sn_dirty_on(void); extern long pc_frames(void);
 typedef void (*PcParFn3)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn3 fn, void *ctx);
 typedef struct { int cx,cy,r,Lx,Ly,Lz,rot; const u8 *noise; } SnCall;
 static SnCall sn_calls[40]; static int sn_nc, sn_rec; static uint32_t sn_pal[256];
@@ -93,7 +93,20 @@ static void pc_sn_native(volatile unsigned short *pg, int vpx, int vpy, int stk)
         if(!next_msk) return; pc_sn.msk=next_msk;
         bcap=need;
     }
-    memset(pc_sn.msk,0,need); memset(pc_sn.ibuf,0,need*sizeof(*pc_sn.ibuf));
+    // Clear only last frame's native-effects rectangles; ordinary frames draw
+    // a small crosshair/laser/pickup region into a much larger 3D image.
+    // On resize (or opt-out), clear the whole buffer before changing stride.
+    static int last_iw,last_ih;
+    if(!pc_sn_dirty_on() || last_iw!=W || last_ih!=hn){
+        memset(pc_sn.ibuf,0,need*sizeof(*pc_sn.ibuf));
+    } else if(pc_sn.ix0<pc_sn.ix1 && pc_sn.iy0<pc_sn.iy1){
+        size_t span=(size_t)(pc_sn.ix1-pc_sn.ix0)*sizeof(*pc_sn.ibuf);
+        for(int Y=pc_sn.iy0;Y<pc_sn.iy1;Y++)
+            memset(pc_sn.ibuf+(size_t)Y*W+pc_sn.ix0,0,span);
+    }
+    last_iw=W; last_ih=hn;
+    pc_sn.ix0=W; pc_sn.iy0=hn; pc_sn.ix1=pc_sn.iy1=0;
+    memset(pc_sn.msk,0,need);
     for(int i=0;i<256;i++){ u16 c=BG_PAL[i]; int r=c&31, g=(c>>5)&31, b=(c>>10)&31; sn_pal[i]=(uint32_t)(r<<3|r>>2)<<16|(uint32_t)(g<<3|g>>2)<<8|(uint32_t)(b<<3|b>>2); }
     double sx=W/240.0, sy=H/160.0; uint32_t *buf=pc_sn.buf; uint32_t bk=sn_pal[0]; for(size_t i=0;i<need;i++) buf[i]=bk;
     pc_sg_space_back(buf,W,hn,sx,sy);          // nebulae and a far galaxy behind the stars (pc_sprgen_game.inc)
@@ -250,6 +263,12 @@ static inline void io_add(uint32_t *p, uint32_t col, double f){ if(f<=0) return;
 // a line (hw = half thickness, native pixels) with an anti-aliased edge, over the layer; gl/ga: an additive glow that many pixels wide (ULTRA)
 static void io_line(double x0,double y0,double x1,double y1,double hw,uint32_t col,double alpha,double gl,double ga){
     int W=pc_sn.w, H=pc_sn.hn; double ex=hw+gl+1.5; int xa=(int)((x0<x1?x0:x1)-ex), xb=(int)((x0<x1?x1:x0)+ex)+1, ya=(int)((y0<y1?y0:y1)-ex), yb=(int)((y0<y1?y1:y0)+ex)+1; if(xa<0) xa=0; if(ya<0) ya=0; if(xb>W) xb=W; if(yb>H) yb=H;
+    if(xa>=xb || ya>=yb) return;
+    // Conservative dirty rectangle: anything outside is guaranteed untouched.
+    if(xa<pc_sn.ix0) pc_sn.ix0=xa;
+    if(ya<pc_sn.iy0) pc_sn.iy0=ya;
+    if(xb>pc_sn.ix1) pc_sn.ix1=xb;
+    if(yb>pc_sn.iy1) pc_sn.iy1=yb;
     double dx=x1-x0, dy=y1-y0, l2=dx*dx+dy*dy;
     for(int Y=ya;Y<yb;Y++) for(int X=xa;X<xb;X++){ double px=X+0.5-x0, py=Y+0.5-y0, t= l2>1e-9 ? (px*dx+py*dy)/l2 : 0; if(t<0) t=0; if(t>1) t=1; double qx=px-t*dx, qy=py-t*dy, d=__builtin_sqrt(qx*qx+qy*qy);
         uint32_t *p=&pc_sn.ibuf[(size_t)Y*W+X]; if(gl>0 && d<hw+gl){ double g=1.0-(d-hw>0?d-hw:0)/gl; io_add(p,col,g*g*ga); } double c=hw-d+0.5; if(c>0) io_over(p,col,(c>1?1:c)*alpha); } }

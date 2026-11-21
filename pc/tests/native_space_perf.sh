@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Compare native space rendering with and without the column/shading caches.
+# Compare the game's real 3D output with and without the column/shading caches
+# and the sparse native-effects compositor/clear. Validate full pixel equality.
 # Aim the actual game's 3D camera toward a nearby planet (yaw 896), so
 # the real large-sphere surface shader is exercised rather than just the stars.
 # No speed threshold: timing on shared CI workers is noisy; image equality
@@ -9,9 +10,10 @@ cd "$(dirname "$0")/.."
 GAME="${1:-./bugstar_pc}"
 mkdir -p out/native_space
 run(){
-    local name="$1" columns="$2" shading="$3" threads="$4"
+    local name="$1" columns="$2" shading="$3" threads="$4" dirty="$5"
     rm -f "out/native_space/${name}.sav" out/native_space/"${name}"_*.ppm
     env PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_SHIPS=1 PC_THREADS="$threads" PC_SN_BENCH=1 \
+        PC_SN_DIRTY="$dirty" PC_SN_DIRTY_LOG=1 PC_NBENCH=12 \
         BUGSTAR_SN_XCACHE="$columns" BUGSTAR_SN_SHADECACHE="$shading" BUGSTAR_SIDE=0 \
         BUGSTAR_VT_AT=100 BUGSTAR_VT=space,0,896,0,0 \
         timeout -k 3 240 "$GAME" --headless --script tests/vt_idle.txt \
@@ -24,28 +26,39 @@ run(){
     fi
     test -s "out/native_space/${name}_003140.ppm"
     grep 'space-native bench 960x640:' "out/native_space/${name}.log" | tail -1
+    grep -m1 'space effects .* scan ' "out/native_space/${name}.log"
 }
-run reference 0 0 4
-run baseline  1 0 4
-run optimized 1 1 4
-run single    1 1 1
+run reference 0 0 4 0
+run baseline  1 0 4 0
+run full      1 1 4 0
+run optimized 1 1 4 1
+run single    1 1 1 1
 cmp out/native_space/reference_003140.ppm out/native_space/baseline_003140.ppm
-cmp out/native_space/baseline_003140.ppm out/native_space/optimized_003140.ppm
+cmp out/native_space/baseline_003140.ppm out/native_space/full_003140.ppm
+cmp out/native_space/full_003140.ppm out/native_space/optimized_003140.ppm
 cmp out/native_space/optimized_003140.ppm out/native_space/single_003140.ppm
 python3 - <<'PY'
 from pathlib import Path
 import re,statistics
-for name in ("reference","baseline","optimized","single"):
+for name in ("reference","baseline","full","optimized","single"):
     log=(Path("out/native_space")/(name+".log")).read_text()
     times=[float(m) for m in re.findall(r"space-native bench 960x640: avg wall ([0-9.]+) ms",log)]
     assert times, f"{name} did not render any measured space frames"
     tables=[int(m) for m in re.findall(r"space-native bench 960x640:.*shade tables ([0-9]+)",log)]
     assert tables, f"{name}: missing actual shade-table coverage measurements"
-    if name in ("optimized","single"):
+    if name in ("full","optimized","single"):
         assert sum(tables)>0, f"{name}: the test never exercised a cached planet shader"
     else:
         assert sum(tables)==0, f"{name}: cache-disabled reference unexpectedly prepared shading"
+    areas=[(mode,int(a),int(b)) for mode,a,b in re.findall(r"space effects (clipped|full) scan ([0-9]+)/([0-9]+) pixels",log)]
+    assert areas, f"{name}: the snapshot test never ran the effects compositor"
+    if name in ("optimized","single"):
+        assert any(mode=="clipped" and a<b for mode,a,b in areas), f"{name}: the effects scan wasn't narrowed"
+    else:
+        assert all(mode=="full" and a==b for mode,a,b in areas), f"{name}: diagnostic full effects scan missing"
+    compose=[float(v) for v in re.findall(r"native compose 960x640: wall best [0-9.]+ avg ([0-9.]+) ms",log)]
+    assert compose, f"{name}: missing full-compositor samples"
     # Report the median of completed 120-frame windows, not a single fastest frame.
-    print(f"{name}: {statistics.median(times):.3f} ms median of {len(times)} x 120-frame windows; {sum(tables)} shade tables")
-print("native space: cached/uncached, shaded/unshaded and one/four-thread pictures MATCH at 960x640")
+    print(f"{name}: native space {statistics.median(times):.3f} ms; compositor {statistics.median(compose):.3f} ms; effects scan {areas[0][1]}/{areas[0][2]} pixels")
+print("native space: cached/uncached, shaded/unshaded, dirty/full effects and one/four-thread pictures MATCH at 960x640")
 PY

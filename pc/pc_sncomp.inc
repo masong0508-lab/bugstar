@@ -1,8 +1,15 @@
 // pc_sncomp.inc: included by pc_hw.c. The native space view (pc_snative.inc) leaves a window-size picture of the background in pc_sn.buf and a copy of the page
 // as it was right after the background. The compositor shows the picture wherever the page still holds that copy and the copy is something the picture redraws
 // (black, stars, sun, planets and moons); ships, rocks, station, HUD and cockpit stay the game's own pixels.
-typedef struct { int w,h,hn; uint32_t *buf; long f[2]; uint8_t snap[2][240*128]; uint8_t ok[256]; int sunx,suny; uint8_t snap2[2][240*128]; uint8_t *msk; long f2[2]; uint32_t *ibuf; uint8_t foot[2][240*128], fval[2][240*128]; long ff[2]; uint8_t snapc[2][240*128]; long fc[2]; int cpmode[2]; } PcSNat;
+typedef struct { int w,h,hn; uint32_t *buf; long f[2]; uint8_t snap[2][240*128]; uint8_t ok[256]; int sunx,suny; uint8_t snap2[2][240*128]; uint8_t *msk; long f2[2]; uint32_t *ibuf; uint8_t foot[2][240*128], fval[2][240*128]; long ff[2]; uint8_t snapc[2][240*128]; long fc[2]; int cpmode[2]; int ix0,iy0,ix1,iy1; } PcSNat;
 PcSNat pc_sn;
+// Diagnostic A/B switch: PC_SN_DIRTY=0 uses the original full-frame clear
+// and effects composite. The default clips both to the actual item bounds.
+int pc_sn_dirty_on(void){
+    static int on=-1;
+    if(on<0){ const char *e=getenv("PC_SN_DIRTY"); on=!(e && e[0]=='0' && !e[1]); }
+    return on;
+}
 typedef struct { uint32_t *out; int W,H,t,fadeop,ev,has2,has3; const uint8_t *pgb,*sn,*sn2; double sx,sy; PcSNat *n; } SnCC;
 static void sn_fade(uint32_t *c_,int fadeop,int ev){ uint32_t c=*c_;
     if(fadeop==2){ uint32_t r2=(c>>16&255)+((255-(c>>16&255))*ev>>4), g2=(c>>8&255)+((255-(c>>8&255))*ev>>4), b2=(c&255)+((255-(c&255))*ev>>4); c=r2<<16|g2<<8|b2; }
@@ -32,8 +39,19 @@ static void sn_items(uint32_t *out,int W,int H,uint16_t dc,int bmode,int ev,uint
     PcSNat *n=&pc_sn; int t=(dc>>4)&1; if(!n->ibuf || n->w!=W || n->h!=H || g_frame-n->ff[t]>4 || g_frame-n->f2[t]>4 || pc_v3d_classic() || ((dc&7)!=4)) return;
     if(bmode>=2 && ev>0 && (bldcnt&4)) return;
     const uint8_t *pgb=(const uint8_t*)(uintptr_t)(VRAMB+(t?0xA000:0)), *sn2=n->snap2[t]; double sy=160.0/H, sx=240.0/W;
-    for(int Y=0;Y<n->hn;Y++){ int gy=(int)((Y+0.5)*sy); if(gy>127) break; const uint32_t *src=n->ibuf+(size_t)Y*W;
-        for(int X=0;X<W;X++){ uint32_t d=src[X]; if(!d) continue; int gx=(int)((X+0.5)*sx); if(gx>239) gx=239; int gi=gy*240+gx; size_t q=(size_t)Y*W+X;
+    int x0=0,x1=W,y0=0,y1=n->hn, clipped=pc_sn_dirty_on();
+    if(clipped){ x0=n->ix0; x1=n->ix1; y0=n->iy0; y1=n->iy1; }
+    // Log the actual scan reduction only during explicit benchmark runs.
+    static int dirty_log=-1, dirty_samples=0;
+    if(dirty_log<0) dirty_log=getenv("PC_SN_DIRTY_LOG")!=NULL;
+    if(dirty_log && dirty_samples++<4){
+        size_t scanned=(x0<x1 && y0<y1) ? (size_t)(x1-x0)*(size_t)(y1-y0) : 0;
+        fprintf(stderr,"space effects %s scan %zu/%zu pixels at frame %ld\n",
+            clipped?"clipped":"full",scanned,(size_t)W*n->hn,g_frame);
+    }
+    if(x0>=x1 || y0>=y1) return;
+    for(int Y=y0;Y<y1;Y++){ int gy=(int)((Y+0.5)*sy); if(gy>127) break; const uint32_t *src=n->ibuf+(size_t)Y*W;
+        for(int X=x0;X<x1;X++){ uint32_t d=src[X]; if(!d) continue; int gx=(int)((X+0.5)*sx); if(gx>239) gx=239; int gi=gy*240+gx; size_t q=(size_t)Y*W+X;
             if((nv_op[q]&7)<4) continue; if(!(pgb[gi]==sn2[gi] || sn_foot_still(t,gi,pgb[gi]))) continue;
             uint32_t o=out[q]; int a=255-(int)(d>>24); int r=(d>>16&255)+((o>>16&255)*a>>8), g=(d>>8&255)+((o>>8&255)*a>>8), b=(d&255)+((o&255)*a>>8); if(r>255) r=255; if(g>255) g=255; if(b>255) b=255; out[q]=(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; } }
 }
