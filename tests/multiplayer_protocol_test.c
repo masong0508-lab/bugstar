@@ -4,7 +4,7 @@
 #include <string.h>
 
 static int payload_length(int type) {
-    static const unsigned char lens[10]={0,5,1,3,8,4,0,2,0,12};
+    static const unsigned char lens[10]={0,5,1,3,8,4,0,2,0,16};
     return lens[type];
 }
 static void round_trip(int type, unsigned tick) {
