@@ -20,7 +20,8 @@ static uint8_t bsnet_crc8(const uint8_t *buf, uint8_t n) {
     while (n--) {
         crc ^= *buf++;
         for (i = 0; i < 8; i++)
-            crc = (uint8_t)((crc & 0x80u) ? ((crc << 1) ^ 0x07u) : (crc << 1));
+            if (crc & 0x80u) crc = (uint8_t)((crc << 1) ^ 0x07u);
+            else crc = (uint8_t)(crc << 1);
     }
     return crc;
 }
