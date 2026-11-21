@@ -252,24 +252,46 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                        (!s->last_guest_shot_tick ||
                         frame-s->last_guest_shot_tick>=6u)){
                         s->last_guest_shot_tick=frame;
-                        (void)pc_duel_fire(&s->duel,1,&s->other,local,frame);
+                        if(s->coop)(void)pc_coop_fire(&s->coop_enemy,1,&s->other,frame);
+                        else (void)pc_duel_fire(&s->duel,1,&s->other,local,frame);
                     }
                 }
             }
-        }else if(p.type==BSNET_EVENT && s->role==2 && s->connected){
+        }else if(p.type==BSNET_EVENT && !s->coop && s->role==2 && s->connected){
             if(s->event_seen && (int16_t)(p.tick-s->last_event_tick)<=0)
                 continue; /* old scoreboard must not revive a destroyed ship */
             s->last_event_tick=p.tick;
             s->duel.host_hp=p.payload[0];s->duel.guest_hp=p.payload[1];
             s->duel.host_wins=p.payload[2];s->duel.guest_wins=p.payload[3];
             s->event_seen=1;s->last_rx=frame;
+        }else if(p.type==BSNET_RAIDER && s->coop &&
+                 s->role==2 && s->connected){
+            if(s->raider_seen && (int16_t)(p.tick-s->last_raider_tick)<=0)
+                continue;
+            if(p.payload[6]>100 || p.payload[8]>2 || p.payload[9]>10)
+                continue;
+            PcCoop *c=&s->coop_enemy;
+            for(int k=0;k<3;k++){
+                int16_t q=(int16_t)((uint16_t)p.payload[k*2]|
+                                      ((uint16_t)p.payload[k*2+1]<<8));
+                if(k==0)c->x=(int32_t)q*16;
+                else if(k==1)c->y=(int32_t)q*16;
+                else c->z=(int32_t)q*16;
+            }
+            c->hp=p.payload[6];c->wins=p.payload[7];
+            c->phase=p.payload[8];c->flash=p.payload[9];
+            c->host_hits=p.payload[10];c->guest_hits=p.payload[11];
+            s->last_raider_tick=p.tick;s->raider_seen=1;
+            s->last_raider_rx=frame;s->last_rx=frame;
         }else if(p.type==BSNET_BYE && s->connected){
             s->connected=0;s->received=0;s->event_seen=0;s->state_seen=0;
+            s->raider_seen=0;
             if(s->role==1){s->peer_addr=0;s->peer_port=0;}
         }
     }
     if(s->connected && frame-s->last_rx>NET_TIMEOUT_TICKS){
         s->connected=0;s->received=0;s->event_seen=0;s->state_seen=0;
+        s->raider_seen=0;
         if(s->role==1){s->peer_addr=0;s->peer_port=0;}
     }
     if(!s->connected && s->role==2 && (!s->last_hello ||
@@ -278,27 +300,42 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
         s->last_hello=frame;
     }
     if(s->role==1 && s->connected && s->received){
-        pc_duel_step(&s->duel,frame);
+        if(s->coop)pc_coop_step(&s->coop_enemy,frame,local);
+        else pc_duel_step(&s->duel,frame);
         if(s->local_shots!=s->host_seen_shots){
             s->host_seen_shots=s->local_shots;
             if(!s->last_host_shot_tick ||
                frame-s->last_host_shot_tick>=6u){
                 s->last_host_shot_tick=frame;
-                (void)pc_duel_fire(&s->duel,0,local,&s->other,frame);
+                if(s->coop)(void)pc_coop_fire(&s->coop_enemy,0,local,frame);
+                else (void)pc_duel_fire(&s->duel,0,local,&s->other,frame);
             }
         }
     }else if(s->role==1){ s->host_seen_shots=s->local_shots; }
     if(s->connected && (!s->last_send || frame-s->last_send>=3u)){
         net_state(s,local,frame);
-        if(s->role==1) net_score(s,frame);
+        if(s->role==1){
+            if(s->coop && s->received)net_raider(s,frame);
+            else if(!s->coop)net_score(s,frame);
+        }
         else net_input(s,frame);
         s->last_send=frame;
     }
 }
+int pcnet_raider(const PcNetSession *s,uint32_t frame,PcCoop *out){
+    if(!s || !out || !s->coop || !s->connected || !s->received)
+        return 0;
+    if(s->role==1){
+        if(!s->coop_enemy.phase)return 0;
+    }else if(!s->raider_seen || frame-s->last_raider_rx>NET_SNAPSHOT_TICKS)
+        return 0;
+    *out=s->coop_enemy;
+    return 1;
+}
 void pcnet_fire(PcNetSession *s){ if(s && s->role) s->local_shots++; }
 int pcnet_duel(const PcNetSession *s,uint8_t *host_hp,uint8_t *guest_hp,
                uint8_t *host_wins,uint8_t *guest_wins){
-    if(!s || !s->connected || !s->received ||
+    if(!s || s->coop || !s->connected || !s->received ||
        (s->role==2 && !s->event_seen)) return 0;
     if(host_hp)*host_hp=s->duel.host_hp;
     if(guest_hp)*guest_hp=s->duel.guest_hp;
@@ -372,6 +409,11 @@ int pc_mp_remote(uint32_t frame,PcNetShip *out){
 }
 void pc_mp_fired(void){ if(g_active)pcnet_fire(&g_peer); }
 int pc_mp_role(void){ return g_active ? g_peer.role : 0; }
+void pc_mp_set_coop(int enabled){if(g_active)pcnet_set_coop(&g_peer,enabled);}
+int pc_mp_coop_mode(void){return g_active && g_peer.coop;}
+int pc_mp_raider(uint32_t frame,PcCoop *out){
+    return g_active && pcnet_raider(&g_peer,frame,out);
+}
 int pc_mp_duel(uint8_t *host_hp,uint8_t *guest_hp,uint8_t *host_wins,uint8_t *guest_wins){
     return g_active && pcnet_duel(&g_peer,host_hp,guest_hp,host_wins,guest_wins);
 }
