@@ -369,6 +369,15 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
         s->raider_seen=0;
         if(s->role==1){s->peer_addr=0;s->peer_port=0;}
     }
+    /* READY/score messages can keep a socket alive even when the other
+     * ship's actual pose stopped updating (backgrounded phone, lost UDP).
+     * A stale pose must NEVER keep encounter simulation running. */
+    if(s->connected && s->received &&
+       frame-s->last_ship_rx>NET_SNAPSHOT_TICKS){
+        s->received=0;s->peer_ready=0;s->reconnecting=1;
+        s->last_ready_tx=0;
+        if(s->manual_ready)s->local_ready=0;
+    }
     if(!s->connected && s->role==2 && (!s->last_hello ||
        frame-s->last_hello>=30u)){
         net_hello(s,s->world,frame);
