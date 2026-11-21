@@ -589,7 +589,7 @@ static void make_floor(void){
     if(qhere && q_type==Q_CHAMP && ndo<NDO){
         SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0);
         dob[ndo-1].champ=2;
-        dob[ndo-1].cname=q_need>=1 && q_need<=6 ? (u8)(q_need-1) : 0;
+        { int cid=quest_champ_id(); dob[ndo-1].cname=cid>=0?(u8)cid:0; }
     }
     if(qhere && q_type==Q_FETCH && ndo<NDO)
         SPAWN_GEAR(room_floor_cell(&rooms[far]), ((Gear){IT_QUEST,0,0,0,0,0}));
