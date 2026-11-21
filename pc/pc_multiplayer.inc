@@ -52,8 +52,8 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
     static int previous_remote_hp;
     if(!pc_mp_remote((unsigned)pc_frames(),&other) || other.world!=mine.world){
         shown_valid=0; hit_flash=0; have_hp=0;
-        text(pg,5,112,pc_mp_reconnecting()?"LAN: RECONNECT - CONFIRM READY":
-             pc_mp_role()==1?"LAN: WAITING FOR P2":"LAN: JOINING P1",50,1);
+        text(pg,5,112,pc_mp_reconnecting()?"CONNECTION LOST - OPEN LAN MENU":
+             pc_mp_role()==1?"WAITING FOR PLAYER 2":"CONNECTING TO PLAYER 1",50,1);
         return;
     }
     if(!shown_valid || shown.world!=other.world ||
@@ -73,8 +73,8 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
     }
     other=shown;
     if(!pc_mp_match_ready()){
-        text(pg,5,102,pc_mp_local_ready()?"YOU READY - WAIT P2":"YOU NOT READY - LAN OPTIONS",53,1);
-        text(pg,5,112,pc_mp_peer_ready()?"PEER READY":"PEER NOT READY",50,1);
+        text(pg,5,102,pc_mp_local_ready()?"YOU ARE READY":"OPEN LAN MENU AND CONFIRM READY",53,1);
+        text(pg,5,112,pc_mp_peer_ready()?"OTHER PLAYER IS READY":"WAITING FOR OTHER PLAYER",50,1);
     }
     if(pc_mp_coop_mode() && pc_mp_match_ready()){
         PcCoop raider;
@@ -166,25 +166,45 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                     if(pc_sn.w && pc_sn.msk)so_line(ex,ey,tx,ty,53);
                 }
             }
-            /* Compact two-row combat panel stays above the native flight
-             * instruments. Distinct bars/numbers remain readable at 240x160. */
-            rect(pg,3,107,234,19,0);
-            rect(pg,3,106,234,1,53);
-            text(pg,7,109,"RAIDER",53,1);
-            rect(pg,41,110,81,6,3);
-            if(raider.hp)rect(pg,42,111,(int)raider.hp*79/100,4,
-                             raider.hp<=20?49:54);
+            /* Compact three-row mission HUD, genuine 240x160 game pixels.
+             * These are encounter HEALTH values, NOT the native ship shields.
+             * 'H' was successful laser hits, not objective progress; 'CLEAR'
+             * was completed mission count, not waves won. Keep them distinct.
+             * No dynamic allocations, bitmap assets or extra framebuffers. */
+            rect(pg,3,98,234,29,0);
+            rect(pg,3,98,234,1,53);
+            rect(pg,119,100,1,26,56);
             char hud[72];
-            snprintf(hud,sizeof hud,"WAVE %u/3  CLEAR %u",
-                     (unsigned)raider.wave+1,(unsigned)raider.completed);
-            text(pg,133,109,hud,50,1);
-            snprintf(hud,sizeof hud,"P1 SH %u   P2 SH %u",
-                     (unsigned)raider.host_hp,(unsigned)raider.guest_hp);
-            text(pg,7,118,hud,50,1);
-            snprintf(hud,sizeof hud,"DRONE %u H:%u/%u",
-                     (unsigned)raider.wing_hp,
+            if(raider.phase==4){
+                text(pg,7,101,"RAIDER DEFEATED",54,1);
+                text(pg,126,101,"ALL 3 WAVES CLEARED",54,1);
+            }else{
+                text(pg,7,101,raider.hp?"RAIDER HEALTH":"RAIDER DEFEATED",53,1);
+                rect(pg,78,103,45,5,3);
+                if(raider.hp)rect(pg,79,104,(int)raider.hp*43/100,3,
+                                 raider.hp<=20?49:54);
+                snprintf(hud,sizeof hud,"WAVE %u OF 3",
+                         (unsigned)raider.wave+1);
+                text(pg,145,101,hud,50,1);
+            }
+            snprintf(hud,sizeof hud,"P1 HEALTH: %u",(unsigned)raider.host_hp);
+            text(pg,7,110,hud,raider.host_hp<=20?49:50,1);
+            snprintf(hud,sizeof hud,"P2 HEALTH: %u",(unsigned)raider.guest_hp);
+            text(pg,126,110,hud,raider.guest_hp<=20?49:50,1);
+            if(raider.phase==4)
+                snprintf(hud,sizeof hud,"MISSIONS WON: %u",
+                         (unsigned)raider.completed);
+            else if(!raider.wave)
+                snprintf(hud,sizeof hud,"DRONE: NEXT WAVE");
+            else if(!raider.wing_hp)
+                snprintf(hud,sizeof hud,"DRONE: DEFEATED");
+            else
+                snprintf(hud,sizeof hud,"DRONE HEALTH: %u",
+                         (unsigned)raider.wing_hp);
+            text(pg,7,119,hud,50,1);
+            snprintf(hud,sizeof hud,"LASER HITS: P1 %u P2 %u",
                      (unsigned)raider.host_hits,(unsigned)raider.guest_hits);
-            text(pg,158,118,hud,50,1);
+            text(pg,126,119,hud,54,1);
             /* The main target must disappear after destruction. The
              * surviving flank drone becomes the explicit objective, not
              * a misleading ghost RAIDER label or empty boss bar. */
@@ -196,18 +216,18 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                 const char *hint=side>250?"DRONE RIGHT - TURN RIGHT":
                                  side< -250?"DRONE LEFT - TURN LEFT":
                                  "DRONE AHEAD - FIRE!";
-                text(pg,10,93,hint,53,1);
+                text(pg,10,90,hint,53,1);
             }
             if(raider.phase==2)
-                text(pg,75,91,"WAVE CLEAR!",54,2);
+                text(pg,66,84,"WAVE CLEARED!",54,2);
             if(raider.phase==3)
-                text(pg,75,91,"MISSION FAILED",53,2);
+                text(pg,65,70,"MISSION FAILED",53,2);
             if(raider.phase==4){
-                text(pg,38,68,"MISSION COMPLETE",54,2);
-                text(pg,50,91,"BOTH PILOTS WIN!",50,1);
+                text(pg,38,64,"MISSION COMPLETE",54,2);
+                text(pg,69,84,"BOTH PILOTS WIN!",50,1);
                 pc_mp_note_clear_draw();
             }
-        }else text(pg,4,112,"CO-OP: SYNCING RAIDER",50,1);
+        }else text(pg,4,112,"LOADING SHARED MISSION...",50,1);
     }else if(!pc_mp_coop_mode() && pc_mp_match_ready()){
         uint8_t hh,gh,wh,wg;
         if(pc_mp_duel(&hh,&gh,&wh,&wg)){
@@ -215,9 +235,14 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
             if(have_hp && remote_hp<previous_remote_hp)hit_flash=8;
             previous_remote_hp=remote_hp;have_hp=1;
             char status[64];
-            snprintf(status,sizeof status,"LAN SPAR P1:%u P2:%u  W:%u-%u",
-                     (unsigned)hh,(unsigned)gh,(unsigned)wh,(unsigned)wg);
-            text(pg,4,113,status,50,1);
+            rect(pg,3,106,234,21,0);
+            rect(pg,3,106,234,1,53);
+            snprintf(status,sizeof status,"SPARRING  P1 HEALTH: %u  P2 HEALTH: %u",
+                     (unsigned)hh,(unsigned)gh);
+            text(pg,7,109,status,50,1);
+            snprintf(status,sizeof status,"ROUNDS WON: PLAYER 1 %u  PLAYER 2 %u",
+                     (unsigned)wh,(unsigned)wg);
+            text(pg,7,118,status,54,1);
             if(!hh || !gh)text(pg,65,102,hh?"P1 WINS":"P2 WINS",54,1);
         }else have_hp=0;
     }
