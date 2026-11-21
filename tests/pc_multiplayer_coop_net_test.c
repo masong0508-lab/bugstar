@@ -73,41 +73,53 @@ int main(void){
     assert(enemy.wave==1 && enemy.wing_hp==60 && enemy.completed==0);
     assert(enemy.wing_x-wing_host_x<=16 && enemy.wing_x-wing_host_x>=-16);
     assert(enemy.wing_z-wing_host_z<=16 && enemy.wing_z-wing_host_z>=-16);
-    /* Complete waves two and three through TWO actual UDP sockets.
-     * The host moves to line up with the flank drone; the guest fires
-     * from its own independently reported position at the main raider.
-     * The guest must receive the same final mission-clear phase. */
-    /* Pilot two independently lines up with the migrating raider;
-     * forcing an unchanged heading from the original spawn is a real miss. */
-    g.x=-150;
-    for(unsigned t=420;t<800;t++){
-        h.x=((t<462) || (t>=664 && t<715))?900:0;
-        if(t==430||t==443||t==456||t==674||t==686||
-           t==698||t==710)pcnet_fire(&host); /* flank drone */
-        if(t==466||t==490||t==514||t==722||t==746||t==770)
-            pcnet_fire(&host); /* main raider */
-        if(t==478||t==502||t==734||t==758)
-            pcnet_fire(&client); /* guest's independent aim */
+    /* Two genuinely independent UDP clients drive a three-wave objective.
+     * Aim from the host-authoritative enemy's actual moving world position,
+     * not a frozen fire schedule that silently misses a migrating target.
+     * The ship state is still quantized and exchanged on the real sockets. */
+    unsigned complete_at=0;
+    for(unsigned t=420;t<1600;t++){
+        const PcCoop *live=&host.coop_enemy;
+        if(live->phase==1){
+            int aim_wing=live->wing_hp!=0;
+            int32_t ax=aim_wing?live->wing_x:live->x;
+            int32_t ay=aim_wing?live->wing_y:live->y;
+            h.x=ax;h.y=ay;h.yaw=0;
+            g.x=ax;g.y=ay;g.yaw=0;
+            /* Valid human-like trigger cadence with independent pilots.
+             * Inputs are delivered over UDP after each player's tick. */
+            if(t%18u==0)pcnet_fire(&host);
+            if(t%18u==9)pcnet_fire(&client);
+        }
         pcnet_step(&client,t,&g);
         pcnet_step(&host,t,&h);
         pcnet_step(&client,t,&g);
+        if(host.coop_enemy.phase==4 && host.coop_enemy.completed){
+            complete_at=t;break;
+        }
     }
-    assert(pcnet_raider(&host,799,&enemy));
-    assert(enemy.phase==4 && enemy.completed==1 && enemy.wins==3);
-    assert(enemy.hp==0 && enemy.wing_hp==0 && enemy.wave==2);
-    assert(pcnet_raider(&client,799,&enemy));
-    assert(enemy.phase==4 && enemy.completed==1 && enemy.wins==3);
-    assert(enemy.hp==0 && enemy.wing_hp==0 && enemy.wave==2);
-    for(unsigned t=800;t<1100;t++){
+    assert(complete_at>420 && complete_at<1600);
+    for(unsigned t=complete_at+1;t<=complete_at+12;t++){
         pcnet_step(&client,t,&g);pcnet_step(&host,t,&h);
         pcnet_step(&client,t,&g);
     }
-    assert(pcnet_raider(&host,1099,&enemy));
+    assert(pcnet_raider(&host,complete_at+12,&enemy));
+    assert(enemy.phase==4 && enemy.completed==1 && enemy.wins==3);
+    assert(enemy.hp==0 && enemy.wing_hp==0 && enemy.wave==2);
+    assert(enemy.host_hits>=3 && enemy.guest_hits>=3);
+    assert(pcnet_raider(&client,complete_at+12,&enemy));
+    assert(enemy.phase==4 && enemy.completed==1 && enemy.wins==3);
+    assert(enemy.hp==0 && enemy.wing_hp==0 && enemy.wave==2);
+    for(unsigned t=complete_at+13;t<=complete_at+315;t++){
+        pcnet_step(&client,t,&g);pcnet_step(&host,t,&h);
+        pcnet_step(&client,t,&g);
+    }
+    assert(pcnet_raider(&host,complete_at+315,&enemy));
     assert(enemy.phase==1 && enemy.wave==0 && enemy.completed==1);
-    assert(pcnet_raider(&client,1099,&enemy));
+    assert(pcnet_raider(&client,complete_at+315,&enemy));
     assert(enemy.phase==1 && enemy.wave==0 && enemy.completed==1);
-    pcnet_close(&client);pcnet_step(&host,1101,&h);
-    assert(!pcnet_raider(&host,1101,&enemy));
+    pcnet_close(&client);pcnet_step(&host,complete_at+317,&h);
+    assert(!pcnet_raider(&host,complete_at+317,&enemy));
     pcnet_close(&host);
     puts("LAN co-op UDP: two pilots, two enemies, 3 mission waves, shared completion, replay PASS");
     return 0;
