@@ -34,13 +34,33 @@ assert "int nx=x+((sinx(khd>>2)*3)>>14), ny=y+((cosx(khd>>2)*3)>>14);" in src, (
 assert "if(nx>=194 && nx<=234 && ny>=21 && ny<=61)" in src, (
     "the kart direction marker must stay inside the 44x44 minimap"
 )
+assert "if(cnt>12) for(int step=2;step<=12;step+=2)" in src, (
+    "the upcoming road segment must be highlighted on the minimap"
+)
+assert "if(i>=cnt) i=cnt-1; if(i<0) i=0;" in src, (
+    "racer icons must not index unwritten path points on odd-length tracks"
+)
+map_sig = "static inline int kart_map_ahead_idx("
+map_start = src.index(map_sig)
+map_open = src.index("{", map_start)
+map_depth = 0
+for i in range(map_open, len(src)):
+    if src[i] == "{":
+        map_depth += 1
+    elif src[i] == "}":
+        map_depth -= 1
+        if map_depth == 0:
+            map_function = src[map_start : i + 1]
+            break
+else:
+    raise AssertionError("Unbalanced minimap look-ahead helper")
 
 test = r"""
 #include <stdio.h>
 #include <stdint.h>
 typedef int32_t s32;
 #define K_VBASE 0x3200
-""" + function + r"""
+""" + function + "\n" + map_function + r"""
 static int ref(int d0,int d1,int d2,int speed){
     if(speed<K_VBASE/6) return 0;
     int a1=d1-d0,a2=d2-d1;
@@ -74,6 +94,18 @@ int main(void){
     if(kart_bend_cue(0,60,924,10000)!=2) return 8; // right first, later sharp left
     if(kart_bend_cue(0,964,100,10000)!=-2) return 9; // left first, later sharp right
     if(kart_bend_cue(0,10,864,10000)!=-2) return 10; // first stretch straight, then left
+    int mapchecks=0;
+    for(int cnt=13;cnt<=300;cnt++) for(int pi=0;pi<=2*cnt;pi++) {
+        for(int step=2;step<=12;step+=2) {
+            int got=kart_map_ahead_idx(pi,step,cnt);
+            int expected=((pi/2)%cnt+step)%cnt;
+            if(got!=expected || got<0 || got>=cnt){
+                fprintf(stderr,"map ahead pi %d step %d count %d => %d expected %d\n",
+                        pi,step,cnt,got,expected); return 11;
+            }
+            mapchecks++;
+        }
+    }
     unsigned state=0xacc34597u; int checks=9;
     for(int i=0;i<20000;i++){
         state^=state<<13;state^=state>>17;state^=state<<5; int a=(int)(state&1023u);
@@ -83,7 +115,7 @@ int main(void){
         if(check(a,b,c,v)) return 7;
         checks++;
     }
-    printf("Kart turn advisory: %d UBSan cases PASS\n",checks);
+    printf("Kart turn advisory: %d UBSan cases, minimap look-ahead: %d cases PASS\n",checks,mapchecks);
     return 0;
 }
 """
