@@ -93,16 +93,12 @@ int main(void){
         uint8_t hh,gh,hw,gw;
         assert(pcnet_duel(&client,&hh,&gh,&hw,&gw) && gh==0 && hw==1);
         assert(pcnet_remote(&client,630,&got) && abs_i(got.x-ah.x)<40);
-        /* A valid checksum is not enough: reject short authoritative
-         * scores and ship states with deliberately newer frame numbers. */
+        /* The canonical codec refuses malformed score/state lengths
+         * before they reach a socket or the session receiver. */
         old.type=BSNET_EVENT;old.tick=631;old.length=0;
-        n=bsnet_pack(&old,wire,sizeof wire);assert(n==8);
-        assert(sendto((int)host.sock,wire,(size_t)n,0,
-                      (struct sockaddr*)&dst,sizeof dst)==n);
+        assert(bsnet_pack(&old,wire,sizeof wire)==BSNET_E_LENGTH);
         old.type=BSNET_STATE;old.tick=631;old.length=0;
-        n=bsnet_pack(&old,wire,sizeof wire);assert(n==8);
-        assert(sendto((int)host.sock,wire,(size_t)n,0,
-                      (struct sockaddr*)&dst,sizeof dst)==n);
+        assert(bsnet_pack(&old,wire,sizeof wire)==BSNET_E_LENGTH);
         pcnet_step(&client,631,&bc);
         assert(pcnet_duel(&client,&hh,&gh,&hw,&gw) && gh==0 && hw==1);
         assert(pcnet_remote(&client,631,&got) && abs_i(got.x-ah.x)<40);
