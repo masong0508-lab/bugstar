@@ -4,6 +4,17 @@
  * host-authoritative multiplayer events are added and verified.
  */
 #include "pc_net.h"
+/* The LAN guest enters near, but not inside, the host's spawn. This offset
+ * is applied only in opt-in LAN mode, after the normal space spawn and before
+ * the camera basis is calculated; solo and GBA space_enter are unchanged. */
+static void pc_mp_arrive(void){
+#ifdef PC_SDL
+    if(pc_mp_role()==2){
+        shx+=192; shz+=1720;
+        yaw=512; pitch=0; speed=0;
+    }
+#endif
+}
 static void pc_mp_space_draw(volatile unsigned short *pg){
 #ifdef PC_SDL
     /* Zero multiplayer work in ordinary single-player flight; never overlay
@@ -22,7 +33,9 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
     static int shown_valid, hit_flash, have_hp;
     static int previous_remote_hp;
     if(!pc_mp_remote((unsigned)pc_frames(),&other) || other.world!=mine.world){
-        shown_valid=0; hit_flash=0; have_hp=0; return;
+        shown_valid=0; hit_flash=0; have_hp=0;
+        text(pg,5,112,pc_mp_role()==1?"LAN: WAITING FOR P2":"LAN: JOINING P1",50,1);
+        return;
     }
     if(!shown_valid || shown.world!=other.world ||
        other.x-shown.x>2048 || other.x-shown.x< -2048 ||
