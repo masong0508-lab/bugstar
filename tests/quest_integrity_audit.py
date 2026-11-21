@@ -60,7 +60,7 @@ for highest in range(2, 12):
 # objects if a crowded dungeon hits the 160-object cap.
 require(dungeon, "cages_here<remaining && ndo<NDO",
         "rescue floor lacks a guaranteed cage supply or exceeds the object budget")
-require(dungeon, "int remaining=q_need-q_have", "rescue ignores completed progress")
+require(dungeon, "remaining=q_need-q_have", "rescue ignores completed progress")
 require(dungeon, "dob[j].kind==K_CAGE", "existing cages weren't counted")
 require(dungeon, "dob[k]=dob[--ndo]", "no decorative-object spare-slot recovery")
 require(dungeon, "if(qhere && q_type==Q_FETCH && ndo<NDO)",
