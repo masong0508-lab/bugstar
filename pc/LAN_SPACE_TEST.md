@@ -6,6 +6,8 @@ The earlier real SDL smoke reached a shared first-raider victory, but was insuff
 
 This branch upgrades the LAN packet version to **v5**, with separate Ready and ACTIVE (in-flight) flags; both peers must use v5 binaries. The SDL options menu now exchanges UDP HELLO/READY/STATE during a pause without advancing physics. Android backgrounding invalidates session state and requires fresh Ready confirmations. Earlier v3 test results below are historical, not evidence for this change.
 
+**Paused encounter timing:** the host now uses a separate combat tick that increments only while both pilots are Ready and actively flying. LAN heartbeats keep their own tick advancing inside the options menu. Host-authoritative guest-shot validation also checks both ACTIVE flags, preventing damage, wave-clear timers or enemy attacks from running under a paused lobby. The two-socket Ready test asserts all three protections.
+
 The **MULTIPLAYER LAN** options now include **CONFIRM READY / CANCEL READY**. HOST/JOIN establish the UDP socket, but each client must independently confirm Ready and stay in the same star 3D view for combat to begin. Leaving, switching world or losing current ship snapshots clears readiness. A rejoined client must confirm again; no network reward writes to a campaign save. The command-line `--lan-host`/`--lan-join` test path intentionally auto-confirms to preserve existing automated sparring tests.
 
 These are **source changes awaiting build/runtime verification**, not a verified Android, Windows, GBA or GBC multiplayer release. Run `tests/pc_multiplayer_ready_test.c` and `pc/tests/lan_menu.sh` as well as the full SDL smoke. Recheck any regressions to frame pacing and ordinary offline play.
