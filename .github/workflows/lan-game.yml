@@ -23,6 +23,8 @@ jobs:
             pc/platform/pc_net.c pc/platform/pc_duel.c pc/platform/pc_coop.c \
             net/session.c -lm -o /tmp/bugstar-ready-test
           /tmp/bugstar-ready-test
+      - name: Validate readable 240x160 cockpit and truthful mission counters
+        run: python3 tests/hud_readability.py
       - name: Compile native SDL game
         run: bash pc/build.sh
       - name: Real SDL Host/Join/Ready/Leave menu
