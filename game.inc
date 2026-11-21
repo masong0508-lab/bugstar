@@ -661,6 +661,9 @@ static int q_type, q_need, q_have, q_floor, q_done, q_gold, q_fame, q_zone, q_wo
 // One shared identity for the bounty board and the actual named dungeon foe.
 // q_need stores champion ID + 1 on Q_CHAMP (0 is an older save fallback).
 static const char *const quest_champ_names[6]={"GRIMFANG","MOLDJAW","SKITTERMAW","VILEWING","THE PALE ONE","OLD CRUNCH"};
+// game.inc is included before dungeon.inc; both use the same static forge
+// flag, so forward-declare its tentative definition before quest helpers.
+static int forge_on;
 static int quest_home(void){ return q_zone==zone && q_world==world_no; }
 static const char *fame_rank(void){
     return fame>=1200?"BUG LEGEND": fame>=700?"CHAMPION": fame>=350?"HERO": fame>=150?"BRAVE BUG": fame>=50?"KNOWN BUG":"NOBODY";
