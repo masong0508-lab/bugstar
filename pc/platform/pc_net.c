@@ -205,12 +205,14 @@ static void net_decode(PcNetShip *v,const BsNetPacket *p,uint32_t world){
 }
 void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
     if(!s || !s->role || !local) return;
-    if(s->world!=local->world){
+    if(!s->world_known || s->world!=local->world){
+        int changed=s->world_known;
+        s->world_known=1;
         s->world=local->world;
         s->connected=0;s->received=0;s->event_seen=0;s->state_seen=0;
         s->input_seen=0;s->last_ship_rx=0;
         s->peer_ready=0;s->last_ready_tx=0;
-        if(s->manual_ready)s->local_ready=0;
+        if(changed && s->manual_ready)s->local_ready=0;
         s->raider_seen=0;pc_coop_reset(&s->coop_enemy);
         s->last_hello=0;s->last_send=0;
         s->host_seen_shots=s->local_shots;s->have_guest_fire=0;
