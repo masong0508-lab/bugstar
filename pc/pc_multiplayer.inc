@@ -81,12 +81,28 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                    sy_>14 && sy_<107)
                     text(pg,sx+7,sy_-8,"RAIDER",ci,1);
             }
-            char hud[64];
-            snprintf(hud,sizeof hud,"CO-OP RAID HP:%u  WINS:%u",
-                     (unsigned)raider.hp,(unsigned)raider.wins);
+            /* The enemy's short real 3D laser is owned and approved by
+             * the host. Render the same beam in either player's camera. */
+            if(raider.beam && raider.phase==1){
+                PcNetShip *aimed=(pc_mp_role()==(raider.beam_target?2:1))
+                                 ? &mine : &other;
+                int ex,ey,tx,ty;
+                if(sproj(raider.x,raider.y,raider.z,&ex,&ey,0) &&
+                   sproj(aimed->x,aimed->y,aimed->z,&tx,&ty,0)){
+                    line2(pg,ex,ey,tx,ty,53);
+                    if(pc_sn.w && pc_sn.msk)so_line(ex,ey,tx,ty,53);
+                }
+            }
+            char hud[80];
+            snprintf(hud,sizeof hud,"RAID %u P1:%u P2:%u W:%u L:%u",
+                     (unsigned)raider.hp,(unsigned)raider.host_hp,
+                     (unsigned)raider.guest_hp,(unsigned)raider.wins,
+                     (unsigned)raider.losses);
             text(pg,4,112,hud,50,1);
             if(raider.phase==2)
                 text(pg,66,99,"RAIDER DOWN!",54,1);
+            if(raider.phase==3)
+                text(pg,66,99,"RAID FAILED",53,1);
         }else text(pg,4,112,"CO-OP: SYNCING RAIDER",50,1);
     }else {
         uint8_t hh,gh,wh,wg;
