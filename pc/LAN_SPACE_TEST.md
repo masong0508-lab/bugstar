@@ -1,4 +1,4 @@
-# BUGSTAR experimental LAN space sparring + shared-raider co-op (developer test)
+# BUGSTAR experimental LAN sparring + three-wave co-op mission (developer test)
 
 **Status (21 November 2026):** the PC ↔ PC two-process SDL smoke test now **passes in both sparring and co-op**. In the first verified co-op smoke, the host and guest each logged three synchronized raider kills, and both pilots contributed real laser hits. Windows PC, Android APK and GBA ROM **builds** were green at protocol v2 commit `e4aca761a2`; this does not mean an Android device was tested for multiplayer, or that GBA has link networking. The newer ship-model, network hardening and tick-decoupling work is under CI re-verification.
 This mode is opt-in via command-line arguments. It is disabled in the
@@ -22,9 +22,11 @@ The initial implementation supports:
   P1/P2 HP (100 each), wins and a timed 2-second round reset. A disconnect
   or different star hides the session overlay. The real campaign hull, HP,
   cargo, save files, enemy AI and rewards are not shared or modified.
-- A separate `--lan-coop` opt-in encounter: one moving 3D RAIDER target is simulated **only on the host**. Both pilots fire real A-lasers; the host validates each aim and sends quantized target position, one shared HP meter, two pilots' hit counts, and shared round victories to both screens. A five-hit defeat yields a 2.5-second respawn. The raider now fires dodgeable, host-approved shots against each pilot's **temporary co-op shields**. The host shares a win on defeat of the raider or a loss when both pilots are knocked out. No real ship hull, loot or saves are changed; this remains a small trial encounter, **not** complete campaign co-op. No loot, enemy AI integration, mission progress, or saves are shared.
+- The **three-wave co-op mission** runs only on the host. Wave 1 has the familiar moving five-hit RAIDER. Waves 2 and 3 add an independently moving, attack-capable flank DRONE (three and four hits respectively). Clear *both* active targets to unlock the next wave. Three victories show a synchronized MISSION COMPLETE result; a team defeat restarts the contract. Neither opponent can change campaign hull, XP, inventory or saves. This is a standalone trial mission, not shared campaign progression.
 - A clean loss of the remote silhouette after stale/lost packets; BYE on
   normal shutdown. A recent enemy score cannot make an old 3D ship position fresh, and replayed guest shot counters are rejected. Game-clock networking continues between rendered flight frames. No cartridge SRAM/save modifications.
+
+**Version compatibility:** The expanded co-op mission uses a fixed 24-byte RAIDER payload and LAN **protocol v3**. Both PCs must run the same updated build; v2 peers are rejected instead of misreading enemy data. The previous full-game verification was on v2; this three-wave revision still requires its own CI pass.
 
 ## Test on one computer first
 
@@ -65,7 +67,7 @@ peer silhouette intentionally disappears until both instances match.
 
 ## Opt in to the shared-raider encounter
 
-Start the same two PC processes shown above, but add `--lan-coop` **on both sides**. Use the same star and separate save directories. The guest spawns nearby and faces the same direction as the host; the armed target patrols and fires ahead in 3D space. A correct connection displays a larger 3D interceptor, a RAIDER health bar, both pilots' temporary shields, wins/losses and each pilot's hit contribution. Five combined hits produce `RAIDER DOWN!`, then a fresh encounter; the enemy can also win by depleting both players' co-op shields. Both pilots should see the same win/loss count. A sparring client and a co-op host deliberately cannot connect.
+Start the same two PC processes shown above, but add `--lan-coop` **on both sides**. Use the same star and separate save directories. In wave 1, shoot the moving RAIDER five times between both pilots. For waves 2 and 3, rotate toward the separate flank **DRONE** and destroy both targets. The HUD shows RAIDER and DRONE health, wave progression, both pilots' encounter-only shields and hit contributions. Enemy shots announce the targeted pilot before firing; move sideways to dodge. Clear wave 3 to display **MISSION COMPLETE** on both machines. A sparring client and a co-op host deliberately cannot connect.
 
 ## Verification commands
 
@@ -83,7 +85,7 @@ bidirectional independent ship-state exchange, quantization, different
 world rejection, timeout/disconnect, handshake rejoin, both players
 hitting each other, HP updates and round victories. The independent
 `tests/pc_multiplayer_duel_test.c` checks front/back/side aim, range,
-match wins and respawn. `tests/pc_multiplayer_coop_test.c` and `tests/pc_multiplayer_coop_net_test.c` verify both pilots damaging the same target, replicated HP and victories, respawn and mismatched-mode rejection. PC and Android CI compile the tests. The PC test also boots two complete SDL game windows in sparring and co-op modes, captures screenshots and checks both entered 3D space. Existing renderer tests and
+match wins and respawn. `tests/pc_multiplayer_coop_test.c` and `tests/pc_multiplayer_coop_net_test.c` additionally test three-stage mission completion, two independently aimable targets, and the second drone's synchronized 3D pose, HP and wave status. PC and Android CI compile the tests. The PC test also boots two complete SDL game windows in sparring and co-op modes, captures screenshots and checks both entered 3D space. Existing renderer tests and
 `pc/tests/speed_guard.sh` must continue to pass with LAN disabled. The separate `pc/tests/lan_live.sh` must also pass a **real combat victory on each running game**, not just establish a UDP connection.
 
 ## What makes the next iteration truly playable
