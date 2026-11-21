@@ -68,13 +68,13 @@ for phrase in ("int k=beat==10?7:beat", "shd_begin()", "shd_end(sh)",
     require(cinema, phrase, "cutscene lacks safe 240x160 drawing, skip or page handling: " + phrase)
 assert "malloc(" not in cinema and "calloc(" not in cinema, "chapter slates must not allocate"
 
-# The OAM bit 14 on attribute 0 switches to 8bpp. Bolt's original sprites
-# are 4bpp; the new chapter scene must preserve this rather than scrambling
-# its pixels/palette on GBA hardware.
+# In GBA OBJ attribute 0, bit 14 changes the sprite SHAPE, not color depth.
+# Color depth is bit 13. Keep bit 14 clear so Bolt remains square instead of
+# being stretched into a horizontal rectangle; palette mode stays unchanged.
 sprite_attributes = re.findall(r"shadow_oam\[0\]\.a0\s*=\s*([^;]+);", cinema)
 assert len(sprite_attributes) >= 2, "chapter sprite has no initial/animated attr0"
 assert all("(1<<14)" not in bits for bits in sprite_attributes), (
-    "chapter scene incorrectly sets the 8bpp sprite bit for 4bpp Bolt artwork"
+    "chapter scene incorrectly sets the horizontal-shape bit on square Bolt"
 )
 assert "switch(k){" in cinema and all(
     f"case {k}:" in cinema for k in range(8)
@@ -101,7 +101,31 @@ assert all(len(s) <= 54 for s in literals(scenes)), (
     "story dialogue exceeds the existing text-card width"
 )
 require(scenes, "THE ANT KING FALLS. HIS CROWN BREAKS.", "King's defeat has no scene")
-require(scenes, "I CUT OPEN A SHIP TO FEED THEM.", "King's final confession is lost")
+for phrase in ("THE WINTER CAME. OUR EGGS WERE FREEZING.",
+               "I MADE YOUR FRIENDS DIG FOR BURIED ENGINES.",
+               "I CUT OPEN A SHIP TO HEAT THE NEST.",
+               "THEN I FED THE FURNACE LIVING SHIPS.",
+               "IT LEARNED MY HUNGER."):
+    require(scenes, phrase, "Ant King's motive or responsibility is missing: " + phrase)
+for companion in ("BUG_ANT", "BUG_LADY", "BUG_FIRE", "BUG_CRICKET", "BUG_BEE"):
+    require(scenes, "have_bug[" + companion + "]",
+            "saved rescue state must affect an actual chapter: " + companion)
+require(scenes, "LADYBUG: REMEMBERING CAN HURT TOO.",
+        "Bolt's memory distress needs a companion's response when rescued")
+require(scenes, "RUNAWAY ANT: WE NEVER ASKED FOR THIS.",
+        "a rescued rebel ant must challenge the King's claim to speak for all ants")
+require(scenes, "OPEN CAGES WAIT FOR FRIENDS STILL MISSING.",
+        "finale must not pretend the player rescued every captive")
+require(scenes, "THE RUNAWAY ANT WALKS HOME WITHOUT FEAR.",
+        "the liberated ant companion needs narrative closure")
+require(ui, "have_bug[BUG_PILL] && gold<30",
+        "the Pill Bug must be acknowledged through a relevant low-gold conversation")
+require(ui, "else if(ant_king && data_cores>=8)",
+        "recovered memories must guide the player even before the first beast encounter")
+require(ui, "OPEN THE MAP. FOLLOW THE BEAST'S SIGNAL.",
+        "the objective after recovery must be clear")
+require(ui, "HE KNOWS WHERE THE CAPTIVES WERE TAKEN.",
+        "Bolt must not promise every friend is in the King's chamber")
 assert "THE DAWN" not in scenes.split("case 10:", 1)[0], (
     "King's chapter or earlier story dialogue reveals Bolt's final name prematurely"
 )
@@ -198,6 +222,12 @@ rumors = literals(section(town, "static const char *const story_rumor[5][3]={",
 assert len(rumors) == 15, "expected three grounded rumors for five story phases"
 assert all(0 < len(line) <= 54 for line in rumors), "town dialog exceeds native card width"
 
+assert "THE ANT TUNNELS FROZE LAST WINTER." in rumors[:3], (
+    "the King's winter fear must be foreshadowed before his confession"
+)
+assert "NOT EVERY ANT AGREED WITH THE KING." in rumors[3:6], (
+    "the story should distinguish captive workers from the King"
+)
 assert "SOMEONE IN SPACE IS SINGING US HOME." not in rumors[:12], (
     "townsfolk must not announce Dawn's liberation before the true finale"
 )
@@ -218,5 +248,5 @@ require(town, "int li=(int)(rumor_seed%NTALK)", "town dialogue index must use un
 require(town, "wd.mood==MOOD_LOVE ? love_ln[li%12]", "love-mood speech overridden by rumor")
 require(town, "wd.mood==MOOD_HATE ? hate_ln[li%12]", "hate-mood speech overridden by rumor")
 
-print("Story/cutscene audit: 8 memories, 8 intertitles, conditional rescue voices,")
+print("Story/cutscene audit: 8 memories, 8 intertitles, rescued companion dialogue,")
 print("character reactions, reveal gating, scene order and action hints: PASS")
