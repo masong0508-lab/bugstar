@@ -8,6 +8,7 @@ on:
       - 'ui.inc'
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
+      - 'tests/quest_runtime_host.py'
       - 'planet.inc'
       - 'town.inc'
       - 'pc/pc_kartnat*.inc'
@@ -42,6 +43,7 @@ on:
       - 'ui.inc'
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
+      - 'tests/quest_runtime_host.py'
       - 'planet.inc'
       - 'town.inc'
       - 'pc/pc_kartnat*.inc'
@@ -80,6 +82,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential
       - name: Audit quest targets, world gates and guaranteed rewards
         run: python3 tests/quest_integrity_audit.py
+      - name: Execute real quest pickup code with UndefinedBehaviorSanitizer
+        run: python3 tests/quest_runtime_host.py
       - name: Exercise native 3D perspective and near-plane regression with UBSan
         run: python3 tests/space_native_projection_audit.py
       - name: Guard space station 3D depth and shared geometry
