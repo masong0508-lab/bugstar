@@ -68,6 +68,7 @@ int pc_mp_peer_ready(void);
 int pc_mp_both_confirmed(void); /* Ready flags may show in paused lobby */
 int pc_mp_match_ready(void);
 int pc_mp_reconnecting(void);
+int pc_mp_space_ready(void); /* recent 3D flight pose exists for network lobby */
 int pc_mp_coop_complete(void);
 void pc_mp_note_clear_draw(void); /* called only after the victory overlay is actually drawn */
 int pc_mp_coop_mode(void);
