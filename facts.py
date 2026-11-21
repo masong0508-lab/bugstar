@@ -258,9 +258,18 @@ def big_lines(n, W=48):                # the name of the n-th -illion, wrapped i
 def make(arr, out):
     data = bytearray(); offs, nds, nzs, abs_, leads = [], [], [], [], []
     big = None
+    # Protect release builds too, not only CI tests: bad glyphs silently turn
+    # into blank/garbage text on the 3x5 GBA font. Duplicates make index
+    # navigation ambiguous, especially with 1,000+ extra PC-only pages.
+    allowed = set(" ',():-.^0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    seen = set()
     for (v, t, a, b, ab) in F:
+        assert t and t not in seen, ("Duplicate/empty HOW BIG title", t)
+        seen.add(t)
+        assert ab in (0, 1), ("HOW BIG estimate flag", t, ab)
         for s_ in (t, a, b):
             assert s_ is None or (len(s_) <= (28 if s_ is t else 58)), s_
+            assert s_ is None or set(s_).issubset(allowed), ("Missing font glyph", t, s_)
         s = v() if callable(v) else str(v); n = len(s); lead = n - 3 * ((n - 1) // 3)
         nz = (1 if int(s[:lead]) else 0) + sum(1 for i in range(lead, n, 3) if s[i:i + 3] != "000")
         offs.append(len(data)); nds.append(n); nzs.append(nz); abs_.append(ab); leads.append(int(s[:5].ljust(5, "0")))
