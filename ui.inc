@@ -90,12 +90,12 @@ static void bolt_chapter_open(volatile u16 *pg, int beat){
     stext(pg,120-textlen(sub[k])*2,132,sub[k],C_WHITE);
     stext(pg,83,148,"A: NEXT  START: SKIP",C_GREY);
     oam_hide_all(); set_affine(31,128,0,0,128);
-    shadow_oam[0].a0=(58&255)|(1<<8)|(1<<9)|(1<<14);
+    shadow_oam[0].a0=(58&255)|(1<<8)|(1<<9);  // 4bpp Bolt tile, affine + double-size
     shadow_oam[0].a1=(104&511)|(31<<9)|(1<<14);
     shadow_oam[0].a2=T_BOLT; oam_flush();
     wait_release();
     for(int t=0;t<90;t++){
-        if((t&15)==0){ shadow_oam[0].a0=((58+((t>>4)&1))&255)|(1<<8)|(1<<9)|(1<<14);
+        if((t&15)==0){ shadow_oam[0].a0=((58+((t>>4)&1))&255)|(1<<8)|(1<<9);
             oam_flush(); }                                    // two-pixel breathing beat
         vsync(); read_keys();
         if(HIT(K_A)||HIT(K_START)) break;
