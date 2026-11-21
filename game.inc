@@ -883,8 +883,8 @@ static void free_bug(int t){
         "LADYBUG: HOLD STILL. LET ME HELP.",
         "FIREFLY: NO MORE DARK. FOLLOW MY LIGHT.",
         "BEE: THEY TOOK OUR HIVE. I CAN STING.",
-        "CRICKET: I RAN ONCE. NOW I RUN WITH YOU.",
-        "RUNAWAY ANT: I KNOW THEIR HIDDEN STAIRS."};
+        "CRICKET: I RAN. NOW I RUN WITH YOU.",
+        "RUNAWAY ANT: I KNOW THE HIDDEN STAIRS."};
     char b[40]; scpy(b,"FREED A "); scat(b,friend_name[t]);
     say(have_bug[t]==1?first_rescue[t]:b); sfx(2);
     // A rescue contract belongs to the world that posted it. Freeing bugs
