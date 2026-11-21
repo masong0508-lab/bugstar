@@ -10,9 +10,11 @@ on:
       - 'tests/quest_integrity_audit.py'
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
+      - 'tests/kart_world_save_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
+      - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
       - 'town.inc'
@@ -50,9 +52,11 @@ on:
       - 'tests/quest_integrity_audit.py'
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
+      - 'tests/kart_world_save_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
+      - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
       - 'town.inc'
@@ -92,12 +96,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential
       - name: Exercise 50-slot menu scrolling and selection with UndefinedBehaviorSanitizer
         run: python3 tests/list_picker_runtime_host.py
+      - name: Exercise Kart World saved settings and 18-driver navigation with UBSan
+        run: python3 tests/kart_world_save_runtime.py
       - name: Guard shared signed division against overflow and zero denominators
         run: python3 tests/shared_math_runtime_host.py
-      - name: Verify native kart camera stability, road markings and hill bounds under UBSan
+      - name: Check speed-aware native kart banking and limited hill displacement under UBSan
         run: python3 tests/kart_native_camera_runtime.py
-      - name: Check pixel-identical native kart bilinear fast path under UBSan
+      - name: Verify native kart sampler keeps pixels identical on flat road textures
         run: python3 tests/kart_native_sampler_runtime.py
+      - name: Verify kart HUD DMA palette words under UndefinedBehaviorSanitizer
+        run: python3 tests/kart_dma_palette_runtime_host.py
       - name: Audit quest targets, world gates and guaranteed rewards
         run: python3 tests/quest_integrity_audit.py
       - name: Execute real quest pickup code with UndefinedBehaviorSanitizer
