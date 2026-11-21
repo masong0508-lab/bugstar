@@ -14,6 +14,7 @@ on:
       - 'tests/shared_math_runtime_host.py'
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
+      - 'tests/kart_visual_capture_audit.py'
       - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
@@ -56,6 +57,7 @@ on:
       - 'tests/shared_math_runtime_host.py'
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
+      - 'tests/kart_visual_capture_audit.py'
       - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
@@ -152,20 +154,22 @@ jobs:
           cd pc
           mkdir -p out
           : > out/empty.keys
-          SDL_AUDIODRIVER=dummy PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
+          printf 'shot 96\nshot 160\nshot 240\nshot 320\n' > out/kart-visual.keys
+          SDL_AUDIODRIVER=dummy PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
             ./bugstar_pc --window --video-driver dummy --no-audio --fast \
-            --size 960 640 --script out/empty.keys --sav out/kart-native-smoke.sav \
+            --size 960 640 --script out/kart-visual.keys --out out/kart-native-visual --sav out/kart-native-smoke.sav \
             --auto-shot 320 out/kart-native-smoke.png --stop-after 324 \
             > out/kart-native-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-native-smoke.log
           test -s out/kart-native-smoke.png
-          SDL_AUDIODRIVER=dummy PC_V3D=2 KFUZZ_RACES=1 timeout 120 \
+          SDL_AUDIODRIVER=dummy PC_SCALE=4 PC_V3D=2 KFUZZ_RACES=1 timeout 120 \
             ./bugstar_pc --window --video-driver dummy --no-audio --fast \
-            --size 960 640 --script out/empty.keys --sav out/kart-classic-smoke.sav \
+            --size 960 640 --script out/kart-visual.keys --out out/kart-classic-visual --sav out/kart-classic-smoke.sav \
             --auto-shot 320 out/kart-classic-smoke.png --stop-after 324 \
             > out/kart-classic-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-classic-smoke.log
           test -s out/kart-classic-smoke.png
+          python3 ../tests/kart_visual_capture_audit.py out/kart-native-visual out/kart-classic-visual
       - name: Benchmark native kart composition and verify single/multithread picture parity
         run: |
           cd pc
@@ -190,6 +194,9 @@ jobs:
             pc/out/kart-native-smoke.log
             pc/out/kart-classic-smoke.png
             pc/out/kart-classic-smoke.log
+            pc/out/kart-native-visual_*.png
+            pc/out/kart-classic-visual_*.png
+            pc/out/kart-visual-report.json
             pc/out/kart-bench-1.log
             pc/out/kart-bench-4.log
           if-no-files-found: ignore
