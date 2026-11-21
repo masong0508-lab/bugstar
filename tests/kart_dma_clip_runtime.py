@@ -32,6 +32,7 @@ word=extract(kart,"krect_dma_word")
 kart_rect=extract(kart,"krect")
 normal_rect=extract(main,"rect")
 assert "if(!krect_clip(&x,&y,&w,&h)) return;" in kart_rect
+assert "c=(u8)c;" in kart_rect, "DMA border pixels must receive valid 8-bit palette indices"
 assert "if(w<16){ rect(pg,x,y,w,h,c); return; }" in kart_rect
 assert "volatile u32 v=krect_dma_word(c);" in kart_rect
 assert "*(volatile u32*)0x040000DC=(u32)pairs|(2<<23)|(1u<<31);" in kart_rect
