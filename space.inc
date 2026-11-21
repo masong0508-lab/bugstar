@@ -501,6 +501,10 @@ static void story_card(const char *title, const char *const *ln, int n){
     text(pg,84,124,"A: CONTINUE",55,1);
     wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)); wait_release(); shd_end(sh);
 }
+// Completing Bolt's story is separate from counting Technobeast victories.
+// A player who defeats the beast early must still be able to reach the true
+// ending after recovering all eight memories.
+static int beast_finale_ready(int cores, int released){ return cores>=8 && !released; }
 static void beast_shot(void){
     int sx,sy; s32 z; if(!sproj(0,0,0,&sx,&sy,&z) || z>30000) return;
     int r=(int)(1700L*beast_sc()/3*FOCS/z); if(r<4) r=4;
@@ -524,8 +528,14 @@ static void beast_shot(void){
         return;
     }
     if(!beast_hp){
-        if(!beast_kills){ if(data_cores>=8){ bolt_story(VISPG,10); dawn_free=1; }
-                          else { static const char *const t[4]={"THE TECHNOBEAST FALLS!","BUT ITS CORE STILL HUMS...","IT WILL REBUILD ITSELF","TEN TIMES STRONGER."}; story_card("VICTORY",t,4); } }
+        if(beast_finale_ready(data_cores,dawn_free)){
+            bolt_story(VISPG,10); dawn_free=1;
+        } else if(!beast_kills && data_cores<8){
+            static const char *const t[4]={"THE TECHNOBEAST FALLS!",
+                "BUT ITS CORE STILL HUMS...","IT WILL REBUILD ITSELF",
+                "TEN TIMES STRONGER."};
+            story_card("VICTORY",t,4);
+        }
         beast_kills++; int g=100000*beast_kills; gold+=g; gain_xp(2000*beast_kills);
         boom(0,0,0,40,49); sfx(9);
         b3_max = b3_max>=1000000000000000000ULL ? b3_max : b3_max*10; b3_hp=b3_max; beast_max=b3_max; beast_hp=b3_hp;
@@ -1458,7 +1468,7 @@ static void addr_load(void){ u32 a[NCW0+10]; sram_read(slot_base(cur_slot)+0x900
 }
 typedef struct { u32 magic, hp_lo, hp_hi, mx_lo, mx_hi; u16 tech, kills, stage, hives; u32 sum; } SaveB;
 _Static_assert(__builtin_offsetof(SaveB,sum)==sizeof(SaveB)-4, "SaveB: the sum must be the last 4 bytes");
-static void beast_defaults(void){ hive_done=0; tech_lv=0; beast_kills=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
+static void beast_defaults(void){ hive_done=0; tech_lv=0; beast_kills=0; dawn_free=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
 #define SB_OFF 0xA00
 _Static_assert(sizeof(SaveX) <= 0x900-SX_OFF, "SaveX must end before the address block at +0x900");
 _Static_assert((NCW0+10)*4 <= 0x9C0-0x900, "the address block must end before the galaxy words at +0x9C0");
@@ -1467,10 +1477,15 @@ static void beast_load(void){
     SaveB b; sram_read(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
     u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; }
     if(b.magic!=0x32534542 || b.sum!=h){ beast_defaults(); return; }
-    b3_hp=((u64)b.hp_hi<<32)|b.hp_lo; b3_max=((u64)b.mx_hi<<32)|b.mx_lo; tech_lv=b.tech; beast_kills=b.kills; beast_stage=b.stage; hive_done=b.hives>5?5:b.hives;
+    b3_hp=((u64)b.hp_hi<<32)|b.hp_lo; b3_max=((u64)b.mx_hi<<32)|b.mx_lo; tech_lv=b.tech; beast_kills=b.kills;
+    // SaveB layout is unchanged. The unused high bit of the stage word records
+    // whether the true ending has played; legacy saves have this bit clear.
+    dawn_free=(b.stage&0x8000u)!=0;
+    beast_stage=b.stage&0x7FFFu; if(beast_stage>3) beast_stage=3;
+    hive_done=b.hives>5?5:b.hives;
 }
 static void beast_save(void){
-    SaveB b; memset(&b,0,sizeof b); b.magic=0x32534542; b.hp_lo=(u32)b3_hp; b.hp_hi=(u32)(b3_hp>>32); b.mx_lo=(u32)b3_max; b.mx_hi=(u32)(b3_max>>32); b.tech=tech_lv; b.kills=beast_kills; b.stage=beast_stage; b.hives=hive_done;
+    SaveB b; memset(&b,0,sizeof b); b.magic=0x32534542; b.hp_lo=(u32)b3_hp; b.hp_hi=(u32)(b3_hp>>32); b.mx_lo=(u32)b3_max; b.mx_hi=(u32)(b3_max>>32); b.tech=tech_lv; b.kills=beast_kills; b.stage=(u16)(beast_stage|(dawn_free?0x8000u:0)); b.hives=hive_done;
     u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; } b.sum=h;
     sram_write(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
 }
