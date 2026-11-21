@@ -248,7 +248,7 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
                 uint8_t delta=(uint8_t)(shots-s->guest_seen_shots);
                 if(delta>0 && delta<128u){
                     s->guest_seen_shots=shots;
-                    if(s->received &&
+                    if(s->received && frame-s->last_rx<=NET_SNAPSHOT_TICKS &&
                        (!s->last_guest_shot_tick ||
                         frame-s->last_guest_shot_tick>=6u)){
                         s->last_guest_shot_tick=frame;
@@ -304,8 +304,9 @@ void pcnet_step(PcNetSession *s,uint32_t frame,const PcNetShip *local){
         else pc_duel_step(&s->duel,frame);
         if(s->local_shots!=s->host_seen_shots){
             s->host_seen_shots=s->local_shots;
-            if(!s->last_host_shot_tick ||
-               frame-s->last_host_shot_tick>=6u){
+            if(frame-s->last_rx<=NET_SNAPSHOT_TICKS &&
+               (!s->last_host_shot_tick ||
+                frame-s->last_host_shot_tick>=6u)){
                 s->last_host_shot_tick=frame;
                 if(s->coop)(void)pc_coop_fire(&s->coop_enemy,0,local,frame);
                 else (void)pc_duel_fire(&s->duel,0,local,&s->other,frame);
