@@ -136,6 +136,15 @@ require(main, "if(data_cores==1 || data_cores==4 || data_cores>=8)",
 require(main, "bolt_memory_reaction(VISPG,data_cores)",
         "outpost exit does not play new story reaction")
 require(main, "bolt_card(VISPG,bolt_mem[k],4)", "original four-line memory is missing")
+require(main, "int new_memory=data_cores<8;",
+        "extra outposts must distinguish new memories from post-eight rewards")
+require(main, "base_card=new_memory?1:2;",
+        "extra outposts must not trigger the eighth memory repeatedly")
+require(main, "if(base_card){ int new_memory=base_card==1; base_card=0;",
+        "outpost exit must branch on genuine versus repeat memory recovery")
+require(main, "BOLT'S EIGHT MEMORIES ARE ALREADY WHOLE.",
+        "extra outposts need their own short story rather than replaying the reveal")
+
 zone = section(main, "if(zone_card){ int z=", "planet_hud(); show_msg(\"GO TO YOUR SHIP\")")
 assert (
     zone.index("bolt_story(VISPG,1+z)") < zone.index('card(VISPG,"NEXT STAR UNLOCKED"')
@@ -165,6 +174,13 @@ require(ui, 'if(dawn_free){ t[n++]=', "post-finale Bolt must not demand another 
 require(space, 'story_card("VICTORY",t,4)', "partial-victory ending must remain distinct")
 require(space, "RECOVER ALL 8 OF BOLT'S MEMORIES.",
         "partial victory must explain how to unlock the real ending")
+require(space, 'space_say(dawn_free ? "DAWN IS FREE. THE GALAXY IS OPEN."',
+        "post-finale warp must not tell the player to return for a boss fight")
+assert len("DAWN IS FREE. THE GALAXY IS OPEN.") < 40, (
+    "post-finale warp banner must fit the existing 39-character message buffer"
+)
+require(space, "do_save(); }", "post-finale warp must save Dawn completion")
+
 require(space, 'text(pg,78,124,"A/START: CONTINUE",55,1)',
         "beast cutscenes must describe their confirm/skip inputs")
 require(space, 'while(!HIT(K_A)&&!HIT(K_START))',
