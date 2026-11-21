@@ -1,7 +1,8 @@
 #ifndef BUGSTAR_PC_NET_H
 #define BUGSTAR_PC_NET_H
-/* Experimental LAN ship-presence transport. PC + Android only.
- * Protocol bytes come from net/session.h; no saves, combat or rewards.
+/* Experimental LAN space combat transport. PC + Android only.
+ * Protocol bytes come from net/session.h; temporary duel/co-op HP only;
+ * no campaign saves, loot, missions or permanent rewards.
  * Fixed memory, nonblocking sockets, one peer maximum.
  */
 #include <stdint.h>
