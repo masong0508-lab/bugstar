@@ -2,7 +2,7 @@
  * Geometry uses the actual Bugstar space yaw/pitch coordinate convention.
  * No game-state or save-file pointer can be reached from this module.
  */
-#include "pc_duel.h"
+#include "pc_net.h"
 #include <math.h>
 #include <string.h>
 void pc_duel_reset(PcDuel *d){
