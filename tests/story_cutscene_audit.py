@@ -157,6 +157,11 @@ require(space, "dawn_free=(b.stage&0x8000u)!=0",
         "old and new save records must decode story completion")
 require(ui, 'if(dawn_free){ t[n++]=', "post-finale Bolt must not demand another boss victory")
 require(space, 'story_card("VICTORY",t,4)', "partial-victory ending must remain distinct")
+require(space, 'text(pg,78,124,"A/START: CONTINUE",55,1)',
+        "beast cutscenes must describe their confirm/skip inputs")
+require(space, 'while(!HIT(K_A)&&!HIT(K_START))',
+        "Technobeast story cards need START support as well as A")
+
 for phrase in ("FIVE TECH HIVES", "WARP OUT WHEN NEEDED", "HOLD B TO THRUST",
                "HOLD L TOO FOR EXTRA BURN"):
     require(space, phrase, "boss encounter lacks real gameplay guidance: " + phrase)
