@@ -35,6 +35,10 @@ mem = section(ui, "static const char *const bolt_mem[8][4]={",
 memlines = literals(mem)
 assert len(memlines) == 32, f"expected 8 memories of 4 lines; got {len(memlines)}"
 assert all(0 < len(s) <= 54 for s in memlines), "memory line does not fit 220-pixel card"
+assert all(len(memlines[k*4]) <= 33 for k in range(8)), (
+    "Bolt's ship-menu first-line recaps must fit the original 48-byte buffer"
+)
+
 assert "A NAME WAS PAINTED ON MY HULL." in memlines[:4], (
     "Bolt's original clue must precede the name itself"
 )
@@ -44,7 +48,7 @@ assert all("THE DAWN" not in s for s in memlines[:28]), (
 assert any("MY NAME" in s for s in memlines[28:]), (
     "final memory should pay off the identity mystery"
 )
-assert "I CARRIED SEEDS BETWEEN THE STARS." in memlines, (
+assert "I CARRIED SEEDS BETWEEN STARS." in memlines, (
     "Bolt's origin as the planter of the story worlds is missing"
 )
 assert "THE KING CUT OPEN MY HEART." in memlines, (
@@ -67,6 +71,10 @@ scenes = section(ui, "static void bolt_story(", "// Three deliberate breathers")
 for beat in [0, 1, 2, 3, 4, 5, 6, 10]:
     require(scenes, f"case {beat}:", f"missing story beat {beat}")
 require(scenes, "bolt_chapter_open(pg,beat);", "chapter slate not wired into the story")
+require(ui, "int j=textlen(l2), cap=(int)sizeof l2-2;",
+        "Bolt recap needs bounded text copy, not unsafe strcat")
+require(ui, "while(*m && j<cap)", "Bolt recap could overflow its fixed 48-byte buffer")
+
 require(scenes, "bugs_freed ? ", "rescued-bug consequence is not responsive to play")
 assert all(len(s) <= 54 for s in literals(scenes)), (
     "story dialogue exceeds the existing text-card width"
