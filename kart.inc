@@ -1130,7 +1130,12 @@ static void kart_minimap(volatile u16 *pg){
     if(oy+40<m7_strip){ ov_k(); kmm_path(pg,ox,oy,(knp>>1)<KMM_N ? (knp>>1) : KMM_N); }   // (the path, a pixel each: straight into the page)
     else for(int i=0;i<(knp>>1) && i<KMM_N;i++) pix(pg,ox+kmmx[i],oy+kmmy[i],(i==0)?C_WHITE:C_GREY);
     if(kr_mode==1) for(int r=nrc-1;r>=0;r--){ int i=(rc[r].pi>>1); if(i>=KMM_N) i=KMM_N-1; int x=ox+kmmx[i], y=oy+kmmy[i], c = r==0 ? C_GOLD : (rc[r].place==1 ? C_RED : C_CYAN);
-        if(r==0){ rect(pg,x-1,y-1,3,3,c); } else pix(pg,x,y,c); } }
+        if(r==0){ rect(pg,x-1,y-1,3,3,c);
+            // A bright nose shows which direction you are actually facing
+            // (the track map's X/Y axes match the kart's world axes).
+            int nx=x+((sinx(khd>>2)*3)>>14), ny=y+((cosx(khd>>2)*3)>>14);
+            if(nx>=194 && nx<=234 && ny>=21 && ny<=61) rect(pg,nx-1,ny-1,2,2,C_WHITE);
+        } else pix(pg,x,y,c); } }
 static void kart_cockpit(volatile u16 *pg){                        // the cockpit view: a dashboard, a wheel that turns, your speed
     rect(pg,0,140,240,20,1); rect(pg,0,139,240,1,C_DGREY); for(int x=0;x<240;x+=2) pix(pg,x,141,6);
     int a=(kturn*24+(kdrift?kdrift*20:0)+256)&255; s32 c=cosx(a), sn=sinx(a);
