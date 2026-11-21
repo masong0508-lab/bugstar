@@ -313,7 +313,8 @@ The painted door sprites on dungeon walls are gone (they looked like doors and m
 
 ## Space (new)
 At your ship, pick **LAUNCH INTO SPACE**.
-- D-pad: steer. B: thrust. R: brake. A: shoot pirates.
+- D-pad: steer. B: thrust. R: brake. A: shoot pirates. In the 3D view, UP dives, DOWN climbs (aircraft-style inverted pitch), LEFT/RIGHT turn; START switches cockpit/chase cameras. The speed display and drift marker tell you where your ship is actually moving.
+- **3D perspective pass (Nov 2026):** wireframe stations, rocks and enemy ships now clip line segments where they cross the cockpit's near camera plane rather than dropping the entire edge. This reduces popping/disappearing geometry when flying past objects at close range without adding a framebuffer or changing the fast path for completely visible edges. `python3 tests/space_projection_audit.py` checks the near-plane intersections. The same `space.inc` rendering code is shared by the GBA, desktop and Android ports.
 - Fly close to the planet and press A to land. Fly to the white box (station) and press A to dock.
 - Station: buy and sell 8 kinds of goods (prices change by world type), refuel, repair, and upgrade laser, shield and cargo.
 - SELECT: galaxy map. Pick a star and press A to jump (uses fuel). The map shows how far each star is in light years and how many days the trip takes.
