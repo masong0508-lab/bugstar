@@ -556,12 +556,17 @@ void pc_mp_frame(uint32_t frame){
 }
 void pc_mp_lobby_pump(void){
     if(!g_active)return;
+    uint8_t was_connected=g_peer.connected;
     pcnet_set_active(&g_peer,0);
     /* Network handshakes continue at the menu refresh rate while actual
      * world physics/frame counters stay frozen. No extra buffers or threads. */
     g_pause_ticks++;g_net_tick=g_last_game_frame+g_pause_ticks;
     if(g_last_space_frame && g_last_game_frame-g_last_space_frame<=20u)
         pcnet_step(&g_peer,g_net_tick,&g_local);
+    if(was_connected!=g_peer.connected && getenv("BUGSTAR_LAN_TRACE"))
+        fprintf(stderr,"lan: lobby peer %s tick %u role %u\n",
+                g_peer.connected?"CONNECTED":"DISCONNECTED",
+                (unsigned)g_net_tick,(unsigned)g_peer.role);
 }
 void pc_mp_suspend(void){
     if(!g_active)return;
