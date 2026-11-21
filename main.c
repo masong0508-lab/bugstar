@@ -1084,9 +1084,15 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             // beetles charge from a distance: a long wind-up, then they barrel at you. into a wall, and they are stunned
             else if((o->kind==K_BEETLE||o->kind==K_SCORP||(nm&&(nm->fl&NF_CHARGE))) && !stun_t && !o->stag && !o->cool && td>0x18000 && td<0x50000 && rndi((o->kind==K_SCORP?55:40)*DP_CD()/100+1)==0){ o->cool=70*DP_CD()/100; o->wind=8; o->lunge=1; sfx(14); }
             if(o->lunge && !o->wind){ o->lunge=0; if(td>0x100){ o->kvx=(s32)(((long long)tdx*0x3000)/td); o->kvy=(s32)(((long long)tdy*0x3000)/td); } }
-            // the boss calls her brood at half health, and gets angry
-            if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1; say("THE QUEEN CALLS HER BROOD!"); sfx(9);
-                for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=K_SPIDER; b->alive=1; b->hp=b->maxhp=6+dlv()*4; b->x=o->x+((k?1:-1)<<16); b->y=o->y+(1<<15); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } } }
+            // Each story warden brings a different part of the King's army.
+            // The existing one-time, two-enemy half-health phase and NDO cap
+            // stay intact. Endless guardians retain their familiar spiders.
+            if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1;
+                int story_w=!endless && !forge_on && !base_mode && zone>=0 && zone<6;
+                static const u8 guards[6]={K_SPIDER,K_TOAD,K_BEETLE,K_GHOST,K_WASP,K_ANT};
+                int guard=story_w ? guards[zone] : K_SPIDER;
+                say(story_w ? "THE WARDEN CALLS ITS GUARDS!" : "THE QUEEN CALLS HER BROOD!"); sfx(9);
+                for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=guard; b->alive=1; b->hp=b->maxhp=6+dlv()*4; b->x=o->x+((k?1:-1)<<16); b->y=o->y+(1<<15); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } } }
         } else if(o->kind==K_CHEST){ if(d<0x9000){ int evidence=o->sub==7 && !endless && !base_mode && !forge_on && zone>=0 && zone<6;
                 o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
                 Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now();
