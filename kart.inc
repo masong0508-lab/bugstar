@@ -1139,10 +1139,23 @@ static const char *const kicon[NKI]={0,
 static int kicon_c(char ch){ switch(ch){ case 'r': return C_RED; case 'g': return C_GREEN; case 'w': return C_WHITE; case 'c': return C_CYAN; case 'd': return C_GREY; default: return -1; } }
 OVK static void kmm_path(volatile u16 *pg, int ox, int oy, int n){ int lx=-1, ly=-1;        // the minimap's path, one pixel per point, straight into the page (ARM, in the kart overlay)
     for(int i=0;i<n;i++){ int x=ox+kmmx[i], y=oy+kmmy[i], c=(i==0)?C_WHITE:C_GREY; if(x==lx && y==ly) continue; lx=x; ly=y; volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|(c<<8); else *p=(*p&0xFF00)|c; } }
+// Up to six bright samples show the direction of the next segment on
+// the tiny minimap. cnt>12 guarantees one wrap subtraction is sufficient.
+static inline int kart_map_ahead_idx(int pi, int step, int cnt){
+    int i=(pi>>1)+step; return i>=cnt?i-cnt:i;
+}
 static void kart_minimap(volatile u16 *pg){
     int ox=194+(40-kmm_w)/2, oy=20+(40-kmm_h)/2;
     if(oy+40<m7_strip){ ov_k(); kmm_path(pg,ox,oy,(knp>>1)<KMM_N ? (knp>>1) : KMM_N); }   // (the path, a pixel each: straight into the page)
     else for(int i=0;i<(knp>>1) && i<KMM_N;i++) pix(pg,ox+kmmx[i],oy+kmmy[i],(i==0)?C_WHITE:C_GREY);
+    if(kr_mode==1 && rc[0].pi>=0 && rc[0].pi<knp){
+        int cnt=(knp>>1)<KMM_N?(knp>>1):KMM_N;
+        if(cnt>12) for(int step=2;step<=12;step+=2){
+            int i=kart_map_ahead_idx(rc[0].pi,step,cnt);
+            int x=ox+kmmx[i], y=oy+kmmy[i];
+            if(x>=194 && x<=234 && y>=21 && y<=61) pix(pg,x,y,step<=6?C_GOLD:C_CYAN);
+        }
+    }
     if(kr_mode==1) for(int r=nrc-1;r>=0;r--){ int i=(rc[r].pi>>1); if(i>=KMM_N) i=KMM_N-1; int x=ox+kmmx[i], y=oy+kmmy[i], c = r==0 ? C_GOLD : (rc[r].place==1 ? C_RED : C_CYAN);
         if(r==0){ rect(pg,x-1,y-1,3,3,c);
             // A bright nose shows which direction you are actually facing
