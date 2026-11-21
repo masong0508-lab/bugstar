@@ -664,7 +664,10 @@ static const char *const quest_champ_names[6]={"GRIMFANG","MOLDJAW","SKITTERMAW"
 // game.inc is included before dungeon.inc; both use the same static forge
 // flag, so forward-declare its tentative definition before quest helpers.
 static int forge_on;
-static int quest_home(void){ return q_zone==zone && q_world==world_no; }
+// q_world is stored as s16 by existing Save; world_no is 32-bit live state.
+// Normalize both before comparing so a quest does not become unwinnable when
+// loading a save made after the 32,767th world. Keep SRAM layout unchanged.
+static int quest_home(void){ return q_zone==zone && (s16)q_world==(s16)world_no; }
 // Before the ID field was reused for named targets, old saves only carried
 // "SLAY <NAME> ON B..." in q_name. The briefing remains authoritative,
 // so the combat label agrees even if an old q_need contained stale data.
