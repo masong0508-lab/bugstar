@@ -258,22 +258,52 @@ static void text_at(int x, int y, const char *s, uint32_t col){
 static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRenderDrawBlendMode(ren,SDL_BLENDMODE_BLEND); SDL_SetRenderDrawColor(ren,(col>>16)&255,(col>>8)&255,col&255,a); SDL_Rect r={x,y,w,h}; SDL_RenderFillRect(ren,&r); }
 
 // ---- the options screen
-enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_COUNT };
+enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_LAN, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_REBIND=1000 };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
 static const char *const v3names[]={"AUTO","NATIVE (SMOOTH)","CLASSIC (GBA)","ULTRA (BLOOM)"}; static const char *const qnames[]={"AUTO (ADAPTS TO SPEED)","LOW (FASTEST)","MEDIUM","HIGH (FULL DETAIL)"};
 static const char *const mpnames[]={"AUTO","1 MEGAPIXEL","2","3","4","6","8"}; static int mp_choice;
 static const char *const t6names[]={"3 BUTTON PAD","6 BUTTON PAD"};
+/* Optional LAN control: no shell, discovery, NAT or background threads. */
+static int lan_ui_coop=1, lan_ui_port=0, lan_ip_edit;
+static char lan_ui_ip[24]="127.0.0.1";
+static const char *const lan_modes[]={"SPARRING","3-WAVE CO-OP"};
+static const char *const lan_ports[]={"33777","33778","33779"};
+static unsigned lan_port_num(void){return 33777u+(unsigned)lan_ui_port;}
+static int lan_valid_ip(const char *ip){
+    int count=0;
+    if(!ip || !*ip)return 0;
+    while(*ip){
+        unsigned v=0,n=0;
+        while(*ip>='0' && *ip<='9'){
+            if(++n>3)return 0;
+            v=v*10u+(unsigned)(*ip++-'0');
+        }
+        if(!n || v>255u)return 0;
+        if(++count==4)return !*ip;
+        if(*ip++!='.')return 0;
+    }
+    return 0;
+}
+static void lan_text(const char *src){
+    if(!lan_ip_edit || !src)return;
+    size_t len=strlen(lan_ui_ip);
+    while(*src && len<sizeof(lan_ui_ip)-1){
+        unsigned char c=(unsigned char)*src++;
+        if((c>='0'&&c<='9')||c=='.')lan_ui_ip[len++]=(char)c;
+    }
+    lan_ui_ip[len]=0;
+}
 static int mp_val(int i){ static const int v[]={0,1,2,3,4,6,8}; return v[i]; }
 static uint32_t ted_ovm; static int ted_on; static void ted_open(void); static void ted_draw(void); static void ted_key(SDL_Keycode k);      // the touch pad layout editor
 static void menu_build(Item *it, int *n){
     int k=0;
     switch(menu_page){
     case P_MAIN: it[k++]=(Item){0,"RESUME",0,0,0,0,0,A_RESUME}; it[k++]=(Item){0,"VIDEO",0,0,0,0,0,A_VIDEO}; it[k++]=(Item){0,"AUDIO",0,0,0,0,0,A_AUDIO}; it[k++]=(Item){0,"ACCESSIBILITY AND MOUSE",0,0,0,0,0,A_ACCESS};
-        it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; if(g_touch) it[k++]=(Item){0,"TOUCH PAD",0,0,0,0,0,A_TOUCH}; it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
+        it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; if(g_touch) it[k++]=(Item){0,"TOUCH PAD",0,0,0,0,0,A_TOUCH}; it[k++]=(Item){0,"MULTIPLAYER LAN",0,0,0,0,0,A_LAN}; it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
         it[k++]=(Item){0,"HOW TO PLAY",0,0,0,0,0,A_HELP}; it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
     case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,3,1,v3names,0}; it[k++]=(Item){1,"QUALITY",&C.quality,0,3,1,qnames,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
         it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
@@ -284,6 +314,14 @@ static void menu_build(Item *it, int *n){
     case P_PAD: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+i}; it[k++]=(Item){2,"STICK DEAD ZONE",&C.deadzone,5,80,5,0,0}; it[k++]=(Item){0,"RESET PAD",0,0,0,0,0,A_RESETPAD}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_TOUCH: it[k++]=(Item){1,"PAD BUTTONS",&g_t6,0,1,1,t6names,0}; it[k++]=(Item){2,"OPACITY",&g_talpha,10,100,5,0,0}; it[k++]=(Item){1,"HAPTICS",&g_thaptic,0,1,1,onoff,0};
         it[k++]=(Item){0,"MOVE AND RESIZE BUTTONS",0,0,0,0,0,A_TOUCHEDIT}; it[k++]=(Item){0,"BUTTON LEGEND",0,0,0,0,0,A_TLEGEND}; it[k++]=(Item){0,"RESET LAYOUT",0,0,0,0,0,A_TRESET}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
+    case P_LAN:
+        it[k++]=(Item){1,"MATCH TYPE",&lan_ui_coop,0,1,1,lan_modes,0};
+        it[k++]=(Item){1,"UDP PORT",&lan_ui_port,0,2,1,lan_ports,0};
+        it[k++]=(Item){0,"JOIN ADDRESS",0,0,0,0,0,A_LAN_IP};
+        it[k++]=(Item){0,"HOST MATCH",0,0,0,0,0,A_LAN_HOST};
+        it[k++]=(Item){0,"JOIN MATCH",0,0,0,0,0,A_LAN_JOIN};
+        it[k++]=(Item){0,"LEAVE MATCH",0,0,0,0,0,A_LAN_LEAVE};
+        it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK};break;
     case P_ABOUT: case P_HELP: case P_TLEGEND: it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     }
     *n=k;
@@ -302,6 +340,21 @@ static void menu_do(int act){
     int idx=act>=A_REBIND?act-A_REBIND:0; if(act>=A_REBIND) act=A_REBIND;
     switch(act){
     case A_RESUME: menu_open=0; cfg_save(); break;
+    case A_LAN: menu_page=P_LAN;menu_sel=0;break;
+    case A_LAN_IP: lan_ip_edit=1;SDL_StartTextInput();say_toast("TYPE IPv4 ADDRESS - ENTER TO FINISH");break;
+    case A_LAN_HOST: case A_LAN_JOIN:{
+        if(pc_mp_role()){say_toast("LEAVE CURRENT LAN MATCH FIRST");break;}
+        if(act==A_LAN_JOIN && !lan_valid_ip(lan_ui_ip)){
+            say_toast("INVALID IPv4 ADDRESS");break;
+        }
+        int ok=act==A_LAN_HOST?pc_mp_host((uint16_t)lan_port_num()):
+               pc_mp_join(lan_ui_ip,(uint16_t)lan_port_num());
+        if(ok){pc_mp_set_coop(lan_ui_coop);
+            say_toast(act==A_LAN_HOST?"HOST READY - ENTER SAME STAR SPACE":"JOINING - ENTER SAME STAR SPACE");
+        }else say_toast("LAN SOCKET FAILED - CHECK ADDRESS/PORT");
+        break;
+    }
+    case A_LAN_LEAVE: pc_mp_close();say_toast("LAN LEFT - SOLO GAME UNCHANGED");break;
     case A_VIDEO: menu_page=P_VIDEO; menu_sel=0; break; case A_AUDIO: menu_page=P_AUDIO; menu_sel=0; break; case A_ACCESS: menu_page=P_ACCESS; menu_sel=0; break;
     case A_CONTROLS: menu_page=P_CONTROLS; menu_sel=0; break; case A_PAD: menu_page=P_PAD; menu_sel=0; break; case A_ABOUT: menu_page=P_ABOUT; menu_sel=0; break; case A_HELP: menu_page=P_HELP; menu_sel=0; break;
     case A_MAINBACK: if(menu_page==P_TLEGEND){ menu_page=P_TOUCH; menu_sel=0; } else { menu_page=P_MAIN; menu_sel=0; } cfg_save(); break;
@@ -330,9 +383,9 @@ static void menu_draw(void){
     if(ted_on){ ted_draw(); return; }
     int dw=dw_, dh=dh_; gs_=(dw<dh?dw:dh)/140;      /* patch 39: portrait sizes the text by the narrow side */ if(gs_<2) gs_=2; if(gs_>12) gs_=12; if(C.textsize){ int g2=(dw<dh?dw:dh)/(C.textsize==1?100:75); if(g2>gs_) gs_=g2; if(gs_>16) gs_=16; }
     int hc=C.contrast; rect_fill(0,0,dw,dh,0x000000,hc?200:150);
-    static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND"};
+    static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND","MULTIPLAYER LAN"};
     Item it[24]; int n; menu_build(it,&n);
-    int lh=9*gs_, pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"); if(pw>dw-4*gs_) pw=dw-4*gs_; int ph=(n+3)*lh+2*gs_*4; if(menu_page==P_ABOUT) ph=14*lh; if(menu_page==P_HELP||menu_page==P_TLEGEND){ int nl=0; while(help_lines()[nl]) nl++; ph=(nl+5)*lh; }
+    int lh=9*gs_, pw=text_w(C.textsize?"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM":"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"); if(pw>dw-4*gs_) pw=dw-4*gs_; int ph=(n+3)*lh+2*gs_*4; if(menu_page==P_LAN) ph+=4*lh; if(menu_page==P_ABOUT) ph=14*lh; if(menu_page==P_HELP||menu_page==P_TLEGEND){ int nl=0; while(help_lines()[nl]) nl++; ph=(nl+5)*lh; }
     int x0=(dw-pw)/2, y0=(dh-ph)/2; rect_fill(x0,y0,pw,ph,hc?0x000000:0x0B1030,hc?255:235); rect_fill(x0,y0,pw,gs_,0xFFD23C,255); rect_fill(x0,y0+ph-gs_,pw,gs_,0xFFD23C,255);
     text_at(x0+4*gs_,y0+3*gs_,titles[menu_page],0xFFD23C);
     int y=y0+3*gs_+lh*3/2; m_x0=x0; m_pw=pw; m_lh=lh; m_y1=y; m_n=(menu_page==P_ABOUT||menu_page==P_HELP||menu_page==P_TLEGEND)?0:n; m_gs=gs_;
@@ -356,9 +409,27 @@ static void menu_draw(void){
     }
     if(menu_page==P_CONTROLS){ text_at(x0+4*gs_,y0+ph-lh-gs_,"ENTER REBINDS THE FIRST KEY   RIGHT: THE SECOND",0x8890C8); }
     if(menu_page==P_PAD){ text_at(x0+4*gs_,y0+ph-lh-gs_,"ENTER THEN PRESS A BUTTON ON THE PAD",0x8890C8); }
+    if(menu_page==P_LAN){
+        char msg[90];int role=pc_mp_role();
+        snprintf(msg,sizeof msg,"IP %s%s",lan_ui_ip,lan_ip_edit?"  [EDIT]":"");
+        text_at(x0+4*gs_,y0+ph-4*lh,msg,0xFFD23C);
+        snprintf(msg,sizeof msg,"%s %s  UDP %u",role==1?"HOST":role==2?"JOIN":"OFFLINE",
+                 pc_mp_connected()?"CONNECTED":role?"WAITING":"",lan_port_num());
+        text_at(x0+4*gs_,y0+ph-3*lh,msg,0xA0FFB0);
+        text_at(x0+4*gs_,y0+ph-2*lh,"SAME STAR + 3D SPACE REQUIRED",0xCBD5FF);
+        text_at(x0+4*gs_,y0+ph-lh,"TRUSTED LAN ONLY - DO NOT PORT-FORWARD",0xE8D890);
+    }
 }
 static void menu_key(SDL_Keycode k, SDL_Scancode sc){
     if(ted_on){ ted_key(k); return; }
+    if(lan_ip_edit){
+        if(k==SDLK_BACKSPACE){size_t n=strlen(lan_ui_ip);if(n)lan_ui_ip[n-1]=0;}
+        else if(k==SDLK_ESCAPE||k==SDLK_AC_BACK||k==SDLK_RETURN||k==SDLK_KP_ENTER){
+            lan_ip_edit=0;SDL_StopTextInput();
+            if(!lan_valid_ip(lan_ui_ip))say_toast("ENTER A NUMERIC IPv4 ADDRESS");
+        }
+        return;
+    }
     if(menu_wait==1){ if(sc==SDL_SCANCODE_ESCAPE){ menu_wait=0; return; } Item it[24]; int n; menu_build(it,&n); int bi=it[menu_sel].action-A_REBIND; if(bi>=0&&bi<NB){ C.kb[bi][menu_slot]=sc; } menu_wait=0; menu_slot=0; return; }
     if(menu_wait==2) return;
     Item it[24]; int n; menu_build(it,&n);
@@ -724,6 +795,7 @@ static void pump_events(void){
             else if(e.cbutton.button==SDL_CONTROLLER_BUTTON_GUIDE) open_menu();
             else if((e.cbutton.button==SDL_CONTROLLER_BUTTON_START && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_BACK)) || (e.cbutton.button==SDL_CONTROLLER_BUTTON_BACK && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_START))) open_menu();
             break;
+        case SDL_TEXTINPUT: if(menu_open && menu_page==P_LAN && lan_ip_edit)lan_text(e.text.text);break;
         case SDL_KEYUP: if(e.key.keysym.scancode<512) kst[e.key.keysym.scancode]=0; break;
         case SDL_KEYDOWN:
             if(g_touch==1 && e.key.keysym.sym!=SDLK_AC_BACK && e.key.keysym.sym!=SDLK_MENU && !menu_open) g_thide=1;      // a real keyboard: the on-screen pad goes away until the next touch
