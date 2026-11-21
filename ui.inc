@@ -779,7 +779,15 @@ static void char_screen_(volatile u16 *pg){
                 scpy(b,"FAME "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); rtext(pg,231,41,b,C_GOLD);
                 if(q_type==Q_NONE) text(pg,12,51,"NONE. VISIT YOUR SHIP'S QUEST BOARD.",C_DGREY,1);
                 else { text(pg,12,51,q_name,C_WHITE,1); scpy(b, q_done ? "DONE! GO BACK TO YOUR SHIP" : "IN PROGRESS"); text(pg,12,59,b,q_done?C_GREEN:U_SOFT,1);
-                    if(!q_done && q_counted(q_type)){ ui_bar(pg,130,59,70,5,q_have,q_need,C_GOLD); scpy(b,""); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); text(pg,204,59,b,C_WHITE,1); } }
+                    if(!q_done && q_counted(q_type)){ ui_bar(pg,130,59,70,5,q_have,q_need,C_GOLD); scpy(b,""); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); text(pg,204,59,b,C_WHITE,1); }
+                    if(!q_done && q_type>0 && q_type!=Q_BRING && q_type!=Q_GOODS){
+                        if(!quest_home()) scpy(b,"RETURN TO THE WORLD THAT POSTED THE QUEST");
+                        else if(q_type==Q_RESCUE){ scpy(b,"EXTRA CAGES ON FLOOR B"); ncat(b,q_floor); }
+                        else if(q_type==Q_SHARDS){ scpy(b,"NEXT SHARD ON FLOOR B"); ncat(b,q_floor-q_need+q_have+1); }
+                        else b[0]=0;
+                        if(b[0]) text(pg,12,65,b,C_CYAN,1);
+                    }
+                }
                 ui_panel(pg,4,70,232,78); y=73;
                 if(endless){ scpy(b,"ENDLESS GALAXY  WORLD "); ncat(b,world_no); scat(b,"  DEEPEST B"); ncat(b,best_depth); text(pg,12,y,b,C_CYAN,1); y+=10; }
                 ui_head(pg,9,y,222,"WHAT YOU HAVE LEARNED",C_GREEN); y+=10;
@@ -877,14 +885,13 @@ static void make_quest(void){
     int maxf = endless ? (best_depth>3?best_depth:3) : zone_floors();
     q_floor = 1+rndi(maxf);
     q_gold = 60 + dlv()*40 + q_floor*10; q_fame = 15 + dlv()*6;
-    static const char *const cn[6]={"GRIMFANG","MOLDJAW","SKITTERMAW","VILEWING","THE PALE ONE","OLD CRUNCH"};
     char b[40];
     switch(q_type){
         case Q_HUNT: q_need=8+dlv()*2+rndi(6); scpy(b,"SLAY "); ncat(b,q_need); scat(b," MONSTERS"); break;
-        case Q_CHAMP: scpy(b,"SLAY "); scat(b,cn[rndi(6)]); scat(b," ON B"); ncat(b,q_floor); q_gold+=60; q_fame+=10; break;
+        case Q_CHAMP: q_need=1+rndi(6); scpy(b,"SLAY "); scat(b,quest_champ_names[q_need-1]); scat(b," ON B"); ncat(b,q_floor); q_gold+=60; q_fame+=10; break;
         case Q_FETCH: scpy(b,"FIND THE LOST TREASURE ON B"); ncat(b,q_floor); break;
         case Q_BOSS: q_floor=zone_floors(); q_gold+=150; q_fame+=25; scpy(b,"SLAY THE BOSS ON B"); ncat(b,q_floor); break;        // the zone boss waits on the last floor
-        case Q_SHARDS: q_need=2+rndi(2); if(q_need>q_floor) q_need=q_floor; q_gold+=q_need*15; scpy(b,"FIND "); ncat(b,q_need); scat(b," SHARDS B"); ncat(b,q_floor-q_need+1); scat(b,"-"); ncat(b,q_floor); break;
+        case Q_SHARDS: q_need=2+rndi(2); if(q_need>maxf) q_need=maxf; if(q_floor<q_need) q_floor=q_need; q_gold+=q_need*15; scpy(b,"FIND "); ncat(b,q_need); scat(b,q_need==1?" SHARD B":" SHARDS B"); ncat(b,q_floor-q_need+1); scat(b,"-"); ncat(b,q_floor); break;
         case Q_BRING: q_floor=rndi(4); q_need=2+rndi(3); q_gold=60+dlv()*40+q_need*20; scpy(b,"BRING "); ncat(b,q_need); scat(b," "); scat(b,bring_nm[q_floor]); break;
         case Q_GOODS: q_floor=rndi(8); q_need=3+rndi(4); q_gold=60+dlv()*40+q_need*25; scpy(b,"BRING "); ncat(b,q_need); scat(b," "); scat(b,goods[q_floor]); break;
         default: q_need=2+rndi(2); scpy(b,"FREE "); ncat(b,q_need); scat(b," CAGED BUGS"); break;
@@ -1324,13 +1331,28 @@ static int shop_menu_(void){   // returns 1 to fly on, 2 for autopilot
                     if(q_type<0) ui_lhint(pg,20,70,"A: TAKE THIS QUEST   B: NOT NOW",C_CYAN);
                     else if(q_done) text(pg,20,70,"DONE! A: CLAIM YOUR REWARD",C_GREEN,1);
                     else { scpy(b,"IN PROGRESS"); if(q_counted(t)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,20,70,b,C_WHITE,1); ui_lhint(pg,20,80,"A: GIVE UP   B: BACK",C_CYAN); }
+                    if(t==Q_RESCUE){ scpy(b,"EXTRA CAGES ON B"); ncat(b,q_floor); text(pg,20,99,b,C_CYAN,1); }
+                    else if(t==Q_SHARDS && !q_done){ scpy(b,"NEXT SHARD: B"); ncat(b,q_floor-q_need+q_have+1); text(pg,20,99,b,C_CYAN,1); }
+                    if(q_type>0 && t!=Q_BRING && t!=Q_GOODS && !quest_home()) text(pg,20,110,"RETURN TO THE QUEST WORLD",C_GOLD,1);
                     scpy(b,"YOUR FAME: "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); text(pg,20,140,b,C_GOLD,1); }
                 vsync(); read_keys(); if(keys!=keys_old) dirty2=1;
                 if(HIT(K_B)){ if(q_type<0) q_type=Q_NONE; break; }
                 if(HIT(K_A)){
                     if(q_type<0){ q_type=-q_type; say("QUEST TAKEN"); save_game(); break; }
-                    if(q_done){ quest_take(); gold=sadd(gold,q_gold); fame+=q_fame; Gear pz=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, dlv()*3+clampi(level)+2, 30); add_gear(pz); q_type=Q_NONE; say("REWARD CLAIMED!"); sfx(6); save_game(); hud_now(); break; }
-                    q_type=Q_NONE; say("QUEST DROPPED"); break;
+                    if(q_done){
+                        // Claim is atomic: never take the quest goods, gold/fame
+                        // and completion flag if its promised equipment cannot
+                        // fit. The player can sell, stash, then return safely.
+                        if(bag_n>=BAGMAX){ say("BAG FULL! MAKE ROOM FOR YOUR PRIZE"); dirty2=1; continue; }
+                        Gear pz=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, dlv()*3+clampi(level)+2, 30);
+                        if(!add_gear(pz)){ dirty2=1; continue; }
+                        quest_take(); gold=sadd(gold,q_gold); fame+=q_fame; q_type=Q_NONE;
+                        say("REWARD CLAIMED!"); sfx(6); save_game(); hud_now(); break;
+                    }
+                    if(confirm(pg,"ABANDON THIS QUEST?","ALL QUEST PROGRESS WILL BE LOST")){
+                        q_type=Q_NONE; say("QUEST DROPPED"); break;
+                    }
+                    dirty2=1;
                 }
             }
         }
