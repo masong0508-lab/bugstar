@@ -295,6 +295,7 @@ int pc_mp_remote(uint32_t frame,PcNetShip *out){
     return g_active && pcnet_remote(&g_peer,frame,out);
 }
 void pc_mp_fired(void){ if(g_active)pcnet_fire(&g_peer); }
+int pc_mp_role(void){ return g_active ? g_peer.role : 0; }
 int pc_mp_duel(uint8_t *host_hp,uint8_t *guest_hp,uint8_t *host_wins,uint8_t *guest_wins){
     return g_active && pcnet_duel(&g_peer,host_hp,guest_hp,host_wins,guest_wins);
 }
