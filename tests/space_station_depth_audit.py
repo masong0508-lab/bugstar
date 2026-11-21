@@ -25,6 +25,11 @@ for name, src in sources.items():
     )
     for token in expected:
         assert token in src, (name, "missing", token)
+    # Rotate space meshes from gameplay frames, not native presentation time:
+    # otherwise their GBA-scale copy and native overlay drift apart under load.
+    assert "int a=frames*3; s32 S=420" in src, name
+    assert "int ang=(frames*2+a->seed*4)&1023" in src, name
+    assert "(frames&16)?55:56" in src, name
     # The extra lines are conditional on station distance, not rendered
     # on every far-away station in the GBA's performance-critical view.
     snippet = src[src.index("static const u8 throat[]"):][:180]
