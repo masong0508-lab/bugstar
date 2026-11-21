@@ -94,6 +94,19 @@ a stretch target, not a first release requirement.
   malformed input and reproduces 10,000 logical ticks byte-identically.
 
 ### M1 — PC ↔ Android, LAN, *two real ships*
+
+**Prototype implemented (not yet validated on two full running games):** `pc/platform/pc_net.c` has
+nonblocking IPv4 UDP host/join (one peer), HELLO/READY, world-ID gate,
+quantized 3D state, timeout and BYE. `pc/pc_multiplayer.inc` draws a
+perspective-correct P2 ship from received snapshots, including render-only
+interpolation and native-resolution wireframe edges. `pc/build.sh` attaches
+these only to desktop/Android native builds, not GBA. On desktop opt in
+using `--lan-host` / `--lan-join IPv4` and optional `--lan-port N`.
+`tests/pc_multiplayer_net_test.c` exercises real loopback UDP and both
+directions; the CI check must pass. Android's equivalent host/join UI
+has **not** been built. **No synced damage, missions, landing, collision,
+save or persistent rewards yet**; do not call this cooperative gameplay.
+[Developer instructions](pc/LAN_SPACE_TEST.md).
 - First vertical slice: connect, leave, move in independent 3D space,
   see the other ship, shoot a moving target, damage, death, respawn,
   station docking and victory/defeat. Two local gamepads on one PC are
