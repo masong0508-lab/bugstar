@@ -86,6 +86,18 @@ static void bolt_chapter_open(volatile u16 *pg, int beat){
     for(int i=0;i<48;i++){ int x=4+(i*73+beat*11)%232, y=18+(i*37+beat*7)%92;
         pix(pg,x,y,i%4?C_DGREY:C_WHITE); }
     rect(pg,0,118,240,42,1); rect(pg,0,117,240,1,C_DGREY);
+    // A different recognisable silhouette for each chapter, kept behind
+    // Bolt on the left so the starfield does not feel like eight identical cards.
+    switch(k){
+    case 0: for(int x=30;x<88;x+=16){ rect(pg,x,98,2,15,C_GREEN); rect(pg,x-4,97,10,2,C_GREEN); } break;
+    case 1: rect(pg,32,70,46,42,C_GREY); for(int x=36;x<78;x+=8) rect(pg,x,71,2,39,C_DGREY); break;
+    case 2: for(int y=97;y<=109;y+=6) for(int x=23;x<83;x+=18) rect(pg,x+(y&3),y,12,1,C_CYAN); break;
+    case 3: for(int r=3;r<19;r+=5){ rect(pg,55-r,90-r,2*r,2,C_RED); rect(pg,55-r,90+r,2*r,2,C_RED); } break;
+    case 4: rect(pg,52,70,4,40,C_GREY); rect(pg,39,83,30,2,C_CYAN); rect(pg,34,72,2,15,C_CYAN); break;
+    case 5: for(int x=34;x<75;x+=20){ rect(pg,x,75,2,22,C_GOLD); rect(pg,x-5,94,7,4,C_GOLD); } break;
+    case 6: rect(pg,33,94,50,11,C_GOLD); for(int x=36;x<80;x+=18) rect(pg,x,77,5,17,C_GOLD); break;
+    case 7: rect(pg,30,99,50,8,C_WHITE); rect(pg,46,92,20,7,C_CYAN); rect(pg,38,108,34,2,C_DGREY); break;
+    }
     text(pg,120-textlen(title[k])*4,10,title[k],C_GOLD,2);
     stext(pg,120-textlen(sub[k])*2,132,sub[k],C_WHITE);
     stext(pg,83,148,"A: NEXT  START: SKIP",C_GREY);
@@ -97,6 +109,9 @@ static void bolt_chapter_open(volatile u16 *pg, int beat){
     for(int t=0;t<90;t++){
         if((t&15)==0){ shadow_oam[0].a0=((58+((t>>4)&1))&255)|(1<<8)|(1<<9);
             oam_flush(); }                                    // two-pixel breathing beat
+        // Twinkle only in the intertitle, never during the game loop.
+        if((t&7)==0) for(int i=0;i<6;i++){ int x=4+((i*73+beat*11)%232), y=18+((i*37+beat*7)%92);
+            pix(pg,x,y,(t&8)?C_WHITE:C_DGREY); }
         vsync(); read_keys();
         if(HIT(K_A)||HIT(K_START)) break;
     }
