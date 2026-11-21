@@ -14,11 +14,12 @@ void pc_coop_step(PcCoop *c,uint32_t frame,const PcNetShip *host,
         c->anchor_z=host->z;
         c->hp=100;c->host_hp=100;c->guest_hp=100;
         c->phase=1;c->down_tick=0;c->last_attack_tick=frame;
+        c->charge=0;c->charge_target=0;
     }
     if(c->phase==2 || c->phase==3){
         if(frame-c->down_tick>=150u){
             c->hp=100;c->host_hp=100;c->guest_hp=100;
-            c->phase=1;c->flash=0;c->beam=0;
+            c->phase=1;c->flash=0;c->beam=0;c->charge=0;
             c->last_attack_tick=frame;
         }else return;
     }
@@ -32,28 +33,39 @@ void pc_coop_step(PcCoop *c,uint32_t frame,const PcNetShip *host,
     c->z=c->anchor_z+3500;
     if(c->flash)c->flash--;
     if(c->beam)c->beam--;
-    /* The raider fires a readable straight-ahead shot about every half
-     * second. Both players share the host's decision and temporary shields.
-     * Sidestepping the lane avoids damage; there is no save-file access. */
-    if(frame-c->last_attack_tick>=30u){
-        c->last_attack_tick=frame;
-        unsigned target=(frame/30u)&1u;
-        const PcNetShip *p=target?guest:host;
-        uint8_t *hp=target?&c->guest_hp:&c->host_hp;
-        if(p && *hp && p->world==host->world){
-            int64_t dx=(int64_t)p->x-c->x;
-            int64_t dy=(int64_t)p->y-c->y;
-            int64_t dz=(int64_t)c->z-p->z;
-            int64_t r=300+dz/20;
-            if(dz>250 && dz<9000 && dx*dx+dy*dy<=r*r){
-                *hp=*hp<=10?0:(uint8_t)(*hp-10);
-                c->beam=8;c->beam_target=(uint8_t)target;
+    /* Tell the pilot which ship is targeted before firing. 14 ticks
+     * of visible lock-on allow lateral dodging, unlike an instant beam.
+     * Authority and collision both run on the host's fixed game tick.
+     * A single alternating target keeps the attack cadence predictable. */
+    if(c->charge){
+        if(!--c->charge){
+            unsigned target=c->charge_target;
+            const PcNetShip *p=target?guest:host;
+            uint8_t *hp=target?&c->guest_hp:&c->host_hp;
+            c->last_attack_tick=frame;
+            if(p && *hp && p->world==host->world){
+                int64_t dx=(int64_t)p->x-c->x;
+                int64_t dy=(int64_t)p->y-c->y;
+                int64_t dz=(int64_t)c->z-p->z;
+                int64_t r=300+dz/20;
+                /* Cheap broad-phase prevents extreme coordinates from
+                 * overflowing the 64-bit squared distance calculation. */
+                if(dz>250 && dz<9000 &&
+                   dx>-r && dx<r && dy>-r && dy<r &&
+                   dx*dx+dy*dy<=r*r){
+                    *hp=*hp<=10?0:(uint8_t)(*hp-10);
+                    c->beam=8;c->beam_target=(uint8_t)target;
+                }
+            }
+            if(!c->host_hp && !c->guest_hp){
+                c->phase=3;c->down_tick=frame;c->beam=0;
+                if(c->losses<255)c->losses++;
             }
         }
-        if(!c->host_hp && !c->guest_hp){
-            c->phase=3;c->down_tick=frame;c->beam=0;
-            if(c->losses<255)c->losses++;
-        }
+    }else if(frame-c->last_attack_tick>=35u &&
+             (c->host_hp || c->guest_hp)){
+        c->charge=14;
+        c->charge_target^=1u;
     }
 }
 int pc_coop_fire(PcCoop *c,unsigned shooter,const PcNetShip *a,
