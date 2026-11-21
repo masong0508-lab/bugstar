@@ -636,7 +636,12 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     int axis = (pb==0 && pc==0) && !dmaln;                                // no rotation: the bitmap's x depends on X only, y on Y only
     int *tabx=0,*taby=0; int8_t *wx=0,*wy=0;
     if(have_bg && axis){
-        tabx=malloc(sizeof(int)*(W+H)); taby=tabx+W; wx=malloc(W+H); wy=wx+W;
+        tabx=malloc(sizeof(int)*(W+H)); wx=malloc(W+H);
+        if(!tabx || !wx){
+            free(tabx); free(wx); tabx=taby=0; wx=wy=0;
+            axis=0; // use the slower but safe per-pixel fallback for this frame
+        } else {
+        taby=tabx+W; wy=wx+W;
         double ts_x = fabs(pa)/256.0, ts_y = fabs(pd)/256.0;      // texels per game pixel
         for(int X=0;X<W;X++){ double p=rx/256.0 + (pa/256.0)*(X*sx); double fl=floor(p); tabx[X]=(int)fl; double f=p-fl, d=0;
             if(smooth){ double k = ts_x>0 ? 1.0/(ts_x*sx) : 1; d=(f-0.5)*k; d=d<-0.5?-0.5:d>0.5?0.5:d; }   // (k: output pixels across one texel)
@@ -644,6 +649,7 @@ void pc_compose_native(uint32_t *out, int W, int H, int smooth){
         for(int Y=0;Y<H;Y++){ double p=ry/256.0 + (pd/256.0)*(Y*sy); double fl=floor(p); taby[Y]=(int)fl; double f=p-fl, d=0;
             if(smooth){ double k = ts_y>0 ? 1.0/(ts_y*sy) : 1; d=(f-0.5)*k; d=d<-0.5?-0.5:d>0.5?0.5:d; }
             wy[Y]=(int8_t)lrint(d*16); }
+        }
     }
     clock_gettime(CLOCK_MONOTONIC,&T2);
     if(mode==4 && !lst_dma){ dn_compose(out,W,H,dc,bmode,ev,bldcnt); pn_compose(out,W,H,dc,bmode,ev,bldcnt); sn_compose(out,W,H,dc,bmode,ev,bldcnt); }      // the native 3D pictures first: the bitmap pass skips every pixel they show (nv_op bit 0x40)
