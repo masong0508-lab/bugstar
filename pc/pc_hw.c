@@ -350,9 +350,10 @@ static inline uint32_t nv_bil(int pg, float u, float v, float iF){      // "shar
     rb0=(rb0>>8)&0xFF00FF; rb1=(rb1>>8)&0xFF00FF; g0=(g0>>8)&0xFF00; g1=(g1>>8)&0xFF00;
     uint32_t rb=(((rb0*(256-wyi)+rb1*wyi)>>8)&0xFF00FF), g=(((g0*(256-wyi)+g1*wyi)>>8)&0xFF00); return rb|g;
 }
-static inline uint32_t nv_grain(uint32_t c, float u, float v, float F){   // close up the map is only one texel per cell: a faint fixed grain, finer than the texel, keeps the ground from looking like smooth plastic
-    if(F>=0.5) return c; double k=(0.5-F)/0.5; int iu=(int)(u*5), iv=(int)(v*5); uint32_t h=(uint32_t)iu*2654435761u ^ (uint32_t)iv*2246822519u; h^=h>>15; h*=2246822519u; h^=h>>13;
-    int d=(int)((h&255)-128)*(int)(k*9)/128;          // +-9 at the closest
+static inline uint32_t nv_grain(uint32_t c, float u, float v, int strength){   // fixed close-up grain; the scanline calculates its strength once, not for each output pixel
+    if(!strength) return c;
+    int iu=(int)(u*5), iv=(int)(v*5); uint32_t h=(uint32_t)iu*2654435761u ^ (uint32_t)iv*2246822519u; h^=h>>15; h*=2246822519u; h^=h>>13;
+    int d=(int)((h&255)-128)*strength/128;          // +-9 at the closest
     int r=(c>>16&255)+d, g=(c>>8&255)+d, b=(c&255)+d; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; b=b<0?0:b>255?255:b; return (uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b;
 }
 
@@ -408,6 +409,26 @@ static void nv_rows(void *vc, int lo, int hi){
         }
         uint32_t bd888=(uint32_t)lut5[bd&31]<<16|(uint32_t)lut5[(bd>>5)&31]<<8|lut5[(bd>>10)&31]; int fog256=fog>0?(int)(fog*256+0.5):0;   // (the haze colour and strength, once per row, in integers)
         double gx0=0.5*sx-0.5, ustep=rpa*sx, vstep=rpc*sx, ubase=rrx+rpa*gx0, vbase=rry+rpc*gx0;
+        // The road's sample footprint is constant over this scanline. Keep
+        // the exact arithmetic of the old per-pixel calculation, but perform
+        // it only once per row (important at 960x640 and above).
+        double sample_du=ustep/nfx, sample_dv=vstep/nfx;
+        float sample_iFP=(float)(1.0/(FP/(nfx>nfy?nfx:nfy)));
+        int grain_strength=(float)FP<0.5f ? (int)(((0.5-(double)(float)FP)/0.5)*9) : 0;
+        // The sky gradient is also a scanline property. Compute it once;
+        // individual pixels only test whether they belong to that sky colour.
+        int sky_mix=0; uint32_t sky_mix_col=0;
+        if(dmaln && nat3 && !R0.ground && rbg && !rpg && skyok[R0.nl]){
+            int nl=R0.nl;
+            double p=(Y+0.5)*sy-0.5-nl; int nb=nl+(p>0?1:-1);
+            double w=p<0?-p:p; if(w>1) w=1;
+            if(nb>=19 && nb<160 && skyok[nb]){
+                uint16_t a=skym[nl], b2=skym[nb];
+                uint32_t ca=(uint32_t)lut5[a&31]<<16|(uint32_t)lut5[(a>>5)&31]<<8|lut5[(a>>10)&31];
+                uint32_t cb=(uint32_t)lut5[b2&31]<<16|(uint32_t)lut5[(b2>>5)&31]<<8|lut5[(b2>>10)&31];
+                sky_mix_col=mix888(ca,cb,w); sky_mix=1;
+            }
+        }
         for(int X=0;X<W;X++){
             if(nv_op[(size_t)Y*W+X]&0x40) continue;
             int have=0; uint16_t bc=bd;
@@ -418,16 +439,15 @@ static void nv_rows(void *vc, int lo, int hi){
                     if(kn_hit){ uint32_t c=kn_buf[(size_t)Y*W+X]&0xFFFFFF; have=1; bc888=c; sm=1; size_t q=(size_t)Y*W+X; if((nv_op[q]&7)>=4 && ((kn_buf[q]&0x40000000u) || !(bmode>=2))){ out[q]=c; continue; } bc=(uint16_t)((c>>3&31)|((c>>11&31)<<5)|((c>>19&31)<<10)); }
                     else if(rbg && R0.ground){ double g=(X+0.5)*sx-0.5; double u0=ubase+ustep*X, v0=vbase+vstep*X;
                         if(u0>=0&&v0>=0&&u0<240&&v0<160){ have=1; uint32_t c;
-                            if(nfx==1&&nfy==1){ c=nv_bil(1,(float)u0,(float)v0,iFP); if(FP<0.5) c=nv_grain(c,(float)u0,(float)v0,(float)FP); }
-                            else { double du=rpa*sx/nfx, dv=rpc*sx/nfx, ex=(R1.rx+R1.pa*g-(rrx+rpa*g))/nfy, ey=(R1.ry+R1.pc*g-(rry+rpc*g))/nfy; unsigned sr=0,sg=0,sb=0; int n=0;
-                                for(int j=0;j<nfy;j++) for(int i=0;i<nfx;i++){ double ox=i-(nfx-1)*0.5, oy=j-(nfy-1)*0.5; uint32_t t=nv_bil(1,(float)(u0+du*ox+ex*oy),(float)(v0+dv*ox+ey*oy),1.0/(FP/(nfx>nfy?nfx:nfy))); sr+=t>>16&255; sg+=t>>8&255; sb+=t&255; n++; }
+                            if(nfx==1&&nfy==1){ c=nv_bil(1,(float)u0,(float)v0,iFP); if(grain_strength) c=nv_grain(c,(float)u0,(float)v0,grain_strength); }
+                            else { double du=sample_du, dv=sample_dv, ex=(R1.rx+R1.pa*g-(rrx+rpa*g))/nfy, ey=(R1.ry+R1.pc*g-(rry+rpc*g))/nfy; unsigned sr=0,sg=0,sb=0; int n=0;
+                                for(int j=0;j<nfy;j++) for(int i=0;i<nfx;i++){ double ox=i-(nfx-1)*0.5, oy=j-(nfy-1)*0.5; uint32_t t=nv_bil(1,(float)(u0+du*ox+ex*oy),(float)(v0+dv*ox+ey*oy),sample_iFP); sr+=t>>16&255; sg+=t>>8&255; sb+=t&255; n++; }
                                 c=(sr/n)<<16|(sg/n)<<8|(sb/n); }
                             if(fog256){ uint32_t rb=((c&0xFF00FF)*(256-fog256)+(bd888&0xFF00FF)*fog256)>>8, gg=((c&0xFF00)*(256-fog256)+(bd888&0xFF00)*fog256)>>8; c=(rb&0xFF00FF)|(gg&0xFF00); }
                             bc888=c; sm=1; { size_t q=(size_t)Y*W+X; if((nv_op[q]&7)>=4){ out[q]=c; continue; } } bc=(uint16_t)((c>>3&31)|((c>>11&31)<<5)|((c>>19&31)<<10)); } }
                     else if(rbg){ int tx=(int)((X+0.5)*sx), nl=R0.nl; if(tx>239) tx=239; have=rpg? bghave2[nl][tx] : bghave[nl][tx]; bc=rpg? bgres2[nl][tx] : bgres[nl][tx];
-                        if(!rpg && skyok[nl] && bgres[nl][tx]==skym[nl]){ double p=(Y+0.5)*sy-0.5-nl; int nb=nl+(p>0?1:-1); double w=p<0?-p:p; if(w>1) w=1;
-                            if(nb>=19 && nb<160 && skyok[nb]){ uint16_t a=skym[nl], b2=skym[nb]; uint32_t ca=(uint32_t)lut5[a&31]<<16|(uint32_t)lut5[(a>>5)&31]<<8|lut5[(a>>10)&31], cb=(uint32_t)lut5[b2&31]<<16|(uint32_t)lut5[(b2>>5)&31]<<8|lut5[(b2>>10)&31];
-                                bc888=mix888(ca,cb,w); sm=1; { size_t q=(size_t)Y*W+X; if((nv_op[q]&7)>=4 && !(bmode>=2)){ out[q]=bc888; continue; } } } } }
+                        if(sky_mix && bgres[nl][tx]==skym[nl]){
+                            bc888=sky_mix_col; sm=1; { size_t q=(size_t)Y*W+X; if((nv_op[q]&7)>=4 && !(bmode>=2)){ out[q]=bc888; continue; } } } }
                 }
                 else if(rbg){ double gx=X*sx; int tx=(int)floor(rrx+rpa*gx), ty=(int)floor(rry+rpc*gx);
                     if(tx>=0&&ty>=0&&tx<240&&ty<160){ if(rpg){ have=bghave2[ty][tx]; bc=bgres2[ty][tx]; } else { have=bghave[ty][tx]; bc=bgres[ty][tx]; } } }

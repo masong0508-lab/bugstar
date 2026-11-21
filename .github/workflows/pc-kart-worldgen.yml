@@ -122,6 +122,20 @@ jobs:
             > out/kart-classic-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-classic-smoke.log
           test -s out/kart-classic-smoke.png
+      - name: Benchmark native kart composition and verify single/multithread picture parity
+        run: |
+          cd pc
+          printf 'shot 320\n' > out/kart-bench.keys
+          for threads in 1 4; do
+            PC_NATIVE=2 PC_SCALE=4 PC_NBENCH=24 PC_THREADS="$threads" PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
+              ./bugstar_pc --headless --script out/kart-bench.keys \
+              --out "out/kart-bench-$threads" --sav "out/kart-bench-$threads.sav" --frames 324 \
+              > "out/kart-bench-$threads.log" 2>&1
+            grep 'native compose 960x640:' "out/kart-bench-$threads.log"
+            test -s "out/kart-bench-${threads}_000320.ppm"
+          done
+          cmp out/kart-bench-1_000320.ppm out/kart-bench-4_000320.ppm
+          echo 'Kart native picture parity (1 vs 4 render threads): PASS'
       - name: Upload native window screenshot and logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -132,6 +146,8 @@ jobs:
             pc/out/kart-native-smoke.log
             pc/out/kart-classic-smoke.png
             pc/out/kart-classic-smoke.log
+            pc/out/kart-bench-1.log
+            pc/out/kart-bench-4.log
           if-no-files-found: ignore
 
   pc-speed-parity:
