@@ -118,7 +118,7 @@ static s64 sadd(s64 a, s64 b){ if(b>0){ if(a>S64_MAX-b) return S64_MAX; } else i
 static s64 smul(s64 a, s64 b){ if(a<=0||b<=0) return 0; u64 ua=(u64)a, ub=(u64)b; u32 ah=(u32)(ua>>32), al=(u32)ua, bh=(u32)(ub>>32), bl=(u32)ub;
     if(ah && bh) return S64_MAX; u64 hi=(u64)ah*bl+(u64)al*bh; if(hi>>31) return S64_MAX;
     u64 lo=(u64)al*bl, r=(hi<<32)+lo; if(r<lo || r>(u64)S64_MAX) return S64_MAX; return (s64)r; }
-static s64 sdiv(s64 n, u32 d){ int neg = n<0; u64 un = neg ? (u64)(-(n+1))+1 : (u64)n; u32 hi=(u32)(un>>32), lo=(u32)un, qh=hi/d, r=hi%d, ql=0;
+static s64 sdiv(s64 n, u32 d){ if(!d) return 0; if(d==1) return n; int neg = n<0; u64 un = neg ? (u64)(-(n+1))+1 : (u64)n; u32 hi=(u32)(un>>32), lo=(u32)un, qh=hi/d, r=hi%d, ql=0;
     for(int i=31;i>=0;i--){ u32 top=r>>31; r=(r<<1)|((lo>>i)&1); ql<<=1; if(top||r>=d){ r-=d; ql|=1; } }
     u64 q=((u64)qh<<32)|ql; return neg ? -(s64)q : (s64)q; }
 static int clampi(s64 v){ return v>1000000000LL ? 1000000000 : v<-1000000000LL ? -1000000000 : (int)v; }
