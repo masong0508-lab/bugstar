@@ -37,8 +37,8 @@ def audit(prefix):
                             "visible_fraction": round(fraction, 4),
                             "scene_ok": scene_ok,
                             "file": str(file.with_suffix(".png"))})
-    if not any(row["scene_ok"] for row in results):
-        raise RuntimeError(f"{prefix}: all sampled frames look blank; inspect pictures and race timing")
+    # Always retain individual frame metrics, even when the scene is black.
+    # A failed run is precisely when the diagnostic numbers matter most.
     return results
 
 def main():
@@ -49,6 +49,8 @@ def main():
     for key, prefix in (("native", sys.argv[1]), ("classic", sys.argv[2])):
         try:
             data[key] = audit(prefix)
+            if not any(row["scene_ok"] for row in data[key]):
+                errors.append(f"{prefix}: all sampled frames look blank")
         except Exception as exc:
             errors.append(str(exc))
             data[key] = {"error": str(exc)}
