@@ -496,7 +496,12 @@ static void present_game(int with_overlay){
     /* Live two-instance co-op acceptance: capture the ACTUAL rendered victory
      * on each SDL peer the first time its authoritative mission clears. */
     { static int clear_shot_done;
-      if(!clear_shot_done && pc_mp_coop_complete()){
+      static unsigned victory_presents;
+      /* 3 displayed frames after a real 3D overlay draw, not merely a UDP
+       * state transition; the display buffer may lag the simulation. */
+      if(!pc_mp_coop_complete())victory_presents=0;
+      else if(victory_presents<3u)victory_presents++;
+      if(!clear_shot_done && victory_presents>=3u){
         const char *p=getenv("BUGSTAR_LAN_CLEAR_SHOT");
         if(p && *p){
             SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,dw_,dh_,32,SDL_PIXELFORMAT_ARGB8888);
