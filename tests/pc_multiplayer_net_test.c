@@ -25,7 +25,7 @@ int main(void){
     assert(host.connected && client.connected);
     assert(pcnet_remote(&host,119,&got));
     assert(got.world==bc.world && abs_i((int)(got.x-bc.x))<=32);
-    assert(got.y==bc.y);
+    assert(abs_i((int)(got.y-bc.y))<=16); /* 16-unit wire quantization */
     assert(abs_i((int)(got.z-bc.z))<=32);
     assert(abs_i((int)got.yaw-(int)bc.yaw)<=4);
     assert(pcnet_remote(&client,119,&got));
