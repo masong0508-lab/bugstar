@@ -62,7 +62,9 @@ int main(void){
      * victory must be reached by actual 3D laser aiming at both enemies. */
     pc_coop_reset(&enemy);
     host.x=0;host.y=0;host.z=0;host.yaw=0;
-    guest.x=192;guest.y=0;guest.z=1720;guest.yaw=0;
+    /* The second pilot steers into the raider's line of fire; an offset
+     * ship with yaw=0 must miss when the enemy sweeps to the far side. */
+    guest.x=0;guest.y=0;guest.z=1720;guest.yaw=0;
     unsigned tick=700;
     pc_coop_step(&enemy,tick,&host,&guest);
     for(unsigned i=0;i<5;i++){
