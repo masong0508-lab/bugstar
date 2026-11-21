@@ -169,6 +169,13 @@ jobs:
             > out/kart-classic-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-classic-smoke.log
           test -s out/kart-classic-smoke.png
+          # Re-run the exact race at GBA resolution and record the Mode-4
+          # display registers, VRAM page coverage and palette at frame 324.
+          KFUZZ_RACES=1 PC_V3D=2 PC_DEBUG=1 timeout 120 \
+            ./bugstar_pc --headless --script out/kart-visual.keys \
+            --out out/kart-classic-240 --sav out/kart-classic-debug.sav --frames 324 \
+            > out/kart-classic-registers.log 2>&1
+          grep '^dbg DISPCNT=' out/kart-classic-registers.log
           python3 ../tests/kart_visual_capture_audit.py out/kart-native-visual out/kart-classic-visual
       - name: Benchmark native kart composition and verify single/multithread picture parity
         run: |
@@ -197,6 +204,7 @@ jobs:
             pc/out/kart-native-visual_*.png
             pc/out/kart-classic-visual_*.png
             pc/out/kart-visual-report.json
+            pc/out/kart-classic-registers.log
             pc/out/kart-bench-1.log
             pc/out/kart-bench-4.log
           if-no-files-found: ignore
