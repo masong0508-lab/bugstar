@@ -126,6 +126,58 @@ static void bolt_card_x(volatile u16 *pg, const char *const *ln, int n, int smal
     oam_flush(); card(pg,"BOLT",ln,n); oam_hide_all(); oam_flush();
 }
 static void bolt_card(volatile u16 *pg, const char *const *ln, int n){ bolt_card_x(pg,ln,n,0); }
+static const char *const story_boss_title[6]={
+    "GARDEN: THE CAGE KEEPER",
+    "POND: THE LOCKKEEPER",
+    "PICNIC: THE QUARTERMASTER",
+    "NIGHT LAWN: THE WATCHER",
+    "HONEY: THE CHOIR WARDEN",
+    "ANTHILL: THE KING'S FURNACE"
+};
+static const char *const story_boss_warning[6]={
+    "CAGE CHAINS. THE KEEPER IS NEAR.",
+    "WARM PIPES. THE LOCKKEEPER IS NEAR.",
+    "STOLEN RATIONS. A GUARD IS NEAR.",
+    "THE NIGHT WATCHER IS LISTENING.",
+    "THE CHOIR WARDEN HEARS OUR STEPS.",
+    "THE FURNACE THRUMS. THE KING IS NEAR."
+};
+static const char *const story_boss_evidence[6][3]={
+    {"CAGE MANIFEST: SHIPPED TO THE POND.",
+     "THE PRISONERS WERE MARKED AS SEED.",
+     "THE KEEPER SIGNED EACH TRANSFER."},
+    {"WARM WATER DIVERTED TO THE NEST.",
+     "TEMPERATURES KEPT FALLING ANYWAY.",
+     "THE KING DEMANDED MORE PRISONERS."},
+    {"RATIONS SENT TO WORK CREWS BELOW.",
+     "THE CAPTIVES DIG UNDER THE LAWN.",
+     "THEIR NAMES WERE CROSSED OUT."},
+    {"SHIP METAL MOVED THROUGH THE DARK.",
+     "IT HUMMED EVEN WHEN NO ONE TOUCHED IT.",
+     "NEXT TRANSFER: THE HONEY FORGES."},
+    {"THE FURNACE REQUIRES A SONG.",
+     "THE WORKERS RECORDED A SHIP'S CALL.",
+     "THE KING ORDERED THE TAPE ERASED."},
+    {"THE KING LOCKED A HEART IN THE BEAST.",
+     "PRISONERS STILL FILL THE LOWER CELLS.",
+     "THE MACHINE MUST NEVER LEARN ITS NAME."}
+};
+static const char *const story_boss_aftermath[6]={
+    "THE GARDEN'S CAGE ROUTE IS BROKEN.",
+    "THE POND'S TRANSFER LOCKS ARE OPEN.",
+    "THE STOLEN RATION LINE IS CLOSED.",
+    "THE NIGHT WATCH NO LONGER HUNTS BUGS.",
+    "THE HONEY FORGES HAVE FALLEN SILENT.",
+    "THE KING'S FURNACE HAS LOST ITS MASTER."
+};
+static const char *const story_boss_reward[6]={
+    "SUPPLY CACHE: FOOD RESTORED.",
+    "COOLANT CACHE: UP TO 20 FUEL.",
+    "STOLEN GOLD RECOVERED.",
+    "REPAIR BENCH: HULL PATCHED.",
+    "ENGINE PARTS RECOVERED: +24 SCRAP.",
+    "PRISON INFIRMARY: HEALTH RESTORED."
+};
 static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, and the final memory
     if(bolt_chapter_open(pg,beat)) return; // START skips this whole scene without touching story flags
     switch(beat){
@@ -253,58 +305,6 @@ static const char *const bolt_idle[64]={"\"I COUNTED MY WHEELS. STILL TWO.\"","\
 // tables are read at boss-floor arrival, from a searchable evidence chest, and
 // after the first victory. Cleared-mask bits already persist the consequences;
 // revisiting a world never grants the first-clear reward again.
-static const char *const story_boss_title[6]={
-    "GARDEN: THE CAGE KEEPER",
-    "POND: THE LOCKKEEPER",
-    "PICNIC: THE QUARTERMASTER",
-    "NIGHT LAWN: THE WATCHER",
-    "HONEY: THE CHOIR WARDEN",
-    "ANTHILL: THE KING'S FURNACE"
-};
-static const char *const story_boss_warning[6]={
-    "CAGE CHAINS. THE KEEPER IS NEAR.",
-    "WARM PIPES. THE LOCKKEEPER IS NEAR.",
-    "STOLEN RATIONS. A GUARD IS NEAR.",
-    "THE NIGHT WATCHER IS LISTENING.",
-    "THE CHOIR WARDEN HEARS OUR STEPS.",
-    "THE FURNACE THRUMS. THE KING IS NEAR."
-};
-static const char *const story_boss_evidence[6][3]={
-    {"CAGE MANIFEST: SHIPPED TO THE POND.",
-     "THE PRISONERS WERE MARKED AS SEED.",
-     "THE KEEPER SIGNED EACH TRANSFER."},
-    {"WARM WATER DIVERTED TO THE NEST.",
-     "TEMPERATURES KEPT FALLING ANYWAY.",
-     "THE KING DEMANDED MORE PRISONERS."},
-    {"RATIONS SENT TO WORK CREWS BELOW.",
-     "THE CAPTIVES DIG UNDER THE LAWN.",
-     "THEIR NAMES WERE CROSSED OUT."},
-    {"SHIP METAL MOVED THROUGH THE DARK.",
-     "IT HUMMED EVEN WHEN NO ONE TOUCHED IT.",
-     "NEXT TRANSFER: THE HONEY FORGES."},
-    {"THE FURNACE REQUIRES A SONG.",
-     "THE WORKERS RECORDED A SHIP'S CALL.",
-     "THE KING ORDERED THE TAPE ERASED."},
-    {"THE KING LOCKED A HEART IN THE BEAST.",
-     "PRISONERS STILL FILL THE LOWER CELLS.",
-     "THE MACHINE MUST NEVER LEARN ITS NAME."}
-};
-static const char *const story_boss_aftermath[6]={
-    "THE GARDEN'S CAGE ROUTE IS BROKEN.",
-    "THE POND'S TRANSFER LOCKS ARE OPEN.",
-    "THE STOLEN RATION LINE IS CLOSED.",
-    "THE NIGHT WATCH NO LONGER HUNTS BUGS.",
-    "THE HONEY FORGES HAVE FALLEN SILENT.",
-    "THE KING'S FURNACE HAS LOST ITS MASTER."
-};
-static const char *const story_boss_reward[6]={
-    "SUPPLY CACHE: FOOD RESTORED.",
-    "COOLANT CACHE: UP TO 20 FUEL.",
-    "STOLEN GOLD RECOVERED.",
-    "REPAIR BENCH: HULL PATCHED.",
-    "ENGINE PARTS RECOVERED: +24 SCRAP.",
-    "PRISON INFIRMARY: HEALTH RESTORED."
-};
 static const char *const bolt_zone[6][2]={{"\"THE GARDEN IS WHERE I WOKE UP. IT FEELS KIND.\"","\"BEE HUM AND WET GRASS. I COULD STAY.\""},
     {"\"THE POND IS CALM. I DO NOT TRUST CALM.\"","\"DEEP WATER. I AM ONLY WATERPROOF IN SPIRIT.\""},
     {"\"SOMEONE LEFT A PICNIC. ALL OF IT. ODD.\"","\"THE ANTS LIKE THIS PLACE. I WONDER WHY.\""},
