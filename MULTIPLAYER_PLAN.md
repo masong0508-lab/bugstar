@@ -1,3 +1,18 @@
+## Current next milestone: three-wave graphical proof, Ready and reconnect (21 November 2026)
+
+**Implementation branch:** `chatgpt/lan-three-wave-ready-reconnect-20261121` (pending CI validation; not a released all-port multiplayer build).
+
+- **PC/Linux native SDL:** two separately running graphical games must enter the same star, accept opt-in LAN, exchange real UDP ship poses and hits, show both raider and independently moving drone, pass wave 1/2/3 in order, and each capture an actual `MISSION COMPLETE` screen. The previous smoke demonstrated a single raider victory and two distinct rendered views; it did **not** prove the full three-wave graphical journey. `pc/tests/lan_live.sh ... coop` now explicitly rejects missing waves, final clear, or either screenshot.
+- **PC Windows:** uses the same SDL gameplay/transport source; verify Windows build and two native Windows game processes as a separate acceptance gate. Linux CI success does not prove Windows networking.
+- **Android:** same SDL/network source, but actual phone-to-PC and phone-to-phone Wi-Fi, touch menu, background/suspend, dropped packets and reconnection remain **device-level gates**. No successful Android-device playthrough is claimed.
+- **GBA:** there is still no working SIO link-cable multiplayer transport. Preserve solo ROM and budget while implementing a separate two-device Ready/link/mission test; do not expose an imaginary functional multiplayer menu.
+- **GBC (separate `bugstar-gbc` repo):** real serial link multiplayer is also not implemented. The intended two-Game-Boy-Color link test is documented in its own `MULTIPLAYER_PLAN.md`, not equivalent to PC UDP or GBA four-player SIO.
+- **Other ports/build variants:** port the same *observable* acceptance requirements, but do not share SDL socket code with cable-only hardware. Treat unsupported transport as disabled, never an apparent success.
+
+**Preflight rule:** Joining a network socket is not Ready. Each player explicitly selects **CONFIRM READY** in the LAN options; simulation starts only after both have fresh ship state and mutually confirmed readiness. A leave, world change or stale peer pose clears manual Ready, preventing a ghost pilot from continuing the co-op wave. Reconnection needs both confirmations again, and retains separate campaign saves.
+
+**Performance and evidence gate:** run packet codec tests, localhost Ready/reconnect test, real two-SDL-instance full playthrough with 3 wave and per-peer screenshot assertions, sparring regression, ordinary speed guard and GBA ROM/GBC budget checks where toolchains are available. The test-only aim-following pilot is controlled by `BUGSTAR_LAN_TEST_PILOT`; it never enables in a normal game. Do not claim passed/available until the target platform's own emulator/hardware build and multiplayer session pass.
+
 # BUGSTAR multiplayer: cross-port implementation plan
 _Status (21 November 2026): Experimental PC two-player sparring and shared-raider co-op **verified in two real SDL game instances**; Android/handheld gameplay multiplayer remains unverified or unimplemented._
 
