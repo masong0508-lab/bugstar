@@ -24,6 +24,7 @@ on:
       - 'tests/space_station_depth_audit.py'
       - 'net/**'
       - 'tests/multiplayer_protocol_test.c'
+      - 'tests/pc_multiplayer_net_test.c'
       - 'tests/monster_roster.py'
       - 'pc/facts/**'
       - 'tests/facts_audit.py'
@@ -75,6 +76,9 @@ jobs:
       - name: Host-check packet bounds and corruption before Android cross-play work
         run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/multiplayer_protocol_test.c net/session.c -o /tmp/bugstar-nettest && /tmp/bugstar-nettest
 
+      - name: Test two real LAN sockets, world matching and disconnects on the host
+        run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/pc_multiplayer_net_test.c pc/platform/pc_net.c net/session.c -o /tmp/bugstar-lan && timeout 15 /tmp/bugstar-lan
+
       - name: Check the 24 additional cross-port monster species
         run: python3 tests/monster_roster.py
 
@@ -89,6 +93,7 @@ jobs:
         run: |
           n=$(grep -c 'pc_sprgen' pc/gen/sources.txt); echo "sprite generator sources: $n"; [ "$n" -ge 10 ] || { echo "::error::the sprite generators are not in the Android source list"; exit 1; }
           for f in warship/ws.c laws/laws.c sim/sim_core.c giant/giant.c; do grep -qx "$f" pc/gen/sources.txt || { echo "::error::$f is missing from the Android source list"; exit 1; }; done
+          for f in platform/pc_sdl.c platform/pc_net.c platform/pc_net_codec.c; do grep -qx "$f" pc/gen/sources.txt || { echo "::error::$f missing from Android LAN source list"; exit 1; }; done
           grep -q 'DPC_ANDROID' pc/gen/cflags.txt || { echo "::error::cflags.txt has no -DPC_ANDROID"; exit 1; }
 
       - name: Build the debug APK
