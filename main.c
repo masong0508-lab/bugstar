@@ -186,9 +186,18 @@ static void pix(volatile u16 *pg, int x, int y, int c){
     if(x&1) *p = (*p&0x00FF)|(c<<8); else *p = (*p&0xFF00)|c;
 }
 static void rect(volatile u16 *pg, int x, int y, int w, int h, int c){
+    // Clip once per rectangle, not once per pixel. Off-screen UI animations
+    // may pass negative coordinates; never form a pointer outside mode-4 VRAM.
+    if(w<=0 || h<=0 || x>=240 || y>=160 || x<=-w || y<=-h) return;
+    if(x<0){ w+=x; x=0; }
+    if(y<0){ h+=y; y=0; }
+    if(w>240-x) w=240-x;
+    if(h>160-y) h=160-y;
+    c=(u8)c;
+    u16 cc=(u16)((u16)c*0x0101u);
     for(int j=0;j<h;j++){ int i=0;
         if(x&1){ pix(pg,x,y+j,c); i=1; }
-        volatile u16 *p = pg + (((y+j)*240+x+i)>>1); u16 cc=c|(c<<8);
+        volatile u16 *p = pg + (((y+j)*240+x+i)>>1);
         for(; i+1<w; i+=2) *p++=cc;
         if(i<w) pix(pg,x+i,y+j,c); }
 }
