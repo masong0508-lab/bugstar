@@ -377,6 +377,7 @@ void pcnet_close(PcNetSession *s){
 static PcNetSession g_peer;
 static PcNetShip g_local;
 static uint8_t g_active,g_submitted;
+static uint32_t g_last_space_frame; /* recent real flight submission, not this single VBlank */
 int pc_mp_host(uint16_t port){
     if(g_active)return 0;
     g_active=(uint8_t)pcnet_host(&g_peer,port);
@@ -393,9 +394,11 @@ void pc_mp_submit(const PcNetShip *local){
 void pc_mp_frame(uint32_t frame){
     /* The opt-in trace distinguishes transport failure from a game scene
      * that never entered 3D space. It is silent in normal play. */
+    if(g_active && g_submitted)g_last_space_frame=frame;
     if(g_active && getenv("BUGSTAR_LAN_TRACE") && frame%300u==0u)
         fprintf(stderr,"lan: status frame %u role %u space %u world %u connected %u remote %u port %u\n",
-                (unsigned)frame,(unsigned)g_peer.role,(unsigned)g_submitted,
+                (unsigned)frame,(unsigned)g_peer.role,
+                 (unsigned)(g_last_space_frame && frame-g_last_space_frame<=20u),
                 (unsigned)g_local.world,(unsigned)g_peer.connected,
                 (unsigned)g_peer.received,(unsigned)g_peer.local_port);
     if(g_active && g_submitted){
@@ -445,5 +448,5 @@ int pc_mp_duel(uint8_t *host_hp,uint8_t *guest_hp,uint8_t *host_wins,uint8_t *gu
 }
 void pc_mp_close(void){
     if(g_active)pcnet_close(&g_peer);
-    g_active=0;g_submitted=0;
+    g_active=0;g_submitted=0;g_last_space_frame=0;
 }
