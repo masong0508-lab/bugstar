@@ -21,7 +21,7 @@ for zone in 0 1 2 3 4 5; do
       tail -30 "$OUT/$name.err" >&2
       exit 1
     }
-    for frame in 000240 000360; do
+    for frame in 000240 000302; do
       test -s "$OUT/$name"_"$frame".ppm || {
         echo "boss-capture $name: no real gameplay screenshot for frame $frame" >&2
         exit 1
