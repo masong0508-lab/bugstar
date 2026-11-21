@@ -190,7 +190,7 @@ boss_evidence = literals(section(ui, "static const char *const story_boss_eviden
 boss_aftermath = literals(section(ui, "static const char *const story_boss_aftermath[6]={",
                                   "static const char *const story_boss_reward[6]"))
 boss_reward = literals(section(ui, "static const char *const story_boss_reward[6]={",
-                               "static const char *const bolt_zone[6][2]"))
+                               "static void bolt_story("))
 assert len(boss_titles) == len(boss_warnings) == len(boss_aftermath) == len(boss_reward) == 6, (
     "all six story bosses must have a unique title, warning, aftermath, and recovery"
 )
