@@ -3,6 +3,35 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Salvage gameplay and space rendering fast path — 22 November 2026
+
+- **New in-space salvage content:** destroying hostile pirate craft and mining
+  asteroid belts sometimes releases green fuel cells or cyan field repair kits
+  through the same four existing collectible slots. Fly through the pickup or
+  hold R for the tractor beam. Fuel cells replenish up to 20 fuel, and repair
+  kits patch up to 18 hull or 20 shield when the hull is already intact.
+  Collected salvage has distinct 3D and radar colours. Normal cargo remains
+  collectible, including the ship's hold-capacity bonus. Full cargo/fuel/hull
+  does not swallow a one-shot pickup: instead it awards 10/15 gold with a
+  truthful message. Spawns use existing kill/mining events, so this is
+  earned gameplay content rather than repeated launch farming.
+- **Handheld camera speed:** nearby projected space objects on ARM7TDMI use
+  mathematically bounded signed 32-bit dot products instead of multiple
+  signed 64-bit products, with exact 64-bit fallback outside a ±20,000-unit
+  camera cube. The cube is safe for *any* three signed 16-bit basis entries:
+  3 × 20,000 × 32,768 = 1,966,080,000, less than signed 32-bit maximum.
+  PC and ARM64 keep their existing camera math. No new state or memory.
+- **Shared 3D planet shading:** move the invariant projected scanline-scale
+  division out of the scanline loop in `planet_fill`. Pixel computations
+  remain unchanged in every platform. This avoids source-level repeated
+  integer divides per frame without allocating any new tables.
+- `tests/space_content_speed_runtime.py` compiles actual production camera,
+  canister and planet-shader helpers. Validate fuel, repairs, holding-capacity
+  bonuses and idempotent pickups, compare ARM/PC cameras against an
+  independent 64-bit oracle and compare the optimized shader to the exact
+  previous source across screen-clipping/radius/LOD cases. CI needs to pass
+  and actual handheld FPS still requires hardware benchmarking.
+
 ## Planet rewards and resident census — 22 November 2026
 
 - Give a `TALK TO LOCALS` bounty credit only once per distinct resident.

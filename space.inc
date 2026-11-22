@@ -173,6 +173,11 @@ typedef struct { s32 x,y,z; s16 vx,vy,vz; s16 life; u8 col; } SPart;
 #define NSPP 48
 EW static SPart spp[NSPP];
 typedef struct { s32 x,y,z; u8 alive, good; } Can;
+// Space salvage uses the existing four canister slots, without extra actors.
+// Regular goods use 0..7, defeated ships may drop a random good (255).
+#define CAN_FUEL 253
+#define CAN_REPAIR 254
+#define CAN_RANDOM 255
 // rocks in a belt around each planet: crash into them and it hurts, shoot them to mine crystals and amber
 typedef struct { s32 x,y,z; s16 vx,vy,vz, r, hp; u8 alive, seed, flash; } Ast;
 #define NASTMAX 30
@@ -222,6 +227,29 @@ static int rock_rel(const Ast *a){ s32 dx=svx_-a->vx, dy=svy_-a->vy, dz=svz_-a->
 EW static Can cans[4];
 static char smsg[40];
 static void space_say(const char *t){ int n=0; while(t[n]&&n<39){ smsg[n]=t[n]; n++; } smsg[n]=0; space_msg_t=90; }
+// A distinct radar/3D color identifies useful wreck salvage before collection.
+static int can_color(u8 good){ return good==CAN_FUEL ? 52 : good==CAN_REPAIR ? 55 : 50; }
+// Fly through a canister (or use the existing R tractor beam) to collect it.
+// No collectible disappears without a reward when fuel, shields or cargo are full.
+static void can_collect(Can *c){
+    if(!c->alive) return;
+    c->alive=0;
+    if(c->good==CAN_FUEL){
+        if(fuel<fuel_max()){ int n=fuel_max()-fuel; if(n>20) n=20; fuel+=n;
+            char b[40]; scpy(b,"FUEL CELL! +"); ncat(b,n); scat(b," FUEL"); space_say(b); }
+        else { gold+=15; space_say("FUEL FULL. SALVAGED 15G"); }
+    } else if(c->good==CAN_REPAIR){
+        if(hull<100){ int n=100-hull; if(n>18) n=18; hull+=n;
+            char b[40]; scpy(b,"REPAIR KIT! +"); ncat(b,n); scat(b," HULL"); space_say(b); }
+        else if(shield<shield_max()){ int n=shield_max()-shield; if(n>20) n=20; shield+=n;
+            char b[40]; scpy(b,"REPAIR KIT! +"); ncat(b,n); scat(b," SHIELD"); space_say(b); }
+        else { gold+=15; space_say("ARMOUR FULL. SALVAGED 15G"); }
+    } else if(cargo_n()<cargo_cap+ship_hold_bonus()){
+        int g=c->good<8 ? c->good : lr(8); cargo[g]++;
+        char b[32]; scpy(b,"SCOOPED "); scat(b,goods[g]); space_say(b);
+    } else { gold+=10; space_say("CARGO FULL. SALVAGED 10G"); }
+    sfx(2);
+}
 
 static int chase_cam;                                   // 1: your ship seen from behind, 0: the cockpit (set below)
 static void norm3(s16 *v){ s32 l=isqrt((u32)(v[0]*v[0]+v[1]*v[1]+v[2]*v[2])); if(l>0){ v[0]=v[0]*16384/l; v[1]=v[1]*16384/l; v[2]=v[2]*16384/l; } }
@@ -239,9 +267,23 @@ static s32 cam_o[3];                                     // where the eye is, fr
 // world point -> camera; returns 0 if behind
 static int cam3(s32 x, s32 y, s32 z, s32 *cx, s32 *cy, s32 *cz){
     s32 rx=x-shx-cam_o[0], ry=y-shy-cam_o[1], rz=z-shz-cam_o[2];
-    *cx=(s32)(((long long)rx*br[0]+(long long)ry*br[1]+(long long)rz*br[2])>>14);
-    *cy=(s32)(((long long)rx*bu[0]+(long long)ry*bu[1]+(long long)rz*bu[2])>>14);
-    *cz=(s32)(((long long)rx*bf[0]+(long long)ry*bf[1]+(long long)rz*bf[2])>>14);
+#if defined(__arm__) && !defined(__aarch64__)
+    // ARM7TDMI's 64-bit products are costly. Within 20k of the camera,
+    // even arbitrary signed 16-bit basis components fit in a signed 32-bit
+    // sum: 3 * 20000 * 32768 = 1,966,080,000 (< INT32_MAX).
+    // Far bodies retain the original wide math; PC/ARM64 remain untouched.
+    if(rx>=-20000 && rx<=20000 && ry>=-20000 && ry<=20000 &&
+       rz>=-20000 && rz<=20000){
+        *cx=(rx*br[0]+ry*br[1]+rz*br[2])>>14;
+        *cy=(rx*bu[0]+ry*bu[1]+rz*bu[2])>>14;
+        *cz=(rx*bf[0]+ry*bf[1]+rz*bf[2])>>14;
+    } else
+#endif
+    {
+        *cx=(s32)(((long long)rx*br[0]+(long long)ry*br[1]+(long long)rz*br[2])>>14);
+        *cy=(s32)(((long long)rx*bu[0]+(long long)ry*bu[1]+(long long)rz*bu[2])>>14);
+        *cz=(s32)(((long long)rx*bf[0]+(long long)ry*bf[1]+(long long)rz*bf[2])>>14);
+    }
     return *cz>20;
 }
 static int sproj(s32 x, s32 y, s32 z, int *sx, int *sy, s32 *zz){
@@ -314,11 +356,15 @@ IWRAM static void planet_fill(volatile u16 *pg, int cx, int cy, int r, s32 Lx, s
     int crot = rot + (frames>>5) + 40;                            // clouds drift slowly over the ground
     int ys = r>64 ? 2 : 1, cs = r>150 ? 2 : 1;
     int y0=cy-r, y1=cy+r; if(y0<0) y0=0; if(y1>127) y1=127;
+    // Projected scale depends on radius and LOD, never the scanline.
+    // Hoisting it removes up to 128 integer divisions per shaded disc.
+    s32 ks=(((2*cs)<<16)/r)*64;
     for(int y=y0;y<=y1;y+=ys){
         int dy=y-cy; int w=isqrt((u32)(r*r-dy*dy));
         int c0=(cx-w)>>1, c1=(cx+w)>>1; if(c0<0) c0=0; if(c1>119) c1=119; if(c0>c1) continue;
         int ky=((dy+r)*64)/r; if(ky<0) ky=0; if(ky>127) ky=127;
-        s32 kx=(((c0*2-cx+r)<<16)/r)*64, ks=(((2*cs)<<16)/r)*64;
+        // The clipped start may be negative; shifting a signed negative is UB.
+        s32 kx=(((c0*2-cx+r)*65536)/r)*64;
         const u8 *bz=b4+(y&3)*4;
         volatile u16 *row=pg+y*120;
         int ny=(64-ky)*4;
@@ -401,7 +447,10 @@ static void ship_dies(Pirate *p, int by_you){
     if(battle_on && team_count(1)==0){ battle_on=0; coil_win(); ship_pts_add(10); int bonus=100+battle_kills*(20+space_danger()*4); gold+=bonus; fame+=10+battle_kills; char b[40]; scpy(b,"BATTLE WON! BONUS +"); ncat(b,bonus); scat(b,"G"); space_say(b); sfx(6); return; }
     if(by_you){ char b[40]; scpy(b,"ENEMY DOWN! +"); ncat(b,g); scat(b,"G +1 SHIP PT"); space_say(b); }
     else if(lr(2)==0){ static const char *const wq[6]={"WINGMAN: GOT ONE!","WINGMAN: SPLASH ONE!","WINGMAN: THAT ONE WAS RUDE.","WINGMAN: FOR THE BUG!","WINGMAN: TOO EASY.","WINGMAN: DID YOU SEE THAT?"}; space_say(wq[lr(6)]); }
-    if(lr(3)==0) for(int k=0;k<4;k++) if(!cans[k].alive){ cans[k].alive=1; cans[k].good=255; cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; }
+    if(lr(3)==0) for(int k=0;k<4;k++) if(!cans[k].alive){
+        int r=lr(9); cans[k].alive=1;
+        cans[k].good = r==0 ? CAN_FUEL : r==1 ? CAN_REPAIR : CAN_RANDOM;
+        cans[k].x=p->x; cans[k].y=p->y; cans[k].z=p->z; break; }
 }
 static void space_enter(int from_planet){
     shd_off();
@@ -474,7 +523,7 @@ static void cockpit(volatile u16 *pg){
     pix(pg,120,144,54); pix(pg,121,144,54);
     blip(pg,0,0,0,in_lair?53:48); if(!in_lair) blip(pg,stx_,sty_,stz_,55);
     for(int i=0;i<NPIR;i++) if(pir[i].alive) blip(pg,pir[i].x,pir[i].y,pir[i].z,pir[i].team?53:52);
-    for(int i=0;i<4;i++) if(cans[i].alive) blip(pg,cans[i].x,cans[i].y,cans[i].z,50);
+    for(int i=0;i<4;i++) if(cans[i].alive) blip(pg,cans[i].x,cans[i].y,cans[i].z,can_color(cans[i].good));
     if(!in_lair) for(int i=0;i<nast;i++) if(ast[i].alive) blip(pg,ast[i].x,ast[i].y,ast[i].z,56);
     // bars on the left: shield, hull, fuel; speed on the right
     static const char *const lab[3]={"SHLD","HULL","FUEL"}; int val[3]={shield,hull,fuel}, mx[3]={shield_max(),100,fuel_max()}, col[3]={55,53,50};
@@ -768,7 +817,10 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
             if(!sproj(a->x,a->y,a->z,&sx,&sy,&z) || z>9000) continue; int rs=(int)(a->r*FOCS/z)+3;
             if(sx>120-rs && sx<120+rs && sy>VCY-rs && sy<VCY+rs){ a->hp -= laser_lv+1; a->flash=3; boom(shx+((bf[0]*(z-a->r))>>14),shy+((bf[1]*(z-a->r))>>14),shz+((bf[2]*(z-a->r))>>14),3,56); sfx(1);
                 if(a->hp<=0){ a->alive=0; if(is_belt()) ast_clear|=1u<<i; boom(a->x,a->y,a->z,20,56); sfx(13); int nc=1+(a->r>260);
-                    for(int k=0;k<4 && nc;k++) if(!cans[k].alive){ cans[k].alive=1; int r=lr(10); cans[k].good = r<5?4 : r<9?3 : 7; cans[k].x=a->x+lr(200)-100; cans[k].y=a->y; cans[k].z=a->z+lr(200)-100; nc--; }
+                    for(int k=0;k<4 && nc;k++) if(!cans[k].alive){
+                        cans[k].alive=1; int r=lr(12), ore=lr(10);
+                        cans[k].good = r==0 ? CAN_FUEL : r==1 ? CAN_REPAIR : ore<5?4 : ore<9?3 : 7;
+                        cans[k].x=a->x+lr(200)-100; cans[k].y=a->y; cans[k].z=a->z+lr(200)-100; nc--; }
                     space_say("ROCK CRACKED! SCOOP THE MINERALS"); }
                 break; } }
         if(in_lair) beast_shot();
@@ -811,10 +863,9 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
             else if(pir[p->tgt].alive && pir[p->tgt].team!=p->team && lr(100)<45){ Pirate *q=&pir[p->tgt]; q->hp -= p->team ? 4+danger*2 : 6+laser_lv*4+ship_gun(); boom(q->x,q->y,q->z,3,p->team?53:52);
                 if(q->hp<=0) ship_dies(q,0); } }
     }
-    // canisters: fly into them to scoop the cargo
+    // Canisters share the current tractor/fly-through behavior and small pool.
     for(int k=0;k<4;k++) if(cans[k].alive){ s32 dx=shx-cans[k].x, dy=shy-cans[k].y, dz=shz-cans[k].z;
-        if(dx>-500&&dx<500&&dy>-500&&dy<500&&dz>-500&&dz<500){ cans[k].alive=0; int n=0; for(int i=0;i<8;i++) n+=cargo[i];
-            if(n<cargo_cap){ int g=cans[k].good<8 ? cans[k].good : lr(8); cargo[g]++; char b[32]; scpy(b,"SCOOPED "); scat(b,goods[g]); space_say(b); sfx(2); } else space_say("CARGO HOLD FULL"); } }
+        if(dx>-500&&dx<500&&dy>-500&&dy<500&&dz>-500&&dz<500) can_collect(&cans[k]); }
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; p->life--; p->x+=p->vx; p->y+=p->vy; p->z+=p->vz; }
     if(hull<=0){ if(in_lair){ in_lair=0; no_ambush=1; space_enter(0); no_ambush=0; } hull=100; for(int i=0;i<8;i++) cargo[i]=0; gold=sdiv(gold,2); for(int i=0;i<NPIR;i++) pir[i].alive=0; battle_on=0;
         shx=0; shy=0; shz=-(PR*5); yaw=0; pitch=0; speed=10; svx_=svy_=svz_=0; space_say("SHIP WRECKED! CARGO LOST"); sfx(9); }
@@ -897,7 +948,9 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         static const u8 pe[]={0,1,0,2,0,3,0,4,1,3,2,3,1,4,2,4,3,5,4,5,1,5,2,5};
         static const u8 pel[]={0,1,0,2,1,5,2,5,3,5};                                                                  // (far away: just the outline and the fin)
         if(lod) wire(pg,v,6,pel,5,col); else wire(pg,v,6,pe,12,col); }
-    for(int k=0;k<4;k++) if(cans[k].alive){ int sx,sy; s32 z; if(sproj(cans[k].x,cans[k].y,cans[k].z,&sx,&sy,&z)){ int r=(int)(60*FOCS/z)+1; line2(pg,sx-r,sy,sx,sy-r,50); line2(pg,sx,sy-r,sx+r,sy,50); line2(pg,sx+r,sy,sx,sy+r,50); line2(pg,sx,sy+r,sx-r,sy,50); } }
+    for(int k=0;k<4;k++) if(cans[k].alive){ int sx,sy; s32 z; if(sproj(cans[k].x,cans[k].y,cans[k].z,&sx,&sy,&z)){ int r=(int)(60*FOCS/z)+1, col=can_color(cans[k].good);
+        line2(pg,sx-r,sy,sx,sy-r,col); line2(pg,sx,sy-r,sx+r,sy,col);
+        line2(pg,sx+r,sy,sx,sy+r,col); line2(pg,sx,sy+r,sx-r,sy,col); } }
     for(int i=0;i<NSPP;i++){ SPart *p=&spp[i]; if(p->life<=0) continue; int sx,sy; if(sproj(p->x,p->y,p->z,&sx,&sy,0)){ dot2(pg,sx,sy,p->life>12?49:p->col); dot2(pg,sx+1,sy,p->col); } }
     int lz=laser_t; if(laser_t) laser_t--;
     if(lz && !chase_cam){ line2(pg,30,127,120,VCY,52); line2(pg,210,127,120,VCY,52); }          // (the cockpit view: bolts from the bottom corners)
