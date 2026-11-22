@@ -37,10 +37,16 @@ assert "if(w<16){ rect(pg,x,y,w,h,c); return; }" in kart_rect
 assert "volatile u32 v=krect_dma_word(c);" in kart_rect
 assert "*(volatile u32*)0x040000DC=(u32)pairs|(2<<23)|(1u<<31);" in kart_rect
 
-dma=r"""        *(volatile u32*)0x040000D4=(u32)&v; *(volatile u32*)0x040000D8=(u32)p;
-        *(volatile u32*)0x040000DC=(u32)pairs|(2<<23)|(1u<<31);"""
-assert kart_rect.count(dma)==1, "DMA3 source no longer matches host substitution"
-kart_rect=kart_rect.replace(dma,"        host_dma_pairs(p, pairs, v);")
+dma_statements=(
+    "*(volatile u32*)0x040000D4=(u32)&v;",
+    "*(volatile u32*)0x040000D8=(u32)p;",
+    "*(volatile u32*)0x040000DC=(u32)pairs|(2<<23)|(1u<<31);",
+)
+# Source, destination and control must still be exactly these operations;
+# formatting them on one line or several must not disable the real test.
+dma=r"\s*".join(re.escape(statement) for statement in dma_statements)
+assert len(re.findall(dma,kart_rect))==1, "DMA3 source no longer matches host substitution"
+kart_rect=re.sub(dma,"host_dma_pairs(p, pairs, v);",kart_rect)
 
 harness=r"""
 #include <stdint.h>
@@ -131,3 +137,4 @@ with tempfile.TemporaryDirectory(prefix="bugstar-hud-dma-") as td:
         input=harness,text=True,check=True,
     )
     subprocess.run([str(exe)],check=True)
+

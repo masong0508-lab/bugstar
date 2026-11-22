@@ -1142,24 +1142,25 @@ OVK static void kmm_path(volatile u16 *pg, int ox, int oy, int n){ int lx=-1, ly
 // Up to six bright samples show the direction of the next segment on
 // the tiny minimap. cnt>12 guarantees one wrap subtraction is sufficient.
 static inline int kart_map_ahead_idx(int pi, int step, int cnt){
-    int i=pi>>1; if(i>=cnt) i-=cnt; // odd-size tracks can end at index cnt
-    i+=step; return i>=cnt?i-cnt:i;
+    int i=(pi>>1)+step; return i>=cnt?i-cnt:i;
 }
 static void kart_minimap(volatile u16 *pg){
     int ox=194+(40-kmm_w)/2, oy=20+(40-kmm_h)/2;
-    if(oy+40<m7_strip){ ov_k(); kmm_path(pg,ox,oy,(knp>>1)<KMM_N ? (knp>>1) : KMM_N); }   // (the path, a pixel each: straight into the page)
-    else for(int i=0;i<(knp>>1) && i<KMM_N;i++) pix(pg,ox+kmmx[i],oy+kmmy[i],(i==0)?C_WHITE:C_GREY);
+    // kt_build stores path indices 0,2,4,..., including the final even
+    // index of an odd-length path. All map layers share that generated count.
+    int cnt=(knp+1)>>1; if(cnt>KMM_N) cnt=KMM_N;
+    if(oy+40<m7_strip){ ov_k(); kmm_path(pg,ox,oy,cnt); }   // (the path, a pixel each: straight into the page)
+    else for(int i=0;i<cnt;i++) pix(pg,ox+kmmx[i],oy+kmmy[i],(i==0)?C_WHITE:C_GREY);
     if(kr_mode==1 && rc[0].pi>=0 && rc[0].pi<knp){
-        int cnt=(knp>>1)<KMM_N?(knp>>1):KMM_N;
         if(cnt>12) for(int step=2;step<=12;step+=2){
             int i=kart_map_ahead_idx(rc[0].pi,step,cnt);
             int x=ox+kmmx[i], y=oy+kmmy[i];
             if(x>=194 && x<=234 && y>=21 && y<=61) pix(pg,x,y,step<=6?C_GOLD:C_CYAN);
         }
     }
-    if(kr_mode==1) for(int r=nrc-1;r>=0;r--){ int cnt=(knp>>1)<KMM_N?(knp>>1):KMM_N;
+    if(kr_mode==1) for(int r=nrc-1;r>=0;r--){
         if(cnt<1) continue; int i=rc[r].pi>>1;
-        if(i>=cnt) i=cnt-1; if(i<0) i=0; // never read an unbuilt last point on odd tracks
+        if(i>=cnt) i=cnt-1; if(i<0) i=0; // guard malformed racer indices
         int x=ox+kmmx[i], y=oy+kmmy[i], c = r==0 ? C_GOLD : (rc[r].place==1 ? C_RED : C_CYAN);
         if(r==0){ rect(pg,x-1,y-1,3,3,c);
             // A bright nose shows which direction you are actually facing
@@ -1265,3 +1266,4 @@ static int kart_glow(void){ return kl.part[KP_GLOW]; }
 #undef polyfill
 #undef linep
 #undef rect
+

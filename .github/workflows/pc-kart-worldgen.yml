@@ -16,6 +16,10 @@ on:
       - 'tests/kart_steering_runtime.py'
       - 'tests/kart_turn_cue_runtime.py'
       - 'tests/kart_dma_clip_runtime.py'
+      - 'tests/kart_native_camera_runtime.py'
+      - 'tests/kart_native_sampler_runtime.py'
+      - 'tests/kart_visual_capture_audit.py'
+      - 'tests/kart_fuzz_fade_runtime.py'
       - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
@@ -43,6 +47,7 @@ on:
       - 'pc/tests/speed_guard.sh'
       - 'pc/tests/native_space_perf.sh'
       - 'pc/tests/kart.sh'
+      - 'pc/tests/kart_fuzz.inc'
       - '.github/workflows/pc-kart-worldgen.yml'
   pull_request:
     paths:
@@ -60,6 +65,10 @@ on:
       - 'tests/kart_steering_runtime.py'
       - 'tests/kart_turn_cue_runtime.py'
       - 'tests/kart_dma_clip_runtime.py'
+      - 'tests/kart_native_camera_runtime.py'
+      - 'tests/kart_native_sampler_runtime.py'
+      - 'tests/kart_visual_capture_audit.py'
+      - 'tests/kart_fuzz_fade_runtime.py'
       - 'tests/kart_dma_palette_runtime_host.py'
       - 'ui.inc'
       - 'planet.inc'
@@ -87,6 +96,7 @@ on:
       - 'pc/tests/speed_guard.sh'
       - 'pc/tests/native_space_perf.sh'
       - 'pc/tests/kart.sh'
+      - 'pc/tests/kart_fuzz.inc'
       - '.github/workflows/pc-kart-worldgen.yml'
   workflow_dispatch:
 
@@ -112,6 +122,12 @@ jobs:
         run: python3 tests/kart_turn_cue_runtime.py
       - name: Check kart HUD DMA rectangles against visible framebuffer with ASan and UBSan
         run: python3 tests/kart_dma_clip_runtime.py
+      - name: Check speed-aware native kart banking and limited hill displacement under UBSan
+        run: python3 tests/kart_native_camera_runtime.py
+      - name: Verify native kart sampler keeps pixels identical on flat road textures
+        run: python3 tests/kart_native_sampler_runtime.py
+      - name: Confirm fuzz races match real fade-in and clear boot blackout
+        run: python3 tests/kart_fuzz_fade_runtime.py
       - name: Verify kart HUD DMA palette words under UndefinedBehaviorSanitizer
         run: python3 tests/kart_dma_palette_runtime_host.py
       - name: Audit quest targets, world gates and guaranteed rewards
@@ -160,20 +176,22 @@ jobs:
           cd pc
           mkdir -p out
           : > out/empty.keys
-          SDL_AUDIODRIVER=dummy PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
+          printf 'shot 96\nshot 160\nshot 240\nshot 320\n' > out/kart-visual.keys
+          SDL_AUDIODRIVER=dummy PC_NATIVE=2 PC_SCALE=4 PC_V3D=1 PC_KNX=1 KFUZZ_RACES=1 timeout 120 \
             ./bugstar_pc --window --video-driver dummy --no-audio --fast \
-            --size 960 640 --script out/empty.keys --sav out/kart-native-smoke.sav \
+            --size 960 640 --script out/kart-visual.keys --out out/kart-native-visual --sav out/kart-native-smoke.sav \
             --auto-shot 320 out/kart-native-smoke.png --stop-after 324 \
             > out/kart-native-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-native-smoke.log
           test -s out/kart-native-smoke.png
-          SDL_AUDIODRIVER=dummy PC_V3D=2 KFUZZ_RACES=1 timeout 120 \
+          SDL_AUDIODRIVER=dummy PC_SCALE=4 PC_V3D=2 KFUZZ_RACES=1 timeout 120 \
             ./bugstar_pc --window --video-driver dummy --no-audio --fast \
-            --size 960 640 --script out/empty.keys --sav out/kart-classic-smoke.sav \
+            --size 960 640 --script out/kart-visual.keys --out out/kart-classic-visual --sav out/kart-classic-smoke.sav \
             --auto-shot 320 out/kart-classic-smoke.png --stop-after 324 \
             > out/kart-classic-smoke.log 2>&1
           grep -q 'KFUZZ RENDER ENTRY' out/kart-classic-smoke.log
           test -s out/kart-classic-smoke.png
+          python3 ../tests/kart_visual_capture_audit.py out/kart-native-visual out/kart-classic-visual
       - name: Benchmark native kart composition and verify single/multithread picture parity
         run: |
           cd pc
@@ -198,6 +216,9 @@ jobs:
             pc/out/kart-native-smoke.log
             pc/out/kart-classic-smoke.png
             pc/out/kart-classic-smoke.log
+            pc/out/kart-native-visual_*.png
+            pc/out/kart-classic-visual_*.png
+            pc/out/kart-visual-report.json
             pc/out/kart-bench-1.log
             pc/out/kart-bench-4.log
           if-no-files-found: ignore
@@ -267,3 +288,4 @@ jobs:
           name: pc-speed-guard-logs
           path: pc/out/speed_guard/
           if-no-files-found: ignore
+

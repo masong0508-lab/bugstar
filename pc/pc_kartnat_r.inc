@@ -14,11 +14,20 @@ static int kn_disabled(void){ static int e=-2; if(e==-2){ const char *s=getenv("
 int pc_kn_on(void){ return !kn_disabled() && pc_nat_w>240 && !pc_v3d_classic(); }
 static double kn_H(double s){ double a=6.283185307179586*s/(KN.knp>8?KN.knp:8); unsigned h=KN.seed; double p1=(h&255)/40.0, p2=((h>>8)&255)/40.0; int n1=3+((h>>16)&3), n2=8+((h>>20)&3);
     return 0.15*sin(n1*a+p1)+0.06*sin(n2*a+p2); }
-void pc_kn_frame(const short *rowz, int active, int pi256, int heading, int curvahead, int elev, unsigned seed, int knp, int nsh, const short *shx, const short *shy, const short *shw, int pcx, int pcy, int pcw){
+// Respect the actual driving speed: a stationary kart must never lean into
+// an artificial camera corner. Cap tilt to preserve road-edge visibility.
+static double kn_target_roll(int dh, int curve, int speed){
+    double motion=fabs((double)speed)/12800.0; if(motion>1.0) motion=1.0;
+    double target=(-dh*0.008-curve*0.00035)*motion;
+    if(target>0.09) target=0.09; if(target<-0.09) target=-0.09;
+    return target;
+}
+static double kn_hill_shift(double shift){ return shift>14.0?14.0:shift<-14.0?-14.0:shift; }
+void pc_kn_frame(const short *rowz, int active, int pi256, int heading, int curvahead, int speed, int elev, unsigned seed, int knp, int nsh, const short *shx, const short *shy, const short *shw, int pcx, int pcy, int pcw){
     KN.active=active; if(!active){ KN.hinit=0; KN.roll*=0.8; return; }
     memcpy(KN.rowz,rowz,sizeof KN.rowz); KN.s0=pi256/256.0; KN.elev=elev; KN.seed=seed; KN.knp=knp; KN.curv=curvahead;
     int dh=0; if(KN.hinit){ dh=((heading-(int)KN.prevh+512)&1023)-512; } KN.prevh=heading; KN.hinit=1;
-    double tgt=(-dh*0.010 - curvahead*0.0007); if(tgt>0.13) tgt=0.13; if(tgt<-0.13) tgt=-0.13; KN.roll+=(tgt-KN.roll)*0.12; if(getenv("PC_KNLOG")) fprintf(stderr,"KNLOG heading %d dh %d curv %d roll %.3f\n",heading,dh,curvahead,KN.roll);
+    double tgt=kn_target_roll(dh,curvahead,speed); KN.roll+=(tgt-KN.roll)*0.16; if(getenv("PC_KNLOG")) fprintf(stderr,"KNLOG heading %d dh %d curv %d speed %d roll %.3f\n",heading,dh,curvahead,speed,KN.roll);
     int n=0; if(pcw>0){ KN.shx[n]=pcx; KN.shy[n]=pcy; KN.shw[n]=pcw; n++; } for(int i=0;i<nsh && n<32;i++){ if(shw[i]<2) continue; KN.shx[n]=shx[i]; KN.shy[n]=shy[i]; KN.shw[n]=shw[i]; n++; } KN.nsh=n; // cap soft-shadow work without hiding any gameplay sprites
 }
 static double kn_shi(double L){ if(L<=0) return KN.sh[0]; if(L>=159) return KN.sh[159]; int l=(int)L; double f=L-l; return KN.sh[l]*(1-f)+KN.sh[l+1]*f; }
@@ -28,7 +37,7 @@ static int kn_prep(int W, int H, int mode){            // before the sprites: th
     kn_on=0; if(kn_disabled() || !KN.active || !lst_dma || mode!=4 || W<=240 || nv_v3()==2) return 0;
     int g0=-1; for(int l=19;l<160;l++) if(kn_gnd(l)){ g0=l; break; } if(g0<0) return 0;
     KN.g0=g0; double s0=KN.s0, h0=kn_H(s0);
-    for(int l=0;l<160;l++){ double sh=0; if(kn_gnd(l) && KN.rowz[l]>0){ double z8=KN.rowz[l]; double hr=(kn_H(s0+z8/128.0)-h0)*KN.elev; sh=-hr*KN_FOCP/z8; if(sh>22) sh=22; if(sh<-22) sh=-22; } KN.sh[l]=sh; }
+    for(int l=0;l<160;l++){ double sh=0; if(kn_gnd(l) && KN.rowz[l]>0){ double z8=KN.rowz[l]; double hr=(kn_H(s0+z8/128.0)-h0)*KN.elev; sh=kn_hill_shift(-hr*KN_FOCP/z8); } KN.sh[l]=sh; }
     for(int l=g0-1;l>=0;l--) KN.sh[l]=KN.sh[g0];
     { double a=0.0; for(int l=g0+1;l<160;l++) if(!kn_gnd(l) && 0) a=1; (void)a; }
     for(int l=g0;l<160;l++) if(!kn_gnd(l)) KN.sh[l]=KN.sh[l>g0?l-1:l];
@@ -36,7 +45,7 @@ static int kn_prep(int W, int H, int mode){            // before the sprites: th
     for(int i=0;i<4200;i++){ double yh=-30+i*(1.0/16), L=yh; for(int k=0;k<4;k++) L=yh-kn_shi(L); if(L<0) L=0; if(L>159.99) L=159.99; KN.kidx[i]=(short)(int)(L*8); }       // the hills undone: where (game row) the picture row yh comes from
     kn_on=1; return 1; }
 typedef struct { double pa,pc,rx,ry,fp,ifp,fog; int g, ifx; } KnL;
-static KnL knl[160]; static KnL knf[160*8+8]; static uint32_t kn_bd888; static int kn_W, kn_H_; static double kn_sx, kn_sy; static uint16_t kn_hill[2];
+static KnL knl[160]; static KnL knf[160*8+8]; static uint32_t kn_bd888, kn_marks[4]; static int kn_W, kn_H_; static double kn_sx, kn_sy; static uint16_t kn_hill[2];
 static void kn_fine(void); static void kn_tab(void){
     for(int l=0;l<160;l++){ const LineSt *A=&lst[l]; KnL *k=&knl[l]; k->g=kn_gnd(l); k->pa=A->pa/256.0; k->pc=A->pc/256.0; k->rx=A->rx/256.0; k->ry=A->ry/256.0;
         k->fog=-1; uint16_t bc=A->bldcnt; if(((bc>>6)&3)==1 && (bc&4) && (bc&0x2000)){ double eb=((A->bldalpha>>8)&31)/16.0; k->fog=eb>1?1:eb; }
@@ -49,13 +58,21 @@ static void kn_fine(void){ for(int i=0;i<160*8+8;i++){ double Ls=(i+0.5)/8.0; if
 static inline int kn_world(uint16_t c){ return c==kn_hill[0] || c==kn_hill[1]; }
 static inline void kn_uv(const KnL *K, double x0, double *u, double *v){ double g=x0-0.5; *u=K->rx+K->pa*g; *v=K->ry+K->pc*g; }
 // the same sharp bilinear as nv_bil, in integers (texel position and blend weights in 1/256): the near ground is most of the picture and this runs for every one of its pixels
+static inline int kn_roadmark(uint32_t rgb){
+    return rgb==kn_marks[0] || rgb==kn_marks[1] || rgb==kn_marks[2] || rgb==kn_marks[3];
+}
 static inline uint32_t kn_bilx(double u, double v, int ifx){
     int U=(int)(u*256.0), V=(int)(v*256.0); if(U<0) U=0; if(V<0) V=0; int x0=U>>8, y0=V>>8, fu=U&255, fv=V&255;
     int tx=(((fu-128)*ifx)>>8)+128, ty=(((fv-128)*ifx)>>8)+128; tx=tx<0?0:tx>256?256:tx; ty=ty<0?0:ty>256?256:ty;
     int wx=fu<128?256-tx:tx, wy=fv<128?256-ty:ty; int ax=fu<128?x0-1:x0+1, ay=fv<128?y0-1:y0+1;
     int X0=x0>239?239:x0, Y0=y0>159?159:y0, X1=ax<0?0:ax>239?239:ax, Y1=ay<0?0:ay>159?159:ay;
-    if(!wx && !wy) return pg888[1][Y0][X0];
-    uint32_t a=pg888[1][Y0][X0], b=pg888[1][Y0][X1], c=pg888[1][Y1][X0], d=pg888[1][Y1][X1];
+    uint32_t a=pg888[1][Y0][X0];
+    // Keep nearby kerbs, centre stripes and boost pads legible instead of
+    // blending them into the asphalt. Retain anti-aliasing elsewhere.
+    if(ifx>=200 && kn_roadmark(a)) return a;
+    if(!wx && !wy) return a;
+    uint32_t b=pg888[1][Y0][X1], c=pg888[1][Y1][X0], d=pg888[1][Y1][X1];
+    if(a==b && a==c && a==d) return a;  // flat asphalt/terrain: exact same pixel, no blending work
     uint32_t rb0=((a&0xFF00FF)*(256-wx)+(b&0xFF00FF)*wx)>>8, g0=((a&0xFF00)*(256-wx)+(b&0xFF00)*wx)>>8, rb1=((c&0xFF00FF)*(256-wx)+(d&0xFF00FF)*wx)>>8, g1=((c&0xFF00)*(256-wx)+(d&0xFF00)*wx)>>8;
     rb0&=0xFF00FF; rb1&=0xFF00FF; g0&=0xFF00; g1&=0xFF00;
     return ((((rb0*(256-wy)+rb1*wy)>>8)&0xFF00FF)|(((g0*(256-wy)+g1*wy)>>8)&0xFF00)); }
@@ -130,5 +147,9 @@ static int kn_pass(int W, int H, double sx, double sy, uint16_t bd){
     size_t need=(size_t)W*H; if(need>kn_cap){ uint32_t *next=realloc(kn_buf,need*sizeof(*kn_buf)); if(!next) return 0; kn_buf=next; kn_cap=need; }
     kn_W=W; kn_H_=H; kn_sx=sx; kn_sy=sy; kn_bd888=(uint32_t)((bd&31)<<3|(bd&31)>>2)<<16 | (uint32_t)(((bd>>5)&31)<<3|((bd>>5)&31)>>2)<<8 | (((bd>>10)&31)<<3|((bd>>10)&31)>>2);
     kn_hill[0]=R16(PALRAM+108*2); kn_hill[1]=R16(PALRAM+109*2); kn_hill[0]=rgbpix(kn_hill[0]); kn_hill[1]=rgbpix(kn_hill[1]);
+    { static const unsigned mark_index[4]={98,99,100,103};   // kart kerbs, centre line, boost pad
+      for(int i=0;i<4;i++){ uint16_t p=rgbpix(R16(PALRAM+mark_index[i]*2));
+          int rr=p&31, gg=(p>>5)&31, bb=(p>>10)&31;
+          kn_marks[i]=((uint32_t)(rr<<3|rr>>2)<<16)|((uint32_t)(gg<<3|gg>>2)<<8)|(uint32_t)(bb<<3|bb>>2); } }
     kn_x=getenv("PC_KNX")?atoi(getenv("PC_KNX")):1; // clean native road by default; PC_KNX=0 restores optional distance grain
     double t0=pc_now_ms(); double c0=kn_cpu(); kn_tab(); kn_fine(); kn_skytab(); kn_gtab(); pc_par(H,kn_rows,0); double t1=pc_now_ms(); kn_shadows(W,H); if(getenv("PC_KNT")) fprintf(stderr,"roll %.3f curv %.0f kn rows %.2f ms (wall) %.2f ms (cpu, all threads) shadows %.2f\n",KN.roll,KN.curv,t1-t0,kn_cpu()-c0,pc_now_ms()-t1); return 1; }
