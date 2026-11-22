@@ -3,6 +3,59 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Kart road projection and filtering — 21 November 2026
+
+- **Ordered ground depth (GBA/PC/Android):** retain the unsigned reciprocal
+  when interpolating scanlines. Casting the reciprocal for two rows to a signed
+  value reversed the interpolation and made road edges repeatedly step backwards.
+  The reciprocal for one row now saturates instead of overflowing to zero.
+- **Clipped camera endpoints:** preserve the actual projected endpoints when
+  the profile starts below the screen or crosses above it; clip only the rows
+  written. This fixes stretching at high camera settings. Spans beyond the
+  reciprocal table use bounded integer division instead of indexing past it.
+- **Continuous native filtering (PC/Android):** retain each texel's color in
+  its interior and blend at its boundaries. The previous weights switched
+  neighbors at the texel center, creating sharp repeating ripples. Both native
+  sampler paths are corrected. Road-marking emphasis, distant sampling and the
+  flat-color fast path remain intact. Sample footprints now use game-space
+  screen center 120 at every output resolution.
+- **Build and regression coverage:** GBA incremental builds now depend on
+  `m7.inc` and `recip.inc`. The PC workflow watches both files and exercises the
+  real ground-depth code and native filters against independent references.
+
+Validation for this follow-up:
+
+- The shared-depth regression exercises 3,496 frames and 559,360 row checks
+  under UBSan, including every camera/distance preset, spans of 1/2/257/258
+  rows, large clipped spans and guarded buffers. An independent flat-plane
+  oracle stays within 1.037 screen rows. Restoring either reciprocal defect or
+  the old clipping independently makes the test fail.
+- The native filter regression checks 391,038 texel centers/interiors, 72,490
+  independently integrated color samples, 20,500 monotonic ramp samples and
+  5,120 screen-center footprints. It also covers far sampling, edge clamping
+  and the road-marking threshold; the original filter and footprint each fail
+  an independent negative control. Existing sampler, inverse, camera and
+  sprite-anchor regressions pass.
+- Eight automated PC race scenarios and four further scenarios under
+  AddressSanitizer end with zero reported problems. Native composition at four
+  checkpoints also passes ASan. Local leak detection is disabled because this
+  traced runner cannot run LeakSanitizer; bounds instrumentation remains active.
+  Actual native and classic SDL frames at 320, 600, 900 and 1200 show the
+  corrected road geometry and reduced texture ripple. Native pictures match
+  exactly with one and four rendering workers.
+- Local 960x640 composition averages 8.58 ms with one worker versus 10.03 ms
+  before. Three paired four-worker runs give median averages of 3.54 ms versus
+  4.10 ms before; individual runs vary with scheduling. These measure renderer
+  composition on this host, not whole-game FPS or handheld performance.
+- The production GBA ROM passes a real mGBA smoke through 2,954 frames,
+  including Kart World, acceleration, steering and braking. The five title/menu
+  checkpoints are pixel-identical to the prior build; race images change as
+  expected. This is a bounded runtime smoke, not a full handheld race.
+- GCC 12.2 builds with unchanged data/BSS (564 / 263,684 bytes). Loaded kart
+  code grows by 72 bytes, reducing the IWRAM stack reserve from 1,744 to 1,672
+  bytes, still above the project's 1,500-byte requirement. No persistent
+  buffers, framebuffers or save fields were added.
+
 ## Kart reliability continuation — 21 November 2026
 
 - **Reusable race items and editor markers (GBA/PC/Android):** retired shells,
@@ -40,8 +93,8 @@ Validation performed for this continuation:
   across 2,954 emulated frames; all ten checkpoints match the baseline.
 
 The emulator check is a bounded runtime smoke, not a complete handheld race or
-hardware performance measurement. Existing road texture waviness/aliasing is
-still visible in native captures and remains a separate rendering task.
+hardware performance measurement. That pass did not change the road sampler;
+the follow-up above repairs the depth and filtering defects behind its ripple.
 
 ## 0. Where things stand
 

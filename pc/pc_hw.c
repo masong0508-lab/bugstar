@@ -340,8 +340,10 @@ static void nv_ground_prep(uint16_t bd){
 }
 static inline uint32_t nv_bil(int pg, float u, float v, float iF){      // "sharp bilinear" (u,v >= 0 texels; iF = 1 / footprint): flat inside a texel, blended over one output pixel at its edges
     u=u<0?0:u; v=v<0?0:v; int x0=(int)u, y0=(int)v; float fu=u-x0, fv=v-y0;
-    float tx=(fu-0.5f)*iF+0.5f, ty=(fv-0.5f)*iF+0.5f; tx=tx<0?0:tx>1?1:tx; ty=ty<0?0:ty>1?1:ty;
-    int ax=fu<0.5f?x0-1:x0+1, ay=fv<0.5f?y0-1:y0+1; float wx = fu<0.5f ? 1-tx : tx, wy = fv<0.5f ? 1-ty : ty;
+    float sharp=iF<1.0f?1.0f:iF;
+    float wx=0.5f-(fu<0.5f?fu:1.0f-fu)*sharp, wy=0.5f-(fv<0.5f?fv:1.0f-fv)*sharp;
+    if(wx<0) wx=0; if(wy<0) wy=0;
+    int ax=fu<0.5f?x0-1:x0+1, ay=fv<0.5f?y0-1:y0+1;
     int X0=x0>239?239:x0, Y0=y0>159?159:y0, X1=ax<0?0:ax>239?239:ax, Y1=ay<0?0:ay>159?159:ay;
     int wxi=(int)(wx*256), wyi=(int)(wy*256);
     if(!wxi && !wyi) return pg888[pg][Y0][X0];
