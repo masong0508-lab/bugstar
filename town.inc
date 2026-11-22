@@ -472,10 +472,10 @@ static const char *const hell_tag[6][3]={{"SEAS OF LIQUID ROCK","A VOLCANO THAT 
         {"GLASS THAT BITES BACK","A SKY WITH NO STARS","NEON CRACKS IN THE DARK"},{"A VERY LARGE RIBCAGE","A MOON THAT IS A SKULL","DUST THAT USED TO BE SOMEONE"},{"TIDES THAT ARE NOT WATER","A RED MOON, ALL NIGHT","ISLANDS THAT BREATHE"},{"COLD THAT IS NOT KIND","LIGHTS DANCING OVER THE DEAD","A LAKE YOU CAN WALK ON. ONCE."}};
 static void planet_card(volatile u16 *pg){                                              // on arrival: name, what it is known for, its DNA, a scan, Bolt's two cents
     char l1[48], l2[48], l3[48], sc[48]; const char *ln[8];
-    scpy(l1,"KNOWN FOR: "); scat(l1, hellw() ? hell_tag[wd.cls-PC_INFERNO][wd.tagline%3] : tagline[wd.tagline]);
-    scpy(l2,style_name[wd.style]); scat(l2,". "); scat(l2,hour_name[wd.hour]); scat(l2,". "); scat(l2,weather_name[wd.weather]); scat(l2,".");
-    if(wd.city) scat(l2, wd.csize>=2 ? " A CITY." : " A TOWN.");
-    scpy(l3,"LIFE: "); ncat(l3,spc[0].pop); scat(l3," "); scat(l3,spc[0].name); scat(l3,"S, "); ncat(l3,spc[1].pop); scat(l3," "); scat(l3,spc[1].name); scat(l3,"S");
+    txt_copy(l1,sizeof l1,"KNOWN FOR: "); txt_append(l1,sizeof l1, hellw() ? hell_tag[wd.cls-PC_INFERNO][wd.tagline%3] : tagline[wd.tagline]);
+    txt_copy(l2,sizeof l2,style_name[wd.style]); txt_append(l2,sizeof l2,". "); txt_append(l2,sizeof l2,hour_name[wd.hour]); txt_append(l2,sizeof l2,". "); txt_append(l2,sizeof l2,weather_name[wd.weather]); txt_append(l2,sizeof l2,".");
+    if(wd.city) txt_append(l2,sizeof l2, wd.csize>=2 ? " A CITY." : " A TOWN.");
+    txt_copy(l3,sizeof l3,"LIFE: "); txt_number(l3,sizeof l3,spc[0].pop); txt_append(l3,sizeof l3," "); txt_append(l3,sizeof l3,spc[0].name); txt_append(l3,sizeof l3,"S, "); txt_number(l3,sizeof l3,spc[1].pop); txt_append(l3,sizeof l3," "); txt_append(l3,sizeof l3,spc[1].name); txt_append(l3,sizeof l3,"S");
     scan_text(sc);
     int q = wd.weather==1 ? 4 : wd.weather==2 ? 5 : wd.weather==3 ? 6 : wd.hour==2 ? 3 : wd.city ? 2 : wd.grav!=1 ? 9 : (wd.tseed%3)==0 ? 0 : (wd.tseed%3)==1 ? 1 : 10;
     if(!endless && zone==0) q=11;
@@ -483,9 +483,9 @@ static void planet_card(volatile u16 *pg){                                      
         EW static char ta[56], tb[56], mk[56], q2[48], tl[32]; char nb[28]; ta[0]=tb[0]=0;
         for(int k=0;k<wd.ntr;k++){ trait_name(wd.tr[k],nb); char *d = k<2 ? ta : tb; if(d[0]) scat(d," + "); scat(d,nb); }
         weird_seen++; give_marks(mk);
-        scpy(tl,"??? "); scat(tl,world_name()); scat(tl," ???");
-        scpy(q2,"BOLT: "); scat(q2,mw_quip[wd.tr[0]%NMW]);
-        EW static char cm2[56]; scpy(cm2,pc_name[wd.cls]); if(hellw()){ scat(cm2," T"); ncat(cm2,hell_tier()); } scat(cm2,". "); scat(cm2,mood_name[wd.mood]);
+        txt_copy(tl,sizeof tl,"??? "); txt_append(tl,sizeof tl,world_name()); txt_append(tl,sizeof tl," ???");
+        txt_copy(q2,sizeof q2,"BOLT: "); txt_append(q2,sizeof q2,mw_quip[wd.tr[0]%NMW]);
+        EW static char cm2[56]; txt_copy(cm2,sizeof cm2,pc_name[wd.cls]); if(hellw()){ txt_append(cm2,sizeof cm2," T"); txt_number(cm2,sizeof cm2,hell_tier()); } txt_append(cm2,sizeof cm2,". "); txt_append(cm2,sizeof cm2,mood_name[wd.mood]);
         int n=0; ln[n++]=ta; if(tb[0]) ln[n++]=tb; ln[n++]=cm2; ln[n++]=sc;
         EW static char mk2[60]; if(mk[0]){ scpy(mk2,"IT CHANGED YOU: "); scat(mk2,mk); mk2[52]=0; ln[n++]=mk2; }
         ln[n++]="A RELIC SHRINE IS HIDDEN HERE. FIND IT!"; ln[n++]=q2;
@@ -526,16 +526,16 @@ static void local_talk(PObj *o){
     int li=(int)((o->x>>16)*7+(o->y>>16)*13+wd.tseed)%NTALK; ln[0] = wd.mood==MOOD_LOVE ? love_ln[li%12] : wd.mood==MOOD_HATE ? hate_ln[li%12] : talk_ln[li];
     if(wd.mood==MOOD_HATE || cooling) o->hp=0; else if(wd.mood==MOOD_LOVE && rndi(3)==0) o->hp=1;
     if(o->hp){ o->hp=0; if(++gift_n[gi]>=GIFT_MAX) gift_until[gi]=vbl_count+GIFT_COOL; int r=wr(4);
-        if(r==0){ gold+=5+dlv()*3; scpy(g,"HERE, TAKE "); ncat(g,5+dlv()*3); scat(g,"G. FOR THE LEGS."); }
-        else if(r==1){ Gear gg={IT_CRUMB,0,0,0,0,0}; add_gear(gg); scpy(g,"HAVE A CRUMB. I HAVE TOO MANY."); }
-        else if(r==2){ Gear gg={IT_BERRY,(u8)rndi(8),0,0,0,0}; add_gear(gg); scpy(g,"A BERRY. DO NOT ASK WHERE IT GREW."); }
-        else if(form==FORM_HUMAN && (tools_owned|0xFF)!=tools_owned && rndi(2)){ int tl; do tl=rndi(NTOOL); while((tools_owned>>tl)&1); tools_owned|=1u<<tl; scpy(g,"YOU HAVE HANDS! TAKE THIS: "); scat(g,tool_name[tl]); }
-        else { fame+=3; scpy(g,"I WILL TELL EVERYONE YOU ARE NICE. +FAME"); }
+        if(r==0){ gold+=5+dlv()*3; txt_copy(g,sizeof g,"HERE, TAKE "); txt_number(g,sizeof g,5+dlv()*3); txt_append(g,sizeof g,"G. FOR THE LEGS."); }
+        else if(r==1){ Gear gg={IT_CRUMB,0,0,0,0,0}; add_gear(gg); txt_copy(g,sizeof g,"HAVE A CRUMB. I HAVE TOO MANY."); }
+        else if(r==2){ Gear gg={IT_BERRY,(u8)rndi(8),0,0,0,0}; add_gear(gg); txt_copy(g,sizeof g,"A BERRY. DO NOT ASK WHERE IT GREW."); }
+        else if(form==FORM_HUMAN && (tools_owned|0xFF)!=tools_owned && rndi(2)){ int tl; do tl=rndi(NTOOL); while((tools_owned>>tl)&1); tools_owned|=1u<<tl; txt_copy(g,sizeof g,"HANDS! A GIFT: "); txt_append(g,sizeof g,tool_name[tl]); }
+        else { fame+=3; txt_copy(g,sizeof g,"EVERYONE WILL HEAR YOU WERE KIND. +FAME"); }
         ln[1]=g; card(pg,"A LOCAL",ln,2); sfx(7); }
     else if(cooling){ static const char *const t1[10]={"MY POCKETS ARE EMPTY. LOOK. EMPTY.","I GAVE YOU THE GOOD STUFF ALREADY.","YOU ARE VERY NICE. I AM VERY OUT OF THINGS.","I WOULD GIVE YOU MY SHELL BUT I NEED IT.","WE ARE PRETTY EVEN NOW, YOU AND ME.","I SPENT IT ALL ON SOUP. SORRY.","DID I NOT JUST SEE YOU? I DID.","MY KIDS ATE THE REST. THEY ARE LIKE THAT.","I AM A LOCAL, NOT A BANK.","I HAVE NOTHING LEFT BUT KIND WORDS."};
         static const char *const t2[10]={"MAYBE TRY ME AGAIN AFTER A NAP.","COME BY LATER. I MIGHT FIND SOMETHING.","THE GARDEN HAS MORE. GO LOOK.","ASK ME ANOTHER DAY. I WILL BE HERE.","GO SEE THE REST OF THE TOWN.","COME BACK WHEN I HAVE BAKED AGAIN.","I WILL HAVE MORE WHEN THE SUN MOVES.","GO ON. EXPLORE. I WILL KEEP YOUR SPOT.","TALK ANYTIME. JUST NO MORE GIFTS.","THE MAYOR MAY HAVE SOMETHING. SHE IS A MOTH."};
         ln[0]=t1[rndi(10)]; ln[1]=t2[rndi(10)]; card(pg,"A LOCAL",ln,2); }
-    else { char w[40]; scpy(w,"KNOWN FOR: "); scat(w,tagline[wd.tagline]); ln[1]=w; card(pg,"A LOCAL",ln,2); }
+    else { char w[40]; txt_copy(w,sizeof w,"KNOWN FOR: "); txt_append(w,sizeof w,tagline[wd.tagline]); ln[1]=w; card(pg,"A LOCAL",ln,2); }
     if(pq_type==5 && !pq_done && !cooling){ pq_have++; }
 }
 // ---------------------------------------------------------------- the bounty office: a job per planet

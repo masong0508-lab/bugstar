@@ -3,6 +3,23 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## UI safety and planet feedback — 22 November 2026
+
+- Bound all displayed character-creator hints, hangar rank messages, local NPC
+  gifts and taglines, and the planet arrival card fields. Prior compiler builds
+  identified overflowing literal and dynamic messages; the new calls never
+  write beyond their destination arrays and preserve readable prompts.
+- Restore the world-tier and hell-tier suffixes hidden by an accidental
+  `#endif` trailing expression. Reserve their display space even for long
+  generated world names. Correct moon bob timing to divide by
+  `(orbital_period >> 5) + 1` instead of the unintended `orbital_period >> 6`.
+- Run `tests/ui_text_bounds_runtime.py` in PC headless CI. It extracts the
+  production C bounded-string functions and actual planet HUD, then checks
+  edge capacities, integer formatting, long names, tier priorities, TEST_HASH,
+  and on-screen labels under ASan/UBSan. It also audits the real NPC, hangar,
+  arrival and creator call sites. No new framebuffer, fixed array or save field.
+  Platform build and emulator checks are required before release packaging.
+
 ## Space flight and combat continuation — 21 November 2026
 
 - **Steering that settles (GBA/PC/Android):** integer easing completes its final
