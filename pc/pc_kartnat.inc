@@ -3,6 +3,13 @@
 // where the karts stand on the ground this frame.
 static short kno_x[40], kno_y[40], kno_w[40]; static int kno_n;
 void pc_kn_obj(int sx, int sy, int w, int sc){ int hw=w*sc/64; if(hw<2 || kno_n>=40) return; kno_x[kno_n]=(short)sx; kno_y[kno_n]=(short)(sy+1); kno_w[kno_n]=(short)hw; kno_n++; }   // a tree, rock or plant the game just drew: where its feet are and how wide
+// This wrapper is defined after kart.inc, where the rival shadow contact is
+// available. planet.inc is compiled earlier and only needs its prototype.
+static int pc_kn_draw_rival(int first, void *object, int sx, int sy, int m, int f){
+    int before=ksh_n, end=kart_draw_obj(first,(PObj*)object,sx,sy,m,f);
+    if(ksh_n>before) pc_kn_sprites(first,end,ksh_x[before],ksh_y[before]);
+    return end;
+}
 static void pc_kn_snapshot(void){
     int act = kr_mode==1 && m7_on && !kloop_on && !cam_fp && knp>1 && rc[0].pi>=0 && rc[0].pi<knp;
     if(!act){ kno_n=0; pc_kn_frame(m7_rowz,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0); return; }

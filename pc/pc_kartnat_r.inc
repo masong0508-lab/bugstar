@@ -6,7 +6,7 @@
 // CLASSIC never gets here (pc_v3d_classic) so the GBA picture is unchanged. PC_KN=0 turns it all off (A/B tests).
 double pc_now_ms(void);
 #define KN_FOCP 120.0
-static struct { int active; double roll, prevh, curv; int hinit; short rowz[160]; double sh[160]; int g0; double piv, s0, elev, cs, sn; unsigned seed; int knp; int nsh; double shx[72], shy[72], shw[72]; short kidx[4200]; } KN;
+static struct { int active; double roll, prevh, curv; int hinit; short rowz[160]; double sh[160]; int g0; double piv, s0, elev, cs, sn; unsigned seed; int knp; int nsh; double shx[72], shy[72], shw[72]; short kidx[4200]; short sprx[128], spry[128]; } KN;
 static double kn_cpu(void){ struct timespec a; clock_gettime(CLOCK_PROCESS_CPUTIME_ID,&a); return a.tv_sec*1e3+a.tv_nsec/1e6; }
 static int kn_on; static int kn_x;                     // this picture: extras are used
 static uint32_t *kn_buf; static size_t kn_cap;
@@ -39,6 +39,29 @@ void pc_kn_frame(const short *rowz, int active, int pi256, int heading, int curv
 }
 static double kn_shi(double L){ if(L<=0) return KN.sh[0]; if(L>=159) return KN.sh[159]; int l=(int)L; double f=L-l; return KN.sh[l]*(1-f)+KN.sh[l+1]*f; }
 static void kn_fwd(double x, double y, double *ox, double *oy){ double yh=y+kn_shi(y-0.5), dx=x-120, dy=yh-KN.piv; *ox=120+dx*KN.cs-dy*KN.sn; *oy=KN.piv+dx*KN.sn+dy*KN.cs; }
+// A kart is several OAM sprites. Move its body, driver and roof together at
+// their common ground contact, including while airborne. Warping each part
+// at its own centre pulled the driver out of the seat on native hills.
+// The generated PC drawing hooks also register scenery at its feet. Pending
+// contacts follow shadow OAM; live contacts follow the hardware OAM flush.
+// This 1 KiB belongs only to the PC renderer, never to the GBA game state.
+static struct { short x[128],y[128]; } kn_sprites_pending;
+void pc_kn_sprites_clear(void){ for(int i=0;i<128;i++) kn_sprites_pending.y[i]=-32768; }
+void pc_kn_sprites_flush(void){
+    memcpy(KN.sprx,kn_sprites_pending.x,sizeof KN.sprx);
+    memcpy(KN.spry,kn_sprites_pending.y,sizeof KN.spry);
+}
+void pc_kn_sprites(int first, int end, int x, int y){
+    if(x<-32767 || x>32767 || y<-32767 || y>32767) return;
+    if(first<0) first=0; if(end>128) end=128;
+    for(int i=first;i<end;i++){ kn_sprites_pending.x[i]=(short)x; kn_sprites_pending.y[i]=(short)y; }
+}
+static void kn_sprite_shift(int slot, double cx, double cy, double *ox, double *oy){
+    *ox=*oy=0; if(!kn_on) return;
+    if(slot>=0 && slot<128 && KN.spry[slot]!=-32768){ cx=KN.sprx[slot]; cy=KN.spry[slot]; }
+    else if(cy<KN.g0-2) return;
+    double x,y; kn_fwd(cx,cy,&x,&y); *ox=x-cx; *oy=y-cy;
+}
 static int kn_gnd(int l){ return ((lst[l].dc&0x410)==0x410) && lst[l].pa!=0; }
 // Invert the piecewise-linear hill profile by projecting its row segments.
 // Fixed-point iteration is unstable when a hill moves by more than one

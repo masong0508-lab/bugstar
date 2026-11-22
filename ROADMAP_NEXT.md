@@ -3,6 +3,46 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Kart reliability continuation — 21 November 2026
+
+- **Reusable race items and editor markers (GBA/PC/Android):** retired shells,
+  slime and gate markers reuse their existing borrowed scenery slot. Previously,
+  repeated reuse appended duplicate ownership entries until the 48-slot list
+  filled, after which new items or gate markers silently failed. Active racers,
+  scenery and item boxes waiting to respawn remain protected. No production RAM
+  arrays, save fields or framebuffer allocations were added.
+- **Coherent native kart sprites (PC/Android):** chassis, driver, roof and cloud
+  effects move together using the kart's ground contact; scenery uses its feet.
+  Jump lift stays intact. Pending contacts are published when OAM is flushed,
+  so constructing the next frame cannot move sprites still on display. This
+  uses 1 KiB of PC renderer metadata and does not change GBA memory.
+- **Companion GBC fix:** [PR #11](https://github.com/masong0508-lab/bugstar-gbc/pull/11)
+  restores the shield's intended 420-tick duration instead of byte-truncating it
+  to 164. An unused byte offsets the wider timer; fixed WRAM remains unchanged.
+
+Validation performed for this continuation:
+
+- `python3 tests/kart_object_pool_runtime.py`: 10,000 item recycling cycles,
+  full-capacity reuse, 1,000 real editor drop/undo cycles and scenery restoration
+  under UBSan. The original allocator fails the regression.
+- `python3 tests/kart_native_sprite_anchor_runtime.py`: 154,791 projection
+  checks and 126 compositor fixtures, including affine sprites, jumps, fixed HUD
+  placement and pending/live frame isolation. The old per-sprite warp fails.
+- Eight full automated PC race scenarios and four further scenarios under
+  AddressSanitizer ended without hangs or reported errors. Local leak detection
+  was disabled because the traced runner cannot run LeakSanitizer; bounds
+  instrumentation remained active. Actual SDL captures at frames 320, 600, 900 and 1200 were inspected;
+  classic captures are byte-identical to the baseline. One- and four-worker
+  native pictures are identical.
+- GBA ROM built with GCC 12.2: data/BSS and the 1,744-byte stack reserve are
+  unchanged; ROM code grows by 24 bytes. A real mGBA run exercised title,
+  Kart World, random race, acceleration, water recovery, steering and braking
+  across 2,954 emulated frames; all ten checkpoints match the baseline.
+
+The emulator check is a bounded runtime smoke, not a complete handheld race or
+hardware performance measurement. Existing road texture waviness/aliasing is
+still visible in native captures and remains a separate rendering task.
+
 ## 0. Where things stand
 
 **GBA (root `main.c` + `*.inc`)**

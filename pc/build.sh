@@ -165,8 +165,18 @@ sed -i 's|if(!kart_glow() \&\& !kloop_on \&\& slot<120){ shadow_oam\[slot\].a0=(
 sed -i 's|^\(        \)s32 sc=8+m\*4; |\1s32 sc=8+m*4; if(kr_mode==1 \&\& ((o->kind>=O_PLANT \&\& o->kind<=O_FLOWER) \|\| o->kind==O_FOSSIL \|\| o->kind==O_TUFT)){ extern void pc_kn_obj(int,int,int,int); pc_kn_obj(sx,sy,w_of[o->kind],(int)sc); }  |' planet.inc
 grep -q 'pc_kn_obj' planet.inc || { echo "build.sh: pc_kn_obj hook anchor not found in planet.inc"; exit 1; }
 echo '#include "../pc_kartnat.inc"' >> main.c
-# --- the side game (pc/sim, DEPTH_PLAN): hooks into the copies in pc/gen, never the repo root. Each hook must find its anchor exactly once or the build fails.
+# Hooks only edit the copies in pc/gen. Every anchor must occur exactly once.
 H() { python3 ../sim/hook.py "$@"; }
+# All parts of a native kart share its ground contact, including while jumping.
+# Build pending anchors with shadow OAM; publish only when the real OAM is
+# flushed, because vsync can display the previous sprites in between.
+H main.c 'static void oam_hide_all(void){' ' pc_kn_sprites_clear();' after
+H main.c 'o[i*4+2]=shadow_oam[i].a2; } }' 'o[i*4+2]=shadow_oam[i].a2; } pc_kn_sprites_flush(); }'
+H main.c '#include "pc_hw.h"' $'\nstatic int pc_kn_draw_rival(int, void *, int, int, int, int);' after
+H planet.inc 'slot=kart_draw_me(slot,bug_sy);' '{ int first=slot; slot=kart_draw_me(slot,bug_sy); pc_kn_sprites(first,slot,120,bug_sy); }'
+H planet.inc 'slot=kart_draw_obj(slot,o,sx,sy,m,f);' 'slot=pc_kn_draw_rival(slot,o,sx,sy,m,f);'
+H planet.inc 'shadow_oam[slot].a2 = tl | (pb<<12);' ' if(kr_mode) pc_kn_sprites(slot,slot+1,sx,sy);' after
+# --- the side game (pc/sim, DEPTH_PLAN)
 # A test-only shortcut: LAN integration smoke launches directly after the
 # normal world setup, without consuming minutes on the opening Bolt story.
 # Without this opt-in environment flag, every intro frame is unchanged.
