@@ -63,7 +63,7 @@ static const char *const bolt_mem[8][4]={
     {"MY CREW WERE BUGS.","SMALL. STUBBORN. BRAVE.","THEY SLEPT IN MY HEART ON THE LONG WAY.","ONE OF THEM LOOKED LIKE YOU."},
     {"WE FELL.","THE ANTHILL CAUGHT US.","THE ANTS WERE KIND AT FIRST.","THEN THEY WERE HUNGRY."},
     {"THE KING OPENED MY HEART.","HE BUILT A MOUTH AROUND IT.","HE FED IT SHIPS SO IT WOULD GROW.","THAT MOUTH IS THE TECHNOBEAST."},
-    {"EVERY SHIP IT EATS, IT GROWS.","IT IS EATING MY MEMORY TOO.","THAT IS WHY I FORGET.","THAT IS WHY I AM SMALL."},
+    {"EVERY SHIP IT EATS MAKES IT GROW.","THE KING SPLIT ME INTO EIGHT CORES.","HE HID THEM WHERE THE DRONES DIG.","AND LEFT THIS LITTLE BODY BEHIND."},
     {"THERE IS A WORD THAT OPENS MY HEART.","THE KING NEVER FOUND IT.","IT IS MY NAME.","MY REAL NAME."},
     {"I KNOW MY NAME NOW.","TAKE ME TO THE BEAST.","I WILL SAY IT. ITS HEART WILL OPEN.","I AM NOT AFRAID. I HAVE YOU."}};
 static void bolt_card_x(volatile u16 *pg, const char *const *ln, int n, int small){        // a card with Bolt's little face (small: the face sits in the title band, for cards with long lines)
@@ -83,7 +83,7 @@ static void bolt_story(volatile u16 *pg, int beat){                            /
     case 4: { static const char *const t[5]={"\"THE ANTS DIG FOR METAL. OLD METAL.","THEY BUILD OUTPOSTS AROUND WHAT THEY FIND.","I FELT ONE HUMMING. IT HUMMED MY TUNE.","THE ONE I HUM WHEN YOU SLEEP.","FIND THE OUTPOSTS. PLEASE.\""}; bolt_card(pg,t,5); break; }
     case 5: { static const char *const t[5]={"\"THE BEES SING AN OLD SONG.","A STAR FELL, THEY SAY. LONG AGO.","IT CARRIED EVERY WORLD INSIDE IT.","THEY SING IT TO THEIR CHILDREN.","WHY DO I KNOW ALL THE WORDS?\""}; bolt_card(pg,t,5); break; }
     case 6: { static const char *const t[6]={"THE ANT KING, DYING, LAUGHS.","\"YOU CAME FOR YOUR FRIENDS?","THE DAWN CAME FOR EVERYTHING.","I ONLY OPENED ITS HEART.\"","FAR AWAY, SOMETHING WAKES.","BOLT GOES VERY QUIET."}; bolt_card(pg,t,6); break; }
-    case 10: { static const char *const t[6]={"THE MOUTH FALLS APART.","INSIDE IT, A SHIP. OLD. WHOLE. SINGING.","BOLT'S VOICE COMES FROM EVERYWHERE AT ONCE.","\"I REMEMBER ALL OF IT.","THANK YOU FOR CARRYING ME.","NOW LET ME CARRY YOU. ALL OF YOU. HOME.\""}; bolt_card(pg,t,6); break; }
+    case 10: { static const char *const t[6]={"THE MOUTH FALLS APART.","INSIDE WAITS THE STAR CRUISER DAWN.","BOLT'S VOICE FILLS ITS EMPTY HALLS.","\"MY NAME. MY CREW. I REMEMBER.","YOU CARRIED ME WHEN I COULD NOT.","LET ME CARRY YOU HOME.\""}; bolt_card(pg,t,6); break; }
     }
 }
 // what Bolt says when you talk to him at the ship: what worries him, the next thing to do, what he remembers, and a remark
@@ -117,7 +117,7 @@ static const char *const bolt_zone[6][2]={{"\"THE GARDEN IS WHERE I WOKE UP. IT 
     {"\"SOMEONE LEFT A PICNIC. ALL OF IT. ODD.\"","\"THE ANTS LIKE THIS PLACE. I WONDER WHY.\""},
     {"\"THE NIGHT LAWN GLOWS. THE GLOWFLIES WATCH US.\"","\"I DO NOT LIKE THE WRAITHS. THEY KNOW ME.\""},
     {"\"THE BEES SING. I KNOW THE TUNE. HELP.\"","\"DUST AND HONEY. MY SENSORS ARE CONFUSED.\""},
-    {"\"THE ANTHILL. THE DAWN FELL HERE. SO DID I.\"","\"THE KING WAITS. LET US NOT KEEP HIM.\""}};
+    {"\"THE ANTHILL. MY WHEELS WON'T STOP SHAKING.\"","\"THE KING WAITS. LET US NOT KEEP HIM.\""}};
 static const char *const bolt_cls[16][2]={{"\"A PLAIN GOOD WORLD. I WILL TAKE IT.\"","\"NOTHING HERE WANTS US DEAD. SUSPICIOUS.\""},
     {"\"MORE HILLS THAN A SHIP SHOULD LAND ON.\"","\"I ROLL UP. I ROLL DOWN. I ROLL UP AGAIN.\""},
     {"\"GRASS AS FAR AS MY SENSORS GO.\"","\"A FLAT WORLD. MY KIND OF WORLD.\""},
@@ -157,12 +157,58 @@ static void bolt_talk(volatile u16 *pg){
       if(fuel*4<fuel_max() && w<2){ scpy(c1,"\"FUEL IS AT "); ncat(c1,fuel*100/fuel_max()); scat(c1," PERCENT. CAREFUL.\""); t[n++]=c1; w++; }
       if(hull<40 && w<2){ scpy(c2,"\"THE HULL IS AT "); ncat(c2,hull); scat(c2," PERCENT. I AM WORRIED.\""); t[n++]=c2; w++; }
       if(cargo_n()>=cargo_cap+ship_hold_bonus() && w<2){ t[n++]="\"THE HOLD IS FULL. SELL LOOT.\""; w++; } }
-    if(!endless && !zone_cleared){ t[n++]="\"THE DOOR IS THE WAY DOWN.\""; t[n++]="\"THE ARROW KNOWS. FOLLOW IT.\""; t[n++]="\"THE BOSS SITS AT THE BOTTOM.\""; }
-    else if(!endless && zone<5){ scpy(l1,"\"THIS WORLD IS FREE. NEXT IS "); scat(l1,tint_name[zone+1]); scat(l1,".\""); t[n++]=l1; t[n++]="\"PICK AUTOPILOT AND I'LL FLY US.\""; if(zone>=1) t[n++]="\"OR GO DOWN AGAIN. IT'S HARDER. IT PAYS.\""; }
-    else if(!ant_king){ t[n++]="\"THE ANT KING WAITS BELOW.\""; t[n++]="\"YOUR FRIENDS ARE THERE. ALL OF THEM.\""; t[n++]="\"I'M SCARED. LET'S GO ANYWAY.\""; }
-    else if(beast_stage>=3 && data_cores<8){ scpy(l1,"\"THE OUTPOSTS HOLD MY MEMORY. "); ncat(l1,data_cores); scat(l1," OF 8.\""); t[n++]=l1; t[n++]="\"RED MARKS ON THE MAP. HATCHES ON THE GROUND.\""; t[n++]="\"BRING ME BACK TO MYSELF.\""; }
-    else if(beast_stage>=3){ t[n++]="\"I KNOW MY NAME. THE DAWN.\""; t[n++]="\"FLY INTO THE BEAST. SHOOT ITS CORE.\""; t[n++]="\"I WILL DO THE REST.\""; }
-    else { t[n++]="\"THE GALAXY IS OPEN. GO ANYWHERE.\""; t[n++]="\"THE BEAST IS OUT THERE. SO ARE ITS OUTPOSTS.\""; }
+    // The last campaign needs five destroyed Tech Hives AND eight memories.
+    // L on the galaxy map is available only after the first final-lair visit.
+    switch(bolt_next_step()){
+    case 0:
+        t[n++]="\"THE DOOR IS THE WAY DOWN.\"";
+        t[n++]="\"FOLLOW THE ARROW TO THE DUNGEON.\"";
+        t[n++]="\"FREE YOUR FRIENDS. BEAT THE BOSS.\"";
+        break;
+    case 1:
+        txt_copy(l1,sizeof l1,"\"THIS WORLD IS FREE. NEXT IS ");
+        txt_append(l1,sizeof l1,tint_name[zone+1]);
+        txt_append(l1,sizeof l1,".\"");
+        t[n++]=l1;
+        t[n++]="\"AT YOUR SHIP, PICK AUTOPILOT.\"";
+        if(zone>=1) t[n++]="\"OR GO DEEPER FOR A HARDER TIER.\"";
+        break;
+    case 2:
+        t[n++]="\"THE ANT KING WAITS BELOW.\"";
+        t[n++]="\"THE CAGES ALL LEAD TO HIS ANTHILL.\"";
+        t[n++]="\"WE CAN BRING YOUR FRIENDS HOME.\"";
+        break;
+    case 3:
+        t[n++]="\"THE KING IS GONE. THE MACHINE IS NOT.\"";
+        t[n++]="\"LAUNCH INTO SPACE. STAY ALERT.\"";
+        t[n++]="\"SOMETHING OUT THERE WILL FIND US.\"";
+        break;
+    case 4:
+        t[n++]="\"THE BEAST'S FIVE HIVES KEEP IT ALIVE.\"";
+        bolt_hive_hint(l1,sizeof l1);
+        t[n++]=l1;
+        t[n++]="\"RED STAR ON MAP. BEAT ITS OVERLORD.\"";
+        t[n++]=data_cores<8 ? "\"OUTPOST CORES HOLD MY MEMORIES TOO.\"" : "\"MY NAME IS WHOLE. BREAK THE HIVES.\"";
+        break;
+    case 5:
+        txt_copy(l1,sizeof l1,"\"HIVES DOWN. MY MEMORIES: ");
+        txt_number(l1,sizeof l1,data_cores);
+        txt_append(l1,sizeof l1,"/8.\"");
+        t[n++]=l1;
+        t[n++]="\"FIND THE RED OUTPOST HATCHES.\"";
+        t[n++]="\"MY LAST CORE HOLDS THE HEART'S WORD.\"";
+        break;
+    case 6:
+        t[n++]="\"FIVE HIVES DOWN. EIGHT MEMORIES WHOLE.\"";
+        t[n++]="\"L ON THE GALAXY MAP: BEAST'S LAIR.\"";
+        t[n++]="\"AIM FOR THE CORE. I KNOW THE WORD.\"";
+        break;
+    default:
+        t[n++]="\"THE DAWN CAN FLY AGAIN. THANK YOU.\"";
+        t[n++]="\"THE GALAXY STILL HOLDS NEW WORLDS.\"";
+        t[n++]="\"IF THE BEAST RETURNS, WE'RE READY.\"";
+        break;
+    }
     // Make the companion's advice match the job the player actually took.
     // qhint lives until the card finishes; no new global RAM is needed.
     char qhint[48];
@@ -179,7 +225,7 @@ static void bolt_talk(volatile u16 *pg){
         else if(q_type==Q_RESCUE){ scpy(qhint,"\"EXTRA CAGES WAIT ON FLOOR B"); ncat(qhint,q_floor); scat(qhint,".\""); }
         else if(q_type==Q_CHAMP){ scpy(qhint,"\"THE NAMED FOE WAITS ON FLOOR B"); ncat(qhint,q_floor); scat(qhint,".\""); }
         else if(q_type==Q_FETCH){ scpy(qhint,"\"THE LOST TREASURE LIES ON B"); ncat(qhint,q_floor); scat(qhint,".\""); }
-        else if(q_type==Q_BOSS) scpy(qhint,"\"DEFEAT EVERY BOSS AT THE BOTTOM.\"");
+        else if(q_type==Q_BOSS){ scpy(qhint,"\"ZONE BOSS ON FLOOR B"); ncat(qhint,q_floor); scat(qhint,".\""); }
         else if(q_type==Q_HUNT) scpy(qhint,"\"SLAY THE MONSTERS IN THIS WORLD.\"");
         else scpy(qhint,"\"THE SHIP BOARD WILL TAKE YOUR GOODS.\"");
         if(qhint[0]) t[n++]=qhint;
@@ -540,7 +586,7 @@ static const HelpLine help_pg[18][7]={
   {{"SEL","OPEN IT IN SPACE. IT OPENS ON YOUR NEXT STAR"},{"A","JUMP TO THE PICKED STAR (USES FUEL)"},{"","IT SHOWS LIGHT YEARS AND DAYS FOR THE TRIP"},{"","RED MARKS ARE DRONE OUTPOSTS"},{"L","FIND THE TECHNOBEAST"},{"START","NEXT CLUSTER, FAR WARP, UNIVERSE JUMP"},{"","FAVOURITES: JUMP STRAIGHT TO ONE"}},
   {{"","AT YOUR SHIP: MIRROR REMAKES YOUR BUG"},{"","HANGAR BUILDS YOUR SHIP IN 3D"},{"","KART CLUB: RACE ANY TIME"},{"","YOUR SHAPE: BECOME A CREATURE OR HUMANOID"},{"","HUMANOIDS HOLD TOOLS: PICKAXE, SWORD, BLASTER"},{"SEL","HUMANOID: SELECT + UP/DN SWITCHES THE TOOL"},{"","SELECT SURPRISES YOU IN THE CREATORS"}},
   {{"1","FOLLOW THE ARROW TO THE DOOR. GO DOWN"},{"2","BEAT THE BOSS AT THE BOTTOM"},{"3","AT YOUR SHIP: AUTOPILOT TO THE NEXT STAR"},{"","MINE ORE. SELL IT, OR UPGRADE GEAR"},{"","DRONE OUTPOSTS: FIND THE KEYCARD, SMASH THE CORE"},{"","EACH CORE GIVES BOLT A MEMORY BACK"},{"","BEAT A BOSS, GO BACK DOWN ITS DOOR: NEW TIER"}},
-  {{"","THE TECHNOBEAST EATS SHIPS TO GROW"},{"","YOU MEET IT 3 TIMES. SHOOT ITS GLOWING CORE"},{"","ALL 8 CORES: 8X DAMAGE (BOLT SAYS HIS NAME)"},{"","ITS WOUNDS NEVER HEAL. WARP OUT, COME BACK"},{"","AFTER THE ANT KING: 5 TECH HIVES KEEP IT SAFE"},{"","DIVE EACH HIVE. THE OVERLORD WAITS BELOW"},{"","DEAD HIVES CRACK ITS ARMOUR: 2X DAMAGE EACH"}},
+  {{"","AFTER THE KING, FACE THE BEAST IN SPACE"},{"","5 TECH HIVES KEEP IT FROM DYING"},{"","THE NEXT HIVE IS MARKED RED ON THE MAP"},{"","DIVE IN. BEAT ITS OVERLORD BELOW"},{"","EACH HIVE DOUBLES YOUR BEAST DAMAGE"},{"","8 OUTPOST CORES RESTORE BOLT'S TRUE NAME"},{"","BEAT THE BEAST WITH 8 CORES: FREE DAWN"}},
   {{"","BOLT TELLS YOU WHAT TO DO NEXT. ASK HIM"},{"","START > FEATS AND EXTRAS: GOALS AND UNLOCKS"},{"","START > WORLD: HOW BIG IS IT? AFTER THE STORY"},{"","FEATS PAY GOLD AND FAME. FAME GIVES PERKS"},{"","KART WORLD AND MORE OPEN AFTER THE ENDING"},{"","STUCK? EASIER DIFFICULTY IS IN OPTIONS"},{"","TITLE: UP UP DOWN DOWN LT RT LT RT B A"}},
 };
 static const char *const help_ttl[18]={"THE BASICS","ON A PLANET","THINGS TO DO UP HERE","CITIES","IN A DUNGEON","FIGHTING","DUNGEON FLOORS","SPELLS AND BAG","STAYING ALIVE","GEAR","BUDDY AND FRIENDS","IN SPACE","STATIONS AND TRADE","THE GALAXY MAP","YOUR LOOK AND SHIP","YOUR QUEST","THE BIG BAD","TIPS"};

@@ -410,6 +410,30 @@ static void build_space_palette(void){
 static int beast_stage=0, beast_fight=0, ambush_t=0, no_ambush=0, dawn_free=0, chase_cam=1; static u64 b3_hp, b3_max;
 static int in_lair=0, tech_lv=0, beast_kills=0, beast_charge=0, beast_fire=0, beast_t=0, lair_out=0; static u64 beast_hp, beast_max; static char beast_dmg_txt[16]; static int beast_dmg_t=0;
 static int hive_active(void){ return beast_stage>=3 && hive_done<5; }
+// One campaign-phase decision shared by Bolt's advice. Post-King guidance
+// takes priority even when the player revisits an earlier story planet.
+static int bolt_next_step(void){
+    if(!ant_king){
+        if(!endless && !zone_cleared) return 0; // clear this world's dungeon
+        if(!endless && zone<5) return 1;        // next story star
+        return 2;                               // Anthill / King
+    }
+    if(beast_stage<3) return 3;                  // launch: third encounter is an ambush
+    if(hive_done<5) return 4;                    // the hive shield
+    if(data_cores<8) return 5;                   // recover missing memories
+    if(!dawn_free) return 6;                     // true ending still unclaimed
+    return 7;                                    // free to explore after the finale
+}
+static void bolt_hive_hint(char *out, int cap){
+    int i=hive_done<0?0:hive_done>4?4:hive_done;
+    txt_copy(out,cap,"\"HIVE ");
+    txt_number(out,cap,i+1);
+    txt_append(out,cap,"/5: ");
+    txt_append(out,cap,hive_nm[i]);
+    txt_append(out,cap," B");
+    txt_number(out,cap,hive_floors[i]);
+    txt_append(out,cap,".\"");
+}
 static int hive_here(void){ return endless && !forge_on && hive_active() && cur_sys==hive_sys(); }
 static int hive_boss_floor(void){ return hive_here() && depth_no==hive_floors[hive_done]; }
 static void hive_kill(void){ hive_done++; hive_card=hive_done+1; }
@@ -536,6 +560,7 @@ static void cockpit(volatile u16 *pg){
 
 // ---------------------------------------------------------------- THE TECHNOBEAST: one trillion HP, and its damage stays between visits
 static void lair_leave(void); static void hyperspace(void); static void beast_save(void); static void trophy_save(void);
+static int beast_finale_ready(void){ return data_cores>=8 && !dawn_free; }
 static void fmt_big(u64 v, char *b){
     static const char *const suf[7]={"","K","M","B","T","QA","QI"};
     int e=0; u64 d=1; while(e<6 && v>=d*1000){ d*=1000; e++; }
@@ -584,8 +609,15 @@ static void beast_shot(void){
         return;
     }
     if(!beast_hp){
-        if(!beast_kills){ if(data_cores>=8){ static const char *const t[5]={"THE MOUTH FALLS APART.","INSIDE IT: A SHIP. OLD. WHOLE. SINGING.","BOLT'S VOICE COMES FROM EVERYWHERE AT ONCE.","\"I REMEMBER ALL OF IT. THANK YOU.\"","\"NOW LET ME CARRY YOU HOME.\""}; story_card("THE DAWN",t,5); dawn_free=1; }
-                          else { static const char *const t[4]={"THE TECHNOBEAST FALLS!","BUT ITS CORE STILL HUMS...","IT WILL REBUILD ITSELF","TEN TIMES STRONGER."}; story_card("VICTORY",t,4); } }
+        // Victory count is NOT the ending gate. Beating the beast before
+        // restoring Bolt's memories cannot lock out the Dawn finale.
+        if(beast_finale_ready()){
+            bolt_story(VISPG,10);
+            dawn_free=1;
+        } else if(!beast_kills){
+            static const char *const t[4]={"THE TECHNOBEAST FALLS!","BUT ITS CORE STILL HUMS...","IT WILL REBUILD ITSELF","TEN TIMES STRONGER."};
+            story_card("VICTORY",t,4);
+        }
         beast_kills++; int g=100000*beast_kills; gold+=g; gain_xp(2000*beast_kills);
         boom(0,0,0,40,49); sfx(9);
         b3_max = b3_max>=1000000000000000000ULL ? b3_max : b3_max*10; b3_hp=b3_max; beast_max=b3_max; beast_hp=b3_hp;
@@ -647,7 +679,7 @@ static void lair_enter(void){
     shd_off();
     music(4); no_ambush=1; space_enter(0); no_ambush=0; in_lair=1; ambush_t=0;
     beast_fight = beast_stage>=2 ? 3 : beast_stage+1;
-    if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"WITHOUT ITS KING. THE BEAST WAKES.","IT ATE A WHOLE MOON. 1 TRILLION HP.","YOU CANNOT WIN TODAY. HIT IT AND WARP OUT.","GET STRONGER. AND COME BACK.","ITS WOUNDS WILL NEVER HEAL."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); hive_card=1; hive_done=0; }
+    if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"WITHOUT ITS KING. THE BEAST WAKES.","IT HAS A TRILLION HP. FIVE HIVES FEED IT.","YOUR HITS LAST, BUT HIVES STILL HEAL.","SELECT TO WARP OUT AND REGROUP.","FOLLOW THE RED HIVE STAR ON THE MAP."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); hive_card=1; hive_done=0; }
         beast_stage=3; beast_max=b3_max; beast_hp=b3_hp; }
     else if(beast_fight==1){ beast_max=beast_hp=600; static const char *const t[5]={"A SIGNAL FROM THE DARK...","A TINY MACHINE BUG BUILT FROM SCRAP.","IT EATS SHIPS TO GROW BIGGER.","SHOOT ITS GLOWING CORE!","STOP IT WHILE IT IS SMALL."}; story_card("THE TECHNOBEAST - HATCHLING",t,5); }
     else { beast_max=beast_hp=40000; static const char *const t[5]={"IT IS BACK. AND MUCH BIGGER.","IT ATE A WHOLE PIRATE FLEET.","NOW IT HAS A BEAM.","WHEN IT CHARGES. HOLD B","TO FLY FAST AND DODGE."}; story_card("THE TECHNOBEAST - GROWN",t,5); } beast_t=1; beast_charge=0; beast_fire=0;
@@ -1525,7 +1557,11 @@ static void addr_load(void){ u32 a[NCW0+10]; sram_read(slot_base(cur_slot)+0x900
 }
 typedef struct { u32 magic, hp_lo, hp_hi, mx_lo, mx_hi; u16 tech, kills, stage, hives; u32 sum; } SaveB;
 _Static_assert(__builtin_offsetof(SaveB,sum)==sizeof(SaveB)-4, "SaveB: the sum must be the last 4 bytes");
-static void beast_defaults(void){ hive_done=0; tech_lv=0; beast_kills=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
+static void beast_defaults(void){ hive_done=0; tech_lv=0; beast_kills=0; dawn_free=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
+// SaveB.stage has two spare high bytes. Bit 8 remembers the true ending
+// without changing save layout, offsets, or checksums.
+static u16 beast_stage_pack(void){ return (u16)(beast_stage&255) | (dawn_free?0x100u:0u); }
+static void beast_stage_unpack(u16 saved){ beast_stage=saved&255; if(beast_stage>3) beast_stage=3; dawn_free=(saved&0x100u)!=0; }
 #define SB_OFF 0xA00
 _Static_assert(sizeof(SaveX) <= 0x900-SX_OFF, "SaveX must end before the address block at +0x900");
 _Static_assert((NCW0+10)*4 <= 0x9C0-0x900, "the address block must end before the galaxy words at +0x9C0");
@@ -1534,10 +1570,10 @@ static void beast_load(void){
     SaveB b; sram_read(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
     u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; }
     if(b.magic!=0x32534542 || b.sum!=h){ beast_defaults(); return; }
-    b3_hp=((u64)b.hp_hi<<32)|b.hp_lo; b3_max=((u64)b.mx_hi<<32)|b.mx_lo; tech_lv=b.tech; beast_kills=b.kills; beast_stage=b.stage; hive_done=b.hives>5?5:b.hives;
+    b3_hp=((u64)b.hp_hi<<32)|b.hp_lo; b3_max=((u64)b.mx_hi<<32)|b.mx_lo; tech_lv=b.tech; beast_kills=b.kills; beast_stage_unpack(b.stage); hive_done=b.hives>5?5:b.hives;
 }
 static void beast_save(void){
-    SaveB b; memset(&b,0,sizeof b); b.magic=0x32534542; b.hp_lo=(u32)b3_hp; b.hp_hi=(u32)(b3_hp>>32); b.mx_lo=(u32)b3_max; b.mx_hi=(u32)(b3_max>>32); b.tech=tech_lv; b.kills=beast_kills; b.stage=beast_stage; b.hives=hive_done;
+    SaveB b; memset(&b,0,sizeof b); b.magic=0x32534542; b.hp_lo=(u32)b3_hp; b.hp_hi=(u32)(b3_hp>>32); b.mx_lo=(u32)b3_max; b.mx_hi=(u32)(b3_max>>32); b.tech=tech_lv; b.kills=beast_kills; b.stage=beast_stage_pack(); b.hives=hive_done;
     u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; } b.sum=h;
     sram_write(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
 }

@@ -28,7 +28,7 @@ Long ago a seed ship, the **Star Cruiser DAWN**, planted your worlds: the Garden
 Every outpost core you smash gives Bolt a memory back. The last one is his real name - the word that opens the beast's heart. Then fly into the beast, shoot its core, and let him say it.
 - Bolt speaks after every boss, after every outpost, and whenever you pick **TALK TO BOLT** at your ship (he always tells you what to do next, and worries aloud if you are hurt, hungry, low on fuel or hull, or your hold is full; he has 64 idle remarks that change every visit, plus remarks for the world you are on: its story zone or planet class, its weird traits, its weather, hour, gravity, size and mood). His arrival remarks on each world now come in two flavours, plus special ones for worlds that love or hate you.
 - **Drone outposts** are grey hatches with a red light on planets (zones 2-6 and some uncharted worlds; red marks on the galaxy map). Inside: tech dungeons with a **locked door** - find the **keycard** the drones keep somewhere on the floor - and a **power core** at the bottom to bite to pieces. Each dead outpost also makes the Technobeast smaller.
-- With all 8 cores, hitting the beast's core does **8x damage**: Bolt opens its heart. Beat it and the Dawn flies again.
+- With all 8 cores, hitting the beast's core does **8x damage**: Bolt remembers the word that opens its heart. **First destroy all five Tech Hives**, which otherwise keep the beast alive. You can defeat it earlier, but recovering the missing memories and winning again still unlocks the Dawn ending.
 - **Station lounge** (a third tab at any station): three regulars - an old moth pilot, a trader bee, and an ant who ran away - with rumours, trade tips and where the drones are digging.
 
 ## Your ship (new)
