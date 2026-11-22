@@ -167,6 +167,17 @@ grep -q 'pc_kn_obj' planet.inc || { echo "build.sh: pc_kn_obj hook anchor not fo
 echo '#include "../pc_kartnat.inc"' >> main.c
 # Hooks only edit the copies in pc/gen. Every anchor must occur exactly once.
 H() { python3 ../sim/hook.py "$@"; }
+# --- native space publication (tested from these exact guarded hooks)
+# All native space buffers and the bitmap must name the same completed frame
+# when vsync presents it. CLASSIC keeps the game's original post-vsync flip.
+H main.c '#include "pc_hw.h"' $'\nstatic void pc_sn_frame_begin(void), pc_sn_frame_end(volatile unsigned short *pg), pc_sn_publish(int page);' after
+H space.inc 'static int space_frame(void){' ' pc_sn_frame_begin();' after
+H space.inc 'if(FILM){ if(space_msg_t) space_msg_t--; return 0; }' 'if(FILM){ if(space_msg_t) space_msg_t--; pc_sn_frame_end(pg); return 0; }'
+H space.inc $'    else if(!space_msg_t && !(frames&64)) text(pg,64,4,"SELECT: GALAXY MAP",56,1);\n    return 0;' $'    else if(!space_msg_t && !(frames&64)) text(pg,64,4,"SELECT: GALAXY MAP",56,1);\n    pc_sn_frame_end(pg); return 0;'
+H main.c '            if(r==0) coil_fx_post((volatile u16*)(0x06000000 + (page_back?0xA000:0))); else coil_fx_end();' ' pc_sn_publish(page_back);' after
+H main.c '{ keys=keys_old=0; int r=space_frame(); (void)r; coil_fx_end(); vsync();' '{ keys=keys_old=0; int r=space_frame(); (void)r; coil_fx_end(); pc_sn_publish(page_back); vsync();'
+H coil2.inc $'            vsync(); REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1;\n            ok++; }' $'            pc_sn_publish(page_back); vsync(); REG_DISPCNT = (REG_DISPCNT & ~(1<<4)) | (page_back?(1<<4):0); page_back^=1;\n            ok++; }'
+# --- end native space publication
 # All parts of a native kart share its ground contact, including while jumping.
 # Build pending anchors with shadow OAM; publish only when the real OAM is
 # flushed, because vsync can display the previous sprites in between.

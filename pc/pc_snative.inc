@@ -9,6 +9,23 @@ extern double pc_now_ms(void); extern void pc_vrec(int,double,double); extern do
 typedef void (*PcParFn3)(void*,int,int); extern void pc_par_chunk(int total, int chunk, PcParFn3 fn, void *ctx);
 typedef struct { int cx,cy,r,Lx,Ly,Lz,rot; const u8 *noise; } SnCall;
 static SnCall sn_calls[40]; static int sn_nc, sn_rec; static uint32_t sn_pal[256];
+// The native background and effects have one buffer. Publish their completed
+// bitmap page before vsync presents it, rather than combining the new buffers
+// with the previous page for one blank. Only a fully drawn space frame may
+// publish; menus, catch-up steps and other early returns leave no ready page.
+static int sn_ready_page=-1;
+static void pc_sn_frame_begin(void){ sn_ready_page=-1; }
+static void pc_sn_frame_end(volatile unsigned short *pg){ sn_ready_page=((uintptr_t)pg)>=GBAA(0x0600A000u)?1:0; }
+static void pc_sn_publish(int page){
+    int ready=sn_ready_page; sn_ready_page=-1;
+    if(ready!=page || page<0 || page>1 || pc_v3d_classic() ||
+       (REG_DISPCNT&7)!=4 || pc_sn.w<=240 || pc_sn.h<=160 ||
+       pc_sn.w!=pc_nat_w || pc_sn.h!=pc_nat_h) return;
+    long frame=pc_frames();
+    if(pc_sn.f[page]!=frame || pc_sn.f2[page]!=frame ||
+       pc_sn.ff[page]!=frame || pc_sn.fc[page]!=frame) return;
+    REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page<<4);
+}
 static void pc_sn_begin(void){ sn_nc=0; sn_rec = pc_nat_w>240 && pc_nat_h>160 && !pc_v3d_classic(); }
 static void pc_sn_rec(int cx,int cy,int r,int Lx,int Ly,int Lz,int rot,const u8 *noise){ if(!sn_rec || sn_nc>=40) return; SnCall *c=&sn_calls[sn_nc++]; c->cx=cx; c->cy=cy; c->r=r; c->Lx=Lx; c->Ly=Ly; c->Lz=Lz; c->rot=rot; c->noise=noise; }
 // Planet longitude sampling is the same for every output row. Keep one
