@@ -4,6 +4,7 @@
  * campaign rewards, docking, missions and saves remain solo.
  */
 #include "pc_net.h"
+#include <math.h>
 /* The LAN guest enters near, but not inside, the host's spawn. This offset
  * is applied only in opt-in LAN mode, after the normal space spawn and before
  * the camera basis is calculated; solo and GBA space_enter are unchanged. */
@@ -20,6 +21,25 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
     /* Zero multiplayer work in ordinary single-player flight; never overlay
      * a network sparring ship during cinematic or beast-interior scenes. */
     if(!pc_mp_role() || in_lair || FILM) return;
+    /* Test-only stationary tracking pilot: exercises real SDL, laser input,
+     * three enemy waves and independent UDP sockets without game cheats
+     * or campaign mutations. Normal gameplay has zero autopilot work. */
+    { static int pilot=-1;
+      if(pilot<0)pilot=(getenv("BUGSTAR_LAN_TEST_PILOT")!=0);
+      if(pilot && pc_mp_coop_mode()){
+          PcCoop c; speed=0;
+          if(pc_mp_raider((uint32_t)pc_frames(),&c) && c.phase==1){
+              s32 tx=c.hp?c.x:c.wing_x,ty=c.hp?c.y:c.wing_y,
+                  tz=c.hp?c.z:c.wing_z;
+              double dx=(double)tx-shx,dy=(double)ty-shy,dz=(double)tz-shz;
+              double h=sqrt(dx*dx+dz*dz);
+              yaw=((int)lrint(atan2(dx,dz)*1024.0/6.2831853071795864769))&1023;
+              pitch=(int)lrint(atan2(dy,h)*1024.0/6.2831853071795864769);
+          }
+      }
+    }
+    /* Draw the mission result last, above the partner ship model. */
+    int result_banner=0;
     PcNetShip mine,other;
     mine.x=shx; mine.y=shy; mine.z=shz;
     mine.world=sys_id(cur_sys); mine.yaw=(unsigned short)(yaw&1023);
@@ -34,7 +54,8 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
     static int previous_remote_hp;
     if(!pc_mp_remote((unsigned)pc_frames(),&other) || other.world!=mine.world){
         shown_valid=0; hit_flash=0; have_hp=0;
-        text(pg,5,112,pc_mp_role()==1?"LAN: WAITING FOR P2":"LAN: JOINING P1",50,1);
+        text(pg,5,112,pc_mp_reconnecting()?"CONNECTION LOST - OPEN LAN MENU":
+             pc_mp_role()==1?"WAITING FOR PLAYER 2":"CONNECTING TO PLAYER 1",50,1);
         return;
     }
     if(!shown_valid || shown.world!=other.world ||
@@ -53,7 +74,11 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
         shown.pitch+=(short)((other.pitch-shown.pitch)/3);
     }
     other=shown;
-    if(pc_mp_coop_mode()){
+    if(!pc_mp_match_ready()){
+        text(pg,5,102,pc_mp_local_ready()?"YOU ARE READY":"OPEN LAN MENU AND CONFIRM READY",53,1);
+        text(pg,5,112,pc_mp_peer_ready()?"OTHER PLAYER IS READY":"WAITING FOR OTHER PLAYER",50,1);
+    }
+    if(pc_mp_coop_mode() && pc_mp_match_ready()){
         PcCoop raider;
         if(pc_mp_raider((uint32_t)pc_frames(),&raider)){
             /* A readable 3D hostile interceptor: delta-wing tips, raised
@@ -143,28 +168,60 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                     if(pc_sn.w && pc_sn.msk)so_line(ex,ey,tx,ty,53);
                 }
             }
-            /* Compact two-row combat panel stays above the native flight
-             * instruments. Distinct bars/numbers remain readable at 240x160. */
-            rect(pg,3,107,234,19,0);
-            rect(pg,3,106,234,1,53);
-            text(pg,7,109,"RAIDER",53,1);
-            rect(pg,41,110,81,6,3);
-            if(raider.hp)rect(pg,42,111,(int)raider.hp*79/100,4,
-                             raider.hp<=20?49:54);
+            /* Compact three-row mission HUD, genuine 240x160 game pixels.
+             * These are encounter HEALTH values, NOT the native ship shields.
+             * 'H' was successful laser hits, not objective progress; 'CLEAR'
+             * was completed mission count, not waves won. Keep them distinct.
+             * No dynamic allocations, bitmap assets or extra framebuffers. */
+            rect(pg,3,98,234,29,0);
+            rect(pg,3,98,234,1,53); /* red enemy/mission border */
+            rect(pg,4,108,232,1,56); /* separate boss, pilot, and support rows */
+            rect(pg,4,117,232,1,56);
+            rect(pg,119,100,1,26,56); /* two stable readable columns */
             char hud[72];
-            snprintf(hud,sizeof hud,"WAVE %u/3  CLEAR %u",
-                     (unsigned)raider.wave+1,(unsigned)raider.completed);
-            text(pg,133,109,hud,50,1);
-            snprintf(hud,sizeof hud,"P1 SH %u   P2 SH %u",
-                     (unsigned)raider.host_hp,(unsigned)raider.guest_hp);
-            text(pg,7,118,hud,50,1);
-            snprintf(hud,sizeof hud,"DRONE %u H:%u/%u",
-                     (unsigned)raider.wing_hp,
+            if(raider.phase==4){
+                text(pg,7,101,"RAIDER DEFEATED",54,1);
+                text(pg,126,101,"ALL 3 WAVES CLEARED",54,1);
+            }else{
+                text(pg,7,101,raider.hp?"RAIDER HEALTH":"RAIDER DEFEATED",53,1);
+                rect(pg,75,103,38,5,3);
+                if(raider.hp)rect(pg,76,104,(int)raider.hp*36/100,3,
+                                 raider.hp<=20?49:54);
+                snprintf(hud,sizeof hud,"WAVE %u OF 3",
+                         (unsigned)raider.wave+1);
+                text(pg,145,101,hud,50,1);
+            }
+            snprintf(hud,sizeof hud,"P1 HEALTH: %u",(unsigned)raider.host_hp);
+            text(pg,7,110,hud,raider.host_hp<=20?49:54,1); /* P1 gold */
+            snprintf(hud,sizeof hud,"P2 HEALTH: %u",(unsigned)raider.guest_hp);
+            text(pg,126,110,hud,raider.guest_hp<=20?49:50,1); /* P2 cyan */
+            if(raider.phase==4)
+                snprintf(hud,sizeof hud,"MISSIONS WON: %u",
+                         (unsigned)raider.completed);
+            else if(!raider.wave)
+                snprintf(hud,sizeof hud,"DRONE: NEXT WAVE");
+            else if(!raider.wing_hp)
+                snprintf(hud,sizeof hud,"DRONE: DEFEATED");
+            else
+                snprintf(hud,sizeof hud,"DRONE HEALTH: %u",
+                         (unsigned)raider.wing_hp);
+            text(pg,7,119,hud,50,1);
+            snprintf(hud,sizeof hud,"LASER HITS: P1 %u P2 %u",
                      (unsigned)raider.host_hits,(unsigned)raider.guest_hits);
-            text(pg,158,118,hud,50,1);
+            text(pg,126,119,hud,54,1);
             /* The main target must disappear after destruction. The
              * surviving flank drone becomes the explicit objective, not
              * a misleading ghost RAIDER label or empty boss bar. */
+            /* The mission states what to DO, not just enemy hit points.
+             * A thin 4-pixel-font cue above the mission panel only, preserving
+             * the 3D view and all existing solo/handheld rendering budgets. */
+            if(raider.phase==1 && !raider.charge){
+                const char *goal=!raider.hp && raider.wing_hp?
+                    "DESTROY THE DRONE TO CLEAR WAVE":
+                    raider.wing_hp?"DEFEAT RAIDER AND DRONE":
+                    "DEFEAT THE RAIDER";
+                text(pg,6,89,goal,54,1);
+            }
             if(raider.phase==1 && !raider.hp && raider.wing_hp){
                 s32 dx=raider.wing_x-shx,dy=raider.wing_y-shy,
                     dz=raider.wing_z-shz;
@@ -173,27 +230,33 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
                 const char *hint=side>250?"DRONE RIGHT - TURN RIGHT":
                                  side< -250?"DRONE LEFT - TURN LEFT":
                                  "DRONE AHEAD - FIRE!";
-                text(pg,10,93,hint,53,1);
+                text(pg,10,90,hint,53,1);
             }
-            if(raider.phase==2)
-                text(pg,75,91,"WAVE CLEAR!",54,2);
-            if(raider.phase==3)
-                text(pg,75,91,"MISSION FAILED",53,2);
-            if(raider.phase==4){
-                text(pg,38,68,"MISSION COMPLETE",54,2);
-                text(pg,50,91,"BOTH PILOTS WIN!",50,1);
+            if(raider.phase==2){
+                text(pg,65,77,"WAVE CLEARED!",54,2);
+                text(pg,68,91,"NEXT WAVE SOON",50,1);
             }
-        }else text(pg,4,112,"CO-OP: SYNCING RAIDER",50,1);
-    }else {
+            if(raider.phase==3){
+                text(pg,61,73,"MISSION FAILED",53,2);
+                text(pg,72,91,"RESTARTING SOON",50,1);
+            }
+            if(raider.phase==4)result_banner=1;
+        }else text(pg,4,112,"LOADING SHARED MISSION...",50,1);
+    }else if(!pc_mp_coop_mode() && pc_mp_match_ready()){
         uint8_t hh,gh,wh,wg;
         if(pc_mp_duel(&hh,&gh,&wh,&wg)){
             int remote_hp=(pc_mp_role()==1)?gh:hh;
             if(have_hp && remote_hp<previous_remote_hp)hit_flash=8;
             previous_remote_hp=remote_hp;have_hp=1;
             char status[64];
-            snprintf(status,sizeof status,"LAN SPAR P1:%u P2:%u  W:%u-%u",
-                     (unsigned)hh,(unsigned)gh,(unsigned)wh,(unsigned)wg);
-            text(pg,4,113,status,50,1);
+            rect(pg,3,106,234,21,0);
+            rect(pg,3,106,234,1,53);
+            snprintf(status,sizeof status,"SPARRING  P1 HEALTH: %u  P2 HEALTH: %u",
+                     (unsigned)hh,(unsigned)gh);
+            text(pg,7,109,status,50,1);
+            snprintf(status,sizeof status,"ROUNDS WON: PLAYER 1 %u  PLAYER 2 %u",
+                     (unsigned)wh,(unsigned)wg);
+            text(pg,7,118,status,54,1);
             if(!hh || !gh)text(pg,65,102,hh?"P1 WINS":"P2 WINS",54,1);
         }else have_hp=0;
     }
@@ -245,6 +308,21 @@ static void pc_mp_space_draw(volatile unsigned short *pg){
         if(sx>15 && sx<208 && sy_>18 && sy_<115)
             text(pg,sx+5,sy_-6,pc_mp_role()==1?"P2":"P1",50,1);
       }
+    }
+    if(result_banner){
+        /* Overlay AFTER all 3D ships and labels. A solid high-contrast
+         * plate keeps the planet's detailed scene visible around it, but
+         * prevents wireframes/pilot labels from cutting through the title.
+         * Static rect/text only; zero allocations or sprite resources. */
+        rect(pg,47,55,146,42,0);
+        rect(pg,47,55,146,2,54);
+        rect(pg,47,95,146,2,54);
+        rect(pg,47,55,2,42,55);
+        rect(pg,191,55,2,42,55);
+        text(pg,55,61,"MISSION COMPLETE",54,2);
+        text(pg,87,80,"BOTH PILOTS WIN!",50,1);
+        text(pg,78,88,"NEXT MATCH SOON",55,1);
+        pc_mp_note_clear_draw();
     }
 #else
     (void)pg;

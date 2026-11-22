@@ -1,5 +1,18 @@
 # BUGSTAR experimental LAN sparring + three-wave co-op mission (developer test)
 
+## Graphical three-wave and Ready/reconnect milestone (experimental, pending CI)
+
+The earlier real SDL smoke reached a shared first-raider victory, but was insufficient evidence of all three waves on both rendered game clients. This branch extends `pc/tests/lan_live.sh ./bugstar_pc coop` to drive the ordinary A-laser cadence in two actual SDL game processes, with an opt-in test-only aim-following camera; it requires log evidence of waves 1, 2 and 3, all three wins, both players' contribution and both final graphical victory PNGs. The successful captures will appear in the `bugstar-lan-graphical-smoke` CI artifact under `pc/out/lan_live`. The test does not pretend to simulate human flight or an Android touchscreen.
+
+This branch upgrades the LAN packet version to **v5**, with separate Ready and ACTIVE (in-flight) flags; both peers must use v5 binaries. The SDL options menu now exchanges UDP HELLO/READY/STATE during a pause without advancing physics. Android backgrounding invalidates session state and requires fresh Ready confirmations. Earlier v3 test results below are historical, not evidence for this change.
+
+**Paused encounter timing:** the host now uses a separate combat tick that increments only while both pilots are Ready and actively flying. LAN heartbeats keep their own tick advancing inside the options menu. Host-authoritative guest-shot validation also checks both ACTIVE flags, preventing damage, wave-clear timers or enemy attacks from running under a paused lobby. The two-socket Ready test asserts all three protections.
+
+The **MULTIPLAYER LAN** options now include **I AM READY / NOT READY ANYMORE**. **CREATE GAME** and **JOIN FRIEND** establish the UDP socket; each client must independently confirm Ready and enter the same star 3D view before combat begins. The menu spells out Friend connected / Both Ready / Waiting for Friend rather than 'UDP' protocol jargon. Leaving, switching world or losing current ship snapshots clears readiness. A rejoined client must confirm again; no network reward writes to a campaign save. The command-line `--lan-host`/`--lan-join` test path intentionally auto-confirms to preserve existing automated sparring tests.
+
+These are **source changes awaiting build/runtime verification**, not a verified Android, Windows, GBA or GBC multiplayer release. Run `tests/pc_multiplayer_ready_test.c` and `pc/tests/lan_menu.sh` as well as the full SDL smoke. Recheck any regressions to frame pacing and ordinary offline play.
+
+
 **Status (21 November 2026):** the PC ↔ PC two-process SDL game smoke now **passes in both sparring and co-op**, including the expanded protocol-v3 three-wave encounter at `49495e1024`. The two-real-UDP-socket mission test confirms host and guest receive the same final result. Builds for Windows, Android APK and GBA ROM were successful on that commit. **The new in-game LAN menu is committed but is still undergoing its own SDL event and cross-platform build verification.** Android hardware-to-PC networking has not been tested, and neither GBA nor GBC supports LAN UDP.
 LAN mode is opt-in, available from the platform options overlay and from
 command-line arguments. Normal play stays offline. This is not shared
@@ -30,14 +43,39 @@ The initial implementation supports:
 
 **Version compatibility:** The expanded co-op mission uses a fixed 24-byte RAIDER payload and LAN **protocol v3**. Both PCs must run the same updated build; v2 peers are rejected. Both real PC instances completed their co-op combat smoke and the full 3-wave socket test at commit `49495e1024`. Future UI changes are gated by a separate SDL menu smoke test.
 
+## In-game HUD readability (actual 240x160 rendered pixels)
+
+The LAN co-op display now occupies a compact three-row mission band ABOVE
+the normal flight cockpit. All strings are generated from live host-synced
+`PcCoop` fields, not mockup art or hard-coded results:
+
+- **Raider Health** bar (0 to 100) and **Wave N of 3**, or **Raider Defeated**
+  / **All 3 Waves Cleared** on victory.
+- **P1 Health** and **P2 Health** are separate 0–100 **encounter-only**
+  health pools, NOT ship shields or campaign hull.
+- **Drone Health**, **Drone Defeated**, or **Drone: Next Wave**, based on
+  whether the second enemy is active.
+- **Laser Hits: P1 N P2 N** counts each player's successful shots.
+  Earlier `H:11/11` meant *hits*, not objective progress.
+- **Missions Won: N** is the count of completed three-wave contracts;
+  earlier `CLEAR 1` was NOT a wave number or a cleared-objectives fraction.
+
+The shared **GBA/PC/Android cockpit** also now spells out **SHIELD**,
+labels **RADAR**, shows **SPEED 0–100%** (relative to ship's current top
+speed, clamped) and prefixes the current star-system label with **AT:**.
+The core radar, animated resource bars, ship physics, save data and
+240×160 render resolution are unchanged. The LAN overlay is still optional
+and builds only on PC/Android. The GBC game is a separate repository and
+needs a dedicated 160×144 HUD adaptation when linked gameplay exists.
+
 ## Start from the in-game options menu
 
 On PC, press **Esc** (gamepad: Back+Start); on Android, open the touchscreen
-**MENU/MODE** options overlay. Select **MULTIPLAYER LAN**. Set **MATCH TYPE**
-to **3-WAVE CO-OP** or **SPARRING** and pick UDP port 33777, 33778 or 33779.
-Choose **HOST MATCH** on the first player. On the second machine, choose
-**JOIN ADDRESS**, enter the host's numeric local IPv4 address using the
-keyboard or Android text input, confirm with Enter, then choose **JOIN MATCH**.
+**MENU/MODE** options overlay. Select **MULTIPLAYER LAN**. Set **GAME MODE**
+to **3-WAVE CO-OP** or **SPARRING** and pick network port 33777, 33778 or
+33779. Choose **CREATE GAME** on the first player. On the second machine,
+choose **HOST IP ADDRESS**, enter the host's numeric local IPv4 address,
+confirm with Enter, then choose **JOIN FRIEND**.
 **127.0.0.1** works only when both running games share a computer. Both
 players must then enter 3D flight in the same star system. The overlay
 shows HOST/JOIN, WAITING/CONNECTED and match type. Select **LEAVE MATCH**
