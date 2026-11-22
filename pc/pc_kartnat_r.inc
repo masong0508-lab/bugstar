@@ -23,6 +23,13 @@ static double kn_target_roll(int dh, int curve, int speed){
     return target;
 }
 static double kn_hill_shift(double shift){ return shift>14.0?14.0:shift<-14.0?-14.0:shift; }
+// Keep the synthetic hill inside the finite ground image. A raised last
+// row would otherwise be repeated all the way to the bottom of the window.
+static double kn_hill_edge(double shift, int row){
+    if(row<=111) return shift;
+    double t=(159-row)/48.0;
+    return shift*t*t*(3-2*t);
+}
 void pc_kn_frame(const short *rowz, int active, int pi256, int heading, int curvahead, int speed, int elev, unsigned seed, int knp, int nsh, const short *shx, const short *shy, const short *shw, int pcx, int pcy, int pcw){
     KN.active=active; if(!active){ KN.hinit=0; KN.roll*=0.8; return; }
     memcpy(KN.rowz,rowz,sizeof KN.rowz); KN.s0=pi256/256.0; KN.elev=elev; KN.seed=seed; KN.knp=knp; KN.curv=curvahead;
@@ -33,16 +40,39 @@ void pc_kn_frame(const short *rowz, int active, int pi256, int heading, int curv
 static double kn_shi(double L){ if(L<=0) return KN.sh[0]; if(L>=159) return KN.sh[159]; int l=(int)L; double f=L-l; return KN.sh[l]*(1-f)+KN.sh[l+1]*f; }
 static void kn_fwd(double x, double y, double *ox, double *oy){ double yh=y+kn_shi(y-0.5), dx=x-120, dy=yh-KN.piv; *ox=120+dx*KN.cs-dy*KN.sn; *oy=KN.piv+dx*KN.sn+dy*KN.cs; }
 static int kn_gnd(int l){ return ((lst[l].dc&0x410)==0x410) && lst[l].pa!=0; }
+// Invert the piecewise-linear hill profile by projecting its row segments.
+// Fixed-point iteration is unstable when a hill moves by more than one
+// screen row per source row. Fill the existing lookup from far to near so
+// the nearest segment wins wherever a hill occludes the road behind it.
+static void kn_inverse_rows(const double *shift, short *index){
+    double top=shift[0];
+    for(int i=0;i<4200;i++) index[i]=(-30+i*(1.0/16)<=top)?0:1279;
+    for(int row=-1;row<160;row++){
+        double a=row<0?0:row+0.5, b=row==159?159.99:row+1.5;
+        double ya=a+shift[row<0?0:row], yb=b+shift[row==159?159:row+1];
+        double low=ya<yb?ya:yb, high=ya>yb?ya:yb;
+        int lo=(int)ceil((low+30)*16), hi=(int)floor((high+30)*16);
+        if(lo<0) lo=0; if(hi>4199) hi=4199;
+        if(lo>hi) continue;
+        double scale=yb!=ya?(b-a)/(yb-ya):0;
+        for(int i=lo;i<=hi;i++){
+            double source=scale?a+(-30+i*(1.0/16)-ya)*scale:b;
+            if(source<0) source=0; if(source>159.99) source=159.99;
+            index[i]=(short)(int)(source*8);
+        }
+    }
+}
 static int kn_prep(int W, int H, int mode){            // before the sprites: the tables for this picture
     kn_on=0; if(kn_disabled() || !KN.active || !lst_dma || mode!=4 || W<=240 || nv_v3()==2) return 0;
     int g0=-1; for(int l=19;l<160;l++) if(kn_gnd(l)){ g0=l; break; } if(g0<0) return 0;
     KN.g0=g0; double s0=KN.s0, h0=kn_H(s0);
     for(int l=0;l<160;l++){ double sh=0; if(kn_gnd(l) && KN.rowz[l]>0){ double z8=KN.rowz[l]; double hr=(kn_H(s0+z8/128.0)-h0)*KN.elev; sh=kn_hill_shift(-hr*KN_FOCP/z8); } KN.sh[l]=sh; }
-    for(int l=g0-1;l>=0;l--) KN.sh[l]=KN.sh[g0];
     { double a=0.0; for(int l=g0+1;l<160;l++) if(!kn_gnd(l) && 0) a=1; (void)a; }
     for(int l=g0;l<160;l++) if(!kn_gnd(l)) KN.sh[l]=KN.sh[l>g0?l-1:l];
+    for(int l=g0;l<160;l++) KN.sh[l]=kn_hill_edge(KN.sh[l],l);
+    for(int l=g0-1;l>=0;l--) KN.sh[l]=KN.sh[g0];
     KN.piv=g0+KN.sh[g0]; { const char *fr=getenv("PC_KNROLL"); if(fr) KN.roll=atof(fr); } KN.cs=cos(KN.roll); KN.sn=sin(KN.roll);
-    for(int i=0;i<4200;i++){ double yh=-30+i*(1.0/16), L=yh; for(int k=0;k<4;k++) L=yh-kn_shi(L); if(L<0) L=0; if(L>159.99) L=159.99; KN.kidx[i]=(short)(int)(L*8); }       // the hills undone: where (game row) the picture row yh comes from
+    kn_inverse_rows(KN.sh,KN.kidx);
     kn_on=1; return 1; }
 typedef struct { double pa,pc,rx,ry,fp,ifp,fog; int g, ifx; } KnL;
 static KnL knl[160]; static KnL knf[160*8+8]; static uint32_t kn_bd888, kn_marks[4]; static int kn_W, kn_H_; static double kn_sx, kn_sy; static uint16_t kn_hill[2];
@@ -153,3 +183,4 @@ static int kn_pass(int W, int H, double sx, double sy, uint16_t bd){
           kn_marks[i]=((uint32_t)(rr<<3|rr>>2)<<16)|((uint32_t)(gg<<3|gg>>2)<<8)|(uint32_t)(bb<<3|bb>>2); } }
     kn_x=getenv("PC_KNX")?atoi(getenv("PC_KNX")):1; // clean native road by default; PC_KNX=0 restores optional distance grain
     double t0=pc_now_ms(); double c0=kn_cpu(); kn_tab(); kn_fine(); kn_skytab(); kn_gtab(); pc_par(H,kn_rows,0); double t1=pc_now_ms(); kn_shadows(W,H); if(getenv("PC_KNT")) fprintf(stderr,"roll %.3f curv %.0f kn rows %.2f ms (wall) %.2f ms (cpu, all threads) shadows %.2f\n",KN.roll,KN.curv,t1-t0,kn_cpu()-c0,pc_now_ms()-t1); return 1; }
+
