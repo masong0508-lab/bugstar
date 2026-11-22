@@ -111,14 +111,25 @@ OVK static void m7_frame(void){
       if(dx>4 || dy>4 || !m7_arm){ m7_nwx0=wx; m7_nwy0=wy; } else { m7_nwx0=m7_wx0; m7_nwy0=m7_wy0; } }                      // (the map is copied again only when it has to be)
     // the profile: march out along the centre line; each row gets the depth where the ground first covers it
     for(int y=0;y<160;y++) m7_rowz[y]=0;
-    int ytop=160; s32 z=stp_z[0], zl=z, zmax=(64<<8);
+    int ytop=160, yl=160; s32 z=stp_z[0], zl=z, zmax=(64<<8);
     for(int i=0;i<96;i++){
         s32 mx=cam_x+hsn*z, my=cam_y+hcs*z; int ti=((my>>15)&HMASK)*HW+((mx>>15)&HMASK); s32 hh=hfine[ti]*g_hs;
         s32 curve=((((z*z)>>14)*ck)>>csh)-csub; s32 f=krec(z); int y=PHZ+(((cam_h+curve-hh)*f)>>16);
         if(i==0){ int y0 = y>160 ? 160 : y<0 ? 0 : y; s32 dh=cam_h-hh; if(dh<16) dh=16;                 // the ground nearer than the first step: flat, under the camera
             for(int r=y0;r<160;r++){ s32 zz = r>PHZ ? (s32)(((long long)(dh*FOCP)*kr_rc[r-PHZ])>>32) : z; if(zz>z) zz=z; if(zz<16) zz=16; m7_rowz[r]=(s16)zz; }
-            ytop=y0; zl=z; }
-        else if(y<ytop){ if(y<0) y=0; int n=ytop-y; s32 st=(s32)(((long long)(zl-z)*(s32)kr_rc[n])>>16), acc=z<<16; for(int r=y;r<ytop;r++, acc+=st) m7_rowz[r]=(s16)(acc>>16); ytop=y; zl=z; }
+            ytop=y0; yl=y; zl=z; }
+        else if(y<yl){
+            // Keep the real projected endpoints when a high camera starts below
+            // the screen, or a steep hill ends above it. Clip only the rows written.
+            int y0=y<0?0:y, y1=yl>160?160:yl;
+            if(y0<y1){ int n=yl-y;
+                // 2^32/2 does not fit s32: a signed reciprocal reverses two-row spans.
+                // Offscreen endpoints can exceed the reciprocal table's row range.
+                s32 st=n<258 ? (s32)(((long long)(zl-z)*kr_rc[n])>>16) : ((zl-z)*65536)/n;
+                s32 acc=(z<<16)+st*(y0-y);
+                for(int r=y0;r<y1;r++, acc+=st) m7_rowz[r]=(s16)(acc>>16);
+                ytop=y0; }
+            yl=y; zl=z; }
         if(ytop<=0) break;
         z += 20+((i*i)>>4); if(z>zmax) break;
     }

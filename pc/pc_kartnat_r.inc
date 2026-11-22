@@ -102,7 +102,7 @@ static KnL knl[160]; static KnL knf[160*8+8]; static uint32_t kn_bd888, kn_marks
 static void kn_fine(void); static void kn_tab(void){
     for(int l=0;l<160;l++){ const LineSt *A=&lst[l]; KnL *k=&knl[l]; k->g=kn_gnd(l); k->pa=A->pa/256.0; k->pc=A->pc/256.0; k->rx=A->rx/256.0; k->ry=A->ry/256.0;
         k->fog=-1; uint16_t bc=A->bldcnt; if(((bc>>6)&3)==1 && (bc&4) && (bc&0x2000)){ double eb=((A->bldalpha>>8)&31)/16.0; k->fog=eb>1?1:eb; }
-        const LineSt *B=&lst[l<159?l+1:l]; double g=120*kn_sx; double du=(B->rx+B->pa*g)/256.0-(A->rx+A->pa*g)/256.0, dv=(B->ry+B->pc*g)/256.0-(A->ry+A->pc*g)/256.0;
+        const LineSt *B=&lst[l<159?l+1:l]; double g=120.0; double du=(B->rx+B->pa*g)/256.0-(A->rx+A->pa*g)/256.0, dv=(B->ry+B->pc*g)/256.0-(A->ry+A->pc*g)/256.0;
         double fy=sqrt(du*du+dv*dv)*kn_sy, fx=sqrt(k->pa*k->pa+k->pc*k->pc)*kn_sx; double F=fx>fy?fx:fy; if(F<0.0625) F=0.0625; k->fp=F; k->ifp=1.0/F; k->ifx=(int)(256.0/F); } }
 static void kn_fine(void){ for(int i=0;i<160*8+8;i++){ double Ls=(i+0.5)/8.0; if(Ls>159.99) Ls=159.99; int N=(int)Ls; KnL *o=&knf[i]; o->g=knl[N].g; if(!o->g) continue;
         double lc=Ls-0.5; int l0=(int)floor(lc); if(l0<0) l0=0; int l1=l0<159?l0+1:l0; double f=lc-l0; if(f<0) f=0; if(f>1) f=1; const KnL *A=&knl[l0], *B=&knl[l1]; if(!(A->g && B->g)){ A=B=&knl[N]; f=0; }
@@ -116,8 +116,13 @@ static inline int kn_roadmark(uint32_t rgb){
 }
 static inline uint32_t kn_bilx(double u, double v, int ifx){
     int U=(int)(u*256.0), V=(int)(v*256.0); if(U<0) U=0; if(V<0) V=0; int x0=U>>8, y0=V>>8, fu=U&255, fv=V&255;
-    int tx=(((fu-128)*ifx)>>8)+128, ty=(((fv-128)*ifx)>>8)+128; tx=tx<0?0:tx>256?256:tx; ty=ty<0?0:ty>256?256:ty;
-    int wx=fu<128?256-tx:tx, wy=fv<128?256-ty:ty; int ax=fu<128?x0-1:x0+1, ay=fv<128?y0-1:y0+1;
+    // Blend only near the nearest texel boundary, never at its centre.
+    // Wider footprints use ordinary bilinear at each existing distant tap.
+    // Keep the original ifx for the nearby-roadmark decision below.
+    int sharp=ifx<256?256:ifx;
+    int wx=32768-(fu<128?fu:256-fu)*sharp, wy=32768-(fv<128?fv:256-fv)*sharp;
+    wx=wx>0?wx>>8:0; wy=wy>0?wy>>8:0;
+    int ax=fu<128?x0-1:x0+1, ay=fv<128?y0-1:y0+1;
     int X0=x0>239?239:x0, Y0=y0>159?159:y0, X1=ax<0?0:ax>239?239:ax, Y1=ay<0?0:ay>159?159:ay;
     uint32_t a=pg888[1][Y0][X0];
     // Keep nearby kerbs, centre stripes and boost pads legible instead of

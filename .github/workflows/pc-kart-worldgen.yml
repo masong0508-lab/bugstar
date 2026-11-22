@@ -3,6 +3,8 @@ on:
   push:
     paths:
       - 'kart*.inc'
+      - 'm7.inc'
+      - 'recip.inc'
       - 'game.inc'
       - 'dungeon.inc'
       - 'ui.inc'
@@ -21,6 +23,8 @@ on:
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_inverse_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
+      - 'tests/kart_native_filter_runtime.py'
+      - 'tests/kart_ground_depth_runtime.py'
       - 'tests/kart_visual_capture_audit.py'
       - 'tests/kart_fuzz_fade_runtime.py'
       - 'tests/kart_dma_palette_runtime_host.py'
@@ -56,6 +60,8 @@ on:
   pull_request:
     paths:
       - 'kart*.inc'
+      - 'm7.inc'
+      - 'recip.inc'
       - 'game.inc'
       - 'dungeon.inc'
       - 'ui.inc'
@@ -74,6 +80,8 @@ on:
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_inverse_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
+      - 'tests/kart_native_filter_runtime.py'
+      - 'tests/kart_ground_depth_runtime.py'
       - 'tests/kart_visual_capture_audit.py'
       - 'tests/kart_fuzz_fade_runtime.py'
       - 'tests/kart_dma_palette_runtime_host.py'
@@ -140,6 +148,10 @@ jobs:
         run: python3 tests/kart_native_sprite_anchor_runtime.py
       - name: Verify native kart sampler keeps pixels identical on flat road textures
         run: python3 tests/kart_native_sampler_runtime.py
+      - name: Verify continuous native texture filtering and centered sampling footprints
+        run: python3 tests/kart_native_filter_runtime.py
+      - name: Keep kart ground depth ordered through hills and the horizon
+        run: python3 tests/kart_ground_depth_runtime.py
       - name: Confirm fuzz races match real fade-in and clear boot blackout
         run: python3 tests/kart_fuzz_fade_runtime.py
       - name: Verify kart HUD DMA palette words under UndefinedBehaviorSanitizer
