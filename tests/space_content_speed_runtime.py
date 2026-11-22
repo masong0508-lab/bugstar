@@ -72,7 +72,7 @@ static u8 pl_noise[32768], sph_z[16384], sph_v[16384], sph_u[16384];
 static int frames, fuel,shield,hull,cargo_cap,hold_bonus,fu_max=70,sh_max=40;
 static u16 cargo[8];
 static s64 gold;
-static int pickups,fx_count;
+static int fx_count;
 static char message[100];
 static const char *goods[8]={"WOOD","SILK","STONE","SUGAR","CRYSTALS","ANT","RARE","SCRAP"};
 static int fuel_max(void){return fu_max;}
@@ -83,6 +83,7 @@ static void space_say(const char *s){snprintf(message,sizeof message,"%s",s);}
 static void sfx(int n){(void)n;fx_count++;}
 static void scpy(char *d,const char *s){strcpy(d,s);}
 static void scat(char *d,const char *s){strcat(d,s);}
+static void ncat(char *d,int n){ char b[24]; snprintf(b,sizeof b,"%d",n); strcat(d,b); }
 static u32 rnd_state=0x6EF271A3u;
 static u32 rnd(void){rnd_state=rnd_state*1664525u+1013904223u;return rnd_state;}
 static int lr(int n){return (int)(rnd()%((u32)n));}
@@ -181,7 +182,7 @@ with tempfile.TemporaryDirectory(prefix="bugstar-space-supply-") as tmp:
         t.write_text(source)
         exe=Path(tmp)/"content_perf"
         subprocess.run(["cc","-std=c11","-O1","-Wall","-Wextra",
-                        "-fsanitize=undefined","-fno-sanitize-recover=all",
+                        "-fsanitize=address,undefined","-fno-sanitize-recover=all",
                         "-fno-omit-frame-pointer",*flags,str(t),"-o",str(exe)],
                        check=True)
         subprocess.run([str(exe)],check=True)
