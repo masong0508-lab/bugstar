@@ -3,6 +3,27 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Story coherence and true-ending recovery — 22 November 2026
+
+- Bolt's advice follows the actual campaign phase, not whichever early
+  planet the player has revisited. Before the King he explains the next
+  dungeon/star; after the King he warns of the third-space ambush; then
+  he names the next of five hives and its Overlord floor, the missing
+  memory cores, and finally the return trip to the beast.
+- The Anthill ambient remark no longer reveals Bolt's identity early.
+  The stolen-memory scene now explains why the data cores were placed
+  in drone outposts. The help page puts the hive shield before the
+  final strike and the boss quest hint names its assigned floor.
+- The one-time DAWN ending is no longer locked out by an earlier victory
+  without all eight cores. Its seen flag is stored in a spare bit of
+  SaveB.stage, preserving the entire SaveB/SRAM layout and checksum.
+  The original Bolt finale card is used at the correct moment.
+- The third-beast opening now explains the hive healing floor instead of
+  suggesting that all damage persists unconditionally.
+- `tests/story_progression_runtime.py` checks the actual route and
+  storage helpers, branching gates, spoiler timing, and ending invocation
+  under sanitizers. Existing platform CI remains a release gate.
+
 ## Salvage gameplay and space rendering fast path — 22 November 2026
 
 - **New in-space salvage content:** destroying hostile pirate craft and mining

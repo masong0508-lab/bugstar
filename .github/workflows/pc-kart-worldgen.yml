@@ -27,6 +27,7 @@ on:
       - 'tests/list_picker_runtime_host.py'
       - 'tests/ui_text_bounds_runtime.py'
       - 'tests/local_rewards_runtime.py'
+      - 'tests/story_progression_runtime.py'
       - 'tests/kart_world_save_runtime.py'
       - 'tests/kart_object_pool_runtime.py'
       - 'tests/kart_native_sprite_anchor_runtime.py'
@@ -99,6 +100,7 @@ on:
       - 'tests/list_picker_runtime_host.py'
       - 'tests/ui_text_bounds_runtime.py'
       - 'tests/local_rewards_runtime.py'
+      - 'tests/story_progression_runtime.py'
       - 'tests/kart_world_save_runtime.py'
       - 'tests/kart_object_pool_runtime.py'
       - 'tests/kart_native_sprite_anchor_runtime.py'
@@ -156,6 +158,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential
       - name: Check NPC, creator, ship-level text and planet HUD under ASan and UBSan
         run: python3 tests/ui_text_bounds_runtime.py
+      - name: Exercise real Bolt story stages, hive guidance and saved Dawn finale
+        run: python3 tests/story_progression_runtime.py
       - name: Validate distinct resident bounties and full-inventory rewards under ASan and UBSan
         run: python3 tests/local_rewards_runtime.py
       - name: Exercise 50-slot menu scrolling and selection with UndefinedBehaviorSanitizer
