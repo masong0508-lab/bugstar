@@ -585,6 +585,29 @@ static int portal_depth=0;
 
 static void scpy(char *d, const char *s){ while(*s) *d++=*s++; *d=0; }
 static void scat(char *d, const char *s){ while(*d) d++; scpy(d,s); }
+static void txt_copy(char *d, int cap, const char *s){
+    if(cap<1) return;
+    int i=0; while(i<cap-1 && *s) d[i++]=*s++;
+    d[i]=0;
+}
+static void txt_append(char *d, int cap, const char *s){
+    if(cap<1) return;
+    int i=0; while(i<cap && d[i]) i++;
+    if(i>=cap){ d[cap-1]=0; return; }
+    while(i<cap-1 && *s) d[i++]=*s++;
+    d[i]=0;
+}
+static void txt_number(char *d, int cap, int v){
+    if(cap<1) return;
+    int i=0; while(i<cap && d[i]) i++;
+    if(i>=cap){ d[cap-1]=0; return; }
+    unsigned x=(unsigned)v;
+    if(v<0){ if(i<cap-1) d[i++]='-'; x=0u-x; }
+    char digits[12]; int n=0;
+    do { digits[n++]=(char)('0'+x%10); x/=10; } while(x);
+    while(n && i<cap-1) d[i++]=digits[--n];
+    d[i]=0;
+}
 static void unum(char *d, u32 v){ char t[12]; int n=0; do { t[n++]='0'+v%10; v/=10; } while(v); char r[12]; for(int i=0;i<n;i++) r[i]=t[n-1-i]; r[n]=0; scat(d,r); }
 static void ncatx(char *d, s64 v, int tight){
     if(v<0){ scat(d,"-"); v = v==-S64_MAX-1 ? S64_MAX : -v; }

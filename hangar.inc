@@ -105,11 +105,11 @@ static int make_ship_(volatile u16 *pg, int first){
             i=row[4];
             if(HIT(K_A)||HIT(K_RIGHT)){ s64 n=pt_amount(hg_step,ship_pts,ship_rk_cap[i]-ship_rk[i]); dirty=1;
                 if(n>0){ ship_rk[i]=(u16)(ship_rk[i]+n); ship_pts-=(u32)n; sk_add[i]+=(u32)n; sk_msg[0]=0; sfx(2); }
-                else { scpy(sk_msg, ship_rk[i]>=ship_rk_cap[i] ? "THAT ONE IS AT ITS TOP RANK" : "NO SHIP POINTS: SHOOT SHIPS, LEVEL UP"); sfx(4); } }
+                else { txt_copy(sk_msg,sizeof sk_msg, ship_rk[i]>=ship_rk_cap[i] ? "THAT ONE IS AT ITS TOP RANK" : "NO POINTS: FIGHT SHIPS TO LEVEL"); sfx(4); } }
             if(HIT(K_LEFT)){ s64 n=pt_amount(hg_step,sk_add[i],sk_add[i]); dirty=1;
                 if(n>0){ ship_rk[i]=(u16)(ship_rk[i]-n); ship_pts+=(u32)n; sk_add[i]-=(u32)n; sk_msg[0]=0; sfx(4); }
-                else { scpy(sk_msg,"ONLY THIS VISIT'S POINTS COME BACK"); sfx(4); } }
-            if(HIT(K_B)){ u32 t=0; for(int k=0;k<NSK;k++){ ship_rk[k]=(u16)(ship_rk[k]-sk_add[k]); ship_pts+=sk_add[k]; t+=sk_add[k]; sk_add[k]=0; } scpy(sk_msg, t ? "UNDONE: ALL POINTS BACK" : "NOTHING TO UNDO"); dirty=1; sfx(4); }
+                else { txt_copy(sk_msg,sizeof sk_msg,"ONLY THIS VISIT'S POINTS RETURN"); sfx(4); } }
+            if(HIT(K_B)){ u32 t=0; for(int k=0;k<NSK;k++){ ship_rk[k]=(u16)(ship_rk[k]-sk_add[k]); ship_pts+=sk_add[k]; t+=sk_add[k]; sk_add[k]=0; } txt_copy(sk_msg,sizeof sk_msg, t ? "UNDONE: ALL POINTS BACK" : "NOTHING TO UNDO"); dirty=1; sfx(4); }
             if(HIT(K_START)) break;
             continue; }
         { int c=hg_tab_n[tab]; if(HIT(K_UP)){ row[tab]=(row[tab]+c-1)%c; dirty=1; sfx(7); } if(HIT(K_DOWN)){ row[tab]=(row[tab]+1)%c; dirty=1; sfx(7); } }

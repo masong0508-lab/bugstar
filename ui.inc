@@ -438,17 +438,17 @@ static int cc_run(volatile u16 *pg, int human, int first){
             if(selp){ text(pg,128,39,"A: LOCK  B: MATCH",C_CYAN,1); text(pg,128,47,"L/R: COPY/PASTE COLOUR",C_CYAN,1); text(pg,128,55,"<>: TURN   ^v: POSE",C_CYAN,1); } else text(pg,128,39,"HOLD SEL: MORE",U_RAISE,1);
             ctext(pg,178,103,nm,C_GOLD);
             { int nc=0; for(int i=0;i<nr;i++) if(R[i].kind==3 && (!R[i].dep || *R[i].dep) && nc<10){ BG_PAL[232+nc]=*R[i].c; rect(pg,127+nc*10,113,9,5,232+nc); nc++; } }     // every colour at a glance
-            if(human){ int cl=hum_calling(); scpy(b,cal_name[cl]); scat(b,": "); scat(b,cal_fx[cl]); ctext(pg,178,122,b,cl==CAL_NONE?C_DGREY:C_GOLD); }
+            if(human){ int cl=hum_calling(); txt_copy(b,sizeof b,cal_name[cl]); txt_append(b,sizeof b,": "); txt_append(b,sizeof b,cal_fx[cl]); ctext(pg,178,122,b,cl==CAL_NONE?C_DGREY:C_GOLD); }
             else { int nl=0; for(int i=0;i<nr;i++) nl+=(lock>>i)&1; if(nl){ scpy(b,""); ncat(b,nl); scat(b," LOCKED"); ctext(pg,178,122,b,C_GOLD); } else if(first) ctext(pg,178,122,"CHANGE IT AT YOUR MIRROR",C_DGREY); }
             if(hn){ scpy(b,"B: UNDO ("); ncat(b,hn); scat(b,")"); } else scpy(b, first ? "B: CANCEL" : "B: BACK");
             ui_lhint(pg,127,131,b,C_GREY);
             { char ds[44]; const char *dn=(human&&hum.style&&cr->nm2)?cr->nm2:cr->nm;
               if(note_t) wrap_text(pg,10,129,28,note,C_GOLD,2);
-              else { if(cr->kind==0) scpy(ds,"A: TYPE A NAME. UP TO 8 LETTERS"); else if(cr->kind==1) scpy(ds,"LEFT/RIGHT: TRY A READY-MADE LOOK");
-                  else if(cr->kind==4) scpy(ds,"LEFT/RIGHT: DRESS FOR A CALLING. IT GIVES PERKS");
-                  else if(cr->kind==5) scpy(ds,"LEFT/RIGHT: LOAD OR SAVE SLOT 1-3. A: DO IT");
-                  else if(cr->kind==2){ scpy(ds,"LEFT/RIGHT: CHANGE THE "); scat(ds,dn); }
-                  else if(on) scpy(ds,"LEFT/RIGHT: BROWSE. A: MIX YOUR OWN"); else scpy(ds,"TURN ITS PART ON FIRST");
+              else { if(cr->kind==0) txt_copy(ds,sizeof ds,"A: TYPE A NAME. UP TO 8 LETTERS"); else if(cr->kind==1) txt_copy(ds,sizeof ds,"LEFT/RIGHT: TRY A READY-MADE LOOK");
+                  else if(cr->kind==4) txt_copy(ds,sizeof ds,"LEFT/RIGHT: CHOOSE A CALLING FOR PERKS");
+                  else if(cr->kind==5) txt_copy(ds,sizeof ds,"LEFT/RIGHT: LOAD/SAVE SLOT 1-3. A: OK");
+                  else if(cr->kind==2){ txt_copy(ds,sizeof ds,"LEFT/RIGHT: CHANGE THE "); txt_append(ds,sizeof ds,dn); }
+                  else if(on) txt_copy(ds,sizeof ds,"LEFT/RIGHT: BROWSE. A: MIX YOUR OWN"); else txt_copy(ds,sizeof ds,"TURN ITS PART ON FIRST");
                   wrap_text(pg,10,129,28,ds,C_GREY,2); } }
             ui_foot(pg,"A: CHANGE  L/R: TAB","SEL: SURPRISE  START: DONE"); }
         t++; int facing=(t/150)&1;

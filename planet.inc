@@ -466,10 +466,19 @@ static u32 phud_sig=0;
 static void kw_topbar(void);
 static void planet_hud(void){
     phud_sig=hud_sig(); if(kw_mode){ kw_topbar(); return; }
-    char b[28]; scpy(b,world_name());
+    char b[28], badge[16]; txt_copy(b,sizeof b,world_name());
 #ifdef TEST_HASH
-    scpy(b,th_str);
-#endif if(zone_cleared && !endless){ scat(b," T"); ncat(b,tiers[TZ]+1); } else if(hellw()){ scat(b," H"); ncat(b,hell_tier()); }
+    txt_copy(b,sizeof b,th_str);
+#endif
+    badge[0]=0;
+    if(zone_cleared && !endless){ txt_copy(badge,sizeof badge," T"); txt_number(badge,sizeof badge,tiers[TZ]+1); }
+    else if(hellw()){ txt_copy(badge,sizeof badge," H"); txt_number(badge,sizeof badge,hell_tier()); }
+    if(badge[0]){
+        int room=(int)sizeof b-textlen(badge)-1;
+        if(room<0) room=0;
+        if(textlen(b)>room) b[room]=0;
+        txt_append(b,sizeof b,badge);
+    }
     draw_hud_safe(b);
 }
 static void show_msg(const char *s){ int n=0; while(s[n] && n<39){ msg[n]=s[n]; n++; } msg[n]=0; msg_timer = n ? 150*xo_v(XO_MSGT)/100 : 0; }
@@ -527,7 +536,7 @@ static void sky_bodies(volatile u16 *pg){
         int cx=sky_col(az), ddm=((az-sun_az)%120+120)%120; if(ddm>=60) ddm-=120;
         int rc = onmoon ? 9 : 2+(int)((h>>20)%3u);
         int cy = onmoon ? hz-40 : (k==0 ? (wd.hour==1?hz-14:wd.hour==2?hz-34:hz-22-(int)((h>>8)&3)) : hz-26-(k*9)%30);
-        cy += (int)((sinx((int)((T*3u/(u32)(per>>5+1))&255))*3)>>14);
+        cy += (int)((sinx((int)((T*3u/(u32)((per>>5)+1))&255))*3)>>14);
         sky_disc(pg,cx,cy,rc,ddm, onmoon?90:91, onmoon?93:92, 0); }
 }
 static void weird_frame(int n){
