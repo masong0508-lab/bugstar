@@ -565,7 +565,7 @@ static void local_talk(PObj *o){
 static void job_text(char *b){
     static const char *const jt[11]={"","SQUASH ","BEAT ","DIG UP ","WIN THE RACE","TALK TO ","HUNT ","MINE ","KART GRAND PRIX","SEARCH ","BRING "};
     scpy(b,jt[pq_type]); if(pq_type!=4 && pq_type!=8){ ncat(b,pq_need); scat(b," "); }
-    switch(pq_type){ case 1: scat(b,"SLUGS"); break; case 2: scat(b,"BEETLES"); break; case 3: scat(b,"FOSSILS"); break; case 5: scat(b,"LOCALS"); break; case 9: scat(b,"PLANTS"); break; case 6: scat(b,spc[0].name); scat(b,"S"); break; case 7: scat(b,"ORE NODES"); break; case 10: scat(b,ore_def[pq_ore].name); break; }
+    switch(pq_type){ case 1: scat(b,"SLUGS"); break; case 2: scat(b,"BEETLES"); break; case 3: scat(b,"FOSSILS"); break; case 5: scat(b,"DIFFERENT LOCALS"); break; case 9: scat(b,"PLANTS"); break; case 6: scat(b,spc[0].name); scat(b,"S"); break; case 7: scat(b,"ORE NODES"); break; case 10: scat(b,ore_def[pq_ore].name); break; }
 }
 static void job_tick(void){                                                           // called when a counter moves: pays out the moment the job is done
     if(!pq_type || pq_done) return;
