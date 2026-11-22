@@ -197,6 +197,12 @@ H main.c 'if(!cont && !dbg.go){ static const char *const t[6]' 'if(!cont && !dbg
 # boot menus with BUGSTAR_LAN_BOOT, then run the unmodified real space loop.
 H main.c '        int cont=title_screen();' '        int cont=getenv("BUGSTAR_LAN_BOOT") ? 0 : title_screen();'
 H main.c '        in_game=1;' '        in_game=1; if(getenv("BUGSTAR_LAN_BOOT")){ scene=2; page_back=1; space_enter(1); music(3); }'
+# Opt-in boss visual regression on real gameplay. Only the PC-generated
+# translation unit includes this hook; GBA/Android builds are unchanged.
+sed -i '1i static void pc_boss_capture_setup(void);' main.c
+H main.c '        run_game();' $'        pc_boss_capture_setup();\n        run_game();'
+echo '#include "../pc_boss_capture.inc"' >> main.c
+
 H main.c 'typedef long long s64;' $'\n#include "sim/sim_proto.h"' after
 H main.c 'XO_PVIS, NXOPT };' 'XO_PVIS, XO_SIDE, NXOPT };'
 H main.c '  [XO_MSGT]   =XR("MESSAGE TIME","HOW LONG POP-UP MESSAGES STAY ON SCREEN",xl_msgt,1,XG_EXTRA),' $'\n  [XO_SIDE]   =XR("SIDE GAME","PC ONLY: NAMED TOWNSFOLK, A JOURNAL AND GOD POWERS. OFF GIVES THE PLAIN GAME",xl_yn,1,XG_LIFE),' after
@@ -345,7 +351,7 @@ if [ -n "$PC_ANDROID_PREP" ]; then
   echo "prepared pc/gen: $(wc -l < sources.txt) sources, flags in pc/gen/cflags.txt"; exit 0
 fi
 mkdir -p ../obj${PC_WIN:+win}${PC_OBJ}; OBJD=../obj${PC_WIN:+win}${PC_OBJ}
-STAMP=$(cat *.inc main.c ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_kartnat.inc ../pc_pnative.inc ../pc_pncomp.inc ../pc_snative.inc ../pc_sncomp.inc ../pc_multiplayer.inc ../platform/pc_net.h ../platform/pc_duel.h ../platform/pc_coop.h ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../pc_sprgen.h ../pc_sprgen_i.h ../pc_sprgen_game.inc ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
+STAMP=$(cat *.inc main.c ../pc_boss_capture.inc ../coil_test.inc ../tests/cn_check.inc ../tests/kart_fuzz.inc assets.h facts.bin ../pc_hw.h ../platform/pc_plat.h ../pc_info.inc ../pc_view.inc ../pc_laws.inc ../pc_ships.inc ../pc_dnative.inc ../pc_kartnat.inc ../pc_pnative.inc ../pc_pncomp.inc ../pc_snative.inc ../pc_sncomp.inc ../pc_multiplayer.inc ../platform/pc_net.h ../platform/pc_duel.h ../platform/pc_coop.h ../shipr/shipr.h ../pc_giant.inc ../pc_warship.inc ../pc_missions.inc ../warship/*.h ../giant/giant.h ../sim/sim_glue.inc ../sim/sim_ui.inc ../sim/*.h ../laws/lawx.h ../content/pcx.h ../pc_sprgen.h ../pc_sprgen_i.h ../pc_sprgen_game.inc ../meaning/meaning.h ../creator/*.inc ../creator/*.h ../shipyard/*.inc ../shipyard/*.h | md5sum | cut -c1-32)-$(echo "$CF" | md5sum | cut -c1-8)
 if [ "$(cat $OBJD/game.stamp 2>/dev/null)" != "$STAMP" ] || [ ! -f $OBJD/game.o ]; then rm -f $OBJD/game.stamp; $CC $CF -c main.c -o $OBJD/game.o || exit 1; echo "$STAMP" > $OBJD/game.stamp; fi
 OBJS="$OBJD/game.o"
 for f in $SRCS; do [ "$f" = gen/main.c ] && continue; o=$OBJD/$(basename $f .c).o; $CC $CF -c $f -o $o; OBJS="$OBJS $o"; done

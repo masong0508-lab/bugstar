@@ -58,14 +58,66 @@ static void quest_take(void){ if(q_type==Q_BRING){ int left=q_need; for(int k=ba
 // ---------------------------------------------------------------- the story, told by Bolt
 // Bolt is the tin droid that rolls after you. He does not know what he is. The data cores in the drone outposts are his memory.
 static const char *const bolt_mem[8][4]={
-    {"I WAS A SHIP.","A NAME WAS PAINTED ON MY HULL.","I REMEMBER THE DARK, AND THE STARS,","AND SOMEONE SMALL WHO SANG."},
-    {"I CARRIED SEEDS.","A GARDEN. A POND. A LAWN AT NIGHT.","I PLANTED THEM ONE BY ONE.","YOUR WORLDS. I MADE THEM."},
-    {"MY CREW WERE BUGS.","SMALL. STUBBORN. BRAVE.","THEY SLEPT IN MY HEART ON THE LONG WAY.","ONE OF THEM LOOKED LIKE YOU."},
-    {"WE FELL.","THE ANTHILL CAUGHT US.","THE ANTS WERE KIND AT FIRST.","THEN THEY WERE HUNGRY."},
-    {"THE KING OPENED MY HEART.","HE BUILT A MOUTH AROUND IT.","HE FED IT SHIPS SO IT WOULD GROW.","THAT MOUTH IS THE TECHNOBEAST."},
-    {"EVERY SHIP IT EATS, IT GROWS.","IT IS EATING MY MEMORY TOO.","THAT IS WHY I FORGET.","THAT IS WHY I AM SMALL."},
-    {"THERE IS A WORD THAT OPENS MY HEART.","THE KING NEVER FOUND IT.","IT IS MY NAME.","MY REAL NAME."},
-    {"I KNOW MY NAME NOW.","TAKE ME TO THE BEAST.","I WILL SAY IT. ITS HEART WILL OPEN.","I AM NOT AFRAID. I HAVE YOU."}};
+    {"I WAS A SHIP.","A NAME WAS PAINTED ON MY HULL.","A SMALL HAND RESTED ON MY WINDOW.","SOMEONE HUMMED UNTIL THE STARS WENT STILL."},
+    {"I CARRIED SEEDS BETWEEN STARS.","A GARDEN. A POND. A LAWN AT NIGHT.","THESE WORLDS GREW INSIDE MY HOLD.","I LEFT THEM HERE SO LIFE COULD FIND A HOME."},
+    {"MY CREW WERE BUGS. I LOVED THEM.","THE SMALLEST ONE FIXED MY LIGHTS.","I PROMISED TO GET THEM HOME.","I CANNOT REMEMBER IF I KEPT MY WORD."},
+    {"WE FELL. THE ANTHILL CAUGHT US.","THE ANTS GAVE US SHELTER. AT FIRST.","THEN THE KING LOCKED THE HATCHES.","MY CREW CALLED THROUGH THE WALLS."},
+    {"THE KING CUT OPEN MY HEART.","HE BUILT A MOUTH AROUND MY ENGINE.","HE FED THAT MOUTH OTHER SHIPS.","IT LEARNED HUNGER. HE CALLED IT POWER."},
+    {"EACH SHIP IT EATS MAKES IT GROW.","EACH BITE TAKES ANOTHER MEMORY.","THE TIN THING I AM IS WHAT ESCAPED.","BUT I STILL REMEMBER YOUR VOICE."},
+    {"A WORD MY HEART WILL HEAR.","THE KING COULD NEVER MAKE ME SAY IT.","IT WAS MY NAME, BEFORE I WAS BOLT.","HE CANNOT HAVE THAT PART OF ME."},
+    {"MY NAME HAS COME BACK AT LAST.","IT WILL OPEN WHAT THE KING LOCKED.","TAKE ME TO THE BEAST'S HEART.","YOU DID NOT LEAVE ME. I WILL NOT LEAVE YOU."}};
+// One short, skippable cinematic chapter slate at each main story beat.
+// Reuses Bolt's sprite and the existing mode-4 page; no new image assets,
+// framebuffer, heap allocation or cost in ordinary gameplay frames.
+static int bolt_chapter_open(volatile u16 *pg, int beat){
+    static const char *const title[8]={"THE GARDEN","THE QUEEN'S MAP","A DREAM OF WATER",
+        "THE HUNGRY MACHINE","THE HUMMING OUTPOST","THE SONG OF HOME",
+        "THE KING'S LAST WORD","THE LAST VOICE"};
+    static const char *const sub[8]={"TWO SMALL TRAVELLERS. ONE LOCKED WORLD.",
+        "THE CAGES ALL LEAD TO ONE PLACE.","THE PAST IS TRYING TO FIND ITS WAY BACK.",
+        "SOMETHING IN THE DARK KNOWS BOLT.","THE MACHINES ARE CALLING HIS NAME.",
+        "THE BEES REMEMBER WHAT HE CANNOT.","THE KING'S SECRET OUTLIVES HIM.",
+        "A SHIP REMEMBERS WHO CARRIED IT."};
+    int k=beat==10?7:beat; if(k<0 || k>7) return 0;
+    int sh=shd_begin(); if(sh) pg=VISPG;
+    rect(pg,0,0,240,160,0);
+    // A quiet fixed star field, with a horizon and the same sprite that
+    // accompanies the player in-game: a cut, not a separate art pipeline.
+    for(int i=0;i<48;i++){ int x=4+(i*73+beat*11)%232, y=18+(i*37+beat*7)%92;
+        pix(pg,x,y,i%4?C_DGREY:C_WHITE); }
+    rect(pg,0,118,240,42,1); rect(pg,0,117,240,1,C_DGREY);
+    // A different recognisable silhouette for each chapter, kept behind
+    // Bolt on the left so the starfield does not feel like eight identical cards.
+    switch(k){
+    case 0: for(int x=30;x<88;x+=16){ rect(pg,x,98,2,15,C_GREEN); rect(pg,x-4,97,10,2,C_GREEN); } break;
+    case 1: rect(pg,32,70,46,42,C_GREY); for(int x=36;x<78;x+=8) rect(pg,x,71,2,39,C_DGREY); break;
+    case 2: for(int y=97;y<=109;y+=6) for(int x=23;x<83;x+=18) rect(pg,x+(y&3),y,12,1,C_CYAN); break;
+    case 3: for(int r=3;r<19;r+=5){ rect(pg,55-r,90-r,2*r,2,C_RED); rect(pg,55-r,90+r,2*r,2,C_RED); } break;
+    case 4: rect(pg,52,70,4,40,C_GREY); rect(pg,39,83,30,2,C_CYAN); rect(pg,34,72,2,15,C_CYAN); break;
+    case 5: for(int x=34;x<75;x+=20){ rect(pg,x,75,2,22,C_GOLD); rect(pg,x-5,94,7,4,C_GOLD); } break;
+    case 6: rect(pg,33,94,50,11,C_GOLD); for(int x=36;x<80;x+=18) rect(pg,x,77,5,17,C_GOLD); break;
+    case 7: rect(pg,30,99,50,8,C_WHITE); rect(pg,46,92,20,7,C_CYAN); rect(pg,38,108,34,2,C_DGREY); break;
+    }
+    text(pg,120-textlen(title[k])*4,10,title[k],C_GOLD,2);
+    stext(pg,120-textlen(sub[k])*2,132,sub[k],C_WHITE);
+    stext(pg,83,148,"A: STORY  START: SKIP ALL",C_GREY);
+    oam_hide_all(); set_affine(31,128,0,0,128);
+    shadow_oam[0].a0=(58&255)|(1<<8)|(1<<9);  // 4bpp Bolt tile, affine + double-size
+    shadow_oam[0].a1=(104&511)|(31<<9)|(1<<14);
+    shadow_oam[0].a2=T_BOLT; oam_flush();
+    wait_release(); int skip=0;
+    for(int t=0;t<90;t++){
+        if((t&15)==0){ shadow_oam[0].a0=((58+((t>>4)&1))&255)|(1<<8)|(1<<9);
+            oam_flush(); }                                    // two-pixel breathing beat
+        // Twinkle only in the intertitle, never during the game loop.
+        if((t&7)==0) for(int i=0;i<6;i++){ int x=4+((i*73+beat*11)%232), y=18+((i*37+beat*7)%92);
+            pix(pg,x,y,(t&8)?C_WHITE:C_DGREY); }
+        vsync(); read_keys();
+        if(HIT(K_START)){ skip=1; break; }
+        if(HIT(K_A)) break;
+    }
+    oam_hide_all(); oam_flush(); wait_release(); shd_end(sh); return skip;
+}
 static void bolt_card_x(volatile u16 *pg, const char *const *ln, int n, int small){        // a card with Bolt's little face (small: the face sits in the title band, for cards with long lines)
     oam_hide_all();
     if(small){ int y0=88-(34+n*11+14)/2; set_affine(31,384,0,0,384); shadow_oam[0].a0=((y0-8)&255)|(1<<8)|(1<<9); shadow_oam[0].a1=((12)&511)|(31<<9)|(1<<14); }
@@ -74,17 +126,154 @@ static void bolt_card_x(volatile u16 *pg, const char *const *ln, int n, int smal
     oam_flush(); card(pg,"BOLT",ln,n); oam_hide_all(); oam_flush();
 }
 static void bolt_card(volatile u16 *pg, const char *const *ln, int n){ bolt_card_x(pg,ln,n,0); }
-static void bolt_story(volatile u16 *pg, int beat){                            // beats: 0 the start, 1..6 after each zone's boss, 10 the beast dies
+static const char *const story_boss_title[6]={
+    "GARDEN: THE CAGE KEEPER",
+    "POND: THE LOCKKEEPER",
+    "PICNIC: THE QUARTERMASTER",
+    "NIGHT LAWN: THE WATCHER",
+    "HONEY: THE CHOIR WARDEN",
+    "ANTHILL: THE KING'S FURNACE"
+};
+static const char *const story_boss_warning[6]={
+    "CAGE CHAINS. THE KEEPER IS NEAR.",
+    "WARM PIPES. THE LOCKKEEPER IS NEAR.",
+    "STOLEN RATIONS. A GUARD IS NEAR.",
+    "THE NIGHT WATCHER IS LISTENING.",
+    "THE CHOIR WARDEN HEARS OUR STEPS.",
+    "THE FURNACE THRUMS. THE KING IS NEAR."
+};
+static const char *const story_boss_evidence[6][3]={
+    {"CAGE MANIFEST: SHIPPED TO THE POND.",
+     "THE PRISONERS WERE MARKED AS SEED.",
+     "THE KEEPER SIGNED EACH TRANSFER."},
+    {"WARM WATER DIVERTED TO THE NEST.",
+     "TEMPERATURES KEPT FALLING ANYWAY.",
+     "THE KING DEMANDED MORE PRISONERS."},
+    {"RATIONS SENT TO WORK CREWS BELOW.",
+     "THE CAPTIVES DIG UNDER THE LAWN.",
+     "THEIR NAMES WERE CROSSED OUT."},
+    {"SHIP METAL MOVED THROUGH THE DARK.",
+     "IT HUMMED EVEN WHEN NO ONE TOUCHED IT.",
+     "NEXT TRANSFER: THE HONEY FORGES."},
+    {"THE FURNACE REQUIRES A SONG.",
+     "THE WORKERS RECORDED A SHIP'S CALL.",
+     "THE KING ORDERED THE TAPE ERASED."},
+    {"THE KING LOCKED A HEART IN THE BEAST.",
+     "PRISONERS STILL FILL THE LOWER CELLS.",
+     "THE MACHINE MUST NEVER LEARN ITS NAME."}
+};
+static const char *const story_boss_aftermath[6]={
+    "THE GARDEN'S CAGE ROUTE IS BROKEN.",
+    "THE POND'S TRANSFER LOCKS ARE OPEN.",
+    "THE STOLEN RATION LINE IS CLOSED.",
+    "THE NIGHT WATCH NO LONGER HUNTS BUGS.",
+    "THE HONEY FORGES HAVE FALLEN SILENT.",
+    "THE KING'S FURNACE HAS LOST ITS MASTER."
+};
+static const char *const story_boss_reward[6]={
+    "SUPPLY CACHE: FOOD RESTORED.",
+    "COOLANT CACHE: UP TO 20 FUEL.",
+    "STOLEN GOLD RECOVERED.",
+    "REPAIR BENCH: HULL PATCHED.",
+    "ENGINE PARTS RECOVERED: +24 SCRAP.",
+    "PRISON INFIRMARY: HEALTH RESTORED."
+};
+static void bolt_story(volatile u16 *pg, int beat){       // start, six zones, and the final memory
+    if(bolt_chapter_open(pg,beat)) return; // START skips this whole scene without touching story flags
     switch(beat){
-    case 0: { static const char *const t[6]={"A TIN CAN ROLLS UP BEHIND YOU.","IT BLINKS. IT RATTLES. IT SPEAKS.","","\"I DON'T KNOW WHAT I AM.","I KNOW THAT I AM YOURS.","THE ANTS TOOK YOUR FRIENDS. DOWN. GO DOWN.\""}; bolt_card(pg,t,6); break; }
-    case 1: { static const char *const t[5]={"\"THE QUEEN KEPT A MAP.","THE ANTS ARE TAKING BUGS TO THE ANTHILL.","EVERY ONE OF THEM, TO DIG.","DIG FOR WHAT? I DON'T KNOW.","BUT MY WHEELS SHAKE WHEN I THINK OF IT.\""}; bolt_card(pg,t,5); break; }
-    case 2: { static const char *const t[5]={"\"I DREAMED LAST NIGHT. DROIDS DON'T DREAM.","I DREAMED OF WATER, AND OF FALLING.","I THINK I HAD A SHIP ONCE.","OR I WAS ONE.","DON'T LAUGH.\""}; bolt_card(pg,t,5); break; }
-    case 3: { static const char *const t[5]={"\"THAT MACHINE IN THE DARK.","THE ONE THAT ATE THE PIRATES.","IT LOOKED AT ME.","IT LOOKED AT ME LIKE IT KNEW ME.","I THINK IT DOES.\""}; bolt_card(pg,t,5); break; }
-    case 4: { static const char *const t[5]={"\"THE ANTS DIG FOR METAL. OLD METAL.","THEY BUILD OUTPOSTS AROUND WHAT THEY FIND.","I FELT ONE HUMMING. IT HUMMED MY TUNE.","THE ONE I HUM WHEN YOU SLEEP.","FIND THE OUTPOSTS. PLEASE.\""}; bolt_card(pg,t,5); break; }
-    case 5: { static const char *const t[5]={"\"THE BEES SING AN OLD SONG.","A STAR FELL, THEY SAY. LONG AGO.","IT CARRIED EVERY WORLD INSIDE IT.","THEY SING IT TO THEIR CHILDREN.","WHY DO I KNOW ALL THE WORDS?\""}; bolt_card(pg,t,5); break; }
-    case 6: { static const char *const t[6]={"THE ANT KING, DYING, LAUGHS.","\"YOU CAME FOR YOUR FRIENDS?","THE DAWN CAME FOR EVERYTHING.","I ONLY OPENED ITS HEART.\"","FAR AWAY, SOMETHING WAKES.","BOLT GOES VERY QUIET."}; bolt_card(pg,t,6); break; }
-    case 10: { static const char *const t[6]={"THE MOUTH FALLS APART.","INSIDE IT, A SHIP. OLD. WHOLE. SINGING.","BOLT'S VOICE COMES FROM EVERYWHERE AT ONCE.","\"I REMEMBER ALL OF IT.","THANK YOU FOR CARRYING ME.","NOW LET ME CARRY YOU. ALL OF YOU. HOME.\""}; bolt_card(pg,t,6); break; }
+    case 0: { static const char *const t[6]={"A TIN CAN ROLLS OUT OF THE GRASS.",
+        "TWO LIGHTS BLINK IN A DENTED FACE.","\"I CAN'T REMEMBER WHERE I CAME FROM.",
+        "BUT I HEARD THE CAGES CLANG SHUT.","YOUR FRIENDS ARE DOWN THERE.",
+        "WE CAN BE AFRAID LATER. COME ON.\""}; bolt_card(pg,t,6); break; }
+    case 1: { const char *t[6]={"\"THE QUEEN KEPT A MAP OF CAGES.",
+        have_bug[BUG_ANT] ? "RUNAWAY ANT: THE WORKERS HID A PASSAGE." : "EVERY ARROW POINTS TOWARD THE ANTHILL.","THE ANTS NEED BUGS TO DIG FOR SOMETHING.",
+        bugs_freed ? "YOU SAVED SOME. THE OTHERS ARE STILL GONE." : "WE HAVE TO FIND THE OTHERS.",
+        "I WISH I KNEW WHAT THEY WERE DIGGING FOR.","THE NEXT STAR MAY KNOW.\""};
+        bolt_card(pg,t,6); break; }
+    case 2: { static const char *const t[6]={"\"I DREAMED AGAIN. DROIDS DON'T DREAM.",
+        "THERE WAS WATER AGAINST MY WINDOW.","SOMEONE WAS SINGING TO STAY AWAKE.",
+        "I THINK I HAD A SHIP ONCE.","OR I WAS THE SHIP.",
+        "PLEASE DON'T LAUGH. I'M TRYING TO REMEMBER.\""}; bolt_card(pg,t,6);
+        if(have_bug[BUG_LADY]){
+            static const char *const comfort[2]={
+                "LADYBUG: REMEMBERING CAN HURT TOO.",
+                "\"WE'LL BE HERE WHEN YOU'RE READY.\""};
+            bolt_card(pg,comfort,2);
+        }
+        break; }
+    case 3: { const char *t[6]={"THE MACHINE SWALLOWS A PIRATE SHIP.",
+        have_bug[BUG_FIRE] ? "THE FIREFLY'S LIGHT GOES OUT FOR A MOMENT." :
+                             "ITS METAL SKIN SHIFTS LIKE SOMETHING ALIVE.",
+        "\"WHEN IT TURNED, I KNEW THAT SOUND.",
+        "IT LOOKED STRAIGHT AT ME.","I THINK IT REMEMBERS ME.",
+        "I WISH I KNEW WHY.\""}; bolt_card(pg,t,6); break; }
+    case 4: { const char *t[6]={"\"THE ANTS ARE DIGGING FOR OLD METAL.",
+        have_bug[BUG_ANT] ? "RUNAWAY ANT: I SAW THEM SEAL THE HATCHES." :
+                           "THEY BUILD OUTPOSTS AROUND WHAT THEY FIND.",
+        "ONE OF THOSE MACHINES HUMMED MY TUNE.",
+        have_bug[BUG_CRICKET] ? "CRICKET: THEY MADE US MARCH TO THAT TUNE." :
+                                 "THE SAME TUNE I HUM WHEN YOU SLEEP.",
+        "MY HEAD HURTS. CAN TIN GET HEADACHES?",
+        "PLEASE. FIND THE OUTPOSTS.\""}; bolt_card(pg,t,6); break; }
+    case 5: { const char *t[6]={"THE BEES SING OVER THE RUINED HIVES.",
+        "THEIR SONG IS ABOUT A FALLEN STAR.","A SHIP THAT CARRIED GARDENS IN ITS HEART.",
+        "IT GAVE SMALL THINGS A PLACE TO LIVE.",
+        have_bug[BUG_BEE] ? "THE RESCUED BEE SINGS. BOLT STOPS ROLLING." :
+                            "BOLT STOPS ROLLING. HE KNOWS THE TUNE.",
+        "\"I KNOW THE NEXT VERSE. I DON'T KNOW WHY.\""}; bolt_card(pg,t,6); break; }
+    case 6: { static const char *const t[6]={"THE ANT KING FALLS. HIS CROWN BREAKS.",
+        "\"THE WINTER CAME. OUR EGGS WERE FREEZING.",
+        "I MADE YOUR FRIENDS DIG FOR BURIED ENGINES.",
+        "I CUT OPEN A SHIP TO HEAT THE NEST.",
+        "THEN I FED THE FURNACE LIVING SHIPS.",
+        "IT LEARNED MY HUNGER.\""}; bolt_card(pg,t,6);
+        { const char *after[4]={
+            have_bug[BUG_ANT] ? "RUNAWAY ANT: WE NEVER ASKED FOR THIS." :
+                                "BOLT WATCHES THE EMPTY THRONE.",
+            story_boss_reward[5],
+            "\"WE STOPPED HIM. BUT HIS MACHINE LIVES.\"",
+            "BEYOND THE STARS, A VAST ENGINE WAKES."};
+          bolt_card(pg,after,4); }
+        break; }
+    case 10: { static const char *const t[6]={"THE MOUTH FALLS APART.",
+        "INSIDE IT, A SHIP. OLD. WHOLE. SINGING.","BOLT'S VOICE COMES FROM EVERYWHERE AT ONCE.",
+        "\"I REMEMBER ALL OF IT.","THANK YOU FOR CARRYING ME.",
+        "NOW LET ME CARRY YOU. ALL OF YOU. HOME.\""}; bolt_card(pg,t,6);
+        // The playable galaxy remains open. A final quiet scene connects the
+        // freed crew to that freedom without falsely claiming every cage opened.
+        const char *after[6]={"THE FIRST MORNING WITHOUT THE KING.",
+            bugs_freed ? "THE BUGS YOU FREED WATCH THE SUN RISE." :
+                         "OPEN CAGES WAIT FOR FRIENDS STILL MISSING.",
+            have_bug[BUG_ANT] ? "THE RUNAWAY ANT WALKS HOME WITHOUT FEAR." :
+                                "THE LAST ROYAL BANNERS COME DOWN.",
+            "DAWN'S WINDOWS LIGHT UP ONE BY ONE.",
+            "NOBODY TELLS YOU WHERE TO FLY NEXT.",
+            "\"WHERE SHOULD WE GO FIRST?\""};
+        bolt_card(pg,after,6); break; }
     }
+}
+// Three deliberate breathers among the eight outpost memories: the first
+// recognition, the betrayal, and the complete identity. No extra save flags;
+// the already-persisted data-core count determines when they play.
+static void bolt_memory_reaction(volatile u16 *pg, int cores){
+    if(cores==1){ static const char *const t[3]={
+        "BOLT PUTS A WHEEL AGAINST YOUR FOOT.",
+        "\"I THINK SOMEONE ONCE DID THAT FOR ME.\"",
+        "\"THANK YOU FOR WAITING WHILE I REMEMBER.\""};
+        bolt_card(pg,t,3); }
+    else if(cores==4){ static const char *const t[4]={
+        "BOLT'S LITTLE LIGHTS GO DARK.",
+        "\"MY CREW TRUSTED THE ANTS. SO DID I.\"",
+        "\"THE KING LOCKED US IN OUR OWN SHIP.\"",
+        "\"I DON'T WANT TO FORGET THEM AGAIN.\""};
+        bolt_card(pg,t,4); }
+    else if(cores>=8){ static const char *const t[5]={
+        "\"THE LAST PIECE HAS COME HOME.\"",
+        "\"I AM THE DAWN. THAT WAS MY NAME.\"",
+        "\"THE KING LOCKED MY HEART IN THE BEAST.\"",
+        "\"TAKE ME THERE. WE CAN OPEN IT TOGETHER.\"",
+        "GALAXY MAP: PRESS L TO FIND THE BEAST."};
+        bolt_card(pg,t,5); }
 }
 // what Bolt says when you talk to him at the ship: what worries him, the next thing to do, what he remembers, and a remark
 static int fuel_max(void);
@@ -112,12 +301,16 @@ static const char *const bolt_idle[64]={"\"I COUNTED MY WHEELS. STILL TWO.\"","\
     "\"BEWARE OF SLIME. IT HAS A LONG MEMORY.\"","\"GOOD GEAR BEATS GOOD LUCK. USUALLY.\"","\"I PRACTICED SAYING YOUR NAME. IT IS BUG.\"",
     "\"ASK ME ANYTHING. I MAY ANSWER.\"","\"PLAN: GO. FIGHT. LOOT. NAP. REPEAT.\"","\"I DREAM OF A BIGGER SHIP. NO OFFENSE.\"",
     "\"THAT WAS A GOOD DAY. I WROTE IT DOWN.\""};
+// The six story bosses are parts of the same operation. These small ROM-only
+// tables are read at boss-floor arrival, from a searchable evidence chest, and
+// after the first victory. Cleared-mask bits already persist the consequences;
+// revisiting a world never grants the first-clear reward again.
 static const char *const bolt_zone[6][2]={{"\"THE GARDEN IS WHERE I WOKE UP. IT FEELS KIND.\"","\"BEE HUM AND WET GRASS. I COULD STAY.\""},
     {"\"THE POND IS CALM. I DO NOT TRUST CALM.\"","\"DEEP WATER. I AM ONLY WATERPROOF IN SPIRIT.\""},
     {"\"SOMEONE LEFT A PICNIC. ALL OF IT. ODD.\"","\"THE ANTS LIKE THIS PLACE. I WONDER WHY.\""},
     {"\"THE NIGHT LAWN GLOWS. THE GLOWFLIES WATCH US.\"","\"I DO NOT LIKE THE WRAITHS. THEY KNOW ME.\""},
     {"\"THE BEES SING. I KNOW THE TUNE. HELP.\"","\"DUST AND HONEY. MY SENSORS ARE CONFUSED.\""},
-    {"\"THE ANTHILL. THE DAWN FELL HERE. SO DID I.\"","\"THE KING WAITS. LET US NOT KEEP HIM.\""}};
+    {"\"THE ANTHILL. SOMETHING FELL. SO DID I.\"","\"THE KING WAITS. LET US NOT KEEP HIM.\""}};
 static const char *const bolt_cls[16][2]={{"\"A PLAIN GOOD WORLD. I WILL TAKE IT.\"","\"NOTHING HERE WANTS US DEAD. SUSPICIOUS.\""},
     {"\"MORE HILLS THAN A SHIP SHOULD LAND ON.\"","\"I ROLL UP. I ROLL DOWN. I ROLL UP AGAIN.\""},
     {"\"GRASS AS FAR AS MY SENSORS GO.\"","\"A FLAT WORLD. MY KIND OF WORLD.\""},
@@ -157,12 +350,24 @@ static void bolt_talk(volatile u16 *pg){
       if(fuel*4<fuel_max() && w<2){ scpy(c1,"\"FUEL IS AT "); ncat(c1,fuel*100/fuel_max()); scat(c1," PERCENT. CAREFUL.\""); t[n++]=c1; w++; }
       if(hull<40 && w<2){ scpy(c2,"\"THE HULL IS AT "); ncat(c2,hull); scat(c2," PERCENT. I AM WORRIED.\""); t[n++]=c2; w++; }
       if(cargo_n()>=cargo_cap+ship_hold_bonus() && w<2){ t[n++]="\"THE HOLD IS FULL. SELL LOOT.\""; w++; } }
-    if(!endless && !zone_cleared){ t[n++]="\"THE DOOR IS THE WAY DOWN.\""; t[n++]="\"THE ARROW KNOWS. FOLLOW IT.\""; t[n++]="\"THE BOSS SITS AT THE BOTTOM.\""; }
-    else if(!endless && zone<5){ scpy(l1,"\"THIS WORLD IS FREE. NEXT IS "); scat(l1,tint_name[zone+1]); scat(l1,".\""); t[n++]=l1; t[n++]="\"PICK AUTOPILOT AND I'LL FLY US.\""; if(zone>=1) t[n++]="\"OR GO DOWN AGAIN. IT'S HARDER. IT PAYS.\""; }
-    else if(!ant_king){ t[n++]="\"THE ANT KING WAITS BELOW.\""; t[n++]="\"YOUR FRIENDS ARE THERE. ALL OF THEM.\""; t[n++]="\"I'M SCARED. LET'S GO ANYWAY.\""; }
+    if(dawn_free){ t[n++]="\"I AM DAWN. BUT YOU CAN STILL CALL ME BOLT.\"";
+        t[n++]=bugs_freed ? "\"WE SAVED FRIENDS. WE CAN KEEP LOOKING.\"" :
+                            "\"SOME CAGES ARE STILL OUT THERE. LET'S GO.\""; }
+    else if(!endless && !zone_cleared){ t[n++]="\"THE DOOR IS THE WAY DOWN.\""; t[n++]="\"THE ARROW KNOWS. FOLLOW IT.\""; t[n++]="\"THE BOSS SITS AT THE BOTTOM.\""; }
+    else if(!endless && zone<5){ scpy(l1,"\"THIS WORLD IS FREE. NEXT IS "); scat(l1,tint_name[zone+1]); scat(l1,".\""); t[n++]=l1;
+        t[n++]=story_boss_aftermath[zone];
+        t[n++]="\"PICK AUTOPILOT AND I'LL FLY US.\""; if(zone>=1) t[n++]="\"OR GO DOWN AGAIN. IT'S HARDER. IT PAYS.\""; }
+    else if(!ant_king){ t[n++]="\"THE ANT KING WAITS BELOW.\"";
+        t[n++]="\"HE KNOWS WHERE THE CAPTIVES WERE TAKEN.\"";
+        t[n++]="\"I'M SCARED. LET'S GO ANYWAY.\""; }
     else if(beast_stage>=3 && data_cores<8){ scpy(l1,"\"THE OUTPOSTS HOLD MY MEMORY. "); ncat(l1,data_cores); scat(l1," OF 8.\""); t[n++]=l1; t[n++]="\"RED MARKS ON THE MAP. HATCHES ON THE GROUND.\""; t[n++]="\"BRING ME BACK TO MYSELF.\""; }
     else if(beast_stage>=3){ t[n++]="\"I KNOW MY NAME. THE DAWN.\""; t[n++]="\"FLY INTO THE BEAST. SHOOT ITS CORE.\""; t[n++]="\"I WILL DO THE REST.\""; }
-    else { t[n++]="\"THE GALAXY IS OPEN. GO ANYWHERE.\""; t[n++]="\"THE BEAST IS OUT THERE. SO ARE ITS OUTPOSTS.\""; }
+    else if(ant_king && data_cores>=8){
+        t[n++]="\"MY MEMORIES ARE WHOLE. MY HEART ISN'T.\"";
+        t[n++]="\"OPEN THE MAP. FOLLOW THE BEAST'S SIGNAL.\"";
+    }
+    else { t[n++]="\"THE GALAXY IS OPEN. GO ANYWHERE.\"";
+           t[n++]="\"RED OUTPOSTS ON THE MAP HOLD MY PAST.\""; }
     // Make the companion's advice match the job the player actually took.
     // qhint lives until the card finishes; no new global RAM is needed.
     char qhint[48];
@@ -184,7 +389,16 @@ static void bolt_talk(volatile u16 *pg){
         else scpy(qhint,"\"THE SHIP BOARD WILL TAKE YOUR GOODS.\"");
         if(qhint[0]) t[n++]=qhint;
     }
-    if(data_cores>0 && n<8){ int k=data_cores-1; if(k>7) k=7; scpy(l2,"\"I REMEMBER: "); scat(l2,bolt_mem[k][0]); scat(l2,"\""); t[n++]=l2; }
+    if(n<8 && have_bug[BUG_PILL] && gold<30)
+        t[n++]="\"THE PILL BUG SAVED HIS LAST TEN GOLD FOR US.\"";
+    if(data_cores>0 && n<8){ int k=data_cores-1; if(k>7) k=7;
+        // Bound the recap even if a future writer lengthens a memory line:
+        // the four-line recovery card can contain longer prose than this HUD.
+        scpy(l2,"\"I REMEMBER: ");
+        const char *m=bolt_mem[k][0]; int j=textlen(l2), cap=(int)sizeof l2-2;
+        while(*m && j<cap) l2[j++]=*m++;
+        if(*m && j>=3){ l2[j-3]='.'; l2[j-2]='.'; l2[j-1]='.'; }
+        l2[j++]='"'; l2[j]=0; t[n++]=l2; }
     if(n<8){                                                                                    // a remark about where you are: the world, its traits, its weather and hour, its gravity and size
         const char *c[20]; int nc=0;
         if(!endless){ c[nc++]=bolt_zone[zone%6][0]; c[nc++]=bolt_zone[zone%6][1]; }
@@ -635,7 +849,7 @@ static void credits(void){
     text(pg,120-7*6+1,9,"THE END",C_DGREY,3); text(pg,120-7*6,8,"THE END",C_GOLD,3);
     char b[48];
     char l1[40]; scpy(l1,bug_name); scat(l1," FREED THE BUGS.");
-    const char *ln[6]={"...OF THE BEGINNING.",l1,"THE ANT KING IS BEATEN. THE DAWN STIRS.","BUGSTAR","A GAME BY DIPPINN PRODUCTIONS","MADE WITH CLAUDE (AI)"};
+    const char *ln[6]={"...OF THE BEGINNING.",l1,"THE ANT KING IS BEATEN. THE BEAST STIRS.","BUGSTAR","A GAME BY DIPPINN PRODUCTIONS","MADE WITH CLAUDE (AI)"};
     static const u8 ly[6]={28,42,50,64,72,80};
     for(int i=0;i<6;i++){ int c = i==3?C_GOLD : i==0?C_GREY : C_WHITE; text(pg,120-textlen(ln[i])*2,ly[i],ln[i],c,1); }
     scpy(b,"LEVEL "); ncat(b,level); scat(b,"   BUGS FREED "); ncat(b,bugs_freed); scat(b,"   FAME "); ncat(b,fame); text(pg,120-textlen(b)*2,94,b,C_CYAN,1);

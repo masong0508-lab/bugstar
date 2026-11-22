@@ -361,7 +361,7 @@ static void build_space_palette(void){
     BG_PAL[52]=rgb15(120,255,120); BG_PAL[53]=rgb15(255,80,70); BG_PAL[54]=rgb15(220,230,240); BG_PAL[55]=rgb15(90,220,255); BG_PAL[56]=rgb15(90,100,120);
     BG_PAL[57]=rgb15(16,20,34); BG_PAL[58]=rgb15(60,80,120);
 }
-static int beast_stage=0, beast_fight=0, ambush_t=0, no_ambush=0, dawn_free=0, chase_cam=1; static u64 b3_hp, b3_max;
+static int beast_stage=0, beast_fight=0, ambush_t=0, no_ambush=0, chase_cam=1; static u64 b3_hp, b3_max;
 static int in_lair=0, tech_lv=0, beast_kills=0, beast_charge=0, beast_fire=0, beast_t=0, lair_out=0; static u64 beast_hp, beast_max; static char beast_dmg_txt[16]; static int beast_dmg_t=0;
 static int hive_active(void){ return beast_stage>=3 && hive_done<5; }
 static int hive_here(void){ return endless && !forge_on && hive_active() && cur_sys==hive_sys(); }
@@ -509,9 +509,13 @@ static void story_card(const char *title, const char *const *ln, int n){
     rect(pg,8,24,224,112,57); rect(pg,8,24,224,1,53); rect(pg,8,135,224,1,53);
     text(pg,120-textlen(title)*2,30,title,53,1);
     for(int i=0;i<n;i++) text(pg,120-textlen(ln[i])*2,48+i*12,ln[i],54,1);
-    text(pg,84,124,"A: CONTINUE",55,1);
-    wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)); wait_release(); shd_end(sh);
+    text(pg,78,124,"A/START: CONTINUE",55,1);
+    wait_release(); do { vsync(); read_keys(); } while(!HIT(K_A)&&!HIT(K_START)); wait_release(); shd_end(sh);
 }
+// Completing Bolt's story is separate from counting Technobeast victories.
+// A player who defeats the beast early must still be able to reach the true
+// ending after recovering all eight memories.
+static int beast_finale_ready(int cores, int released){ return cores>=8 && !released; }
 static void beast_shot(void){
     int sx,sy; s32 z; if(!sproj(0,0,0,&sx,&sy,&z) || z>30000) return;
     int r=(int)(1700L*beast_sc()/3*FOCS/z); if(r<4) r=4;
@@ -530,13 +534,20 @@ static void beast_shot(void){
     if(!beast_hp && beast_fight<3){
         boom(0,0,0,40,49); sfx(9); beast_stage=beast_fight; lair_out=1;
         int g = beast_fight==1 ? 300 : 3000; gold+=g; gain_xp(beast_fight==1 ? 60 : 400);
-        if(beast_fight==1){ static const char *const t[5]={"IT BREAKS APART... AND FLEES.","YOU GRAB A PIECE OF ITS TECH.","STATIONS CAN NOW BUILD TECH CORES.","EACH ONE MAKES YOUR LASER 4X","STRONGER AGAINST THE BEAST."}; story_card("THE HATCHLING ESCAPES",t,5); }
-        else { static const char *const t[5]={"IT FLEES TOWARD THE ANTHILL.","IT WAS FEEDING TECH TO THE ANT KING!","THAT IS WHY THE ANTS GOT SO STRONG.","BEAT THE ANT KING","TO CUT THE BEAST OFF."}; story_card("THE BEAST ESCAPES AGAIN",t,5); }
+        if(beast_fight==1){ static const char *const t[5]={"THE LITTLE MOUTH CRACKS. IT ESCAPES.","BOLT HEARS A TUNE IN THE WRECKAGE.","YOU SALVAGE A PIECE OF ITS ENGINE.","STATIONS CAN NOW BUILD TECH CORES.","EACH CORE BOOSTS YOUR LASER 4X."}; story_card("THE HATCHLING ESCAPES",t,5); }
+        else { static const char *const t[5]={"IT LEAVES AN EMPTY FLEET IN ITS WAKE.","ITS SIGNAL RUNS TOWARD THE ANTHILL.","IT HAS BEEN FEEDING THE ANT KING TECH.","THE KING AND THE BEAST NEED EACH OTHER.","STOP THE KING TO BREAK THEIR SUPPLY."}; story_card("THE BEAST ESCAPES AGAIN",t,5); }
         return;
     }
     if(!beast_hp){
-        if(!beast_kills){ if(data_cores>=8){ static const char *const t[5]={"THE MOUTH FALLS APART.","INSIDE IT: A SHIP. OLD. WHOLE. SINGING.","BOLT'S VOICE COMES FROM EVERYWHERE AT ONCE.","\"I REMEMBER ALL OF IT. THANK YOU.\"","\"NOW LET ME CARRY YOU HOME.\""}; story_card("THE DAWN",t,5); dawn_free=1; }
-                          else { static const char *const t[4]={"THE TECHNOBEAST FALLS!","BUT ITS CORE STILL HUMS...","IT WILL REBUILD ITSELF","TEN TIMES STRONGER."}; story_card("VICTORY",t,4); } }
+        if(beast_finale_ready(data_cores,dawn_free)){
+            bolt_story(VISPG,10); dawn_free=1;
+        } else if(!beast_kills && data_cores<8){
+            static const char *const t[4]={"THE TECHNOBEAST FALLS!",
+                "BUT ITS HEART IS STILL LOCKED.",
+                "RECOVER ALL 8 OF BOLT'S MEMORIES.",
+                "RETURN TO OPEN IT. THE BEAST WILL REGROW."};
+            story_card("VICTORY",t,4);
+        }
         beast_kills++; int g=100000*beast_kills; gold+=g; gain_xp(2000*beast_kills);
         boom(0,0,0,40,49); sfx(9);
         b3_max = b3_max>=1000000000000000000ULL ? b3_max : b3_max*10; b3_hp=b3_max; beast_max=b3_max; beast_hp=b3_hp;
@@ -598,10 +609,10 @@ static void lair_enter(void){
     shd_off();
     music(4); no_ambush=1; space_enter(0); no_ambush=0; in_lair=1; ambush_t=0;
     beast_fight = beast_stage>=2 ? 3 : beast_stage+1;
-    if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"WITHOUT ITS KING. THE BEAST WAKES.","IT ATE A WHOLE MOON. 1 TRILLION HP.","YOU CANNOT WIN TODAY. HIT IT AND WARP OUT.","GET STRONGER. AND COME BACK.","ITS WOUNDS WILL NEVER HEAL."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); hive_card=1; hive_done=0; }
+    if(beast_fight==3){ if(beast_stage<3){ static const char *const t[5]={"THE KING IS GONE. THE BEAST IS NOT.","IT HAS SWALLOWED A MOON. 1 TRILLION HP.","FIVE TECH HIVES KEEP ITS WOUNDS CLOSED.","BREAK THE HIVES. STRIKE ITS CORE.","WARP OUT WHEN NEEDED. DAMAGE PERSISTS."}; story_card("THE TECHNOBEAST - COMPLETE",t,5); hive_card=1; hive_done=0; }
         beast_stage=3; beast_max=b3_max; beast_hp=b3_hp; }
-    else if(beast_fight==1){ beast_max=beast_hp=600; static const char *const t[5]={"A SIGNAL FROM THE DARK...","A TINY MACHINE BUG BUILT FROM SCRAP.","IT EATS SHIPS TO GROW BIGGER.","SHOOT ITS GLOWING CORE!","STOP IT WHILE IT IS SMALL."}; story_card("THE TECHNOBEAST - HATCHLING",t,5); }
-    else { beast_max=beast_hp=40000; static const char *const t[5]={"IT IS BACK. AND MUCH BIGGER.","IT ATE A WHOLE PIRATE FLEET.","NOW IT HAS A BEAM.","WHEN IT CHARGES. HOLD B","TO FLY FAST AND DODGE."}; story_card("THE TECHNOBEAST - GROWN",t,5); } beast_t=1; beast_charge=0; beast_fire=0;
+    else if(beast_fight==1){ beast_max=beast_hp=600; static const char *const t[5]={"A SIGNAL PULSES BETWEEN THE STARS.","A SMALL IRON MOUTH OPENS IN THE DARK.","INSIDE IT: SCRAP FROM A DOZEN SHIPS.","IT TURNS TOWARD BOLT. HE GOES SILENT.","SHOOT THE GLOWING CORE. MAKE IT FLEE."}; story_card("THE TECHNOBEAST - HATCHLING",t,5); }
+    else { beast_max=beast_hp=40000; static const char *const t[5]={"IT HAS RETURNED. BIGGER. LOUDER.","THE PIRATE FLEET IS GONE. NO WRECKS.","A BEAM BUILDS INSIDE ITS THROAT.","HOLD B TO THRUST WHEN IT CHARGES.","HOLD L TOO FOR EXTRA BURN IF FUELED."}; story_card("THE TECHNOBEAST - GROWN",t,5); } beast_t=1; beast_charge=0; beast_fire=0;
     for(int i=0;i<NPIR;i++) pir[i].alive=0;
     shx=0; shy=0; shz=beast_fight==1?-7000:beast_fight==2?-11000:-15000; yaw=0; pitch=0; speed=0;
     BG_PAL[57]=rgb15(34,12,16); BG_PAL[58]=rgb15(130,50,60);
@@ -609,7 +620,14 @@ static void lair_enter(void){
 }
 static int uni_sub(u32 *r, const u32 *a, const u32 *b); static int uni_dec(char *d, const u32 *u);
 static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, int kind);
-static void lair_leave(void){ int f=beast_fight; in_lair=0; music(3); { u32 t10[LYW]={20}; char nm[24]; sys_name(cur_sys,nm); voyage("THE LAIR",nm,t10,48,4); } no_ambush=1; space_enter(0); no_ambush=0; if(hive_card) show_hive_card(); space_say(f<3 && beast_stage>=f ? "IT GOT AWAY... FOR NOW" : "WARPED OUT. COME BACK STRONGER"); do_save(); }
+static void lair_leave(void){ int f=beast_fight; in_lair=0; music(3); { u32 t10[LYW]={20}; char nm[24]; sys_name(cur_sys,nm); voyage("THE LAIR",nm,t10,48,4); } no_ambush=1; space_enter(0); no_ambush=0; if(hive_card) show_hive_card();
+    // The first true finale is permanent, even if the monster's repeatable
+    // combat challenges remain. Never tell a player to return for a fight
+    // after Bolt has already brought Dawn home.
+    space_say(dawn_free ? "DAWN IS FREE. THE GALAXY IS OPEN." :
+              f<3 && beast_stage>=f ? "IT GOT AWAY... FOR NOW" :
+              "WARPED OUT. COME BACK STRONGER");
+    do_save(); }
 
 static void ship_hit(int dm, int crash){            // shields first, then the hull; the cockpit shakes
     dm=dm*ship_armour()/100; if(dm<1) dm=1;
@@ -1472,7 +1490,7 @@ static void addr_load(void){ u32 a[NCW0+10]; sram_read(slot_base(cur_slot)+0x900
 }
 typedef struct { u32 magic, hp_lo, hp_hi, mx_lo, mx_hi; u16 tech, kills, stage, hives; u32 sum; } SaveB;
 _Static_assert(__builtin_offsetof(SaveB,sum)==sizeof(SaveB)-4, "SaveB: the sum must be the last 4 bytes");
-static void beast_defaults(void){ hive_done=0; tech_lv=0; beast_kills=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
+static void beast_defaults(void){ hive_done=0; tech_lv=0; beast_kills=0; dawn_free=0; b3_max=1000000000000ULL; b3_hp=b3_max; beast_stage = ant_king ? 2 : (cleared_mask&4) ? 1 : 0; }
 #define SB_OFF 0xA00
 _Static_assert(sizeof(SaveX) <= 0x900-SX_OFF, "SaveX must end before the address block at +0x900");
 _Static_assert((NCW0+10)*4 <= 0x9C0-0x900, "the address block must end before the galaxy words at +0x9C0");
@@ -1481,10 +1499,15 @@ static void beast_load(void){
     SaveB b; sram_read(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
     u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; }
     if(b.magic!=0x32534542 || b.sum!=h){ beast_defaults(); return; }
-    b3_hp=((u64)b.hp_hi<<32)|b.hp_lo; b3_max=((u64)b.mx_hi<<32)|b.mx_lo; tech_lv=b.tech; beast_kills=b.kills; beast_stage=b.stage; hive_done=b.hives>5?5:b.hives;
+    b3_hp=((u64)b.hp_hi<<32)|b.hp_lo; b3_max=((u64)b.mx_hi<<32)|b.mx_lo; tech_lv=b.tech; beast_kills=b.kills;
+    // SaveB layout is unchanged. The unused high bit of the stage word records
+    // whether the true ending has played; legacy saves have this bit clear.
+    dawn_free=(b.stage&0x8000u)!=0;
+    beast_stage=b.stage&0x7FFFu; if(beast_stage>3) beast_stage=3;
+    hive_done=b.hives>5?5:b.hives;
 }
 static void beast_save(void){
-    SaveB b; memset(&b,0,sizeof b); b.magic=0x32534542; b.hp_lo=(u32)b3_hp; b.hp_hi=(u32)(b3_hp>>32); b.mx_lo=(u32)b3_max; b.mx_hi=(u32)(b3_max>>32); b.tech=tech_lv; b.kills=beast_kills; b.stage=beast_stage; b.hives=hive_done;
+    SaveB b; memset(&b,0,sizeof b); b.magic=0x32534542; b.hp_lo=(u32)b3_hp; b.hp_hi=(u32)(b3_hp>>32); b.mx_lo=(u32)b3_max; b.mx_hi=(u32)(b3_max>>32); b.tech=tech_lv; b.kills=beast_kills; b.stage=(u16)(beast_stage|(dawn_free?0x8000u:0)); b.hives=hive_done;
     u32 h=2166136261u; const u8 *p=(const u8*)&b; for(unsigned i=0;i<sizeof b-4;i++){ h^=p[i]; h*=16777619u; } b.sum=h;
     sram_write(slot_base(cur_slot)+SB_OFF,&b,sizeof b);
 }
@@ -1532,7 +1555,21 @@ static int load_ext(void){
     beast_load(); trophy_load(); tv_load(); dp_load(); addr_load(); u_settle(); hum_load(); kart_load(); ore_load(); gen_cluster(); if(ant_king) kw_unlock(); return 1;
 }
 static void story_boss_beaten(void){
+    int first=!(cleared_mask&(1<<zone));
     cleared_mask|=1<<zone; if(zones_open<zone+2) zones_open=zone+2; if(zones_open>6) zones_open=6;
+    // Recover a different, practical resource from each warden's operation.
+    // The existing cleared_mask marks first victories in legacy saves too;
+    // repeat-tier bosses can never farm the introductory story reward.
+    if(first){
+        switch(zone){
+            case 0: if(food<100) food=100; break;                    // garden supply store
+            case 1: { int fm=fuel_max(); if(fuel<fm){ fuel+=20; if(fuel>fm) fuel=fm; } break; }
+            case 2: earn(150); break;                  // stolen picnic rations
+            case 3: if(hull<100){ hull+=25; if(hull>100) hull=100; } break;
+            case 4: scrap+=24; break;                 // dismantled honey forge
+            case 5: if(hearts<maxh) hearts=maxh; break;               // infirmary under the throne
+        }
+    }
     if(zone==5 && !ant_king){ ant_king=1; uni_set32(rnd()|1); gen_cluster(); }
 }
 

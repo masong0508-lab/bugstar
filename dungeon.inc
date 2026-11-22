@@ -585,6 +585,19 @@ static void make_floor(void){
             dob[k]=dob[--ndo];
         }
     }
+    // One real, searchable piece of evidence on each first-clear story boss
+    // floor. Reuse an ordinary chest if the object budget is crowded; never
+    // consume slots reserved for quest objectives or interfere with keycards.
+    // A defeated boss's saved cleared-mask bit keeps this out of repeat tiers.
+    if(last && !endless && !base_mode && !forge_on && !zone_cleared && zone<6){
+        int evidence=-1;
+        for(int i=0;i<ndo;i++) if(dob[i].kind==K_CHEST && dob[i].sub==0){
+            evidence=i; break;
+        }
+        if(evidence>=0) dob[evidence].sub=7;
+        else if(ndo<NDO-4)
+            SPAWN(K_CHEST,room_floor_cell(&rooms[nrooms>1?1:0]),1,7);
+    }
     FMH->nbase=ndo;  // quest-specific objects below are regenerated; normal changes are remembered
     if(qhere && q_type==Q_CHAMP && ndo<NDO){
         SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0);
@@ -897,7 +910,23 @@ __attribute__((noinline)) static SprArt sprite_art(DObj *o){      // runs from R
     { const NMon *nm=nm_of(o->kind); if(nm){ SprArt r={nm->art,nm->w,nm->h,o->sub?nm->hw*2/3:nm->hw,0}; return r; } }   // (a split-off one is smaller)      // the planet monsters
     switch(o->kind){
         case K_SPIDER: art=anim?spider_art2:spider_art; aw=SPIDER_W; ah=SPIDER_H; hw=0x7000; break;
-        case K_BOSS: art=anim?spider_art2:spider_art; aw=SPIDER_W; ah=SPIDER_H; hw=0x11000; break;
+        case K_BOSS:
+            // Six wardens must look like different creatures, not the same
+            // enlarged spider. Reuse sprite sheets already resident in ROM;
+            // identical collision radii, floor memory and no new allocations.
+            // Endless/forge guardians retain the original spider identity.
+            hw=0x11000;
+            if(!endless && !forge_on && !base_mode && zone>=0 && zone<6){
+                switch(zone){
+                    case 1: art=art_crab; aw=CRAB_W; ah=CRAB_H; break;        // pond lockkeeper
+                    case 2: art=anim?beetle_art2:beetle_art; aw=BEETLE_W; ah=BEETLE_H; break;
+                    case 3: art=art_ghost; aw=GHOST_W; ah=GHOST_H; break;    // night watcher
+                    case 4: art=anim?art_wasp2:art_wasp; aw=anim?WASP2_W:WASP_W; ah=anim?WASP2_H:WASP_H; break;
+                    case 5: art=art_ant; aw=ANT_W; ah=ANT_H; break;          // royal furnace keeper
+                    default: art=anim?spider_art2:spider_art; aw=SPIDER_W; ah=SPIDER_H; break;
+                }
+            } else { art=anim?spider_art2:spider_art; aw=SPIDER_W; ah=SPIDER_H; }
+            break;
         case K_CHEST: art=chest_art; aw=CHEST_W; ah=CHEST_H; hw=0x5000; break;
         case K_BAT: if((frames>>1)&1){ art=art_bat2; aw=BAT2_W; ah=BAT2_H; } else { art=art_bat; aw=BAT_W; ah=BAT_H; } hw=0x3800; break;
         case K_LAMP: art=art_lamp; aw=LAMP_W; ah=LAMP_H; hw=0x8000; break;
@@ -1245,6 +1274,10 @@ static void dungeon_enter(void){ auto_run=0;
 #endif
 #endif
     dungeon_hud_both();
+    if(!endless && !base_mode && !forge_on && !zone_cleared &&
+       zone>=0 && zone<6 && depth_no>=zone_floors() && boss_floor()){
+        say(story_boss_warning[zone]); msg_timer=110;
+    }
     if(fl_ev){ char b[40]; scpy(b,fe_name[fl_ev]); scat(b,"!"); say(b); msg_timer=60;
         if(fl_ev==FE_BLESSED){ int mk=rndi(MK_GOOD); mark_t[mk]=150; recalc(); scpy(b,"BLESSED: "); scat(b,mk_name[mk]); scat(b," FOR A WHILE"); say(b); msg_timer=60; } }
 }

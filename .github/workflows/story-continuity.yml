@@ -1,0 +1,55 @@
+name: Story continuity and Dawn ending safety
+
+on:
+  push:
+    paths:
+      - 'ui.inc'
+      - 'town.inc'
+      - 'main.c'
+      - 'space.inc'
+      - 'game.inc'
+      - 'dungeon.inc'
+      - 'tests/story_cutscene_audit.py'
+      - 'tests/story_finale_runtime.py'
+      - 'tests/story_frame_capture.py'
+      - 'tests/story_branch_runtime.py'
+      - 'tests/story_boss_runtime.py'
+      - '.github/workflows/story-continuity.yml'
+  pull_request:
+    paths:
+      - 'ui.inc'
+      - 'town.inc'
+      - 'main.c'
+      - 'space.inc'
+      - 'game.inc'
+      - 'dungeon.inc'
+      - 'tests/story_cutscene_audit.py'
+      - 'tests/story_finale_runtime.py'
+      - 'tests/story_frame_capture.py'
+      - 'tests/story_branch_runtime.py'
+      - 'tests/story_boss_runtime.py'
+      - '.github/workflows/story-continuity.yml'
+  workflow_dispatch:
+
+jobs:
+  story-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check story text, 240x160 scene bounds, controls, and spoilers
+        run: python3 tests/story_cutscene_audit.py
+      - name: Compile and execute real save code with UndefinedBehaviorSanitizer
+        run: python3 tests/story_finale_runtime.py
+      - name: Execute branching Bolt cutscenes for all rescued-companion states
+        run: python3 tests/story_branch_runtime.py
+      - name: Execute real first-clear warden rewards and legacy unlocks
+        run: python3 tests/story_boss_runtime.py
+      - name: Capture native-size story chapter layouts under UBSan
+        run: python3 tests/story_frame_capture.py out/story-layouts
+      - name: Upload story layout contact sheet and eight frames
+        uses: actions/upload-artifact@v4
+        with:
+          name: story-layouts-240x160
+          path: out/story-layouts
+          retention-days: 14

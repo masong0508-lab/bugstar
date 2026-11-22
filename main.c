@@ -417,6 +417,7 @@ static void ore_reset(void); static void ore_save(void); static void ore_load(vo
 #include "ore.inc"
 static void title_restore(volatile u16 *pg, int y0, int y1); static void twinkle(volatile u16 *pg, int t);
 static int beast_stage;
+static int dawn_free;    // true ending completion, restored from SaveB's stage bit
 #include "ui.inc"
 #include "hangar.inc"
 static int launch_flag=0, zone_card=0, arrow_ship=0, base_card=0;
@@ -517,10 +518,11 @@ static void kill_mon(DObj *o){
     if(o->kind>=0 && o->kind<11) st_kills[o->kind]++;
     if(o->kind==K_CORE){                                                              // the outpost dies: Bolt gets a memory back, the beast loses a feeding node
         o->alive=0; sfx(9); debris(o->x,o->y,0x8000,16,3,0,0); burst(o->x,o->y,0x8000,12,2); if(opt_shake) shake_t=8;
-        base_mask |= 1u<<(cur_sys&31); outposts_done++; if(data_cores<8) data_cores++;
+        int new_memory=data_cores<8;
+        base_mask |= 1u<<(cur_sys&31); outposts_done++; if(new_memory) data_cores++;
         scrap+=8; earn(150+outposts_done*60); gain_xp(40+dlv()*8);
         b3_max = b3_max*96/100; if(b3_hp>b3_max) b3_hp=b3_max; if(beast_stage>=3){ beast_max=b3_max; if(beast_hp>beast_max) beast_hp=beast_max; }
-        base_card=1; escape_flag=1; say("THE CORE SHATTERS! BOLT: I'LL BEAM US OUT"); hud_now(); return; }
+        base_card=new_memory?1:2; escape_flag=1; say("THE CORE SHATTERS! BOLT: I'LL BEAM US OUT"); hud_now(); return; }
     int xpv = (4+dlv()*2+depth_no) * (o->kind==K_BEETLE?2 : o->kind==K_WASP?3 : boss?10 : 1) / (o->kind==K_WASP?2:1);
     if(o->kind==K_SCORP||o->kind==K_GHOST) xpv=xpv*2; else if(o->kind==K_TOAD) xpv=xpv*3/2; else if(o->kind==K_SLIME) xpv = o->sub ? xpv/2+1 : xpv*3/2; else if(o->kind==K_GOLEM) xpv=xpv*4; else if(o->kind==K_DRONE) xpv=xpv*2; else if(o->kind==K_SHROOM) xpv=xpv*3/2; else if(o->kind==K_CRAB) xpv=xpv*3; else if(o->kind==K_WISP) xpv=xpv*2;
     if(nm_of(o->kind)) xpv=xpv*nm_of(o->kind)->xpm/8;
@@ -1091,11 +1093,23 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             // beetles charge from a distance: a long wind-up, then they barrel at you. into a wall, and they are stunned
             else if((o->kind==K_BEETLE||o->kind==K_SCORP||(nm&&(nm->fl&NF_CHARGE))) && !stun_t && !o->stag && !o->cool && td>0x18000 && td<0x50000 && rndi((o->kind==K_SCORP?55:40)*DP_CD()/100+1)==0){ o->cool=70*DP_CD()/100; o->wind=8; o->lunge=1; sfx(14); }
             if(o->lunge && !o->wind){ o->lunge=0; if(td>0x100){ o->kvx=(s32)(((long long)tdx*0x3000)/td); o->kvy=(s32)(((long long)tdy*0x3000)/td); } }
-            // the boss calls her brood at half health, and gets angry
-            if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1; say("THE QUEEN CALLS HER BROOD!"); sfx(9);
-                for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=K_SPIDER; b->alive=1; b->hp=b->maxhp=6+dlv()*4; b->x=o->x+((k?1:-1)<<16); b->y=o->y+(1<<15); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } } }
-        } else if(o->kind==K_CHEST){ if(d<0x9000){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
-                Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now(); } }
+            // Each story warden brings a different part of the King's army.
+            // The existing one-time, two-enemy half-health phase and NDO cap
+            // stay intact. Endless guardians retain their familiar spiders.
+            if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1;
+                int story_w=!endless && !forge_on && !base_mode && zone>=0 && zone<6;
+                static const u8 guards[6]={K_SPIDER,K_TOAD,K_BEETLE,K_GHOST,K_WASP,K_ANT};
+                int guard=story_w ? guards[zone] : K_SPIDER;
+                say(story_w ? "THE WARDEN CALLS ITS GUARDS!" : "THE QUEEN CALLS HER BROOD!"); sfx(9);
+                for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=guard; b->alive=1; b->hp=b->maxhp=6+dlv()*4; b->x=o->x+((k?1:-1)<<16); b->y=o->y+(1<<15); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } } }
+        } else if(o->kind==K_CHEST){ if(d<0x9000){ int evidence=o->sub==7 && !endless && !base_mode && !forge_on && zone>=0 && zone<6;
+                o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
+                Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now();
+                // The player found the King's paper trail inside a genuine
+                // loot chest, before having to fight this world's warden.
+                // Its floor memory already records the opened chest.
+                if(evidence) card(VISPG,story_boss_title[zone],story_boss_evidence[zone],3);
+            } }
         else if(o->kind==K_ITEM){ if(d<0x9000 && (bag_n<BAGMAX || o->it==IT_QUEST)){ Gear g={o->it,o->sub,o->rar,o->pre,o->suf,o->lvl}; if(add_gear(g)) o->alive=0; } }
         else if(o->kind==K_CAGE){ if(d<0xC000) near_cage_p=i; }
     }
@@ -1212,7 +1226,10 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
 #endif
     PPT(2);
     if(FILM){} else { hud3d(pg); fl_draw(pg);
-    if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b, endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):"THE QUEEN"); else if(named->champ==2){ int cid=quest_champ_id(); scpy(b,cid>=0?quest_champ_names[cid]:"QUEST TARGET"); } else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
+    if(named){ char b[32]; b[0]=0; if(named->kind==K_CORE) scpy(b,"OUTPOST CORE"); else if(named->kind==K_BOSS) scpy(b,
+            endless?(hive_boss_floor()?"HIVE OVERLORD":"GUARDIAN"):
+            !forge_on && !base_mode && zone>=0 && zone<6 ?
+            story_boss_title[zone]:"THE QUEEN"); else if(named->champ==2){ int cid=quest_champ_id(); scpy(b,cid>=0?quest_champ_names[cid]:"QUEST TARGET"); } else { scpy(b,champ_pre[named->cname&7]); scat(b," "); scat(b,kind_name[named->kind]); }
         int w=textlen(b)*4; text(pg,120-w/2,36,b,C_RED,1); int hw2 = named->hp*40/(named->maxhp?named->maxhp:1); for(int c=40;c<80;c++){ int ix=(c-40)<hw2/2*1+0 ? C_RED : C_DRED; if(c-40<hw2) ix=C_RED; pg[43*120+c]=ix|(ix<<8); } }
 #ifdef TEST_MEM
     { char tb[56]; int al=0,sn=0, hc=(py_>>16)*MW+(px_>>16); for(int i=0;i<ndo;i++) if(dob[i].alive && is_mon(dob[i].kind)) al++; for(int i=0;i<MW*MW;i++) sn+=seen[i];
@@ -1470,7 +1487,7 @@ static void start_game(int cont){       // fades out, sets the world up from cur
     new_planet(); planet_enter(); show_msg(cont ? "WELCOME BACK" : "");
     REG_DISPCNT &= ~(1<<4); page_back=0; planet_frame(); oam_hide_all(); oam_flush(); fade(0);      // the planet is on screen behind the first cards
     music(0);
-    if(!cont && !dbg.go){ static const char *const t[6]={"YOU ARE A LITTLE PILL BUG.","THE ANT KING HAS CAGED YOUR BUG FRIENDS.","","FOLLOW THE YELLOW ARROW TO THE DOOR.","GO DOWN. BEAT THE BOSS AT THE BOTTOM.","THEN FLY YOUR SHIP TO THE NEXT STAR."};
+    if(!cont && !dbg.go){ static const char *const t[6]={"YOUR FRIENDS WERE TAKEN BELOW THE GARDEN.","SOMEWHERE UNDER THE GRASS, CAGES RATTLE.","YOU ARE SMALL. YOU ARE NOT HELPLESS.","FOLLOW THE YELLOW ARROW TO THE DOOR.","OPEN CAGES. BEAT THE BOSS BELOW.","THEN FLY TO THE NEXT STAR TO FIND THE REST."};
         card(VISPG,"BUGSTAR",t,6); bolt_story(VISPG,0); planet_hud(); show_msg("THE GARDEN: FIND THE DOOR"); }
 #ifdef TEST_DUNGEON
     enter_dungeon_flag=1;
@@ -1675,13 +1692,29 @@ static void run_game(void){
                    if(base_mode){ base_mode=0; portal_depth=0; for(int k=0;k<bag_n;k++) if(bag[k].it==IT_KEY){ drop_at(k); break; } }
                    restock(); save_game();
                    planet_enter(); arrow_ship = zone_cleared && !endless; show_msg(mb); oam_flush(); music(0); fade(0);
-                   if(base_card){ base_card=0; int k=data_cores-1; if(k<0) k=0; if(k>7) k=7; bolt_card(VISPG,bolt_mem[k],4);
-                       if(data_cores>=8){ static const char *const t[4]={"\"THAT WAS THE LAST OF ME.\"","\"I AM THE DAWN. I KNOW IT NOW.\"","\"FIND THE BEAST. L ON THE GALAXY MAP.\"","\"SHOOT ITS CORE AND I WILL OPEN IT.\""}; bolt_card(VISPG,t,4); }
+                   if(base_card){ int new_memory=base_card==1; base_card=0;
+                       if(new_memory){ int k=data_cores-1; if(k<0) k=0; if(k>7) k=7;
+                           bolt_card(VISPG,bolt_mem[k],4);
+                           if(data_cores==1 || data_cores==4 || data_cores>=8)
+                               bolt_memory_reaction(VISPG,data_cores);
+                       } else {
+                           static const char *const t[4]={"THE OUTPOST'S ENGINE FALLS SILENT.",
+                               "BOLT'S EIGHT MEMORIES ARE ALREADY WHOLE.",
+                               "ANOTHER FEEDING LINE TO THE BEAST IS GONE.",
+                               "THE SHIP BEAMS YOU BACK TO THE SURFACE."};
+                           bolt_card(VISPG,t,4);
+                       }
                        planet_hud(); }
                    if(zone_card){ int z=zone_card-1; zone_card=0;
                        if(z==5){ bolt_story(VISPG,6); fade(1); credits(); planet_enter(); fade(0); }
-                       else { static const char *const t[6]={"A NEW STAR IS OPEN.","","1. GO TO YOUR SHIP. FOLLOW THE ARROW.","2. PICK LAUNCH INTO SPACE.","3. PRESS SELECT FOR THE GALAXY MAP.","4. PICK THE NEW STAR AND PRESS A."};
-                           card(VISPG,"BOSS BEATEN! ZONE CLEARED",t,6); bolt_story(VISPG,1+z); }
+                       else { const char *t[7]={"THE BOSS IS DOWN. THE NEXT STAR IS OPEN.",
+                               story_boss_aftermath[z],story_boss_reward[z],
+                               "1. FOLLOW THE ARROW TO YOUR SHIP.",
+                               "2. PICK LAUNCH INTO SPACE.",
+                               "3. SELECT: OPEN THE GALAXY MAP.",
+                               "4. PICK THE NEW STAR. KEEP LOOKING."};
+                           bolt_story(VISPG,1+z);  // aftermath, then specific reward and navigation
+                           card(VISPG,"NEXT STAR UNLOCKED",t,7); }
                        planet_hud(); show_msg("GO TO YOUR SHIP"); } }
         }
     }
