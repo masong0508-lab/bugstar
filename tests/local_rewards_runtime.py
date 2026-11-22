@@ -31,6 +31,7 @@ talk=func(town,"static void local_talk(")
 assert "int li=local_line_index(o);" in talk, "dialogue must use unsigned index"
 assert "local_job_visit(o);" in talk, "census must count distinct locals"
 assert "if(pq_type==5) local_job_reset();" in town, "new census must reset visits"
+assert 'case 5: scat(b,"DIFFERENT LOCALS");' in town, "explain census uniqueness in quest board"
 assert "if(o->kind==O_LOCAL) tl = (o->var&1)" in planet, "visit flag must not change NPC art"
 assert talk.count("if(add_or_credit(gg,5+dlv()*3))")==2
 assert "BAG FULL! TAKE " in talk and "G INSTEAD." in talk
