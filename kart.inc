@@ -8,7 +8,20 @@
 #define polyfill kpolyfill
 #define linep klinep
 static u32 krect_dma_word(int c){ return (u32)(u8)c * 0x01010101u; }  // repeat the 8-bit palette index safely; signed c<<24 is undefined above 127
+// The normal rect painter clips to Mode-4 VRAM, but a wide kart HUD
+// rectangle uses DMA3. Clip BEFORE building the DMA destination address,
+// so partially off-screen minimaps and cards cannot spill into other rows.
+static int krect_clip(int *x, int *y, int *w, int *h){
+    if(*w<=0 || *h<=0 || *x>=240 || *y>=160 || *x<=-*w || *y<=-*h) return 0;
+    if(*x<0){ *w+=*x; *x=0; }
+    if(*y<0){ *h+=*y; *y=0; }
+    if(*w>240-*x) *w=240-*x;
+    if(*h>160-*y) *h=160-*y;
+    return *w>0 && *h>0;
+}
 static void krect(volatile u16 *pg, int x, int y, int w, int h, int c){       // rect() for the HUD: the middle of every row is a DMA fill (a boxed minimap is 44 rows of 22 pixel pairs)
+    if(!krect_clip(&x,&y,&w,&h)) return;
+    c=(u8)c;  // border pixels use pix(): keep its signed shift in 0..255
     if(w<16){ rect(pg,x,y,w,h,c); return; }
     volatile u32 v=krect_dma_word(c);
     for(int j=0;j<h;j++){ int i=0; if(x&1){ pix(pg,x,y+j,c); i=1; }
@@ -366,6 +379,16 @@ static const u8 kcls_pct[5]={85,100,115,130,150};
 static const char *const kcls_name[5]={"LARVA","PUPA","IMAGO","STARBUG","HYPER"};
 #define K_VBASE 0x3200                             // a balanced kart's top speed in the PUPA class: 0.2 cells a 60th
 static s32 k_vmax(const KLook *l){ return (s32)K_VBASE*kcls_pct[k_cls]/100*(82+kstat(l,KST_SPD)*3)/100; }
+ // Low-speed steering should remain usable, but a fully stopped kart must not
+ // spin in place. The same fixed-tick steering applies on GBA, PC and Android.
+static inline int kart_turn_rate(int base, s32 speed, s32 vmax){
+    s32 moving=speed<0?-speed:speed;
+    int f=(int)((moving*768)/(vmax?vmax:1)); if(f>256) f=256;
+    int turn=(base*f)>>8;
+    if(moving>=vmax/32 && turn<2) turn=2;
+    return turn; }
+static inline int kart_turn_direction(int steer, s32 speed){ return speed<0?-steer:steer; }
+static inline int kart_recovery_slow(s32 speed){ return (speed<0?-speed:speed)<K_VBASE/12; }
 static const char *kplace_s(int p){ static const char *const s[13]={"","1ST","2ND","3RD","4TH","5TH","6TH","7TH","8TH","9TH","10TH","11TH","12TH"}; return s[p<0?0:p>12?12:p]; }
 static void kfmt_time(char *b, int fr){ int cs=fr*100/60, s=cs/100; b[0]=0; ncat(b,s/60); scat(b,":"); if(s%60<10) scat(b,"0"); ncat(b,s%60); scat(b,"."); ncat(b,(cs%100)/10); }
 
@@ -877,10 +900,10 @@ static void kart_step(void){
     else if(rc[0].spin){ kv -= kv/16; s=0; }
     else if(kair){ kair_t++; khd=(khd+s*(tr/3))&1023; kturn=s; if(HIT(K_R) && !ktrick && kair_t<30){ ktrick=1; sfx(2); } }   // flying: a little steering; R does a trick
     else {
-        s32 spd=kv<0?-kv:kv; int fa=(int)((spd*768)/(vmax?vmax:1)); if(fa>256) fa=256; tr=(tr*fa)>>8;
+        tr=kart_turn_rate(tr,kv,vmax);
         if(HELD(K_R) && s && kv>vmax/2){ if(!kdrift){ kdrift=s; sfx(11); } if(s==kdrift){ tr=tr*3/2; if(kcharge<200) kcharge += 1 + (kcharge<110 && (frames&1)); } else tr=tr*3/4; }
         if(kdrift && !(HELD(K_R) && s==kdrift)){ if(kcharge>170){ kboost_t=72; show_msg("ULTRA MINI-TURBO!"); sfx(10); } else if(kcharge>110){ kboost_t=50; show_msg("SUPER MINI-TURBO!"); sfx(10); } else if(kcharge>50){ kboost_t=28; sfx(10); } kdrift=0; kcharge=0; }
-        khd=(khd+s*tr)&1023; kturn=s; kdrift_t = kdrift ? kdrift_t+1 : 0; if(kdrift) rum_hum(kcharge>170?110:kcharge>110?80:kcharge>50?55:35);
+        int steer=kart_turn_direction(s,kv); khd=(khd+steer*tr)&1023; kturn=steer; kdrift_t = kdrift ? kdrift_t+1 : 0; if(kdrift) rum_hum(kcharge>170?110:kcharge>110?80:kcharge>50?55:35);
         int acc=(int)(vmax/(110-kstat(&kl,KST_ACC)*7)); if(acc<16) acc=16;
         if(kstall){ kstall--; up=0; }
         if(up) kv+=acc; else if(dn){ if(kv>0) kv-=vmax/30; else if(kv>-vmax/3) kv-=acc/2; } else kv-=kv/40;
@@ -1000,7 +1023,7 @@ static void kart_tick(int n){
         int dirn=kp_dir(rc[0].pi), off=((khd-dirn+512)&1023)-512; if(off<0) off=-off; if(off>380 && kv>K_VBASE/4) k_wrong+=n; else k_wrong=0; if(k_wrong>50 && (frames&31)==0) show_msg("WRONG WAY!"); }
     if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int pi=rc[0].pi, fx=kwrap8(kpx[pi]-((ppx>>15)&255)), fy=kwrap8(kpy[pi]-((ppy>>15)&255)); if(fx*fx+fy*fy>26*26) kfar+=n; else kfar=0;
         if(kfar>130){ kfar=0; kart_splash(); show_msg("OFF THE TRACK! BACK YOU GO"); } }   // far from the road for a couple of seconds (a long way round the land): put back on it
-    if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)]; if(kv<K_VBASE/12 && !kroad(c) && !kstall) kstuck+=n; else kstuck=0; if(kstuck>150){ kstuck=0; kart_splash(); show_msg("STUCK? BACK ON THE ROAD!"); } }   // wedged off the road: a kind fish helps
+    if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)]; if(kart_recovery_slow(kv) && !kroad(c) && !kstall) kstuck+=n; else kstuck=0; if(kstuck>=90 && kstuck-n<90) show_msg("STUCK? DOWN: REVERSE OR WAIT"); if(kstuck>150){ kstuck=0; kart_splash(); show_msg("STUCK? BACK ON THE ROAD!"); } }   // wedged off the road: a kind fish helps
     for(int r=1;r<nrc;r++) kai(r,n);
 #ifdef TEST_KAUDIT
     if(ks_state==KS_RACE){ int fin=0, sl=0, mn=999, mx=0; if(k_clock<12) for(int i=0;i<knp;i++) klogb[48+i*16/knp]|=kpf[i]; if(k_clock<12) for(int i=0;i<knp;i++) klogk[i*2]=kpx[i], klogk[i*2+1]=kpy[i];                                  // (test: how the rivals drive: where they are, how many stray, how many finish)
@@ -1116,23 +1139,59 @@ static const char *const kicon[NKI]={0,
 static int kicon_c(char ch){ switch(ch){ case 'r': return C_RED; case 'g': return C_GREEN; case 'w': return C_WHITE; case 'c': return C_CYAN; case 'd': return C_GREY; default: return -1; } }
 OVK static void kmm_path(volatile u16 *pg, int ox, int oy, int n){ int lx=-1, ly=-1;        // the minimap's path, one pixel per point, straight into the page (ARM, in the kart overlay)
     for(int i=0;i<n;i++){ int x=ox+kmmx[i], y=oy+kmmy[i], c=(i==0)?C_WHITE:C_GREY; if(x==lx && y==ly) continue; lx=x; ly=y; volatile u16 *p=pg+((y*240+x)>>1); if(x&1) *p=(*p&0x00FF)|(c<<8); else *p=(*p&0xFF00)|c; } }
+// Up to six bright samples show the direction of the next segment on
+// the tiny minimap. cnt>12 guarantees one wrap subtraction is sufficient.
+static inline int kart_map_ahead_idx(int pi, int step, int cnt){
+    int i=(pi>>1)+step; return i>=cnt?i-cnt:i;
+}
 static void kart_minimap(volatile u16 *pg){
     int ox=194+(40-kmm_w)/2, oy=20+(40-kmm_h)/2;
-    if(oy+40<m7_strip){ ov_k(); kmm_path(pg,ox,oy,(knp>>1)<KMM_N ? (knp>>1) : KMM_N); }   // (the path, a pixel each: straight into the page)
-    else for(int i=0;i<(knp>>1) && i<KMM_N;i++) pix(pg,ox+kmmx[i],oy+kmmy[i],(i==0)?C_WHITE:C_GREY);
-    if(kr_mode==1) for(int r=nrc-1;r>=0;r--){ int i=(rc[r].pi>>1); if(i>=KMM_N) i=KMM_N-1; int x=ox+kmmx[i], y=oy+kmmy[i], c = r==0 ? C_GOLD : (rc[r].place==1 ? C_RED : C_CYAN);
-        if(r==0){ rect(pg,x-1,y-1,3,3,c); } else pix(pg,x,y,c); } }
+    // kt_build stores path indices 0,2,4,..., including the final even
+    // index of an odd-length path. All map layers share that generated count.
+    int cnt=(knp+1)>>1; if(cnt>KMM_N) cnt=KMM_N;
+    if(oy+40<m7_strip){ ov_k(); kmm_path(pg,ox,oy,cnt); }   // (the path, a pixel each: straight into the page)
+    else for(int i=0;i<cnt;i++) pix(pg,ox+kmmx[i],oy+kmmy[i],(i==0)?C_WHITE:C_GREY);
+    if(kr_mode==1 && rc[0].pi>=0 && rc[0].pi<knp){
+        if(cnt>12) for(int step=2;step<=12;step+=2){
+            int i=kart_map_ahead_idx(rc[0].pi,step,cnt);
+            int x=ox+kmmx[i], y=oy+kmmy[i];
+            if(x>=194 && x<=234 && y>=21 && y<=61) pix(pg,x,y,step<=6?C_GOLD:C_CYAN);
+        }
+    }
+    if(kr_mode==1) for(int r=nrc-1;r>=0;r--){
+        if(cnt<1) continue; int i=rc[r].pi>>1;
+        if(i>=cnt) i=cnt-1; if(i<0) i=0; // guard malformed racer indices
+        int x=ox+kmmx[i], y=oy+kmmy[i], c = r==0 ? C_GOLD : (rc[r].place==1 ? C_RED : C_CYAN);
+        if(r==0){ rect(pg,x-1,y-1,3,3,c);
+            // A bright nose shows which direction you are actually facing
+            // (the track map's X/Y axes match the kart's world axes).
+            int nx=x+((sinx(khd>>2)*3)>>14), ny=y+((cosx(khd>>2)*3)>>14);
+            if(nx>=194 && nx<=234 && ny>=21 && ny<=61) rect(pg,nx-1,ny-1,2,2,C_WHITE);
+        } else pix(pg,x,y,c); } }
 static void kart_cockpit(volatile u16 *pg){                        // the cockpit view: a dashboard, a wheel that turns, your speed
     rect(pg,0,140,240,20,1); rect(pg,0,139,240,1,C_DGREY); for(int x=0;x<240;x+=2) pix(pg,x,141,6);
     int a=(kturn*24+(kdrift?kdrift*20:0)+256)&255; s32 c=cosx(a), sn=sinx(a);
     for(int k=0;k<48;k++){ int an=k*16/3; int x=120+((cosx(an)*15)>>14), y=153+((sinx(an)*9)>>14); if(y>141 && y<160){ pix(pg,x,y,C_GREY); pix(pg,x+1,y,C_DGREY); } }
     for(int t=-14;t<=14;t++){ int x=120+((c*t)>>14), y=153+((sn*t*9/15)>>14); if(y>141 && y<160) pix(pg,x,y,C_WHITE); }
-    { char b[20]; int kmh=(int)((kv>0?kv:-kv)*600/65536); scpy(b,""); ncat(b,kmh); scat(b," KM/H"); text(pg,30,150,b,kboost_t?C_GOLD:C_CYAN,1); }
+    { char b[20]; int kmh=(int)((kv>0?kv:-kv)*600/65536); scpy(b,kv<0?"REV ":""); ncat(b,kmh); scat(b," KM/H"); text(pg,30,150,b,kboost_t?C_GOLD:C_CYAN,1); }
     rect(pg,170,149,50,4,C_DGREY); if(kart_boost>0) rect(pg,170,149,kart_boost/2,4,kart_boost>20?C_GOLD:C_RED); text(pg,170,143,"BOOST",C_DGREY,1); }
 static void kframe(volatile u16 *pg, int x, int y, int w, int h, int c){         // frame1() for the HUD boxes (x and w even, in the sky rows): whole halfwords, no pix() calls
     u16 cc=(u16)(c|(c<<8)); volatile u16 *p=pg+y*120+(x>>1); int n=w>>1;
     for(int i=0;i<n;i++){ p[i]=cc; p[(h-1)*120+i]=cc; }
     for(int j=1;j<h-1;j++){ volatile u16 *r=p+j*120; r[0]=(u16)((r[0]&0xFF00)|c); r[n-1]=(u16)((r[n-1]&0x00FF)|(c<<8)); } }
+// Steady bend advisory: visibility depends on motion, not frame blinking.
+// Negative means left, positive right; magnitude 2 means brake for a sharp bend.
+static inline int kart_bend_cue(int d0, int d1, int d2, s32 speed){
+    if(speed<K_VBASE/6) return 0;
+    int a1=((d1-d0+512)&1023)-512, a2=((d2-d1+512)&1023)-512;
+    int near=a1<0?-a1:a1, far=a2<0?-a2:a2;
+    // An S-bend must point toward the FIRST corner, never the sharper
+    // opposite corner farther ahead. Still advise braking for either.
+    int a=near>45?a1:a2;
+    if(a>=-45 && a<=45) return 0;
+    int sharp=(near>120 || far>150) && speed>K_VBASE/2;
+    return (a>0?1:-1)*(sharp?2:1);
+}
 static void kart_hud(volatile u16 *pg){
     s32 dz=cam_back(); s32 f=(FOCP<<16)/(dz>>8); s32 gh=ground_h(ppx,ppy); s32 curve=curv(dz>>8)-tiny_sub(); int sy=PHZ+(((cam_h+curve-gh)*f)>>16);
     m7_sy=sy;
@@ -1177,9 +1236,10 @@ static void kart_hud(volatile u16 *pg){
 #endif
     rect(pg,56,58,50,3,C_DGREY); if(kart_boost>0) rect(pg,56,58,kart_boost/2,3,kart_boost>20?C_GOLD:C_RED);
     if(kdraft>0){ rect(pg,56,62,50,2,C_DGREY); rect(pg,56,62,kdraft*50/90,2,C_CYAN); }
-    if(ks_state==KS_RACE && !kloop_on && !kair && kv>K_VBASE/4 && knp>40){ int p=rc[0].pi, d0=kp_dir((p+4)%knp), d1=kp_dir((p+16)%knp), d2=kp_dir((p+30)%knp);   // a sharp bend ahead: arrows say which way
-        int a1=((d1-d0+512)&1023)-512, a2=((d2-d1+512)&1023)-512, a=(a1*3/2>a2*3/2 ? a1 : a2); if((a2>0?a2:-a2)>(a1>0?a1:-a1)) a=a2; else a=a1;
-        if((a>70 || a<-70) && ((frames>>3)&1)){ int big=(a>140||a<-140); text(pg,a>0?196:22,78,a>0?">>":"<<",big?C_GOLD:C_WHITE,2); if(big) text(pg,a>0?180:38,78,a>0?">":"<",C_RED,2); } }
+    if(ks_state==KS_RACE && !kloop_on && !kair && knp>40){ int p=rc[0].pi;
+        int cue=kart_bend_cue(kp_dir((p+4)%knp),kp_dir((p+16)%knp),kp_dir((p+30)%knp),kv);
+        if(cue){ int sharp=cue==2 || cue==-2; text(pg,cue>0?198:22,78,cue>0?">>":"<<",sharp?C_GOLD:C_WHITE,2);
+            if(sharp) text(pg,cue>0?198:22,93,"SLOW",C_RED,1); } }
 #if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h6=TMR(); kh_t[0]=h1-h0; kh_t[1]=h2-h1; kh_t[2]=h3-h2; kh_t[3]=h4-h3; kh_t[4]=h5-h4; kh_t[5]=h6-h5;
 #ifdef TEST_KLOG
@@ -1206,3 +1266,4 @@ static int kart_glow(void){ return kl.part[KP_GLOW]; }
 #undef polyfill
 #undef linep
 #undef rect
+

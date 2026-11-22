@@ -13,6 +13,9 @@ on:
       - 'tests/kart_world_save_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'tests/rect_clip_runtime_host.py'
+      - 'tests/kart_steering_runtime.py'
+      - 'tests/kart_turn_cue_runtime.py'
+      - 'tests/kart_dma_clip_runtime.py'
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
       - 'tests/kart_visual_capture_audit.py'
@@ -59,6 +62,9 @@ on:
       - 'tests/kart_world_save_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'tests/rect_clip_runtime_host.py'
+      - 'tests/kart_steering_runtime.py'
+      - 'tests/kart_turn_cue_runtime.py'
+      - 'tests/kart_dma_clip_runtime.py'
       - 'tests/kart_native_camera_runtime.py'
       - 'tests/kart_native_sampler_runtime.py'
       - 'tests/kart_visual_capture_audit.py'
@@ -110,6 +116,12 @@ jobs:
         run: python3 tests/shared_math_runtime_host.py
       - name: Detect off-screen shared rectangle VRAM writes under ASan and UBSan
         run: python3 tests/rect_clip_runtime_host.py
+      - name: Test responsive kart steering, reverse, and stuck recovery under UBSan
+        run: python3 tests/kart_steering_runtime.py
+      - name: Test priority of first corner, S-bend warnings, and minimap heading
+        run: python3 tests/kart_turn_cue_runtime.py
+      - name: Check kart HUD DMA rectangles against visible framebuffer with ASan and UBSan
+        run: python3 tests/kart_dma_clip_runtime.py
       - name: Check speed-aware native kart banking and limited hill displacement under UBSan
         run: python3 tests/kart_native_camera_runtime.py
       - name: Verify native kart sampler keeps pixels identical on flat road textures
@@ -276,3 +288,4 @@ jobs:
           name: pc-speed-guard-logs
           path: pc/out/speed_guard/
           if-no-files-found: ignore
+
