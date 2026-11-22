@@ -37,6 +37,7 @@ assert "rx>=-20000 && rx<=20000" in cam
 assert "(long long)rx*br[0]" in cam, "far coordinate fallback missing"
 assert "s32 ks=(((2*cs)<<16)/r)*64;" in fill
 assert fill.count("s32 ks=")==1
+assert "s32 kx=(((c0*2-cx+r)*65536)/r)*64;" in fill, "clipped planet coordinate must be defined"
 assert "int ny=(64-ky)*4;" in fill
 assert "if(!c->alive) return;" in pick
 assert "c->alive=0;" in pick
@@ -49,8 +50,8 @@ assert "CAN_FUEL" in space[space.index("if(a->hp<=0){ a->alive=0;"):space.index(
 
 # The old per-row projection scale, with everything else byte-identical.
 legacy=fill.replace("    s32 ks=(((2*cs)<<16)/r)*64;","").replace(
-    "        s32 kx=(((c0*2-cx+r)<<16)/r)*64;",
-    "        s32 kx=(((c0*2-cx+r)<<16)/r)*64, ks=(((2*cs)<<16)/r)*64;")
+    "        s32 kx=(((c0*2-cx+r)*65536)/r)*64;",
+    "        s32 kx=(((c0*2-cx+r)*65536)/r)*64, ks=(((2*cs)<<16)/r)*64;")
 assert legacy!=fill
 legacy=legacy.replace("void planet_fill(","void planet_fill_legacy(",1)
 
