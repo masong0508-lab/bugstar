@@ -27,7 +27,7 @@ def func(src,marker):
     while depth:
         depth+=(src[end]=="{")-(src[end]=="}")
         end+=1
-    return src[i:end]
+    return src[m.start():end]
 
 route=func(space,"static int bolt_next_step(")
 hint=func(space,"static void bolt_hive_hint(")
