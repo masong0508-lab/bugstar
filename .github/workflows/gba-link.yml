@@ -1,0 +1,41 @@
+name: GBA SIO link foundations
+
+on:
+  push:
+    paths:
+      - 'link/gba_link*'
+      - 'link/gba_sio*'
+      - 'tests/gba_link_test.c'
+      - '.github/workflows/gba-link.yml'
+  pull_request:
+    paths:
+      - 'link/gba_link*'
+      - 'link/gba_sio*'
+      - 'tests/gba_link_test.c'
+      - '.github/workflows/gba-link.yml'
+  workflow_dispatch:
+
+jobs:
+  gba-link:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host C compiler for packet-state tests
+        run: apt-get update && apt-get install -y --no-install-recommends gcc
+      - name: Exercise exact 16-bit SIO packet/Ready contract
+        run: |
+          gcc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined \
+            tests/gba_link_test.c link/gba_link.c -o /tmp/gba_link_test
+          /tmp/gba_link_test
+      - name: Cross-compile real GBA SIO register driver without linking solo ROM
+        run: |
+          export PATH=/opt/devkitpro/devkitARM/bin:$PATH
+          arm-none-eabi-gcc -std=c99 -O2 -mcpu=arm7tdmi -mthumb \
+            -Wall -Wextra -Werror -ffreestanding -c \
+            link/gba_link.c -o /tmp/gba_link.o
+          arm-none-eabi-gcc -std=c99 -O2 -mcpu=arm7tdmi -mthumb \
+            -Wall -Wextra -Werror -ffreestanding -c \
+            link/gba_sio.c -o /tmp/gba_sio.o
+          arm-none-eabi-size /tmp/gba_link.o /tmp/gba_sio.o
