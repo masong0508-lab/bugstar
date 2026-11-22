@@ -570,7 +570,7 @@ static void nv_sprites(void *vc, int lo, int hi){
             double pa=1,pb=0,pc=0,pd=1;
             if(aff){ int g=(a1>>9)&31; uint32_t p=OAMB+g*32; pa=(int16_t)R16(p+6)/256.0; pb=(int16_t)R16(p+14)/256.0; pc=(int16_t)R16(p+22)/256.0; pd=(int16_t)R16(p+30)/256.0; }
             int hf=!aff&&((a1>>12)&1), vf=!aff&&((a1>>13)&1);
-            double kox=0, koy=0; if(kn_on && y0+bh/2.0>=KN.g0-2){ double fx,fy; kn_fwd(x0+bw/2.0,y0+bh/2.0,&fx,&fy); kox=fx-(x0+bw/2.0); koy=fy-(y0+bh/2.0); }
+            double kox,koy; kn_sprite_shift(i,x0+bw/2.0,y0+bh/2.0,&kox,&koy);
             double x0d=x0+kox, y0d=y0+koy;
             int ox0=(int)floor(x0d/sx), ox1=(int)ceil((x0d+bw)/sx), oy0=(int)floor(y0d/sy), oy1=(int)ceil((y0d+bh)/sy);
             if(ox0<0)ox0=0; if(oy0<lo)oy0=lo; if(ox1>W)ox1=W; if(oy1>hi)oy1=hi; if(oy0>=oy1) continue;

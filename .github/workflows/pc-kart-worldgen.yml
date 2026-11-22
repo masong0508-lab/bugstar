@@ -11,6 +11,8 @@ on:
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
       - 'tests/kart_world_save_runtime.py'
+      - 'tests/kart_object_pool_runtime.py'
+      - 'tests/kart_native_sprite_anchor_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'tests/rect_clip_runtime_host.py'
       - 'tests/kart_steering_runtime.py'
@@ -44,6 +46,7 @@ on:
       - 'tests/space_native_projection_audit.py'
       - 'tests/space_station_depth_audit.py'
       - 'pc/pc_hw.c'
+      - 'pc/pc_hw.h'
       - 'pc/platform/pc_sdl.c'
       - 'pc/tests/speed_guard.sh'
       - 'pc/tests/native_space_perf.sh'
@@ -61,6 +64,8 @@ on:
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
       - 'tests/kart_world_save_runtime.py'
+      - 'tests/kart_object_pool_runtime.py'
+      - 'tests/kart_native_sprite_anchor_runtime.py'
       - 'tests/shared_math_runtime_host.py'
       - 'tests/rect_clip_runtime_host.py'
       - 'tests/kart_steering_runtime.py'
@@ -94,6 +99,7 @@ on:
       - 'tests/space_native_projection_audit.py'
       - 'tests/space_station_depth_audit.py'
       - 'pc/pc_hw.c'
+      - 'pc/pc_hw.h'
       - 'pc/platform/pc_sdl.c'
       - 'pc/tests/speed_guard.sh'
       - 'pc/tests/native_space_perf.sh'
@@ -114,6 +120,8 @@ jobs:
         run: python3 tests/list_picker_runtime_host.py
       - name: Exercise Kart World saved settings and 18-driver navigation with UBSan
         run: python3 tests/kart_world_save_runtime.py
+      - name: Keep shell, slime and track-editor objects reusable under UBSan
+        run: python3 tests/kart_object_pool_runtime.py
       - name: Guard shared signed division against overflow and zero denominators
         run: python3 tests/shared_math_runtime_host.py
       - name: Detect off-screen shared rectangle VRAM writes under ASan and UBSan
@@ -128,6 +136,8 @@ jobs:
         run: python3 tests/kart_native_camera_runtime.py
       - name: Verify native hill projection and bottom-edge continuity under UBSan
         run: python3 tests/kart_native_inverse_runtime.py
+      - name: Keep kart sprite parts and scenery attached to their ground contact
+        run: python3 tests/kart_native_sprite_anchor_runtime.py
       - name: Verify native kart sampler keeps pixels identical on flat road textures
         run: python3 tests/kart_native_sampler_runtime.py
       - name: Confirm fuzz races match real fade-in and clear boot blackout

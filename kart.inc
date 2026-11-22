@@ -395,9 +395,20 @@ static void kfmt_time(char *b, int fr){ int cs=fr*100/60, s=cs/100; b[0]=0; ncat
 // ---------------------------------------------------------------- borrowing a few of the planet's little things (pebbles, tufts) to be karts, boxes and slime
 EW static u8 kslot[48], khid[48]; static u8 nkslot=0, nkhid=0;
 static int kgrab(int kind, s32 x, s32 y){
-    for(int i=NPO-1;i>=0;i--){ PObj *o=&po[i]; if(o->alive && o->kind!=O_PEBBLE && o->kind!=O_TUFT) continue; if(!o->alive && o->kind!=O_PEBBLE && o->kind!=O_TUFT) continue;
-        if(nkslot>=48) return -1; o->kind=(u8)kind; o->alive=1; o->hp=0; o->var=0; o->x=x&((TW<<16)-1); o->y=y&((TW<<16)-1); kslot[nkslot++]=(u8)i; return i; }
-    return -1; }
+    int slot=-1;
+    // Retired shells, slime and editor gates already own their scenery slot.
+    // Reuse it even when the ownership list is full; sleeping item boxes and
+    // other inactive gameplay objects remain reserved until explicitly freed.
+    for(int k=0;k<nkslot;k++){ int i=kslot[k]; PObj *o=&po[i];
+        if(!o->alive && (o->kind==O_PEBBLE || o->kind==O_TUFT)){ slot=i; break; } }
+    if(slot<0){
+        if(nkslot>=48) return -1;
+        for(int i=NPO-1;i>=0;i--){ PObj *o=&po[i];
+            if(o->kind!=O_PEBBLE && o->kind!=O_TUFT) continue;
+            slot=i; kslot[nkslot++]=(u8)i; break; } }
+    if(slot<0) return -1;
+    PObj *o=&po[slot]; o->kind=(u8)kind; o->alive=1; o->hp=0; o->var=0;
+    o->x=x&((TW<<16)-1); o->y=y&((TW<<16)-1); return slot; }
 static void kgive_back(void){
     for(int k=0;k<nkslot;k++){ PObj *o=&po[kslot[k]]; o->kind=(kslot[k]&1)?O_PEBBLE:O_TUFT; o->alive=1; o->hp=3; int a=rndi(256), r=3+rndi(62); o->x=(64<<16)+cosx(a)*r*4; o->y=(64<<16)+sinx(a)*r*4; }
     nkslot=0; for(int k=0;k<nkhid;k++) po[khid[k]].alive=1; nkhid=0; }
