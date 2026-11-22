@@ -363,7 +363,8 @@ IWRAM static void planet_fill(volatile u16 *pg, int cx, int cy, int r, s32 Lx, s
         int dy=y-cy; int w=isqrt((u32)(r*r-dy*dy));
         int c0=(cx-w)>>1, c1=(cx+w)>>1; if(c0<0) c0=0; if(c1>119) c1=119; if(c0>c1) continue;
         int ky=((dy+r)*64)/r; if(ky<0) ky=0; if(ky>127) ky=127;
-        s32 kx=(((c0*2-cx+r)<<16)/r)*64;
+        // The clipped start may be negative; shifting a signed negative is UB.
+        s32 kx=(((c0*2-cx+r)*65536)/r)*64;
         const u8 *bz=b4+(y&3)*4;
         volatile u16 *row=pg+y*120;
         int ny=(64-ky)*4;
