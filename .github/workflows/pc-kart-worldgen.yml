@@ -5,6 +5,18 @@ on:
       - 'kart*.inc'
       - 'm7.inc'
       - 'recip.inc'
+      - 'space.inc'
+      - 'ship.inc'
+      - 'coil2.inc'
+      - 'assets.h'
+      - 'pc/pc_ships.inc'
+      - 'pc/shipr/**'
+      - 'pc/shipyard/**'
+      - 'tests/space_flight_runtime.py'
+      - 'tests/ship_model_capacity_runtime.py'
+      - 'tests/space_native_beam_runtime.py'
+      - 'tests/space_native_present_runtime.py'
+      - 'pc/tests/native_space_lifetime.sh'
       - 'game.inc'
       - 'dungeon.inc'
       - 'ui.inc'
@@ -62,6 +74,18 @@ on:
       - 'kart*.inc'
       - 'm7.inc'
       - 'recip.inc'
+      - 'space.inc'
+      - 'ship.inc'
+      - 'coil2.inc'
+      - 'assets.h'
+      - 'pc/pc_ships.inc'
+      - 'pc/shipr/**'
+      - 'pc/shipyard/**'
+      - 'tests/space_flight_runtime.py'
+      - 'tests/ship_model_capacity_runtime.py'
+      - 'tests/space_native_beam_runtime.py'
+      - 'tests/space_native_present_runtime.py'
+      - 'pc/tests/native_space_lifetime.sh'
       - 'game.inc'
       - 'dungeon.inc'
       - 'ui.inc'
@@ -162,6 +186,14 @@ jobs:
         run: python3 tests/quest_runtime_host.py
       - name: Exercise native 3D perspective and near-plane regression with UBSan
         run: python3 tests/space_native_projection_audit.py
+      - name: Test space steering, braking and moving-asteroid landing control
+        run: python3 tests/space_flight_runtime.py
+      - name: Keep assembled ship geometry inside the handheld model buffers
+        run: python3 tests/ship_model_capacity_runtime.py
+      - name: Keep native enemy beams attached to the visible player ship
+        run: python3 tests/space_native_beam_runtime.py
+      - name: Keep completed native space layers on the same display page
+        run: python3 tests/space_native_present_runtime.py
       - name: Guard space station 3D depth and shared geometry
         run: python3 tests/space_station_depth_audit.py
       - name: Compile and fuzz the multiplayer packet contract
@@ -258,6 +290,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-numpy python3-pil build-essential libsdl2-2.0-0
       - name: Build normal native-space PC game
         run: cd pc && PC_OUT=bugstar_pc_space ./build.sh
+      - name: Check every space display phase, firing and menu transitions
+        run: cd pc && bash tests/native_space_lifetime.sh ./bugstar_pc_space
       - name: Benchmark per-body planet shading and verify exact multi-thread visuals
         run: cd pc && bash tests/native_space_perf.sh ./bugstar_pc_space
       - name: Upload native 3D space frame timing and image parity logs
@@ -265,7 +299,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pc-native-space-perf
-          path: pc/out/native_space/*.log
+          path: |
+            pc/out/native_space/*.log
+            pc/out/native_space_lifetime/*.log
+            pc/out/native_space_lifetime/*.json
+            pc/out/native_space_lifetime/*.png
           if-no-files-found: ignore
 
   pc-speed-parity:

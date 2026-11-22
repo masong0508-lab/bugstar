@@ -52,18 +52,24 @@ EW static u8 sh_ord[SF_MAX]; static int sh_ord_n=-1;   // the draw order is kept
 EW static u32 sh_rt[256]; static int sh_rt_ok=0;       // 65536/i, so lines and polygon edges need no division
 EW static s16 sh_l[160], sh_r[160];                    // polygon fill: the left and right end of every row
 static void sh_rt_init(void){ sh_rt[0]=0; for(int i=1;i<256;i++) sh_rt[i]=(65536+i/2)/i; sh_rt_ok=1; }
-static int sv_add(int x,int y,int z){ if(snv>=SV_MAX) return snv-1; shv[snv*3]=x; shv[snv*3+1]=y; shv[snv*3+2]=z; return snv++; }
-static void se_add(int a,int b,int c){ if(sne>=SE_MAX) return; she[sne*3]=a; she[sne*3+1]=b; she[sne*3+2]=c; sne++; }
-static void sf_add(int grp,int two,int n,int a,int b,int c,int d,int e,int f,int g,int h){ if(snf>=SF_MAX) return; Face *F=&shf[snf++]; F->n=n; F->grp=grp; F->two=two; int vv[8]={a,b,c,d,e,f,g,h}; for(int i=0;i<8;i++) F->v[i]=vv[i]; }
+// Failed vertices never alias the last real one. Reject any primitive using
+// them before storing byte indices; normals and both renderers trust these.
+static int sv_add(int x,int y,int z){ if(snv>=SV_MAX) return SV_MAX; shv[snv*3]=x; shv[snv*3+1]=y; shv[snv*3+2]=z; return snv++; }
+static void se_add(int a,int b,int c){ if(sne>=SE_MAX || (unsigned)a>=(unsigned)snv || (unsigned)b>=(unsigned)snv) return; she[sne*3]=a; she[sne*3+1]=b; she[sne*3+2]=c; sne++; }
+static void sf_add(int grp,int two,int n,int a,int b,int c,int d,int e,int f,int g,int h){
+    if(snf>=SF_MAX || n<3 || n>8) return; int vv[8]={a,b,c,d,e,f,g,h};
+    for(int i=0;i<n;i++) if((unsigned)vv[i]>=(unsigned)snv) return;
+    Face *F=&shf[snf++]; F->n=n; F->grp=grp; F->two=two; for(int i=0;i<8;i++) F->v[i]=vv[i]; }
 #define TRI(g,t,a,b,c) sf_add(g,t,3,a,b,c,0,0,0,0,0)
 #define QUAD(g,t,a,b,c,d) sf_add(g,t,4,a,b,c,d,0,0,0,0)
-static int ring4(int w,int h,int z){ int i=snv; sv_add(w,0,z); sv_add(0,h,z); sv_add(-w,0,z); sv_add(0,-h,z); for(int k=0;k<4;k++) se_add(i+k,i+((k+1)&3),0); return i; }
-static int ring8(int r,int z,int c){ int i=snv; for(int k=0;k<8;k++){ int a=k*32; sv_add((cosx(a)*r)>>14, (sinx(a)*r)>>14, z); } for(int k=0;k<8;k++) se_add(i+k,i+((k+1)&7),c); return i; }
+// Rings and boxes need contiguous vertices: reserve the whole shape first.
+static int ring4(int w,int h,int z){ if(snv>SV_MAX-4) return SV_MAX; int i=snv; sv_add(w,0,z); sv_add(0,h,z); sv_add(-w,0,z); sv_add(0,-h,z); for(int k=0;k<4;k++) se_add(i+k,i+((k+1)&3),0); return i; }
+static int ring8(int r,int z,int c){ if(snv>SV_MAX-8) return SV_MAX; int i=snv; for(int k=0;k<8;k++){ int a=k*32; sv_add((cosx(a)*r)>>14, (sinx(a)*r)>>14, z); } for(int k=0;k<8;k++) se_add(i+k,i+((k+1)&7),c); return i; }
 static void join(int a,int b,int n,int c){ for(int k=0;k<n;k++) se_add(a+k,b+k,c); }
 static void tube(int a,int b,int n,int grp){ for(int k=0;k<n;k++){ int k2=(k+1)%n; QUAD(grp,0,a+k,a+k2,b+k2,b+k); } }      // quads between two rings (front ring a, back ring b)
 static void fan(int tip,int r,int n,int grp,int rev){ for(int k=0;k<n;k++){ int k2=(k+1)%n; if(rev) TRI(grp,0,tip,r+k2,r+k); else TRI(grp,0,tip,r+k,r+k2); } }
 static int room(int v,int f){ return snv+v<=SV_MAX && snf+f<=SF_MAX && sne+v<=SE_MAX; }      // the model buffers are small (the GBA's work RAM is full), so the newer parts only fit in if there is room
-static void sbox(int cx,int cy,int cz,int dx,int dy,int dz,int grp){ int p=snv; for(int k=0;k<8;k++) sv_add(cx+((k&1)?dx:-dx), cy+((k&2)?dy:-dy), cz+((k&4)?dz:-dz));      // a little block: centre and half sizes
+static void sbox(int cx,int cy,int cz,int dx,int dy,int dz,int grp){ if(snv>SV_MAX-8) return; int p=snv; for(int k=0;k<8;k++) sv_add(cx+((k&1)?dx:-dx), cy+((k&2)?dy:-dy), cz+((k&4)?dz:-dz));      // a little block: centre and half sizes
     QUAD(grp,0,p+0,p+1,p+3,p+2); QUAD(grp,0,p+4,p+5,p+7,p+6); QUAD(grp,0,p+0,p+1,p+5,p+4); QUAD(grp,0,p+2,p+3,p+7,p+6); QUAD(grp,0,p+0,p+2,p+6,p+4); QUAD(grp,0,p+1,p+3,p+7,p+5); }
 static int LX(int v){ static const u8 f[3]={80,100,125}; return v*f[ship.len]/100; }     // the hull stretches with its length
 static int WX(int v){ static const u8 f[3]={75,100,130}; return v*f[ship.wid]/100; }     // ...and widens

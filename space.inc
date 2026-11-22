@@ -204,6 +204,17 @@ static int belt_pirates(void){ static u32 sid=0xFFFFFFFFu; static u8 v=3;
     return v; }
 static const u8 rock_col[5]={51,56,54,55,58};          // how each kind looks out in space: orange, steel, white, cyan, dark blue
 static s32 svx_, svy_, svz_; static int yawv=0, pitv=0, roll_=0, sshake=0, crash_cd=0;
+// Integer easing must finish its last fractional step, or released steering
+// and retro thrusters retain a small turn/drift forever.
+static int sp_ease_step(int delta, int divisor){ int step=delta/divisor; return step ? step : (delta>0)-(delta<0); }
+// A force has 18 fractional bits. Difference adjacent cumulative impulses
+// using the existing logic clock: weak engines keep their fractional push,
+// opposite directions match, and no per-axis accumulator needs RAM or a save.
+static int sp_thrust_step(s32 force, u32 tick){
+    u32 mag=force<0 ? -(u32)force : (u32)force, frac=mag&0x3FFFFu;
+    int step=(int)(mag>>18)+(((tick*frac)&0x3FFFFu)<frac);
+    return force<0 ? -step : step;
+}
 // ---- spin-matching: a FAST belt rock (a tumbling one whose drift is quick) can only be landed on when you move with it. Hold R beside it: the retro thrusters then match its drift instead of stopping you.
 static s8 spin_rock=-1;                                   // the fast rock you are close to (set every frame), -1 for none
 static int rock_fast(const Ast *a){ int vx=a->vx<0?-a->vx:a->vx, vz=a->vz<0?-a->vz:a->vz; return (a->seed&3)==0 && vx+vz>=3; }
@@ -674,23 +685,26 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     // the ship has weight: turning ramps up and settles, it banks into turns, and it drifts before the engines catch up
     // ---- flight: real momentum. engines push along the nose, mass resists, fins settle the turn, wings bite in air
     int tr=ship_turn(); int ty = (HELD(K_LEFT) ? -40 : HELD(K_RIGHT) ? 40 : 0)*tr/100, tp = (HELD(K_UP) ? -28 : HELD(K_DOWN) ? 28 : 0)*tr/100;
-    { int dp=ship_damp()+ship_mass()/8; yawv += (ty-yawv)/dp; pitv += (tp-pitv)/dp; }
-    yaw=(yaw+(yawv>>2))&1023; pitch+=pitv>>2; if(pitch>230) pitch=230; if(pitch<-230) pitch=-230;
-    { int rt=yawv*(2+ship.wsize+(ship.wings?1:0)); if(rt>96) rt=96; if(rt<-96) rt=-96; roll_ += (rt - roll_)/6; }          // lean into the turn: right turn = right wing down (+), at most about 34 degrees
+    { int dp=ship_damp()+ship_mass()/8; yawv += sp_ease_step(ty-yawv,dp); pitv += sp_ease_step(tp-pitv,dp); }
+    yaw=(yaw+yawv/4)&1023; pitch+=pitv/4; if(pitch>230) pitch=230; if(pitch<-230) pitch=-230;
+    { int rt=yawv*(2+ship.wsize+(ship.wings?1:0)); if(rt>96) rt=96; if(rt<-96) rt=-96; roll_ += sp_ease_step(rt-roll_,6); }          // lean into the turn: right turn = right wing down (+), at most about 34 degrees
     basis(); apply_roll();
     s32 pd=isqrt((u32)((shx>>4)*(shx>>4)+(shy>>4)*(shy>>4)+(shz>>4)*(shz>>4)))<<4;
     int in_air = !in_lair && pd < PR*5/2;                                          // close to the planet there is air
     { int a16=ship_accel16(); int burn = HELD(K_L) && fuel>0;
-      if(HELD(K_B)){ rum_hum(burn?110:45); int a=a16*(burn?2:1); svx_ += (bf[0]*a)>>18; svy_ += (bf[1]*a)>>18; svz_ += (bf[2]*a)>>18; if(burn && (frames&15)==0) fuel-=xo_fuel(1); }
+      int matching = HELD(K_R) && spin_rock>=0 && ast[spin_rock].alive;
+      if(HELD(K_B)){ rum_hum(burn?110:45); int a=a16*(burn?2:1); svx_ += sp_thrust_step(bf[0]*a,(u32)frames); svy_ += sp_thrust_step(bf[1]*a,(u32)frames); svz_ += sp_thrust_step(bf[2]*a,(u32)frames); if(burn && (frames&15)==0) fuel-=xo_fuel(1); }
       if(HELD(K_R)){ int k=6+ship.fins*2;
-          if(spin_rock>=0 && ast[spin_rock].alive){ const Ast *ra=&ast[spin_rock]; svx_ += ((s32)ra->vx-svx_)*k/32; svy_ += ((s32)ra->vy-svy_)*k/32; svz_ += ((s32)ra->vz-svz_)*k/32; }      // beside a fast rock: match its drift
-          else { svx_ -= svx_*k/64; svy_ -= svy_*k/64; svz_ -= svz_*k/64; } }           // retro thrusters
+          if(matching){ const Ast *ra=&ast[spin_rock]; svx_ += sp_ease_step(((s32)ra->vx-svx_)*k,32); svy_ += sp_ease_step(((s32)ra->vy-svy_)*k,32); svz_ += sp_ease_step(((s32)ra->vz-svz_)*k,32); }      // beside a fast rock: match its drift
+          else { svx_ -= sp_ease_step(svx_*k,64); svy_ -= sp_ease_step(svy_*k,64); svz_ -= sp_ease_step(svz_*k,64); } }           // retro thrusters
       // drag: a whisper in space, a hand in the air. in the air the wings pull the ship round to where the nose points
-      if(in_air){ int g = 10 + ship.wsize*6 + (ship.wings?6:0); s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
+      // Matching uses the rock's velocity, not the nose direction. Nearby belt
+      // rocks lie inside the air radius; wing alignment must not undo the match.
+      if(!matching){ if(in_air){ int g = 10 + ship.wsize*6 + (ship.wings?6:0); s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
           svx_ += ((((bf[0]*sp3)>>14) - svx_)*g)>>7; svy_ += ((((bf[1]*sp3)>>14) - svy_)*g)>>7; svz_ += ((((bf[2]*sp3)>>14) - svz_)*g)>>7;
           svx_ -= svx_/48; svy_ -= svy_/48; svz_ -= svz_/48; }
       else { svx_ -= svx_/512; svy_ -= svy_/512; svz_ -= svz_/512; if(!HELD(K_B)&&!HELD(K_R)){ int g=ship.fins+1; s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
-          svx_ += ((((bf[0]*sp3)>>14) - svx_)*g)>>9; svy_ += ((((bf[1]*sp3)>>14) - svy_)*g)>>9; svz_ += ((((bf[2]*sp3)>>14) - svz_)*g)>>9; } }
+          svx_ += ((((bf[0]*sp3)>>14) - svx_)*g)>>9; svy_ += ((((bf[1]*sp3)>>14) - svy_)*g)>>9; svz_ += ((((bf[2]*sp3)>>14) - svz_)*g)>>9; } } }
       s32 vmax = coil_vmax(ship_top_speed()*3*(burn?5:4)/4); s32 sp3=isqrt((u32)(svx_*svx_+svy_*svy_+svz_*svz_));
       if(sp3>vmax){ svx_=svx_*vmax/sp3; svy_=svy_*vmax/sp3; svz_=svz_*vmax/sp3; sp3=vmax; }
       speed = sp3/3; }

@@ -3,6 +3,94 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Space flight and combat continuation — 21 November 2026
+
+- **Steering that settles (GBA/PC/Android):** integer easing completes its final
+  step, so releasing a turn stops yaw/pitch rotation and levels the bank. Angle updates
+  round symmetrically in both directions. Ship-specific inertia is retained.
+- **Complete braking and asteroid matching:** R stops residual drift. Beside a
+  fast belt rock it reaches the rock's velocity instead of stalling just outside
+  the landing threshold; atmospheric nose alignment no longer undoes the match.
+  Ordinary unbraked coasting and the existing speed limits are retained.
+- **Thrust for every ship preset:** fractional engine force is preserved using
+  the existing logic clock, with equal impulse in opposite directions. Previously
+  weak engines could lose all positive-axis thrust while negative-axis thrust
+  rounded up. This adds no persistent accumulator or save fields.
+- **Safe assembly of complex ships (GBA/PC/Android):** failed vertex additions
+  return an invalid index instead of reusing the last vertex; edges and faces
+  reject invalid references before storing them. Rings and boxes require room
+  for their full vertex group. This fixes an actual out-of-bounds model read
+  found by ASan with shipyard preset 9, using the existing 128-vertex buffers.
+  Models that fit retain their original allocation order and geometry.
+- **Readable incoming fire (PC/Android):** NATIVE and ULTRA enemy beams meet the
+  player's actual world position in chase view. They previously aimed at the
+  cockpit's bottom-edge position, visibly below the ship. Cockpit and CLASSIC
+  beam placement remain unchanged. No new framebuffer or actor allocation.
+- **Consistent native space frames (PC/Android):** publish a completed space
+  page before its existing display wait, keeping its bitmap, background,
+  ships and effects together on every display blank. The old order briefly
+  showed the previous page after the single native background buffer had
+  advanced, then dropped native layers when its snapshot expired. Completion
+  is tracked through normal flight, initial launch and the Coil test loop,
+  including filming mode. Early exits cannot publish an unfinished page;
+  CLASSIC ordering and the compositor's stale-frame limits are retained.
+- **Companion GBC space pass:** [PR #13](https://github.com/masong0508-lab/bugstar-gbc/pull/13)
+  makes all 256 worlds actionable in both flight views, preserves the full
+  pirate reinforcement delay, and keeps the cockpit's control/destination row
+  visible after dialogue. Controller-only chart, warp, station, undock and
+  landing replays at world 255 produce valid autosaves in both views. Fixed
+  WRAM decreases by two bytes; saved world IDs and save format stay unchanged.
+
+The production model, flight, beam and presentation paths are covered by
+`tests/ship_model_capacity_runtime.py`,
+`tests/space_flight_runtime.py`, `tests/space_native_beam_runtime.py` and
+`tests/space_native_present_runtime.py`, wired into the PC workflow together
+with `pc/tests/native_space_lifetime.sh`. Actual space captures and handheld
+control checks use the game's existing scene/debug entry points and ordinary
+controller input.
+
+Validation for this continuation:
+
+- The model regression checks 96,160 production models under ASan/UBSan,
+  including all game/PC presets, 94,080 valid part combinations, 2,048 generated
+  designs and allocation boundaries. All 94,077 models that fit are byte-for-byte
+  identical to the previous builder; 2,083 exhausted models keep valid indices.
+  Five original/missing-guard negative controls fail. Actual CLASSIC captures
+  no longer contain the malformed polygon; native custom-hull pictures and
+  the HUD are unchanged by this capacity correction.
+- The flight regression checks 143,430 actual movement updates across all ten
+  ship presets, including released controls, mirrored turns, braking, drift
+  matching, speed limits and fuel. A separate exact impulse oracle checks
+  33,221,000 cases over 1,080 complete fractional cycles, including clock wrap,
+  oblique headings and custom-engine limits. Eight isolated regressions fail
+  against the original or deliberately incomplete fixes.
+- The real native ship renderer passes 4,000 chase-target checks and 8,000
+  cockpit/CLASSIC comparisons, with six render configurations. Actual NATIVE
+  and ULTRA space captures show incoming beams meeting the player hull. Held-A
+  captures also confirm that the existing player bolts and ULTRA glow render
+  correctly throughout their firing phase; sparse captures had missed them.
+- Native publication passes 1,160 checks through the actual scheduler and
+  guarded caller sequences. The real-game lifetime smoke passes 15 cases and
+  1,018 captured display blanks on both the final normal and ASan binaries:
+  all four flight phases, turning/firing, chase/cockpit, NATIVE/ULTRA/CLASSIC,
+  galaxy-menu return and landing/walking/shop/launch. One/four-thread pixels
+  and saves match. The old binary fails on its expired age-five snapshot.
+  Existing cache/shading/effects parity also passes at 960x640 and 480x320.
+  Local LeakSanitizer scanning is disabled for the traced runner; address and
+  bounds instrumentation remain active.
+- Five fresh-boot mGBA scenarios exercise the production ROM through ordinary
+  controller input, totaling 9,554 emulated frames. Released yaw/pitch rates and bank
+  now reach zero; equal left/right input gives equal opposite turns. R braking
+  reaches zero velocity instead of retaining forward drift. Firing and both
+  cockpit/chase transitions also pass. The comparison uses identical emulated
+  and simulation frame counts. All 39 final-ROM checkpoints and sampled flight
+  states match the earlier flight fix after the model-capacity correction.
+  This is a bounded flight smoke, not a campaign run.
+- The final production GBA build adds 3,752 bytes of ROM code. Data/BSS remain
+  564 / 263,684 bytes. IWRAM stack reserve is 1,664 bytes (eight bytes below the
+  preceding kart pass), above the 1,500-byte project requirement. Model buffer
+  sizes, save layout and persistent RAM are unchanged.
+
 ## Kart road projection and filtering — 21 November 2026
 
 - **Ordered ground depth (GBA/PC/Android):** retain the unsigned reciprocal
@@ -145,7 +233,8 @@ The planet-buster countdown, orbital strikes and troop waves are in. The extreme
 - **Native-resolution 3D** for the dungeon, planet and space views (Seam 6 in `pc/NATIVE_PLAN.md`). They still draw at 240 x 160 and are scaled.
 - **Kart NATIVE view** is about 34 to 44 ms per frame at 1200 x 800 on a 2-core box; get it to 60 fps (more threads, tile cache, fewer per-pixel branches). Add banking, hills and shadows.
 - **CLASSIC far fleets** at 10,000 ships turn into solid blocks; use a density map instead.
-- **Enemy beams** at the player are missing in NATIVE and ULTRA.
+- **Enemy beams:** present in NATIVE and ULTRA; chase-view alignment is corrected
+  in the space continuation above.
 - Capture real window screenshots (the automatic screenshot was not written in window mode).
 - Ship editor: use the renderer for the preview, `sy_rooms` now drives the warship interior builder (`wd_make_mix`, patch 18; the game does not call it yet), make foe designs change stats and fight rules.
 - Flash-safe and photosensitivity check on the NATIVE glitches.
@@ -194,4 +283,8 @@ Keep PARITY.md the single source of truth.
 - Do not run test suites in parallel: they share `pc/gen`, and a parallel `kart.sh` build fails.
 - `seeds.golden`: 4 picture hashes refreshed (2 trait planets, only the distant city skyline rows differ: building windows changed in `planet.inc`). Text lines unchanged.
 - `sim_off.golden`: refreshed from the current build with the side game OFF. It is no longer proof of the pre-side-game picture (drift from frame 2800, cause not found); the ON vs OFF `.sav` equality and no-`.sim`-when-OFF checks still pass and are the real isolation proof.
-- To check: in a space fight with a preset ship design (`shipyard_space` setup), the player's white laser wedge shows with SHIPS off and CLASSIC but not in NATIVE or ULTRA. Enemy beams do draw in NATIVE and ULTRA in the frames checked.
+- Rechecked in the November space pass: the preset-ship player bolts are visible
+  in both NATIVE and ULTRA. Held-A versus idle captures across four firing
+  phases show the paired bolts and ULTRA glow; sparse captures between bursts
+  can miss them. Enemy beams are also present, with their chase-view endpoint
+  corrected by the continuation above.
