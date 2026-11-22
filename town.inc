@@ -512,6 +512,23 @@ static void planet_card(volatile u16 *pg){                                      
 #define GIFT_MAX 3
 #define GIFT_COOL (60*60*30)
 EW static u8 gift_n[NPO]; EW static s32 gift_until[NPO]; static u32 gift_world=0;   // in EWRAM: IWRAM is nearly full
+// The low bit of a local's variation is its look; the high bit records
+// whether this NPC has counted for the CURRENT census job.
+#define LOCAL_VISITED 0x80u
+static int local_line_index(const PObj *o){
+    // Unsigned before the modulo: high world seeds used to produce negative
+    // signed indices and read outside the 40-line dialogue table.
+    u32 k=(u32)((o->x>>16)*7+(o->y>>16)*13)+wd.tseed;
+    return (int)(k%NTALK);
+}
+static int local_job_visit(PObj *o){
+    if(pq_type!=5 || pq_done || (o->var&LOCAL_VISITED)) return 0;
+    o->var|=LOCAL_VISITED; pq_have++; return 1;
+}
+static void local_job_reset(void){
+    for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_LOCAL)
+        po[i].var&=(u8)~LOCAL_VISITED;
+}
 static void local_talk(PObj *o){
     volatile u16 *pg=VISPG; const char *ln[2]; char g[40];
     int gi=(int)(o-po), cooling=0;
@@ -523,12 +540,16 @@ static void local_talk(PObj *o){
     static const char *const hate_ln[12]={"GO AWAY.","WE DO NOT LIKE BUGS. OR YOU.","YOUR SHIP IS UGLY.","THE LAST BUG HERE NEVER LEFT. JUST SAYING.","NO.",
         "PRICES DOUBLE WHEN YOU LOOK AT THEM.","DO NOT TOUCH ANYTHING.","I AM CALLING THE MAYOR. SHE BITES.","YOU SMELL LIKE SPACE.","LEAVE. NOW. PLEASE. NO, NOT PLEASE. LEAVE.",
         "WE HAD A NICE DAY UNTIL YOU CAME.","EVERYTHING HERE BITES. ME TOO."};
-    int li=(int)((o->x>>16)*7+(o->y>>16)*13+wd.tseed)%NTALK; ln[0] = wd.mood==MOOD_LOVE ? love_ln[li%12] : wd.mood==MOOD_HATE ? hate_ln[li%12] : talk_ln[li];
+    int li=local_line_index(o); ln[0] = wd.mood==MOOD_LOVE ? love_ln[li%12] : wd.mood==MOOD_HATE ? hate_ln[li%12] : talk_ln[li];
     if(wd.mood==MOOD_HATE || cooling) o->hp=0; else if(wd.mood==MOOD_LOVE && rndi(3)==0) o->hp=1;
     if(o->hp){ o->hp=0; if(++gift_n[gi]>=GIFT_MAX) gift_until[gi]=vbl_count+GIFT_COOL; int r=wr(4);
         if(r==0){ gold+=5+dlv()*3; txt_copy(g,sizeof g,"HERE, TAKE "); txt_number(g,sizeof g,5+dlv()*3); txt_append(g,sizeof g,"G. FOR THE LEGS."); }
-        else if(r==1){ Gear gg={IT_CRUMB,0,0,0,0,0}; add_gear(gg); txt_copy(g,sizeof g,"HAVE A CRUMB. I HAVE TOO MANY."); }
-        else if(r==2){ Gear gg={IT_BERRY,(u8)rndi(8),0,0,0,0}; add_gear(gg); txt_copy(g,sizeof g,"A BERRY. DO NOT ASK WHERE IT GREW."); }
+        else if(r==1){ Gear gg={IT_CRUMB,0,0,0,0,0};
+            if(add_or_credit(gg,5+dlv()*3)) txt_copy(g,sizeof g,"HAVE A CRUMB. I HAVE TOO MANY.");
+            else { txt_copy(g,sizeof g,"BAG FULL! TAKE "); txt_number(g,sizeof g,5+dlv()*3); txt_append(g,sizeof g,"G INSTEAD."); } }
+        else if(r==2){ Gear gg={IT_BERRY,(u8)rndi(8),0,0,0,0};
+            if(add_or_credit(gg,5+dlv()*3)) txt_copy(g,sizeof g,"A BERRY. DO NOT ASK WHERE IT GREW.");
+            else { txt_copy(g,sizeof g,"BAG FULL! TAKE "); txt_number(g,sizeof g,5+dlv()*3); txt_append(g,sizeof g,"G INSTEAD."); } }
         else if(form==FORM_HUMAN && (tools_owned|0xFF)!=tools_owned && rndi(2)){ int tl; do tl=rndi(NTOOL); while((tools_owned>>tl)&1); tools_owned|=1u<<tl; txt_copy(g,sizeof g,"HANDS! A GIFT: "); txt_append(g,sizeof g,tool_name[tl]); }
         else { fame+=3; txt_copy(g,sizeof g,"EVERYONE WILL HEAR YOU WERE KIND. +FAME"); }
         ln[1]=g; card(pg,"A LOCAL",ln,2); sfx(7); }
@@ -536,13 +557,15 @@ static void local_talk(PObj *o){
         static const char *const t2[10]={"MAYBE TRY ME AGAIN AFTER A NAP.","COME BY LATER. I MIGHT FIND SOMETHING.","THE GARDEN HAS MORE. GO LOOK.","ASK ME ANOTHER DAY. I WILL BE HERE.","GO SEE THE REST OF THE TOWN.","COME BACK WHEN I HAVE BAKED AGAIN.","I WILL HAVE MORE WHEN THE SUN MOVES.","GO ON. EXPLORE. I WILL KEEP YOUR SPOT.","TALK ANYTIME. JUST NO MORE GIFTS.","THE MAYOR MAY HAVE SOMETHING. SHE IS A MOTH."};
         ln[0]=t1[rndi(10)]; ln[1]=t2[rndi(10)]; card(pg,"A LOCAL",ln,2); }
     else { char w[40]; txt_copy(w,sizeof w,"KNOWN FOR: "); txt_append(w,sizeof w,tagline[wd.tagline]); ln[1]=w; card(pg,"A LOCAL",ln,2); }
-    if(pq_type==5 && !pq_done && !cooling){ pq_have++; }
+    // A census is about DIFFERENT residents, not repeatedly asking one.
+    // A resident still counts when their gift cooldown is active.
+    local_job_visit(o);
 }
 // ---------------------------------------------------------------- the bounty office: a job per planet
 static void job_text(char *b){
     static const char *const jt[11]={"","SQUASH ","BEAT ","DIG UP ","WIN THE RACE","TALK TO ","HUNT ","MINE ","KART GRAND PRIX","SEARCH ","BRING "};
     scpy(b,jt[pq_type]); if(pq_type!=4 && pq_type!=8){ ncat(b,pq_need); scat(b," "); }
-    switch(pq_type){ case 1: scat(b,"SLUGS"); break; case 2: scat(b,"BEETLES"); break; case 3: scat(b,"FOSSILS"); break; case 5: scat(b,"LOCALS"); break; case 9: scat(b,"PLANTS"); break; case 6: scat(b,spc[0].name); scat(b,"S"); break; case 7: scat(b,"ORE NODES"); break; case 10: scat(b,ore_def[pq_ore].name); break; }
+    switch(pq_type){ case 1: scat(b,"SLUGS"); break; case 2: scat(b,"BEETLES"); break; case 3: scat(b,"FOSSILS"); break; case 5: scat(b,"DIFFERENT LOCALS"); break; case 9: scat(b,"PLANTS"); break; case 6: scat(b,spc[0].name); scat(b,"S"); break; case 7: scat(b,"ORE NODES"); break; case 10: scat(b,ore_def[pq_ore].name); break; }
 }
 static void job_tick(void){                                                           // called when a counter moves: pays out the moment the job is done
     if(!pq_type || pq_done) return;
@@ -560,7 +583,7 @@ static void bounty_office(volatile u16 *pg){
         if(pq_type==10){ int cand[NORE], nc=0, hab=ore_habitat(); for(int o=4;o<NORE;o++) if((ore_hab[o]&hab) && ore_need_tool(o)<=ore_tool_eff()) cand[nc++]=o; if(nc){ pq_ore=(u8)cand[wr(nc)]; } else pq_type=0; }      // an ore this world has and your tool can cut
     } while(!pq_type && tries<10);
     if(!pq_type) pq_type=1;
-    static const u8 need[11]={0,3,1,1,1,3,2,3,1,4,3}; pq_need=need[pq_type]+(pq_type==1||pq_type==5||pq_type==7||pq_type==9 ? wr(3) : 0); pq_have=0;
+    static const u8 need[11]={0,3,1,1,1,3,2,3,1,4,3}; pq_need=need[pq_type]+(pq_type==1||pq_type==5||pq_type==7||pq_type==9 ? wr(3) : 0); pq_have=0; if(pq_type==5) local_job_reset();
     { static const u8 kk[11]={0,O_SLUG,O_BEETLE,O_FOSSIL,0,O_LOCAL,O_CRIT,O_TREE,0,O_PLANT,0}; int have=0;                    // never ask for more than the planet has
       if(pq_type!=4 && pq_type!=8 && pq_type!=10) for(int i=0;i<NPO;i++) if(po[i].alive && (po[i].kind==kk[pq_type] || (pq_type==7 && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER)) && (pq_type!=6 || po[i].var==0)) have++;
       if(pq_type==10) pq_need=3+wr(4)+ore_def[pq_ore].tier/2;

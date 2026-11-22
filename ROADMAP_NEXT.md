@@ -3,6 +3,25 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Planet rewards and resident census — 22 November 2026
+
+- Give a `TALK TO LOCALS` bounty credit only once per distinct resident.
+  Repeatedly pressing A on one local no longer completes the whole census;
+  speaking while the local's gift cooldown is active still counts. Reset the
+  visit bits only when a new census is issued. Reuse the high bit of the
+  existing local appearance byte, preserving the original sprite choice in
+  its low bit; no extra actor state, save fields or framebuffers.
+- Compute dialogue indices with unsigned modulo, so world seeds with their
+  high bit set cannot select a negative index into NPC dialogue tables.
+- If the item bag is full, compensate for lost one-time local gifts,
+  fossil shells and plant berries/seeds with a clear small gold payout.
+  Messages always distinguish the real item from the fallback reward.
+- `tests/local_rewards_runtime.py` compiles the genuine C census and reward
+  helper logic under ASan/UBSan, runs 200,000 generated world-seed/index
+  cases, verifies different residents, reissued census jobs, appearance
+  identity, and full/available inventory outcomes, and audits actual NPC
+  and planet pickup call sites. Validate all platform CI before shipping.
+
 ## UI safety and planet feedback — 22 November 2026
 
 - Bound all displayed character-creator hints, hangar rank messages, local NPC

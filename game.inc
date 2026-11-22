@@ -959,6 +959,12 @@ static int add_gear(Gear g){
     bag[bag_n++]=g;
     char b[48], nm[40]; gear_name(&g,nm); scpy(b,"GOT "); scat(b,nm); b[39]=0; say(b); sfx(2); hud_now(); return 1;
 }
+// Turn a blocked inventory reward into a small payout rather than silently
+// consume a one-use plant, fossil bonus, or local gift with nothing received.
+static int add_or_credit(Gear g, int when_full){
+    if(add_gear(g)) return 1;
+    gold+=when_full; hud_now(); return 0;
+}
 static int add_item(int it, int sub){ Gear g={it,sub,0,0,0,0}; return add_gear(g); }
 static void drop_at(int i){ for(int k=i;k<bag_n-1;k++) bag[k]=bag[k+1]; bag_n--; if(bag_sel>=bag_n) bag_sel=bag_n?bag_n-1:0; }
 static void drop_sel(void){ drop_at(bag_sel); }

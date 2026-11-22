@@ -712,7 +712,9 @@ static void planet_frame(void){
             case O_RUIN: if(!po[best].hp){ show_msg("THE STONES ARE QUIET NOW"); break; } { oam_hide_all(); oam_flush(); ruin_visit(VISPG,&po[best]); planet_hud(); p_last=vbl_count; return; }
             case O_FOSSIL: { PObj *o=&po[best]; sfx(12); mine_t=8; if(--o->hp>0){ char b[40]; scpy(b,"DIG... "); ncat(b,o->hp); scat(b," MORE"); show_msg(b); break; }
                 o->alive=0; st_mined++; gain_xp(4+dlv()); if(cargo_n()<cargo_cap+ship_hold_bonus()){ cargo[7]++; show_msg("A FOSSIL! +1 RELIC IN THE HOLD"); } else { gold+=20; show_msg("A FOSSIL! HOLD FULL, SO: +20G"); }
-                if(rndi(3)==0){ Gear g={IT_SHELL,(u8)rndi(4),0,0,0,(u8)dlv()}; add_gear(g); show_msg("OLD BONES... AND AN OLD SHELL!"); } sfx(6); if(pq_type==3){ pq_have++; job_tick(); } if(relic_roll(150)){ planet_hud(); p_last=vbl_count; return; } break; }
+                if(rndi(3)==0){ Gear g={IT_SHELL,(u8)rndi(4),0,0,0,(u8)dlv()};
+                    if(add_or_credit(g,10)) show_msg("OLD BONES... AND AN OLD SHELL!");
+                    else show_msg("BAG FULL. BONUS SHELL = +10G"); } sfx(6); if(pq_type==3){ pq_have++; job_tick(); } if(relic_roll(150)){ planet_hud(); p_last=vbl_count; return; } break; }
             case O_BEETLE: { PObj *o=&po[best]; sfx(0); mine_t=6; s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); o->x=(o->x+dx*2)&((TW<<16)-1); o->y=(o->y+dy*2)&((TW<<16)-1); invuln=20;
                 if(--o->hp>0){ char b[40]; scpy(b,"BITE! THE BEETLE HAS "); ncat(b,o->hp); scat(b," LEFT"); show_msg(b); break; }
                 o->alive=0; gold+=12+dlv()*3; gain_xp(8+dlv()*2); st_kills[2]++; show_msg("BEETLE DOWN! +GOLD"); sfx(9); if(pq_type==2){ pq_have++; job_tick(); } if(relic_roll(250)){ planet_hud(); p_last=vbl_count; return; } break; }
@@ -743,8 +745,12 @@ static void planet_frame(void){
                 break; }
             case O_PLANT: { po[best].alive=0; int r=rndi(10); if(pq_type==9){ pq_have++; job_tick(); }
                 if(r<5){ eat(15); show_msg("NIBBLED A LEAF. FOOD +15"); sfx(11); }
-                else if(r<8){ Gear g={IT_BERRY,(u8)rndi(8),0,0,0,0}; if(add_gear(g)) show_msg("FOUND A BERRY IN THE LEAVES"); }
-                else if(r<9){ Gear g={IT_SEED,(u8)rndi(6),0,0,0,0}; if(add_gear(g)) show_msg("FOUND A SEED"); }
+                else if(r<8){ Gear g={IT_BERRY,(u8)rndi(8),0,0,0,0};
+                    if(add_or_credit(g,5)) show_msg("FOUND A BERRY IN THE LEAVES");
+                    else show_msg("BAG FULL. BERRY = +5G"); }
+                else if(r<9){ Gear g={IT_SEED,(u8)rndi(6),0,0,0,0};
+                    if(add_or_credit(g,5)) show_msg("FOUND A SEED");
+                    else show_msg("BAG FULL. SEED = +5G"); }
                 else { gold+=2+dlv(); show_msg("A SHINY PEBBLE! +GOLD"); sfx(7); }
                 break; }
         }
@@ -890,7 +896,7 @@ sprites:;
             if(sp->size==0 && m>2) m-=2; if(sp->size==2 && m<27) m+=2; if(WL(MW_GIANTS)){ m+=2+WL(MW_GIANTS)/3; if(m>27) m=27; }
             if(WL(MW_GHOSTS) && (((frames>>3)+order[k])%(2+(25-WL(MW_GHOSTS))/5))==0) continue; }                   // GHOSTS: creatures blink out
         if(WL(MW_JUNGLE) && (o->kind==O_PLANT || (o->kind>=O_TREE && o->kind<=O_FLOWER) || o->kind==O_TUFT)){ m+=WL(MW_JUNGLE)/3; if(m>27) m=27; }   // JUNGLE: giant plants
-        if(o->kind==O_LOCAL) tl = o->var ? T_LOCAL2 : T_LOCAL1;
+        if(o->kind==O_LOCAL) tl = (o->var&1) ? T_LOCAL2 : T_LOCAL1;
         s32 sc=8+m*4;                                                                  // the scale actually drawn: feet are placed from THIS (they used the pre-resize scale before)
         int w=w_of[o->kind], h=h_of[o->kind];
         int cy=sy - (sc*h)/128;
