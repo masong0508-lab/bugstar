@@ -130,7 +130,9 @@ int main(void){
     assert(!strcmp(displayed+strlen(displayed)-4," T13"));
     zone_cleared=0; hell_on=1; hell_rank=6;
     planet_hud(); assert(!strcmp(displayed+strlen(displayed)-3," H6"));
-    endless=1; planet_hud(); assert(!strstr(displayed," H6"));
+    // Endless inferno worlds still show their hell tier; ordinary worlds do not.
+    endless=1; planet_hud(); assert(!strcmp(displayed+strlen(displayed)-3," H6"));
+    hell_on=0; planet_hud(); assert(!strstr(displayed," H6"));
     kw_mode=1; int before=hud_calls; planet_hud();
     assert(hud_calls==before && topbar_calls==1);
 #ifdef TEST_HASH
