@@ -129,10 +129,10 @@ int main(void){
         b.lo=0xa5;b.hi=0x5a;
         bolt_hive_hint(b.s,sizeof b.s);
         CHECK(b.lo==0xa5 && b.hi==0x5a);
-        char needle[10];sprintf(needle,"HIVE %d/5:",i+1);
+        char needle[24];snprintf(needle,sizeof needle,"HIVE %u/5:",(unsigned)(i+1));
         CHECK(strstr(b.s,needle)!=NULL);
         CHECK(strstr(b.s,hive_nm[i])!=NULL);
-        char floor[8];sprintf(floor," B%u.",hive_floors[i]);
+        char floor[16];snprintf(floor,sizeof floor," B%u.",(unsigned)hive_floors[i]);
         CHECK(strstr(b.s,floor)!=NULL);
     }
     // Capped output remains NUL-terminated without touching the canary.
