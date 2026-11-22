@@ -42,6 +42,11 @@ static void kfz_run(void){
             else { kfz_auto=1; if(mode==1){ if(hold_t--<=0){ held=(int)(kfz_rnd()&(K_A|K_B|K_R|K_L|K_SEL)); if(kfz_rnd()%3) held=0; hold_t=1+(int)(kfz_rnd()%40); } keys_old=keys; keys=(u32)held; } else { keys_old=keys; keys=0; } }
             frames++; if(invuln) invuln--; rng_s+=keys; planet_frame(); vsync();
             if(m7_on){ oam_flush(); m7_after_vsync(); } else { REG_DISPCNT=(REG_DISPCNT&~(1<<4))|(page_back?(1<<4):0); page_back^=1; oam_flush(); }
+            // Match kw_run(): after the first four race pictures are prepared,
+            // fade OUT OF the boot/previous-race blackout. Without this,
+            // KFUZZ kept BLDY=16 and the classic GBA picture was 100% black
+            // even while native kart geometry bypassed the brightness blend.
+            if(kg_fadein && !--kg_fadein) fade(0);
             if(kr_mode!=1 || nrc<1) continue;
             if(ks_state==KS_COUNT){ laps=kt.laps; np=knp; for(int r=0;r<NRC;r++){ lastlap[r]=0; lastpi[r]=rc[r].pi; lastchg[r]=nrace; stuckrep[r]=0; } }
             if(ks_state==KS_RACE) nrace++;
