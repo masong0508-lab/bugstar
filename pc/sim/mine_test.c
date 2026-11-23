@@ -216,6 +216,47 @@ int main(void){
       CHECK(mn_list_read(&R,v2,sizeof v2)==0 && !R.m[0].ex_kind);
       CHECK(mn_list_read(&R,v1,sizeof v1-1)<0);
     }
+    // Real BSIM MINE chunk: v2 files include the new fields, while an old
+    // v1 chunk with 112-byte records imports into the same game with no loss.
+    { simfile_init(&F); F.slot[0].used=1; F.slot[0].cal_ticks=321;
+      Mine *m=mn_find(&F.slot[0].mines,704,1,4);
+      m->depth=2; m->work=2; m->zst[2]=MNZ_OPEN; m->seam[2]=345;
+      m->surveyed=(1u<<2); m->ex_kind=MNEX_SURVEY; m->ex_level=2;
+      m->ex_total=2; m->ex_left=1; m->ex_completed=5;
+      size_t n=simfile_write(&F,buf,sizeof buf); CHECK(n>0);
+      size_t at=8, hit=n, oldlen=0;
+      while(at+14<=n){
+          size_t len=(size_t)buf[at+6] | ((size_t)buf[at+7]<<8) | ((size_t)buf[at+8]<<16) | ((size_t)buf[at+9]<<24);
+          if(at+14+len>n) break;
+          if(!memcmp(buf+at,"MINE",4)){ hit=at; oldlen=len; break; }
+          at+=14+len;
+      }
+      CHECK(hit<n && oldlen==1+MN_REC_BYTES && buf[hit+5]==2);
+      CHECK(simfile_read(&G,buf,n)==0 && G.bad_chunks==0 &&
+            G.slot[0].mines.m[0].surveyed==(1u<<2) &&
+            G.slot[0].mines.m[0].ex_left==1);
+      if(hit<n && oldlen==1+MN_REC_BYTES){
+          size_t small=1+MN_REC_V1_BYTES, cut=oldlen-small;
+          memmove(buf+hit+14+small,buf+hit+14+oldlen,n-(hit+14+oldlen));
+          buf[hit+5]=1;
+          for(int k=0;k<4;k++) buf[hit+6+k]=(uint8_t)(small>>(8*k));
+          uint32_t sum=sim_fnv(buf+hit+14,small);
+          for(int k=0;k<4;k++) buf[hit+10+k]=(uint8_t)(sum>>(8*k));
+          CHECK(simfile_read(&G,buf,n-cut)==0 && G.bad_chunks==0 &&
+                G.slot[0].cal_ticks==321 && G.slot[0].mines.n==1 &&
+                G.slot[0].mines.m[0].seam[2]==345 &&
+                !G.slot[0].mines.m[0].surveyed && !G.slot[0].mines.m[0].ex_kind);
+      }
+      // Three full 32-colony slots and 256 saved journal entries still fit
+      // in the original 64 KiB side-game file after increasing mine records.
+      simfile_init(&F);
+      for(int sl=0;sl<SIM_SLOTS;sl++){
+          F.slot[sl].used=1; F.slot[sl].cols.n=COL_MAX;
+          F.slot[sl].mines.n=COL_MAX; F.slot[sl].ntail=SIM_TAILN;
+      }
+      size_t full=simfile_write(&F,buf,sizeof buf);
+      CHECK(full>0 && full<=SIMFILE_MAX);
+    }
     // ---- text
     { SimColony c; Mine m; mk(&c, 70, ALL, 6, COLJ_MINER, 1); mn_init(&m, 70, 0); runboth(&c, &m, 1, 60, COLD_NORMAL, ALL, 0); char t[80]; mn_status_text(&m, t, sizeof t); CHECK(t[0]); m.warn = 1; mn_status_text(&m, t, sizeof t); CHECK(strstr(t, "CREAKING"));
       for(int z = 1; z <= 15; z++){ mn_level_text(&m, &c, z, COLD_NORMAL, t, sizeof t); CHECK(t[0] == 'L' && t[1] == 'V' && strlen(t) < 46); } char d[300]; CHECK(mn_dump(&m, d, sizeof d) > 20);
