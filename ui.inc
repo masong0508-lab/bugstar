@@ -1125,36 +1125,39 @@ static void sm_cost(int r, char *b){ const Recipe *q=&sm_rec[r]; int k=q->kind?1
     ncat(b,q->na); scat(b," "); scat(b,k?sm_name[q->a]:ore_def[q->a].name);
     if(q->nb){ scat(b," + "); ncat(b,q->nb); scat(b," "); scat(b,k?sm_name[q->b]:ore_def[q->b].name); } }
 static void sm_row(int i, char *b, int *c){ if(i>=sm_cnt(sm_nv,sm_pg)){ sm_next(b,c,sm_nv,sm_pg); return; } int r=sm_view[sm_pg*SM_PS+i]; const Recipe *q=&sm_rec[r]; scpy(b,sm_outname(r)); while(textlen(b)<13) scat(b," "); sm_cost(r,b);
-    *c = ((q->kind==2 && ore_tool>=q->out) || (q->kind>=3 && sp_have(q->kind)>=sp_cap(q->kind))) ? C_DGREY : sm_batches(r)>0 ? C_GREEN : C_WHITE; }
+    *c = ((q->kind<=1 && !sm_room(q->out)) || (q->kind==2 && ore_tool>=q->out) || (q->kind>=3 && sp_have(q->kind)>=sp_cap(q->kind))) ? C_DGREY : sm_batches(r)>0 ? C_GREEN : C_WHITE; }
 static void sm_job_line(char *b, int *c){ b[0]=0; if(!sm_job) return;
-    if(sm_ready()){ scpy(b,"SMELT DONE! A: COLLECT"); *c=C_GREEN; return; }
+    if(sm_ready()){ if(!sm_room(sm_rec[sm_job-1].out)){ scpy(b,"BAR STOCK FULL! SELL SOME"); *c=C_RED; } else { scpy(b,"SMELT DONE! A: COLLECT"); *c=C_GREEN; } return; }
     scpy(b,"SMELTING "); ncat(b,sm_jn); scat(b," "); scat(b,sm_name[sm_rec[sm_job-1].out]); scat(b,": "); ncat(b,sm_left()); scat(b,"S LEFT"); *c=C_GOLD; }
 static void sm_rdesc(int i, char *b, int *c){ b[0]=0; *c=C_GREY; if(i<0){ sm_job_line(b,c); return; }
     if(i>=sm_cnt(sm_nv,sm_pg)){ scpy(b,"A: SHOW THE NEXT PAGE"); return; }
     int r=sm_view[sm_pg*SM_PS+i]; const Recipe *q=&sm_rec[r];
-    if(q->kind==0){ scpy(b,"MAKES 1 PER "); ncat(b,q->na); scat(b," "); scat(b,ore_def[q->a].name); scat(b,". "); ncat(b,SM_SECS); scat(b,"S EACH"); }
-    else if(q->kind==1){ scpy(b,"YOU HAVE "); ncat(b,sm_n[q->out]); scat(b,"  YOU CAN MAKE "); ncat(b,sm_batches(r)); }
+    if(q->kind==0){ if(!sm_room(q->out)){ scpy(b,"BAR STOCK FULL. SELL SOME"); *c=C_RED; } else { scpy(b,"MAKES 1 PER "); ncat(b,q->na); scat(b," "); scat(b,ore_def[q->a].name); scat(b,". "); ncat(b,SM_SECS); scat(b,"S EACH"); } }
+    else if(q->kind==1){ if(!sm_room(q->out)){ scpy(b,"PART STOCK FULL. SELL SOME"); *c=C_RED; } else { scpy(b,"YOU HAVE "); ncat(b,sm_n[q->out]); scat(b,"  YOU CAN MAKE "); ncat(b,sm_batches(r)); } }
     else if(q->kind>=3){ if(sp_have(q->kind)>=sp_cap(q->kind)) scpy(b,"FULLY FITTED"); else { scpy(b,"FITTED "); ncat(b,sp_have(q->kind)); scat(b,"/"); ncat(b,sp_cap(q->kind)); scat(b,". "); scat(b,sp_what[q->kind-3]); } }
     else { if(ore_tool>=q->out) scpy(b,"YOU ALREADY MINE WITH THIS OR BETTER"); else if(ore_tool<q->out-1){ scpy(b,"FIRST MAKE THE "); scat(b,ore_tool_name[q->out-1]); } else scpy(b,"IT REPLACES YOUR MINING TOOL"); } }
 static void sm_make(int r){
     const Recipe *q=&sm_rec[r]; char b[44];
-    if(sm_ready()){ int o=sm_rec[sm_job-1].out, n=sm_collect(); scpy(b,"COLLECTED "); ncat(b,n); scat(b," "); scat(b,sm_name[o]); say(b); sfx(7); return; }
+    if(sm_ready()){ int o=sm_rec[sm_job-1].out, n=sm_collect(); if(!n){ say("BAR STOCK FULL. SELL SOME FIRST"); return; }
+        scpy(b,"COLLECTED "); ncat(b,n); scat(b," "); scat(b,sm_name[o]); say(b); sfx(7); return; }
     if(q->kind==0){
         if(sm_job){ scpy(b,"THE SMELTER IS BUSY: "); ncat(b,sm_left()); scat(b,"S"); say(b); return; }
-        int n=sm_batches(r); if(n<1){ say("NOT ENOUGH ORE"); return; } if(n>SM_MAXB) n=SM_MAXB;
+        int room=sm_room(q->out); if(!room){ say("BAR STOCK FULL. SELL SOME FIRST"); return; }
+        int n=sm_batches(r); if(n<1){ say("NOT ENOUGH ORE"); return; } if(n>SM_MAXB) n=SM_MAXB; if(n>room) n=room;
         ore_take(q->a,q->na*n); if(q->nb) ore_take(q->b,q->nb*n);
         sm_job=(u8)(r+1); sm_jn=(u8)n; sm_done=play_secs()+SM_SECS*n;
         scpy(b,"SMELTING "); ncat(b,n); scat(b," "); scat(b,sm_name[q->out]); scat(b," ("); ncat(b,SM_SECS*n); scat(b,"S)"); say(b); sfx(6); return; }
     if(q->kind>=3 && sp_have(q->kind)>=sp_cap(q->kind)){ say("THAT PART IS FULLY FITTED"); return; }
     if(q->kind==2){ if(ore_tool>=q->out){ say("YOU HAVE ONE ALREADY"); return; } if(ore_tool<q->out-1){ scpy(b,"FIRST MAKE THE "); scat(b,ore_tool_name[q->out-1]); say(b); return; } }
+    if(q->kind==1 && !sm_room(q->out)){ say("PART STOCK FULL. SELL SOME FIRST"); return; }
     if(sm_batches(r)<1){ say("NOT ENOUGH BARS OR PARTS"); return; }
     sm_n[q->a]-=(u16)q->na; if(q->nb) sm_n[q->b]-=(u16)q->nb;
-    if(q->kind==1){ if(sm_n[q->out]<9999) sm_n[q->out]++; scpy(b,"MADE 1 "); scat(b,sm_name[q->out]); say(b); sfx(6); }
+    if(q->kind==1){ sm_n[q->out]++; scpy(b,"MADE 1 "); scat(b,sm_name[q->out]); say(b); sfx(6); }
     else if(q->kind>=3){ sp_add(q->kind); scpy(b,sp_name[q->kind-3]); scat(b," FITTED: "); ncat(b,sp_have(q->kind)); scat(b,"/"); ncat(b,sp_cap(q->kind)); say(b); sfx(6); }
     else { ore_tool=q->out; scpy(b,"NOW YOU MINE WITH: "); scat(b,ore_tool_name[q->out]); say(b); sfx(6); hud_now(); } }
 static void sm_srow(int i, char *b, int *c){ if(i>=sm_cnt(sm_sn,sm_pg)){ sm_next(b,c,sm_sn,sm_pg); return; } int m=sm_sbase+sm_pg*SM_PS+i; scpy(b,sm_name[m]); while(textlen(b)<14) scat(b," "); ncat(b,sm_n[m]); while(textlen(b)<22) scat(b," "); ncat(b,sm_px(m)); scat(b,"G EACH"); *c=sm_n[m]?C_WHITE:C_DGREY; }
 static void smelter_row(int i, char *b, int *c){ *c=C_WHITE;
-    if(i==0){ scpy(b,"SMELT ORE"); while(textlen(b)<20) scat(b," "); if(sm_ready()){ scat(b,"DONE!"); *c=C_GREEN; } else if(sm_job){ ncat(b,sm_left()); scat(b,"S LEFT"); *c=C_GOLD; } }
+    if(i==0){ scpy(b,"SMELT ORE"); while(textlen(b)<20) scat(b," "); if(sm_ready()){ if(!sm_room(sm_rec[sm_job-1].out)){ scat(b,"STOCK FULL"); *c=C_RED; } else { scat(b,"DONE!"); *c=C_GREEN; } } else if(sm_job){ ncat(b,sm_left()); scat(b,"S LEFT"); *c=C_GOLD; } }
     else if(i==1) scpy(b,"MAKE PARTS AND TOOLS");
     else if(i==2){ scpy(b,"BARS"); while(textlen(b)<20) scat(b," "); int n=0; for(int k=0;k<7;k++) n+=sm_n[k]; ncat(b,n); }
     else if(i==3){ scpy(b,"PARTS"); while(textlen(b)<20) scat(b," "); int n=0; for(int k=7;k<NMAT;k++) n+=sm_n[k]; ncat(b,n); }
@@ -1181,7 +1184,7 @@ static void mn_row(int i, char *b, int *c){
     if(i==0){ scpy(b,"SELL ALL ORE"); while(textlen(b)<20) scat(b," "); ncat(b,ore_sellval()); scat(b,"G"); *c=ore_bagn()?C_GOLD:C_DGREY; }
     else if(i==1){ scpy(b,"UPGRADE YOUR TOOL"); while(textlen(b)<20) scat(b," "); if(ore_tool<3){ scat(b,ore_tool_name[ore_tool+1]); *c=ore_can_up()?C_CYAN:C_WHITE; } else { scat(b,"MAXED"); *c=C_DGREY; } }
     else if(i==2){ scpy(b,"ORE BAG"); while(textlen(b)<20) scat(b," "); ncat(b,ore_bagn()); scat(b," ORES"); *c=C_WHITE; }
-    else { scpy(b,"SMELTER"); while(textlen(b)<20) scat(b," "); if(sm_ready()){ scat(b,"DONE!"); *c=C_GREEN; } else if(sm_job){ ncat(b,sm_left()); scat(b,"S LEFT"); *c=C_GOLD; } else { scat(b,"BARS, PARTS, TOOLS"); *c=C_CYAN; } } }
+    else { scpy(b,"SMELTER"); while(textlen(b)<20) scat(b," "); if(sm_ready()){ if(!sm_room(sm_rec[sm_job-1].out)){ scat(b,"STOCK FULL"); *c=C_RED; } else { scat(b,"DONE!"); *c=C_GREEN; } } else if(sm_job){ ncat(b,sm_left()); scat(b,"S LEFT"); *c=C_GOLD; } else { scat(b,"BARS, PARTS, TOOLS"); *c=C_CYAN; } } }
 static void mn_desc(int i, char *b, int *c){ b[0]=0; *c=C_GREY;
     if(i==0) scpy(b,"SELL EVERY ORE YOU CARRY (STATIONS PAY BY WORLD)");
     else if(i==1){ if(ore_tool>=3){ scpy(b,"YOUR LASER CUTTER BREAKS ANY VEIN"); return; } int t=ore_tool+1; scpy(b,"COSTS "); ncat(b,ore_up_gold[t]); scat(b,"G");
