@@ -267,17 +267,54 @@ static void sim_env_once(void){
     e=sim_io_env("BUGSTAR_SET_GOLD"); if(e && *e){ s64 v=0; for(int i=0;e[i]>='0' && e[i]<='9' && i<12;i++) v=v*10+(e[i]-'0'); sim_gold_prev=gold; gold=v; }     // patch 47, a test hook: gold, counted as earned (the first gold opens GOLD)
     e=sim_io_env("BUGSTAR_SANDBOX"); if(e && e[0]=='1'){ Lv l; sim_level_lv(&l); sim_f.sandbox=1; if(sim_have_w) sim_set_sandbox(&sim_w,1,&l); }
 }
+// Hand a mine or friendship reward to the actual visible ore bag. Tier-one
+// trade goods occupy ore_n[0..3] but are NOT shown in the mining bag. Keep
+// overflow valuable instead of silently claiming it was collected.
+static int sim_credit_ore(int kind, int n, s64 *credit){
+    if(credit) *credit=0;
+    if(n<=0) return 0;
+    if(kind<4 || kind>=NORE) kind=4;               // iron: visible, useful, and mineable with a pickaxe
+    int got=ore_add(kind,n), full=n-got;
+    if(full>0){ s64 cash=(s64)full*ore_px(kind); gold=sadd(gold,cash); if(credit) *credit=cash; }
+    return got;
+}
+static void sim_grant_friend_gift(const SimEvent *e, char *out, int cap){
+    txt_copy(out,cap,"");
+    if(!e || e->kind!=SIME_GIFT) return;
+    int amount=e->b;
+    if(e->a==SIMG_FOOD) eat(amount);
+    else if(e->a==SIMG_GOLD) gold=sadd(gold,(s64)amount*(s64)sim_unit());
+    else if(e->a==SIMG_HEAL){ hearts=maxh; mp=maxmp; }
+    else if(e->a==SIMG_ORE){
+        s64 credit=0; int got=sim_credit_ore(4,amount,&credit);
+        txt_copy(out,cap,"MINER GIFT:");
+        if(got){ txt_append(out,cap," +"); txt_number(out,cap,got); txt_append(out,cap," IRON"); }
+        if(credit){ txt_append(out,cap," BAG FULL +"); txt_number(out,cap,(int)credit); txt_append(out,cap,"G"); }
+        return;
+    }
+    sim_event_text(&sim_w,e,out,(size_t)cap);
+}
 static void sim_unlock_msgs(void){
     Lv l; sim_level_lv(&l); sim_check_unlocks(&sim_w,&l);
+    // The journal is a ring. Process only events still present and only once,
+    // oldest first. A multi-day simulation update can generate several gifts.
+    u32 now=sim_w.log_n, pending=now>=sim_seen_log ? now-sim_seen_log : now;
+    u32 kept=sim_log_count(&sim_w); if(pending>kept) pending=kept;
     int c=0, last=0;
-    for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_UNLOCK){ c++; last=e->a; } }
-    for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_LETTER){ char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_said_letters++; break; } }
-    for(u32 b=sim_w.log_n-sim_seen_log; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1);                // patch 15: a friend's gift reaches your bag
-        if(e && e->kind==SIME_GIFT){ int a=e->b;
-            if(e->a==SIMG_FOOD) eat(a); else if(e->a==SIMG_GOLD) gold=sadd(gold,(s64)a*(20+(level>100?100:(s64)level))); else if(e->a==SIMG_HEAL){ hearts=maxh; mp=maxmp; } else if(e->a==SIMG_ORE) ore_add(0,a);
-            char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_gifts_got++; ul_note(sim_ul(),ULC_GIFT); break; } }
-    sim_seen_log=sim_w.log_n;
-    if(!sim_ls_on(UF_GODS)) c=0;                                               // patch 47: GOD POWERS is not found yet: no news of them (the journal still keeps the line)
+    for(u32 b=pending; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_UNLOCK){ c++; last=e->a; } }
+    for(u32 b=pending; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1); if(e && e->kind==SIME_LETTER){ char t[60]; sim_event_text(&sim_w,e,t,sizeof t); say(t); sfx(6); sim_said_letters++; break; } }
+    int gifts=0; char gift_text[60]; gift_text[0]=0;
+    for(u32 b=pending; b>0; b--){ const SimEvent *e=sim_log_at(&sim_w,b-1);
+        if(e && e->kind==SIME_GIFT){ sim_grant_friend_gift(e,gift_text,sizeof gift_text); gifts++; }
+    }
+    if(gifts){
+        char t[60];
+        if(gifts==1) txt_copy(t,sizeof t,gift_text);
+        else { txt_copy(t,sizeof t,"RECEIVED "); txt_number(t,sizeof t,gifts); txt_append(t,sizeof t," FRIEND GIFTS. SEE JOURNAL"); }
+        say(t); sfx(6); sim_gifts_got+=gifts; ul_note(sim_ul(),ULC_GIFT);
+    }
+    sim_seen_log=now;
+    if(!sim_ls_on(UF_GODS)) c=0;             // don't spoil the optional power list before unlocking it
     if(c>3){ char b[40]; b[0]=0; ncat(b,c); scat(b," NEW GOD POWERS ARE OPEN"); say(b); sfx(6); }
     else if(c>0){ char b[40]; scpy(b,"NEW POWER "); ncat(b,last); scat(b,": "); scat(b,god_power(last)->name); say(b); sfx(6); }
 }
