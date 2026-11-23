@@ -748,6 +748,67 @@ static void st_spend(int i, int step, int dir, s64 *add){       // the BUG page:
     if(n<=0){ sfx(4); scpy(menu_msg, dir>0 ? "NO POINTS LEFT: LEVEL UP FOR MORE" : "ONLY THIS VISIT'S POINTS COME BACK"); return; }
     s64 oldmax=maxh; *sv[i]=sadd(*sv[i],dir*n); stat_pts=sadd(stat_pts,-dir*n); add[i]=sadd(add[i],dir*n); menu_msg[0]=0;
     recalc(); hearts=sadd(hearts,sadd(maxh,-oldmax)); if(hearts<1) hearts=1; if(hearts>maxh) hearts=maxh; if(mp>maxmp) mp=maxmp; sfx(dir>0?2:4); }
+// A small, optional story journal on the QUEST page. It follows the same
+// campaign-phase gate as Bolt's spoken guidance: no new save fields, quest
+// counters or per-frame work. Unseen revelations stay hidden.
+static const char *const story_chapter[8]={
+    "THE CAPTIVE WORLDS", "A STAR FREED", "THE LAST ANTHILL",
+    "THE KING'S MACHINE", "THE FIVE TECH HIVES", "BOLT'S LOST MEMORIES",
+    "THE HEART OF THE BEAST", "A NEW DAWN"
+};
+static const char *const story_journal_words[8][4]={
+    {"THE ANT KING'S QUEENS STILL HOLD BUGS.",
+     "FOLLOW THE ARROW TO THE DUNGEON DOOR.",
+     "FREE FRIENDS AND DEFEAT THE QUEEN.",
+     "THEN THE NEXT STAR WILL OPEN."},
+    {"ONE QUEEN IS DOWN; THIS WORLD IS FREE.",
+     "THE SHIP'S AUTOPILOT KNOWS THE ROUTE.",
+     "MORE FRIENDS WAIT ON THE NEXT STAR.",
+     "DEEPER TIERS ARE OPTIONAL CHALLENGES."},
+    {"THE CAGES AND SHIP PARTS LEAD HERE.",
+     "THE ANT KING WAITS BELOW THE ANTHILL.",
+     "FIND YOUR FRIENDS AND DEFEAT HIM.",
+     "BOLT STILL FEARS WHAT THE ANTS DUG UP."},
+    {"THE KING HAS FALLEN. HIS MACHINE LIVES.",
+     "SOMETHING HUNGRY STIRS BEYOND THE STARS.",
+     "LAUNCH INTO SPACE AND STAY READY.",
+     "BOLT RECOGNIZES A VOICE INSIDE IT."},
+    {"FIVE TECH HIVES FEED THE BEAST.",
+     "EACH HIVE HOLDS AN OVERLORD BELOW.",
+     "FOLLOW THE RED STAR TO THE NEXT ONE.",
+     "BREAK ITS ARMOUR BEFORE THE LAST FIGHT."},
+    {"THE HIVES ARE QUIET; THE BEAST CAN FALL.",
+     "BOLT'S MEMORIES LIE IN DRONE OUTPOSTS.",
+     "FIND THE RED HATCHES AND SMASH THE CORES.",
+     "THE LAST MEMORY HOLDS A SECRET WORD."},
+    {"FIVE HIVES DOWN. EIGHT CORES RECOVERED.",
+     "BOLT REMEMBERS THE WORD THE KING FEARED.",
+     "ON THE MAP, L OPENS THE BEAST'S LAIR.",
+     "AIM FOR THE GLOWING CORE. END THE HUNGER."},
+    {"THE MOUTH IS BROKEN. DAWN FLIES AGAIN.",
+     "THE KING'S CAGES CAN NO LONGER HOLD US.",
+     "THERE ARE STILL WORLDS TO HELP AND SEE.",
+     "EVERY BUG WE BRING HOME MATTERS."}
+};
+static const char *story_journal_line(int stage, int line){
+    if((unsigned)stage>=8u || (unsigned)line>=4u) return "";
+    return story_journal_words[stage][line];
+}
+static void story_journal_detail(char *out,int cap,int stage){
+    if(cap<1) return;
+    txt_copy(out,cap,"");
+    switch(stage){
+    case 0: txt_copy(out,cap,"CURRENT WORLD: "); if(!endless && zone>=0 && zone<6) txt_append(out,cap,tint_name[zone]); break;
+    case 1: txt_copy(out,cap,"NEXT STAR: "); if(zone>=0 && zone<5) txt_append(out,cap,tint_name[zone+1]); break;
+    case 2: txt_copy(out,cap,"DESTINATION: THE ANTHILL"); break;
+    case 3: txt_copy(out,cap,"NEXT: LAUNCH INTO SPACE"); break;
+    case 4: bolt_hive_hint(out,cap); break;       // real hive name and floor
+    case 5: txt_copy(out,cap,"MEMORIES FOUND: "); txt_number(out,cap,data_cores); txt_append(out,cap,"/8"); break;
+    case 6: txt_copy(out,cap,"HIVES 5/5  MEMORIES 8/8"); break;
+    case 7: txt_copy(out,cap,"DAWN FREE. GALAXY OPEN."); break;
+    default: txt_copy(out,cap,"STORY NOT AVAILABLE"); break;
+    }
+}
 static void char_screen_(volatile u16 *pg);
 static void char_screen(volatile u16 *pg){ int sh=shd_begin(); char_screen_(sh?VISPG:pg); shd_end(sh); }
 static void char_screen_(volatile u16 *pg){
@@ -860,12 +921,25 @@ static void char_screen_(volatile u16 *pg){
                     }
                 }
                 ui_panel(pg,4,74,232,74); y=77;
-                if(endless){ scpy(b,"ENDLESS GALAXY  WORLD "); ncat(b,world_no); scat(b,"  DEEPEST B"); ncat(b,best_depth); text(pg,12,y,b,C_CYAN,1); y+=10; }
-                ui_head(pg,9,y,222,"WHAT YOU HAVE LEARNED",C_GREEN); y+=10;
-                text(pg,12,y,"BERRIES",U_GLOW,1); y+=8;
-                for(int i=0;i<8;i++){ scpy(b,berry_col[i]); scat(b,":"); scat(b, berry_known[i]?berry_eff[berry_map[i]]:"?"); text(pg,12+(i&3)*56,y+(i>>2)*7,b,berry_known[i]?C_WHITE:C_DGREY,1); }
-                y+=17; text(pg,12,y,"SEEDS",U_GLOW,1); y+=8;
-                for(int i=0;i<6;i++){ scpy(b,seed_look[i]); scat(b,":"); scat(b, seed_known[i]?seed_eff[seed_map[i]]:"?"); text(pg,12+(i%3)*74,y+(i/3)*7,b,seed_known[i]?C_WHITE:C_DGREY,1); }
+                if(sub){
+                    // A opens a live story recap; the original berry/seed
+                    // research remains accessible with another A.
+                    int stage=bolt_next_step();
+                    ui_head(pg,9,y,222,"STORY SO FAR",C_GOLD); y+=10;
+                    text(pg,12,y,story_chapter[stage],C_CYAN,1); y+=9;
+                    story_journal_detail(b,sizeof b,stage);
+                    text(pg,12,y,b,C_GOLD,1); y+=10;
+                    for(int i=0;i<4;i++){ text(pg,12,y,story_journal_line(stage,i),C_WHITE,1); y+=9; }
+                    foot="A: FIELD NOTES";
+                } else {
+                    if(endless){ scpy(b,"ENDLESS GALAXY  WORLD "); ncat(b,world_no); scat(b,"  DEEPEST B"); ncat(b,best_depth); text(pg,12,y,b,C_CYAN,1); y+=10; }
+                    ui_head(pg,9,y,222,"WHAT YOU HAVE LEARNED",C_GREEN); y+=10;
+                    text(pg,12,y,"BERRIES",U_GLOW,1); y+=8;
+                    for(int i=0;i<8;i++){ scpy(b,berry_col[i]); scat(b,":"); scat(b, berry_known[i]?berry_eff[berry_map[i]]:"?"); text(pg,12+(i&3)*56,y+(i>>2)*7,b,berry_known[i]?C_WHITE:C_DGREY,1); }
+                    y+=17; text(pg,12,y,"SEEDS",U_GLOW,1); y+=8;
+                    for(int i=0;i<6;i++){ scpy(b,seed_look[i]); scat(b,":"); scat(b, seed_known[i]?seed_eff[seed_map[i]]:"?"); text(pg,12+(i%3)*74,y+(i/3)*7,b,seed_known[i]?C_WHITE:C_DGREY,1); }
+                    foot="A: STORY RECAP";
+                }
             } else if(page==4){
                 ui_panel(pg,4,37,232,111); y=40;
                 if(sub){ relic_shelf(pg,y); foot="A: SHOW YOUR FEATS"; }
@@ -925,7 +999,7 @@ static void char_screen_(volatile u16 *pg){
             if(page==0) st_spend(cur,pt_step,1,st_add);
             if(page==1 && bag_n){ use_index(cur); if(cur>=bag_n && cur) cur--; }
             if(page==2 && spell_ok(cur)) spell_sel=cur;
-            if(page==4){ sub^=1; sfx(2); }
+            if(page==3 || page==4){ sub^=1; sfx(2); }
             if(page==7){ int r=fav_add_here(); scpy(menu_msg, r>=0 ? "SAVED TO YOUR FAVOURITES" : r==-2 ? "IT IS ALREADY A FAVOURITE" : r==-3 ? "31 UNIVERSES IN USE" : "FAVOURITES ARE FULL (256)"); if(r>=0) sfx(6); }
             if(page==5){ sys_action(pg,cur); if(sys_req) break; }
             if(page==8){ if(extras_press(pg,cur)) break; }
