@@ -99,6 +99,79 @@ int main(void){
       simfile_init(&F); F.slot[1].used = 1; F.slot[1].cols.n = 2; F.slot[1].cols.c[0] = a1; F.slot[1].cols.c[1] = a3;
       size_t n = simfile_write(&F, buf, sizeof buf); CHECK(n > 0); CHECK(simfile_read(&G, buf, n) == 0 && G.bad_chunks == 0);
       CHECK(G.slot[1].cols.n == 2 && !memcmp(&G.slot[1].cols.c[0], &a1, sizeof a1) && !memcmp(&G.slot[1].cols.c[1], &a3, sizeof a3)); }
+    // ---- COLN v2: dungeon-call rest persists after saving, and a completed
+    // objective never pays twice by reloading / completing the same floor.
+    { SimColony k; col_init(&k, 0xCA11, 20); col_update(&k, 0x1FF);
+      k.nset=8; k.raid_eta=6; k.raid_size=100; k.food=200; k.wood=50; k.ore=10;
+      char msg[64]; uint16_t before=k.raid_size;
+      CHECK(col_call(&k,20)==COLC_RAID);
+      CHECK(col_call_done(&k,COLC_RAID,4,20,msg,sizeof msg) && k.raid_size<before);
+      CHECK(k.call_cool==22 && col_call(&k,21)==COLC_NONE);
+      before=k.raid_size;
+      CHECK(!col_call_done(&k,COLC_RAID,4,20,msg,sizeof msg));
+      CHECK(!col_call_done(&k,COLC_RAID,4,21,msg,sizeof msg));
+      CHECK(k.raid_size==before && k.call_cool==22);
+      ColList in,out,old; memset(&in,0,sizeof in); in.n=1; in.c[0]=k;
+      uint8_t v2[1+COL_REC_BYTES];
+      CHECK(col_list_write(&in,v2,sizeof v2)==sizeof v2);
+      CHECK(col_list_read(&out,v2,sizeof v2)==0);
+      CHECK(out.n==1 && out.c[0].call_cool==22 &&
+            out.c[0].food==k.food && out.c[0].ore==k.ore && out.c[0].raid_size==k.raid_size);
+      CHECK(col_call(&out.c[0],21)==COLC_NONE);
+      CHECK(!col_call_done(&out.c[0],COLC_RAID,4,21,msg,sizeof msg));
+      CHECK(col_call_done(&out.c[0],COLC_RAID,4,22,msg,sizeof msg));
+      CHECK(out.c[0].call_cool==24);
+      // 164-byte previous COLN record has the same full inventory prefix.
+      uint8_t v1[1+COL_REC_V1_BYTES];
+      v1[0]=1; memcpy(v1+1,v2+1,COL_REC_V1_BYTES);
+      CHECK(col_list_read(&old,v1,sizeof v1)==0 && old.n==1);
+      CHECK(old.c[0].call_cool==0 && old.c[0].town==k.town &&
+            old.c[0].food==k.food && old.c[0].reward_due==k.reward_due &&
+            old.c[0].raid_size==k.raid_size);
+      CHECK(col_list_read(&old,v1,sizeof v1-1)<0);
+      v2[0]=2; CHECK(col_list_read(&old,v2,sizeof v2)<0);
+      // A mine fight now has actual supplies/morale and the same cooldown.
+      k.call_cool=0; uint32_t ore0=k.ore,wood0=k.wood; uint8_t morale0=k.morale;
+      CHECK(col_call_done(&k,COLC_MINE,7,40,msg,sizeof msg));
+      CHECK(strstr(msg,"MINERS SAFE") && k.ore==ore0+26 &&
+            k.wood==wood0+15 && k.morale>morale0 && k.call_cool==42);
+      ore0=k.ore; CHECK(!col_call_done(&k,COLC_MINE,7,41,msg,sizeof msg) && k.ore==ore0);
+      char hint[48]; col_call_text(COLC_MINE,hint,sizeof hint);
+      CHECK(strstr(hint,"MINE BURROWERS") && strlen(hint)<32);
+      // The complete .sim container marks COLN v2; version 1 is imported
+      // with the same town and resources and no stale post-reload cooldown.
+      simfile_init(&F); F.slot[0].used=1; F.slot[0].cols.n=1; F.slot[0].cols.c[0]=k;
+      size_t n=simfile_write(&F,buf,sizeof buf); CHECK(n>0);
+      size_t at=8,hit=n,length=0;
+      while(at+14<=n){
+          size_t len=(size_t)buf[at+6] | ((size_t)buf[at+7]<<8) |
+                     ((size_t)buf[at+8]<<16) | ((size_t)buf[at+9]<<24);
+          if(len>n-at-14) break;
+          if(!memcmp(buf+at,"COLN",4)){hit=at; length=len;break;}
+          at+=14+len;
+      }
+      CHECK(hit<n && length==1+COL_REC_BYTES && buf[hit+5]==2);
+      CHECK(simfile_read(&G,buf,n)==0 && !G.bad_chunks && G.slot[0].cols.n==1 &&
+            G.slot[0].cols.c[0].call_cool==42);
+      if(hit<n && length==1+COL_REC_BYTES){
+          size_t small=1+COL_REC_V1_BYTES,cut=length-small;
+          memmove(buf+hit+14+small,buf+hit+14+length,n-(hit+14+length));
+          buf[hit+5]=1;
+          for(int i=0;i<4;i++)buf[hit+6+i]=(uint8_t)(small>>(8*i));
+          uint32_t hash=sim_fnv(buf+hit+14,small);
+          for(int i=0;i<4;i++)buf[hit+10+i]=(uint8_t)(hash>>(8*i));
+          CHECK(simfile_read(&G,buf,n-cut)==0 && !G.bad_chunks &&
+                G.slot[0].cols.n==1 && G.slot[0].cols.c[0].call_cool==0 &&
+                G.slot[0].cols.c[0].town==k.town && G.slot[0].cols.c[0].ore==k.ore);
+      }
+      // All three save slots at maximum colony, mine and journal capacity.
+      simfile_init(&F);
+      for(int slot=0;slot<SIM_SLOTS;slot++){
+          F.slot[slot].used=1;F.slot[slot].cols.n=COL_MAX;
+          F.slot[slot].mines.n=COL_MAX;F.slot[slot].ntail=SIM_TAILN;
+      }
+      CHECK(simfile_write(&F,buf,sizeof buf)>0);
+    }
     // ---- old files (Phase 4: 34-byte records, Phase 5: 42) still load
     { uint8_t old[1 + 34] = { 1 }; old[1] = 7; old[5] = 3; old[9] = 2; ColList O; CHECK(col_list_read(&O, old, sizeof old) == 0 && O.c[0].town == 7 && O.c[0].nset == 2 && O.c[0].state == COLS_ALIVE);
       uint8_t o2[1 + 42] = { 1 }; o2[1] = 8; o2[5] = 3; o2[9] = 2; o2[35] = 5; CHECK(col_list_read(&O, o2, sizeof o2) == 0 && O.c[0].born == 5);
