@@ -325,6 +325,9 @@ int mn_event_text(const MnEvent *e, char *o, size_t n){
     case MNE_DIED: k = snprintf(o, n, "%u MINER%s LOST AT LEVEL %u", e->a, e->a == 1 ? "" : "S", e->b); break;
     case MNE_GOAL: k = snprintf(o, n, "SCENARIO DONE: %s +%uG", mn_scn_name((int)e->a), e->b); break;
     case MNE_WS: k = snprintf(o, n, "A %s WAS BUILT", mn_ws_name((int)e->a)); break;
+    case MNE_SURVEY: k = snprintf(o, n, "SURVEY LV%u: +%u VEIN ORE", e->a, e->b); break;
+    case MNE_RESCUE: k = snprintf(o, n, "RESCUE LV%u: THE CREW IS SAFE", e->a); break;
+    case MNE_SALVAGE: k = snprintf(o, n, "SALVAGE LV%u: +%u GEMS", e->a, e->b); break;
     default: k = snprintf(o, n, "..."); }
     return k < 0 ? 0 : k;
 }
@@ -336,6 +339,8 @@ int mn_away_text(const MnAway *a, const Mine *m, char lines[][48], int max){
     if(a->gems) L("FOUND %u GEMS", a->gems);
     if(a->cave_ins) L("%u CAVE-INS, %u MINERS LOST", a->cave_ins, a->died);
     if(a->goals) L("SCENARIO DONE: %s", mn_scn_name(m->scn));
+    if(a->surveys || a->rescues || a->salvages)
+        L("EXPEDITIONS: %u SURVEYS %u RESCUES %u SALVAGE",a->surveys,a->rescues,a->salvages);
     #undef L
     return n;
 }
@@ -348,13 +353,15 @@ void mn_level_text(const Mine *m, const SimColony *c, int z, int diff, char *o, 
 }
 void mn_status_text(const Mine *m, char *o, size_t n){
     if(m->warn) snprintf(o, n, "CREAKING! BRACE LEVEL %u NOW", (unsigned)m->work);
+    else if(m->ex_kind) snprintf(o, n, "%s LV%u: %u DAY%s LEFT", mn_ex_name(m->ex_kind), (unsigned)m->ex_level, (unsigned)m->ex_left, m->ex_left==1?"":"S");
     else if(m->hurt_days) snprintf(o, n, "MINERS HURT: %u DAYS OF REST", (unsigned)m->hurt_days);
     else if(m->depth) snprintf(o, n, "LEVEL %u OF %u IN WORK", (unsigned)m->work, (unsigned)m->depth);
     else snprintf(o, n, "NO SHAFT YET: BUILD A MINE");
 }
 size_t mn_dump(const Mine *m, char *o, size_t n){
-    int k = snprintf(o, n, "mine town %08x depth %u work %u ws %u/%u/%u bars %u tools %u cloth %u gems %u mined %u caveins %u warn %u hurt %u scn %u safe %u day %u\n",
-                     m->town, m->depth, m->work, m->wl[0], m->wl[1], m->wl[2], m->bars, m->tools, m->cloth, m->gems, m->mined, m->cave_ins, m->warn, m->hurt_days, m->scn, m->safe, m->last_day);
+    int k = snprintf(o, n, "mine town %08x depth %u work %u ws %u/%u/%u bars %u tools %u cloth %u gems %u mined %u caveins %u warn %u hurt %u scn %u safe %u day %u ex %u/%u/%u surveyed %u missions %u rescued %u pocket %u cooldown %u\n",
+                     m->town, m->depth, m->work, m->wl[0], m->wl[1], m->wl[2], m->bars, m->tools, m->cloth, m->gems, m->mined, m->cave_ins, m->warn, m->hurt_days, m->scn, m->safe, m->last_day,
+                     m->ex_kind, m->ex_level, m->ex_left, m->surveyed, m->ex_completed, m->ex_rescued, m->ex_pockets, m->ex_cooldown);
     return k < 0 ? 0 : (size_t)k;
 }
 
