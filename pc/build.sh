@@ -236,7 +236,7 @@ H dungeon.inc 'fl_ev=FE_NONE; fl_need=fl_have=0; fl_bonus=100; fl_done=0;' ' sim
 H dungeon.inc '(rndi(100)<65 || cur_rock==5 || (ddna.on && ddna.haz))){' '(rndi(100)<65 || cur_rock==5 || (ddna.on && ddna.haz) || sim_dn_call())){'
 H dungeon.inc '        switch(fl_ev){' '        sim_dn_pick(); switch(fl_ev){'
 H dungeon.inc '    if(endless && cur_moon && !mboss){ char mb[40];' '    sim_dn_mark(); if(endless && cur_moon && !mboss){ char mb[40];'
-H dungeon.inc 'fl_done=1; int g=200+dlv()*40+depth_no*10;' 'fl_done=1; sim_dn_done(FE_ELITE); int g=200+dlv()*40+depth_no*10;'
+H dungeon.inc 'say(b); msg_timer=50; sfx(6); }' 'say(b); msg_timer=50; sfx(6); sim_dn_done(FE_ELITE); }'
 H dungeon.inc 'static void fl_leave(void){' 'static void fl_leave(void){ sim_dn_leave();'
 H dungeon.inc 'static void fl_draw(volatile u16 *pg){' ' sim_dn_draw(pg);' after
 H main.c 'dob[i].alive=0; free_bug(dob[i].sub); break;' '{ int cc_=dob[i].champ==3; dob[i].alive=0; free_bug(dob[i].sub); if(cc_) sim_dn_done(FE_QUIET); } break;'

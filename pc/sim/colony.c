@@ -379,7 +379,7 @@ SimColony *col_find(ColList *l, uint32_t town, int make, uint32_t day){
     else l->n++;
     col_init(&l->c[at], town, day); return &l->c[at];
 }
-// ---- the file: one byte count, then records of COL_REC_BYTES (little endian). Older records (34 and 42 bytes, Phases 4 and 5) still load.
+// ---- the file: COLN v2 stores 168-byte records including the 4-byte call cooldown; older 164, 42 and 34-byte records still load.
 static void p16(uint8_t *p, uint32_t v){ p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
 static void p32(uint8_t *p, uint32_t v){ p16(p, v); p16(p + 2, v >> 16); }
 static void p64(uint8_t *p, uint64_t v){ p32(p, (uint32_t)v); p32(p + 4, (uint32_t)(v >> 32)); }
@@ -397,18 +397,18 @@ size_t col_list_write(const ColList *l, uint8_t *o, size_t cap){
         memcpy(q + 44, c->bld, COLB_N); memcpy(q + 55, c->grid, COL_GRID_W * COL_GRID_H);
         q[103] = c->plan; q[104] = c->plan_cell; p16(q + 105, c->progress); q[107] = c->health; q[108] = c->morale; p16(q + 109, c->hungry_days);
         p16(q + 111, c->raid_eta); p16(q + 113, c->raid_size); memcpy(q + 115, c->job, COL_MAXSET); q[135] = c->help_days; q[136] = c->god_used;
-        p32(q + 137, c->raids_won); p32(q + 141, c->raids_lost); p64(q + 145, c->reward_due); p64(q + 153, c->reward_total); }
+        p32(q + 137, c->raids_won); p32(q + 141, c->raids_lost); p64(q + 145, c->reward_due); p64(q + 153, c->reward_total); p32(q + COL_REC_V1_BYTES, c->call_cool); }
     return need;
 }
 int col_list_read(ColList *l, const uint8_t *in, size_t n){
     memset(l, 0, sizeof *l);
     if(n < 1 || in[0] > COL_MAX) return -1;
-    size_t rb = n == 1 + (size_t)in[0] * COL_REC_BYTES ? COL_REC_BYTES : n == 1 + (size_t)in[0] * 42 ? 42 : n == 1 + (size_t)in[0] * 34 ? 34 : 0;
+    size_t rb = n == 1 + (size_t)in[0] * COL_REC_BYTES ? COL_REC_BYTES : n == 1 + (size_t)in[0] * COL_REC_V1_BYTES ? COL_REC_V1_BYTES : n == 1 + (size_t)in[0] * 42 ? 42 : n == 1 + (size_t)in[0] * 34 ? 34 : 0;
     if(!rb) return -1;
     l->n = in[0];
     for(int i = 0; i < l->n; i++){ SimColony *c = &l->c[i]; const uint8_t *q = in + 1 + i * rb;
         col_init(c, g32(q), 0); c->mask = (uint16_t)((g16(q + 4) & ((1u << COLR_N) - 1)) | 1); c->told = (uint16_t)(g16(q + 6) & c->mask);
-        if(rb < COL_REC_BYTES){                                 // an older record: the stores and days sit elsewhere
+        if(rb == 34 || rb == 42){                                  // Phase 4/5: stores and days sit elsewhere
             c->nset = q[8]; c->food = cl(g32(q + 10)); c->wood = cl(g32(q + 14)); c->ore = cl(g32(q + 18)); c->goods = cl(g32(q + 22));
             c->founded = g32(q + 26); c->last_day = g32(q + 30); if(rb >= 38) c->born = cl(g32(q + 34));
         } else {
@@ -425,6 +425,7 @@ int col_list_read(ColList *l, const uint8_t *in, size_t n){
             c->reward_due = g64(q + 145); c->reward_total = g64(q + 153);
             if(c->reward_due > COL_GOLD_MAX) c->reward_due = COL_GOLD_MAX;
             if(c->reward_total > COL_GOLD_MAX) c->reward_total = COL_GOLD_MAX;
+            if(rb == COL_REC_BYTES) c->call_cool = g32(q + COL_REC_V1_BYTES);
         }
         if(c->nset > COL_MAXSET) c->nset = COL_MAXSET;
         if(c->nset > col_cap(c->mask)) c->nset = (uint8_t)col_cap(c->mask);
@@ -455,11 +456,11 @@ int col_call(const SimColony *c, uint32_t day){
     return COLC_NONE;
 }
 void col_call_text(int call, char *o, size_t n){
-    const char *t = call == COLC_RAID ? "HUNT THE RAID SCOUTS" : call == COLC_FAMINE ? "CLEAR THE NEST FOR FOOD" : call == COLC_SUPPLY ? "BEAT THE CLOCK FOR SUPPLIES" : call == COLC_LOST ? "FREE THE LOST SETTLER" : "";
+    const char *t = call == COLC_RAID ? "HUNT THE RAID SCOUTS" : call == COLC_FAMINE ? "CLEAR THE NEST FOR FOOD" : call == COLC_SUPPLY ? "BEAT THE CLOCK FOR SUPPLIES" : call == COLC_LOST ? "FREE THE LOST SETTLER" : call == COLC_MINE ? "FIGHT THE MINE BURROWERS" : "";
     size_t i = 0; while(t[i] && i + 1 < n){ o[i] = t[i]; i++; } if(n) o[i] = 0;
 }
 int col_call_done(SimColony *c, int call, int depth, uint32_t day, char *o, size_t n){
-    if(call <= COLC_NONE || call >= COLC_N || c->state != COLS_ALIVE) return 0;
+    if(call <= COLC_NONE || call >= COLC_N || c->state != COLS_ALIVE || !c->nset || day < c->call_cool) return 0;
     if(depth < 1) depth = 1; if(depth > 200) depth = 200;
     char t[48]; t[0] = 0;
     switch(call){
@@ -467,10 +468,13 @@ int col_call_done(SimColony *c, int call, int depth, uint32_t day, char *o, size
     case COLC_FAMINE: c->food = sat_add(c->food, 20u + (uint32_t)depth * 4u); c->hungry_days = 0; snprintf(t, sizeof t, "COLONY +%u FOOD", 20u + (unsigned)depth * 4u); break;
     case COLC_SUPPLY: c->wood = sat_add(c->wood, 15u + (uint32_t)depth * 2u); c->ore = sat_add(c->ore, 5u + (uint32_t)depth); c->goods = sat_add(c->goods, 3u + (uint32_t)depth / 2u);
                       if(c->morale < 100) c->morale = (uint8_t)(c->morale + 10 > 100 ? 100 : c->morale + 10); snprintf(t, sizeof t, "COLONY +%u WOOD, ORE, GOODS", 15u + (unsigned)depth * 2u); break;
+    case COLC_MINE:   c->wood = sat_add(c->wood, 8u + (uint32_t)depth); c->ore = sat_add(c->ore, 12u + (uint32_t)depth * 2u);
+                      if(c->morale < 100) c->morale = (uint8_t)(c->morale + 8 > 100 ? 100 : c->morale + 8);
+                      snprintf(t, sizeof t, "MINERS SAFE. +%u ORE AND BRACES", 12u + (unsigned)depth * 2u); break;
     default:          if(c->nset < col_cap(c->mask)){ c->nset++; snprintf(t, sizeof t, "A SETTLER CAME HOME. %u LIVE HERE", (unsigned)c->nset); }
                       else { c->food = sat_add(c->food, 10); c->morale = (uint8_t)(c->morale + 15 > 100 ? 100 : c->morale + 15); snprintf(t, sizeof t, "THE SETTLER IS HOME. MORALE UP"); } break;
     }
-    c->call_cool = day + 2u;
+    c->call_cool = day > UINT32_MAX - 2u ? UINT32_MAX : day + 2u;
     if(o && n){ size_t i = 0; while(t[i] && i + 1 < n){ o[i] = t[i]; i++; } o[i] = 0; }
     return 1;
 }

@@ -104,6 +104,30 @@ const char *mn_ex_name(int kind){
     static const char *const names[MNEX_N]={"NONE","SURVEY","RESCUE","DEEP SALVAGE"};
     return kind>=0 && kind<MNEX_N?names[kind]:"?";
 }
+// Mine disasters become real dungeon objectives instead of only passive
+// workshop timers. A caved floor takes priority; injured crew members also
+// need a rescue until they recover. The same work-level rules apply during
+// play and after a side-game save is reloaded.
+int mn_dungeon_need(const Mine *m, const SimColony *c){
+    if(!m || !c || c->state!=COLS_ALIVE || !c->nset ||
+       !(c->mask & (1u<<COLR_MINE)) || !c->bld[COLB_MINE] ||
+       m->ex_kind==MNEX_RESCUE) return 0;
+    int depth=m->depth>MN_ZMAX?MN_ZMAX:m->depth;
+    for(int z=depth; z>=1; z--) if(m->zst[z]==MNZ_CAVED) return z;
+    if(m->hurt_days && m->work>=1 && m->work<=depth) return m->work;
+    return 0;
+}
+int mn_dungeon_rescue(Mine *m, const SimColony *c){
+    int z=mn_dungeon_need(m,c);
+    if(!z) return 0;
+    if(m->zst[z]==MNZ_CAVED) m->zst[z]=m->seam[z]?MNZ_OPEN:MNZ_DRY;
+    if(z==m->work){ m->clear=0; m->warn=0; }
+    m->hurt_days=0;
+    if(m->brace[z]<3) m->brace[z]=3; // surviving miners reinforce the shaft
+    m->ex_rescued=sat(m->ex_rescued,1);
+    return z;
+}
+
 int mn_ex_start(Mine *m, SimColony *c, int kind){
     if(!m || !c || m->ex_kind || kind<=MNEX_NONE || kind>=MNEX_N ||
        c->state!=COLS_ALIVE || !(c->mask & (1u<<COLR_MINE)) ||

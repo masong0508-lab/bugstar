@@ -90,6 +90,8 @@ int  mn_dig_help(Mine *m, SimColony *c);                // you dig: +4 miner-day
 int  mn_clear_help(Mine *m, SimColony *c);              // you clear rubble on the work level (+3)
 int  mn_set_work(Mine *m, int z);                       // pick the work level (an open level); z 0 lets the colony pick again
 int  mn_ex_start(Mine *m, SimColony *c, int kind);      // dispatch a survey, cave-in rescue or deep-salvage crew
+int  mn_dungeon_need(const Mine *m, const SimColony *c); // caved shaft or injured miners need a dungeon rescue (returns the level, 0 if safe)
+int  mn_dungeon_rescue(Mine *m, const SimColony *c);    // after winning the elite dungeon goal: reopen blocked shaft, heal miners, add braces; 0 if no emergency
 const char *mn_ex_name(int kind);                      // terse, menu-safe name for the current operation
 typedef struct { int64_t gold; uint32_t bars, tools, cloth, gems; int ore_kind, ore_n; } MnGift;
 int  mn_collect(Mine *m, MnGift *g);                    // you take the bars, tools, cloth and gems: gold, and gems as ore for your bag (at most MN_TAKE_GEMS a time)
