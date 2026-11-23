@@ -222,6 +222,10 @@ static void sim_co_foot(int i, char *b, int *c){
         scpy(b,"MINE HELP: CLEAR A DUNGEON ELITE"); *c=C_RED;
     }
     else if(sim_mine()->warn){ mn_status_text(sim_mine(),b,56); *c=C_RED; }
+    else if(co->call_cool>(u32)sim_day(&sim_w)){
+        u32 left=co->call_cool-(u32)sim_day(&sim_w);
+        scpy(b,"DUNGEON HELP REST: "); ncat(b,left); scat(b,left==1?" DAY":" DAYS"); *c=C_CYAN;
+    }
     else { scpy(b,"SETTLERS "); ncat(b,co->nset); scat(b,"/"); ncat(b,col_cap(co->mask)); scat(b,"  BUILDINGS "); ncat(b,col_built_total(co)); scat(b,"/"); ncat(b,col_buildings(co->mask)); }
 }
 // Phase 5: A in the colony takes what it made: food for your hunger bar, goods and ore sold for gold, a nap at your bug home (HOUSES)
