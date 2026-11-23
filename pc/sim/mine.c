@@ -38,27 +38,39 @@ static uint32_t sat(uint32_t a, uint32_t b){ uint64_t s = (uint64_t)a + b; retur
 static int tools_eff(const Mine *m){ return m->tools > 6 ? 6 : (int)m->tools; }
 
 void mn_init(Mine *m, uint32_t town, uint32_t day){ memset(m, 0, sizeof *m); m->town = town; m->last_day = day; }
-int mn_miners(const SimColony *c){ int n = 0; for(int i = 0; i < c->nset; i++){ char nm[16]; int j; col_settler(c, i, nm, &j); if(j == COLJ_MINER) n++; } return n; }
-int mn_staff(const SimColony *c, int w){
-    int n = 0; for(int i = 0; i < c->nset; i++){ char nm[16]; int j; col_settler(c, i, nm, &j);
-        if(w == MNW_SMELTER ? j == COLJ_MINER : w == MNW_SMITHY ? j == COLJ_BUILDER : (j == COLJ_COOK || j == COLJ_TRADER)) n++; }
-    return n;
+// A colony can be aged thousands of days at once. Count all trades with one
+// settler walk per simulated day, rather than walking 20 settlers for every
+// candidate depth, hazard check and workshop separately.
+typedef struct { int miners, smiths, loom; } MnCrew;
+static MnCrew mn_crew(const SimColony *c){
+    MnCrew a = {0,0,0};
+    for(int i=0; i<c->nset; i++){ char name[16]; int job;
+        col_settler(c,i,name,&job);
+        if(job==COLJ_MINER) a.miners++;
+        else if(job==COLJ_BUILDER) a.smiths++;
+        else if(job==COLJ_COOK || job==COLJ_TRADER) a.loom++;
+    }
+    return a;
 }
+int mn_miners(const SimColony *c){ return mn_crew(c).miners; }
+int mn_staff(const SimColony *c, int w){ MnCrew a=mn_crew(c); return w==MNW_SMELTER?a.miners:w==MNW_SMITHY?a.smiths:a.loom; }
 
-int mn_risk(const Mine *m, const SimColony *c, int z, int diff){
+static int mn_risk_crew(const Mine *m, int z, int diff, int miners){
     if(z < 1 || z > MN_ZMAX) return 0;
-    int r = 4 + 3 * z - 2 * m->brace[z] - tools_eff(m) / 2 + mn_miners(c) / 4;
+    int r = 4 + 3 * z - 2 * m->brace[z] - tools_eff(m) / 2 + miners / 4;
     if(diff == COLD_CALM) r /= 2;
     return r < 1 ? 1 : r;
 }
+int mn_risk(const Mine *m, const SimColony *c, int z, int diff){ return mn_risk_crew(m,z,diff,mn_miners(c)); }
 int mn_cave_chance(const Mine *m, int z){ int p = 70 - 8 * (z >= 1 && z <= MN_ZMAX ? m->brace[z] : 0); return p < 10 ? 10 : p; }
 
-int mn_auto_level(const Mine *m, const SimColony *c, int diff){
+static int mn_auto_level_crew(const Mine *m, int diff, int miners){
     int best = 0, low = 0, lowr = 1 << 30;
-    for(int z = 1; z <= m->depth; z++){ if(m->zst[z] != MNZ_OPEN || !m->seam[z]) continue; int r = mn_risk(m, c, z, diff);
+    for(int z = 1; z <= m->depth; z++){ if(m->zst[z] != MNZ_OPEN || !m->seam[z]) continue; int r = mn_risk_crew(m,z,diff,miners);
         if(r < lowr){ lowr = r; low = z; } if(r <= MN_SAFE_RISK) best = z; }
     return best ? best : low;
 }
+int mn_auto_level(const Mine *m, const SimColony *c, int diff){ return mn_auto_level_crew(m,diff,mn_miners(c)); }
 
 static void ev(MnAway *aw, int kind, uint32_t a, uint32_t b, uint32_t day){
     if(!aw) return;
@@ -85,13 +97,15 @@ static int clear_need(const Mine *m, int z){ (void)m; return z >= 3 ? 5 : 3; }
 
 void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway *aw){
     if(aw) aw->days++;
+    int new_day = day > m->last_day;
     m->last_day = day;
     if(c->state != COLS_ALIVE || !(c->mask & (1u << COLR_TENT)) || !c->nset) return;
+    MnCrew crew=mn_crew(c);
     uint32_t wood_floor = WOOD_KEEP;
     // ---- the mine
     if((c->mask & (1u << COLR_MINE)) && c->bld[COLB_MINE] >= 1){
         if(!m->depth) open_level(m, 1, day, aw);
-        int zcap = mn_zcap(c->mask), miners = mn_miners(c), eff = miners;
+        int zcap = mn_zcap(c->mask), miners = crew.miners, eff = miners;
         if(m->hurt_days){ m->hurt_days--; eff = 0; }
         if(m->safe) m->warn = 0;
         if(m->warn){                                         // yesterday the roof creaked: today it holds or comes down
@@ -101,7 +115,7 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
                 else ev(aw, MNE_HELD, (uint32_t)z, 0, day); }
         }
         { int bad = m->work < 1 || m->work > m->depth || m->zst[m->work] == MNZ_DRY;      // the colony picks the work level unless you pinned a good one
-          if(!m->pin || bad){ int a = mn_auto_level(m, c, diff);
+          if(!m->pin || bad){ int a = mn_auto_level_crew(m,diff,miners);
               if(a && a != m->work){ m->work = (uint8_t)a; m->clear = 0; } else if(!a && bad) m->work = m->depth;
               if(m->pin && bad) m->pin = 0; } }
         if(m->work < 1) m->work = 1;
@@ -123,7 +137,7 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
             if(!m->seam[z]){ m->zst[z] = MNZ_DRY; ev(aw, MNE_DRY, (uint32_t)z, 0, day); }
             if(m->tools && day % 12 == 0) m->tools--;        // tools wear out
             // the creak: a chance a working level starts to give way. You get a day's warning.
-            if(!m->safe && m->zst[z] == MNZ_OPEN && (int)sim_rngn(m->town, day, MP_CREAK, (uint64_t)z, 1000) < mn_risk(m, c, z, diff)){ m->warn = 1; ev(aw, MNE_CREAK, (uint32_t)z, 0, day); }
+            if(!m->safe && m->zst[z] == MNZ_OPEN && (int)sim_rngn(m->town, day, MP_CREAK, (uint64_t)z, 1000) < mn_risk_crew(m,z,diff,miners)){ m->warn = 1; ev(aw, MNE_CREAK, (uint32_t)z, 0, day); }
         }
         // digging the next level: when the work level is half empty (or you started it), and the rules allow a deeper one
         if(m->depth < zcap){
@@ -143,13 +157,13 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
     if((c->mask & (1u << COLR_SHOPS)) && m->wl[MNW_SMELTER] && !m->wl[MNW_LOOM] && c->nset >= 4 && c->wood >= 70){ c->wood -= 15; m->wl[MNW_LOOM] = 1; if(aw) aw->ws_built++; ev(aw, MNE_WS, MNW_LOOM, 1, day); }
     if((c->mask & (1u << COLR_MINE)) && m->wl[MNW_SMELTER] && !m->wl[MNW_SMITHY] && m->bars >= 6 && c->wood >= 50){ c->wood -= 15; m->wl[MNW_SMITHY] = 1; if(aw) aw->ws_built++; ev(aw, MNE_WS, MNW_SMITHY, 1, day); }
     { uint32_t spare = c->wood > wood_floor ? c->wood - wood_floor : 0;
-      if(m->wl[MNW_SMELTER]){ uint32_t cap = (uint32_t)m->wl[MNW_SMELTER] + (mn_staff(c, MNW_SMELTER) > 0 ? 1u : 0u), u = cap;
+      if(m->wl[MNW_SMELTER]){ uint32_t cap = (uint32_t)m->wl[MNW_SMELTER] + (crew.miners > 0 ? 1u : 0u), u = cap;
           if(u > c->ore / 2) u = c->ore / 2; if(u > spare) u = spare;
           c->ore -= 2 * u; c->wood -= u; spare -= u; m->bars = sat(m->bars, u); if(aw) aw->bars = sat(aw->bars, u); }
-      if(m->wl[MNW_SMITHY]){ uint32_t cap = (uint32_t)m->wl[MNW_SMITHY] + (mn_staff(c, MNW_SMITHY) > 0 ? 1u : 0u), u = cap;
+      if(m->wl[MNW_SMITHY]){ uint32_t cap = (uint32_t)m->wl[MNW_SMITHY] + (crew.smiths > 0 ? 1u : 0u), u = cap;
           if(u > m->bars / 2) u = m->bars / 2; if(u > spare) u = spare; if(m->tools + u > 30u) u = m->tools >= 30u ? 0u : 30u - m->tools;
           m->bars -= 2 * u; c->wood -= u; spare -= u; m->tools = sat(m->tools, u); if(aw) aw->tools = sat(aw->tools, u); }
-      if(m->wl[MNW_LOOM]){ uint32_t cap = (uint32_t)m->wl[MNW_LOOM] + (mn_staff(c, MNW_LOOM) > 0 ? 1u : 0u), u = cap;
+      if(m->wl[MNW_LOOM]){ uint32_t cap = (uint32_t)m->wl[MNW_LOOM] + (crew.loom > 0 ? 1u : 0u), u = cap;
           if(u > spare / 2) u = spare / 2; if(m->cloth + u > 60u) u = m->cloth >= 60u ? 0u : 60u - m->cloth;
           c->wood -= 2 * u; m->cloth = sat(m->cloth, u); if(aw) aw->cloth = sat(aw->cloth, u); } }
     if(m->scn && !m->safe && !(m->scn_done >> m->scn & 1) && mn_scn_check(m, c, m->scn)){        // the scenario you chose is done: paid once
