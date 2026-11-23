@@ -173,7 +173,7 @@ static SimColony *sim_colony(void);
 #define SIM_CO_ACT 8
 static void sim_colony_map(volatile u16 *pg);
 static void sim_ws_screen(volatile u16 *pg), sim_mine_screen(volatile u16 *pg);
-static int sim_take_mine(char *msg);
+static int sim_take_mine(char *msg, int cap);
 // patch 47: the COLONY list shows the rungs you opened and the one next goal, the actions that make sense now, and the settlers. Built when the screen opens.
 enum { SCC_ACT=100, SCC_SET=200, SCC_SHAPE=300 };
 static int sim_co_code[COLR_N+SIM_CO_ACT+COL_MAXSET+4], sim_co_n;
@@ -236,10 +236,14 @@ static int sim_co_act(int i){
         if(co->state==COLS_RUINS) ok=col_resettle(co,(u32)sim_day(&sim_w));
         if(ok){ sfx(2); if(!menu_msg[0]) scpy(menu_msg,"DONE"); } else { sfx(4); if(!menu_msg[0]) scpy(menu_msg,"NOT NOW"); }
         return 0; }
-    int got=col_collect(co,100-food,&g); char mm[44]; mm[0]=0; int mgot=sim_take_mine(mm);          // Phase 6: the workshops' bars, tools and cloth, and gems from the deep, go the same way
+    int got=col_collect(co,100-food,&g); char mm[44]; mm[0]=0; int mgot=sim_take_mine(mm,sizeof mm);          // Phase 6: the workshops' bars, tools and cloth, and gems from the deep, go the same way
     if(!got && !mgot){ scpy(menu_msg,"NOTHING TO TAKE YET. COME BACK LATER"); sfx(4); return 0; }
     if(g.food_pts) eat(g.food_pts); if(g.gold) gold=sadd(gold,(s64)g.gold); if(g.heal){ hearts=maxh; mp=maxmp; }
-    scpy(menu_msg,"TAKEN:"); if(g.food_pts){ scat(menu_msg," FOOD +"); ncat(menu_msg,g.food_pts); } if(g.gold){ scat(menu_msg," GOLD +"); ncat(menu_msg,g.gold); } if(g.heal) scat(menu_msg," A NAP"); scat(menu_msg,mm);
+    txt_copy(menu_msg,sizeof menu_msg,"TAKEN:");
+    if(g.food_pts){ txt_append(menu_msg,sizeof menu_msg," FOOD+"); txt_number(menu_msg,sizeof menu_msg,g.food_pts); }
+    if(g.gold){ txt_append(menu_msg,sizeof menu_msg," GOLD+"); txt_number(menu_msg,sizeof menu_msg,g.gold); }
+    if(g.heal) txt_append(menu_msg,sizeof menu_msg," A NAP");
+    txt_append(menu_msg,sizeof menu_msg,mm);
     sim_col_gifts++; sfx(6); return 0;
 }
 
@@ -312,11 +316,14 @@ static void sim_colony_map(volatile u16 *pg){
     in_menu--; wait_release();
 }
 // ---- Phase 6: WORKSHOPS and the MINE (mine.h). Every part is optional: the mine and the workshops run by themselves, and you only brace, dig and build by hand.
-static int sim_take_mine(char *msg){                          // bars, tools, cloth: gold; gems: ore for your bag (the game's ore_def by depth)
+static int sim_take_mine(char *msg, int cap){                // mine stock becomes gold; gems become visible ore or fair gold if the bag is full
     MnGift g; Mine *mi=sim_mine(); if(!mn_collect(mi,&g)) return 0;
     if(g.gold) gold=sadd(gold,(s64)g.gold);
-    if(g.ore_n>0) ore_add(g.ore_kind,g.ore_n);
-    scat(msg," MINE GOLD +"); ncat(msg,g.gold); if(g.ore_n>0){ scat(msg," GEMS +"); ncat(msg,g.ore_n); } return 1;
+    s64 credit=0; int ores=g.ore_n>0 ? sim_credit_ore(g.ore_kind,g.ore_n,&credit) : 0;
+    txt_copy(msg,cap," MINE +"); txt_number(msg,cap,(int)g.gold); txt_append(msg,cap,"G");
+    if(ores){ txt_append(msg,cap," ORE+"); txt_number(msg,cap,ores); }
+    if(credit){ txt_append(msg,cap," FULL+"); txt_number(msg,cap,(int)credit); txt_append(msg,cap,"G"); }
+    return 1;
 }
 static void sim_ws_row(int i, char *b, int *c){
     SimColony *co=sim_colony(); Mine *mi=sim_mine(); b[0]=0; *c=C_GREY;
@@ -338,7 +345,7 @@ static void sim_ws_foot(int i, char *b, int *c){
 static int sim_ws_act(int i){
     SimColony *co=sim_colony(); Mine *mi=sim_mine(); menu_msg[0]=0;
     if(i<MNW_N){ if(mn_build_ws(mi,co,i)){ sfx(2); scpy(menu_msg,"BUILT"); } else { sfx(4); scpy(menu_msg,"NOT NOW: WOOD, BARS OR A RUNG IS MISSING"); } }
-    else if(i==MNW_N){ char mm[44]; mm[0]=0; if(sim_take_mine(mm)){ scpy(menu_msg,"TAKEN:"); scat(menu_msg,mm); sfx(6); sim_col_gifts++; } else { scpy(menu_msg,"NOTHING TO TAKE YET"); sfx(4); } }
+    else if(i==MNW_N){ char mm[44]; mm[0]=0; if(sim_take_mine(mm,sizeof mm)){ txt_copy(menu_msg,sizeof menu_msg,"TAKEN:"); txt_append(menu_msg,sizeof menu_msg,mm); sfx(6); sim_col_gifts++; } else { scpy(menu_msg,"NOTHING TO TAKE YET"); sfx(4); } }
     return 0;
 }
 static void sim_ws_screen(volatile u16 *pg){
