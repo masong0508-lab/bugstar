@@ -366,7 +366,7 @@ static void sim_mine_row(int i, char *b, int *c){
         case 6: scpy(b,"> SANDBOX: "); scat(b,mi->safe?"ON, NO CAVE-INS":"OFF"); break;
         case 7: scpy(b,"> SURVEY THE WORK LEVEL"); if(mi->work>=1 && mi->work<=MN_ZMAX && (mi->surveyed & (1u<<mi->work))) scat(b," (MAPPED)"); break;
         case 8: scpy(b,"> RESCUE CAVED-IN MINERS"); break;
-        default: scpy(b,"> DEEP SALVAGE (LEVEL 5+)"); }
+        default: if(mi->ex_cooldown>mi->last_day){ scpy(b,"> SALVAGE REST: "); ncat(b,mi->ex_cooldown-mi->last_day); scat(b," DAYS"); } else scpy(b,"> DEEP SALVAGE (LEVEL 5+)"); }
         if(i>=7 && mi->ex_kind) *c=C_DGREY;
         return; }
     int z=i-SIM_MN_ACT+1; mn_level_text(mi,co,z,sim_f.difficulty,b,56); *c = mi->zst[z]==MNZ_OPEN ? C_WHITE : mi->zst[z]==MNZ_CAVED ? C_RED : C_DGREY; if(z==mi->work && mi->warn) *c=C_RED;
@@ -377,9 +377,9 @@ static void sim_mine_foot(int i, char *b, int *c){
     else if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; }
     else if(-1-i==5){ scpy(b,mn_scn_about(mi->scn)); if(mi->scn){ scat(b,"  PAYS "); ncat(b,mn_scn_pay(co,mi->scn)); scat(b,"G"); } *c=C_GOLD; }
     else if(-1-i==6){ scpy(b,mi->safe?"NO CAVE-INS, AND NO SCENARIO PAY":"CAVE-INS ARE ON. THE RISK IS THE GAME"); *c=C_GOLD; }
-    else if(-1-i==7){ scpy(b,"1 TOOL + 8 FOOD. TWO DAYS. EACH LEVEL ONCE"); *c=C_CYAN; }
-    else if(-1-i==8){ scpy(b,"1 TOOL + 10 FOOD. CLEAR RUBBLE AND HEAL"); *c=C_CYAN; }
-    else if(-1-i==9){ scpy(b,"2 BARS + 12 FOOD. 3 DAYS. 7 DAY REST"); *c=C_CYAN; }
+    else if(-1-i==7){ scpy(b,"2 DAYS 1 TOOL + 8 FOOD. HAVE "); ncat(b,mi->tools); scat(b,"T "); ncat(b,co->food); scat(b,"F"); *c=C_CYAN; }
+    else if(-1-i==8){ scpy(b,"2 DAYS 1 TOOL + 10 FOOD. HAVE "); ncat(b,mi->tools); scat(b,"T "); ncat(b,co->food); scat(b,"F"); *c=C_CYAN; }
+    else if(-1-i==9){ scpy(b,"3 DAYS 2 BARS + 12 FOOD. HAVE "); ncat(b,mi->bars); scat(b,"B "); ncat(b,co->food); scat(b,"F"); *c=C_CYAN; }
     else { scpy(b,"WOOD "); ncat(b,co->wood); scat(b,"  ORE "); ncat(b,co->ore); scat(b,"  BARS "); ncat(b,mi->bars); scat(b,"  TOOLS "); ncat(b,mi->tools); scat(b,"  GEMS "); ncat(b,mi->gems); }
 }
 static int sim_mine_act(int i){
