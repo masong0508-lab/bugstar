@@ -254,6 +254,8 @@ jobs:
         run: cc -std=c99 -O1 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all tests/pc_multiplayer_duel_test.c pc/platform/pc_duel.c -lm -o /tmp/bugstar-duel && /tmp/bugstar-duel
       - name: Build PC game without SDL dependency
         run: cd pc && PC_SDL=0 ./build.sh
+      - name: Exercise in-game mine menus, saved reload and side game OFF
+        run: cd pc && bash tests/sim_mine.sh
       - name: Fuzz kart races across random tracks
         run: cd pc && bash tests/kart.sh 8
       - name: Check kart races under AddressSanitizer
