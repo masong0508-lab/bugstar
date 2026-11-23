@@ -29,6 +29,8 @@ on:
       - 'tests/ui_text_bounds_runtime.py'
       - 'tests/local_rewards_runtime.py'
       - 'tests/mining_persistence_runtime.py'
+      - 'tests/life_sim_rewards_runtime.py'
+      - 'pc/sim/**'
       - 'tests/story_progression_runtime.py'
       - 'tests/ambient_story_runtime.py'
       - 'tests/kart_world_save_runtime.py'
@@ -105,6 +107,8 @@ on:
       - 'tests/ui_text_bounds_runtime.py'
       - 'tests/local_rewards_runtime.py'
       - 'tests/mining_persistence_runtime.py'
+      - 'tests/life_sim_rewards_runtime.py'
+      - 'pc/sim/**'
       - 'tests/story_progression_runtime.py'
       - 'tests/ambient_story_runtime.py'
       - 'tests/kart_world_save_runtime.py'
@@ -172,6 +176,8 @@ jobs:
         run: python3 tests/local_rewards_runtime.py
       - name: Ore SRAM persistence and cap-safe crafting
         run: python3 tests/mining_persistence_runtime.py
+      - name: Preserve PC life-sim friend gifts and mine rewards under ASan/UBSan
+        run: python3 tests/life_sim_rewards_runtime.py
       - name: Exercise 50-slot menu scrolling and selection with UndefinedBehaviorSanitizer
         run: python3 tests/list_picker_runtime_host.py
       - name: Exercise Kart World saved settings and 18-driver navigation with UBSan
