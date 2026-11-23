@@ -12,7 +12,7 @@ Patches so far: 14 = life sim TIES (gifts, requests, colony ties), 15 = DUNGEON 
 - [ ] Friend gift GOLD uses `units x (20 + min(level,1000))`; check against real shop prices and tune.
 - [ ] Friend gift ORE calls `ore_add(0, n)`: confirm index 0 is plain ore, or pick the planet's own common ore.
 - [ ] Gift HEAL for racers and guards is a full heal: maybe too strong, give it a cooldown.
-- [ ] Colony call cooldown (`call_cool`) is runtime only: a reload resets it and a call can be collected twice. Either save it (needs a colony list version bump) or accept and note it.
+- [x] Colony call cooldown now persists in version-two COLN records (168 bytes); old 164-, 42- and 34-byte records import. The same mission cannot be paid twice inside the two-day rest. Source integration and C save-migration regression are covered by CI.
 - [ ] Town worry (`+2 x worry` stress per tick) may push whole towns into breakdowns during a long raid warning: simulate 12 days of worry on a 12 bug town and check.
 - [ ] `col_call` priority is RAID, FAMINE, SUPPLY, LOST. Check a colony is never stuck with FAMINE on a floor that cannot spawn a nest (first garden floor, boss floors, outposts skip events: the call then simply waits).
 - [ ] Dungeon calls only change the floor event. Still to do: real dungeon generation work (room shapes, hazards, new monsters, a mine variety, secret rooms) so floors differ in more than the event.
@@ -30,7 +30,7 @@ Built and tested: sizes, reward formula, fights, interiors, missions, encounters
 - [ ] Death penalty check: the save stays byte identical apart from the stated penalty.
 
 ## D. Side game (pc/DEPTH_PLAN.md), phases 6 and up
-- [x] Workshops and the mine with z-levels (patch 44, `pc/sim/mine.c`; see README, 'The colony's WORKSHOPS and MINE'). Still to do: a colony call for the mine (a cave-in rescue or a missing-material run), mine events in the dungeon generator, the nest under the mine. NOT played by you.
+- [x] Workshops and the mine with z-levels (patch 44, `pc/sim/mine.c`; see README, 'The colony's WORKSHOPS and MINE'). Mine dungeon rescue is now a genuine colony elite fight: it reopens a cave-in and heals the crew; the saved two-day rest prevents repeat payouts. Still to do: missing-material surface run, distinct mine-specific dungeon rooms/nest, and real user playthrough.
 - [ ] WorldBox-style races, tribes and powers using the 12,672 creatures and 48 god powers.
 - [ ] Replay layer: scenarios and a sandbox switch for the mine are in (patch 44); kits, policies, challenge modes and colony plus are not.
 - [ ] Permanent ruins shown in the planet file.
