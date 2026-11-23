@@ -25,6 +25,26 @@ The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Rea
   lengths, and exercises bounded dynamic hints under sanitizers. Zero new
   saves, sprites, heap buffers, or per-frame rendering allocations.
 
+## PC/Android life-sim reward reliability — 22 November 2026
+
+- **Friendship miner rewards go to the actual mining bag:** iron (`ore_n[4]`) is
+  visible and usable for tool upgrades and smelting. Previously the side game
+  awarded amber through `ore_add(0,n)`, which lives outside the ore-bag list.
+- **Never silently eat the reward when the bag is full:** miner gifts and mine
+  pickups retain as much ore as fits; any overflow pays the actual ore price
+  in gold. A partial collection reports both the ore and fallback credits.
+- **Claim all new friend gifts once:** process the actual new event-log interval,
+  capped by the event ring. The former one-gift `break` could discard several
+  gifts if a catch-up update produced them together. Multiple arrivals receive
+  a journal notification, without spamming cards for every gift.
+- Bound collected-mine feedback and its 40-byte menu destination, which
+  previously appended variable numbers without checking capacity.
+- `tests/life_sim_rewards_runtime.py` executes actual C event, ore and mine
+  logic under ASan/UBSan for small/full bags, long event backlogs, journal
+  idempotence, and collection-text canaries. Validate PC, Windows and Android
+  CI plus a UI playthrough before tagging a release. No new saves or gameplay
+  allocations; the GBA and GBC lack this optional side-game module.
+
 ## Story coherence and true-ending recovery — 22 November 2026
 
 - Bolt's advice follows the actual campaign phase, not whichever early
