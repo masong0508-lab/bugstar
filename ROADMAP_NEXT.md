@@ -3,6 +3,35 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Colony dungeon-rescue progression and persistent mission cooldown — 23 November 2026
+
+- **PC/Android dungeon mission:** when the colony mine has an uncleared
+  cave-in or injured miners, the active dungeon can offer a fifth COLONY
+  objective: FIGHT THE MINE BURROWERS. It reuses the existing two-elite
+  dungeon event and pay, then opens the collapsed work shaft, heals injured
+  crews, places at least three braces, and adds colony ore, wood and morale.
+  A mine emergency ranks below urgent raids/famine but above regular
+  supply requests or lost-settler rumors. An active rescue expedition takes
+  precedence instead of issuing a duplicate distress call.
+- The colony menu advertises the emergency directly. The completion
+  notification is drawn after the standard ELITES SLAIN message so players
+  can actually read it. No new sprites, framebuffer or per-frame work.
+- **Anti-farming fix:** clearing any colony dungeon call grants its
+  resources only once during the two-day cooldown. The cooldown is now
+  stored in COLN **version 2, 168-byte records** (previously 164 bytes)
+  alongside all existing colony data. The loader automatically imports
+  164-byte v1 records and older 34/42-byte colony versions. The separate
+  MINE v2 136-byte format remains unchanged, as do GBA/GBC cartridge
+  saves. Back up PC/Android .sim saves when switching game versions.
+- Production C colony and mine tests cover duplicate completions,
+  half-completed cooldowns across reload, the real BSIM v1-to-v2
+  migration, rescue paths, dry veins, injured crews and full-file capacity.
+  A separate source audit guards the game build's dungeon hook timing
+  and UI integration. The PC CI suite includes these UBSan regressions.
+- Remaining release gates: complete in-game player playthrough, actual
+  hardware/controller validation, and performance benchmarking where
+  timing changes are claimed. Do not infer these from source-level tests.
+
 ## Colony-mine expedition expansion and saved mission state — 22 November 2026
 
 - **Three new PC/Android activities** in the existing mine screen: a one-time
