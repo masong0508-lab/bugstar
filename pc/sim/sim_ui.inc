@@ -203,7 +203,11 @@ static void sim_co_row(int i, char *b, int *c){
         else if(k==4){ scpy(b,"> BRING 10 FOOD FROM MY BAG"); }
         else if(k==5){ scpy(b,"> STAND GUARD 3 DAYS"); }
         else if(k==6){ Mine *mi=sim_mine(); scpy(b,"> WORKSHOPS  "); scat(b,"SMELTER "); ncat(b,mi->wl[MNW_SMELTER]); scat(b," SMITHY "); ncat(b,mi->wl[MNW_SMITHY]); scat(b," LOOM "); ncat(b,mi->wl[MNW_LOOM]); }
-        else { Mine *mi=sim_mine(); scpy(b,"> THE MINE  "); if(mi->warn) scat(b,"ROOF CREAKING! "); else if(mi->depth){ scat(b,"LEVEL "); ncat(b,mi->work); scat(b," OF "); ncat(b,mi->depth); } else scat(b,col_rung_how(COLR_MINE)); if(mi->warn) *c=C_RED; }
+        else { Mine *mi=sim_mine(); scpy(b,"> THE MINE  ");
+            if(mn_dungeon_need(mi,co) && (u32)sim_day(&sim_w)>=co->call_cool){ scat(b,"DUNGEON RESCUE"); *c=C_RED; }
+            else if(mi->warn){ scat(b,"ROOF CREAKING!"); *c=C_RED; }
+            else if(mi->depth){ scat(b,"LEVEL "); ncat(b,mi->work); scat(b," OF "); ncat(b,mi->depth); }
+            else scat(b,col_rung_how(COLR_MINE)); }
         return; }
     int s=code-SCC_SET; char nm[16]; int j; col_settler(co,s,nm,&j); scpy(b,"  "); scat(b,nm); while(textlen(b)<14) scat(b," "); scat(b,col_job_name(j)); *c=C_WHITE;
 }
@@ -214,6 +218,9 @@ static void sim_co_foot(int i, char *b, int *c){
     else if(co->state==COLS_DEAD_WORLD){ scpy(b,"BURNT FOR GOOD. SETTLE ANOTHER PLANET"); *c=C_RED; }
     else if(co->state==COLS_RUINS){ scpy(b,"RUINS. A: SETTLE AGAIN"); *c=C_RED; }
     else if(co->raid_eta){ scpy(b,"RAID OF "); ncat(b,co->raid_size); scat(b," IN "); ncat(b,co->raid_eta); scat(b," DAYS. DEFENCE "); ncat(b,col_defence(co)); *c=C_RED; }
+    else if(mn_dungeon_need(sim_mine(),co) && (u32)sim_day(&sim_w)>=co->call_cool){
+        scpy(b,"MINE HELP: CLEAR A DUNGEON ELITE"); *c=C_RED;
+    }
     else if(sim_mine()->warn){ mn_status_text(sim_mine(),b,56); *c=C_RED; }
     else { scpy(b,"SETTLERS "); ncat(b,co->nset); scat(b,"/"); ncat(b,col_cap(co->mask)); scat(b,"  BUILDINGS "); ncat(b,col_built_total(co)); scat(b,"/"); ncat(b,col_buildings(co->mask)); }
 }
