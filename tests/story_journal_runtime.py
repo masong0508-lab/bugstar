@@ -69,6 +69,12 @@ assert 'WHAT YOU HAVE LEARNED' in pause
 assert 'if(q_type==Q_NONE)' in pause and 'quest_refresh();' in pause
 assert "static int bolt_next_step(void);" in main
 assert "static void bolt_hive_hint(char *out, int cap);" in main
+# The return-from-battle message must acknowledge the real finale instead
+# of telling a player who already freed Dawn to come back stronger.
+leave=space[space.index("static void lair_leave(void){"):space.index("static void ship_hit(",space.index("static void lair_leave(void){"))]
+assert 'dawn_free ? "DAWN IS FREE. THE GALAXY IS OPEN."' in leave
+assert len("DAWN IS FREE. THE GALAXY IS OPEN.")<40
+
 
 stub=r"""
 #include <stdint.h>
