@@ -369,7 +369,6 @@ static void sim_mine_row(int i, char *b, int *c){
         default: scpy(b,"> DEEP SALVAGE (LEVEL 5+)"); }
         if(i>=7 && mi->ex_kind) *c=C_DGREY;
         return; }
-        return; }
     int z=i-SIM_MN_ACT+1; mn_level_text(mi,co,z,sim_f.difficulty,b,56); *c = mi->zst[z]==MNZ_OPEN ? C_WHITE : mi->zst[z]==MNZ_CAVED ? C_RED : C_DGREY; if(z==mi->work && mi->warn) *c=C_RED;
 }
 static void sim_mine_foot(int i, char *b, int *c){
