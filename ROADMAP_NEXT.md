@@ -3,6 +3,28 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Reactive station characters and truthful cantina rumours — 22 November 2026
+
+- Vesper, the moth pilot, and Nib, the runaway ant guard, now tell a
+  coherent eight-stage story: imprisoned bug transports, freeing story
+  worlds, the Anthill, the King's surviving machine, five Tech Hives,
+  Bolt's missing memories, the final battle, and the Dawn's return.
+  Their lines are tied to the *same real campaign phase* as Bolt, so
+  revisiting old stars does not resurrect the King in dialogue.
+- Nib still names an actual reachable outpost when the player is
+  searching for missing memory cores. Both the dynamic location and
+  fixed dialogue are copied to bounded buffers before display.
+- Hum's trading information now matches the static economy multipliers
+  in `space.inc` and no longer promises a hold upgrade will pay for
+  itself in exactly two trips.
+- Cantina chatter no longer says jobs pay late, claims full holds pay
+  nothing, or reveals the secret Tech Hive structure prematurely. The
+  actionable second gossip line follows the actual quest phase.
+- The new production-source regression checks phase-gated dialogue for
+  spoilers, matches live economy data, verifies story hints and message
+  lengths, and exercises bounded dynamic hints under sanitizers. Zero new
+  saves, sprites, heap buffers, or per-frame rendering allocations.
+
 ## Story coherence and true-ending recovery — 22 November 2026
 
 - Bolt's advice follows the actual campaign phase, not whichever early

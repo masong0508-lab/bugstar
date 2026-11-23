@@ -417,6 +417,7 @@ static void ore_reset(void); static void ore_save(void); static void ore_load(vo
 #include "ore.inc"
 static void title_restore(volatile u16 *pg, int y0, int y1); static void twinkle(volatile u16 *pg, int t);
 static int beast_stage;
+static int hive_done;   // late-space story state, also needed by town gossip
 static int bolt_next_step(void);
 static void bolt_hive_hint(char *out, int cap);
 #include "ui.inc"

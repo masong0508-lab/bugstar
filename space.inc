@@ -1439,6 +1439,46 @@ static int tech_scrap(void){ return 3*(tech_lv+1); }
 static int tech_cost(void){ if(beast_stage<1) return 0; return tech_lv<30 ? 2000*(tech_lv+1)*(tech_lv+1) : 0; }
 static int good_price(int g){ int e=sys[cur_sys].eco; int p=good_base[g]*eco_mul[e][g]/100; int wob=(int)((sys_id(cur_sys)*7+g*13+visits*5)%21); return p*(90+wob)/100+1; }
 static int ore_station_pct(void){ static const u8 m[4]={85,125,110,100}; int wob=(int)((sys_id(cur_sys)*7+visits*5)%21); return m[sys[cur_sys].eco&3]*(90+wob)/100; }      // mining worlds pay most for ore, farming worlds least
+// When the player returns to a station, its two regulars carry the story
+// forward. All lines are ROM constants; this only runs on a menu redraw.
+static const char *lounge_arc_line(int phase, int line){
+    static const char *const arc[8][4]={
+        {"I FLEW THE KING'S CAGES TO THE POND.",
+         "THE MANIFESTS HAD NUMBERS, NOT NAMES.",
+         "I WAS ONE OF HIS ANT GUARDS. I LEFT.",
+         "THE QUEENS KEEP HIS CAGE ROUTES OPEN."},
+        {"ONE WORLD FREE. THE ROUTE STILL RUNS.",
+         "EVERY CAGE RAIL LEADS TOWARD THE KING.",
+         "I SAW BUGS PASS THROUGH HERE IN CHAINS.",
+         "THE NEXT STAR WAS ALWAYS ON THE LIST."},
+        {"THE ANTHILL NEVER LETS SHIPS LEAVE FULL.",
+         "IT TAKES BUGS, ORE AND SECRETS.",
+         "I KNOW THAT GATE. I USED TO GUARD IT.",
+         "THE KING HAS MORE PRISONERS BELOW."},
+        {"THE KING IS GONE. HIS HUNGER REMAINS.",
+         "I SAW HIS MACHINE EAT A FREIGHTER.",
+         "WE FED IT SCRAP. HE CALLED IT FUTURE.",
+         "I WISH WE HAD REFUSED THAT ORDER."},
+        {"FIVE TECH HIVES KEEP THE BEAST ALIVE.",
+         "FOLLOW THE RED STAR TO AN OVERLORD.",
+         "WE FED THOSE HIVES WITH STOLEN SHIPS.",
+         "BREAK ONE. THE BEAST'S ARMOUR CRACKS."},
+        {"THE TECH HIVES ARE FINALLY QUIET.",
+         "BOLT STILL HAS MEMORIES TO RECOVER.",
+         "WE BURIED HIS MEMORIES IN OUTPOSTS.",
+         "RED HATCHES. THAT'S WHERE THEY WENT."},
+        {"NO MORE HIVES. HIS WOUNDS CAN STAY.",
+         "BOLT CAN OPEN THE BEAST'S HEART NOW.",
+         "THE KING NEVER LEARNED ITS TRUE NAME.",
+         "BOLT DID. TAKE HIM TO THE HEART."},
+        {"I HEARD A SHIP SING ABOVE THE DOCK.",
+         "IT SOUNDED LIKE SOMEONE COMING HOME.",
+         "I ONCE TOOK BUGS TO THE ANT KING.",
+         "I'LL SPEND MY DAYS BRINGING THEM BACK."}
+    };
+    if(phase<0 || phase>7 || line<0 || line>3) return "";
+    return arc[phase][line];
+}
 static void station_menu_(void);
 static void station_menu(void){ int sh=shd_begin(); station_menu_(); shd_end(sh); }
 static void station_menu_(void){
@@ -1460,18 +1500,32 @@ static void station_menu_(void){
                 scpy(b,"HOLD "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); text(pg,14,132,b,C_WHITE,1);
                 ui_lhint(pg,6,148,"A: BUY  B: SELL  L/R: SHIPYARD  START: LEAVE",C_CYAN);
             } else if(tab==2){
-                // three regulars at the bar. what they say moves with the story
+                // Two eyewitnesses change their testimony as the rescue,
+                // Hive campaign and Dawn finale advance. Hum gives market
+                // facts from the real economy table, not guessed profit claims.
                 static const char *const who[3]={"VESPER, OLD MOTH PILOT","HUM, A TRADER BEE","NIB, AN ANT WHO RAN AWAY"};
                 const char *say1[3], *say2[3]; EW static char rb[48];
-                say1[0] = beast_stage>=3 ? "I SAW IT EAT A FREIGHTER WHOLE. IT HUMMED A TUNE." : ant_king ? "SOMETHING WOKE UP OUT THERE. THE SKY WENT QUIET." : "THERE'S A SONG THE BEES SING. ABOUT A FALLEN STAR.";
-                say2[0] = data_cores>=8 ? "YOUR TIN FRIEND. HE'S NOT A DROID, IS HE." : "STAY FAST. FAST THINGS DON'T GET EATEN.";
-                { int e=sys[cur_sys].eco; say1[1] = e==1 ? "MINING WORLDS BUY FOOD AND NECTAR HIGH." : e==2 ? "TECH WORLDS PAY FOR AMBER AND CRYSTALS." : e==3 ? "HIVE WORLDS WANT MACHINES. BRING ANY YOU FIND." : "FARMING WORLDS BUY MACHINES AND MEDICINE."; }
-                say2[1] = "A BIGGER HOLD PAYS FOR ITSELF IN TWO RUNS.";
-                { int nb=-1, bd=99999; for(int i=0;i<NSYS;i++) if(i!=cur_sys && has_base(i) && (i<6 ? i<zones_open : ant_king)){ int d=sys_dist(i,cur_sys); if(d<bd){ bd=d; nb=i; } }
-                  if(nb>=0){ char nm[24]; sys_name(nb,nm); scpy(rb,"THE DRONES ARE DIGGING ON "); scat(rb,nm); scat(rb,"."); say1[2]=rb; } else say1[2]="THE DRONES HAVE GONE QUIET. YOU DID THAT."; }
-                say2[2] = outposts_done ? "THE KING IS AFRAID OF YOU. GOOD. SO WAS I." : "THE KING KEEPS KEYCARDS ON HIS DRONES. LOOK FOR THEM.";
+                int act=bolt_next_step();
+                say1[0]=lounge_arc_line(act,0); say2[0]=lounge_arc_line(act,1);
+                { int e=sys[cur_sys].eco;
+                  say1[1]=e==1 ? "MINERS PAY MORE FOR FOOD AND MACHINES."
+                       : e==2 ? "TECH WORLDS PAY MORE FOR FOOD AND NECTAR."
+                       : e==3 ? "HIVES PAY MORE FOR MACHINES AND CRYSTALS."
+                              : "FARMS PAY MORE FOR MACHINES AND MEDICINE."; }
+                say2[1]="A BIGGER HOLD MEANS FEWER MARKET TRIPS.";
+                say1[2]=lounge_arc_line(act,2); say2[2]=lounge_arc_line(act,3);
+                // Missing Bolt cores? Nib can still name a real, reachable
+                // outpost in this cluster. Keep the label within 48 bytes.
+                if(act==5){
+                    int nb=-1, bd=99999;
+                    for(int i=0;i<NSYS;i++) if(i!=cur_sys && has_base(i) && (i<6 ? i<zones_open : ant_king)){
+                        int d=sys_dist(i,cur_sys); if(d<bd){ bd=d; nb=i; }
+                    }
+                    if(nb>=0){ char nm[24]; sys_name(nb,nm); txt_copy(rb,sizeof rb,"DRONES ACTIVE AT "); txt_append(rb,sizeof rb,nm); txt_append(rb,sizeof rb,"."); say1[2]=rb; }
+                }
                 for(int i=0;i<3;i++){ int y=28+i*36; if(i==sel) text(pg,6,y,">",C_CYAN,1); text(pg,14,y,who[i],i==sel?C_GOLD:C_GREY,1);
-                    if(i==sel){ char q[52]; scpy(q,"\""); scat(q,say1[i]); scat(q,"\""); q[51]=0; text(pg,14,y+10,q,C_WHITE,1); scpy(q,"\""); scat(q,say2[i]); scat(q,"\""); q[51]=0; text(pg,14,y+19,q,C_WHITE,1); } }
+                    if(i==sel){ char q[52]; txt_copy(q,sizeof q,"\""); txt_append(q,sizeof q,say1[i]); txt_append(q,sizeof q,"\""); text(pg,14,y+10,q,C_WHITE,1);
+                        txt_copy(q,sizeof q,"\""); txt_append(q,sizeof q,say2[i]); txt_append(q,sizeof q,"\""); text(pg,14,y+19,q,C_WHITE,1); } }
                 ui_lhint(pg,6,148,"UP/DOWN: TALK TO SOMEONE  L/R: MARKET  START: LEAVE",C_CYAN);
             } else if(tab==3){
                 dp_nav_draw(pg,sel);
