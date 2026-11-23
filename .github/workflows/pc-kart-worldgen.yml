@@ -33,6 +33,7 @@ on:
       - 'pc/sim/**'
       - 'tests/story_progression_runtime.py'
       - 'tests/story_journal_runtime.py'
+      - 'tests/colony_dungeon_wiring_audit.py'
       - 'tests/ambient_story_runtime.py'
       - 'tests/kart_world_save_runtime.py'
       - 'tests/kart_object_pool_runtime.py'
@@ -112,6 +113,7 @@ on:
       - 'pc/sim/**'
       - 'tests/story_progression_runtime.py'
       - 'tests/story_journal_runtime.py'
+      - 'tests/colony_dungeon_wiring_audit.py'
       - 'tests/ambient_story_runtime.py'
       - 'tests/kart_world_save_runtime.py'
       - 'tests/kart_object_pool_runtime.py'
@@ -183,6 +185,11 @@ jobs:
       - name: Exercise mine expeditions, old saves and one-pass crew under UBSan
         run: |
           cc -std=gnu11 -O1 -fwrapv -Wall -Wextra -Wno-unused-parameter -Wno-misleading-indentation -Wno-format-truncation -fsanitize=undefined -fno-sanitize-recover=all pc/sim/mine_test.c pc/sim/mine.c pc/sim/sim_core.c pc/sim/colony.c pc/sim/god.c pc/sim/lv.c -o /tmp/bugstar-mine-ex && /tmp/bugstar-mine-ex
+      - name: Keep dungeon mine-rescue hooks and visible objectives wired
+        run: python3 tests/colony_dungeon_wiring_audit.py
+      - name: Test colony calls, old-save migration and no duplicate payouts under UBSan
+        run: |
+          cc -std=gnu11 -O1 -fwrapv -Wall -Wextra -Wno-unused-parameter -Wno-misleading-indentation -Wno-format-truncation -fsanitize=undefined -fno-sanitize-recover=all pc/sim/colony_test.c pc/sim/mine.c pc/sim/sim_core.c pc/sim/colony.c pc/sim/god.c pc/sim/lv.c -o /tmp/bugstar-colony-calls && /tmp/bugstar-colony-calls
       - name: Preserve PC life-sim friend gifts and mine rewards under ASan/UBSan
         run: python3 tests/life_sim_rewards_runtime.py
       - name: Exercise 50-slot menu scrolling and selection with UndefinedBehaviorSanitizer
