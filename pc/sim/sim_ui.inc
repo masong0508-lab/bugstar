@@ -190,6 +190,14 @@ static void sim_co_build(void){
         sim_co_code[sim_co_n++]=SCC_ACT+k; }
     for(int s=0;s<co->nset && s<COL_MAXSET;s++) sim_co_code[sim_co_n++]=SCC_SET+s;
 }
+// The menu must advertise a mine rescue only when the *actual dungeon
+// priority* will select it. Raid scouts and famine nests come first.
+static int sim_co_mine_call(const SimColony *co){
+    u32 day=(u32)sim_day(&sim_w);
+    int call=col_call(co,day);
+    return day>=co->call_cool && call!=COLC_RAID && call!=COLC_FAMINE &&
+           mn_dungeon_need(sim_mine(),co)!=0;
+}
 static void sim_co_row(int i, char *b, int *c){
     SimColony *co=sim_colony(); int code=sim_co_code[i];
     if(code>=SCC_SHAPE){ scpy(b,"- ???"); *c=C_DGREY; return; }
@@ -204,7 +212,7 @@ static void sim_co_row(int i, char *b, int *c){
         else if(k==5){ scpy(b,"> STAND GUARD 3 DAYS"); }
         else if(k==6){ Mine *mi=sim_mine(); scpy(b,"> WORKSHOPS  "); scat(b,"SMELTER "); ncat(b,mi->wl[MNW_SMELTER]); scat(b," SMITHY "); ncat(b,mi->wl[MNW_SMITHY]); scat(b," LOOM "); ncat(b,mi->wl[MNW_LOOM]); }
         else { Mine *mi=sim_mine(); scpy(b,"> THE MINE  ");
-            if(mn_dungeon_need(mi,co) && (u32)sim_day(&sim_w)>=co->call_cool){ scat(b,"DUNGEON RESCUE"); *c=C_RED; }
+            if(sim_co_mine_call(co)){ scat(b,"DUNGEON RESCUE"); *c=C_RED; }
             else if(mi->warn){ scat(b,"ROOF CREAKING!"); *c=C_RED; }
             else if(mi->depth){ scat(b,"LEVEL "); ncat(b,mi->work); scat(b," OF "); ncat(b,mi->depth); }
             else scat(b,col_rung_how(COLR_MINE)); }
@@ -218,7 +226,7 @@ static void sim_co_foot(int i, char *b, int *c){
     else if(co->state==COLS_DEAD_WORLD){ scpy(b,"BURNT FOR GOOD. SETTLE ANOTHER PLANET"); *c=C_RED; }
     else if(co->state==COLS_RUINS){ scpy(b,"RUINS. A: SETTLE AGAIN"); *c=C_RED; }
     else if(co->raid_eta){ scpy(b,"RAID OF "); ncat(b,co->raid_size); scat(b," IN "); ncat(b,co->raid_eta); scat(b," DAYS. DEFENCE "); ncat(b,col_defence(co)); *c=C_RED; }
-    else if(mn_dungeon_need(sim_mine(),co) && (u32)sim_day(&sim_w)>=co->call_cool){
+    else if(sim_co_mine_call(co)){
         scpy(b,"MINE HELP: CLEAR A DUNGEON ELITE"); *c=C_RED;
     }
     else if(sim_mine()->warn){ mn_status_text(sim_mine(),b,56); *c=C_RED; }
