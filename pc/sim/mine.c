@@ -145,7 +145,7 @@ static void mn_ex_advance(Mine *m, SimColony *c, uint32_t day, int new_day, MnAw
         ev(aw,MNE_SURVEY,(uint32_t)z,pocket,day);
     }else if(kind==MNEX_RESCUE){
         if(m->zst[z]==MNZ_CAVED) m->zst[z]=m->seam[z]?MNZ_OPEN:MNZ_DRY;
-        m->clear=0; m->hurt_days=0;
+        if(m->work==z) m->clear=0; m->hurt_days=0;
         if(m->brace[z]<9) m->brace[z]++;
         m->ex_rescued=sat(m->ex_rescued,1);
         if(aw) aw->rescues++;
