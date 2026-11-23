@@ -353,7 +353,7 @@ static void sim_ws_screen(volatile u16 *pg){
     if(!(co->mask&(1u<<COLR_SHOPS))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_SHOPS)); const char *ln[3]={l1,col_rung_goal(COLR_SHOPS),"THEN THE SMELTER AND LOOM ARE YOURS."}; card(pg,"WORKSHOPS",ln,3); return; }
     int sel=0; menu_msg[0]=0; in_menu++; sim_rows(pg,"WORKSHOPS",MNW_N+2,sim_ws_row,sim_ws_foot,"A: BUILD/TAKE  B: BACK",&sel,sim_ws_act); in_menu--; menu_msg[0]=0; sim_dump_all(); sim_save();
 }
-#define SIM_MN_ACT 7
+#define SIM_MN_ACT 10
 static void sim_mine_row(int i, char *b, int *c){
     SimColony *co=sim_colony(); Mine *mi=sim_mine(); b[0]=0; *c=C_GOLD;
     if(i<SIM_MN_ACT){ switch(i){
@@ -363,7 +363,11 @@ static void sim_mine_row(int i, char *b, int *c){
         case 3: scpy(b,"> CLEAR THE RUBBLE"); break;
         case 4: scpy(b,"> WORK LEVEL: "); scat(b,mi->pin?"MINE":"THE COLONY PICKS"); break;
         case 5: scpy(b,"> SCENARIO: "); scat(b,mn_scn_name(mi->scn)); if(mi->scn && (mi->scn_done>>mi->scn&1)) scat(b," (DONE)"); break;
-        default: scpy(b,"> SANDBOX: "); scat(b,mi->safe?"ON, NO CAVE-INS":"OFF"); }
+        case 6: scpy(b,"> SANDBOX: "); scat(b,mi->safe?"ON, NO CAVE-INS":"OFF"); break;
+        case 7: scpy(b,"> SURVEY THE WORK LEVEL"); if(mi->work>=1 && mi->work<=MN_ZMAX && (mi->surveyed & (1u<<mi->work))) scat(b," (MAPPED)"); break;
+        case 8: scpy(b,"> RESCUE CAVED-IN MINERS"); break;
+        default: if(mi->ex_cooldown>mi->last_day){ scpy(b,"> SALVAGE REST: "); ncat(b,mi->ex_cooldown-mi->last_day); scat(b," DAYS"); } else scpy(b,"> DEEP SALVAGE (LEVEL 5+)"); }
+        if(i>=7 && mi->ex_kind) *c=C_DGREY;
         return; }
     int z=i-SIM_MN_ACT+1; mn_level_text(mi,co,z,sim_f.difficulty,b,56); *c = mi->zst[z]==MNZ_OPEN ? C_WHITE : mi->zst[z]==MNZ_CAVED ? C_RED : C_DGREY; if(z==mi->work && mi->warn) *c=C_RED;
 }
@@ -373,6 +377,9 @@ static void sim_mine_foot(int i, char *b, int *c){
     else if(menu_msg[0]){ scpy(b,menu_msg); *c=C_GREEN; }
     else if(-1-i==5){ scpy(b,mn_scn_about(mi->scn)); if(mi->scn){ scat(b,"  PAYS "); ncat(b,mn_scn_pay(co,mi->scn)); scat(b,"G"); } *c=C_GOLD; }
     else if(-1-i==6){ scpy(b,mi->safe?"NO CAVE-INS, AND NO SCENARIO PAY":"CAVE-INS ARE ON. THE RISK IS THE GAME"); *c=C_GOLD; }
+    else if(-1-i==7){ scpy(b,"2 DAYS 1 TOOL + 8 FOOD. HAVE "); ncat(b,mi->tools); scat(b,"T "); ncat(b,co->food); scat(b,"F"); *c=C_CYAN; }
+    else if(-1-i==8){ scpy(b,"2 DAYS 1 TOOL + 10 FOOD. HAVE "); ncat(b,mi->tools); scat(b,"T "); ncat(b,co->food); scat(b,"F"); *c=C_CYAN; }
+    else if(-1-i==9){ scpy(b,"3 DAYS 2 BARS + 12 FOOD. HAVE "); ncat(b,mi->bars); scat(b,"B "); ncat(b,co->food); scat(b,"F"); *c=C_CYAN; }
     else { scpy(b,"WOOD "); ncat(b,co->wood); scat(b,"  ORE "); ncat(b,co->ore); scat(b,"  BARS "); ncat(b,mi->bars); scat(b,"  TOOLS "); ncat(b,mi->tools); scat(b,"  GEMS "); ncat(b,mi->gems); }
 }
 static int sim_mine_act(int i){
@@ -385,8 +392,12 @@ static int sim_mine_act(int i){
     case 4: ok=mn_set_work(mi,0); break;
     case 5: mn_scn_next(mi); ok=1; break;
     case 6: mn_set_safe(mi,!mi->safe); ok=1; break;
+    case 7: ok=mn_ex_start(mi,co,MNEX_SURVEY); break;
+    case 8: ok=mn_ex_start(mi,co,MNEX_RESCUE); break;
+    case 9: ok=mn_ex_start(mi,co,MNEX_SALVAGE); break;
     default: ok=mn_set_work(mi,i-SIM_MN_ACT+1); }
-    if(ok){ sfx(2); scpy(menu_msg,"DONE"); } else { sfx(4); scpy(menu_msg,"NOT NOW"); }
+    if(ok){ sfx(2); scpy(menu_msg,i>=7 && i<=9?"CREW DISPATCHED. SEE TIMER ABOVE":"DONE"); }
+    else { sfx(4); scpy(menu_msg,i>=7 && i<=9?"CHECK CREW, FOOD, TOOLS AND LEVEL":"NOT NOW"); }
     return 0;
 }
 static void sim_mine_screen(volatile u16 *pg){
@@ -394,7 +405,7 @@ static void sim_mine_screen(volatile u16 *pg){
     if(!(co->mask&(1u<<COLR_MINE))){ char l1[44]; scpy(l1,"LOCKED: "); scat(l1,col_rung_how(COLR_MINE)); const char *ln[3]={l1,col_rung_goal(COLR_MINE),"THEN BUILD A MINE ON THE COLONY MAP."}; card(pg,"THE MINE",ln,3); return; }
     if(!mi->depth && co->bld[COLB_MINE]<1){ const char *ln[3]={"NO SHAFT YET.","BUILD A MINE ON THE COLONY MAP,","THEN MINERS DIG DOWN LEVEL BY LEVEL."}; card(pg,"THE MINE",ln,3); return; }
     int sel=0; menu_msg[0]=0; in_menu++;
-    { char t[32]; scpy(t,"THE MINE  LEVELS "); ncat(t,mi->depth); scat(t,"/"); ncat(t,mn_zcap(co->mask)); sim_rows(pg,t,SIM_MN_ACT+(mi->depth<MN_ZMAX?mi->depth+1:MN_ZMAX),sim_mine_row,sim_mine_foot,"A: DO  B: BACK",&sel,sim_mine_act); }
+    { char t[32]; scpy(t,"THE MINE  LEVELS "); ncat(t,mi->depth); scat(t,"/"); ncat(t,mn_zcap(co->mask)); sim_rows(pg,t,SIM_MN_ACT+(mi->depth<MN_ZMAX?mi->depth+1:MN_ZMAX),sim_mine_row,sim_mine_foot,"A: DO  L/R: SCROLL  B: BACK",&sel,sim_mine_act); }
     in_menu--; menu_msg[0]=0; sim_dump_all(); sim_save();
 }
 static void sim_colony_screen(volatile u16 *pg){

@@ -180,6 +180,9 @@ jobs:
         run: python3 tests/local_rewards_runtime.py
       - name: Ore SRAM persistence and cap-safe crafting
         run: python3 tests/mining_persistence_runtime.py
+      - name: Exercise mine expeditions, old saves and one-pass crew under UBSan
+        run: |
+          cc -std=gnu11 -O1 -fwrapv -Wall -Wextra -Wno-unused-parameter -Wno-misleading-indentation -Wno-format-truncation -fsanitize=undefined -fno-sanitize-recover=all pc/sim/mine_test.c pc/sim/mine.c pc/sim/sim_core.c pc/sim/colony.c pc/sim/god.c pc/sim/lv.c -o /tmp/bugstar-mine-ex && /tmp/bugstar-mine-ex
       - name: Preserve PC life-sim friend gifts and mine rewards under ASan/UBSan
         run: python3 tests/life_sim_rewards_runtime.py
       - name: Exercise 50-slot menu scrolling and selection with UndefinedBehaviorSanitizer

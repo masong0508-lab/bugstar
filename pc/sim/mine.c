@@ -38,27 +38,39 @@ static uint32_t sat(uint32_t a, uint32_t b){ uint64_t s = (uint64_t)a + b; retur
 static int tools_eff(const Mine *m){ return m->tools > 6 ? 6 : (int)m->tools; }
 
 void mn_init(Mine *m, uint32_t town, uint32_t day){ memset(m, 0, sizeof *m); m->town = town; m->last_day = day; }
-int mn_miners(const SimColony *c){ int n = 0; for(int i = 0; i < c->nset; i++){ char nm[16]; int j; col_settler(c, i, nm, &j); if(j == COLJ_MINER) n++; } return n; }
-int mn_staff(const SimColony *c, int w){
-    int n = 0; for(int i = 0; i < c->nset; i++){ char nm[16]; int j; col_settler(c, i, nm, &j);
-        if(w == MNW_SMELTER ? j == COLJ_MINER : w == MNW_SMITHY ? j == COLJ_BUILDER : (j == COLJ_COOK || j == COLJ_TRADER)) n++; }
-    return n;
+// A colony can be aged thousands of days at once. Count all trades with one
+// settler walk per simulated day, rather than walking 20 settlers for every
+// candidate depth, hazard check and workshop separately.
+typedef struct { int miners, smiths, loom; } MnCrew;
+static MnCrew mn_crew(const SimColony *c){
+    MnCrew a = {0,0,0};
+    for(int i=0; i<c->nset; i++){ char name[16]; int job;
+        col_settler(c,i,name,&job);
+        if(job==COLJ_MINER) a.miners++;
+        else if(job==COLJ_BUILDER) a.smiths++;
+        else if(job==COLJ_COOK || job==COLJ_TRADER) a.loom++;
+    }
+    return a;
 }
+int mn_miners(const SimColony *c){ return mn_crew(c).miners; }
+int mn_staff(const SimColony *c, int w){ MnCrew a=mn_crew(c); return w==MNW_SMELTER?a.miners:w==MNW_SMITHY?a.smiths:a.loom; }
 
-int mn_risk(const Mine *m, const SimColony *c, int z, int diff){
+static int mn_risk_crew(const Mine *m, int z, int diff, int miners){
     if(z < 1 || z > MN_ZMAX) return 0;
-    int r = 4 + 3 * z - 2 * m->brace[z] - tools_eff(m) / 2 + mn_miners(c) / 4;
+    int r = 4 + 3 * z - 2 * m->brace[z] - tools_eff(m) / 2 + miners / 4;
     if(diff == COLD_CALM) r /= 2;
     return r < 1 ? 1 : r;
 }
+int mn_risk(const Mine *m, const SimColony *c, int z, int diff){ return mn_risk_crew(m,z,diff,mn_miners(c)); }
 int mn_cave_chance(const Mine *m, int z){ int p = 70 - 8 * (z >= 1 && z <= MN_ZMAX ? m->brace[z] : 0); return p < 10 ? 10 : p; }
 
-int mn_auto_level(const Mine *m, const SimColony *c, int diff){
+static int mn_auto_level_crew(const Mine *m, int diff, int miners){
     int best = 0, low = 0, lowr = 1 << 30;
-    for(int z = 1; z <= m->depth; z++){ if(m->zst[z] != MNZ_OPEN || !m->seam[z]) continue; int r = mn_risk(m, c, z, diff);
+    for(int z = 1; z <= m->depth; z++){ if(m->zst[z] != MNZ_OPEN || !m->seam[z]) continue; int r = mn_risk_crew(m,z,diff,miners);
         if(r < lowr){ lowr = r; low = z; } if(r <= MN_SAFE_RISK) best = z; }
     return best ? best : low;
 }
+int mn_auto_level(const Mine *m, const SimColony *c, int diff){ return mn_auto_level_crew(m,diff,mn_miners(c)); }
 
 static void ev(MnAway *aw, int kind, uint32_t a, uint32_t b, uint32_t day){
     if(!aw) return;
@@ -83,15 +95,84 @@ static void cave_in(Mine *m, SimColony *c, int z, uint32_t day, int diff, ColAwa
 }
 static int clear_need(const Mine *m, int z){ (void)m; return z >= 3 ? 5 : 3; }
 
+// ------------------------------------------------------------ PLAYER EXPEDITIONS
+// These use colony food and stored tools/bars; only elapsed colony days make
+// progress. The same saved mission survives absence and reload. Each survey
+// floor is one-time, rescuing really clears rubble/injury, and salvage has a
+// seven-day cooldown rather than an infinite menu-click reward.
+const char *mn_ex_name(int kind){
+    static const char *const names[MNEX_N]={"NONE","SURVEY","RESCUE","DEEP SALVAGE"};
+    return kind>=0 && kind<MNEX_N?names[kind]:"?";
+}
+int mn_ex_start(Mine *m, SimColony *c, int kind){
+    if(!m || !c || m->ex_kind || kind<=MNEX_NONE || kind>=MNEX_N ||
+       c->state!=COLS_ALIVE || !(c->mask & (1u<<COLR_MINE)) ||
+       c->bld[COLB_MINE]<1 || !c->nset || !mn_miners(c)) return 0;
+    int z=m->work;
+    if(z<1 || z>m->depth || z>MN_ZMAX) return 0;
+    if(kind==MNEX_SURVEY){
+        if((m->surveyed & (1u<<z)) || (m->zst[z]!=MNZ_OPEN && m->zst[z]!=MNZ_DRY) ||
+           m->tools<1 || c->food<8) return 0;
+        m->tools--; c->food-=8; m->ex_total=2;
+    }else if(kind==MNEX_RESCUE){
+        if((m->zst[z]!=MNZ_CAVED && !m->hurt_days) || m->tools<1 || c->food<10) return 0;
+        m->tools--; c->food-=10; m->ex_total=2;
+    }else{
+        if(z<5 || m->zst[z]!=MNZ_OPEN || mn_miners(c)<2 ||
+           m->bars<2 || c->food<12 || m->last_day<m->ex_cooldown) return 0;
+        m->bars-=2; c->food-=12; m->ex_total=3;
+    }
+    m->ex_kind=(uint8_t)kind; m->ex_level=(uint8_t)z; m->ex_left=m->ex_total;
+    return 1;
+}
+static void mn_ex_advance(Mine *m, SimColony *c, uint32_t day, int new_day, MnAway *aw){
+    if(!new_day || !m->ex_kind || !m->ex_left) return;
+    if(--m->ex_left) return;
+    int z=m->ex_level, kind=m->ex_kind;
+    // A truncated/corrupt save cannot make the expedition index past the floor arrays.
+    m->ex_kind=MNEX_NONE; m->ex_level=0; m->ex_total=0;
+    if(z<1 || z>m->depth || z>MN_ZMAX) return;
+    m->ex_completed=sat(m->ex_completed,1);
+    if(kind==MNEX_SURVEY){
+        uint32_t pocket=24u+sim_rngn(m->town,(uint32_t)z,MP_SEAM+30,day,33);
+        uint32_t seam=(uint32_t)m->seam[z]+pocket;
+        m->seam[z]=(uint16_t)(seam>65535u?65535u:seam);
+        if(m->zst[z]==MNZ_DRY) m->zst[z]=MNZ_OPEN;
+        uint32_t gems=1u+sim_rngn(m->town,(uint32_t)z,MP_GEM+30,day,3);
+        m->gems=sat(m->gems,gems); m->surveyed|=(uint16_t)(1u<<z);
+        m->ex_pockets=sat(m->ex_pockets,1);
+        if(aw){ aw->surveys++; aw->gems=sat(aw->gems,gems); }
+        ev(aw,MNE_SURVEY,(uint32_t)z,pocket,day);
+    }else if(kind==MNEX_RESCUE){
+        if(m->zst[z]==MNZ_CAVED) m->zst[z]=m->seam[z]?MNZ_OPEN:MNZ_DRY;
+        if(m->work==z) m->clear=0; m->hurt_days=0;
+        if(m->brace[z]<9) m->brace[z]++;
+        m->ex_rescued=sat(m->ex_rescued,1);
+        if(aw) aw->rescues++;
+        ev(aw,MNE_RESCUE,(uint32_t)z,0,day);
+    }else if(kind==MNEX_SALVAGE){
+        uint32_t gems=2u+(uint32_t)z/5u+sim_rngn(m->town,(uint32_t)z,MP_GEM+31,day,3);
+        uint64_t gold=(uint64_t)(40+16*z)*(uint64_t)(1+c->danger);
+        m->gems=sat(m->gems,gems);
+        c->reward_due=c->reward_due>COL_GOLD_MAX-gold?COL_GOLD_MAX:c->reward_due+gold;
+        m->ex_cooldown=day>0xfffffff8u?0xffffffffu:day+7u;
+        if(aw){ aw->salvages++; aw->gems=sat(aw->gems,gems); }
+        ev(aw,MNE_SALVAGE,(uint32_t)z,gems,day);
+    }
+}
+
+
 void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway *aw){
     if(aw) aw->days++;
+    int new_day = day > m->last_day;
     m->last_day = day;
     if(c->state != COLS_ALIVE || !(c->mask & (1u << COLR_TENT)) || !c->nset) return;
+    MnCrew crew=mn_crew(c);
     uint32_t wood_floor = WOOD_KEEP;
     // ---- the mine
     if((c->mask & (1u << COLR_MINE)) && c->bld[COLB_MINE] >= 1){
         if(!m->depth) open_level(m, 1, day, aw);
-        int zcap = mn_zcap(c->mask), miners = mn_miners(c), eff = miners;
+        int zcap = mn_zcap(c->mask), miners = crew.miners, eff = miners;
         if(m->hurt_days){ m->hurt_days--; eff = 0; }
         if(m->safe) m->warn = 0;
         if(m->warn){                                         // yesterday the roof creaked: today it holds or comes down
@@ -101,7 +182,7 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
                 else ev(aw, MNE_HELD, (uint32_t)z, 0, day); }
         }
         { int bad = m->work < 1 || m->work > m->depth || m->zst[m->work] == MNZ_DRY;      // the colony picks the work level unless you pinned a good one
-          if(!m->pin || bad){ int a = mn_auto_level(m, c, diff);
+          if(!m->pin || bad){ int a = mn_auto_level_crew(m,diff,miners);
               if(a && a != m->work){ m->work = (uint8_t)a; m->clear = 0; } else if(!a && bad) m->work = m->depth;
               if(m->pin && bad) m->pin = 0; } }
         if(m->work < 1) m->work = 1;
@@ -123,7 +204,7 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
             if(!m->seam[z]){ m->zst[z] = MNZ_DRY; ev(aw, MNE_DRY, (uint32_t)z, 0, day); }
             if(m->tools && day % 12 == 0) m->tools--;        // tools wear out
             // the creak: a chance a working level starts to give way. You get a day's warning.
-            if(!m->safe && m->zst[z] == MNZ_OPEN && (int)sim_rngn(m->town, day, MP_CREAK, (uint64_t)z, 1000) < mn_risk(m, c, z, diff)){ m->warn = 1; ev(aw, MNE_CREAK, (uint32_t)z, 0, day); }
+            if(!m->safe && m->zst[z] == MNZ_OPEN && (int)sim_rngn(m->town, day, MP_CREAK, (uint64_t)z, 1000) < mn_risk_crew(m,z,diff,miners)){ m->warn = 1; ev(aw, MNE_CREAK, (uint32_t)z, 0, day); }
         }
         // digging the next level: when the work level is half empty (or you started it), and the rules allow a deeper one
         if(m->depth < zcap){
@@ -143,15 +224,16 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
     if((c->mask & (1u << COLR_SHOPS)) && m->wl[MNW_SMELTER] && !m->wl[MNW_LOOM] && c->nset >= 4 && c->wood >= 70){ c->wood -= 15; m->wl[MNW_LOOM] = 1; if(aw) aw->ws_built++; ev(aw, MNE_WS, MNW_LOOM, 1, day); }
     if((c->mask & (1u << COLR_MINE)) && m->wl[MNW_SMELTER] && !m->wl[MNW_SMITHY] && m->bars >= 6 && c->wood >= 50){ c->wood -= 15; m->wl[MNW_SMITHY] = 1; if(aw) aw->ws_built++; ev(aw, MNE_WS, MNW_SMITHY, 1, day); }
     { uint32_t spare = c->wood > wood_floor ? c->wood - wood_floor : 0;
-      if(m->wl[MNW_SMELTER]){ uint32_t cap = (uint32_t)m->wl[MNW_SMELTER] + (mn_staff(c, MNW_SMELTER) > 0 ? 1u : 0u), u = cap;
+      if(m->wl[MNW_SMELTER]){ uint32_t cap = (uint32_t)m->wl[MNW_SMELTER] + (crew.miners > 0 ? 1u : 0u), u = cap;
           if(u > c->ore / 2) u = c->ore / 2; if(u > spare) u = spare;
           c->ore -= 2 * u; c->wood -= u; spare -= u; m->bars = sat(m->bars, u); if(aw) aw->bars = sat(aw->bars, u); }
-      if(m->wl[MNW_SMITHY]){ uint32_t cap = (uint32_t)m->wl[MNW_SMITHY] + (mn_staff(c, MNW_SMITHY) > 0 ? 1u : 0u), u = cap;
+      if(m->wl[MNW_SMITHY]){ uint32_t cap = (uint32_t)m->wl[MNW_SMITHY] + (crew.smiths > 0 ? 1u : 0u), u = cap;
           if(u > m->bars / 2) u = m->bars / 2; if(u > spare) u = spare; if(m->tools + u > 30u) u = m->tools >= 30u ? 0u : 30u - m->tools;
           m->bars -= 2 * u; c->wood -= u; spare -= u; m->tools = sat(m->tools, u); if(aw) aw->tools = sat(aw->tools, u); }
-      if(m->wl[MNW_LOOM]){ uint32_t cap = (uint32_t)m->wl[MNW_LOOM] + (mn_staff(c, MNW_LOOM) > 0 ? 1u : 0u), u = cap;
+      if(m->wl[MNW_LOOM]){ uint32_t cap = (uint32_t)m->wl[MNW_LOOM] + (crew.loom > 0 ? 1u : 0u), u = cap;
           if(u > spare / 2) u = spare / 2; if(m->cloth + u > 60u) u = m->cloth >= 60u ? 0u : 60u - m->cloth;
           c->wood -= 2 * u; m->cloth = sat(m->cloth, u); if(aw) aw->cloth = sat(aw->cloth, u); } }
+    mn_ex_advance(m,c,day,new_day,aw);
     if(m->scn && !m->safe && !(m->scn_done >> m->scn & 1) && mn_scn_check(m, c, m->scn)){        // the scenario you chose is done: paid once
         int pay = mn_scn_pay(c, m->scn); m->scn_done |= (uint8_t)(1u << m->scn); c->reward_due = c->reward_due + (uint64_t)pay > COL_GOLD_MAX ? COL_GOLD_MAX : c->reward_due + (uint64_t)pay;
         if(aw) aw->goals++; ev(aw, MNE_GOAL, (uint32_t)m->scn, (uint32_t)pay, day); }
@@ -243,6 +325,9 @@ int mn_event_text(const MnEvent *e, char *o, size_t n){
     case MNE_DIED: k = snprintf(o, n, "%u MINER%s LOST AT LEVEL %u", e->a, e->a == 1 ? "" : "S", e->b); break;
     case MNE_GOAL: k = snprintf(o, n, "SCENARIO DONE: %s +%uG", mn_scn_name((int)e->a), e->b); break;
     case MNE_WS: k = snprintf(o, n, "A %s WAS BUILT", mn_ws_name((int)e->a)); break;
+    case MNE_SURVEY: k = snprintf(o, n, "SURVEY LV%u: +%u VEIN ORE", e->a, e->b); break;
+    case MNE_RESCUE: k = snprintf(o, n, "RESCUE LV%u: THE CREW IS SAFE", e->a); break;
+    case MNE_SALVAGE: k = snprintf(o, n, "SALVAGE LV%u: +%u GEMS", e->a, e->b); break;
     default: k = snprintf(o, n, "..."); }
     return k < 0 ? 0 : k;
 }
@@ -254,6 +339,8 @@ int mn_away_text(const MnAway *a, const Mine *m, char lines[][48], int max){
     if(a->gems) L("FOUND %u GEMS", a->gems);
     if(a->cave_ins) L("%u CAVE-INS, %u MINERS LOST", a->cave_ins, a->died);
     if(a->goals) L("SCENARIO DONE: %s", mn_scn_name(m->scn));
+    if(a->surveys || a->rescues || a->salvages)
+        L("EXPEDITIONS: %u SURVEYS %u RESCUES %u SALVAGE",a->surveys,a->rescues,a->salvages);
     #undef L
     return n;
 }
@@ -266,13 +353,15 @@ void mn_level_text(const Mine *m, const SimColony *c, int z, int diff, char *o, 
 }
 void mn_status_text(const Mine *m, char *o, size_t n){
     if(m->warn) snprintf(o, n, "CREAKING! BRACE LEVEL %u NOW", (unsigned)m->work);
+    else if(m->ex_kind) snprintf(o, n, "%s LV%u: %u DAY%s LEFT", mn_ex_name(m->ex_kind), (unsigned)m->ex_level, (unsigned)m->ex_left, m->ex_left==1?"":"S");
     else if(m->hurt_days) snprintf(o, n, "MINERS HURT: %u DAYS OF REST", (unsigned)m->hurt_days);
     else if(m->depth) snprintf(o, n, "LEVEL %u OF %u IN WORK", (unsigned)m->work, (unsigned)m->depth);
     else snprintf(o, n, "NO SHAFT YET: BUILD A MINE");
 }
 size_t mn_dump(const Mine *m, char *o, size_t n){
-    int k = snprintf(o, n, "mine town %08x depth %u work %u ws %u/%u/%u bars %u tools %u cloth %u gems %u mined %u caveins %u warn %u hurt %u scn %u safe %u day %u\n",
-                     m->town, m->depth, m->work, m->wl[0], m->wl[1], m->wl[2], m->bars, m->tools, m->cloth, m->gems, m->mined, m->cave_ins, m->warn, m->hurt_days, m->scn, m->safe, m->last_day);
+    int k = snprintf(o, n, "mine town %08x depth %u work %u ws %u/%u/%u bars %u tools %u cloth %u gems %u mined %u caveins %u warn %u hurt %u scn %u safe %u day %u ex %u/%u/%u surveyed %u missions %u rescued %u pocket %u cooldown %u\n",
+                     m->town, m->depth, m->work, m->wl[0], m->wl[1], m->wl[2], m->bars, m->tools, m->cloth, m->gems, m->mined, m->cave_ins, m->warn, m->hurt_days, m->scn, m->safe, m->last_day,
+                     m->ex_kind, m->ex_level, m->ex_left, m->surveyed, m->ex_completed, m->ex_rescued, m->ex_pockets, m->ex_cooldown);
     return k < 0 ? 0 : (size_t)k;
 }
 
@@ -296,15 +385,27 @@ size_t mn_list_write(const MineList *l, uint8_t *o, size_t cap){
         p32(q, m->town); q[4] = m->wl[0]; q[5] = m->wl[1]; q[6] = m->wl[2]; q[7] = m->depth; q[8] = m->work; q[9] = (uint8_t)(m->pin | m->digging << 1);
         q[10] = m->warn; q[11] = m->hurt_days; q[12] = m->clear; q[13] = m->deepest; q[109] = m->scn; q[110] = m->scn_done; q[111] = m->safe; p16(q + 14, m->digprog);
         memcpy(q + 16, m->zst, 16); memcpy(q + 32, m->brace, 16); for(int z = 0; z < 16; z++) p16(q + 48 + z * 2, m->seam[z]);
-        p32(q + 80, m->bars); p32(q + 84, m->tools); p32(q + 88, m->cloth); p32(q + 92, m->gems); p32(q + 96, m->cave_ins); p32(q + 100, m->mined); p32(q + 104, m->last_day); }
+        p32(q + 80, m->bars); p32(q + 84, m->tools); p32(q + 88, m->cloth); p32(q + 92, m->gems); p32(q + 96, m->cave_ins); p32(q + 100, m->mined); p32(q + 104, m->last_day);
+        // v2 expedition extension, following the entire original 112-byte record.
+        p16(q + 112,m->surveyed); q[114]=m->ex_kind; q[115]=m->ex_level;
+        q[116]=m->ex_left; q[117]=m->ex_total;
+        p32(q + 118,m->ex_completed); p32(q + 122,m->ex_rescued);
+        p32(q + 126,m->ex_cooldown); p32(q + 130,m->ex_pockets); }
     return need;
 }
 static uint32_t cl(uint32_t v){ return v > MN_STORE_MAX ? MN_STORE_MAX : v; }
 int mn_list_read(MineList *l, const uint8_t *in, size_t n){
     memset(l, 0, sizeof *l);
-    if(n < 1 || in[0] > COL_MAX || n != 1 + (size_t)in[0] * MN_REC_BYTES) return -1;
+    if(n < 1 || in[0] > COL_MAX) return -1;
+    // A v1 record is 112 bytes, a v2 record is 136. Both have the same
+    // original prefix; do not discard an old colony or reinterpret its bytes.
+    size_t rec=MN_REC_BYTES;
+    if(n != 1 + (size_t)in[0] * rec){
+        rec=MN_REC_V1_BYTES;
+        if(n != 1 + (size_t)in[0] * rec) return -1;
+    }
     l->n = in[0];
-    for(int i = 0; i < l->n; i++){ Mine *m = &l->m[i]; const uint8_t *q = in + 1 + i * MN_REC_BYTES; mn_init(m, g32(q), 0);
+    for(int i = 0; i < l->n; i++){ Mine *m = &l->m[i]; const uint8_t *q = in + 1 + (size_t)i * rec; mn_init(m, g32(q), 0);
         for(int w = 0; w < MNW_N; w++) m->wl[w] = q[4 + w] > 3 ? 3 : q[4 + w];
         m->depth = q[7] > MN_ZMAX ? MN_ZMAX : q[7]; m->work = q[8] > m->depth ? m->depth : q[8]; m->pin = q[9] & 1; m->digging = (q[9] >> 1) & 1;
         m->warn = q[10] ? 1 : 0; m->hurt_days = q[11] > 5 ? 5 : q[11]; m->clear = q[12]; m->deepest = q[13] > MN_ZMAX ? MN_ZMAX : q[13]; m->digprog = (uint16_t)g16(q + 14);
@@ -313,6 +414,20 @@ int mn_list_read(MineList *l, const uint8_t *in, size_t n){
         if(m->deepest < m->depth) m->deepest = m->depth;
         m->scn = q[109] < MNS_N ? q[109] : 0; m->scn_done = (uint8_t)(q[110] & ((1u << MNS_N) - 2u)); m->safe = q[111] ? 1 : 0;
         m->bars = cl(g32(q + 80)); m->tools = cl(g32(q + 84)); m->cloth = cl(g32(q + 88)); m->gems = cl(g32(q + 92)); m->cave_ins = cl(g32(q + 96)); m->mined = cl(g32(q + 100)); m->last_day = g32(q + 104);
+        if(rec==MN_REC_BYTES){
+            m->surveyed=(uint16_t)(g16(q+112) & ((1u<<(m->depth+1))-2u));
+            m->ex_kind=q[114]; m->ex_level=q[115]; m->ex_left=q[116]; m->ex_total=q[117];
+            m->ex_completed=cl(g32(q+118)); m->ex_rescued=cl(g32(q+122));
+            m->ex_cooldown=g32(q+126); m->ex_pockets=cl(g32(q+130));
+            if(m->ex_kind<=MNEX_NONE || m->ex_kind>=MNEX_N || !m->ex_left ||
+               m->ex_total<1 || m->ex_total>3 || m->ex_left>m->ex_total ||
+               m->ex_level<1 || m->ex_level>m->depth){
+                m->ex_kind=0; m->ex_level=0; m->ex_left=0; m->ex_total=0;
+            }
+            // Corrupt counters must never lock future salvage indefinitely.
+            uint32_t maxcd=m->last_day>0xfffffff8u?0xffffffffu:m->last_day+7u;
+            if(m->ex_cooldown>maxcd) m->ex_cooldown=maxcd;
+        }
         if(m->warn && (!m->work || m->zst[m->work] != MNZ_OPEN)) m->warn = 0; }
     return 0;
 }

@@ -30,8 +30,9 @@
 #define MN_ZMAX 15
 #define MN_STORE_MAX 999999u
 enum { MNW_SMELTER, MNW_SMITHY, MNW_LOOM, MNW_N };                 // workshops
-enum { MNZ_SOLID, MNZ_OPEN, MNZ_CAVED, MNZ_DRY };                  // a level: not dug, worked, caved in, empty
-enum { MNE_NONE, MNE_DUG, MNE_CREAK, MNE_CAVE, MNE_HELD, MNE_DRY, MNE_CLEARED, MNE_DIED, MNE_WS, MNE_GOAL, MNE_N };
+enum { MNZ_SOLID, MNZ_OPEN, MNZ_CAVED, MNZ_DRY };
+enum { MNEX_NONE, MNEX_SURVEY, MNEX_RESCUE, MNEX_SALVAGE, MNEX_N }; // player-dispatched timed mine expeditions                  // a level: not dug, worked, caved in, empty
+enum { MNE_NONE, MNE_DUG, MNE_CREAK, MNE_CAVE, MNE_HELD, MNE_DRY, MNE_CLEARED, MNE_DIED, MNE_WS, MNE_GOAL, MNE_SURVEY, MNE_RESCUE, MNE_SALVAGE, MNE_N };
 
 typedef struct {
     uint32_t town;                       // the colony this belongs to (SimColony.town)
@@ -47,11 +48,14 @@ typedef struct {
     uint32_t cave_ins, mined, last_day;  // totals; the last day this layer ran
     uint8_t  deepest;
     uint8_t  scn, scn_done, safe;        // REPLAY LAYER: the scenario you chose (0 none), the scenarios finished (bit n), SANDBOX (1 = no creaks, no cave-ins, and no scenario pay)
+    uint16_t surveyed;                 // levels with a discovered ore pocket (one survey per level)
+    uint8_t ex_kind, ex_level, ex_left, ex_total;  // dispatch, targeted floor and days remaining
+    uint32_t ex_completed, ex_rescued, ex_cooldown, ex_pockets;  // persistent statistics and salvage cooldown
 } Mine;
 
 typedef struct { uint8_t kind; uint32_t a, b, day; } MnEvent;
 typedef struct {                         // what happened over a stretch of days
-    uint32_t days, ore, bars, tools, cloth, gems, cave_ins, died, dug, ws_built, goals;
+    uint32_t days, ore, bars, tools, cloth, gems, cave_ins, died, dug, ws_built, goals, surveys, rescues, salvages;
     int nev; MnEvent ev[8];
 } MnAway;
 
@@ -85,6 +89,8 @@ int  mn_brace(Mine *m, SimColony *c, int strong);       // prop the work level: 
 int  mn_dig_help(Mine *m, SimColony *c);                // you dig: +4 miner-days toward the next level (starts the dig)
 int  mn_clear_help(Mine *m, SimColony *c);              // you clear rubble on the work level (+3)
 int  mn_set_work(Mine *m, int z);                       // pick the work level (an open level); z 0 lets the colony pick again
+int  mn_ex_start(Mine *m, SimColony *c, int kind);      // dispatch a survey, cave-in rescue or deep-salvage crew
+const char *mn_ex_name(int kind);                      // terse, menu-safe name for the current operation
 typedef struct { int64_t gold; uint32_t bars, tools, cloth, gems; int ore_kind, ore_n; } MnGift;
 int  mn_collect(Mine *m, MnGift *g);                    // you take the bars, tools, cloth and gems: gold, and gems as ore for your bag (at most MN_TAKE_GEMS a time)
 #define MN_TAKE_GEMS 6
@@ -108,10 +114,11 @@ void mn_level_text(const Mine *m, const SimColony *c, int z, int diff, char *out
 void mn_status_text(const Mine *m, char *out, size_t n);                                         // "CREAKING! BRACE LEVEL 5" or "LEVEL 5 OF 8 IN WORK"
 size_t mn_dump(const Mine *m, char *out, size_t n);
 
-// ---- the file (chunk MINE): one byte count, then records of MN_REC_BYTES
+// ---- the file (chunk MINE v2): one byte count, then 136-byte records, with v1 112-byte records automatically imported
 typedef struct { uint8_t n; Mine m[COL_MAX]; } MineList;
 Mine *mn_find(MineList *l, uint32_t town, int make, uint32_t day);
 size_t mn_list_write(const MineList *l, uint8_t *out, size_t cap);
 int    mn_list_read(MineList *l, const uint8_t *in, size_t n);
-#define MN_REC_BYTES 112
+#define MN_REC_V1_BYTES 112
+#define MN_REC_BYTES 136
 #endif

@@ -3,6 +3,37 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Colony-mine expedition expansion and saved mission state — 22 November 2026
+
+- **Three new PC/Android activities** in the existing mine screen: a one-time
+  survey at each work level uncovers new ore and gems; dispatching rescue teams
+  frees miners from cave-ins and heals the injured; level-5+ salvage expeditions
+  spend bars/food on a three-day run for gems and colony reward gold. Salvage
+  runs have a persisted seven-day cooldown; every task consumes supplies
+  up front and advances only with real simulated colony days.
+- A mission requires living settlers assigned to mine, a real shaft and
+  a valid work level. The menu explains what each task costs and shows
+  completion time and hints. During away-time, existing colony simulation
+  completes them using the same deterministic rules. Ruined colonies pause
+  their crew operations until recovery.
+- **.sim MINE chunk version 2** adds the surveyed-floor bitmap, expedition
+  type/level/timer, completed and rescue counts, discovered pockets and
+  salvage rest date: 136 bytes per mine, up from 112. Readers still import
+  version-one 112-byte records and keep existing resources and progress.
+  The main GBA/GBC cartridge layouts are not changed.
+- **Colony simulation speed pass:** cache the mine's working population in a
+  single settler scan per simulated day. Mine risk, work-level selection and
+  all three production workshops reuse the same tally instead of recomputing
+  jobs many times per level/day. Legacy daily outcomes, RNG and resource
+  consumption are intended to remain byte-for-byte the same without missions.
+- Production mine tests add contracts, timers, resource gates, save migration,
+  saturated/corrupt input and deterministic catchup coverage. The expanded
+  mine test is included in PC CI with UBSan, alongside the usual native
+  rendering, GBA, Windows and Android builds. A manual playthrough and
+  actual FPS benchmarks remain release gates; the source optimization is
+  not presented as a measured FPS gain.
+
+
 ## Chapter journal on the QUEST page — 22 November 2026
 
 - Press A on START > QUEST to switch between berry/seed field notes and a

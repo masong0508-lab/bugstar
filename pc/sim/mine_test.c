@@ -146,6 +146,117 @@ int main(void){
       { MineList L, L2; memset(&L, 0, sizeof L); Mine *k = mn_find(&L, 5, 1, 0); k->scn = MNS_GEMS20; k->scn_done = 6; k->safe = 1; uint8_t b[1 + MN_REC_BYTES]; CHECK(mn_list_write(&L, b, sizeof b)); CHECK(mn_list_read(&L2, b, sizeof b) == 0 && L2.m[0].scn == MNS_GEMS20 && L2.m[0].scn_done == 6 && L2.m[0].safe == 1);
         b[1 + 109] = 99; b[1 + 110] = 0xFF; mn_list_read(&L2, b, sizeof b); CHECK(L2.m[0].scn == 0 && !(L2.m[0].scn_done & 1) && L2.m[0].scn_done < (1u << MNS_N)); }
       char t[60]; MnEvent e = { MNE_GOAL, MNS_DEEP8, 1200, 5 }; CHECK(mn_event_text(&e, t, sizeof t) > 10 && strstr(t, "REACH LEVEL 8")); }
+    // ---- EXPEDITION MILESTONE: one-time surveys, timed rescue and repeatable
+    // deep salvage are persisted and cost real colony supplies.
+    { SimColony c; Mine m; mk(&c, 210, ALL, 8, COLJ_MINER, 1); mn_init(&m,c.town,0);
+      c.food=400; c.wood=300; mn_day(&m,&c,1,COLD_CALM,0,0);
+      CHECK(m.depth==1 && m.work==1);
+      m.tools=4; m.safe=1; uint32_t food0=c.food, tools0=m.tools;
+      CHECK(!mn_ex_start(&m,&c,MNEX_NONE));
+      CHECK(mn_ex_start(&m,&c,MNEX_SURVEY) && m.ex_kind==MNEX_SURVEY && m.ex_left==2);
+      CHECK(c.food==food0-8 && m.tools==tools0-1);
+      CHECK(!mn_ex_start(&m,&c,MNEX_SURVEY));
+      MnAway aw; memset(&aw,0,sizeof aw);
+      mn_day(&m,&c,2,COLD_CALM,0,&aw); CHECK(m.ex_left==1 && !(m.surveyed & (1u<<1)));
+      mn_day(&m,&c,3,COLD_CALM,0,&aw);
+      CHECK(m.ex_kind==0 && m.ex_left==0 && m.ex_completed==1);
+      CHECK(m.surveyed & (1u<<1)); CHECK(m.ex_pockets==1 && aw.surveys==1 && m.gems>=1);
+      CHECK(!mn_ex_start(&m,&c,MNEX_SURVEY));  // surveyed floor cannot be farmed
+      mn_day(&m,&c,3,COLD_CALM,0,&aw); CHECK(aw.surveys==1 && m.ex_completed==1);
+      char t[80]; MnEvent ev1={MNE_SURVEY,1,42,3}; mn_event_text(&ev1,t,sizeof t); CHECK(strstr(t,"42 VEIN ORE"));
+      // A caved shaft / hurt crew may be rescued; ordinary miners cannot
+      // clear the cave while injured, so the expedition must do the work.
+      m.work=1; m.pin=1; m.zst[1]=MNZ_CAVED; m.hurt_days=4; m.tools=4; c.food=100;
+      CHECK(mn_ex_start(&m,&c,MNEX_RESCUE) && m.ex_left==2 && m.tools==3 && c.food==90);
+      mn_day(&m,&c,4,COLD_CALM,0,&aw); CHECK(m.ex_left==1 && m.zst[1]==MNZ_CAVED);
+      mn_day(&m,&c,5,COLD_CALM,0,&aw);
+      CHECK(m.ex_kind==0 && m.ex_rescued==1 && m.ex_completed==2 && !m.hurt_days);
+      CHECK(m.zst[1]==MNZ_OPEN && m.brace[1]>=1 && aw.rescues==1);
+      CHECK(!mn_ex_start(&m,&c,MNEX_RESCUE));
+      MnEvent ev2={MNE_RESCUE,1,0,5}; mn_event_text(&ev2,t,sizeof t); CHECK(strstr(t,"CREW IS SAFE"));
+    }
+    { SimColony c; Mine m; mk(&c, 211, ALL, 8, COLJ_MINER, 1); mn_init(&m,c.town,1);
+      c.food=400; m.depth=5; m.work=5; m.pin=1; m.zst[5]=MNZ_OPEN;
+      m.seam[5]=500; m.bars=5; m.safe=1;
+      uint64_t reward=c.reward_due; uint32_t gems=m.gems;
+      CHECK(mn_ex_start(&m,&c,MNEX_SALVAGE) && m.ex_left==3 && m.bars==3 && c.food==388);
+      MnAway aw; memset(&aw,0,sizeof aw);
+      mn_day(&m,&c,2,COLD_CALM,0,&aw); mn_day(&m,&c,3,COLD_CALM,0,&aw);
+      CHECK(m.ex_kind==MNEX_SALVAGE && m.ex_left==1 && c.reward_due==reward);
+      mn_day(&m,&c,4,COLD_CALM,0,&aw);
+      CHECK(m.ex_kind==MNEX_NONE && m.ex_completed==1 && m.ex_cooldown==11 && aw.salvages==1);
+      CHECK(m.gems>gems && c.reward_due>reward);
+      CHECK(!mn_ex_start(&m,&c,MNEX_SALVAGE));  // cooldown, despite enough resources
+      m.last_day=m.ex_cooldown; m.bars=10; c.food=300;
+      CHECK(mn_ex_start(&m,&c,MNEX_SALVAGE));
+      MnEvent e={MNE_SALVAGE,5,4,5}; char text[60]; mn_event_text(&e,text,sizeof text); CHECK(strstr(text,"GEMS"));
+      char lines[6][48]; memset(lines,0,sizeof lines); aw.days=3;
+      CHECK(mn_away_text(&aw,&m,lines,6)>=1); int saw=0;
+      for(int i=0;i<6;i++) if(strstr(lines[i],"EXPEDITIONS")) saw=1;
+      CHECK(saw);
+    }
+    // ---- v2 save layout and real v1 migration: the 112-byte original record
+    // remains readable, but the 136-byte v2 stores mission state and statistics.
+    { MineList L,R,Old; memset(&L,0,sizeof L);
+      Mine *m=mn_find(&L,123456u,1,8); m->depth=5; m->work=5; m->zst[5]=MNZ_OPEN; m->seam[5]=600;
+      m->surveyed=(1u<<1)|(1u<<3); m->ex_kind=MNEX_SALVAGE; m->ex_level=5;
+      m->ex_left=2; m->ex_total=3; m->ex_completed=17; m->ex_rescued=6; m->ex_pockets=11; m->ex_cooldown=14;
+      uint8_t v2[1+MN_REC_BYTES]; CHECK(mn_list_write(&L,v2,sizeof v2)==sizeof v2);
+      CHECK(mn_list_read(&R,v2,sizeof v2)==0 && R.n==1);
+      CHECK(R.m[0].surveyed==m->surveyed && R.m[0].ex_kind==MNEX_SALVAGE &&
+            R.m[0].ex_level==5 && R.m[0].ex_left==2 && R.m[0].ex_total==3 &&
+            R.m[0].ex_completed==17 && R.m[0].ex_rescued==6 && R.m[0].ex_pockets==11 &&
+            R.m[0].ex_cooldown==14);
+      uint8_t v1[1+MN_REC_V1_BYTES]; v1[0]=1;
+      memcpy(v1+1,v2+1,MN_REC_V1_BYTES);
+      CHECK(mn_list_read(&Old,v1,sizeof v1)==0 && Old.n==1 && Old.m[0].town==123456u);
+      CHECK(Old.m[0].depth==5 && Old.m[0].seam[5]==600 && Old.m[0].surveyed==0 &&
+            Old.m[0].ex_kind==0 && Old.m[0].ex_completed==0);
+      v2[1+114]=255; v2[1+115]=255; v2[1+116]=255;
+      CHECK(mn_list_read(&R,v2,sizeof v2)==0 && !R.m[0].ex_kind);
+      CHECK(mn_list_read(&R,v1,sizeof v1-1)<0);
+    }
+    // Real BSIM MINE chunk: v2 files include the new fields, while an old
+    // v1 chunk with 112-byte records imports into the same game with no loss.
+    { simfile_init(&F); F.slot[0].used=1; F.slot[0].cal_ticks=321;
+      Mine *m=mn_find(&F.slot[0].mines,704,1,4);
+      m->depth=2; m->work=2; m->zst[2]=MNZ_OPEN; m->seam[2]=345;
+      m->surveyed=(1u<<2); m->ex_kind=MNEX_SURVEY; m->ex_level=2;
+      m->ex_total=2; m->ex_left=1; m->ex_completed=5;
+      size_t n=simfile_write(&F,buf,sizeof buf); CHECK(n>0);
+      size_t at=8, hit=n, oldlen=0;
+      while(at+14<=n){
+          size_t len=(size_t)buf[at+6] | ((size_t)buf[at+7]<<8) | ((size_t)buf[at+8]<<16) | ((size_t)buf[at+9]<<24);
+          if(at+14+len>n) break;
+          if(!memcmp(buf+at,"MINE",4)){ hit=at; oldlen=len; break; }
+          at+=14+len;
+      }
+      CHECK(hit<n && oldlen==1+MN_REC_BYTES && buf[hit+5]==2);
+      CHECK(simfile_read(&G,buf,n)==0 && G.bad_chunks==0 &&
+            G.slot[0].mines.m[0].surveyed==(1u<<2) &&
+            G.slot[0].mines.m[0].ex_left==1);
+      if(hit<n && oldlen==1+MN_REC_BYTES){
+          size_t small=1+MN_REC_V1_BYTES, cut=oldlen-small;
+          memmove(buf+hit+14+small,buf+hit+14+oldlen,n-(hit+14+oldlen));
+          buf[hit+5]=1;
+          for(int k=0;k<4;k++) buf[hit+6+k]=(uint8_t)(small>>(8*k));
+          uint32_t sum=sim_fnv(buf+hit+14,small);
+          for(int k=0;k<4;k++) buf[hit+10+k]=(uint8_t)(sum>>(8*k));
+          CHECK(simfile_read(&G,buf,n-cut)==0 && G.bad_chunks==0 &&
+                G.slot[0].cal_ticks==321 && G.slot[0].mines.n==1 &&
+                G.slot[0].mines.m[0].seam[2]==345 &&
+                !G.slot[0].mines.m[0].surveyed && !G.slot[0].mines.m[0].ex_kind);
+      }
+      // Three full 32-colony slots and 256 saved journal entries still fit
+      // in the original 64 KiB side-game file after increasing mine records.
+      simfile_init(&F);
+      for(int sl=0;sl<SIM_SLOTS;sl++){
+          F.slot[sl].used=1; F.slot[sl].cols.n=COL_MAX;
+          F.slot[sl].mines.n=COL_MAX; F.slot[sl].ntail=SIM_TAILN;
+      }
+      size_t full=simfile_write(&F,buf,sizeof buf);
+      CHECK(full>0 && full<=SIMFILE_MAX);
+    }
     // ---- text
     { SimColony c; Mine m; mk(&c, 70, ALL, 6, COLJ_MINER, 1); mn_init(&m, 70, 0); runboth(&c, &m, 1, 60, COLD_NORMAL, ALL, 0); char t[80]; mn_status_text(&m, t, sizeof t); CHECK(t[0]); m.warn = 1; mn_status_text(&m, t, sizeof t); CHECK(strstr(t, "CREAKING"));
       for(int z = 1; z <= 15; z++){ mn_level_text(&m, &c, z, COLD_NORMAL, t, sizeof t); CHECK(t[0] == 'L' && t[1] == 'V' && strlen(t) < 46); } char d[300]; CHECK(mn_dump(&m, d, sizeof d) > 20);
