@@ -95,6 +95,73 @@ static void cave_in(Mine *m, SimColony *c, int z, uint32_t day, int diff, ColAwa
 }
 static int clear_need(const Mine *m, int z){ (void)m; return z >= 3 ? 5 : 3; }
 
+// ------------------------------------------------------------ PLAYER EXPEDITIONS
+// These use colony food and stored tools/bars; only elapsed colony days make
+// progress. The same saved mission survives absence and reload. Each survey
+// floor is one-time, rescuing really clears rubble/injury, and salvage has a
+// seven-day cooldown rather than an infinite menu-click reward.
+const char *mn_ex_name(int kind){
+    static const char *const names[MNEX_N]={"NONE","SURVEY","RESCUE","DEEP SALVAGE"};
+    return kind>=0 && kind<MNEX_N?names[kind]:"?";
+}
+int mn_ex_start(Mine *m, SimColony *c, int kind){
+    if(!m || !c || m->ex_kind || kind<=MNEX_NONE || kind>=MNEX_N ||
+       c->state!=COLS_ALIVE || !(c->mask & (1u<<COLR_MINE)) ||
+       c->bld[COLB_MINE]<1 || !c->nset || !mn_miners(c)) return 0;
+    int z=m->work;
+    if(z<1 || z>m->depth || z>MN_ZMAX) return 0;
+    if(kind==MNEX_SURVEY){
+        if((m->surveyed & (1u<<z)) || (m->zst[z]!=MNZ_OPEN && m->zst[z]!=MNZ_DRY) ||
+           m->tools<1 || c->food<8) return 0;
+        m->tools--; c->food-=8; m->ex_total=2;
+    }else if(kind==MNEX_RESCUE){
+        if((m->zst[z]!=MNZ_CAVED && !m->hurt_days) || m->tools<1 || c->food<10) return 0;
+        m->tools--; c->food-=10; m->ex_total=2;
+    }else{
+        if(z<5 || m->zst[z]!=MNZ_OPEN || mn_miners(c)<2 ||
+           m->bars<2 || c->food<12 || m->last_day<m->ex_cooldown) return 0;
+        m->bars-=2; c->food-=12; m->ex_total=3;
+    }
+    m->ex_kind=(uint8_t)kind; m->ex_level=(uint8_t)z; m->ex_left=m->ex_total;
+    return 1;
+}
+static void mn_ex_advance(Mine *m, SimColony *c, uint32_t day, int new_day, MnAway *aw){
+    if(!new_day || !m->ex_kind || !m->ex_left) return;
+    if(--m->ex_left) return;
+    int z=m->ex_level, kind=m->ex_kind;
+    // A truncated/corrupt save cannot make the expedition index past the floor arrays.
+    m->ex_kind=MNEX_NONE; m->ex_level=0; m->ex_total=0;
+    if(z<1 || z>m->depth || z>MN_ZMAX) return;
+    m->ex_completed=sat(m->ex_completed,1);
+    if(kind==MNEX_SURVEY){
+        uint32_t pocket=24u+sim_rngn(m->town,(uint32_t)z,MP_SEAM+30,day,33);
+        uint32_t seam=(uint32_t)m->seam[z]+pocket;
+        m->seam[z]=(uint16_t)(seam>65535u?65535u:seam);
+        if(m->zst[z]==MNZ_DRY) m->zst[z]=MNZ_OPEN;
+        uint32_t gems=1u+sim_rngn(m->town,(uint32_t)z,MP_GEM+30,day,3);
+        m->gems=sat(m->gems,gems); m->surveyed|=(uint16_t)(1u<<z);
+        m->ex_pockets=sat(m->ex_pockets,1);
+        if(aw){ aw->surveys++; aw->gems=sat(aw->gems,gems); }
+        ev(aw,MNE_SURVEY,(uint32_t)z,pocket,day);
+    }else if(kind==MNEX_RESCUE){
+        if(m->zst[z]==MNZ_CAVED) m->zst[z]=m->seam[z]?MNZ_OPEN:MNZ_DRY;
+        m->clear=0; m->hurt_days=0;
+        if(m->brace[z]<9) m->brace[z]++;
+        m->ex_rescued=sat(m->ex_rescued,1);
+        if(aw) aw->rescues++;
+        ev(aw,MNE_RESCUE,(uint32_t)z,0,day);
+    }else if(kind==MNEX_SALVAGE){
+        uint32_t gems=2u+(uint32_t)z/5u+sim_rngn(m->town,(uint32_t)z,MP_GEM+31,day,3);
+        uint64_t gold=(uint64_t)(40+16*z)*(uint64_t)(1+c->danger);
+        m->gems=sat(m->gems,gems);
+        c->reward_due=c->reward_due>COL_GOLD_MAX-gold?COL_GOLD_MAX:c->reward_due+gold;
+        m->ex_cooldown=day>0xfffffff8u?0xffffffffu:day+7u;
+        if(aw){ aw->salvages++; aw->gems=sat(aw->gems,gems); }
+        ev(aw,MNE_SALVAGE,(uint32_t)z,gems,day);
+    }
+}
+
+
 void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway *aw){
     if(aw) aw->days++;
     int new_day = day > m->last_day;
@@ -166,6 +233,7 @@ void mn_day(Mine *m, SimColony *c, uint32_t day, int diff, ColAway *caw, MnAway 
       if(m->wl[MNW_LOOM]){ uint32_t cap = (uint32_t)m->wl[MNW_LOOM] + (crew.loom > 0 ? 1u : 0u), u = cap;
           if(u > spare / 2) u = spare / 2; if(m->cloth + u > 60u) u = m->cloth >= 60u ? 0u : 60u - m->cloth;
           c->wood -= 2 * u; m->cloth = sat(m->cloth, u); if(aw) aw->cloth = sat(aw->cloth, u); } }
+    mn_ex_advance(m,c,day,new_day,aw);
     if(m->scn && !m->safe && !(m->scn_done >> m->scn & 1) && mn_scn_check(m, c, m->scn)){        // the scenario you chose is done: paid once
         int pay = mn_scn_pay(c, m->scn); m->scn_done |= (uint8_t)(1u << m->scn); c->reward_due = c->reward_due + (uint64_t)pay > COL_GOLD_MAX ? COL_GOLD_MAX : c->reward_due + (uint64_t)pay;
         if(aw) aw->goals++; ev(aw, MNE_GOAL, (uint32_t)m->scn, (uint32_t)pay, day); }
