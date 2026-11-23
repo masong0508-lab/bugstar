@@ -378,15 +378,27 @@ size_t mn_list_write(const MineList *l, uint8_t *o, size_t cap){
         p32(q, m->town); q[4] = m->wl[0]; q[5] = m->wl[1]; q[6] = m->wl[2]; q[7] = m->depth; q[8] = m->work; q[9] = (uint8_t)(m->pin | m->digging << 1);
         q[10] = m->warn; q[11] = m->hurt_days; q[12] = m->clear; q[13] = m->deepest; q[109] = m->scn; q[110] = m->scn_done; q[111] = m->safe; p16(q + 14, m->digprog);
         memcpy(q + 16, m->zst, 16); memcpy(q + 32, m->brace, 16); for(int z = 0; z < 16; z++) p16(q + 48 + z * 2, m->seam[z]);
-        p32(q + 80, m->bars); p32(q + 84, m->tools); p32(q + 88, m->cloth); p32(q + 92, m->gems); p32(q + 96, m->cave_ins); p32(q + 100, m->mined); p32(q + 104, m->last_day); }
+        p32(q + 80, m->bars); p32(q + 84, m->tools); p32(q + 88, m->cloth); p32(q + 92, m->gems); p32(q + 96, m->cave_ins); p32(q + 100, m->mined); p32(q + 104, m->last_day);
+        // v2 expedition extension, following the entire original 112-byte record.
+        p16(q + 112,m->surveyed); q[114]=m->ex_kind; q[115]=m->ex_level;
+        q[116]=m->ex_left; q[117]=m->ex_total;
+        p32(q + 118,m->ex_completed); p32(q + 122,m->ex_rescued);
+        p32(q + 126,m->ex_cooldown); p32(q + 130,m->ex_pockets); }
     return need;
 }
 static uint32_t cl(uint32_t v){ return v > MN_STORE_MAX ? MN_STORE_MAX : v; }
 int mn_list_read(MineList *l, const uint8_t *in, size_t n){
     memset(l, 0, sizeof *l);
-    if(n < 1 || in[0] > COL_MAX || n != 1 + (size_t)in[0] * MN_REC_BYTES) return -1;
+    if(n < 1 || in[0] > COL_MAX) return -1;
+    // A v1 record is 112 bytes, a v2 record is 136. Both have the same
+    // original prefix; do not discard an old colony or reinterpret its bytes.
+    size_t rec=MN_REC_BYTES;
+    if(n != 1 + (size_t)in[0] * rec){
+        rec=MN_REC_V1_BYTES;
+        if(n != 1 + (size_t)in[0] * rec) return -1;
+    }
     l->n = in[0];
-    for(int i = 0; i < l->n; i++){ Mine *m = &l->m[i]; const uint8_t *q = in + 1 + i * MN_REC_BYTES; mn_init(m, g32(q), 0);
+    for(int i = 0; i < l->n; i++){ Mine *m = &l->m[i]; const uint8_t *q = in + 1 + (size_t)i * rec; mn_init(m, g32(q), 0);
         for(int w = 0; w < MNW_N; w++) m->wl[w] = q[4 + w] > 3 ? 3 : q[4 + w];
         m->depth = q[7] > MN_ZMAX ? MN_ZMAX : q[7]; m->work = q[8] > m->depth ? m->depth : q[8]; m->pin = q[9] & 1; m->digging = (q[9] >> 1) & 1;
         m->warn = q[10] ? 1 : 0; m->hurt_days = q[11] > 5 ? 5 : q[11]; m->clear = q[12]; m->deepest = q[13] > MN_ZMAX ? MN_ZMAX : q[13]; m->digprog = (uint16_t)g16(q + 14);
@@ -395,6 +407,20 @@ int mn_list_read(MineList *l, const uint8_t *in, size_t n){
         if(m->deepest < m->depth) m->deepest = m->depth;
         m->scn = q[109] < MNS_N ? q[109] : 0; m->scn_done = (uint8_t)(q[110] & ((1u << MNS_N) - 2u)); m->safe = q[111] ? 1 : 0;
         m->bars = cl(g32(q + 80)); m->tools = cl(g32(q + 84)); m->cloth = cl(g32(q + 88)); m->gems = cl(g32(q + 92)); m->cave_ins = cl(g32(q + 96)); m->mined = cl(g32(q + 100)); m->last_day = g32(q + 104);
+        if(rec==MN_REC_BYTES){
+            m->surveyed=(uint16_t)(g16(q+112) & ((1u<<(m->depth+1))-2u));
+            m->ex_kind=q[114]; m->ex_level=q[115]; m->ex_left=q[116]; m->ex_total=q[117];
+            m->ex_completed=cl(g32(q+118)); m->ex_rescued=cl(g32(q+122));
+            m->ex_cooldown=g32(q+126); m->ex_pockets=cl(g32(q+130));
+            if(m->ex_kind<=MNEX_NONE || m->ex_kind>=MNEX_N || !m->ex_left ||
+               m->ex_total<1 || m->ex_total>3 || m->ex_left>m->ex_total ||
+               m->ex_level<1 || m->ex_level>m->depth){
+                m->ex_kind=0; m->ex_level=0; m->ex_left=0; m->ex_total=0;
+            }
+            // Corrupt counters must never lock future salvage indefinitely.
+            uint32_t maxcd=m->last_day>0xfffffff8u?0xffffffffu:m->last_day+7u;
+            if(m->ex_cooldown>maxcd) m->ex_cooldown=maxcd;
+        }
         if(m->warn && (!m->work || m->zst[m->work] != MNZ_OPEN)) m->warn = 0; }
     return 0;
 }
