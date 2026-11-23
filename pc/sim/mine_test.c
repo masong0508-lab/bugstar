@@ -195,6 +195,36 @@ int main(void){
       for(int i=0;i<6;i++) if(strstr(lines[i],"EXPEDITIONS")) saw=1;
       CHECK(saw);
     }
+    // ---- DUNGEON MINE RESCUE. A collapsed, abandoned shaft can now call
+    // for real help in the floor's ELITE mission; defeated burrowers unblock
+    // its vein, give injured workers rest, and reinforce the support.
+    { SimColony c; Mine m; mk(&c, 312, ALL, 8, COLJ_MINER, 1);
+      mn_init(&m,c.town,10); m.depth=6; m.work=4; m.pin=1;
+      m.seam[4]=100; m.seam[6]=230; m.zst[4]=MNZ_CAVED;
+      m.zst[6]=MNZ_CAVED; m.hurt_days=5; m.clear=2;
+      CHECK(mn_dungeon_need(&m,&c)==6); // deepest blocked floor
+      CHECK(mn_dungeon_rescue(&m,&c)==6);
+      CHECK(m.zst[6]==MNZ_OPEN && m.seam[6]==230 && m.zst[4]==MNZ_CAVED);
+      CHECK(!m.hurt_days && m.brace[6]>=3 && m.ex_rescued==1);
+      CHECK(mn_dungeon_need(&m,&c)==4);
+      CHECK(mn_dungeon_rescue(&m,&c)==4 && m.zst[4]==MNZ_OPEN &&
+            m.clear==0 && m.ex_rescued==2);
+      CHECK(!mn_dungeon_need(&m,&c) && !mn_dungeon_rescue(&m,&c));
+      // Hurt-only crew also ask for help; a pending two-day rescue
+      // expedition already underway takes precedence over the dungeon.
+      m.hurt_days=2; CHECK(mn_dungeon_need(&m,&c)==m.work);
+      m.ex_kind=MNEX_RESCUE; m.ex_left=2;
+      CHECK(mn_dungeon_need(&m,&c)==0);
+      m.ex_kind=MNEX_NONE; m.ex_left=0;
+      CHECK(mn_dungeon_rescue(&m,&c)==m.work && m.hurt_days==0);
+      // Dry seams remain dry when rubble is lifted, never recreate ore
+      // outside the legitimate survey/refill mechanics.
+      m.zst[3]=MNZ_CAVED; m.seam[3]=0;
+      CHECK(mn_dungeon_rescue(&m,&c)==3 && m.zst[3]==MNZ_DRY);
+      c.state=COLS_RUINS; m.zst[4]=MNZ_CAVED;
+      CHECK(!mn_dungeon_need(&m,&c) && !mn_dungeon_rescue(&m,&c));
+      c.state=COLS_ALIVE;c.bld[COLB_MINE]=0;CHECK(!mn_dungeon_need(&m,&c));
+    }
     // ---- v2 save layout and real v1 migration: the 112-byte original record
     // remains readable, but the 136-byte v2 stores mission state and statistics.
     { MineList L,R,Old; memset(&L,0,sizeof L);
