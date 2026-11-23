@@ -616,7 +616,7 @@ size_t simfile_write(const SimFile *f, uint8_t *buf, size_t cap){
         if(sl->has_lv){ d[0] = 1; lv_to_bytes(&sl->lv_true, d + 1); lv_to_bytes(&sl->lv_xp, d + 1 + LV_BYTES); PUT("LEVL", s, 1, 1 + 2 * LV_BYTES); }
         if(sl->nfr){ d[0] = sl->nfr; for(int i = 0; i < sl->nfr; i++){ p32(d + 1 + i * 6, sl->fr[i].town); d[5 + i * 6] = sl->fr[i].who; d[6 + i * 6] = sl->fr[i].val; } PUT("FRND", s, 1, 1 + (size_t)sl->nfr * 6); }
         if(sl->cols.n){ size_t m = col_list_write(&sl->cols, d, sizeof d); if(m) PUT("COLN", s, 1, m); }
-        if(sl->mines.n){ size_t m = mn_list_write(&sl->mines, d, sizeof d); if(m) PUT("MINE", s, 1, m); }
+        if(sl->mines.n){ size_t m = mn_list_write(&sl->mines, d, sizeof d); if(m) PUT("MINE", s, 2, m); }
         if(sl->stand.used){ size_t m = stand_write(&sl->stand, d, sizeof d); if(m) PUT("STND", s, 1, m); }
         if(sl->unlock.used){ size_t m = ul_write(&sl->unlock, d, sizeof d); if(m) PUT("UNLK", s, 1, m); }
         p16(d, sl->ntail); for(int i = 0; i < sl->ntail; i++){ const SimEvent *e = &sl->tail[i]; uint8_t *q = d + 2 + i * 16; p32(q, e->tick); p16(q + 4, e->kind); p16(q + 6, e->who); p16(q + 8, e->a); p16(q + 10, e->b); p32(q + 12, e->seed32); }
@@ -634,7 +634,7 @@ int simfile_read(SimFile *f, const uint8_t *buf, size_t n){
         if(len > n - at - CH_HDR){ f->bad_chunks++; break; }                // cut off: stop here, keep what we have
         const uint8_t *d = h + CH_HDR; at += CH_HDR + len;
         if(sim_fnv(d, len) != g32(h + 10)){ f->bad_chunks++; continue; }
-        if(ver != 1) continue;
+        if(ver != 1 && !(ver == 2 && !memcmp(h, "MINE", 4))) continue;  // v1 mine chunks migrate; v2 carries expeditions
         if(!memcmp(h, "META", 4)){ if(len >= 2){ f->side_on = d[0] ? 1 : 0; f->sandbox = d[1] ? 1 : 0; } if(len >= 3) f->difficulty = d[2] > COLD_HARSH ? COLD_NORMAL : d[2]; continue; }
         if(slot >= SIM_SLOTS) continue;
         SimSlot *sl = &f->slot[slot];
