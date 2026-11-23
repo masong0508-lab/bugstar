@@ -9,6 +9,9 @@ The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Rea
   four-line STORY SO FAR recap. The recap uses the same eight-stage story
   gate as Bolt's dialogue, so revisiting an earlier planet does not undo
   the King's defeat or spoil the DAWN before all eight memories.
+- The space-flight return after the true ending now acknowledges that
+  Dawn is free, instead of incorrectly telling the player to come back
+  stronger after winning the final battle.
 - Dynamic status identifies the next freed star, the actual next Tech Hive
   and its Overlord floor, and recovered data-core progress, using existing
   bounded string helpers. Read the journal any time, on planets or in a
