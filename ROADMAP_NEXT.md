@@ -33,6 +33,28 @@ The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Rea
   actual FPS benchmarks remain release gates; the source optimization is
   not presented as a measured FPS gain.
 
+
+## Chapter journal on the QUEST page — 22 November 2026
+
+- Press A on START > QUEST to switch between berry/seed field notes and a
+  four-line STORY SO FAR recap. The recap uses the same eight-stage story
+  gate as Bolt's dialogue, so revisiting an earlier planet does not undo
+  the King's defeat or spoil the DAWN before all eight memories.
+- The space-flight return after the true ending now acknowledges that
+  Dawn is free, instead of incorrectly telling the player to come back
+  stronger after winning the final battle.
+- Dynamic status identifies the next freed star, the actual next Tech Hive
+  and its Overlord floor, and recovered data-core progress, using existing
+  bounded string helpers. Read the journal any time, on planets or in a
+  dungeon. The ordinary quest's title and progress remain visible.
+- Zero persistent save changes, framebuffers, image assets, actor arrays,
+  heap allocations or per-frame rendering costs. The new ROM-only story
+  text is drawn only when the pause page is open and selected.
+- `tests/story_journal_runtime.py` exercises production stage classification,
+  story lines and dynamic status under sanitizers across all campaign
+  combinations. A full playthrough and a native-resolution menu capture
+  remain necessary before considering the narrative visually complete.
+
 ## Reactive station characters and truthful cantina rumours — 22 November 2026
 
 - Vesper, the moth pilot, and Nib, the runaway ant guard, now tell a

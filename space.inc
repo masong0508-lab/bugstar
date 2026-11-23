@@ -690,7 +690,7 @@ static void lair_enter(void){
 }
 static int uni_sub(u32 *r, const u32 *a, const u32 *b); static int uni_dec(char *d, const u32 *u);
 static void voyage(const char *from, const char *to, const u32 *t10, u32 hours, int kind);
-static void lair_leave(void){ int f=beast_fight; in_lair=0; music(3); { u32 t10[LYW]={20}; char nm[24]; sys_name(cur_sys,nm); voyage("THE LAIR",nm,t10,48,4); } no_ambush=1; space_enter(0); no_ambush=0; if(hive_card) show_hive_card(); space_say(f<3 && beast_stage>=f ? "IT GOT AWAY... FOR NOW" : "WARPED OUT. COME BACK STRONGER"); do_save(); }
+static void lair_leave(void){ int f=beast_fight; in_lair=0; music(3); { u32 t10[LYW]={20}; char nm[24]; sys_name(cur_sys,nm); voyage("THE LAIR",nm,t10,48,4); } no_ambush=1; space_enter(0); no_ambush=0; if(hive_card) show_hive_card(); space_say(dawn_free ? "DAWN IS FREE. THE GALAXY IS OPEN." : f<3 && beast_stage>=f ? "IT GOT AWAY... FOR NOW" : "WARPED OUT. COME BACK STRONGER"); do_save(); }
 
 static void ship_hit(int dm, int crash){            // shields first, then the hull; the cockpit shakes
     dm=dm*ship_armour()/100; if(dm<1) dm=1;
