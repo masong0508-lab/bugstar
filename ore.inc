@@ -79,7 +79,16 @@ static void sm_load(void){ SmSave s; SmExt x; sm_reset(); sram_read(slot_base(cu
 static int sm_have(int kind, int i){ return kind==0 ? ore_n[i] : sm_n[i]; }           // kind 0 reads the ore bag, the rest read the stock
 static int sm_batches(int r){ const Recipe *q=&sm_rec[r]; int k=q->kind?1:0; int m=sm_have(k,q->a)/q->na; if(q->nb){ int m2=sm_have(k,q->b)/q->nb; if(m2<m) m=m2; } return m; }   // how many times you could make it now
 static int sm_ready(void){ return sm_job && (s32)(play_secs()-sm_done)>=0; }           // a smelt has finished
-static int sm_collect(void){ if(!sm_ready()) return 0; int out=sm_rec[sm_job-1].out, got=sm_jn; int v=sm_n[out]+got; sm_n[out]= v>9999?9999:(u16)v; sm_job=0; sm_jn=0; return got; }
+static int sm_room(int out){ return sm_n[out]<9999 ? 9999-sm_n[out] : 0; }             // free stock slots; never consume inputs for an overfull result
+static int sm_collect(void){
+    if(!sm_ready()) return 0;
+    int out=sm_rec[sm_job-1].out, got=sm_jn, room=sm_room(out);
+    if(got>room) got=room;
+    if(!got) return 0;                       // keep an old queued job until space is freed
+    sm_n[out]+=(u16)got; sm_jn-=(u8)got;
+    if(!sm_jn){ sm_job=0; sm_done=0; }
+    return got;                              // report only what actually reached stock
+}
 static int sm_left(void){ if(!sm_job) return 0; s32 d=(s32)(sm_done-play_secs()); return d>0?d:0; }
 // ---- price drift: every 5 play-minutes each ore and bar moves its price by up to 20% either way (a hash of the time slot, so nothing needs saving)
 static int px_drift(int id, int base){ u32 h=hmix((u32)(play_secs()/300)*2654435761u ^ (u32)id*0x9E3779B1u); int pc=80+(int)((h>>8)%41); int v=base*pc/100; return v<1?1:v; }
@@ -122,10 +131,15 @@ static void ore_reset(void){ ship_pts=0; for(int i=0;i<NSK;i++) ship_rk[i]=0; fo
 static void ore_save(void){ gr_save(); sr_save(); OreSave s; memset(&s,0,sizeof s); s.magic=0x3145524Fu; s.ver=1; s.tool=ore_tool; s.ring_i=ore_ring_i;
     for(int i=0;i<NORE;i++) s.n[i]=ore_n[i]; for(int i=0;i<ORE_RING;i++) s.ring[i]=ore_ring[i];
     s.sum=fnv(&s,sizeof s-4); sram_write(slot_base(cur_slot)+ORE_OFF,&s,sizeof s); sm_save(); ml_save(); belt_save(); }
-static void ore_load(void){ OreSave s; ore_reset(); sm_load(); gr_load(); sr_load(); ml_load(); belt_load(); sram_read(slot_base(cur_slot)+ORE_OFF,&s,sizeof s);
+static void ore_load(void){ OreSave s; ore_reset(); sm_load(); sr_load(); ml_load(); belt_load(); sram_read(slot_base(cur_slot)+ORE_OFF,&s,sizeof s);
     if(s.magic!=0x3145524Fu || s.sum!=fnv(&s,sizeof s-4) || s.ver!=1) return;           // no block (an old save) or a damaged one: an empty bag
     ore_tool = s.tool<=3 ? s.tool : 0; ore_ring_i = s.ring_i<ORE_RING ? s.ring_i : 0;
-    for(int i=0;i<NORE;i++) ore_n[i]=s.n[i]; for(int i=0;i<ORE_RING;i++) ore_ring[i]=s.ring[i]; }
+    for(int i=0;i<NORE;i++) ore_n[i]=s.n[i]>9999 ? 9999 : s.n[i];
+    for(int i=0;i<ORE_RING;i++) ore_ring[i]=s.ring[i];
+    // The grade block is a subset of the ore bag: load the counts FIRST.
+    // Previously gr_load()->ore_fix() saw an empty bag and erased every rich
+    // and pristine grade on each reload, silently reducing the sale price.
+    gr_load(); }
 static int ore_add(int o, int n){ if(o<0||o>=NORE||n<=0) return 0; int v=ore_n[o]+n; if(v>9999) v=9999; int got=v-ore_n[o]; ore_n[o]=(u16)v; return got; }   // returns how many fit
 static int ore_add_q(int o, int n, int q){ int got=ore_add(o,n); if(got>0 && o>=4){ if(q==2) ore_rich[o]+=(u16)got; else if(q==3) ore_prist[o]+=(u16)got; ore_fix(o); } return got; }      // q: the vein's grade (0 poor, 1 plain, 2 rich, 3 pristine)
 static void ore_clear_sold(void){ for(int i=4;i<NORE;i++){ ore_n[i]=0; ore_rich[i]=0; ore_prist[i]=0; } }
