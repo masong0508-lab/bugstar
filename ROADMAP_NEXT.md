@@ -3,6 +3,22 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Crowded dungeon combat and movement reliability — 24 November 2026
+
+- Chain lightning, freezes and summon pulses now mark all 160 existing
+  actor slots. Previously the 32-bit mask repeatedly targeted actors
+  numbered 32 and above during a single chain. The replacement mask is
+  twenty bytes of local scratch, never saved or allocated permanently.
+- Broad-phase reject separated actors before their radius/mass lookups
+  and expensive collision resolution. Use the exact radius sum test
+  already in the solver and retain the original pair order/live position
+  updates. Host tests compare resulting positions to the old loop and
+  count calls rather than claiming unmeasured device FPS.
+- Cave-ins use real player displacement from the current simulation tick:
+  standing against a wall or rotating no longer dodges a falling rock,
+  while actual walking, strafing and auto-run do. Gas/shield timing and
+  the warning interval remain unchanged. No extra actor or graphics buffer.
+
 ## Mining extraction and shaft transition reliability — 24 November 2026
 
 - Surface and dungeon ore extraction is all-or-nothing: the full deposit
