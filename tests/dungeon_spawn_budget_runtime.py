@@ -10,8 +10,8 @@ main=(R/"main.c").read_text()
 def line(start):
     return next(x.strip() for x in s.splitlines() if x.strip().startswith(start))
 def function(sig):
-    a=s.index(sig+"{")
-    b=s.index("{",a)
+    a=s.index(sig)
+    b=s.index("{",a+len(sig))
     count=1
     i=b+1
     while count:
