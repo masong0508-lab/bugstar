@@ -3,6 +3,21 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Crowded dungeon safety and precise elite objectives — 24 November 2026
+
+- Reserve the existing 160-object pool in phases: optional crowds and props,
+  cages/bats/lamps, campaign bosses/outpost keys, floor events and posted
+  quest targets. Excess optional decorations or loot are skipped; essential
+  fights and keycards cannot be starved by the earlier random spawn batches.
+- Guard gear metadata writes when a spawn is rejected. Previously a full
+  pool caused gear fields to be copied onto the last unrelated actor.
+- A floor elite now has its own existing champion-byte value, distinctive
+  HUD label, and exact kill/revisit counter; random champions do not
+  satisfy the objective, including PC colony mine-burrower rescues.
+- Production macro/elite tests run under ASan/UBSan. No new actor slots,
+  WRAM/EWRAM buffers, assets or save fields; room generation remains
+  deterministic within this build. Final emulator FPS is a separate gate.
+
 ## Colony dungeon-rescue progression and persistent mission cooldown — 23 November 2026
 
 - **PC/Android dungeon mission:** when the colony mine has an uncleared
