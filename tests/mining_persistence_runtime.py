@@ -14,6 +14,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 ore = (ROOT / "ore.inc").read_text()
 ui = (ROOT / "ui.inc").read_text()
+planet = (ROOT / "planet.inc").read_text()
+main = (ROOT / "main.c").read_text()
+dungeon = (ROOT / "dungeon.inc").read_text()
 
 def fun(src, marker):
     m = re.search(re.escape(marker) + r"[^;{}]*\{", src)
@@ -30,6 +33,15 @@ def declaration(src, pattern):
     assert m, f"missing production declaration: {pattern}"
     return m.group(0)
 
+# Check actual player call sites and floor reset order as well as helpers.
+surface = planet[planet.index("int n=ore_vein_yield(o->x,o->y"):planet.index("if(cur_rock==4 && rndi(5)==0)")]
+assert surface.index("got=ore_harvest") < surface.index("if(!got)") < surface.index("o->alive=0") < surface.index("ore_mark_mined")
+assert "o->hp=1" in surface and "st_mined+=got" in surface
+dig = fun(main, "static void mine_bite(")
+assert dig.index("ore_harvest") < dig.index("if(!got)") < dig.index("dmap[c]=D_FLOOR") < dig.index("fm_dug(c)")
+assert "mine_n=hits-1" in dig and "st_mined+=got" in dig and "ore_vein_yield(vx,vy" in dig
+assert "depth_no>90?30:depth_no/3" in dig
+assert "static void make_floor(void){\n    mine_cell=-1; mine_n=0; mh_t=0;" in dungeon
 # Check real menu binding, not just isolated helpers.
 assert "if(q->kind==1 && !sm_room(q->out))" in ui
 assert "if(n>room) n=room;" in ui
@@ -51,7 +63,9 @@ helpers = "\n\n".join(fun(ore, "static " + name) for name in (
     "int sm_have(", "int sm_batches(", "int sm_ready(", "int sm_room(",
     "int sm_collect(", "int sm_left(", "void ore_fix(",
     "void gr_save(", "void gr_load(", "void ore_reset(", "void ore_save(",
-    "void ore_load(", "int ore_add(", "int ore_add_q(", "int ore_take("
+    "void ore_load(", "int ore_add(", "int ore_add_q(", "int ore_take(",
+    "u16 ore_id(", "int ore_quality(", "int ore_mega(", "int ore_qn(",
+    "int ore_vein_yield(", "int ore_harvest("
 ))
 make = fun(ui, "static void sm_make(")
 
@@ -94,6 +108,8 @@ static void sram_read(unsigned off, void *p, unsigned n){
     if(off+n>sizeof cart){ fputs("SRAM read outside slot\n",stderr); exit(2); }
     memcpy(p,cart+off,n);
 }
+static struct {u32 tseed;} wd;
+static u32 hmix(u32 x){ x^=x>>16; x*=0x7feb352du; x^=x>>15; x*=0x846ca68bu; return x^(x>>16); }
 static u16 ore_n[NORE],ore_rich[NORE],ore_prist[NORE],ore_ring[ORE_RING];
 static u8 ore_ring_i,ore_tool;
 static u16 sm_n[NMAT];
@@ -176,6 +192,31 @@ int main(void){
     cart[ORE_OFF+12]^=0x20;
     ore_reset();ore_load();
     CHECK(ore_n[4]==0 && ore_rich[4]==0 && ore_prist[4]==0); tested++;
+
+    // Mine and surface extraction share the real all-or-nothing helper.
+    for(int o=4;o<NORE;o++) for(int q=0;q<4;q++) for(int room=0;room<20;room++){
+        ore_n[o]=(u16)(9999-room); ore_rich[o]=3; ore_prist[o]=2;
+        int n=10, got=ore_harvest(o,n,q);
+        CHECK(got==(room>=n?n:0));
+        CHECK(ore_n[o]==9999-room+got);
+        CHECK(ore_rich[o]==3+(q==2?got:0) && ore_prist[o]==2+(q==3?got:0));
+        tested++;
+    }
+    CHECK(!ore_harvest(-1,2,1) && !ore_harvest(NORE,2,1) && !ore_harvest(4,0,1));
+    for(unsigned seed=0;seed<32;seed++){
+        wd.tseed=seed*7919u;
+        int distinct=0;
+        for(int cell=33;cell<992;cell+=7){
+            int q1,m1,q2,m2,q3,m3;
+            int n=ore_vein_yield(1024,cell*4096,5,&q1,&m1);
+            CHECK(n>0 && n<=44 && q1>=0 && q1<=3);
+            CHECK(ore_vein_yield(1024,cell*4096,5,&q2,&m2)==n && q1==q2 && m1==m2);
+            int other=ore_vein_yield(2048,cell*4096,5,&q3,&m3);
+            if(other!=n || q1!=q3 || m1!=m3) distinct++;
+            tested++;
+        }
+        CHECK(distinct>20);
+    }
 
     // Smelting a full bar stock must NOT consume the input ores.
     sm_reset();ore_n[4]=20;sm_n[0]=9999;clock_seconds=100;

@@ -793,21 +793,28 @@ static int foe_ahead(s32 dirx, s32 diry){
         if(fwd>0 && fwd<rng_ && side<0xE000) return 1; }
     return 0;
 }
-static int mine_cell=-1, mine_n=0;                                             // the vein you are biting in a mine, and how many bites it has taken
 static void mine_bite(s32 dirx, s32 diry){
     for(int k=0;k<2;k++){ s32 r = k ? 0x10000 : 0xA000;
         int tx=(int)((px_+(s32)(((long long)dirx*r)>>16))>>16), ty=(int)((py_+(s32)(((long long)diry*r)>>16))>>16);
         if(tx<1||ty<1||tx>=MW-1||ty>=MW-1) return; int c=ty*MW+tx;
         if(dmap[c]!=D_WALL) continue;
         if((wmat[c]&15)!=M_CRYSTAL){ if(HIT(K_A)){ say("SOLID ROCK. LOOK FOR THE SHINY WALLS"); sfx(12); } return; }
-        int ore=-1; for(int t=0;t<4 && ore<0;t++) ore=ore_of((s32)(tx*977+t*131+depth_no*7919),(s32)(ty*613+t*53)); if(ore<0) ore=4;
+        // ore_id quantizes coordinates at 1/64 tile. Encode depth and cell
+        // separately in those units, so two floors need not share a grade.
+        s32 vx=(s32)((u32)depth_no*1024u), vy=(s32)((u32)c*4096u);
+        int ore=-1;
+        for(int t=0;t<4 && ore<0;t++){ vy=(s32)((u32)c*4096u+(u32)t*1024u); ore=ore_of(vx,vy); }
+        if(ore<0) ore=4;
         if(ore_tool_eff()<ore_need_tool(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: NEEDS A "); scat(b,ore_tool_name[ore_need_tool(ore)]); say(b); sfx(4); return; }
         if(mine_cell!=c){ mine_cell=c; mine_n=0; }
-        sfx(12); if(++mine_n<ore_hits(ore)){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,ore_hits(ore)-mine_n); scat(b," MORE"); say(b); burst((tx<<16)+0x8000,(ty<<16)+0x8000,0x4000,3,2); return; }
+        int hits=ore_hits(ore);
+        sfx(12); if(++mine_n<hits){ char b[40]; scpy(b,ore_def[ore].name); scat(b," VEIN: "); ncat(b,hits-mine_n); scat(b," MORE"); say(b); burst((tx<<16)+0x8000,(ty<<16)+0x8000,0x4000,3,2); return; }
+        int oq,mg,n=ore_vein_yield(vx,vy,(ore_tool_eff()>=2)+dlv()/10+(depth_no>90?30:depth_no/3),&oq,&mg);
+        int got=ore_harvest(ore,n,oq);
+        if(!got){ mine_n=hits-1; say("ORE BAG FULL. SELL OR SMELT SOME"); sfx(4); return; }
         dmap[c]=D_FLOOR; fmat[c]=FL_DIRT; rid[c]=255; fcode[c]=3; mine_cell=-1; mine_n=0; fm_dug(c);
-        int n=1+rndi(2)+(ore_tool_eff()>=2)+dlv()/10+depth_no/3; int oq=ore_quality((s32)(tx*977),(s32)(ty*613)); n=ore_qn(n,oq); int mg=ore_mega((s32)(tx*977+depth_no*131),(s32)(ty*613)); if(mg){ n=n*3+2; if(oq<2) oq=2; }
-        int got=ore_add_q(ore,n,oq); st_mined+=n; ml_add(ore,got); ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
-        char b[44]; scpy(b,mg?"MEGA! +":"+"); ncat(b,got); scat(b," "); scat(b,oq_name[oq]); scat(b,ore_def[ore].name); scat(b," ORE  BAG "); ncat(b,ore_n[ore]); say(b); sfx(7); build_light(); return; }
+        st_mined+=got; ml_add(ore,got); ach_check(); gain_xp(3+dlv()+ore_def[ore].tier*2);
+        char b[44]; txt_copy(b,sizeof b,mg?"MEGA! +":"+"); txt_number(b,sizeof b,got); txt_append(b,sizeof b," "); txt_append(b,sizeof b,oq_name[oq]); txt_append(b,sizeof b,ore_def[ore].name); txt_append(b,sizeof b," ORE"); say(b); sfx(7); build_light(); return; }
 }
 static void do_bite(s32 dirx, s32 diry){
     atk_len=(14-d_haste)*2/3; if(atk_len<4) atk_len=4; atk_len=atk_len*100/xo_v(XO_BITESPD); if(atk_len<2) atk_len=2; atk_t=atk_len;        // was 14 (min 6): a bite every 0.9 s was slow
