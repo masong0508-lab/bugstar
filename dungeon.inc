@@ -159,6 +159,7 @@ static const char *const kind_name[K_NEND]={"SPIDER","","","","QUEEN","BAT","","
 static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE||k==K_SLIME||k==K_SCORP||k==K_GHOST||k==K_TOAD||k==K_ANT||k==K_CENTI||k==K_GOLEM||k==K_DRONE||k==K_MOTH||k==K_SHROOM||k==K_CRAB||k==K_WISP||(k>=K_SNAIL&&k<K_NEND); }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 160                                   // objects on a floor (was 64): room for crowds on the deep floors
+#define FLOOR_ELITE_CHAMP 4                         // distinguish a floor objective target from a random champion
 static s32 tgt_x, tgt_y, up_x, up_y; static int lantk=58;
 EW static DObj dob[NDO]; static int ndo;
 static s32 px_, py_; static int pang;
@@ -481,7 +482,10 @@ static void make_floor(void){
     else if(arrive_sk && up2_cell>=0) face_open(up2_cell);                           // you came down a shortcut: you step out of its pair
     arrive_dn=0; arrive_sk=0; FMH->req=0;
     ndo=0;
-    #define SPAWN(k_,cell_,hp_,sub_) do{ if(ndo<NDO){ DObj *o=&dob[ndo++]; memset(o,0,sizeof(DObj)); int c_=(cell_); o->kind=(k_); o->alive=1; o->hp=o->maxhp=xo_hp(hp_); o->sub=(sub_); o->x=((c_%MW)<<16)+0x8000; o->y=((c_/MW)<<16)+0x8000; } }while(0)
+    // Ordinary crowds and props cannot consume slots reserved for story
+    // bosses, outpost keys, the floor objective and the posted quest.
+    int spawn_cap=NDO-24;
+    #define SPAWN(k_,cell_,hp_,sub_) do{ if(ndo<spawn_cap){ DObj *o=&dob[ndo++]; memset(o,0,sizeof(DObj)); int c_=(cell_); o->kind=(k_); o->alive=1; o->hp=o->maxhp=xo_hp(hp_); o->sub=(sub_); o->x=((c_%MW)<<16)+0x8000; o->y=((c_/MW)<<16)+0x8000; } }while(0)
     int base_hp = 6 + dlv()*5 + depth_no*2; if(endless && cur_moon) base_hp = base_hp*(100+moon_tier()*10)/100;      // every moon tier: +10% monster health
     int bcell = mboss ? 14*MW+15 : dn;                                  // the labyrinth boss waits in the middle arena
     int ilvl = dlv()*3 + depth_no;
@@ -507,13 +511,15 @@ static void make_floor(void){
             if(made<4) SPAWN(K_CHEST, c2, 1, 0);
             else { int kind = pick_kind(); SPAWN(kind, c2, kind_hp(kind, base_hp), 0); }
             made++; } }
-    #define SPAWN_GEAR(cell_,g_) do{ Gear gg_=(g_); SPAWN(K_ITEM,(cell_),1,gg_.sub); DObj *o_=&dob[ndo-1]; o_->it=gg_.it; o_->rar=gg_.rar; o_->pre=gg_.pre; o_->suf=gg_.suf; o_->lvl=gg_.lvl; }while(0)
+    #define SPAWN_GEAR(cell_,g_) do{ if(ndo<spawn_cap){ Gear gg_=(g_); SPAWN(K_ITEM,(cell_),1,gg_.sub); DObj *o_=&dob[ndo-1]; o_->it=gg_.it; o_->rar=gg_.rar; o_->pre=gg_.pre; o_->suf=gg_.suf; o_->lvl=gg_.lvl; } }while(0)
     for(int i=0;i<nrooms;i++){ int c = 1 + rndi(2); for(int k=0;k<c;k++) SPAWN_GEAR(room_floor_cell(&rooms[i]), roll_drop(ilvl,0)); }
+    spawn_cap=NDO-12; // guarantee cages before optional bats and lamps; leave room for required actors
     int cages = 1 + (nrooms>3);
     for(int k=0;k<cages;k++){ int r=1+rndi(nrooms>1?nrooms-1:1); SPAWN(K_CAGE, room_floor_cell(&rooms[r<nrooms?r:0]), 1, rndi(8)<2?BUG_PILL:rndi(6)); }
     int nb = 1 + (dlv()/2>3?3:dlv()/2) + (depth_no>2);
     for(int k=0;k<nb;k++) SPAWN(K_BAT, room_floor_cell(&rooms[nrooms>1 ? 1+rndi(nrooms-1) : 0]), base_hp/2+1, 0);
     for(int k=0;k<nlamps;k++) SPAWN(K_LAMP, lampcell[k], 1, 0);
+    spawn_cap=NDO-6; // bosses, outpost core/key and special-floor loot
     if(last && !base_mode){ SPAWN(K_BOSS, bcell, 40+dlv()*30 + tier_now()*40, 0); }       // the boss is always at the bottom: beat it again for the next tier
     if(last && !base_mode && !endless && !forge_on && (DPV(P_BOSS)>=1 || xo_v(XO_BOSSES))){                      // MULTIBOSS: higher difficulties send more bosses down deep. Insane-sect: 11+ on its deepest tiers
         int bp=DPV(P_BOSS), ex = bp==5 ? (tier_now()*10+zone*8)/25+1 : bp==4 ? tier_now()+1+zone/3 : bp==3 ? (tier_now()*3+2)/4 : (tier_now()+1)/2; if(bp==5 && ex<2) ex=2; if(bp<1) ex=0; ex+=xo_v(XO_BOSSES); if(ex>15) ex=15;
@@ -538,6 +544,7 @@ static void make_floor(void){
     }
     if(mboss){ for(int i=0;i<ndo;i++) if(dob[i].kind==K_BOSS) dob[i].hp=dob[i].maxhp=dob[i].maxhp*5/4;
         hunt_t=150; tgt_x=((bcell%MW)<<16)+0x8000; tgt_y=((bcell/MW)<<16)+0x8000; SPAWN_GEAR(room_floor_cell(&rooms[1]), roll_drop(ilvl+8,30)); }          // it sleeps for a moment. the far chamber holds the prize
+    spawn_cap=NDO-4; // at least two floor-objective slots, plus four for posted quests
     // ---- a floor event (never on the first garden floor, a boss floor or in an outpost)
     fl_ev=FE_NONE; fl_need=fl_have=0; fl_bonus=100; fl_done=0;
 #ifdef TEST_FE
@@ -554,7 +561,14 @@ static void make_floor(void){
         switch(fl_ev){
             case FE_VAULT: for(int k=0;k<4;k++){ int r=rndi(nrooms); SPAWN(K_CHEST, room_floor_cell(&rooms[r]), 1, 0); SPAWN(K_SPIDER, room_floor_cell(&rooms[r]), base_hp, 0); } break;
             case FE_NEST: for(int i=1;i<nrooms;i++) for(int k=0;k<2;k++) SPAWN(rndi(3)?K_SPIDER:K_WASP, room_floor_cell(&rooms[i]), base_hp, 0); fl_bonus=150; break;
-            case FE_ELITE: for(int k=0;k<2;k++){ int kind=rndi(2)?K_BEETLE:K_SPIDER; SPAWN(kind, room_floor_cell(&rooms[1+rndi(nrooms>1?nrooms-1:1)]), base_hp*4, 0); DObj *o=&dob[ndo-1]; o->champ=1; o->cname=rndi(8); } fl_need=2; break;
+            case FE_ELITE:
+                for(int k=0;k<2 && ndo<spawn_cap;k++){
+                    int kind=rndi(2)?K_BEETLE:K_SPIDER;
+                    SPAWN(kind, room_floor_cell(&rooms[nrooms>1?1+rndi(nrooms-1):0]), base_hp*4, 0);
+                    DObj *o=&dob[ndo-1]; o->champ=FLOOR_ELITE_CHAMP; o->cname=rndi(8); fl_need++;
+                }
+                if(!fl_need) fl_ev=FE_NONE;
+                break;
             case FE_DARK: fl_bonus=200; break;
             case FE_SPEED: fl_end=vbl_count+60*60; break;
             case FE_CURSED: for(int i=0;i<ndo;i++) if(is_mon(dob[i].kind) && dob[i].kind!=K_BOSS){ dob[i].hp=dob[i].maxhp=dob[i].maxhp*3/2; } fl_bonus=175;
@@ -567,6 +581,7 @@ static void make_floor(void){
         }
     }
     if(endless && cur_moon && !mboss){ char mb[40]; scpy(mb,"MOON TIER "); ncat(mb,moon_tier()); scat(mb,". GUARDIAN ON B"); ncat(mb,moon_tier()*5); say(mb); msg_timer=70; }
+    spawn_cap=NDO; // the remaining slots belong to critical posted quests
     // This quest's world and floor must agree with the posting. An earlier
     // or later floor cannot spawn repeat shards or substitute a boss.
     int quest_local = !forge_on && !base_mode && q_type>0 && !q_done && quest_home();
@@ -660,7 +675,7 @@ static void fm_make(void){                                                 // ma
         for(int k=0;k<m->nx && ndo<NDO;k++){ DObj *o=&dob[ndo++]; int c=m->ex[k].c; memset(o,0,sizeof(DObj)); o->kind=K_ITEM; o->alive=1; o->hp=o->maxhp=1;
             o->x=((c%MW)<<16)+0x8000; o->y=((c/MW)<<16)+0x8000; o->sub=m->ex[k].sub; o->it=m->ex[k].it; o->rar=m->ex[k].rar; o->pre=m->ex[k].pre; o->suf=m->ex[k].suf; o->lvl=m->ex[k].lvl; }
         if(m->flags&2) fl_done=1;
-        else if(fl_ev==FE_ELITE){ int n=0; for(int i=0;i<h->nbase && i<ndo;i++) if(dob[i].champ==1 && !dob[i].alive && is_mon(dob[i].kind)) n++; fl_have=n; if(fl_have>=fl_need) fl_done=1; }
+        else if(fl_ev==FE_ELITE){ int n=0; for(int i=0;i<h->nbase && i<ndo;i++) if(dob[i].champ==FLOOR_ELITE_CHAMP && !dob[i].alive && is_mon(dob[i].kind)) n++; fl_have=n; if(fl_have>=fl_need) fl_done=1; }
     }
 }
 static int solid(s32 x, s32 y){ int cx=x>>16, cy=y>>16; if(cx<0||cy<0||cx>=MW||cy>=MW) return 1; int t=dmap[cy*MW+cx]; return t==D_WALL||t==D_PILLAR||t==D_LOCK; }
@@ -1253,7 +1268,7 @@ static void dungeon_checkpoint(void){                 // every new floor is a sa
     int pd=portal_depth; portal_depth=depth_no; do_save(); portal_depth=pd; say("CHECKPOINT SAVED"); msg_timer=40;
 }
 static void fl_kill(DObj *o){                                                   // a monster died: does that move the floor's goal?
-    if(fl_ev==FE_ELITE && o->champ==1 && !fl_done && ++fl_have>=fl_need){ fl_done=1; int g=200+dlv()*40+depth_no*10; earn(g); gain_xp(30+dlv()*6); char b[40]; scpy(b,"ELITES SLAIN! +"); ncat(b,g); scat(b,"G"); say(b); msg_timer=50; sfx(6); }
+    if(fl_ev==FE_ELITE && o->champ==FLOOR_ELITE_CHAMP && !fl_done && ++fl_have>=fl_need){ fl_done=1; int g=200+dlv()*40+depth_no*10; earn(g); gain_xp(30+dlv()*6); char b[40]; scpy(b,"ELITES SLAIN! +"); ncat(b,g); scat(b,"G"); say(b); msg_timer=50; sfx(6); }
 }
 static void fl_leave(void){                                                     // taking the stairs down
     if(fl_ev==FE_SPEED && !fl_done && (s32)(fl_end-vbl_count)>0){ fl_done=1; int g=120+dlv()*30+depth_no*8; earn(g); gain_xp(20+dlv()*5); char b[40]; scpy(b,"SPEED RUN BEATEN! +"); ncat(b,g); scat(b,"G"); say(b); sfx(6); }

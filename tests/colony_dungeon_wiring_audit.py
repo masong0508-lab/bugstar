@@ -17,7 +17,7 @@ src = {p: (R / p).read_text() for p in [
 checks = {
     "real elite goal still gives combat rewards": (
         "dungeon.inc",
-        'if(fl_ev==FE_ELITE && o->champ==1 && !fl_done && ++fl_have>=fl_need){ fl_done=1;'
+        'if(fl_ev==FE_ELITE && o->champ==FLOOR_ELITE_CHAMP && !fl_done && ++fl_have>=fl_need){ fl_done=1;'
     ),
     "dungeon mission event picked from live colony and mine": (
         "pc/sim/sim_glue.inc", "mn_dungeon_need(sim_mine(),co)) return COLC_MINE;"
