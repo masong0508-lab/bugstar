@@ -50,6 +50,7 @@ static int gold_find=100;
 // ---- FLOOR EVENTS: most dungeon floors roll one, with a twist or a goal
 enum { FE_NONE, FE_VAULT, FE_NEST, FE_ELITE, FE_DARK, FE_SPEED, FE_CURSED, FE_RUSH, FE_BLESSED, FE_AMBUSH, FE_QUIET, NFE, FE_GAS, FE_CAVE };      // FE_GAS and FE_CAVE are mine-only: they sit after NFE so the random roll never picks them
 static int mh_t=0;                                                                   // the mine hazard timer
+static int mine_cell=-1, mine_n=0;                                                    // partial digging on the current floor only
 static const char *const fe_name[NFE+2]={"","TREASURE VAULT","MONSTER NEST","ELITE HUNT","DARK FLOOR","SPEED RUN","CURSED FLOOR","GOLD RUSH","BLESSED SHRINE","AMBUSH","QUIET FLOOR","TOXIC GAS","CAVE-IN RISK"};
 static const char *const fe_what[NFE]={"","CHESTS EVERYWHERE. SO ARE THE GUARDS","EXTRA MONSTERS. EXTRA GOLD","SLAY THE ELITES FOR A BIG REWARD","LESS LIGHT. DOUBLE LOOT","REACH THE STAIRS IN 60 SECONDS",
     "TOUGHER MONSTERS. BETTER LOOT","GOLD, GOLD, GOLD","A SHRINE BLESSES YOU","THEY ARE WAITING AT THE STAIRS","NOTHING HERE WANTS TO FIGHT. BREATHE"};

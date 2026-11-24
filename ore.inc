@@ -163,6 +163,21 @@ static const char *const oq_name[4]={"POOR ","","RICH ","PRISTINE "};
 static int ore_quality(s32 ox, s32 oy){ int r=(int)((hmix(ore_id(ox,oy)*0x2545F491u+wd.tseed)>>12)%100); return r<25?0 : r<80?1 : r<95?2 : 3; }
 static int ore_mega(s32 ox, s32 oy){ return (int)((hmix(ore_id(ox,oy)*0x7FEB352Du+wd.tseed*3+77)>>9)%40)==0; }      // about 1 vein in 40 is a MEGADEPOSIT: three times the ore, never poor
 static int ore_qn(int n, int q){ if(q==0) return n>1?n-1:1; if(q==2) return n+1; if(q==3) return n*2; return n; }
+// A deposit's grade and base yield are stable across repeated extraction
+// attempts. No input RNG is consumed when a bag is too full.
+static int ore_vein_yield(s32 x, s32 y, int bonus, int *grade, int *mega){
+    int q=ore_quality(x,y), mg=ore_mega(x,y);
+    int n=ore_qn(1+(int)(hmix((u32)ore_id(x,y)*0x9E3779B1u+0x41C64E6Du)&1u)+bonus,q);
+    if(mg){ n=n*3+2; if(q<2) q=2; }
+    *grade=q; *mega=mg; return n;
+}
+// Player extraction is all-or-nothing; other callers can still use the
+// partial ore_add_q API. Leave the vein untouched when the whole yield
+// won't fit, including the rich/pristine parts of the stack.
+static int ore_harvest(int ore,int n,int q){
+    if(ore<4 || ore>=NORE || n<=0 || n>9999-(int)ore_n[ore]) return 0;
+    return ore_add_q(ore,n,q);
+}
 static int ore_of(s32 ox, s32 oy){      // -1: a plain crystal rock (goods, as before). Otherwise the ore this rock is a vein of
     u32 h=ore_id(ox,oy)*2654435761u+wd.tseed; if((int)((h>>16)%100)<(cur_rock ? 15 : 35)) return -1;      // (a belt rock is mostly vein)
     int maxt=2+dlv()/6+(cur_moon?1:0)+(hellw()?2:0)+(cur_rock==2?2:0); if(maxt>6) maxt=6; int hab=ore_habitat(), cand[NORE], n=0;

@@ -331,6 +331,7 @@ static void face_open(int c){                                                   
     pang = best*256;
 }
 static void make_floor(void){
+    mine_cell=-1; mine_n=0; mh_t=0; // fresh floor, not a continuation of the previous shaft's warning/bite
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_BRICK; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
     nrooms=0; nlights=0; nlamps=0; ntorch=0; ponds_made=0; pond_cells=0; pond_floor = rndi(100) < (zone==1 ? 45 : 20);   // about 1 floor in 5 has a pond (the Pond zone: nearly every other floor)
     if(forge_on) rng_s=hmix(((u32)ddna.seed<<8)+(u32)depth_no+1u);                 // a forge design is the same dungeon every time

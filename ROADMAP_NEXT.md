@@ -3,6 +3,24 @@
 This is the working roadmap after the big 1 Nov 2026 push. It covers all three versions: GBA (the original), GBC (the port) and PC (native, with the side game).
 The older `ROADMAP.md` is the mining roadmap and is still valid for the GBA. Read `pc/DEPTH_PLAN.md` for the side game and `pc/NATIVE_PLAN.md` for the window.
 
+## Mining extraction and shaft transition reliability — 24 November 2026
+
+- Surface and dungeon ore extraction is all-or-nothing: the full deposit
+  must fit in its ore stack, including rich/pristine grades. A refused
+  final hit retains the deposit and one remaining hit, with a clear sell
+  or smelt hint; no mining statistic, quest count or XP is paid for it.
+- Base yield is now stable for the same vein and tool bonus. Depth and cell
+  are encoded separately in underground vein identity, rather than
+  reusing almost identical quantized coordinates on every floor.
+- Ordinary resource nodes stay intact at a full cargo hold. Underground
+  depth yield bonuses cap at B90, keeping even a pristine mega vein below
+  the 9,999 stack limit in very deep endless mines.
+- Reset partial digging and gas/cave-in timers on floor generation; a
+  new shaft never inherits a previous floor's bites or pending damage.
+- Use bounded text receipts; no new permanent memory allocation or
+  save-layout change. Expanded production ore regression checks every
+  grade and near-cap stack and verifies both actual extraction paths.
+
 ## Crowded dungeon safety and precise elite objectives — 24 November 2026
 
 - Reserve the existing 160-object pool in phases: optional crowds and props,
