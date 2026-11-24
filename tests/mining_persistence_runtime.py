@@ -41,7 +41,7 @@ dig = fun(main, "static void mine_bite(")
 assert dig.index("ore_harvest") < dig.index("if(!got)") < dig.index("dmap[c]=D_FLOOR") < dig.index("fm_dug(c)")
 assert "mine_n=hits-1" in dig and "st_mined+=got" in dig and "ore_vein_yield(vx,vy" in dig
 assert "depth_no>90?30:depth_no/3" in dig
-assert "mine_cell=-1; mine_n=0; mh_t=0;" in fun(dungeon, "static void make_floor(")
+assert "static void make_floor(void){\n    mine_cell=-1; mine_n=0; mh_t=0;" in dungeon
 # Check real menu binding, not just isolated helpers.
 assert "if(q->kind==1 && !sm_room(q->out))" in ui
 assert "if(n>room) n=room;" in ui
