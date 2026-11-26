@@ -502,7 +502,7 @@ static void sim_ship_colony(volatile u16 *pg){
 }
 static void sim_ship_tabs(void){                              // the ship's GO tab: COLONY is listed once you found it (the MISSIONS row stays)
     int col = sim_is_on() && sim_f_ok && sim_ls_on(UF_COLONY);
-    shop_tab_n[0]=col?5:4; shop_tab_id[0][3]=col?17:18; shop_tab_id[0][4]=18;
+    shop_tab_n[0]=col?5:4; shop_tab_id[0][3]=col?18:19; shop_tab_id[0][4]=19;
 }
 
 // ---------------------------------------------------------------- patch 42: TOWN HALL and ARMADA (standing.h)
