@@ -6,6 +6,9 @@ A Game Boy Advance action RPG: a pill bug on turning planets, textured real-time
 
 **In development:** [Multiplayer roadmap](MULTIPLAYER_PLAN.md) covers PC/Android LAN and online co-op and GBA/GBC link-cable sessions; networking is **not playable yet**. The 3D space work includes depth-aware station docking geometry and native PC/Android perspective fixes.
 
+## Shipboard field guide
+Open your ship's YOU tab > FIELD GUIDE for eight focused lessons: first expedition, combat, mining, space, trade and quests, Buddy and gear, exploration, and kart challenges. Dungeon treasure chests stay unopened if the bag is full; a delivery quest can trade its own goods for a prize even when the bag is full. No new save fields or persistent RAM arrays.
+
 ## Controls
 - On a planet, **UP walks into the screen** (away from the camera) in both third and first person.
 | Button | On a planet | In a dungeon |

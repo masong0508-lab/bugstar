@@ -55,6 +55,19 @@ static int q_counted(int t){ return t==Q_HUNT||t==Q_RESCUE||t==Q_SHARDS||t==Q_BR
 static int quest_held(void){ int n=0; if(q_type==Q_BRING){ for(int k=0;k<bag_n;k++) if(bag[k].it==bring_it[q_floor&3]) n++; } else if(q_type==Q_GOODS) n=cargo[q_floor&7]; return n; }
 static void quest_refresh(void){ if(q_type==Q_BRING||q_type==Q_GOODS){ q_have=quest_held(); q_done = q_have>=q_need; } }   // fetch quests are done the moment you carry the goods
 static void quest_take(void){ if(q_type==Q_BRING){ int left=q_need; for(int k=bag_n-1;k>=0&&left>0;k--) if(bag[k].it==bring_it[q_floor&3]){ drop_at(k); left--; } } else if(q_type==Q_GOODS) cargo[q_floor&7]-=q_need; }
+// Delivery goods themselves free space. All other rewards still need a spare slot.
+static int quest_prize_room(void){
+    return bag_n<BAGMAX || (q_type==Q_BRING && q_need>0 && quest_held()>=q_need);
+}
+static int quest_claim_prize(Gear pz){
+    if(!quest_prize_room()) return 0;
+    if(bag_n>=BAGMAX){ // validated positive delivery count; guaranteed to free a slot
+        quest_take();
+        return add_gear(pz);
+    }
+    if(!add_gear(pz)) return 0;
+    quest_take(); return 1;
+}
 // ---------------------------------------------------------------- the story, told by Bolt
 // Bolt is the tin droid that rolls after you. He does not know what he is. The data cores in the drone outposts are his memory.
 static const char *const bolt_mem[8][4]={
@@ -1296,11 +1309,41 @@ static int wrap_text(volatile u16 *pg, int x, int y, int maxc, const char *s, in
 static void shop_prev_copy(volatile u16 *pg, volatile u16 *bp){ for(int y=SK_Y;y<SK_Y+SK_H;y++){ volatile u16 *src=bp+y*120+SK_X/2, *dst=pg+y*120+SK_X/2; for(int x=0;x<SK_W/2;x++) dst[x]=src[x]; } }
 // ---- the ship menu: four tabs (L/R or LEFT/RIGHT), a few big rows on each, and a line that says what the row does.
 // the ids below are the old row numbers, so every action further down is unchanged. START = take off from any tab.
-static const u8 shop_tab_n[4]={3,5,5,4};
-static const u8 shop_tab_id[4][5]={{0,14,13,0,0},{1,15,2,3,4},{5,6,8,7,16},{9,12,10,11,0}};
+// Shipboard field manual. Read only on demand; no gameplay tick or saved state.
+#define NFIELD 8
+static const char *const field_title[NFIELD]={"FIRST EXPEDITION","DUNGEON COMBAT","MINING AND CRAFTING","SPACE PILOTING","TRADE AND QUESTS","BUDDY AND GEAR","EXPLORING NEW WORLDS","KART AND CHALLENGES"};
+static const char *const field_lines[NFIELD][6]={
+    {"FOLLOW THE GOLD ARROW TO THE DOOR.","TAP SELECT TO CHANGE PLANET CAMERA.","HOLD SELECT + L/R TO SWITCH TARGET.","A OPENS DOORS AND TALKS TO LOCALS.","BUY FOOD AND POTIONS AT YOUR SHIP.","START OPENS YOUR BAG, MAP AND QUEST."},
+    {"RED EXCLAMATION MARKS AN ATTACK.","STEP BACK OR STRAFE BEFORE IT LANDS.","DOUBLE TAP L OR R TO DODGE SIDEWAYS.","THREE BITES IN A ROW TRIGGER CRUNCH.","HOLD SELECT + L/R TO CHANGE SPELL.","SAVE A WARP CRYSTAL FOR THE WAY OUT."},
+    {"BITE A VEIN WITH THE RIGHT TOOL TIER.","RICHER ORE IS FOUND IN DEEPER SHAFTS.","A FULL ORE BAG LEAVES THE VEIN INTACT.","USE CARE > MINING TO UPGRADE YOUR TOOL.","AT THE WORKBENCH, UPGRADE YOUR GEAR.","KEEP ORE FOR SMELTING OR SELL FOR GOLD."},
+    {"B THRUSTS. R BRAKES AND TRACTORS LOOT.","A FIRES. START CHANGES FLIGHT CAMERA.","UP DIVES AND DOWN CLIMBS IN 3D FLIGHT.","GREEN SALVAGE REFILLS FUEL.","CYAN SALVAGE REPAIRS HULL OR SHIELDS.","SELECT OPENS THE STAR CHART."},
+    {"STATIONS BUY AND SELL CARGO GOODS.","PRICES CHANGE WITH THE LOCAL ECONOMY.","SHOP > QUEST BOARD OFFERS SIDE JOBS.","CHECK THE LISTED WORLD AND FLOOR.","BRING JOBS USE GOODS ALREADY IN YOUR BAG.","CLAIM REWARDS BEFORE TAKING A NEW JOB."},
+    {"FEED BUDDY FISH TO CHANGE HIS FORM.","YOUR PET GAINS LEVELS AS YOU GAIN XP.","COMPARE GEAR ON THE START > GEAR PAGE.","A EQUIPS AN ITEM FROM YOUR BAG.","CARE HEALS BOTH YOU AND BUDDY.","KEEP UNIQUES SAFE IN THE TROPHY CASE."},
+    {"CITIES HAVE SHOPS AND LOCAL JOBS.","RUINS CAN HIDE RIDDLES AND REWARDS.","LOOK FOR RESOURCE NODES AND FOSSILS.","WEATHER AND GRAVITY CHANGE HOW YOU MOVE.","CHECK YOUR FUEL BEFORE A LONG JUMP.","TALK TO BOLT FOR THE NEXT STORY GOAL."},
+    {"GO > KART CLUB OPENS THE RACING MODE.","TRY DIFFERENT KARTS AND TRACKS.","THE TRACK MAKER BUILDS CUSTOM COURSES.","REVISIT A CLEARED WORLD FOR A NEW TIER.","HIGHER TIERS HAVE STRONGER ENEMIES.","START > EXTRAS SHOWS UNLOCK CONDITIONS."}
+};
+static void field_guide(volatile u16 *pg){
+    int sel=0,dirty=1; wait_release();
+    while(1){
+        if(dirty){ dirty=0; panel(pg,12,20,216,136,"FIELD GUIDE");
+            for(int i=0;i<NFIELD;i++){ int y=39+i*12;
+                if(i==sel) ui_sel(pg,18,y-2,204,11,U_SEL);
+                text(pg,24,y,field_title[i],i==sel?C_WHITE:C_GREY,1);
+            }
+            ui_lhint(pg,20,143,"A: READ   B: BACK",U_SOFT);
+        }
+        vsync(); read_keys();
+        if(HIT(K_B)){ wait_release(); return; }
+        if(HIT(K_UP)){ sel=(sel+NFIELD-1)%NFIELD; dirty=1; }
+        if(HIT(K_DOWN)){ sel=(sel+1)%NFIELD; dirty=1; }
+        if(HIT(K_A)){ card(pg,field_title[sel],field_lines[sel],6); dirty=1; }
+    }
+}
+static const u8 shop_tab_n[4]={3,5,5,5};
+static const u8 shop_tab_id[4][5]={{0,14,13,0,0},{1,15,2,3,4},{5,6,8,7,16},{9,12,10,11,17}};
 static const char *const shop_tab_nm[4]={"GO","SHOP","CARE","YOU"};
-static const char *const shop_nm[17]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB","SPELL SHOP","MINING"};
-static const char *const shop_ds[17]={"TAKE OFF FOR THE NEXT STAR","CRUMBS, POTIONS, BERRIES, SEEDS AND WARPS","BUY GEAR FOR YOUR BITE, SHELL AND CHARM","SELL WHAT YOU ARE CARRYING FOR GOLD","TAKE A JOB FOR FAME, GOLD AND A PRIZE","FULL HEARTS AND MANA FOR YOU AND BUDDY","LEARN WHAT AN UNKNOWN BERRY OR SEED DOES","KEEP OR SCRAP YOUR BEST FINDS","UPGRADE GEAR WITH GOLD AND MINED GOODS","REMAKE YOUR LOOK","REDESIGN YOUR SHIP IN 3D","HE ALWAYS KNOWS WHAT TO DO NEXT","SWITCH BETWEEN THE SHAPES YOU HAVE BEEN","ENTER THE DUNGEON FORGE","RACE ANY TIME AND BUILD YOUR OWN TRACKS","BUY ATTACK, DEFENSE AND SUMMON SPELLS","SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG"};
+static const char *const shop_nm[18]={"LAUNCH INTO SPACE","SUPPLIES","GEAR SHOP","SELL LOOT","QUEST BOARD","HEAL YOU AND BUDDY","IDENTIFY","TROPHY CASE","WORKBENCH","MIRROR","HANGAR","TALK TO BOLT","YOUR SHAPE","DUNGEON FORGE","KART CLUB","SPELL SHOP","MINING","FIELD GUIDE"};
+static const char *const shop_ds[18]={"TAKE OFF FOR THE NEXT STAR","CRUMBS, POTIONS, BERRIES, SEEDS AND WARPS","BUY GEAR FOR YOUR BITE, SHELL AND CHARM","SELL WHAT YOU ARE CARRYING FOR GOLD","TAKE A JOB FOR FAME, GOLD AND A PRIZE","FULL HEARTS AND MANA FOR YOU AND BUDDY","LEARN WHAT AN UNKNOWN BERRY OR SEED DOES","KEEP OR SCRAP YOUR BEST FINDS","UPGRADE GEAR WITH GOLD AND MINED GOODS","REMAKE YOUR LOOK","REDESIGN YOUR SHIP IN 3D","HE ALWAYS KNOWS WHAT TO DO NEXT","SWITCH BETWEEN THE SHAPES YOU HAVE BEEN","ENTER THE DUNGEON FORGE","RACE ANY TIME AND BUILD YOUR OWN TRACKS","BUY ATTACK, DEFENSE AND SUMMON SPELLS","SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG","READ BOLT\'S PRACTICAL FIELD MANUAL"};
 // ---------------------------------------------------------------- THE MARKET: supplies, gear, selling and buyback in one stall
 // Four tabs (L/R). Every row has a picture card (icon, name, rarity, what it does, how it compares to what you wear, what your gold will be).
 // Safety nets: nothing valuable sells without a YES, big buys ask first, a mistake can be bought back, and a new stock of gear costs gold.
@@ -1465,6 +1508,7 @@ static int shop_menu_(void){   // returns 1 to fly on, 2 for autopilot
             if(HIT(K_START)){ sel=0; break; }
             if(HIT(K_A)){ sel=shop_tab_id[tab][row[tab]]; break; }
         }
+        if(sel==17){ field_guide(pg); box(pg,12,20,216,136); continue; }
         if(sel==15){ spell_shop(pg); continue; }
         if(sel==16){ mining_menu(pg); continue; }
         if(sel==14){ kart_req=1; in_menu--; wait_release(); return 0; }
@@ -1505,13 +1549,11 @@ static int shop_menu_(void){   // returns 1 to fly on, 2 for autopilot
                 if(HIT(K_A)){
                     if(q_type<0){ q_type=-q_type; say("QUEST TAKEN"); save_game(); break; }
                     if(q_done){
-                        // Claim is atomic: never take the quest goods, gold/fame
-                        // and completion flag if its promised equipment cannot
-                        // fit. The player can sell, stash, then return safely.
-                        if(bag_n>=BAGMAX){ say("BAG FULL! MAKE ROOM FOR YOUR PRIZE"); dirty2=1; continue; }
+                        // Claim is atomic: a delivery can make its own prize space.
+                        if(!quest_prize_room()){ say("BAG FULL! MAKE ROOM FOR YOUR PRIZE"); dirty2=1; continue; }
                         Gear pz=roll_gear(rndi(3)==0?IT_CHARM:rndi(2)?IT_THORN:IT_SHELL, dlv()*3+clampi(level)+2, 30);
-                        if(!add_gear(pz)){ dirty2=1; continue; }
-                        quest_take(); gold=sadd(gold,q_gold); fame+=q_fame; q_type=Q_NONE;
+                        if(!quest_claim_prize(pz)){ dirty2=1; continue; }
+                        gold=sadd(gold,q_gold); fame+=q_fame; q_type=Q_NONE;
                         say("REWARD CLAIMED!"); sfx(6); save_game(); hud_now(); break;
                     }
                     if(confirm(pg,"ABANDON THIS QUEST?","ALL QUEST PROGRESS WILL BE LOST")){

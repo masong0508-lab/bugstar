@@ -24,6 +24,7 @@ on:
       - 'ui.inc'
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
+      - 'tests/field_guide_delivery_runtime.py'
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
       - 'tests/ui_text_bounds_runtime.py'
@@ -106,6 +107,7 @@ on:
       - 'ui.inc'
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
+      - 'tests/field_guide_delivery_runtime.py'
       - 'tests/quest_runtime_host.py'
       - 'tests/list_picker_runtime_host.py'
       - 'tests/ui_text_bounds_runtime.py'
@@ -234,6 +236,8 @@ jobs:
         run: python3 tests/kart_dma_palette_runtime_host.py
       - name: Audit quest targets, world gates and guaranteed rewards
         run: python3 tests/quest_integrity_audit.py
+      - name: Check field guide text and full-bag delivery exchange
+        run: python3 tests/field_guide_delivery_runtime.py
       - name: Execute real quest pickup code with UndefinedBehaviorSanitizer
         run: python3 tests/quest_runtime_host.py
       - name: Exercise native 3D perspective and near-plane regression with UBSan

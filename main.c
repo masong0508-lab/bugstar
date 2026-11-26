@@ -1123,7 +1123,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             // the boss calls her brood at half health, and gets angry
             if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1; say("THE QUEEN CALLS HER BROOD!"); sfx(9);
                 for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=K_SPIDER; b->alive=1; b->hp=b->maxhp=6+dlv()*4; b->x=o->x+((k?1:-1)<<16); b->y=o->y+(1<<15); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } } }
-        } else if(o->kind==K_CHEST){ if(d<0x9000){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
+        } else if(o->kind==K_CHEST){ if(d<0x9000 && bag_n<BAGMAX){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
                 Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now(); } }
         else if(o->kind==K_ITEM){ if(d<0x9000 && (bag_n<BAGMAX || o->it==IT_QUEST)){ Gear g={o->it,o->sub,o->rar,o->pre,o->suf,o->lvl}; if(add_gear(g)) o->alive=0; } }
         else if(o->kind==K_CAGE){ if(d<0xC000) near_cage_p=i; }

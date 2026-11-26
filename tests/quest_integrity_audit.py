@@ -80,9 +80,11 @@ require(game, 'say("THAT RELIC IS NOT YOUR QUEST TARGET")',
 start = ui.index('if(q_done){\n                        // Claim is atomic')
 end = ui.index('say("REWARD CLAIMED!")', start)
 claim = ui[start:end]
-assert claim.index("bag_n>=BAGMAX") < claim.index("add_gear(pz)") < claim.index("quest_take()") < claim.index("q_type=Q_NONE"), (
-    "quest claim can lose the prize or consume goods before the reward fits"
+assert claim.index("quest_prize_room()") < claim.index("quest_claim_prize(pz)") < claim.index("q_type=Q_NONE"), (
+    "quest claim can consume a completed job before the prize fits"
 )
+require(ui, "q_type==Q_BRING && q_need>0 && quest_held()>=q_need", "full-bag deliveries need verified goods")
+require(main, "o->kind==K_CHEST){ if(d<0x9000 && bag_n<BAGMAX)", "full bag must leave treasure chest intact")
 require(ui, 'confirm(pg,"ABANDON THIS QUEST?"',
         "quest abandonment lacks confirmation")
 require(ui, "EXTRA CAGES ON B", "player doesn't know where to find rescue targets")
