@@ -57,7 +57,13 @@ static int map_at(uint32_t a, size_t n){
       if(!p||(uintptr_t)p!=a) p=VirtualAlloc((void*)(uintptr_t)a,n,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE); if(!p||(uintptr_t)p!=a){ pc_map_fail_addr=a; pc_map_fail_err=GetLastError(); fprintf(stderr,"pc_hw: cannot map %08x (windows error %lu)\n",a,pc_map_fail_err); { MEMORY_BASIC_INFORMATION mi; if(VirtualQuery((void*)(uintptr_t)a,&mi,sizeof mi)) fprintf(stderr,"  there: base %p alloc-base %p size %lx state %lx type %lx\n",mi.BaseAddress,mi.AllocationBase,(unsigned long)mi.RegionSize,(unsigned long)mi.State,(unsigned long)mi.Type); } return 0; } return 1; }
 #else
     void *p = mmap((void*)(uintptr_t)a, n, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED_NOREPLACE, -1, 0);
-    if(p!=MAP_FAILED && (uintptr_t)p!=a){ munmap(p,n); p=MAP_FAILED; }      // an old kernel ignores MAP_FIXED_NOREPLACE and may give another address: do not keep it
+#ifdef PC_ANDROID
+    // Some old kernels reject MAP_FIXED_NOREPLACE instead of ignoring it.
+    // A plain address hint is safe: accept ONLY the exact returned address.
+    if(p==MAP_FAILED && errno==EINVAL)
+        p=mmap((void*)(uintptr_t)a,n,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+#endif
+    if(p!=MAP_FAILED && (uintptr_t)p!=a){ munmap(p,n); errno=EEXIST; p=MAP_FAILED; }      // an old kernel ignores MAP_FIXED_NOREPLACE and may give another address: do not keep it
     if(p==MAP_FAILED){ fprintf(stderr,"pc_hw: cannot map %08x (%zu bytes): %s\n",a,n,strerror(errno));
         // patch 35: say what is in the way (the lines of /proc/self/maps that overlap the range), so a log is enough to pick another PC_GBA_TOP
         FILE *m=fopen("/proc/self/maps","r"); if(m){ char l[320]; int k=0; while(k<12 && fgets(l,sizeof l,m)){ unsigned long lo=0,hi=0; if(sscanf(l,"%lx-%lx",&lo,&hi)==2 && lo<(unsigned long)a+n && hi>(unsigned long)a){ fprintf(stderr,"  in the way: %s",l); k++; } } fclose(m); }
@@ -65,13 +71,43 @@ static int map_at(uint32_t a, size_t n){
     return 1;
 #endif
 }
+#ifdef PC_ANDROID
+uint32_t pc_gba_top=PC_GBA_TOP;
+static int map_android_regions(void){
+    // Keep every fake hardware address below 2 GB. Never replace a mapping
+    // belonging to ART, the linker or a graphics driver. Undo a partial map
+    // before testing another candidate, including on 32-bit devices.
+    static const uint32_t tops[]={PC_GBA_TOP,0x20000000u,0x40000000u,0x10000000u,0x50000000u,0x60000000u,0x08000000u,0};
+    static const struct { uint32_t a,n; } regions[]={
+        {0x02000000u,0x40000},{0x03000000u,0x8000},
+        {0x04000000u,0x1000},{0x05000000u,0x1000},
+        {0x06000000u,0x20000},{0x07000000u,0x1000},
+        {0x08000000u,0x10000},{0x0E000000u,0x10000}};
+    for(unsigned t=0;t<sizeof tops/sizeof tops[0];t++){
+        unsigned i=0;
+        while(i<sizeof regions/sizeof regions[0] &&
+              map_at(tops[t]+regions[i].a,regions[i].n)) i++;
+        if(i==sizeof regions/sizeof regions[0]){
+            pc_gba_top=tops[t];
+            fprintf(stderr,"Android GBA map offset %08x\n",pc_gba_top);
+            return 1;
+        }
+        while(i){ --i; munmap((void*)(uintptr_t)(tops[t]+regions[i].a),regions[i].n); }
+    }
+    return 0;
+}
+#endif
 static uint64_t g_saved_hash;
 uint64_t pc_hash_sram(void);
 int pc_hw_init(const char *sav_path){
     g_sav = sav_path;
     if(getenv("PC_NATIVE") && getenv("PC_SCALE")){ int sc=atoi(getenv("PC_SCALE")); if(sc>1){ pc_nat_w=240*sc; pc_nat_h=160*sc; } } if(getenv("PC_SHIPS")) pc_ships_mode=atoi(getenv("PC_SHIPS")); if(getenv("PC_ARMADA")) pc_armada_n=atoi(getenv("PC_ARMADA"));
+#ifdef PC_ANDROID
+    if(!map_android_regions()) return 0;
+#else
     if(!map_at(EWRAM,0x40000) || !map_at(IWRAM,0x8000) || !map_at(IOREG,0x1000) || !map_at(PALRAM,0x1000) ||
        !map_at(VRAMB,0x20000) || !map_at(OAMB,0x1000) || !map_at(GPIOB,0x10000) || !map_at(SRAMB,0x10000)) return 0;
+#endif
     R16(IOREG+0x130)=0x03FF;                                  // no key pressed
     R16(IOREG+0x20)=0x100; R16(IOREG+0x26)=0x100;             // BG2 starts unscaled (the same start the emulator the game was tested on gives it)
     memset((void*)(uintptr_t)SRAMB,0xFF,0x8000);              // blank SRAM reads 0xFF, like a fresh cartridge

@@ -121,7 +121,9 @@ public class BugstarActivity extends SDLActivity {
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
-        if (level >= 10) { try { SDLActivity.nativeLowMemory(); } catch (Throwable t) { } }
+        // UI_HIDDEN (20) alone is not a memory emergency. Avoid forcing a
+        // reduced-quality session on every Home button press.
+        if (level == 10 || level == 15 || level >= 60) { try { SDLActivity.nativeLowMemory(); } catch (Throwable t) { } }
     }
 
     @Override
@@ -157,7 +159,8 @@ public class BugstarActivity extends SDLActivity {
         });
         // read the previous run's own log BEFORE the new run replaces it: the game reopens bugstar_log.txt with "w" a moment after start
         final String prevGameLog;
-        { File gl = new File(getExternalFilesDir(null), "bugstar_log.txt"); prevGameLog = gl.exists() ? readAll(gl) : ""; }
+        { File dir = getExternalFilesDir(null); if (dir == null) dir = getFilesDir();
+          File gl = new File(dir, "bugstar_log.txt"); prevGameLog = gl.exists() ? readAll(gl) : ""; }
         new Thread(new Runnable() {
             @Override public void run() {
                 try { saveReport(crashes, prevGameLog); } catch (Throwable t) { }

@@ -4,6 +4,9 @@
 // The game itself (the C code from the GBA) does not know any of this. It still thinks it is a GBA; pc_hw.c calls plat_frame() once per game frame (60 a second).
 #define _GNU_SOURCE
 #include <SDL.h>
+#ifdef PC_ANDROID
+#include <android/log.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +15,7 @@
 #include "pc_plat.h"
 #include "pc_net.h"
 extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;
+extern void sg_cache_set_cap_mb(int mb);
 extern void sg_cache_trim(void);      // pc_sprgen.c: give the sprite cache back (Android low memory)
 
 extern int pc_vid3d, pc_ships_mode, pc_armada_n, pc_quality; extern int pc_q_auto(void), pc_q_cur(void);
@@ -216,7 +220,9 @@ static int tex_ensure(int w, int h, int linear){
     tex=next; tex_w=w; tex_h=h; tex_linear=linear; return 1;
 }
 #ifdef PC_ANDROID
-static int cap_pixels(void){ // bound temporary renderer RAM even if old settings requested 40 megapixels
+static int g_low_ram; // session-only, not a change to the player's saved preferences
+static int cap_pixels(void){ // limit native work on low-end phones
+    if(g_low_ram) return 153600; // 480x320 maximum; hardware scales the result
     int want=C.max_mp ? C.max_mp*1000000 : 450000;
     return want>650000 ? 650000 : want;
 }
@@ -229,25 +235,35 @@ static int cap_pixels(void){
 static void present_game(int with_overlay);
 static void touch_draw(void);          // patch 30.1: defined further down (clang refuses an implicit declaration)
 static void frame_geometry(int *W, int *H, SDL_Rect *dst, int *linear, int *smooth){
-    int dw=dw_, dh=dh_; if(dw<240)dw=240; if(dh<160)dh=160;
+    int dw=dw_>0?dw_:1, dh=dh_>0?dh_:1, area=dh;
+    // A tall portrait screen has room for the game ABOVE the default touch
+    // controls. Square/foldable windows keep the original overlay layout.
+    if(g_touch && !g_thide && dh>dw){
+        int u=dw/7; if(u<12)u=12;
+        int spare=dh-6*u;
+        if(spare>=dw*2/3 && spare>=160) area=spare;
+    }
     int cap=cap_pixels();
-    if(C.scale_mode==SM_CRISP){
-        int k=dw/240<dh/160?dw/240:dh/160; if(k<1)k=1;
-        int r=k; while(r>1 && ((k%r)!=0 || (long)r*r*38400>cap)) r--;      // render at r, upscale by k/r (a whole number): still sharp
+    if(C.scale_mode==SM_CRISP && dw>=240 && area>=160){
+        int k=dw/240<area/160?dw/240:area/160;
+        int r=k; while(r>1 && ((k%r)!=0 || (long)r*r*38400>cap)) r--;
         *W=240*r; *H=160*r; dst->w=240*k; dst->h=160*k; *linear=0; *smooth=0;
     } else {
-        double s=fmin(dw/240.0,dh/160.0); int w=(int)lround(240*s), h=(int)lround(160*s); dst->w=w; dst->h=h; *smooth=1; *linear=0;
-        if((long)w*h>cap){ double f=sqrt((double)cap/((double)w*h)); *W=(int)(w*f)&~1; *H=(int)(h*f)&~1; if(*W<240)*W=240; if(*H<160)*H=160; *linear=1; }
+        double s=fmin(dw/240.0,area/160.0); int w=(int)lround(240*s), h=(int)lround(160*s);
+        if(w<1)w=1; if(h<1)h=1; if(w>dw)w=dw; if(h>area)h=area;
+        dst->w=w; dst->h=h; *smooth=1; *linear=0;
+        if(w<240 || h<160){ *W=240; *H=160; *linear=1; }
+        else if((double)w*h>cap){ double f=sqrt((double)cap/((double)w*h)); *W=(int)(w*f)&~1; *H=(int)(h*f)&~1; if(*W<240)*W=240; if(*H<160)*H=160; *linear=1; }
         else { *W=w; *H=h; }
     }
-    dst->x=(dw-dst->w)/2; dst->y=(dh-dst->h)/2;
+    dst->x=(dw-dst->w)/2; dst->y=(area-dst->h)/2;
 }
 // ---- font / text overlay
 static void font_init(void){
     const int cw=4, ch=6; SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,cw*16,ch*8,32,SDL_PIXELFORMAT_ARGB8888); if(!s) return; SDL_FillRect(s,0,0);
     uint32_t *p=s->pixels;
     for(int c=32;c<128;c++){ uint16_t g=pc_font_glyph(c); int cx=(c&15)*cw, cy=(c>>4)*ch; for(int k=0;k<15;k++) if(g&(1<<(14-k))) p[(cy+k/3)*(cw*16)+cx+k%3]=0xFFFFFFFF; }
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"nearest"); fonttex=SDL_CreateTextureFromSurface(ren,s); SDL_SetTextureBlendMode(fonttex,SDL_BLENDMODE_BLEND); SDL_FreeSurface(s);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"nearest"); fonttex=SDL_CreateTextureFromSurface(ren,s); if(fonttex) SDL_SetTextureBlendMode(fonttex,SDL_BLENDMODE_BLEND); SDL_FreeSurface(s);
 }
 static int gs_;                                                  // glyph scale in real pixels
 static int text_w(const char *s){ return (int)strlen(s)*4*gs_; }
@@ -455,7 +471,7 @@ static void menu_pad(int btn){
 static int shot_pending;
 static void sim_vsync(void);          // test hook, defined with the pacing below
 static void present_game(int with_overlay){
-    SDL_GetRendererOutputSize(ren,&dw_,&dh_);
+    if(SDL_GetRendererOutputSize(ren,&dw_,&dh_)!=0 || dw_<=0 || dh_<=0) return;
     int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth);
     if(!tex_ensure(W,H,linear)){
         // Keep the game playable at the original GBA resolution if a large
@@ -489,6 +505,9 @@ static void present_game(int with_overlay){
         if(s && SDL_RenderReadPixels(ren,NULL,SDL_PIXELFORMAT_ARGB8888,s->pixels,s->pitch)==0){ plat_write_png(g_autoshot_path,s->pixels,dw_,dh_); fprintf(stderr,"window shot %dx%d (draw %dx%d) -> %s\n",dw_,dh_,W,H,g_autoshot_path); }
         if(s) SDL_FreeSurface(s); g_autoshot_frame=-1; g_autoshot_path=0; if(g_stop_after>=0 && (menu_open || pc_frames()>=g_stop_after)) pc_quit_now(); }
     SDL_RenderPresent(ren);
+#ifdef PC_ANDROID
+    { static int boot_logged; if(!boot_logged){ boot_logged=1; __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_BOOT","first rendered game frame %dx%d",W,H); } }
+#endif
     sim_vsync();
 }
 // ------------------------------------------------------------------------------------------------ input
@@ -510,7 +529,7 @@ static const int tl_base[TC_N]={140,52,52,50,50,36,36,36,52,40,40,40};          
 static const char *const tl_nm[TC_N]={"D-PAD","B","A","L","R","MODE","START","MENU","C","X","Y","Z"};
 #include "pc_tpad.inc"
 static int tl_o(void){ return dw_>=dh_ ? 0 : 1; }        // 0 landscape, 1 portrait
-static int t_u(void){ int m=dw_<dh_?dw_:dh_; int u=tl_o()?m/7:m/6; return u<40?40:u; }
+static int t_u(void){ int m=dw_<dh_?dw_:dh_; int u=tl_o()?m/7:m/6; return u<12?12:u; }
 static int tg_on(void){ return g_touch && !g_thide; }
 static int tg_vis(int i){ if(ted_on) return 1; if(i==TC_L||i==TC_R||i==TC_MENU) return !g_t6; if(i==TC_X||i==TC_Y||i==TC_Z) return g_t6; return 1; }
 static int tg_kind(int i){ return i==TC_DPAD?0 : (i==TC_A||i==TC_B||i==TC_C||i==TC_X||i==TC_Y||i==TC_Z)?1 : 2; }       // 0 D-pad, 1 round button, 2 pill
@@ -541,7 +560,12 @@ static void tl_geo(TGeo *g){
     for(int i=0;i<TC_N;i++){ TPos *p=&g_tl[o][i]; int x,y;
         if(p->set){ x=(int)((long)p->x*dw_/1000); y=(int)((long)p->y*dh_/1000); } else tl_default(o,i,&x,&y);
         int s=p->s?p->s:100; int k=(i==TC_DPAD?(o?90:100):sc); g[i].r=(int)((long)u*tl_base[i]/100*s/100*k/100);
-        if(p->set){ int hw,hh; tg_ext_r(i,g[i].r,&hw,&hh); if(2*hw<dw_){ if(x<hw) x=hw; if(x>dw_-hw) x=dw_-hw; } if(2*hh<dh_){ if(y<hh) y=hh; if(y>dh_-hh) y=dh_-hh; } }      // a button never leaves the screen
+        { int hw,hh; if(g[i].r<1)g[i].r=1; tg_ext_r(i,g[i].r,&hw,&hh);
+          // A saved oversized layout must still be reachable in split-screen.
+          int limit=dw_<dh_?dw_:dh_; if(limit<1)limit=1;
+          if(hw*2>dw_ || hh*2>dh_){ int nr=limit/4; if(nr<1)nr=1; if(g[i].r>nr)g[i].r=nr; tg_ext_r(i,g[i].r,&hw,&hh); }
+          if(2*hw<=dw_){ if(x<hw)x=hw; if(x>dw_-hw)x=dw_-hw; }else x=dw_/2;
+          if(2*hh<=dh_){ if(y<hh)y=hh; if(y>dh_-hh)y=dh_-hh; }else y=dh_/2; }      // a button never leaves the screen
         g[i].cx=x; g[i].cy=y; }
 }
 static void tg_ext(const TGeo *g, int i, int *hw, int *hh){ tg_ext_r(i,g[i].r,hw,hh); }
@@ -758,10 +782,15 @@ static void pump_events(void){
         case SDL_DISPLAYEVENT: g_pace_reset=1; break;                 // the monitor changed (refresh rate, plugged in/out): the game's clock does not care
         case SDL_APP_WILLENTERBACKGROUND: case SDL_APP_DIDENTERBACKGROUND: case SDL_APP_TERMINATING: app_background(); break;
         case SDL_APP_WILLENTERFOREGROUND: case SDL_APP_DIDENTERFOREGROUND: app_foreground(); break;
-        case SDL_APP_LOWMEMORY: sg_cache_trim(); pc_save_flush(0); fprintf(stderr,"low memory: sprite cache emptied\n"); break;      // Android: the system asks apps to give memory back (BugstarActivity.onTrimMemory sends this too)
+        case SDL_APP_LOWMEMORY:
+#ifdef PC_ANDROID
+            g_low_ram=1; sg_cache_set_cap_mb(4);
+#endif
+            sg_cache_trim(); pc_save_flush(0); fprintf(stderr,"low memory: sprite cache emptied\n"); break;      // Android: the system asks apps to give memory back (BugstarActivity.onTrimMemory sends this too)
         case SDL_WINDOWEVENT:
             g_pace_reset=1;      // any window event (move, size, minimise, restore, focus): the next frame starts a fresh clock, no burst of catch-up frames
             if(e.window.event==SDL_WINDOWEVENT_SIZE_CHANGED && !C.fullscreen && !(SDL_GetWindowFlags(win)&SDL_WINDOW_MINIMIZED)){ int w,h; SDL_GetWindowSize(win,&w,&h); if(w>=240&&h>=160){ C.win_w=w; C.win_h=h; } }
+            if(e.window.event==SDL_WINDOWEVENT_SIZE_CHANGED || e.window.event==SDL_WINDOWEVENT_FOCUS_LOST) touch_release_all();
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST) memset(kst,0,sizeof kst);
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST && C.pause_unfocus) g_paused_focus=1;
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_GAINED) g_paused_focus=0;
@@ -785,6 +814,7 @@ static void pump_events(void){
         case SDL_RENDER_DEVICE_RESET: case SDL_RENDER_TARGETS_RESET:
             tg_flush();  // rebuild the game texture as well as touch graphics after Android EGL loss
             if(tex){ SDL_DestroyTexture(tex); tex=0; tex_w=tex_h=0; }
+            if(fonttex){ SDL_DestroyTexture(fonttex); fonttex=0; } font_init();
             g_pace_reset=1;
             break;
         case SDL_CONTROLLERDEVICEADDED: pad_open(); break;
@@ -1031,6 +1061,11 @@ int plat_open(int argc, char **argv){
 #endif
     if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){
         if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){ fprintf(stderr,"SDL: %s\n",SDL_GetError()); return 1; } g_no_audio=1; }
+#ifdef PC_ANDROID
+    { int ram=SDL_GetSystemRAM(); g_low_ram=sizeof(void*)==4 || (ram>0 && ram<=2048);
+      if(g_low_ram){ sg_cache_set_cap_mb(4); if(g_first_run){ C.ships=0; C.armada=0; C.quality=1; } }
+      fprintf(stderr,"Android RAM %d MiB, %u-bit, low memory profile %d\n",ram,(unsigned)(sizeof(void*)*8),g_low_ram); }
+#endif
     { const char *vd=SDL_GetCurrentVideoDriver(); g_quiet=getenv("BUGSTAR_EVENTS")||getenv("BUGSTAR_MENU")||getenv("BUGSTAR_FAKEPAD")||getenv("BUGSTAR_NOHELP")||g_stop_after>=0||(vd&&(!strcmp(vd,"dummy")||!strcmp(vd,"offscreen"))); }      // a test run (events, a dummy screen, a fixed length): no tutorial, the window keeps the size it was given
     if(g_first_run && !g_quiet && !g_size_arg && !C.fullscreen){      // first start: the biggest of the usual sizes (3x to 8x the GBA's 240 x 160) that fits the desktop with room for the title bar
         SDL_Rect r; if(SDL_GetDisplayUsableBounds(0,&r)==0 && r.w>0){ static const int sz[][2]={{720,480},{960,640},{1200,800},{1440,960},{1920,1280}}; int best=0; for(int i=0;i<5;i++) if(sz[i][0]<=r.w*9/10 && sz[i][1]<=r.h*88/100) best=i; C.win_w=sz[best][0]; C.win_h=sz[best][1]; } }
@@ -1038,7 +1073,14 @@ int plat_open(int argc, char **argv){
     if(!win){ fprintf(stderr,"window: %s\n",SDL_GetError()); return 1; }
     SDL_SetWindowMinimumSize(win,240,160);
     ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_ACCELERATED|(C.vsync?SDL_RENDERER_PRESENTVSYNC:0));
-    if(!ren){ fprintf(stderr,"no accelerated renderer (%s): using the software one\n",SDL_GetError()); ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_SOFTWARE); }
+#ifdef PC_ANDROID
+    if(!ren && C.vsync) ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_ACCELERATED);
+#endif
+    if(!ren){ fprintf(stderr,"no accelerated renderer (%s): using the software one\n",SDL_GetError()); ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_SOFTWARE);
+#ifdef PC_ANDROID
+      g_low_ram=1; sg_cache_set_cap_mb(4);
+#endif
+    }
     if(!ren){ fprintf(stderr,"renderer: %s\n",SDL_GetError()); return 1; }
     { SDL_RendererInfo ri; if(SDL_GetRendererInfo(ren,&ri)==0) fprintf(stderr,"video: %s renderer, driver %s\n",ri.name,SDL_GetCurrentVideoDriver()); }
     make_icon(); font_init();

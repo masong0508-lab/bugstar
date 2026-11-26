@@ -20,6 +20,8 @@ on:
       - 'facts_more.py'
       - 'monsters.py'
       - 'gen.py'
+      - 'tests/android_compat_runtime.py'
+      - 'tests/android_apk_audit.py'
       - 'tests/space_native_projection_audit.py'
       - 'tests/space_station_depth_audit.py'
       - 'net/**'
@@ -69,6 +71,9 @@ jobs:
       - name: Python deps for the generators
         run: python3 -m pip install numpy pillow
 
+      - name: Verify Android relocation, low-memory and small-screen geometry
+        run: python3 tests/android_compat_runtime.py
+
       - name: Check shared 3D camera clipping
         run: python3 tests/space_projection_audit.py
 
@@ -116,7 +121,8 @@ jobs:
           APK=$(ls pc/android/app/build/outputs/apk/debug/bugstar-*-debug.apk | head -1)
           echo "APK: $APK"
           ls -l "$APK"
-          unzip -l "$APK" | grep -E 'lib/arm64-v8a/' || true
+          python3 tests/android_apk_audit.py "$APK"
+          unzip -l "$APK" | grep -E 'lib/(armeabi-v7a|arm64-v8a|x86|x86_64)/' || true
           for l in libSDL2.so libmain.so; do
             unzip -l "$APK" | grep -q "lib/arm64-v8a/$l" || { echo "::error::$l is not in the APK: the app would close the moment it starts"; exit 1; }
           done
@@ -130,9 +136,37 @@ jobs:
           done
           echo "feature check: updated 60-frame and 2,048-bit PC number pages are in the Android APK"
           grep -aq 'low memory: sprite cache emptied' "$SO" && echo "feature check: the low-memory handler is in libmain.so" || { echo "::error::libmain.so lacks the low-memory handler"; exit 1; }
-          if [ -n "$NM" ] && [ -n "$SO" ]; then
-            "$NM" -D --defined-only "$SO" | grep -E ' SDL_main$' || { echo "::error::libmain.so does not export SDL_main: SDL cannot start the game"; exit 1; }
-          else echo "::warning::llvm-nm not found, SDL_main export not checked"; fi
+          test -n "$NM" || { echo "::error::llvm-nm not found"; exit 1; }
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            so=$(find pc/android/app/build -path "*/$abi/libmain.so" | head -1)
+            test -n "$so" && "$NM" -D --defined-only "$so" | grep -E ' SDL_main
+          if [ -n "$RE" ] && [ -n "$SO" ]; then "$RE" -lW "$SO" | grep -E 'LOAD' || true; fi
+          ZA=$(find "$ANDROID_HOME/build-tools" -name zipalign 2>/dev/null | sort -V | tail -1)
+          test -n "$ZA" && "$ZA" -c -P 16 -v 4 "$APK" || { echo "::error::APK zip alignment failed"; exit 1; }
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-apk
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-debug.apk
+
+      # the unstripped libmain.so: the crash report lists "pc <offset> libmain.so", and with this file  llvm-addr2line -f -e libmain.so <offset>  names the line
+      - name: Keep the symbols
+        if: always()
+        run: |
+          mkdir -p symbols
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            SO=$(find pc/android/app/build -path "*obj/local/$abi*" -name libmain.so | head -1)
+            if [ -n "$SO" ]; then mkdir -p "symbols/$abi"; cp "$SO" "symbols/$abi/libmain.so"; fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bugstar-symbols
+          path: symbols
+          if-no-files-found: ignore
+ || { echo "::error::$abi libmain.so does not export SDL_main"; exit 1; }
+          done
           if [ -n "$RE" ] && [ -n "$SO" ]; then "$RE" -lW "$SO" | grep -E 'LOAD' || true; fi
           ZA=$(find "$ANDROID_HOME/build-tools" -name zipalign 2>/dev/null | sort -V | tail -1)
           if [ -n "$ZA" ]; then "$ZA" -c -P 16 -v 4 "$APK" >/dev/null 2>&1 && echo "16 KB page alignment: ok" || echo "::warning::zipalign -P 16 says the APK is not 16 KB aligned (or this zipalign is too old to check)"; fi
