@@ -139,7 +139,8 @@ jobs:
           test -n "$NM" || { echo "::error::llvm-nm not found"; exit 1; }
           for abi in armeabi-v7a arm64-v8a x86 x86_64; do
             so=$(find pc/android/app/build -path "*/$abi/libmain.so" | head -1)
-            test -n "$so" && "$NM" -D --defined-only "$so" | grep -E ' SDL_main
+            test -n "$so" && "$NM" -D --defined-only "$so" | grep -E ' SDL_main$' || { echo "::error::$abi libmain.so does not export SDL_main"; exit 1; }
+          done
           if [ -n "$RE" ] && [ -n "$SO" ]; then "$RE" -lW "$SO" | grep -E 'LOAD' || true; fi
           ZA=$(find "$ANDROID_HOME/build-tools" -name zipalign 2>/dev/null | sort -V | tail -1)
           test -n "$ZA" && "$ZA" -c -P 16 -v 4 "$APK" || { echo "::error::APK zip alignment failed"; exit 1; }
@@ -165,28 +166,50 @@ jobs:
           name: bugstar-symbols
           path: symbols
           if-no-files-found: ignore
- || { echo "::error::$abi libmain.so does not export SDL_main"; exit 1; }
-          done
-          if [ -n "$RE" ] && [ -n "$SO" ]; then "$RE" -lW "$SO" | grep -E 'LOAD' || true; fi
-          ZA=$(find "$ANDROID_HOME/build-tools" -name zipalign 2>/dev/null | sort -V | tail -1)
-          if [ -n "$ZA" ]; then "$ZA" -c -P 16 -v 4 "$APK" >/dev/null 2>&1 && echo "16 KB page alignment: ok" || echo "::warning::zipalign -P 16 says the APK is not 16 KB aligned (or this zipalign is too old to check)"; fi
 
-      - name: Upload the APK
-        uses: actions/upload-artifact@v4
+  emulator-smoke:
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 21
+            arch: x86
+          - api: 35
+            arch: x86_64
+    steps:
+      - uses: actions/download-artifact@v4
         with:
           name: bugstar-apk
-          path: pc/android/app/build/outputs/apk/debug/bugstar-*-debug.apk
-
-      # the unstripped libmain.so: the crash report lists "pc <offset> libmain.so", and with this file  llvm-addr2line -f -e libmain.so <offset>  names the line
-      - name: Keep the symbols
-        if: always()
+          path: apk
+      - name: Enable KVM for Android emulator
         run: |
-          mkdir -p symbols
-          SO=$(find pc/android/app/build -path '*obj/local/arm64-v8a*' -name libmain.so | head -1)
-          [ -n "$SO" ] && cp "$SO" symbols/libmain.so || echo "no unstripped libmain.so found"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: ${{ matrix.arch }}
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: |
+            adb install -r "$(find apk -name '*.apk' | head -1)"
+            adb logcat -c
+            adb shell am start -W -n org.bugstar.app/.BugstarActivity
+            for n in $(seq 1 45); do adb logcat -d -s BUGSTAR_BOOT:I | grep -q 'first rendered game frame' && break; sleep 2; done
+            adb logcat -d > android-boot.log
+            grep -q 'first rendered game frame' android-boot.log
+            adb shell ps | grep org.bugstar.app
+            adb exec-out screencap -p > android-boot.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: bugstar-symbols
-          path: symbols
+          name: android-smoke-${{ matrix.api }}-${{ matrix.arch }}
+          path: |
+            android-boot.log
+            android-boot.png
           if-no-files-found: ignore
