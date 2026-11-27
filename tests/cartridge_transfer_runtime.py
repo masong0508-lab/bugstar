@@ -45,6 +45,9 @@ int main(void){
     deny_replace=0;assert(transfer_apply("game.sav")==1);
     check("game.sav",0x99,32768);check("game.sav.before-import",0x44,32769);
     assert(access("game.sav.restore",F_OK)!=0);
+    uint8_t old[TRANSFER_SIZE];assert(transfer_recovery_read("game.sav",old));
+    for(int i=0;i<TRANSFER_SIZE;i++)assert(old[i]==0x44);
+    assert(!transfer_recovery_read("missing.sav",old));
     assert(transfer_apply("game.sav")==0);
     assert(rename("fresh.bgsave","new.sav.restore")==0);
     assert(transfer_apply("new.sav")==1);check("new.sav",0x99,32768);

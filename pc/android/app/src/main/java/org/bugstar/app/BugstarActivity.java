@@ -48,7 +48,8 @@ public class BugstarActivity extends SDLActivity {
 
     // Called by the native game on its own thread. The byte array is an
     // independent snapshot of cartridge SRAM, not a live disk file.
-    public void beginSaveTransfer(final boolean importing, final String path, final byte[] data) {
+    public void beginSaveTransfer(final int mode, final String path, final byte[] data) {
+        final boolean importing = mode == 1;
         runOnUiThread(new Runnable() {
             @Override public void run() {
                 if (savePickerBusy || isFinishing()) return;
@@ -58,7 +59,7 @@ public class BugstarActivity extends SDLActivity {
                     Intent intent = new Intent(importing ? Intent.ACTION_OPEN_DOCUMENT : Intent.ACTION_CREATE_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
                     intent.setType(importing ? "*/*" : "application/octet-stream");
-                    if (!importing) intent.putExtra(Intent.EXTRA_TITLE, "BUGSTAR-cartridge.bgsave");
+                    if (!importing) intent.putExtra(Intent.EXTRA_TITLE, mode == 2 ? "BUGSTAR-previous-cartridge.bgsave" : "BUGSTAR-cartridge.bgsave");
                     startActivityForResult(intent, importing ? SAVE_IMPORT : SAVE_EXPORT);
                     Log.i("BUGSTAR_SAVE", importing ? "picker launched import" : "picker launched export");
                 } catch (Exception e) {

@@ -47,8 +47,17 @@ for ((n=0;n<20;n++));do
     sleep 1
 done
 ((found==1))
+# On API 21 the picker can open with its navigation drawer and keyboard.
+# ActivityManager may call it resumed before the window accepts key events.
+sleep 2
 adb exec-out screencap -p > android-save-picker.png
-adb shell input keyevent KEYCODE_BACK
+for ((n=0;n<8;n++));do
+    if adb logcat -d -s BUGSTAR_SAVE:I | grep -Fq 'picker cancelled';then break;fi
+    if adb shell dumpsys activity activities | grep -Ei 'mResumedActivity|topResumedActivity' | grep -qi 'documentsui';then
+        adb shell input keyevent KEYCODE_BACK
+    fi
+    sleep 2
+done
 wait_log BUGSTAR_SAVE 'picker cancelled'
 save=$(wait_log BUGSTAR_SAVE 'cartridge path=' | sed 's/.*cartridge path=//' | tr -d '\r')
 [[ "$save" =~ ^/data/[A-Za-z0-9_./-]+/bugstar\.sav$ ]]
@@ -63,6 +72,11 @@ p=Path(sys.argv[1]);raw=(p/"previous.sav").read_bytes()
 assert len(raw)==32768,len(raw)
 (p/"restore.bgsave").write_bytes(b"BGSTAR1\n"+struct.pack(">I",zlib.crc32(raw))+raw)
 PY
+# Add a sentinel beyond the old file's cartridge bytes. It is intentionally
+# not in the incoming restore, proving recovery and replacement differ.
+printf '\x7e' >> "$tmp/previous.sav"
+adb push "$tmp/previous.sav" /data/local/tmp/bugstar-previous-test.sav
+adb shell "run-as $pkg sh -c 'cat > $save' < /data/local/tmp/bugstar-previous-test.sav"
 adb push "$tmp/restore.bgsave" /data/local/tmp/bugstar-restore-test.bgsave
 adb shell "run-as $pkg sh -c 'cat > $save.restore' < /data/local/tmp/bugstar-restore-test.bgsave"
 adb logcat -c
@@ -71,6 +85,8 @@ wait_log BUGSTAR_SAVE 'restore result=1'
 wait_log BUGSTAR_BOOT 'first rendered game frame'
 adb exec-out run-as "$pkg" cat "$save.before-import" > "$tmp/recovery.sav"
 cmp "$tmp/previous.sav" "$tmp/recovery.sav"
+adb exec-out run-as "$pkg" cat "$save" > "$tmp/restored.sav"
+test "$(wc -c < "$tmp/restored.sav")" -eq 32768
 adb shell "run-as $pkg sh -c 'test ! -f $save.restore'"
 adb shell am force-stop "$pkg"
 adb logcat -c

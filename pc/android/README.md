@@ -102,3 +102,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 
 - The PNG host test now extracts just the real encoder. Java and C save codec tests cover matching CRC32, bad headers, wrong sizes, and rollback; the emulator additionally visits and cancels the real export picker, stages a valid backup in the private debug sandbox, restarts the actual game, and verifies recovery bytes and one-time restore. The activity uses singleTop so the system document picker can return a result in the same task.
 - The emulator's staged restore uses an isolated test save, not player data. Physical ARM devices and a complete manual document-provider write/import flow still need device testing.
+
+## Version 0.52 recovery exports
+
+- Options > EXPORT PREVIOUS SAVE now opens the document picker with the cartridge from the last pre-import recovery file. It does not touch current progress or the recovery copy. If no complete cartridge exists, it shows a message. The recovery copy is replaced by the next successful import; export it first if it is needed long term.
+- Android 5.0's document picker can have a navigation drawer and keyboard open simultaneously. The smoke test waits for the window, dismisses those layers while the picker is foregrounded, and requires a real cancellation result. Startup restore now also checks that a sentinel byte in the previous file survives in recovery but not in the restored live cartridge.

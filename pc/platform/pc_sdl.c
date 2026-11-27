@@ -257,27 +257,46 @@ static int transfer_apply(const char *save){
     remove(used);
     return 1;
 }
+// Recovery files may be larger than raw cartridge SRAM (legacy padding).
+// Read exactly the cartridge region and never modify the recovery copy.
+static int transfer_recovery_read(const char *save,uint8_t *raw){
+    char path[1200];int n=snprintf(path,sizeof path,"%s.before-import",save);
+    if(n<0||(size_t)n>=sizeof path)return 0;
+    FILE *f=fopen(path,"rb");if(!f)return 0;
+    int ok=fread(raw,1,TRANSFER_SIZE,f)==TRANSFER_SIZE&&!ferror(f);
+    fclose(f);return ok;
+}
 static int transfer_result;
-static void android_save_picker(int importing){
+static void android_save_picker(int mode){
+    // 0: current SRAM, 1: restore, 2: export the previous recovery copy.
+    int importing=mode==1;
     JNIEnv *env=(JNIEnv*)SDL_AndroidGetJNIEnv();
+    if(!env){say_toast("FILE PICKER UNAVAILABLE");return;}
     jobject activity=(jobject)SDL_AndroidGetActivity();
-    if(!env||!activity){say_toast("FILE PICKER UNAVAILABLE");return;}
+    if(!activity){say_toast("FILE PICKER UNAVAILABLE");return;}
     jclass cls=(*env)->GetObjectClass(env,activity);
-    jmethodID method=cls?(*env)->GetMethodID(env,cls,"beginSaveTransfer","(ZLjava/lang/String;[B)V"):0;
-    jstring path=0;jbyteArray data=0;
-    if(method){
+    jmethodID method=cls?(*env)->GetMethodID(env,cls,"beginSaveTransfer","(ILjava/lang/String;[B)V"):0;
+    jstring path=0;jbyteArray data=0;uint8_t *recovery=0;
+    int available=1;
+    if(mode==2){
+        recovery=malloc(TRANSFER_SIZE);
+        available=recovery&&transfer_recovery_read(g_savepath,recovery);
+    }
+    if(method&&available){
         path=(*env)->NewStringUTF(env,g_savepath);
         if(!importing&&path&&!(*env)->ExceptionCheck(env)){
             data=(*env)->NewByteArray(env,TRANSFER_SIZE);
-            if(data)(*env)->SetByteArrayRegion(env,data,0,TRANSFER_SIZE,(const jbyte*)(uintptr_t)GBAA(0x0E000000u));
+            if(data)(*env)->SetByteArrayRegion(env,data,0,TRANSFER_SIZE,
+                mode==2?(const jbyte*)recovery:(const jbyte*)(uintptr_t)GBAA(0x0E000000u));
         }
         if(path&&(importing||data)&&!(*env)->ExceptionCheck(env))
-            (*env)->CallVoidMethod(env,activity,method,(jboolean)importing,path,data);
+            (*env)->CallVoidMethod(env,activity,method,(jint)mode,path,data);
     }
     if(!method||!path||(!importing&&!data)||(*env)->ExceptionCheck(env)){
         if((*env)->ExceptionCheck(env))(*env)->ExceptionClear(env);
-        say_toast("FILE PICKER UNAVAILABLE");
+        say_toast(!available?"NO COMPLETE RECOVERY COPY":"FILE PICKER UNAVAILABLE");
     }
+    free(recovery);
     if(data)(*env)->DeleteLocalRef(env,data);
     if(path)(*env)->DeleteLocalRef(env,path);
     if(cls)(*env)->DeleteLocalRef(env,cls);
@@ -509,7 +528,7 @@ static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRender
 // ---- the options screen
 enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_LAN, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_MOBILE_MODE, A_SAVE_EXPORT, A_SAVE_IMPORT, A_REBIND=1000 };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_MOBILE_MODE, A_SAVE_EXPORT, A_SAVE_IMPORT, A_SAVE_RECOVERY, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
@@ -561,6 +580,7 @@ static void menu_build(Item *it, int *n){
 #ifdef PC_ANDROID
         it[k++]=(Item){0,"EXPORT CARTRIDGE SAVE",0,0,0,0,0,A_SAVE_EXPORT};
         it[k++]=(Item){0,"RESTORE CARTRIDGE SAVE",0,0,0,0,0,A_SAVE_IMPORT};
+        it[k++]=(Item){0,"EXPORT PREVIOUS SAVE",0,0,0,0,0,A_SAVE_RECOVERY};
 #endif
         it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
     case P_VIDEO:
@@ -605,6 +625,7 @@ static void menu_do(int act){
 #ifdef PC_ANDROID
     case A_SAVE_EXPORT: pc_save_flush(1);android_save_picker(0);break;
     case A_SAVE_IMPORT: pc_save_flush(1);android_save_picker(1);break;
+    case A_SAVE_RECOVERY: android_save_picker(2);break;
     case A_MOBILE_MODE:
         g_governor=(MobileGovernor){0};
         say_toast(C.mobile_mode==0?"AUTO PERFORMANCE RESET":C.mobile_mode==1?"BATTERY PROFILE":"FULL DETAIL PROFILE");

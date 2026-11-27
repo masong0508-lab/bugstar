@@ -24,8 +24,8 @@ android {
         applicationId 'org.bugstar.app'
         minSdk 21
         targetSdk 34          // 34, not newer: no forced edge-to-edge layout for SDL2 to trip over
-        versionCode 51
-        versionName '0.51'
+        versionCode 52
+        versionName '0.52'
         externalNativeBuild { ndkBuild { arguments 'APP_PLATFORM=android-21' } }
     }
 
