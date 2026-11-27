@@ -749,6 +749,47 @@ static void orbit_draw(volatile u16 *pg, int far_pass){
             int sx,sy; s32 zz; if(!sproj((cosx(ang>>2)*(D>>2))>>12, (int)((h>>12)&511)-256, (sinx(ang>>2)*(D>>2))>>12, &sx,&sy,&zz)) continue;
             dot2(pg,sx,sy,(p&1)?56:51); dot2(pg,sx+1,sy,(p&1)?51:56); } }
 }
+// Flight actions are deliberately distinct from proximity. A fast approach
+// is still dangerous even if the ship happens to cross an arrival trigger.
+enum { SP_APPROACH_NONE, SP_APPROACH_LAND, SP_APPROACH_DOCK, SP_APPROACH_ROCK,
+       SP_APPROACH_BRAKE, SP_APPROACH_MATCH };
+static int sp_approach(int land,int dock,int rock,int speed,int spin_ok,int relative){
+    if(dock)return speed<=14?SP_APPROACH_DOCK:SP_APPROACH_BRAKE;
+    if(land)return speed<=12?SP_APPROACH_LAND:SP_APPROACH_BRAKE;
+    if(rock>=0)return !spin_ok?SP_APPROACH_MATCH:relative<=12?SP_APPROACH_ROCK:SP_APPROACH_BRAKE;
+    return SP_APPROACH_NONE;
+}
+// One ordinary laser pulse has one first impact. Compare approximate front
+// surfaces, rather than preferring enemies or the first asteroid array slot.
+static int sp_laser_depth(int sx,int sy,s32 z,int radius,int rock){
+    if(z<=20||z>9000||radius<1||radius>512)return 0;
+    int dx=sx-120,dy=sy-VCY;
+    if(rock){
+        int rs=radius*FOCS/z+3;
+        if(dx<=-rs||dx>=rs||dy<=-rs||dy>=rs||dx*dx+dy*dy>=rs*rs)return 0;
+    }else if(dx<=-16||dx>=16||dy<=-14||dy>=14)return 0;
+    s32 front=z-radius;
+    return front>0?front:1;
+}
+static int sp_laser_pick(void){
+    int best=-1,depth=9001;
+    for(int i=0;i<NPIR;i++){
+        Pirate *p=&pir[i];if(!p->alive||!p->team)continue;
+        int sx,sy;s32 z;
+        if(!sproj(p->x,p->y,p->z,&sx,&sy,&z))continue;
+        int d=sp_laser_depth(sx,sy,z,110,0);
+        if(d&&d<depth){depth=d;best=i;}
+    }
+    if(!in_lair)for(int i=0;i<nast;i++){
+        Ast *a=&ast[i];if(!a->alive)continue;
+        int sx,sy;s32 z;
+        if(!sproj(a->x,a->y,a->z,&sx,&sy,&z))continue;
+        int d=sp_laser_depth(sx,sy,z,a->r,1);
+        if(d&&d<depth){depth=d;best=NPIR+i;}
+    }
+    return best;
+}
+static int laser_contact;
 static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
 #ifdef TEST_MOONS
     shx=0; shy=1500; shz=-(PR*11); svx_=svy_=svz_=0;
@@ -774,7 +815,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     int in_air = !in_lair && pd < PR*5/2;                                          // close to the planet there is air
     { int a16=ship_accel16(); int burn = HELD(K_L) && fuel>0;
       int matching = HELD(K_R) && spin_rock>=0 && ast[spin_rock].alive;
-      if(HELD(K_B)){ rum_hum(burn?110:45); int a=a16*(burn?2:1); svx_ += sp_thrust_step(bf[0]*a,(u32)frames); svy_ += sp_thrust_step(bf[1]*a,(u32)frames); svz_ += sp_thrust_step(bf[2]*a,(u32)frames); if(burn && (frames&15)==0) fuel-=xo_fuel(1); }
+      if(HELD(K_B)){ rum_hum(burn?110:45); int a=a16*(burn?2:1); svx_ += sp_thrust_step(bf[0]*a,(u32)frames); svy_ += sp_thrust_step(bf[1]*a,(u32)frames); svz_ += sp_thrust_step(bf[2]*a,(u32)frames); if(burn && (frames&15)==0){ int cost=xo_fuel(1); fuel=fuel>cost?fuel-cost:0; } }
       if(HELD(K_R)){ int k=6+ship.fins*2;
           if(matching){ const Ast *ra=&ast[spin_rock]; svx_ += sp_ease_step(((s32)ra->vx-svx_)*k,32); svy_ += sp_ease_step(((s32)ra->vy-svy_)*k,32); svz_ += sp_ease_step(((s32)ra->vz-svz_)*k,32); }      // beside a fast rock: match its drift
           else { svx_ -= sp_ease_step(svx_*k,64); svy_ -= sp_ease_step(svy_*k,64); svz_ -= sp_ease_step(svz_*k,64); } }           // retro thrusters
@@ -828,34 +869,44 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
             if(dx>-rr&&dx<rr&&dy>-rr&&dy<rr&&dz>-rr&&dz<rr){ s32 d=isqrt((u32)((dx>>3)*(dx>>3)+(dy>>3)*(dy>>3)+(dz>>3)*(dz>>3)))<<3; if(d<rr && d<best){ best=d; rock_near=i; } } } }
     spin_rock = (rock_near>=0 && rock_fast(&ast[rock_near])) ? (s8)rock_near : (s8)-1;
     int spin_ok = spin_rock<0 || rock_rel(&ast[spin_rock])<=2;                       // you move with it (or it is not a fast one)
+    int relative=rock_near>=0?rock_rel(&ast[rock_near]):0;
+    int approach=sp_approach(can_land,can_dock,rock_near,speed,spin_ok,relative);
+    int fire_override=HELD(K_L)&&!HELD(K_R); // hold L with A to fight near ports
     if(++sh_regen>=20){ sh_regen=0; if(shield<shield_max()) shield++; }
     if(lair_out){ lair_out=0; lair_leave(); return 0; }
     if(ambush_t && !in_lair && --ambush_t==0){ hyperspace(); lair_enter(); return 0; }
     if(HIT(K_SEL) && !coil_sel_eaten){ if(in_lair){ lair_leave(); return 0; } return 2; }
     if(HIT(K_START) && !coil_start_eaten){ chase_cam^=1; char b[40]; scpy(b, chase_cam?"CHASE VIEW. ":"COCKPIT VIEW. "); int n=0; for(int i=0;i<8;i++) n+=cargo[i]; scat(b,"CARGO "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); space_say(b); }
-    // A: land, dock, or fire
+    // A: arrival or fire. L+A deliberately overrides arrival, so a pirate
+    // pursuing you into an approach zone does not disable your weapons.
     if(laser_cool) laser_cool--;
-    if(HIT(K_A) && can_land){ if(body_menu()) return 1; return 0; }
-    if(HIT(K_A) && rock_near>=0 && !spin_ok) space_say("TOO FAST! HOLD R TO MATCH ITS SPIN");
-    else if(HIT(K_A) && rock_near>=0){ u32 h=rock_h(rock_near); rock_key=h; cur_rock=(u8)rock_type_of(h); cur_moon=5; speed=0; space_say("LANDING ON THE ROCK"); wait_release(); return 1; }
-    if(HIT(K_A) && can_dock){ speed=0; return 3; }
-    if(HELD(K_A) && !laser_cool && !can_land && !can_dock && rock_near<0){
+    if(HIT(K_A)&&!fire_override){
+        if(approach==SP_APPROACH_LAND){if(body_menu())return 1;return 0;}
+        if(approach==SP_APPROACH_DOCK){speed=0;return 3;}
+        if(approach==SP_APPROACH_MATCH)space_say("HOLD R TO MATCH THE ROCK");
+        if(approach==SP_APPROACH_BRAKE)space_say("TOO FAST! HOLD R TO BRAKE");
+        if(approach==SP_APPROACH_ROCK){u32 h=rock_h(rock_near);rock_key=h;cur_rock=(u8)rock_type_of(h);cur_moon=5;speed=0;space_say("LANDING ON THE ROCK");wait_release();return 1;}
+    }
+    if(HELD(K_A) && !laser_cool && (approach==SP_APPROACH_NONE||fire_override)){
         laser_cool=10-laser_lv; laser_t=4; sfx(10);
-        { int best=-1; s32 bz=9000; for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive || !p->team) continue; int sx,sy; s32 z;
-            if(sproj(p->x,p->y,p->z,&sx,&sy,&z) && z<bz && sx>104 && sx<136 && sy>VCY-14 && sy<VCY+14){ bz=z; best=i; } }
-          if(best>=0){ Pirate *p=&pir[best]; p->hp -= laser_lv*5+2+ship_gun() + (in_lair? tech_lv*12 : 0); boom(p->x,p->y,p->z,4,54); sfx(1);
-              if(p->hp<=0){ sfx(9); ship_dies(p,1); } } }
-        if(!in_lair) for(int i=0;i<nast;i++){ Ast *a=&ast[i]; if(!a->alive) continue; int sx,sy; s32 z;
-            if(!sproj(a->x,a->y,a->z,&sx,&sy,&z) || z>9000) continue; int rs=(int)(a->r*FOCS/z)+3;
-            if(sx>120-rs && sx<120+rs && sy>VCY-rs && sy<VCY+rs){ a->hp -= laser_lv+1; a->flash=3; boom(shx+((bf[0]*(z-a->r))>>14),shy+((bf[1]*(z-a->r))>>14),shz+((bf[2]*(z-a->r))>>14),3,56); sfx(1);
+        int best=sp_laser_pick();laser_contact=best>=0;
+        if(best>=0&&best<NPIR){
+            Pirate *p=&pir[best];p->hp-=laser_lv*5+2+ship_gun()+(in_lair?tech_lv*12:0);
+            boom(p->x,p->y,p->z,4,54);sfx(1);
+            if(p->hp<=0){sfx(9);ship_dies(p,1);}
+        }else if(best>=NPIR){
+            int i=best-NPIR;Ast *a=&ast[i];
+            a->hp-=laser_lv+1;a->flash=3;
+            boom(a->x,a->y,a->z,3,56);sfx(1);
                 if(a->hp<=0){ a->alive=0; if(is_belt()) ast_clear|=1u<<i; boom(a->x,a->y,a->z,20,56); sfx(13); int nc=1+(a->r>260);
                     for(int k=0;k<4 && nc;k++) if(!cans[k].alive){
                         cans[k].alive=1; int r=lr(12), ore=lr(10);
                         cans[k].good = r==0 ? CAN_FUEL : r==1 ? CAN_REPAIR : ore<5?4 : ore<9?3 : 7;
                         cans[k].x=a->x+lr(200)-100; cans[k].y=a->y; cans[k].z=a->z+lr(200)-100; nc--; }
                     space_say("ROCK CRACKED! SCOOP THE MINERALS"); }
-                break; } }
-        if(in_lair) beast_shot();
+        }else {
+            if(in_lair) beast_shot();
+        }
     }
     if(in_lair) beast_update();
     // pirates
@@ -987,7 +1038,8 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     int lz=laser_t; if(laser_t) laser_t--;
     if(lz && !chase_cam){ line2(pg,30,127,120,VCY,52); line2(pg,210,127,120,VCY,52); }          // (the cockpit view: bolts from the bottom corners)
     // crosshair
-    if(!FILM) for(int k=4;k<9;k++){ dot2(pg,120+k,VCY,52); dot2(pg,120-k,VCY,52); dot2(pg,120,VCY+k,52); dot2(pg,120,VCY-k,52); }
+    if(!FILM){ int aimcol=lz&&laser_contact?54:52;
+        for(int k=4;k<9;k++){ dot2(pg,120+k,VCY,aimcol); dot2(pg,120-k,VCY,aimcol); dot2(pg,120,VCY+k,aimcol); dot2(pg,120,VCY-k,aimcol); } }
     // the chase camera: your own ship, seen from behind, banking into turns and nosing up and down
     if(chase_cam){ ship_roll=(roll_-roll_/2)&1023; int bob=(sinx((frames*3)&255)>>12);              // the ship leans into the turn (the other half of the bank is the camera's)
         { int scx=ch_x + (yawv>>2), scy=ch_y + bob - (pitv>>2), scs=ch_sc, syw=(yawv*2)&1023, spt=(32 + pitv*2)&1023;   // the ship sits where the camera really sees it (below the middle, a bit smaller at speed); a left turn swings its nose and its place on the screen LEFT, nose up lifts it; the eye is 11 degrees above it (32 of 1024)
@@ -1007,13 +1059,16 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     cam_o[0]=cam_o[1]=cam_o[2]=0; if(chase_cam){ basis(); apply_roll(); }            // (the scanner works from the ship, not from the chase eye)
     cockpit(pg);
     if(sv_yaw!=yaw || sv_pit!=pitch){ yaw=sv_yaw; pitch=sv_pit; }
-    static char pb[32]; const char *pr = can_land ? "A: LAND" : can_dock ? "A: DOCK" : 0;
-    if(rock_near>=0 && !spin_ok){ scpy(pb,"R: MATCH SPIN  "); ncat(pb,rock_rel(&ast[rock_near])); pr=pb; }
-    else if(rock_near>=0){ scpy(pb,"A: LAND ON "); scat(pb,rock_nm[rock_type_of(rock_h(rock_near))-1]); pr=pb; }
-    if(can_land){ int bc=body_count(cur_sys); if(bc>1){ scpy(pb,"A: LAND ("); ncat(pb,bc); scat(pb," WORLDS)"); pr=pb; } }
+    static char pb[40]; const char *pr=0;
+    if(approach==SP_APPROACH_BRAKE)pr="R: BRAKE TO LAND/DOCK";
+    else if(approach==SP_APPROACH_MATCH){scpy(pb,"R: MATCH SPIN ");ncat(pb,relative);pr=pb;}
+    else if(approach==SP_APPROACH_DOCK)pr="A: DOCK";
+    else if(approach==SP_APPROACH_ROCK){scpy(pb,"A: LAND ON ");txt_append(pb,sizeof pb,rock_nm[rock_type_of(rock_h(rock_near))-1]);pr=pb;}
+    else if(approach==SP_APPROACH_LAND){int bc=body_count(cur_sys);pr="A: LAND";if(bc>1){scpy(pb,"A: LAND (");ncat(pb,bc);scat(pb," WORLDS)");pr=pb;}}
+    if(fire_override&&approach!=SP_APPROACH_NONE)pr="A: FIRE  RELEASE L TO LAND";
     if(FILM){ if(space_msg_t) space_msg_t--; return 0; }                    // (filming: nothing over the view)
     if(space_msg_t){ space_msg_t--; text(pg,120-textlen(smsg)*2,in_lair?28:4,smsg,54,1); }
-    if(pr) text(pg,120-textlen(pr)*4,96,pr,55,2);
+    if(pr){int len=textlen(pr),sc=len>28?1:2;text(pg,120-len*2*sc,96,pr,approach==SP_APPROACH_BRAKE||approach==SP_APPROACH_MATCH?53:55,sc);}
 #ifdef TEST_FLEET
     { static int lv=0; char fb[16]; scpy(fb,"VBL "); ncat(fb,vbl_count-lv); lv=vbl_count; text(pg,200,20,fb,54,1); } { int e=0; char fb2[24]; for(int i=0;i<NPIR;i++) if(pir[i].alive&&!pir[i].team&&pir[i].tgt>=0) e++; scpy(fb2,"ENG "); ncat(fb2,e); text(pg,200,28,fb2,54,1); } { for(int i=0;i<NPIR;i++) if(pir[i].alive&&!pir[i].team){ Pirate *p=&pir[i]; s32 rx=p->x-shx, ry=p->y-shy, rz=p->z-shz; s32 zz=(rx*bf[0]+ry*bf[1]+rz*bf[2])>>14; char c3[48]; scpy(c3,"Z "); ncat(c3,zz); scat(c3," T "); ncat(c3,p->tgt); if(p->tgt>=0){ Pirate *q=&pir[p->tgt]; s32 qz=((q->x-shx)*bf[0]+(q->y-shy)*bf[1]+(q->z-shz)*bf[2])>>14; scat(c3," TZ "); ncat(c3,qz); scat(c3," A"); ncat(c3,q->alive); scat(c3," M"); ncat(c3,q->team); } text(pg,110,36,c3,54,1); break; } }
 #endif
@@ -1553,7 +1608,9 @@ static void station_menu_(void){
             if(HIT(K_A)){ if(dp_nav_press(pg,sel)) break; dirty=1; }
         } else if(tab==0){
             int held=0; for(int i=0;i<8;i++) held+=cargo[i];
-            if(sel<8 && HIT(K_A)){ int p=good_price(sel); if(gold>=p && held<cargo_cap){ gold-=p; cargo[sel]++; sfx(7); } dirty=1; }
+            if(sel<8 && HIT(K_A)){ int p=good_price(sel); if(held>=cargo_cap+ship_hold_bonus()){ space_say("CARGO HOLD FULL"); sfx(4); }
+                else if(gold<p){space_say("NOT ENOUGH GOLD");sfx(4);}
+                else {gold-=p;cargo[sel]++;sfx(7);} dirty=1; }
             if(sel<8 && HIT(K_B) && cargo[sel]){ gold+=good_price(sel); cargo[sel]--; sfx(7); dirty=1; }
             if(sel==8 && (HIT(K_B)||HIT(K_A)) && ore_bagn()){ int v=ore_sellval()*ore_station_pct()/100; gold+=v; ore_clear_sold(); sfx(7); dirty=1; }
         } else if(HIT(K_A) && sel==6){ int c=300+wing_n*150; if(wing_n>=MAXWING) say("YOU HAVE A FULL WING"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; wing_n++; sfx(6); } dirty=1;

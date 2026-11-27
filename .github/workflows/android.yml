@@ -33,6 +33,7 @@ on:
       - 'tests/touch_editor_runtime.py'
       - 'tests/cartridge_transfer_runtime.py'
       - 'tests/android_save_codec_runtime.py'
+      - 'tests/flight_dungeon_objectives_runtime.py'
       - 'tests/android_save_emulator.sh'
       - 'tests/android_apk_audit.py'
       - 'tests/space_native_projection_audit.py'
@@ -98,6 +99,7 @@ jobs:
           python3 tests/touch_editor_runtime.py
           python3 tests/cartridge_transfer_runtime.py
           python3 tests/android_save_codec_runtime.py
+          python3 tests/flight_dungeon_objectives_runtime.py
 
       - name: Check shared 3D camera clipping
         run: python3 tests/space_projection_audit.py

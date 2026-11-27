@@ -107,3 +107,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 
 - Options > EXPORT PREVIOUS SAVE now opens the document picker with the cartridge from the last pre-import recovery file. It does not touch current progress or the recovery copy. If no complete cartridge exists, it shows a message. The recovery copy is replaced by the next successful import; export it first if it is needed long term.
 - Android 5.0's document picker can have a navigation drawer and keyboard open simultaneously. The smoke test waits for the window, dismisses those layers while the picker is foregrounded, and requires a real cancellation result. Startup restore now also checks that a sentinel byte in the previous file survives in recovery but not in the restored live cartridge.
+
+## Version 0.53 flight, dungeon and economy pass
+
+- Brake before planet landing, station docking, or rock landing. L+A explicitly fires even in approach zones; ordinary laser pulses hit only the closest valid enemy or asteroid. A brighter reticle confirms an impact. Station purchases honor the ship's cargo bonus. Fuel burn cannot underflow.
+- Dungeon speed-run time is retained when revisiting the same remembered floor during a trip; final fractional seconds remain visible. Gas and cave-in countdowns provide warnings, completed floor goals remain visible, and full bags give context-sensitive feedback. Long messages fit the GBA view. Field guide updated to explain flight and hazards. No persistent save schema changed.

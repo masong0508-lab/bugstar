@@ -797,7 +797,7 @@ static void fish_draw(volatile u16 *pg){
 #define TURN_RAMP  16          // 60ths of holding to reach TURN_MAX
 
 static int skip_draw=0, wtick=1, turn_held=0, dt_last=0, wacc=0, mv_now=0, near_cage_p=-1, atk_len=9;
-static DObj *named_p=0; static u32 dhud_sig=0; static int lock_ahead=0;
+static DObj *named_p=0; static u32 dhud_sig=0; static int lock_ahead=0, near_loot_full=0;
 // is there something to bite right in front of you? (same box the bite uses)
 static int foe_ahead(s32 dirx, s32 diry){
     const s32 rb_=xo_v(XO_BITERNG);
@@ -934,6 +934,7 @@ static int cast_spell(int s, s32 dirx, s32 diry, s32 plx, s32 ply){
 static void mine_hazard(void){                                                   // mines: toxic gas hurts on a timer (a shield keeps it out); the roof drops rocks (keep moving and they miss)
     if(fl_ev!=FE_GAS && fl_ev!=FE_CAVE){ mh_t=0; return; }
     mh_t++;
+    if(fl_ev==FE_GAS && mh_t==180){say("GAS BUILDING UP! SHIELD HELPS");sfx(14);}
     if(fl_ev==FE_CAVE && mh_t==330){ say("THE ROOF RUMBLES! KEEP MOVING"); sfx(12); rumble(RP_QUAKE); if(opt_shake) shake_t=20; }
     if(mh_t<(fl_ev==FE_GAS?240:420)) return;
     mh_t=0;
@@ -1049,7 +1050,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         if(b->cool) b->cool--; if(b->flash) b->flash--;
         if(tg>=0 && best<0xC000 && !b->cool){ hit_mon(&dob[tg], pet_dmg(), 0); b->cool=(s16)(20+(k&3)); b->flash=4; } }
     // ---- monsters, pickups, cages
-    s32 named_d=0x60000; if(wtick){ near_cage_p=-1; named_p=0; }
+    s32 named_d=0x60000; if(wtick){ near_cage_p=-1; named_p=0; near_loot_full=0; }
     if(wtick && alert_t>0) alert_t--;
     for(int i=0;wtick && i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(o->flash) o->flash--;
         s32 dx=px_-o->x, dy=py_-o->y, d=dist8(dx,dy);
@@ -1124,8 +1125,8 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1; say("THE QUEEN CALLS HER BROOD!"); sfx(9);
                 for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=K_SPIDER; b->alive=1; b->hp=b->maxhp=6+dlv()*4; b->x=o->x+((k?1:-1)<<16); b->y=o->y+(1<<15); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } } }
         } else if(o->kind==K_CHEST){ if(d<0x9000 && bag_n<BAGMAX){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
-                Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now(); } }
-        else if(o->kind==K_ITEM){ if(d<0x9000 && (bag_n<BAGMAX || o->it==IT_QUEST)){ Gear g={o->it,o->sub,o->rar,o->pre,o->suf,o->lvl}; if(add_gear(g)) o->alive=0; } }
+                Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now(); } else if(d<0x9000)near_loot_full=1; }
+        else if(o->kind==K_ITEM){ if(d<0x9000 && (bag_n<BAGMAX || o->it==IT_QUEST)){ Gear g={o->it,o->sub,o->rar,o->pre,o->suf,o->lvl}; if(add_gear(g)) o->alive=0; else near_loot_full=1; } else if(d<0x9000)near_loot_full=1; }
         else if(o->kind==K_CAGE){ if(d<0xC000) near_cage_p=i; }
     }
     int near_cage=near_cage_p; DObj *named=named_p;
@@ -1248,11 +1249,12 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
       scpy(tb,"B"); ncat(tb,depth_no); scat(tb," MON"); ncat(tb,al); scat(tb," SEEN"); ncat(tb,sn); scat(tb," ID"); ncat(tb,FMH->sigL&0xFFF); scat(tb,up2_cell>=0?" U2":" -"); scat(tb,skip_cell>=0?" SK":" -");
       scat(tb, hc==skip_cell?" ON SHORT-DN" : hc==up2_cell?" ON SHORT-UP" : dmap[hc]==D_DOWN?" ON DOWN" : dmap[hc]==D_UP?" ON UP" : " WALKING"); text(pg,2,70,tb,C_GOLD,1); }
 #endif
-    if(msg_timer){ text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
+    if(msg_timer){int len=textlen(msg),sc=len>28?1:2;text(pg,120-len*2*sc,24,msg,C_WHITE,sc);}
     else if(!opt_hints){}
     else if(lock_ahead) text(pg,120-14*4,24,"A: USE KEYCARD",C_GOLD,2);
     else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);
     else if((here==D_UP && stair_ok)||(here==D_DOWN && dn_ok)){ const char *m2 = here==D_UP? (((py_>>16)*MW+(px_>>16))==up2_cell ? "A: SHORTCUT UP!" : (!endless&&!forge_on&&!base_mode&&depth_no>=2)?"A: STAIRS" : "A: CLIMB UP") : (((py_>>16)*MW+(px_>>16))==skip_cell ? "A: SHORTCUT!" : "A: GO DEEPER"); text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
+    else if(near_loot_full&&bag_n>=BAGMAX)text(pg,62,24,"BAG FULL - MAKE ROOM",C_GOLD,1);
     else if(fish_state==1) text(pg,120-8*4,24,"WAITING...",C_CYAN,2);
     else if(fish_state==2) text(pg,120-6*4,24,"PRESS A!",(frames&2)?C_RED:C_WHITE,2);
     else if(fish_state==3) text(pg,120-8*4,24,"HOLD A TO REEL",C_CYAN,2);
