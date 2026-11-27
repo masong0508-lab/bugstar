@@ -17,16 +17,45 @@ prefix=r"""
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
-typedef uint8_t u8;typedef uint16_t u16;
+typedef uint8_t u8;typedef uint16_t u16;typedef int16_t s16;
 #define NRC 12
-typedef struct {int lap,pi,nextg,fin,out,place;} Racer;
+typedef struct {int lap,pi,nextg,fin,out,place,x,y;} Racer;
 static Racer rc[NRC];static int nrc=12,knp=240;
 static u16 kgate_pi[6]={0,40,80,120,160,200};
 static struct {int n;} kt={6};
+static u8 kpx[512],kpy[512];
 """
 cases=r"""
+/* Original search, retained here as an independent behavior oracle. */
+static Racer old_track(int r,Racer k){
+    int tx=(k.x>>15)&255,ty=(k.y>>15)&255,best=k.pi,bd=1<<30;
+    for(int d=-6;d<=22;d++){
+        int i=kwp(k.pi+d+knp),dx=kwrap8(kpx[i]-tx),dy=kwrap8(kpy[i]-ty),dd=dx*dx+dy*dy;
+        if(dd<bd){bd=dd;best=i;}
+    }
+    if(bd>144)for(int i=0;i<knp;i++){
+        int dx=kwrap8(kpx[i]-tx),dy=kwrap8(kpy[i]-ty),dd=dx*dx+dy*dy;
+        if(dd<bd){bd=dd;best=i;}
+    }
+    if(r&&best<k.pi-knp/2)k.lap++;
+    k.pi=best;return k;
+}
+static uint32_t rs=0x9e3779b9u;
+static unsigned rnd(void){rs^=rs<<13;rs^=rs>>17;rs^=rs<<5;return rs;}
 int main(void){
     unsigned checks=0;
+    const int lens[]={1,2,7,29,32,127,256,512};
+    for(unsigned z=0;z<sizeof(lens)/sizeof(*lens);z++){
+        knp=lens[z];
+        for(int i=0;i<knp;i++){kpx[i]=rnd()&255;kpy[i]=rnd()&255;}
+        for(int j=0;j<2500;j++){
+            int r=j&1;
+            Racer k={.lap=1,.pi=(int)(rnd()%knp),.x=(int)(rnd()&255)<<15,.y=(int)(rnd()&255)<<15};
+            Racer expected=old_track(r,k);rc[r]=k;kpath_track(r);
+            assert(rc[r].pi==expected.pi&&rc[r].lap==expected.lap);
+        }
+    }
+    knp=240;
     for(int path=32;path<=256;path*=2)for(int pi=0;pi<path;pi++)for(int gp=0;gp<path;gp++){
         int ahead=(gp-pi+path)%path,past=(pi-gp+path)%path;
         assert(kart_gate_missed(pi,gp,path)==(past>8&&past<path/2));
@@ -58,11 +87,11 @@ int main(void){
     kplaces();assert(rc[1].place==1&&rc[11].place==12);
     for(int fin=0;fin<2;fin++)for(int out=0;out<2;out++)for(int type=0;type<8;type++)for(int elapsed=0;elapsed<2;elapsed++)
         assert(kart_record_eligible(fin,out,type,elapsed)==(fin&&!out&&type!=3&&type!=6&&elapsed));
-    printf("Kart progress: %u gate cases, checkpoint navigation, backwards crossing, standings and 64 record-policy cases PASS\n",checks);
+    printf("Kart progress: %u gate cases, 20,000 path-search parity cases, checkpoint navigation, backwards crossing, standings and 64 record-policy cases PASS\n",checks);
 }
 """
 with tempfile.TemporaryDirectory() as td:
     p=Path(td);c=p/"test.c";exe=p/"test"
-    c.write_text(prefix+"\n".join(fn(k,m) for m in ("static int kart_gate_missed(","static int kart_driver_target(","static int kvalidated_progress(","static int kscore(","static void kplaces(","static int kart_record_eligible("))+cases)
+    c.write_text(prefix+"\n".join(fn(k,m) for m in ("static inline int kwp(","static int kwrap8(","static void kpath_track(","static int kart_gate_missed(","static int kart_driver_target(","static int kvalidated_progress(","static int kscore(","static void kplaces(","static int kart_record_eligible("))+cases)
     subprocess.run(["cc","-std=c11","-O1","-fsanitize=undefined","-fno-sanitize-recover=all",str(c),"-o",str(exe)],check=True)
     subprocess.run([str(exe)],check=True)
