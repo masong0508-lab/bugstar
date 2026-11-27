@@ -93,3 +93,7 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 
 - Touch layout editor dimensions are bounded by both window axes; normal windows keep all twelve editing commands, including Done. Extremely small split-screen windows display a safe exit instead of a clipped panel. Selection placement uses a fixed-width 64-bit score rather than an invalid long shift on 32-bit architectures.
 - Rotation/background surface loss is rejected before layout-editor input, and physical keyboard reads are bounded by SDL's reported key-state length and the local key cache. Host tests exercise portrait, landscape, tiny, tall and large displays, all edit buttons, and invalid keyboard scancodes. No save format changes.
+
+## Version 0.50 cartridge save transfer
+
+- Options > EXPORT CARTRIDGE SAVE opens Android's document picker and writes a checksummed 32 KiB cartridge backup (.bgsave) from a snapshot of SRAM. RESTORE CARTRIDGE SAVE validates a backup, asks for confirmation, and stages it for the next fresh game launch. Quit via Options and reopen to apply. The previous raw cartridge file is retained as bugstar.sav.before-import. A failed restore leaves the existing save intact; a pending restore never overwrites live SRAM during play. Export includes the three cartridge slots and cartridge settings, not PC-specific sidecar content or external settings.ini. Files can be stored outside the app before an uninstall or moved to another device. No storage permission needed; Android 5.0+ document picker.

@@ -7,6 +7,9 @@
 #ifdef PC_ANDROID
 #include <android/log.h>
 #include <unistd.h>
+#include <jni.h>
+#include <errno.h>
+#include <SDL_system.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -196,6 +199,91 @@ static int png_write(const char *path, const uint32_t *xrgb, int w, int h, int a
     return ok;
 }
 
+#ifdef PC_ANDROID
+// Export format: 8-byte identifier, big-endian CRC32, exact 32 KiB SRAM.
+// The picker never writes the live save. Apply a verified staged export
+// before the game's normal SRAM initialization on the next fresh process.
+#define TRANSFER_SIZE 32768
+static int transfer_decode(FILE *f,uint8_t *out){
+    const uint8_t magic[8]={'B','G','S','T','A','R','1','\n'};
+    uint8_t head[12];
+    if(fread(head,1,sizeof head,f)!=sizeof head||memcmp(head,magic,8))return 0;
+    if(fread(out,1,TRANSFER_SIZE,f)!=TRANSFER_SIZE||fgetc(f)!=EOF||ferror(f))return 0;
+    uint32_t want=((uint32_t)head[8]<<24)|((uint32_t)head[9]<<16)|((uint32_t)head[10]<<8)|head[11];
+    if(!crc_t[1])crc_init();
+    return (crc_upd(0xffffffffu,out,TRANSFER_SIZE)^0xffffffffu)==want;
+}
+static int transfer_finish(FILE *f,const char *tmp,const char *dest,int ok){
+    if(ferror(f)||fflush(f)!=0)ok=0;
+    if(ok&&fsync(fileno(f))!=0)ok=0;
+    if(fclose(f)!=0)ok=0;
+    if(ok&&rename(tmp,dest)==0)return 1;
+    remove(tmp);return 0;
+}
+static int transfer_backup(const char *save,const char *tmp,const char *backup){
+    FILE *in=fopen(save,"rb");
+    if(!in)return errno==ENOENT;
+    FILE *out=fopen(tmp,"wb");if(!out){fclose(in);return 0;}
+    uint8_t buf[4096];size_t n;int ok=1;
+    while((n=fread(buf,1,sizeof buf,in))!=0)if(fwrite(buf,1,n,out)!=n){ok=0;break;}
+    if(ferror(in))ok=0;
+    fclose(in);
+    return transfer_finish(out,tmp,backup,ok);
+}
+static int transfer_apply(const char *save){
+    char stage[1200],used[1200],candidate[1200],bak[1200],btmp[1200];
+    if(strlen(save)>sizeof stage-32)return -1;
+    snprintf(stage,sizeof stage,"%s.restore",save);
+    snprintf(used,sizeof used,"%s.restore.used",save);
+    snprintf(candidate,sizeof candidate,"%s.restore.new",save);
+    snprintf(bak,sizeof bak,"%s.before-import",save);
+    snprintf(btmp,sizeof btmp,"%s.before-import.tmp",save);
+    FILE *f=fopen(stage,"rb");if(!f)return errno==ENOENT?0:-1;
+    uint8_t *raw=malloc(TRANSFER_SIZE);
+    int ok=raw&&transfer_decode(f,raw);fclose(f);
+    if(!ok){free(raw);return -1;}
+    // Keep the complete previous file, including unusual legacy sizes.
+    if(!transfer_backup(save,btmp,bak)){free(raw);return -1;}
+    f=fopen(candidate,"wb");if(!f){free(raw);return -1;}
+    ok=fwrite(raw,1,TRANSFER_SIZE,f)==TRANSFER_SIZE;free(raw);
+    if(!ok||ferror(f)||fflush(f)!=0||fsync(fileno(f))!=0)ok=0;
+    if(fclose(f)!=0)ok=0;
+    if(!ok){remove(candidate);return -1;}
+    // Consume the pending marker BEFORE replacing the live save. A crash
+    // during this small interval leaves the original and staged copy intact,
+    // never repeatedly overwrites new progress on every launch.
+    if(rename(stage,used)!=0){remove(candidate);return -1;}
+    if(rename(candidate,save)!=0){remove(candidate);rename(used,stage);return -1;}
+    remove(used);
+    return 1;
+}
+static int transfer_result;
+static void android_save_picker(int importing){
+    JNIEnv *env=(JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity=(jobject)SDL_AndroidGetActivity();
+    if(!env||!activity){say_toast("FILE PICKER UNAVAILABLE");return;}
+    jclass cls=(*env)->GetObjectClass(env,activity);
+    jmethodID method=cls?(*env)->GetMethodID(env,cls,"beginSaveTransfer","(ZLjava/lang/String;[B)V"):0;
+    jstring path=0;jbyteArray data=0;
+    if(method){
+        path=(*env)->NewStringUTF(env,g_savepath);
+        if(!importing&&path&&!(*env)->ExceptionCheck(env)){
+            data=(*env)->NewByteArray(env,TRANSFER_SIZE);
+            if(data)(*env)->SetByteArrayRegion(env,data,0,TRANSFER_SIZE,(const jbyte*)(uintptr_t)GBAA(0x0E000000u));
+        }
+        if(path&&(importing||data)&&!(*env)->ExceptionCheck(env))
+            (*env)->CallVoidMethod(env,activity,method,(jboolean)importing,path,data);
+    }
+    if(!method||!path||(!importing&&!data)||(*env)->ExceptionCheck(env)){
+        if((*env)->ExceptionCheck(env))(*env)->ExceptionClear(env);
+        say_toast("FILE PICKER UNAVAILABLE");
+    }
+    if(data)(*env)->DeleteLocalRef(env,data);
+    if(path)(*env)->DeleteLocalRef(env,path);
+    if(cls)(*env)->DeleteLocalRef(env,cls);
+    (*env)->DeleteLocalRef(env,activity);
+}
+#endif
 // ------------------------------------------------------------------------------------------------ audio
 #define RING 16384
 #define AUDIO_TARGET 1200
@@ -421,7 +509,7 @@ static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRender
 // ---- the options screen
 enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_LAN, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_MOBILE_MODE, A_REBIND=1000 };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_MOBILE_MODE, A_SAVE_EXPORT, A_SAVE_IMPORT, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
@@ -469,7 +557,12 @@ static void menu_build(Item *it, int *n){
     switch(menu_page){
     case P_MAIN: it[k++]=(Item){0,"RESUME",0,0,0,0,0,A_RESUME}; it[k++]=(Item){0,"VIDEO",0,0,0,0,0,A_VIDEO}; it[k++]=(Item){0,"AUDIO",0,0,0,0,0,A_AUDIO}; it[k++]=(Item){0,"ACCESSIBILITY AND MOUSE",0,0,0,0,0,A_ACCESS};
         it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; if(g_touch) it[k++]=(Item){0,"TOUCH PAD",0,0,0,0,0,A_TOUCH}; it[k++]=(Item){0,"MULTIPLAYER LAN",0,0,0,0,0,A_LAN}; it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
-        it[k++]=(Item){0,"HOW TO PLAY",0,0,0,0,0,A_HELP}; it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
+        it[k++]=(Item){0,"HOW TO PLAY",0,0,0,0,0,A_HELP}; it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT};
+#ifdef PC_ANDROID
+        it[k++]=(Item){0,"EXPORT CARTRIDGE SAVE",0,0,0,0,0,A_SAVE_EXPORT};
+        it[k++]=(Item){0,"RESTORE CARTRIDGE SAVE",0,0,0,0,0,A_SAVE_IMPORT};
+#endif
+        it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
     case P_VIDEO:
 #ifdef PC_ANDROID
         it[k++]=(Item){1,"PHONE PERFORMANCE",&C.mobile_mode,0,2,1,mobilemodes,A_MOBILE_MODE};
@@ -510,6 +603,8 @@ static void menu_do(int act){
     switch(act){
     case A_RESUME: menu_open=0; cfg_save(); break;
 #ifdef PC_ANDROID
+    case A_SAVE_EXPORT: pc_save_flush(1);android_save_picker(0);break;
+    case A_SAVE_IMPORT: pc_save_flush(1);android_save_picker(1);break;
     case A_MOBILE_MODE:
         g_governor=(MobileGovernor){0};
         say_toast(C.mobile_mode==0?"AUTO PERFORMANCE RESET":C.mobile_mode==1?"BATTERY PROFILE":"FULL DETAIL PROFILE");
@@ -1523,6 +1618,10 @@ int plat_paths(int argc, char **argv){            // finds the folders; call bef
     { char cmd[1300]; snprintf(cmd,sizeof cmd,"mkdir -p '%s' '%sscreenshots' 2>/dev/null",g_pref,g_pref); if(system(cmd)){} }
 #endif
     snprintf(g_savepath,sizeof g_savepath,"%sbugstar.sav",g_pref); snprintf(g_cfgpath,sizeof g_cfgpath,"%ssettings.ini",g_pref); snprintf(g_shotdir,sizeof g_shotdir,"%sscreenshots/",g_pref);
+#ifdef PC_ANDROID
+    transfer_result=transfer_apply(g_savepath);
+    if(transfer_result) __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_SAVE","restore result=%d",transfer_result);
+#endif
 #ifdef _WIN32
     { char d[1300]; snprintf(d,sizeof d,"%sscreenshots",g_pref); pc_mkdir_p(d); }
 #endif
@@ -1588,6 +1687,10 @@ int plat_open(int argc, char **argv){
     if(!ren){ fprintf(stderr,"renderer: %s\n",SDL_GetError()); return 1; }
     { SDL_RendererInfo ri; if(SDL_GetRendererInfo(ren,&ri)==0) fprintf(stderr,"video: %s renderer, driver %s\n",ri.name,SDL_GetCurrentVideoDriver()); }
     make_icon(); font_init();
+#ifdef PC_ANDROID
+    if(transfer_result>0)say_toast_ms("CARTRIDGE SAVE RESTORED",6000);
+    else if(transfer_result<0)say_toast_ms("RESTORE FAILED - OLD SAVE KEPT",6000);
+#endif
     SDL_ShowCursor(C.fullscreen?SDL_DISABLE:SDL_ENABLE);
     pad_open();
     if(g_touch==1 && pad) g_thide=1;      // a gamepad is plugged in: no on-screen pad until a finger touches the screen
