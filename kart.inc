@@ -559,15 +559,42 @@ static void khorn(int k){
         case 7: SND(0x18)=(0xF<<12)|(2<<8); SND(0x1C)=0x8000|(3<<4)|1; break; } }                                    // SNEEZE
 
 // ---------------------------------------------------------------- where everyone is in the race
-static int kscore(int r){ Racer *k=&rc[r]; if(k->fin) return 0x7FFF0000-k->place*1000; if(k->out) return -100000-k->place*1000; return k->lap*knp+k->pi; }
+// A nearest-path search can jump to the wrong branch of a crossing or
+// wrap backwards over the start. Only credit the current validated gate
+// interval. Grid positions remain ordered before the first start crossing.
+static int kvalidated_progress(int lap,int pi,int gate,int path,int count,const u16 *gates){
+    if(path<1)return 0;
+    if(pi<0)pi=0;if(pi>=path)pi=path-1;
+    if(lap==0)return pi<path/2?path-1:pi;
+    if(count<2||gate<0||gate>=count)return lap*path+pi;
+    int lo=gate?gates[gate-1]:gates[count-1],hi=gate?gates[gate]:path;
+    if(lo<0||lo>=hi||hi>path)return lap*path+pi;
+    int mid=(lo+hi)/2;
+    if(pi-mid>path/2)pi-=path;
+    else if(mid-pi>path/2)pi+=path;
+    if(pi<lo)pi=lo;if(pi>=hi)pi=hi-1;
+    return lap*path+pi;
+}
+static int kscore(int r){
+    Racer *k=&rc[r];if(k->fin)return 0x7FFF0000-k->place*1000;
+    if(k->out)return -100000-k->place*1000;
+    return r==0?kvalidated_progress(k->lap,k->pi,k->nextg,knp,kt.n,kgate_pi):k->lap*knp+k->pi;
+}
 static void kplaces(void){
-    for(int i=0;i<nrc;i++){ int p=1, si=kscore(i); for(int j=0;j<nrc;j++) if(j!=i){ int sj=kscore(j); if(sj>si || (sj==si && j<i)) p++; } if(!rc[i].fin && !rc[i].out) rc[i].place=(u8)p; } }
+    // Snapshot once: 12 score calculations instead of up to 144.
+    int score[NRC];for(int i=0;i<nrc;i++)score[i]=kscore(i);
+    for(int i=0;i<nrc;i++)if(!rc[i].fin&&!rc[i].out){
+        int p=1;for(int j=0;j<nrc;j++)if(j!=i&&(score[j]>score[i]||(score[j]==score[i]&&j<i)))p++;
+        rc[i].place=(u8)p;
+    }
+}
 static void kpath_track(int r){                                    // the path point nearest a racer, searched near the last one
     Racer *k=&rc[r]; int tx=(k->x>>15)&255, ty=(k->y>>15)&255, best=k->pi, bd=1<<30;
     for(int d=-6;d<=22;d++){ int i=kwp(k->pi+d+knp); int dx=kwrap8(kpx[i]-tx), dy=kwrap8(kpy[i]-ty), dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } }
     if(bd>144) for(int i=0;i<knp;i++){ int dx=kwrap8(kpx[i]-tx), dy=kwrap8(kpy[i]-ty), dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } }   // lost? look everywhere
     if(r && best<k->pi-knp/2) k->lap++;                                                       // a rival came round past the line
     k->pi=(s16)best; }
+static int kart_record_eligible(int finished,int out,int type,int elapsed){return finished&&!out&&type!=3&&type!=6&&elapsed>0;}
 static void kfinish(int r){
     Racer *k=&rc[r]; if(k->fin) return; k->fin=1; { int pl=1; for(int j=0;j<nrc;j++) if(j!=r && rc[j].fin) pl++; k_finished=pl; k->place=(u8)pl; }   // (the place is counted from who has really finished: never two the same)
     k->ftime=(u16)(k_clock>65000?65000:k_clock);
@@ -899,7 +926,7 @@ static void kart_auto(s32 vt){                                     // after the 
 static void kart_step(void){
     s32 vmax=k_vmax(&kl);
     int up=HELD(K_UP), dn=HELD(K_DOWN), s = HELD(K_LEFT)?-1 : HELD(K_RIGHT)?1 : 0, h0=heading;
-    if(kr_mode==1 && ks_state==KS_COUNT){ kv=0; return; }
+    if(kr_mode==1 && (ks_state==KS_COUNT||rc[0].out)){ kv=0; return; }
     if(kloop_on){ kloop_step(); return; }
 #if defined(TEST_KAUTO) || defined(TEST_KFUZZ)
 #ifdef TEST_KFUZZ
@@ -1043,7 +1070,7 @@ static void kart_tick(int n){
     if(nkl && !kloop_on && !kair){ int p=rc[0].pi;                                                // driving onto a loop-de-loop
         if(kloop_prev>=0) for(int j=0;j<nkl;j++){ int d0=kwp(klp[j]-kloop_prev+knp), d1=kwp(klp[j]-p+knp); if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ if(kroad(cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)])) kloop_begin(j); break; } }
         kloop_prev=rc[0].pi; }
-    if(!rc[0].fin){ int g=rc[0].nextg; s32 gx=((s32)KGX(g)<<15)+(1<<14), gy=((s32)KGY(g)<<15)+(1<<14), dx=wrapd(gx-ppx), dy=wrapd(gy-ppy);
+    if(kitem_active(0)){ int g=rc[0].nextg; s32 gx=((s32)KGX(g)<<15)+(1<<14), gy=((s32)KGY(g)<<15)+(1<<14), dx=wrapd(gx-ppx), dy=wrapd(gy-ppy);
         if((dx<0?-dx:dx)+(dy<0?-dy:dy) < 0x36000){ if(g==0){ for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; rc[0].lap++; if(rc[0].lap>1){ int lt=k_clock-k_lap_t0; if(!k_best_lap || lt<k_best_lap) k_best_lap=lt; } k_lap_t0=k_clock;
             if(rc[0].lap>kt.laps) kfinish(0); else if(rc[0].lap>1){ if(rc[0].lap==kt.laps){ show_msg("FINAL LAP!"); sfx(6); music(7); } else { char b[24]; scpy(b,"LAP "); ncat(b,rc[0].lap); scat(b," OF "); ncat(b,kt.laps); show_msg(b); sfx(7); } } }
             rc[0].nextg=(u8)((g+1)%kt.n); }
@@ -1066,8 +1093,12 @@ static void kart_tick(int n){
     kitems_tick(n); kbump(); kplaces(); kw_elim_tick(n); kengine(n); kshield_fx();
     for(int r=1;r<nrc;r++) if(rc[r].po!=255){ po[rc[r].po].x=rc[r].x; po[rc[r].po].y=rc[r].y; }
     if(HIT(K_L)){ khorn(kl.part[KP_HORN]); for(int r=1;r<nrc;r++){ s32 dx=wrapd(rc[r].x-ppx), dy=wrapd(rc[r].y-ppy); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<(4<<16)) rc[r].lane=-rc[r].lane; } }
-    if(!rc[0].fin && (k_finished>=nrc-1 || k_clock>36000) && nrc>1){          // (no race may last over ten minutes: then the HURRY timer runs whatever the others are doing)
-         if(k_end_t==0) show_msg("HURRY! THE OTHERS ARE DONE"); k_end_t+=n; if(k_end_t>900){ rc[0].place=(u8)nrc; kfinish(0); rc[0].place=(u8)nrc; ks_state=KS_DONE; k_end_t=150; } }
+    if(ks_state==KS_RACE && kitem_active(0) && (k_finished>=nrc-1 || k_clock>36000) && nrc>1){
+         if(k_end_t==0)show_msg(k_finished>=nrc-1?"HURRY! THE OTHERS ARE DONE":"HURRY! TIME LIMIT");
+         k_end_t+=n;
+         if(k_end_t>900){rc[0].out=1;rc[0].place=(u8)nrc;rc[0].v=kv=0;
+             show_msg("TIME UP - DID NOT FINISH");sfx(4);ks_state=KS_DONE;k_end_t=150;}
+    }
     if(ks_state==KS_DONE && k_end_t>=150) kart_results();
 }
 

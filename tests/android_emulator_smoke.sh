@@ -5,10 +5,19 @@ apk=${1:?APK path required}
 pkg=org.bugstar.app
 activity="$pkg/.BugstarActivity"
 trap 'adb logcat -d > android-boot.log || true; adb exec-out screencap -p > android-last.png || true' EXIT
+app_pid() {
+    adb shell ps | tr -d '\r' | awk -v p="$pkg" '$NF==p && !found {print $2;found=1}'
+}
+current_log() {
+    local tag=$1 pid
+    pid=$(app_pid)
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    adb logcat -d -v brief -s "$tag:I" '*:S' | awk -v tag="$tag" -v pid="$pid" '$0 ~ ("/" tag "\\( *" pid "\\):")'
+}
 wait_log() {
-    local tag=$1 pattern=$2 line
-    for ((n=0;n<60;n++)); do
-        line=$(adb logcat -d -s "$tag:I" '*:S' | grep -F "$pattern" | tail -1 || true)
+    local tag=$1 pattern=$2 line limit=${3:-60}
+    for ((n=0;n<limit;n++)); do
+        line=$(current_log "$tag" | grep -F "$pattern" | tail -1 || true)
         if [[ -n "$line" ]]; then printf '%s\n' "$line"; return 0; fi
         sleep 1
     done
@@ -39,13 +48,32 @@ adb shell ps | grep "$pkg"
 help=$(wait_log BUGSTAR_UI 'touch menu page=7 ')
 w=$(field "$help" w); h=$(field "$help" h); footer=$(field "$help" footer)
 adb exec-out screencap -p > android-boot.png
+before=$(wait_log BUGSTAR_PAD 'mode w=')
+epoch=$(field "$before" epoch)
 tap_drawable "$((w/2))" "$((h-footer/2))" "$w" "$h"
 wait_log BUGSTAR_UI 'touch menu action page=7 hit=-3'
-sleep 1
-mode=$(wait_log BUGSTAR_PAD 'mode w=')
-w=$(field "$mode" w); h=$(field "$mode" h); x=$(field "$mode" x); y=$(field "$mode" y)
-tap_drawable "$x" "$y" "$w" "$h"
-menu=$(wait_log BUGSTAR_UI 'touch menu page=0 ')
+# Require a real pad draw after PLAY, not its startup/pre-tutorial position.
+menu=""
+for ((attempt=0;attempt<4;attempt++));do
+    for ((poll=0;poll<30;poll++));do
+        mode=$(wait_log BUGSTAR_PAD 'mode w=' 2 || true)
+        if [[ -n "$mode" ]] && (( $(field "$mode" epoch)>epoch ));then break;fi
+        sleep 1
+    done
+    [[ -n "$mode" ]] && (( $(field "$mode" epoch)>epoch ))
+    # The runner/system may return to Home while a surface is settling.
+    # Bring the same activity forward, then use its fresh pad observation.
+    if ! adb shell dumpsys activity activities | grep -Ei 'mResumedActivity|topResumedActivity' | grep -F "$pkg" >/dev/null;then
+        epoch=$(field "$mode" epoch)
+        adb shell am start -W -n "$activity"
+        continue
+    fi
+    w=$(field "$mode" w); h=$(field "$mode" h); x=$(field "$mode" x); y=$(field "$mode" y)
+    tap_drawable "$x" "$y" "$w" "$h"
+    menu=$(wait_log BUGSTAR_UI 'touch menu page=0 ' 5 || true)
+    if [[ -n "$menu" ]];then break;fi
+done
+[[ -n "$menu" ]]
 w=$(field "$menu" w); h=$(field "$menu" h)
 header=$(field "$menu" header); row=$(field "$menu" row)
 tap_drawable "$((w/2))" "$((header+row+row/2))" "$w" "$h"

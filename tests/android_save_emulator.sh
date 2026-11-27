@@ -6,7 +6,8 @@ activity="$pkg/.BugstarActivity"
 wait_log(){
     local tag=$1 pattern=$2 line
     for ((n=0;n<60;n++));do
-        line=$(adb logcat -d -s "$tag:I" '*:S' | grep -F "$pattern" | tail -1 || true)
+        local pid;pid=$(app_pid)
+        line=$(process_log "$tag" "$pid" | grep -F "$pattern" | tail -1 || true)
         if [[ -n "$line" ]];then printf '%s\n' "$line";return 0;fi
         sleep 1
     done
@@ -70,7 +71,7 @@ done
 sleep 2
 adb exec-out screencap -p > android-save-picker.png
 for ((n=0;n<8;n++));do
-    if adb logcat -d -s BUGSTAR_SAVE:I | grep -Fq 'picker cancelled';then break;fi
+    if process_log BUGSTAR_SAVE "$(app_pid)" | grep -F 'picker cancelled' >/dev/null;then break;fi
     if adb shell dumpsys activity activities | grep -Ei 'mResumedActivity|topResumedActivity' | grep -qi 'documentsui';then
         adb shell input keyevent KEYCODE_BACK
     fi

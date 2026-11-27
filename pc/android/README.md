@@ -121,3 +121,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 
 - Destroyed, friendly and invalid fleet targets are invalidated immediately. Two scheduled searches and at most four urgent searches per logic tick preserve the previous worst-case scan budget without starving high-index ships. Friendly/invalid targets no longer render as laser endpoints. The lounge cannot buy hidden shipyard upgrades.
 - Shells and slime remain in inventory if projectile/scenery pools are exhausted; AI retries after a short delay. Finished and eliminated racers no longer consume item boxes, trigger traps or bump active racers. Shells and slime expire without applying a final phantom hit. Signed collision shifts replaced with defined multiplication. Save formats and vehicle controls unchanged.
+
+## Version 0.56 race standings and touch startup
+
+- Player race ranking is constrained to the next validated gate interval, rather than accepting a nearest-path jump at a crossing. Rank comparisons reuse one score per racer per update. Timeout is a DNF, not a finish; no false records or timeout prize. Elimination matches do not set circuit best times. Retired players cannot advance gates.
+- The Android overlay publishes a fresh pad geometry observation when it becomes visible again, including after tutorial or background transitions. Touch events against changed renderer dimensions are ignored until redraw. The emulator checks the current process and fresh post-tutorial pad geometry, and retries actual touch navigation if the activity was unexpectedly backgrounded. No simulated keyboard substitute.

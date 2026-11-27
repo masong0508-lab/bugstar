@@ -43,6 +43,10 @@ static int g_a38;      // patch 38: set when the settings file already carries t
 enum { TC_DPAD, TC_A, TC_B, TC_L, TC_R, TC_SEL, TC_STA, TC_MENU, TC_C, TC_X, TC_Y, TC_Z, TC_N };
 typedef struct { int set, x, y, s; } TPos;      // set: the player moved it; x,y: centre in 1/1000 of the window width/height; s: size in percent (0 = 100)
 static TPos g_tl[2][TC_N]; static int g_talpha=80, g_t6=1, g_thaptic=1, g_tsnap;      // opacity in percent; 1 = the 6 button pad (0 = 3 button); haptics on
+#ifdef PC_ANDROID
+static unsigned pad_report_epoch;
+static int pad_report_visible;
+#endif
 static int g_touch, g_thide;      // g_touch: the pad exists (1 Android, 2 PC preview with --touch); g_thide: a keyboard or gamepad was used, the pad is hidden until the next touch
 static const char *const tl_key[TC_N]={"dpad","a","b","l","r","sel","sta","menu","c","x","y","z"};
 static void tl_save(FILE *f){
@@ -1087,6 +1091,14 @@ static void touch_event(const SDL_Event *e){
     // A surface can temporarily be 0x0 during rotation or backgrounding.
     // The editor must obey this guard too (it divides by drawable size).
     if(!g_touch||g_bg||dw_<=0||dh_<=0)return;
+#ifdef PC_ANDROID
+    // SDL can report a changed surface before its size event is dequeued.
+    // Discard touches against old drawable dimensions until the next draw.
+    int actual_w,actual_h;
+    if(SDL_GetRendererOutputSize(ren,&actual_w,&actual_h)!=0||actual_w!=dw_||actual_h!=dh_){
+        touch_release_all();pad_report_visible=0;return;
+    }
+#endif
     if(e->type==SDL_FINGERDOWN) g_thide=0;      // a finger brings the pad back
     if(ted_on){ ted_touch(e); return; }
     if(g_thide||g_bg||dw_<=0||dh_<=0) return;
@@ -1167,16 +1179,21 @@ outlines:
     if(sel>=0 && sel<TC_N){ int hw,hh; tg_ext(g,sel,&hw,&hh); int t=t_u()/40; if(t<2) t=2; tl_outline(g[sel].cx-hw-t,g[sel].cy-hh-t,2*hw+2*t,2*hh+2*t,t,0xFFD23C); }
 }
 static void touch_draw(void){
-    if(ted_on||menu_open||!tg_on()) return;
+    if(ted_on||menu_open||!tg_on()||g_bg||g_paused_focus){
+#ifdef PC_ANDROID
+        pad_report_visible=0;
+#endif
+        return;
+    }
     uint16_t d; uint32_t el=tg_state(&d); tl_draw(el,d,-1,0);
 #ifdef PC_ANDROID
     // Log only when the actual options-button geometry changes. No input or
     // personal information is recorded. CI uses this to send genuine taps.
     static int lw,lh,lx=-1,ly=-1;
     TGeo g[TC_N];tl_geo(g);int i=g_t6?TC_SEL:TC_MENU;
-    if(lw!=dw_||lh!=dh_||lx!=g[i].cx||ly!=g[i].cy){
-        lw=dw_;lh=dh_;lx=g[i].cx;ly=g[i].cy;
-        __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_PAD","mode w=%d h=%d x=%d y=%d",lw,lh,lx,ly);
+    if(!pad_report_visible||lw!=dw_||lh!=dh_||lx!=g[i].cx||ly!=g[i].cy){
+        pad_report_visible=1;lw=dw_;lh=dh_;lx=g[i].cx;ly=g[i].cy;
+        __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_PAD","mode w=%d h=%d x=%d y=%d epoch=%u",lw,lh,lx,ly,++pad_report_epoch);
     }
 #endif
 }
@@ -1335,6 +1352,7 @@ static void app_foreground(void){
     if(!g_bg && !g_app_resume) return;
     g_bg=0; g_app_resume=0; g_pace_reset=1; memset(kst,0,sizeof kst); touch_release_all();
 #ifdef PC_ANDROID
+    pad_report_visible=0;
     __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_LIFE","foreground resume");
 #endif
     // The paused-loop exit resumes audio after all pause causes clear.
