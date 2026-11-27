@@ -562,6 +562,23 @@ static void khorn(int k){
 // A nearest-path search can jump to the wrong branch of a crossing or
 // wrap backwards over the start. Only credit the current validated gate
 // interval. Grid positions remain ordered before the first start crossing.
+/* A checkpoint is behind us only on the near half of the circular path.
+   Keep recovery and the HUD in agreement, including the start/finish wrap. */
+static int kart_gate_missed(int pi,int gp,int path){
+    if(path<2||pi<0||pi>=path||gp<0||gp>=path)return 0;
+    int past=pi-gp;if(past<0)past+=path;
+    return past>8 && past<path/2;
+}
+#if defined(TEST_KAUTO) || defined(TEST_KFUZZ)
+static int kart_driver_target(int pi,int gp,int path){
+    if(path<2||pi<0||pi>=path||gp<0||gp>=path)return pi;
+    int ahead=gp-pi;if(ahead<0)ahead+=path;
+    /* Do not cut across a checkpoint by aiming past it; if we missed
+       one, aim back at it. The real race still requires physical contact. */
+    if(ahead<=5||ahead>path/2)return gp;
+    int target=pi+5;return target>=path?target-path:target;
+}
+#endif
 static int kvalidated_progress(int lap,int pi,int gate,int path,int count,const u16 *gates){
     if(path<1)return 0;
     if(pi<0)pi=0;if(pi>=path)pi=path-1;
@@ -644,7 +661,12 @@ static void kart_stop(void){                                       // back to wa
 // ---------------------------------------------------------------- driving: your kart (one 60th at a time)
 static int kgrav4(void){ return WL(MW_ZEROG) ? 1 : 3+wd.grav; }      // low gravity planets: floaty jumps
 static void kart_splash(void){                                     // fell in the water: a kind fish throws you back to the road
-    int p=rc[0].pi; for(int j=0;j<nkj;j++){ int d=(p-kjl[j]+knp)%knp; if(d<=(kjr[j]-kjl[j]+knp)%knp+6){ p=(kjl[j]-12+knp)%knp; break; } }
+    int p=rc[0].pi;
+    /* Never strand a recovered kart beyond an uncredited checkpoint. */
+    if(kr_mode==1 && ks_state==KS_RACE && !rc[0].fin && knp>6 &&
+       rc[0].nextg<kt.n && kart_gate_missed(p,kgate_pi[rc[0].nextg],knp))
+        p=(kgate_pi[rc[0].nextg]+knp-6)%knp;
+    for(int j=0;j<nkj;j++){ int d=(p-kjl[j]+knp)%knp; if(d<=(kjr[j]-kjl[j]+knp)%knp+6){ p=(kjl[j]-12+knp)%knp; break; } }
     if(kgap_at(p)) p=(p-14+knp)%knp;
     ppx=kp_cx(p); ppy=kp_cy(p); khd=heading=kp_dir(p); heading_rays(); kv=0; kair=0; kwet=0; kalt=ground_h(ppx,ppy); cam_h=kalt+CAM_UP; kstall=45; rc[0].pi=(s16)p; kboost_t=0; kdrift=0;
     show_msg("SPLASH! A KIND FISH THREW YOU BACK"); sfx(8); }
@@ -932,7 +954,14 @@ static void kart_step(void){
 #ifdef TEST_KFUZZ
     if(kfz_auto)
 #endif
-    if(kr_mode==1 && ks_state==KS_RACE){ Racer *k=&rc[0]; int tp=(k->pi+5)%knp; int want=iatan2(wrapd(kp_cx(tp)-ppx)>>4,wrapd(kp_cy(tp)-ppy)>>4), err=((want-khd+512)&1023)-512; s = err>3?1 : err<-3?-1 : 0; up = (err<80 && err>-80) || kv<k_vmax(&kl)/3; dn=0; }   // the test driver
+    if(kr_mode==1 && ks_state==KS_RACE && knp>1 && rc[0].nextg<kt.n){
+        Racer *k=&rc[0]; int tp=kart_driver_target(k->pi,kgate_pi[k->nextg],knp);
+        int want=iatan2(wrapd(kp_cx(tp)-ppx)>>4,wrapd(kp_cy(tp)-ppy)>>4), err=((want-khd+512)&1023)-512;
+        int ab=err<0?-err:err; s=err>3?1:err<-3?-1:0;
+        /* Brake before tight turns rather than circle a missed gate at speed. */
+        dn=ab>120 && kv>vmax/4;
+        up=!dn && (ab<80 || kv<vmax/5);
+    }   // the test driver
 #endif
     int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)], fl = form==FORM_CREATURE && form_body==2;
     int water = hm_at(ppx,ppy)<water_lv && !fl && !kroad(c) && kbr_cur<64, onroad = kroad(c) || kbr_cur>=64 || (kr_mode==2 && !water);
@@ -1074,7 +1103,7 @@ static void kart_tick(int n){
         if((dx<0?-dx:dx)+(dy<0?-dy:dy) < 0x36000){ if(g==0){ for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; rc[0].lap++; if(rc[0].lap>1){ int lt=k_clock-k_lap_t0; if(!k_best_lap || lt<k_best_lap) k_best_lap=lt; } k_lap_t0=k_clock;
             if(rc[0].lap>kt.laps) kfinish(0); else if(rc[0].lap>1){ if(rc[0].lap==kt.laps){ show_msg("FINAL LAP!"); sfx(6); music(7); } else { char b[24]; scpy(b,"LAP "); ncat(b,rc[0].lap); scat(b," OF "); ncat(b,kt.laps); show_msg(b); sfx(7); } } }
             rc[0].nextg=(u8)((g+1)%kt.n); }
-        else { int gp=kgate_pi[g], ahead=kwp(rc[0].pi-gp+knp); if(rc[0].lap>0 && ahead>8 && ahead<knp/3 && (frames&63)==0){ char b[32]; scpy(b,"MISSED A GATE! GO BACK"); show_msg(b); } }
+        else if(kart_gate_missed(rc[0].pi,kgate_pi[g],knp) && (frames&63)==0) show_msg("MISSED A GATE! GO BACK");
         int dirn=kp_dir(rc[0].pi), off=((khd-dirn+512)&1023)-512; if(off<0) off=-off; if(off>380 && kv>K_VBASE/4) k_wrong+=n; else k_wrong=0; if(k_wrong>50 && (frames&31)==0) show_msg("WRONG WAY!"); }
     if(ks_state==KS_RACE && !kair && !kloop_on && !rc[0].fin){ int pi=rc[0].pi, fx=kwrap8(kpx[pi]-((ppx>>15)&255)), fy=kwrap8(kpy[pi]-((ppy>>15)&255)); if(fx*fx+fy*fy>26*26) kfar+=n; else kfar=0;
         if(kfar>130){ kfar=0; kart_splash(); show_msg("OFF THE TRACK! BACK YOU GO"); } }   // far from the road for a couple of seconds (a long way round the land): put back on it
@@ -1217,6 +1246,17 @@ static void kart_minimap(volatile u16 *pg){
             if(x>=194 && x<=234 && y>=21 && y<=61) pix(pg,x,y,step<=6?C_GOLD:C_CYAN);
         }
     }
+    /* Persistent cross on the required checkpoint, not the nearest road. */
+    if(kr_mode==1 && ks_state==KS_RACE && !rc[0].fin && rc[0].nextg<kt.n && cnt>0){
+        int gp=kgate_pi[rc[0].nextg], i=gp>>1;
+        if(i>=0&&i<cnt){
+            int x=ox+kmmx[i], y=oy+kmmy[i];
+            int c=kart_gate_missed(rc[0].pi,gp,knp)?C_RED:C_GOLD;
+            if(x>=195&&x<=233&&y>=22&&y<=60){
+                pix(pg,x-1,y,c);pix(pg,x+1,y,c);pix(pg,x,y-1,c);pix(pg,x,y+1,c);
+            }
+        }
+    }
     if(kr_mode==1) for(int r=nrc-1;r>=0;r--){
         if(cnt<1) continue; int i=rc[r].pi>>1;
         if(i>=cnt) i=cnt-1; if(i<0) i=0; // guard malformed racer indices
@@ -1275,6 +1315,12 @@ static void kart_hud(volatile u16 *pg){
 #endif
     { int lp=rc[0].lap<1?1:rc[0].lap>kt.laps?kt.laps:rc[0].lap; scpy(b,"LAP "); ncat(b,lp); scat(b,"/"); ncat(b,kt.laps); stext(pg,4,33,b,C_CYAN); }
     { char t[12]; kfmt_time(t, rc[0].fin ? rc[0].ftime : k_clock); stext(pg,4,40,t,C_WHITE); }
+    if(ks_state==KS_RACE && !rc[0].fin && rc[0].nextg<kt.n){
+        int g=rc[0].nextg,miss=kart_gate_missed(rc[0].pi,kgate_pi[g],knp);
+        if(g==0)scpy(b,rc[0].lap?"NEXT: FINISH":"NEXT: START");
+        else {scpy(b,"GATE ");ncat(b,g+1);scat(b,"/");ncat(b,kt.n);}
+        stext(pg,90,33,b,miss?C_RED:C_CYAN);
+    }
 #if defined(TEST_FPS) || defined(TEST_KLOG)
     u32 h2=TMR();
 #endif
