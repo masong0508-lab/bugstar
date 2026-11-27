@@ -471,7 +471,7 @@ static void touch_menu_draw(void){
         else if(it[i].kind==2)snprintf(b,sizeof b,"%d",*it[i].val);
         else if(it[i].action==A_LAN_IP)snprintf(b,sizeof b,"%s%s",lan_ui_ip,lan_ip_edit?" [EDIT]":"");
         else if(it[i].action>=A_REBIND){int bi=it[i].action-A_REBIND;if(menu_wait&&menu_sel==i)snprintf(b,sizeof b,"PRESS %s",menu_wait==1?"A KEY":"A BUTTON");else if(menu_page==P_CONTROLS)key_name_of(bi,b,sizeof b);else pad_name_of(bi,b,sizeof b);}
-        if(it[i].kind){tm_fit(2*m,y+11*gs_,3*gs_,"<",0xFFD23C);tm_fit(w-4*m,y+11*gs_,4*gs_,">",0xFFD23C);
+        if(it[i].kind){tm_fit(2*m,y+11*gs_,4*gs_,"<",0xFFD23C);tm_fit(w-4*m,y+11*gs_,4*gs_,">",0xFFD23C);
             tm_fit(5*m,y+11*gs_,w-10*m,b,0xD7E3FF);}
         else if(b[0])tm_fit(2*m,y+11*gs_,w-4*m,b,0xD7E3FF);
         else tm_fit(w-4*m,y+rh/2-3*gs_,4*gs_,">",0xFFD23C);
@@ -913,7 +913,15 @@ static void pump_events(void){
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_GAINED) g_paused_focus=0;
             break;
         case SDL_MOUSEMOTION: case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP:
-            if(menu_open && g_touch) break;
+            if(menu_open && g_touch){
+                // Desktop touch preview also accepts a mouse, scaled to drawable pixels.
+                // Android uses genuine finger events (touch-to-mouse is disabled).
+                if(g_touch==2 && !ted_on && e.type==SDL_MOUSEBUTTONDOWN && e.button.button==SDL_BUTTON_LEFT){
+                    int w,h;SDL_GetWindowSize(win,&w,&h);
+                    if(w>0&&h>0)touch_menu_input((int)((int64_t)e.button.x*dw_/w),(int)((int64_t)e.button.y*dh_/h));
+                }
+                break;
+            }
             if(menu_open && !menu_wait){ int ex = e.type==SDL_MOUSEMOTION ? e.motion.x : e.button.x, ey = e.type==SDL_MOUSEMOTION ? e.motion.y : e.button.y;
                 int hit = m_lh>0 && ex>=m_x0 && ex<m_x0+m_pw ? (ey-(m_y1-m_gs))/m_lh : -1; if(ey<m_y1-m_gs) hit=-1; if(hit>=m_n) hit=-1;
                 if(e.type==SDL_MOUSEMOTION){ if(hit>=0) menu_sel=hit; }
