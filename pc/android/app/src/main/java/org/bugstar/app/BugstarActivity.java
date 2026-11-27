@@ -60,6 +60,7 @@ public class BugstarActivity extends SDLActivity {
                     intent.setType(importing ? "*/*" : "application/octet-stream");
                     if (!importing) intent.putExtra(Intent.EXTRA_TITLE, "BUGSTAR-cartridge.bgsave");
                     startActivityForResult(intent, importing ? SAVE_IMPORT : SAVE_EXPORT);
+                    Log.i("BUGSTAR_SAVE", importing ? "picker launched import" : "picker launched export");
                 } catch (Exception e) {
                     endTransfer("No compatible file picker");
                 }
@@ -114,10 +115,11 @@ public class BugstarActivity extends SDLActivity {
         }, "bugstar-restore").start();
     }
 
-    @Override protected void onActivityResult(int request, int result, Intent data) {
+    @Override public void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (request != SAVE_EXPORT && request != SAVE_IMPORT) return;
         if (!savePickerBusy || result != Activity.RESULT_OK || data == null || data.getData() == null) {
+            Log.i("BUGSTAR_SAVE", "picker cancelled");
             endTransfer(null); return;
         }
         final Uri uri = data.getData();

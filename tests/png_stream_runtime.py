@@ -4,7 +4,13 @@ from pathlib import Path
 import subprocess,tempfile,struct,zlib
 s=(Path(__file__).resolve().parents[1]/"pc/platform/pc_sdl.c").read_text()
 a=s.index("static uint32_t crc_t[256]")
-b=s.index("// ------------------------------------------------------------------------------------------------ audio",a)
+# Stop at the actual writer's closing brace, not a neighboring subsystem.
+start=s.index("static int png_write(const char *path, const uint32_t *xrgb,",a)
+b=s.index("{",start)+1
+depth=1
+while depth:
+    depth+=(s[b]=="{")-(s[b]=="}")
+    b+=1
 assert "case A_SHOT: menu_open=0; shot_pending=1;" in s
 assert "if(draw||shot_pending)present_game(1);" in s
 assert "uint8_t block[32768+5]" in s

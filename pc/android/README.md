@@ -97,3 +97,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 ## Version 0.50 cartridge save transfer
 
 - Options > EXPORT CARTRIDGE SAVE opens Android's document picker and writes a checksummed 32 KiB cartridge backup (.bgsave) from a snapshot of SRAM. RESTORE CARTRIDGE SAVE validates a backup, asks for confirmation, and stages it for the next fresh game launch. Quit via Options and reopen to apply. The previous raw cartridge file is retained as bugstar.sav.before-import. A failed restore leaves the existing save intact; a pending restore never overwrites live SRAM during play. Export includes the three cartridge slots and cartridge settings, not PC-specific sidecar content or external settings.ini. Files can be stored outside the app before an uninstall or moved to another device. No storage permission needed; Android 5.0+ document picker.
+
+## Version 0.51 save-transfer verification
+
+- The PNG host test now extracts just the real encoder. Java and C save codec tests cover matching CRC32, bad headers, wrong sizes, and rollback; the emulator additionally visits and cancels the real export picker, stages a valid backup in the private debug sandbox, restarts the actual game, and verifies recovery bytes and one-time restore. The activity uses singleTop so the system document picker can return a result in the same task.
+- The emulator's staged restore uses an isolated test save, not player data. Physical ARM devices and a complete manual document-provider write/import flow still need device testing.

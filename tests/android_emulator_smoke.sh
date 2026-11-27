@@ -71,3 +71,5 @@ if [[ -n "${2:-}" ]]; then
     adb shell ps | grep "$pkg"
     echo 'Lightweight standalone APK upgrade, retained settings and boot PASS'
 fi
+# The transfer test uses the same installed debug app and real startup path.
+bash tests/android_save_emulator.sh

@@ -746,8 +746,9 @@ static void touch_menu_draw(void){
         int tw=text_w(keys[i]);tm_fit(x+(ww>tw?(ww-tw)/2:gs_),fy+(foot-6*gs_)/2,ww-gs_,keys[i],enabled?0xFFFFFF:0x7788A0);
     }
 #ifdef PC_ANDROID
-    {static int page=-1,lw,lh;if(page!=menu_page||lw!=w||lh!=h){page=menu_page;lw=w;lh=h;
-      __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_UI","touch menu page=%d w=%d h=%d header=%d row=%d footer=%d",page,w,h,head,rh,foot);}}
+    {static int page=-1,lw,lh,lf=-1,lr=-1;if(page!=menu_page||lw!=w||lh!=h||lf!=tm_first||lr!=rows){
+      page=menu_page;lw=w;lh=h;lf=tm_first;lr=rows;
+      __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_UI","touch menu page=%d w=%d h=%d header=%d row=%d footer=%d first=%d rows=%d",page,w,h,head,rh,foot,tm_first,rows);}}
 #endif
 }
 static void touch_menu_input(int x,int y){
@@ -1619,6 +1620,7 @@ int plat_paths(int argc, char **argv){            // finds the folders; call bef
 #endif
     snprintf(g_savepath,sizeof g_savepath,"%sbugstar.sav",g_pref); snprintf(g_cfgpath,sizeof g_cfgpath,"%ssettings.ini",g_pref); snprintf(g_shotdir,sizeof g_shotdir,"%sscreenshots/",g_pref);
 #ifdef PC_ANDROID
+    __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_SAVE","cartridge path=%s",g_savepath);
     transfer_result=transfer_apply(g_savepath);
     if(transfer_result) __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_SAVE","restore result=%d",transfer_result);
 #endif

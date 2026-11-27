@@ -20,7 +20,7 @@
             android:label="BUGSTAR"
             android:exported="true"
             android:alwaysRetainTaskState="true"
-            android:launchMode="singleInstance"
+            android:launchMode="singleTop"
             android:screenOrientation="fullSensor"
             android:resizeableActivity="true"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
