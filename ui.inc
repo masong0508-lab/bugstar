@@ -1053,7 +1053,7 @@ static void make_quest_type(int requested){
     char b[40];
     switch(q_type){
         case Q_HUNT: q_need=8+dlv()*2+rndi(6); scpy(b,"SLAY "); ncat(b,q_need); scat(b," MONSTERS"); break;
-        case Q_CHAMP: q_need=1+rndi(6); scpy(b,"SLAY "); scat(b,quest_champ_names[q_need-1]); scat(b," ON B"); ncat(b,q_floor); q_gold+=60; q_fame+=10; break;
+        case Q_CHAMP: q_need=1+rndi(NQCHAMP); scpy(b,"SLAY "); scat(b,quest_champ_names[q_need-1]); scat(b," ON B"); ncat(b,q_floor); q_gold+=60; q_fame+=10; break;
         case Q_FETCH: scpy(b,"FIND THE LOST TREASURE ON B"); ncat(b,q_floor); break;
         case Q_BOSS: q_floor=zone_floors(); q_gold+=150; q_fame+=25; scpy(b,"SLAY THE BOSS ON B"); ncat(b,q_floor); break;        // the zone boss waits on the last floor
         case Q_SHARDS: q_need=2+rndi(2); if(q_need>maxf) q_need=maxf; if(q_floor<q_need) q_floor=q_need; q_gold+=q_need*15; scpy(b,"FIND "); ncat(b,q_need); scat(b,q_need==1?" SHARD B":" SHARDS B"); ncat(b,q_floor-q_need+1); scat(b,"-"); ncat(b,q_floor); break;
