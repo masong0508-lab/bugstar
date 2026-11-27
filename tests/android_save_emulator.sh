@@ -12,6 +12,24 @@ wait_log(){
     done
     echo "Timed out: $tag / $pattern" >&2;return 1
 }
+# Old Android images retain some log buffers after logcat -c. Scope each
+# restart assertion to the new process rather than trusting buffer clearing.
+app_pid(){
+    adb shell ps | tr -d '\r' | awk -v p="$pkg" '$NF==p && !found {print $2;found=1}'
+}
+process_log(){
+    local tag=$1 pid=$2
+    adb logcat -d -v brief -s "$tag:I" '*:S' | awk -v tag="$tag" -v pid="$pid" '$0 ~ ("/" tag "\\( *" pid "\\):")'
+}
+wait_process_log(){
+    local tag=$1 pid=$2 pattern=$3 line
+    for ((n=0;n<60;n++));do
+        line=$(process_log "$tag" "$pid" | grep -F "$pattern" | tail -1 || true)
+        if [[ -n "$line" ]];then printf '%s\n' "$line";return 0;fi
+        sleep 1
+    done
+    echo "Timed out: $tag pid=$pid / $pattern" >&2;return 1
+}
 field(){
     local line=$1 key=$2 value
     value=$(printf '%s\n' "$line" | sed -nE "s/.* ${key}=(-?[0-9]+).*/\\1/p")
@@ -81,8 +99,10 @@ adb push "$tmp/restore.bgsave" /data/local/tmp/bugstar-restore-test.bgsave
 adb shell "run-as $pkg sh -c 'cat > $save.restore' < /data/local/tmp/bugstar-restore-test.bgsave"
 adb logcat -c
 adb shell am start -W -n "$activity"
-wait_log BUGSTAR_SAVE 'restore result=1'
-wait_log BUGSTAR_BOOT 'first rendered game frame'
+restored_pid=$(app_pid)
+[[ "$restored_pid" =~ ^[0-9]+$ ]]
+wait_process_log BUGSTAR_SAVE "$restored_pid" 'restore result=1'
+wait_process_log BUGSTAR_BOOT "$restored_pid" 'first rendered game frame'
 adb exec-out run-as "$pkg" cat "$save.before-import" > "$tmp/recovery.sav"
 cmp "$tmp/previous.sav" "$tmp/recovery.sav"
 adb exec-out run-as "$pkg" cat "$save" > "$tmp/restored.sav"
@@ -91,6 +111,11 @@ adb shell "run-as $pkg sh -c 'test ! -f $save.restore'"
 adb shell am force-stop "$pkg"
 adb logcat -c
 adb shell am start -W -n "$activity"
-wait_log BUGSTAR_BOOT 'first rendered game frame'
-if adb logcat -d -s BUGSTAR_SAVE:I | grep -Fq 'restore result=1';then echo 'Restore repeated on second launch' >&2;exit 1;fi
+next_pid=$(app_pid)
+[[ "$next_pid" =~ ^[0-9]+$ && "$next_pid" != "$restored_pid" ]]
+wait_process_log BUGSTAR_BOOT "$next_pid" 'first rendered game frame'
+if process_log BUGSTAR_SAVE "$next_pid" | grep -F 'restore result=1';then echo 'Restore repeated on second launch' >&2;exit 1;fi
+adb shell "run-as $pkg sh -c 'test ! -f $save.restore'"
+adb exec-out run-as "$pkg" cat "$save.before-import" > "$tmp/recovery-second.sav"
+cmp "$tmp/recovery.sav" "$tmp/recovery-second.sav"
 echo 'Android export picker cancellation, real startup restore, recovery bytes, and one-time consumption PASS'
