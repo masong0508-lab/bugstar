@@ -333,8 +333,10 @@ static int surface_goal_repair(int i){
     }
     return 0; /* keep the object alive even on an extreme terrain seed */
 }
+static void ore_nav_reset(void);
 static char tdbg[40];
 static void new_planet(void){
+    ore_nav_reset();
     water_lv = endless ? 30+wr(60) : (zone==1 ? 100 : zone==0||zone==3 ? 70 : zone==5 ? 10 : 45);
     if(endless){ switch(wd.cls){ case PC_OCEAN: water_lv=86+wr(6); break; case PC_DESERT: water_lv=0; break; case PC_MOUNTAIN: water_lv=20+wr(20); break;
         case PC_DEATH: water_lv=45+wr(20); break;
@@ -638,6 +640,7 @@ static int scan_vein(void){                                // the highest tier v
 // It costs nothing per screen column: the veins near you are listed once every half second, and each frame draws a 30x30 panel and at most OM_N dots.
 #define OM_N 40
 static u8 om_i[OM_N]; static u8 om_n; static int om_t=-999;
+static void ore_nav_reset(void){scan_i=-1;om_n=0;om_t=-999;}
 static const u8 om_col[NORE]={0,0,0,0, C_GREY,C_RED,C_CYAN,C_GOLD,C_DRED,C_WHITE,C_GREEN,C_UNIQ};      // iron grey, copper red, ice quartz cyan, sulfur gold, obsidian dark red, calcite white, scrap green, voidsteel purple
 static void oremap_list(void){ om_n=0; om_t=frames;
     for(int i=0;i<NPO && om_n<OM_N;i++) if(po[i].alive && po[i].kind==O_ROCK){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); if(dx>(20<<16)||dx<-(20<<16)||dy>(20<<16)||dy<-(20<<16)) continue; if(ore_of(po[i].x,po[i].y)>=0) om_i[om_n++]=(u8)i; } }
@@ -757,7 +760,7 @@ static void planet_frame(void){
             case O_BEETLE: { PObj *o=&po[best]; sfx(0); mine_t=6; s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); o->x=(o->x+dx*2)&((TW<<16)-1); o->y=(o->y+dy*2)&((TW<<16)-1); invuln=20;
                 if(--o->hp>0){ char b[40]; scpy(b,"BITE! THE BEETLE HAS "); ncat(b,o->hp); scat(b," LEFT"); show_msg(b); break; }
                 o->alive=0; gold+=12+dlv()*3; gain_xp(8+dlv()*2); st_kills[2]++; show_msg("BEETLE DOWN! +GOLD"); sfx(9); if(pq_type==2){ pq_have++; job_tick(); } if(relic_roll(250)){ planet_hud(); p_last=vbl_count; return; } break; }
-            case O_CRIT: { PObj *o=&po[best]; Species *p=&spc[o->var]; sfx(0); mine_t=6; invuln=12; s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); o->x=(o->x+dx)&((TW<<16)-1); o->y=(o->y+dy)&((TW<<16)-1); ctim[o->var]=0;
+            case O_CRIT: { PObj *o=&po[best]; Species *p=&spc[o->var]; sfx(0); mine_t=6; invuln=12; s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); o->x=(o->x+dx)&((TW<<16)-1); o->y=(o->y+dy)&((TW<<16)-1); ctim[best]=0;
                 if(--o->hp>0){ char b[40]; scpy(b,p->temper==1?"IT LOOKS HURT. AND CONFUSED":"THE "); if(p->temper!=1){ scat(b,p->name); scat(b," SQUEAKS"); } show_msg(b); break; }
                 o->alive=0; p->pop=crit_count(o->var); eat(12); gain_xp(5+dlv()); char b[40]; scpy(b,"CAUGHT A "); scat(b,p->name); scat(b,". FOOD +12. "); ncat(b,p->pop); scat(b," LEFT"); show_msg(b); sfx(9);
                 if(pq_type==6 && o->var==0){ pq_have++; job_tick(); } break; }
