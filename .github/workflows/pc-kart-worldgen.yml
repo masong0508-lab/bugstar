@@ -34,6 +34,7 @@ on:
       - 'tests/list_picker_runtime_host.py'
       - 'tests/ui_text_bounds_runtime.py'
       - 'tests/local_rewards_runtime.py'
+      - 'tests/planet_contract_ore_runtime.py'
       - 'tests/mining_persistence_runtime.py'
       - 'tests/life_sim_rewards_runtime.py'
       - 'pc/sim/**'
@@ -122,6 +123,7 @@ on:
       - 'tests/list_picker_runtime_host.py'
       - 'tests/ui_text_bounds_runtime.py'
       - 'tests/local_rewards_runtime.py'
+      - 'tests/planet_contract_ore_runtime.py'
       - 'tests/mining_persistence_runtime.py'
       - 'tests/life_sim_rewards_runtime.py'
       - 'pc/sim/**'
@@ -196,6 +198,8 @@ jobs:
         run: python3 tests/ambient_story_runtime.py
       - name: Validate distinct resident bounties and full-inventory rewards under ASan and UBSan
         run: python3 tests/local_rewards_runtime.py
+      - name: Test selectable planetary work and mineral cache parity
+        run: python3 tests/planet_contract_ore_runtime.py
       - name: Ore SRAM persistence and cap-safe crafting
         run: python3 tests/mining_persistence_runtime.py
       - name: Exercise mine expeditions, old saves and one-pass crew under UBSan
