@@ -32,11 +32,17 @@ require(main, "!q_done && quest_home() && depth_no==q_floor",
         "boss contract must check the correct floor")
 
 # A named champion must be the SAME named target on the board and in combat.
-name_def = re.search(r'quest_champ_names\[6\]=\{([^}]+)\}', game)
+name_def = re.search(r'quest_champ_names\[NQCHAMP\]=\{([^}]+)\}', game)
 assert name_def, "missing shared enemy names"
 names = re.findall(r'"([^"]+)"', name_def.group(1))
-assert len(names) == len(set(names)) == 6
-require(ui, "q_need=1+rndi(6)", "champion bounty lacks a persistent target identity")
+assert len(names) == len(set(names)) == 12
+assert names[:6] == ['GRIMFANG','MOLDJAW','SKITTERMAW','VILEWING','THE PALE ONE','OLD CRUNCH']
+assert all(len('SLAY '+name+' ON B')<=23 for name in names)
+kinds=re.search(r'quest_champ_kind\[NQCHAMP\]=\{([^}]+)\}', dungeon).group(1)
+kinds=re.findall(r'K_[A-Z0-9_]+', kinds)
+assert len(kinds)==len(set(kinds))==12
+require(dungeon, 'cid>=0?quest_champ_kind[cid]:fallback', 'named foe must use its own species')
+require(ui, "q_need=1+rndi(NQCHAMP)", "champion bounty lacks a persistent target identity")
 require(ui, "quest_champ_names[q_need-1]", "board doesn't use the target identity")
 require(main, "quest_champ_id()", "combat HUD doesn't recover the advertised target identity")
 require(game, "const char *a=q_name+5", "older champion saves do not recover their recorded name")
