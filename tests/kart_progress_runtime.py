@@ -17,7 +17,7 @@ prefix=r"""
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
-typedef uint8_t u8;typedef uint16_t u16;typedef int16_t s16;
+typedef uint8_t u8;typedef uint16_t u16;typedef int16_t s16;typedef int32_t s32;
 #define NRC 12
 typedef struct {int lap,pi,nextg,fin,out,place,x,y;} Racer;
 static Racer rc[NRC];static int nrc=12,knp=240;
@@ -44,6 +44,21 @@ static uint32_t rs=0x9e3779b9u;
 static unsigned rnd(void){rs^=rs<<13;rs^=rs>>17;rs^=rs<<5;return rs;}
 int main(void){
     unsigned checks=0;
+    for(int x=-880;x<=880;x+=4)for(int y=-880;y<=880;y+=4){
+        int expect=x*x+y*y<864*864;
+        assert(kart_gate_contact(x*256,y*256)==expect);
+    }
+    assert(!kart_gate_contact(INT32_MIN,0));
+    assert(!kart_gate_contact(INT32_MAX,0));
+    for(int path=1;path<=600;path++)for(int laps=1;laps<=9;laps++){
+        int grace=kart_finish_grace(path,laps);
+        assert(grace>=900&&grace<=7200);
+        if(laps>1)assert(grace>=kart_finish_grace(path,laps-1));
+    }
+    for(int a=0;a<240;a++)for(int b=a;b<240;b++){
+        int found=0;for(int i=0;i<6;i++)if(kgate_pi[i]>=a&&kgate_pi[i]<=b)found=1;
+        assert(kart_gate_in_range(kgate_pi,6,a,b)==found);
+    }
     const int lens[]={1,2,7,29,32,127,256,512};
     for(unsigned z=0;z<sizeof(lens)/sizeof(*lens);z++){
         knp=lens[z];
@@ -87,11 +102,11 @@ int main(void){
     kplaces();assert(rc[1].place==1&&rc[11].place==12);
     for(int fin=0;fin<2;fin++)for(int out=0;out<2;out++)for(int type=0;type<8;type++)for(int elapsed=0;elapsed<2;elapsed++)
         assert(kart_record_eligible(fin,out,type,elapsed)==(fin&&!out&&type!=3&&type!=6&&elapsed));
-    printf("Kart progress: %u gate cases, 20,000 path-search parity cases, checkpoint navigation, backwards crossing, standings and 64 record-policy cases PASS\n",checks);
+    printf("Kart progress: %u gate cases, 20,000 path-search parity cases, checkpoint coverage, race grace, gate-safe jumps, backwards crossing, standings and 64 record-policy cases PASS\n",checks);
 }
 """
 with tempfile.TemporaryDirectory() as td:
     p=Path(td);c=p/"test.c";exe=p/"test"
-    c.write_text(prefix+"\n".join(fn(k,m) for m in ("static inline int kwp(","static int kwrap8(","static void kpath_track(","static int kart_gate_missed(","static int kart_driver_target(","static int kvalidated_progress(","static int kscore(","static void kplaces(","static int kart_record_eligible("))+cases)
+    c.write_text(prefix+"\n".join(fn(k,m) for m in ("static inline int kwp(","static int kwrap8(","static void kpath_track(","static int kart_gate_in_range(","static int kart_gate_contact(","static int kart_finish_grace(","static int kart_gate_missed(","static int kart_driver_target(","static int kvalidated_progress(","static int kscore(","static void kplaces(","static int kart_record_eligible("))+cases)
     subprocess.run(["cc","-std=c11","-O1","-fsanitize=undefined","-fno-sanitize-recover=all",str(c),"-o",str(exe)],check=True)
     subprocess.run([str(exe)],check=True)
