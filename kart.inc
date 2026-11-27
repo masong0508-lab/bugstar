@@ -607,7 +607,11 @@ static void kplaces(void){
 }
 static void kpath_track(int r){                                    // the path point nearest a racer, searched near the last one
     Racer *k=&rc[r]; int tx=(k->x>>15)&255, ty=(k->y>>15)&255, best=k->pi, bd=1<<30;
-    for(int d=-6;d<=22;d++){ int i=kwp(k->pi+d+knp); int dx=kwrap8(kpx[i]-tx), dy=kwrap8(kpy[i]-ty), dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } }
+    if(knp<=0)return;
+    /* The 29 candidates are consecutive; normalize only once, then
+       advance the index. Preserve search order and tie breaking. */
+    int i=kwp(k->pi-6);
+    for(int d=-6;d<=22;d++){ int dx=kwrap8(kpx[i]-tx), dy=kwrap8(kpy[i]-ty), dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } if(++i==knp)i=0; }
     if(bd>144) for(int i=0;i<knp;i++){ int dx=kwrap8(kpx[i]-tx), dy=kwrap8(kpy[i]-ty), dd=dx*dx+dy*dy; if(dd<bd){ bd=dd; best=i; } }   // lost? look everywhere
     if(r && best<k->pi-knp/2) k->lap++;                                                       // a rival came round past the line
     k->pi=(s16)best; }
@@ -1317,7 +1321,7 @@ static void kart_hud(volatile u16 *pg){
     { char t[12]; kfmt_time(t, rc[0].fin ? rc[0].ftime : k_clock); stext(pg,4,40,t,C_WHITE); }
     if(ks_state==KS_RACE && !rc[0].fin && rc[0].nextg<kt.n){
         int g=rc[0].nextg,miss=kart_gate_missed(rc[0].pi,kgate_pi[g],knp);
-        if(g==0)scpy(b,rc[0].lap?"NEXT: FINISH":"NEXT: START");
+        if(g==0)scpy(b,!rc[0].lap?"NEXT: START":rc[0].lap==kt.laps?"NEXT: FINISH":"NEXT: LAP LINE");
         else {scpy(b,"GATE ");ncat(b,g+1);scat(b,"/");ncat(b,kt.n);}
         stext(pg,90,33,b,miss?C_RED:C_CYAN);
     }
