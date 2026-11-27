@@ -156,6 +156,14 @@ static int nm_pick(void){                      // a creature of this planet, or 
 }
 static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT","VILE","FROST","ROTTEN"};
 static const char *const kind_name[K_NEND]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE","SLIME","SCORPION","GHOST","TOAD","ANT","CENTIPEDE","GOLEM","DRONE","MOTH","SHROOM","CRAB","WISP","SNAIL","BUMBLEBEE","JELLYFISH","ROCKBACK","SANDWORM","FROSTMITE","MANTIS","REAPER","SENTRY","GLOWFLY","FIRE IMP","ACIDLING","SHARD","SKELETON","LEECH","WRAITH","EARWIG","APHID","DRAGONFLY","STINKBUG","FLATWORM","HORNET","WEEVIL","HOPPER","MONARCH","TICK","PIXIE","PUFFBALL","CRAYFISH","PIRANHA","EEL","URCHIN","SQUID","MOSQUITO","NEWT","ANGLER","ANTLION","SCARAB","SOLIFUGE","GEODE","GECKO","ICEWORM","YETI","SNOWBALL","ICICLE","PENGUIN","TARANTULA","TREE FROG","STRANGLER","PITCHER","BULLET ANT","ZOMBUG","BANSHEE","MUMMY","CROW","GRAVEWORM","ROACH","TURRET","RAT","SCRAPBOT","PIGEON","LAVA WORM","CINDER","SALAMANDER","HELLHOUND","PYRE","BRAMBLE","POLLEN IMP","BLOOM WASP","ROOT TITAN","ABYSS EEL","CORAL STALKER","STORM MEDUSA","REEF LURKER","DUST SCARAB","SAND SPECTER","THORN WORM","IRON SCORPION","RIME MOTH","FROST SENTINEL","GLACIER BRUTE","BLIZZARD BAT","FANG VINE","SPORE WIDOW","CANOPY PHANTOM","VENOM BLOOM","BONE REAPER","CRYPT LOCUST","GRAVE SENTINEL","SHADE HOUND"};
+/* Each bounty name now has its own silhouette and combat rhythm.
+   The first six names remain valid in existing save files. All targets
+   use the existing actor pool, art and enemy AI. */
+static const u8 quest_champ_kind[NQCHAMP]={
+    K_SPIDER,K_SHROOM,K_CENTI,K_WASP,K_GHOST,K_BEETLE,
+    K_BRAMBLE,K_SCORP,K_SHARD,K_MANTIS,K_ROOTTITAN,K_STORMMEDUSA
+};
+static const u8 quest_champ_hp[NQCHAMP]={5,5,4,4,4,6,5,5,4,5,6,4};
 static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE||k==K_SLIME||k==K_SCORP||k==K_GHOST||k==K_TOAD||k==K_ANT||k==K_CENTI||k==K_GOLEM||k==K_DRONE||k==K_MOTH||k==K_SHROOM||k==K_CRAB||k==K_WISP||(k>=K_SNAIL&&k<K_NEND); }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 160                                   // objects on a floor (was 64): room for crowds on the deep floors
@@ -609,9 +617,12 @@ static void make_floor(void){
     }
     FMH->nbase=ndo;  // quest-specific objects below are regenerated; normal changes are remembered
     if(qhere && q_type==Q_CHAMP && ndo<NDO){
-        SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0);
+        int cid=quest_champ_id(), fallback=rndi(2)?K_SPIDER:K_BEETLE;
+        int kind=cid>=0?quest_champ_kind[cid]:fallback;
+        int hp=base_hp*(cid>=0?quest_champ_hp[cid]:5);
+        SPAWN(kind, room_floor_cell(&rooms[far]), hp, 0);
         dob[ndo-1].champ=2;
-        { int cid=quest_champ_id(); dob[ndo-1].cname=cid>=0?(u8)cid:0; }
+        dob[ndo-1].cname=cid>=0?(u8)cid:0;
     }
     if(qhere && q_type==Q_FETCH && ndo<NDO)
         SPAWN_GEAR(room_floor_cell(&rooms[far]), ((Gear){IT_QUEST,0,0,0,0,0}));
