@@ -178,8 +178,24 @@ static int ore_harvest(int ore,int n,int q){
     if(ore<4 || ore>=NORE || n<=0 || n>9999-(int)ore_n[ore]) return 0;
     return ore_add_q(ore,n,q);
 }
+/* Most ore queries in a frame share the same habitat and maximum tier.
+   Cache the exact ordered candidates for ordinary and rare-bearing veins.
+   A key change rebuilds both arrays; the position hash is still per vein. */
+EW static u8 ore_candidates[2][NORE],ore_candidate_n[2];
+static int ore_cache_hab=-1,ore_cache_tier=-1;
+static int ore_pick_cached(int hab,int maxt,u32 h){
+    if(ore_cache_hab!=hab||ore_cache_tier!=maxt){
+        ore_cache_hab=hab;ore_cache_tier=maxt;
+        ore_candidate_n[0]=ore_candidate_n[1]=0;
+        for(int i=4;i<NORE;i++)if((ore_hab[i]&hab)&&ore_def[i].tier<=maxt){
+            ore_candidates[1][ore_candidate_n[1]++]=(u8)i;
+            if(ore_hab[i]!=32)ore_candidates[0][ore_candidate_n[0]++]=(u8)i;
+        }
+    }
+    int rare=(h&7)==0,n=ore_candidate_n[rare];
+    return n?ore_candidates[rare][(h>>8)%n]:4;
+}
 static int ore_of(s32 ox, s32 oy){      // -1: a plain crystal rock (goods, as before). Otherwise the ore this rock is a vein of
     u32 h=ore_id(ox,oy)*2654435761u+wd.tseed; if((int)((h>>16)%100)<(cur_rock ? 15 : 35)) return -1;      // (a belt rock is mostly vein)
-    int maxt=2+dlv()/6+(cur_moon?1:0)+(hellw()?2:0)+(cur_rock==2?2:0); if(maxt>6) maxt=6; int hab=ore_habitat(), cand[NORE], n=0;
-    for(int i=4;i<NORE;i++) if((ore_hab[i]&hab) && ore_def[i].tier<=maxt && (ore_hab[i]!=32 || (h&7)==0)) cand[n++]=i;       // (the rare one turns up in one vein in eight)
-    return n ? cand[(h>>8)%n] : 4; }
+    int maxt=2+dlv()/6+(cur_moon?1:0)+(hellw()?2:0)+(cur_rock==2?2:0); if(maxt>6) maxt=6;
+    return ore_pick_cached(ore_habitat(),maxt,h); }
