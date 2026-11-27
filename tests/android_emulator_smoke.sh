@@ -48,26 +48,32 @@ adb shell ps | grep "$pkg"
 help=$(wait_log BUGSTAR_UI 'touch menu page=7 ')
 w=$(field "$help" w); h=$(field "$help" h); footer=$(field "$help" footer)
 adb exec-out screencap -p > android-boot.png
-before=$(wait_log BUGSTAR_PAD 'mode w=')
-epoch=$(field "$before" epoch)
+before=$(current_log BUGSTAR_PAD | grep -F 'mode w=' | tail -1 || true)
+epoch=0
+if [[ -n "$before" ]];then epoch=$(field "$before" epoch);fi
 tap_drawable "$((w/2))" "$((h-footer/2))" "$w" "$h"
 wait_log BUGSTAR_UI 'touch menu action page=7 hit=-3'
 # Require a real pad draw after PLAY, not its startup/pre-tutorial position.
+foreground() {
+    adb shell dumpsys activity activities | grep -Ei 'mResumedActivity|topResumedActivity' | grep -F "$pkg" >/dev/null
+}
 menu=""
 for ((attempt=0;attempt<4;attempt++));do
-    for ((poll=0;poll<30;poll++));do
-        mode=$(wait_log BUGSTAR_PAD 'mode w=' 2 || true)
-        if [[ -n "$mode" ]] && (( $(field "$mode" epoch)>epoch ));then break;fi
+    # A late result from an earlier tap still proves genuine touch navigation.
+    menu=$(current_log BUGSTAR_UI | grep -F 'touch menu page=0 ' | tail -1 || true)
+    if [[ -n "$menu" ]];then break;fi
+    mode=$(current_log BUGSTAR_PAD | grep -F 'mode w=' | tail -1 || true)
+    if ! foreground;then
+        if [[ -n "$mode" ]];then epoch=$(field "$mode" epoch);fi
+        adb shell am start -W -n "$activity"
+    fi
+    fresh=0
+    for ((poll=0;poll<20;poll++));do
+        mode=$(current_log BUGSTAR_PAD | grep -F 'mode w=' | tail -1 || true)
+        if [[ -n "$mode" ]] && (( $(field "$mode" epoch)>epoch )) && foreground;then fresh=1;break;fi
         sleep 1
     done
-    [[ -n "$mode" ]] && (( $(field "$mode" epoch)>epoch ))
-    # The runner/system may return to Home while a surface is settling.
-    # Bring the same activity forward, then use its fresh pad observation.
-    if ! adb shell dumpsys activity activities | grep -Ei 'mResumedActivity|topResumedActivity' | grep -F "$pkg" >/dev/null;then
-        epoch=$(field "$mode" epoch)
-        adb shell am start -W -n "$activity"
-        continue
-    fi
+    if (( !fresh ));then continue;fi
     w=$(field "$mode" w); h=$(field "$mode" h); x=$(field "$mode" x); y=$(field "$mode" y)
     tap_drawable "$x" "$y" "$w" "$h"
     menu=$(wait_log BUGSTAR_UI 'touch menu page=0 ' 5 || true)
