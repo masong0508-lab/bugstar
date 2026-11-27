@@ -63,3 +63,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 - Brief taps now survive a complete down/up pair between game-input samples. A tap is delivered once, while held fingers still support normal multi-touch and continuous movement. Opposing directions cancel. Options, editor, background, rotation and controller changes clear pending input.
 - Resizing refreshes the drawable dimensions immediately and invalidates old option geometry. Disconnecting the last physical controller restores touch controls. No new save format or gameplay timing changes.
 - FPS overlay distinguishes actual game-frame presentations from fixed simulation ticks, including the battery profile; paused-menu redraws no longer count toward gameplay FPS.
+
+## Version 0.44 menu rendering
+
+- The opaque Android settings/help UI is now drawn directly: no hidden world composition, game texture allocation, upload, or contrast pass. The touch layout editor and gameplay captures retain the full scene. Menu redraws are scheduled independently of the input poll, approximately 30 per second with 8 ms polling, and menu feedback is visible above the footer.
+- A host regression exhausts the menu-only policy and tests the redraw scheduler. The Android emulator test additionally requires the actual composition-bypass diagnostic before continuing through touch navigation and pause/resume. No save format or simulation changes.

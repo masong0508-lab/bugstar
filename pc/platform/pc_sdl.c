@@ -478,7 +478,7 @@ static void touch_menu_draw(void){
     int *pos=tm_is_info?&tm_info_first:&menu_sel;
     if(*pos<0)*pos=0;if(*pos>=tm_total)*pos=tm_total?tm_total-1:0;
     tm_first=(*pos/rows)*rows;
-    rect_fill(0,0,w,h,0x080D20,248);
+    rect_fill(0,0,w,h,0x080D20,255); // the touch menu is opaque
     rect_fill(0,0,w,head,0x152342,255);
     tm_fit(m,m,w-2*m,title[menu_page],0xFFD23C);
     if(menu_page==P_LAN){char st[60];int role=pc_mp_role();snprintf(st,sizeof st,"%s %s",role==1?"HOST":role==2?"JOIN":"OFFLINE",pc_mp_connected()?"CONNECTED":role?"WAITING":"");tm_fit(w/2,m,w/2-m,st,0xA0FFB0);}
@@ -611,9 +611,25 @@ static void menu_pad(int btn){
 // ---- one picture
 static int shot_pending;
 static void sim_vsync(void);          // test hook, defined with the pacing below
+// Opaque phone menus do not need a game texture or 3D compositor.
+// Keep full rendering for the layout editor, game-only screenshots, and PC.
+static int mobile_menu_only(int overlay,int touch,int open,int edit,int capture){
+    return overlay&&touch&&open&&!edit&&!capture;
+}
+static int mobile_menu_due(uint64_t now,uint64_t *next){
+    if(*next&&now<*next)return 0;
+    *next=now+33; // cap idle menu redraws to about 30/s
+    return 1;
+}
 static void present_game(int with_overlay){
     if(SDL_GetRendererOutputSize(ren,&dw_,&dh_)!=0 || dw_<=0 || dh_<=0) return;
-    int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth);
+    int ui_only=0;
+#ifdef PC_ANDROID
+    ui_only=mobile_menu_only(with_overlay,g_touch,menu_open,ted_on,shot_pending);
+#endif
+    int W=0,H=0,linear=0,smooth=0; SDL_Rect dst;
+    if(!ui_only){
+    frame_geometry(&W,&H,&dst,&linear,&smooth);
     if(!tex_ensure(W,H,linear)){
         // Keep the game playable at the original GBA resolution if a large
         // texture cannot be created (Android app resumes / GPU memory pressure).
@@ -635,11 +651,29 @@ static void present_game(int with_overlay){
     }
     SDL_SetRenderDrawColor(ren,0,0,0,255); SDL_RenderClear(ren);
     SDL_RenderCopy(ren,tex,NULL,&dst);
+    }else{
+        // Do not allocate, upload, or compose a hidden game image.
+        SDL_SetRenderDrawColor(ren,8,13,32,255);SDL_RenderClear(ren);
+    }
+#ifdef PC_ANDROID
+    {static int was_ui;if(ui_only&&!was_ui)__android_log_print(ANDROID_LOG_INFO,"BUGSTAR_RENDER","opaque menu: game composition bypassed");was_ui=ui_only;}
+#endif
     gs_=dh_/180; if(gs_<2) gs_=2; if(gs_>10) gs_=10;
     if(with_overlay){
-        if(C.show_fps){ char b[56]; static const char *const qn[]={"","LOW","MEDIUM","HIGH"}; char qb[24]=""; if(pc_q_auto()) snprintf(qb,sizeof qb,"  AUTO %s",qn[pc_q_cur()&3]); snprintf(b,sizeof b,"%.0f FPS / %.0f TICK  %dX%d%s",fps_show,tick_show,W,H,qb); rect_fill(gs_,gs_,text_w(b)+2*gs_,8*gs_,0,160); text_at(2*gs_,2*gs_,b,0x60FF80); }
-        if(toast[0] && SDL_GetTicks64()<toast_until){ int w=text_w(toast)+6*gs_; rect_fill((dw_-w)/2,dh_-12*gs_,w,9*gs_,0,170); text_at((dw_-w)/2+3*gs_,dh_-12*gs_+gs_*3/2,toast,0xFFFFFF); }
+        if(C.show_fps&&!ui_only){ char b[56]; static const char *const qn[]={"","LOW","MEDIUM","HIGH"}; char qb[24]=""; if(pc_q_auto()) snprintf(qb,sizeof qb,"  AUTO %s",qn[pc_q_cur()&3]); snprintf(b,sizeof b,"%.0f FPS / %.0f TICK  %dX%d%s",fps_show,tick_show,W,H,qb); rect_fill(gs_,gs_,text_w(b)+2*gs_,8*gs_,0,160); text_at(2*gs_,2*gs_,b,0x60FF80); }
         if(menu_open) menu_draw();
+        // In an opaque menu, keep feedback visible above the footer.
+        if(toast[0] && SDL_GetTicks64()<toast_until){
+            int save_gs=gs_;
+            if(menu_open&&g_touch&&!ted_on)gs_=tm_geo.gs;
+            int w=text_w(toast)+6*gs_, y=dh_-12*gs_;
+            if(menu_open&&g_touch&&!ted_on)y=tm_geo.header;
+            if(w>dw_)w=dw_;
+            rect_fill((dw_-w)/2,y,w,9*gs_,0,230);
+            if(menu_open&&g_touch&&!ted_on)tm_fit((dw_-w)/2+3*gs_,y+gs_*3/2,w-6*gs_,toast,0xFFFFFF);
+            else text_at((dw_-w)/2+3*gs_,y+gs_*3/2,toast,0xFFFFFF);
+            gs_=save_gs;
+        }
         touch_draw();
         if(g_paused_focus && !menu_open){ rect_fill(0,0,dw_,dh_,0,120); gs_*=2; const char *s="PAUSED"; text_at((dw_-text_w(s))/2,dh_/2-3*gs_,s,0xFFFFFF); }
     }
@@ -652,7 +686,7 @@ static void present_game(int with_overlay){
     SDL_RenderPresent(ren);
     if(!menu_open&&!g_paused_focus&&!g_bg)present_n++;
 #ifdef PC_ANDROID
-    { static int boot_logged; if(!boot_logged){ boot_logged=1; __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_BOOT","first rendered game frame %dx%d",W,H); } }
+    { static int boot_logged; if(!boot_logged&&!ui_only){ boot_logged=1; __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_BOOT","first rendered game frame %dx%d",W,H); } }
 #endif
     sim_vsync();
 }
@@ -1219,11 +1253,23 @@ void plat_frame(void){
     pc_mp_frame((uint32_t)fr);   // nonblocking LAN ship snapshots; no effect without --lan-host/join
     pump_events();
     int was_paused=0;
-    while(menu_open || g_paused_focus || g_bg){                // paused: the game does not step; the window keeps being drawn (not while the app is in the background)
+#ifdef PC_ANDROID
+    uint64_t next_menu_draw=0;
+#endif
+    while(menu_open || g_paused_focus || g_bg){                // paused: game simulation does not step
         was_paused=1; uint64_t t0=SDL_GetPerformanceCounter();
+#ifdef PC_ANDROID
+        int idle_menu=!g_bg&&mobile_menu_only(1,g_touch,menu_open,ted_on,shot_pending);
+        if(!idle_menu)next_menu_draw=0;
+        if(!g_bg&&(!idle_menu||mobile_menu_due(SDL_GetTicks64(),&next_menu_draw)))present_game(1);
+#else
         if(!g_bg) present_game(1);
+#endif
         pump_events();
         if(g_bg) SDL_Delay(50);
+#ifdef PC_ANDROID
+        else if(idle_menu) SDL_Delay(8); // poll inputs frequently, redraw separately
+#endif
         else if(!C.vsync) SDL_Delay(16);
         else if(SDL_GetPerformanceCounter()-t0<t_freq/200) SDL_Delay(8);
         if(!menu_open && !g_paused_focus && !g_bg) break;

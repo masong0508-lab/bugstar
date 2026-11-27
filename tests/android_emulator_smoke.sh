@@ -34,6 +34,7 @@ adb shell pm clear "$pkg"
 adb logcat -c
 adb shell am start -W -n "$activity"
 wait_log BUGSTAR_BOOT 'first rendered game frame'
+wait_log BUGSTAR_RENDER 'opaque menu: game composition bypassed'
 adb shell ps | grep "$pkg"
 help=$(wait_log BUGSTAR_UI 'touch menu page=7 ')
 w=$(field "$help" w); h=$(field "$help" h); footer=$(field "$help" footer)
