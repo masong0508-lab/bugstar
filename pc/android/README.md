@@ -88,3 +88,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 
 - Audio synthesis advances by the exact emulated GBA frame duration, independent of speaker queue fullness, trim, mute, or output availability. Only the playback queue is resampled for device drift; diagnostic WAV captures preserve the source sample count. Paused menus/background suspend the callback, and resume discards old audio and primes a short silent buffer instead of synthesizing extra paused frames.
 - Android settings now use a temporary file, checked flush/sync and atomic rename. Storage errors leave the prior settings file intact. No campaign save format change. Host tests cover exact long-run sample counts, stereo resampling, queue bounds, and forced settings write failures.
+
+## Version 0.49 small-window and 32-bit input fixes
+
+- Touch layout editor dimensions are bounded by both window axes; normal windows keep all twelve editing commands, including Done. Extremely small split-screen windows display a safe exit instead of a clipped panel. Selection placement uses a fixed-width 64-bit score rather than an invalid long shift on 32-bit architectures.
+- Rotation/background surface loss is rejected before layout-editor input, and physical keyboard reads are bounded by SDL's reported key-state length and the local key cache. Host tests exercise portrait, landscape, tiny, tall and large displays, all edit buttons, and invalid keyboard scancodes. No save format changes.

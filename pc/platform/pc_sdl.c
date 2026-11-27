@@ -967,7 +967,9 @@ static uint16_t touch_keys(void){
 }
 static void ted_touch(const SDL_Event *e);
 static void touch_event(const SDL_Event *e){
-    if(!g_touch) return;
+    // A surface can temporarily be 0x0 during rotation or backgrounding.
+    // The editor must obey this guard too (it divides by drawable size).
+    if(!g_touch||g_bg||dw_<=0||dh_<=0)return;
     if(e->type==SDL_FINGERDOWN) g_thide=0;      // a finger brings the pad back
     if(ted_on){ ted_touch(e); return; }
     if(g_thide||g_bg||dw_<=0||dh_<=0) return;
@@ -1081,13 +1083,26 @@ static uint32_t ted_overlaps(const TGeo *g){      // the buttons that overlap an
     return m; }
 static int ted_grid(void){ int g=t_u()/4; return g<4?4:g; }
 static void ted_panel(TedP *p, const TGeo *g){
-    int m=dw_<dh_?dw_:dh_, gs=m/150, gmax=dw_/108; if(gs>gmax) gs=gmax; if(gs<2) gs=2; if(gs>8) gs=8;
-    int pw=100*gs; if(pw>dw_-8*gs) pw=dw_-8*gs; int rh=12*gs, ph=7*rh+2*gs, px=(dw_-pw)/2;
+    // The full panel needs 108 glyph units horizontally and 90 vertically.
+    // On tiny split-screen surfaces offer a safe exit instead of offscreen
+    // editor buttons. Normal phone windows keep all editing commands.
+    if(dw_<108||dh_<90){
+        int w=dw_>0?dw_:1,h=dh_>0?dh_:1;
+        int bh=h<32?h:32;
+        *p=(TedP){.x=0,.y=h-bh,.w=w,.h=bh,.gs=1,.n=1,
+            .b={{0,h-bh,w,bh,TA_DONE,"DONE"}}};
+        return;
+    }
+    int m=dw_<dh_?dw_:dh_,gs=m/150;
+    if(gs<1)gs=1;if(gs>8)gs=8;
+    if(gs>dw_/108)gs=dw_/108;
+    if(gs>dh_/90)gs=dh_/90;
+    int pw=100*gs,rh=12*gs,ph=7*rh+2*gs,px=(dw_-pw)/2;
     int lo=2*gs, hi=dh_-ph-2*gs; if(hi<lo) hi=lo;
     int pref = tl_o()==0 ? (dh_-ph)/2 : dh_/12; if(pref<lo) pref=lo; if(pref>hi) pref=hi;
-    int best=-1; long bestc=1L<<60;
-    if(ted_py>=lo && ted_py<=hi){ long c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,ted_py,pw,ph,i)) c+= i==ted_sel?1000:1; if(c==0) best=ted_py; }
-    if(best<0){ for(int y=lo;y<=hi;y+=gs*2){ long c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,y,pw,ph,i)) c+= i==ted_sel?1000:1; c=c*100000+labs((long)y-pref); if(c<bestc){ bestc=c; best=y; } } }
+    int best=-1; int64_t bestc=INT64_MAX; // long is 32-bit on ARMv7/x86
+    if(ted_py>=lo && ted_py<=hi){ int64_t c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,ted_py,pw,ph,i)) c+= i==ted_sel?1000:1; if(c==0) best=ted_py; }
+    if(best<0){ for(int y=lo;y<=hi;y+=gs*2){ int64_t c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,y,pw,ph,i)) c+= i==ted_sel?1000:1; c=c*100000+(y>=pref?y-pref:pref-y); if(c<bestc){ bestc=c; best=y; } } }
     if(best<0) best=pref; ted_py=best;
     p->x=px; p->y=best; p->w=pw; p->h=ph; p->gs=gs; int n=0, y0=best+gs+rh*2;
     int bw=10*gs, bx2=px+pw-2*gs-bw, bx1=bx2-bw-20*gs;       // [ - ] value [ + ] at the right of a row
@@ -1132,6 +1147,7 @@ static void ted_touch(const SDL_Event *e){
     if(e->type!=SDL_FINGERDOWN) return;
     if(ted_drag>=0){ if(!ted_pinch && id!=ted_fid && ted_sel>=0){ ted_pinch=1; ted_pf=id; ted_bx=x; ted_by=y; float dx=(float)(ted_ax-x), dy=(float)(ted_ay-y); ted_d0=sqrtf(dx*dx+dy*dy); if(ted_d0<20) ted_d0=20; ted_s0=g_tl[tl_o()][ted_sel].s?g_tl[tl_o()][ted_sel].s:100; } return; }
     TedP pn; ted_panel(&pn,g);
+    if(pn.n==1){if(x>=pn.x&&x<pn.x+pn.w&&y>=pn.y&&y<pn.y+pn.h)ted_act(TA_DONE);return;}
     if(x>=pn.x && x<pn.x+pn.w && y>=pn.y && y<pn.y+pn.h){ for(int i=0;i<pn.n;i++){ TedB *b=&pn.b[i]; if(x>=b->x && x<b->x+b->w && y>=b->y && y<b->y+b->h){ ted_act(b->act); break; } } return; }
     int hit=tg_pick(g,x,y);
     if(hit<0){ long ex=x-g[0].cx, ey=y-g[0].cy; if(ex*ex+ey*ey<(long)g[0].r*g[0].r) hit=0; }
@@ -1140,15 +1156,22 @@ static void ted_touch(const SDL_Event *e){
 static void ted_draw(void){
     TGeo g[TC_N]; tl_geo(g); TedP pn; ted_panel(&pn,g); int gs=pn.gs, saved=gs_; ted_ovm=ted_overlaps(g);
     rect_fill(0,0,dw_,dh_,0x000000,120);
+    if(pn.n==1){
+        gs_=1;
+        tm_fit(2,2,dw_-4,"ENLARGE WINDOW TO EDIT",0xFFFFFF);
+        rect_fill(pn.x,pn.y,pn.w,pn.h,0x2E8B3A,255);
+        tm_fit(pn.w>16?(pn.w-16)/2:0,pn.y+(pn.h-6)/2,pn.w,"DONE",0xFFFFFF);
+        gs_=saved;return;
+    }
     if(g_tsnap){ int gr=ted_grid(); for(int xx=gr;xx<dw_;xx+=gr) rect_fill(xx,0,1,dh_,0x8890C8,28); for(int yy=gr;yy<dh_;yy+=gr) rect_fill(0,yy,dw_,1,0x8890C8,28); }
     tl_draw(0,0,ted_sel,1);
     gs_=gs; rect_fill(pn.x,pn.y,pn.w,pn.h,0x0B1030,242); rect_fill(pn.x,pn.y,pn.w,gs,0xFFD23C,255); rect_fill(pn.x,pn.y+pn.h-gs,pn.w,gs,0xFFD23C,255);
     int rh=12*gs, y=pn.y+gs; char b[64]; int land=tl_o()==0;
-    text_at(pn.x+2*gs,y+rh/2-3*gs,land?"TOUCH PAD: LANDSCAPE":"TOUCH PAD: PORTRAIT",0xFFD23C); y+=rh;
+    tm_fit(pn.x+2*gs,y+rh/2-3*gs,pn.w-4*gs,land?"TOUCH PAD: LANDSCAPE":"TOUCH PAD: PORTRAIT",0xFFD23C); y+=rh;
     if(ted_sel>=0 && (ted_ovm>>ted_sel&1)){ int n=0; snprintf(b,sizeof b,"OVERLAPS:"); for(int j=0;j<TC_N && n<3;j++) if(j!=ted_sel){ int aw,ah,bw,bh; tg_ext(g,ted_sel,&aw,&ah); tg_ext(g,j,&bw,&bh); aw=aw*9/10; ah=ah*9/10; bw=bw*9/10; bh=bh*9/10;
             if(abs(g[ted_sel].cx-g[j].cx)<aw+bw && abs(g[ted_sel].cy-g[j].cy)<ah+bh){ size_t l=strlen(b); snprintf(b+l,sizeof b-l," %s",tl_nm[j]); n++; } }
-        text_at(pn.x+2*gs,y+rh/2-3*gs,b,0xFF6060); }
-    else text_at(pn.x+2*gs,y+rh/2-3*gs,"DRAG MOVE  PINCH SIZE",0xA8B4F0);
+        tm_fit(pn.x+2*gs,y+rh/2-3*gs,pn.w-4*gs,b,0xFF6060); }
+    else tm_fit(pn.x+2*gs,y+rh/2-3*gs,pn.w-4*gs,"DRAG MOVE  PINCH SIZE",0xA8B4F0);
     y+=rh;
     snprintf(b,sizeof b,"SIZE: %s",ted_sel>=0?tl_nm[ted_sel]:"NONE"); text_at(pn.x+2*gs,y+rh/2-3*gs,b,ted_sel>=0?0xFFFFFF:0x8890C8);
     int ssz=ted_sel>=0?(g_tl[tl_o()][ted_sel].s?g_tl[tl_o()][ted_sel].s:100):0;
@@ -1158,9 +1181,14 @@ static void ted_draw(void){
     for(int i=0;i<pn.n;i++){ TedB *t=&pn.b[i]; int dis=(ted_sel<0 && (t->act==TA_SMALLER||t->act==TA_BIGGER||t->act==TA_RESETONE||(t->act>=TA_NL&&t->act<=TA_NR)));
         rect_fill(t->x,t->y,t->w,t->h,dis?0x252C50:(t->act==TA_DONE?0x2E8B3A:(t->act==TA_SNAP&&g_tsnap)?0x2E7A8B:0x2A3A9A),255); text_at(t->x+(t->w-text_w(t->t))/2,t->y+(t->h-6*gs)/2,t->t,dis?0x6E78A8:0xFFFFFF); }
     gs_=saved; }
+static int bounded_key_down(int c,int count,const uint8_t *keys,const uint8_t *cached){
+    if(c<=0)return 0;
+    return (keys&&c<count&&keys[c])||(cached&&c<512&&cached[c]);
+}
 static uint16_t read_keys(void){
-    uint16_t down=0; const Uint8 *ks=SDL_GetKeyboardState(NULL);
-    for(int b=0;b<NB;b++){ for(int sl=0;sl<2;sl++){ int c=C.kb[b][sl]; if(c&&c<512&&(ks[c]||kst[c])) down|=1<<b; else if(c>=512&&ks[c]) down|=1<<b; } }
+    uint16_t down=0;int nk=0;const Uint8 *ks=SDL_GetKeyboardState(&nk);
+    for(int b=0;b<NB;b++)for(int sl=0;sl<2;sl++)
+        if(bounded_key_down(C.kb[b][sl],nk,ks,kst))down|=1<<b;
     if(pad){
         for(int b=0;b<NB;b++) if(SDL_GameControllerGetButton(pad,C.pad[b])) down|=1<<b;
         int dz=C.deadzone*32767/100; int lx=SDL_GameControllerGetAxis(pad,SDL_CONTROLLER_AXIS_LEFTX), ly=SDL_GameControllerGetAxis(pad,SDL_CONTROLLER_AXIS_LEFTY);
@@ -1272,10 +1300,10 @@ static void pump_events(void){
             else if((e.cbutton.button==SDL_CONTROLLER_BUTTON_START && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_BACK)) || (e.cbutton.button==SDL_CONTROLLER_BUTTON_BACK && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_START))) open_menu();
             break;
         case SDL_TEXTINPUT: if(menu_open && menu_page==P_LAN && lan_ip_edit)lan_text(e.text.text);break;
-        case SDL_KEYUP: if(e.key.keysym.scancode<512) kst[e.key.keysym.scancode]=0; break;
+        case SDL_KEYUP: if((unsigned)e.key.keysym.scancode<sizeof kst) kst[e.key.keysym.scancode]=0; break;
         case SDL_KEYDOWN:
             if(g_touch==1 && e.key.keysym.sym!=SDLK_AC_BACK && e.key.keysym.sym!=SDLK_MENU && !menu_open){g_thide=1;touch_release_all();}      // a real keyboard: the on-screen pad goes away until the next touch
-            if(e.key.keysym.scancode<512) kst[e.key.keysym.scancode]=1;
+            if((unsigned)e.key.keysym.scancode<sizeof kst) kst[e.key.keysym.scancode]=1;
             if(e.key.repeat && !menu_open) break;
             if(e.key.keysym.sym==SDLK_F11 || (e.key.keysym.sym==SDLK_RETURN && (e.key.keysym.mod&KMOD_ALT))){ toggle_fullscreen(); break; }
             if(e.key.keysym.sym==SDLK_F12){ shot_pending=1; break; }
