@@ -1269,7 +1269,7 @@ static void dungeon_enter(void){ auto_run=0;
 #endif
 #endif
     dungeon_hud_both();
-    if(fl_ev){ char b[40]; scpy(b,fe_name[fl_ev]); scat(b,"!"); say(b); msg_timer=60;
+    if(fl_ev){ char b[40]; scpy(b,floor_event_name(fl_ev)); scat(b,"!"); say(b); msg_timer=60;
         if(fl_ev==FE_BLESSED){ int mk=rndi(MK_GOOD); mark_t[mk]=150; recalc(); scpy(b,"BLESSED: "); scat(b,mk_name[mk]); scat(b," FOR A WHILE"); say(b); msg_timer=60; } }
 }
 static void dungeon_checkpoint(void){                 // every new floor is a save point: if you load, you wake on the surface with a portal open to this floor
@@ -1286,7 +1286,7 @@ static void fl_leave(void){                                                     
 static void fl_draw(volatile u16 *pg){                                          // the goal line under the compass
     if(!fl_ev)return;
     if(fl_done){if(fl_ev==FE_SPEED||fl_ev==FE_ELITE)text(pg,4,30,"FLOOR GOAL COMPLETE",C_GREEN,1);return;}
-    char b[40]; scpy(b,fe_name[fl_ev]);
+    char b[40]; scpy(b,floor_event_name(fl_ev));
     if(fl_ev==FE_ELITE){ scat(b," "); ncat(b,fl_have); scat(b,"/"); ncat(b,fl_need); }
     else if(fl_ev==FE_SPEED){int left=fl_seconds_left(fl_end,vbl_count);scat(b," ");ncat(b,left);scat(b,"S");if(!left)scpy(b,"SPEED RUN: TIME UP");}
     else if(fl_ev==FE_GAS||fl_ev==FE_CAVE){int ticks=(fl_ev==FE_GAS?240:420)-mh_t;if(ticks<0)ticks=0;scat(b," ");ncat(b,(ticks+14)/15);scat(b,"S");}

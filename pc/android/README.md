@@ -112,3 +112,7 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 
 - Brake before planet landing, station docking, or rock landing. L+A explicitly fires even in approach zones; ordinary laser pulses hit only the closest valid enemy or asteroid. A brighter reticle confirms an impact. Station purchases honor the ship's cargo bonus. Fuel burn cannot underflow.
 - Dungeon speed-run time is retained when revisiting the same remembered floor during a trip; final fractional seconds remain visible. Gas and cave-in countdowns provide warnings, completed floor goals remain visible, and full bags give context-sensitive feedback. Long messages fit the GBA view. Field guide updated to explain flight and hazards. No persistent save schema changed.
+
+## Version 0.54 exploration and trading
+
+- Fixed mine-only event indexing and bounded event labels. Added stable cockpit direction/range guidance for the station and world, widened distant scanner arithmetic, and removed undefined negative signed shifts from line rasterization. Station trade hints use the real next-visit price formula, accessible stars and fuel limits; the estimate is a gross unit premium, not net profit. Transactions display local feedback and the effective hold capacity. The scrollable ship field guide has ten pages, with separate hazard and navigation/trading sections.

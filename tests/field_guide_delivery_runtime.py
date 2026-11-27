@@ -11,9 +11,11 @@ def func(name):
     return s[start:i]
 title=re.search(r'field_title\[NFIELD\]=\{([^}]+)\};',s).group(1)
 lines=re.search(r'field_lines\[NFIELD\]\[6\]=\{(.*?)\n\};',s,re.S).group(1)
-assert len(re.findall(r'"[^"]+"',title))==8
+count=int(re.search(r'#define NFIELD (\d+)',s).group(1))
+assert count>=10 and len(re.findall(r'"[^"]+"',title))==count
 rows=re.findall(r'\{([^}]+)\}',lines)
-assert len(rows)==8
+assert len(rows)==count
+assert "sel>=top+FIELD_VISIBLE" in s and "i<top+FIELD_VISIBLE&&i<NFIELD" in s
 for row in rows:
     strings=re.findall(r'"([^"]+)"',row)
     assert len(strings)==6 and all(len(x)<=48 for x in strings)

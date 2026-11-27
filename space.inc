@@ -311,7 +311,7 @@ static void line2(volatile u16 *pg, int x0, int y0, int x1, int y1, int c){
         if(first){ x0=x; y0=y; o0=L2OC(x0,y0); } else { x1=x; y1=y; o1=L2OC(x1,y1); }
     }
     int dx=x1-x0, dy=y1-y0, adx=dx<0?-dx:dx, ady=dy<0?-dy:dy, n=adx>ady?adx:ady; if(!n){ pix(pg,x0,y0,c); return; }
-    s32 fx=x0<<16, fy=y0<<16, sx=(dx<<16)/n, sy=(dy<<16)/n;
+    s32 fx=x0<<16, fy=y0<<16, sx=(dx*65536)/n, sy=(dy*65536)/n;
     for(int i=0;i<=n;i++){ int px=(fx+0x8000)>>16, py=(fy+0x8000)>>16; if((unsigned)px<240u && (unsigned)py<128u) pix(pg,px,py,c); fx+=sx; fy+=sy; }
 }
 // Clip wireframe edges crossing the near plane. Previously an entire edge
@@ -532,9 +532,18 @@ static void show_hive_card(void){
 // ---------------------------------------------------------------- the cockpit
 static const s8 scan_pts[32][2]={{44,0},{43,3},{40,5},{35,7},{29,9},{22,10},{15,11},{7,12},{0,12},{-7,12},{-15,11},{-22,10},{-29,9},{-35,7},{-40,5},{-43,3},{-44,0},{-43,-3},{-40,-5},{-35,-7},{-29,-9},{-22,-10},{-15,-11},{-7,-12},{0,-12},{7,-12},{15,-11},{22,-10},{29,-9},{35,-7},{40,-5},{43,-3}};
 static s32 bl_c=16384, bl_s=0;                                 // the scanner does not bank with the view: it undoes the roll
+// The scanner unbanks the view. Preserve fast 32-bit nearby maths, widen distant products.
+static void sp_scanner_unroll(s32 *x,s32 *y,s32 c,s32 sn){
+    s32 a=*x,b=*y;
+    if(a>=-20000&&a<=20000&&b>=-20000&&b<=20000){*x=(a*c+b*sn)>>14;*y=(b*c-a*sn)>>14;}
+    else {*x=(s32)(((long long)a*c+(long long)b*sn)>>14);*y=(s32)(((long long)b*c-(long long)a*sn)>>14);}
+}
 static void blip(volatile u16 *pg, s32 x, s32 y, s32 z, int c){
-    s32 cx,cy,cz; cam3(x,y,z,&cx,&cy,&cz); { s32 x0=(cx*bl_c+cy*bl_s)>>14, y0=(cy*bl_c-cx*bl_s)>>14; cx=x0; cy=y0; }
-    s32 rng=16000; if(cx>rng||cx<-rng||cz>rng||cz<-rng) return;
+    s32 cx,cy,cz; cam3(x,y,z,&cx,&cy,&cz);
+    s32 rng=16000; if(cz>rng||cz<-rng)return;
+    sp_scanner_unroll(&cx,&cy,bl_c,bl_s);
+    if(cx>rng||cx<-rng)return;
+    if(cy>rng)cy=rng;if(cy<-rng)cy=-rng;
     int bx=120+cx*44/rng, by=144-cz*12/rng, h=-(cy*10/rng); if(h>10) h=10; if(h<-10) h=-10;
     for(int i=0;i!=h;i+= h>0?1:-1) if(by+i>=129&&by+i<159) pix(pg,bx,by+i,c);
     if(by+h>=129&&by+h<159){ pix(pg,bx,by+h,c); pix(pg,bx+1,by+h,c); }
@@ -788,6 +797,19 @@ static int sp_laser_pick(void){
         if(d&&d<depth){depth=d;best=NPIR+i;}
     }
     return best;
+}
+static const char *sp_nav_direction(s32 x,s32 y,s32 z){
+    long long ax=x<0?-(long long)x:x, ay=y<0?-(long long)y:y;
+    if(z>0 && ax<=z/8 && ay<=z/8)return "AHEAD";
+    if(z<=0 && ax<=64 && ay<=64)return "TURN";
+    if(ax>=ay)return x<0?"LEFT":"RIGHT";
+    return y>0?"CLIMB":"DIVE";
+}
+static void sp_nav_label(volatile u16 *pg,int at,const char *name,s32 wx,s32 wy,s32 wz,int dist){
+    s32 x,y,z;cam3(wx,wy,wz,&x,&y,&z);
+    // Show direction relative to the pilot, not the third-person camera.
+    char b[28];scpy(b,name);scat(b," ");ncat(b,dist/1000);scat(b,".");ncat(b,(dist%1000)/100);scat(b,"K ");
+    scat(b,sp_nav_direction(x,y,z));text(pg,at,12,b,55,1);
 }
 static int laser_contact;
 static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
@@ -1072,6 +1094,11 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
 #ifdef TEST_FLEET
     { static int lv=0; char fb[16]; scpy(fb,"VBL "); ncat(fb,vbl_count-lv); lv=vbl_count; text(pg,200,20,fb,54,1); } { int e=0; char fb2[24]; for(int i=0;i<NPIR;i++) if(pir[i].alive&&!pir[i].team&&pir[i].tgt>=0) e++; scpy(fb2,"ENG "); ncat(fb2,e); text(pg,200,28,fb2,54,1); } { for(int i=0;i<NPIR;i++) if(pir[i].alive&&!pir[i].team){ Pirate *p=&pir[i]; s32 rx=p->x-shx, ry=p->y-shy, rz=p->z-shz; s32 zz=(rx*bf[0]+ry*bf[1]+rz*bf[2])>>14; char c3[48]; scpy(c3,"Z "); ncat(c3,zz); scat(c3," T "); ncat(c3,p->tgt); if(p->tgt>=0){ Pirate *q=&pir[p->tgt]; s32 qz=((q->x-shx)*bf[0]+(q->y-shy)*bf[1]+(q->z-shz)*bf[2])>>14; scat(c3," TZ "); ncat(c3,qz); scat(c3," A"); ncat(c3,q->alive); scat(c3," M"); ncat(c3,q->team); } text(pg,110,36,c3,54,1); break; } }
 #endif
+    if(opt_hints && !in_lair && !battle_on && !team_count(0) && !space_msg_t){
+        // Remove shake and bank from the guidance; left/right steer, up dives, down climbs.
+        basis();sp_nav_label(pg,6,"PORT",stx_,sty_,stz_,sd);
+        sp_nav_label(pg,124,"WORLD",0,0,0,pd);
+    }
     if(in_lair) beast_hud(pg);
     else if(battle_on || team_count(0)){ char b[40]; scpy(b,"WINGMEN "); ncat(b,team_count(0)); if(battle_on){ scat(b,"   ENEMIES "); ncat(b,team_count(1)); } text(pg,120-textlen(b)*2,space_msg_t?12:4,b,battle_on?53:52,1); }
     else if(!space_msg_t && !(frames&64)) text(pg,64,4,"SELECT: GALAXY MAP",56,1);
@@ -1492,7 +1519,19 @@ static int galaxy_map_(void){     // returns 1 if you jumped
 // ---------------------------------------------------------------- docked at the station: trading and the shipyard
 static int tech_scrap(void){ return 3*(tech_lv+1); }
 static int tech_cost(void){ if(beast_stage<1) return 0; return tech_lv<30 ? 2000*(tech_lv+1)*(tech_lv+1) : 0; }
-static int good_price(int g){ int e=sys[cur_sys].eco; int p=good_base[g]*eco_mul[e][g]/100; int wob=(int)((sys_id(cur_sys)*7+g*13+visits*5)%21); return p*(90+wob)/100+1; }
+static int good_price_at(int star,int g,u32 visit){int e=sys[star].eco;int p=good_base[g]*eco_mul[e][g]/100;int wob=(int)((sys_id(star)*7u+g*13u+visit*5u)%21u);return p*(90+wob)/100+1;}
+static int good_price(int g){ return good_price_at(cur_sys,g,(u32)visits); }
+// Find a real, unlocked next-hop market with a positive price premium.
+// This is a gross per-unit estimate for the next visit, not guaranteed profit.
+static int market_best_sale(int g,int *premium){
+    int best=-1,bestd=99999,price=good_price(g);*premium=0;
+    for(int i=0;i<NSYS;i++)if(can_jump(i)){
+        int dist=sys_dist(i,cur_sys);if(dist>fuel || xo_fuel(dist)>fuel)continue;
+        int gain=good_price_at(i,g,(u32)visits+1u)-price;
+        if(gain>*premium||(gain>0&&gain==*premium&&dist<bestd)){*premium=gain;best=i;bestd=dist;}
+    }
+    return best;
+}
 static int ore_station_pct(void){ static const u8 m[4]={85,125,110,100}; int wob=(int)((sys_id(cur_sys)*7+visits*5)%21); return m[sys[cur_sys].eco&3]*(90+wob)/100; }      // mining worlds pay most for ore, farming worlds least
 // When the player returns to a station, its two regulars carry the story
 // forward. All lines are ROM constants; this only runs on a menu redraw.
@@ -1538,7 +1577,7 @@ static void station_menu_(void);
 static void station_menu(void){ int sh=shd_begin(); station_menu_(); shd_end(sh); }
 static void station_menu_(void){
     volatile u16 *pg=(volatile u16*)(0x06000000 + (page_back?0:0xA000));
-    int tab=0, sel=0, dirty=1; wait_release(); sfx(5);
+    int tab=0, sel=0, dirty=1; const char *market_note=""; wait_release(); sfx(5);
     static const char *const yard[11]={"REFUEL","REPAIR HULL","LASER UPGRADE","SHIELD UPGRADE","BIGGER CARGO BAY","TECH CORE (X4 DMG)","HIRE A WINGMAN","JOIN A FLEET BATTLE","BIGGER FUEL TANK","WARP DRIVE","LEAVE"};
     while(1){
         if(dirty){ dirty=0; char b[48];
@@ -1552,7 +1591,12 @@ static void station_menu_(void){
                 for(int i=0;i<8;i++){ if(i==sel) text(pg,6,36+i*10,">",C_CYAN,1); scpy(b,goods[i]); while(textlen(b)<13) scat(b," "); ncat(b,good_price(i)); scat(b,"G"); while(textlen(b)<21) scat(b," "); ncat(b,cargo[i]);
                     text(pg,14,36+i*10,b,i==sel?C_WHITE:C_GREY,1); }
                 { if(sel==8) text(pg,6,116,">",C_CYAN,1); scpy(b,"ALL ORE"); while(textlen(b)<13) scat(b," "); ncat(b,ore_station_pct()); scat(b,"%"); while(textlen(b)<21) scat(b," "); ncat(b,ore_bagn()); scat(b," = "); ncat(b,ore_sellval()*ore_station_pct()/100); scat(b,"G"); text(pg,14,116,b,sel==8?C_WHITE:C_GREY,1); }
-                scpy(b,"HOLD "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap); text(pg,14,132,b,C_WHITE,1);
+                scpy(b,"HOLD "); ncat(b,n); scat(b,"/"); ncat(b,cargo_cap+ship_hold_bonus()); text(pg,14,130,b,C_WHITE,1);
+                if(*market_note)text(pg,14,140,market_note,C_GOLD,1);
+                else if(sel<8){int gain,nb=market_best_sale(sel,&gain);
+                    if(nb>=0){char mn[24];sys_name(nb,mn);mn[18]=0;scpy(b,"NEXT SALE: ");scat(b,mn);scat(b," +");ncat(b,gain);scat(b,"G/UNIT");text(pg,14,140,b,C_GREEN,1);}
+                    else text(pg,14,140,"NO HIGHER PRICE WITHIN FUEL RANGE",C_GREY,1);
+                }
                 ui_lhint(pg,6,148,"A: BUY  B: SELL  L/R: SHIPYARD  START: LEAVE",C_CYAN);
             } else if(tab==2){
                 // Two eyewitnesses change their testimony as the rescue,
@@ -1594,25 +1638,25 @@ static void station_menu_(void){
                 { char r2[40]; u32 r[LYW]={0}; int wb=warp_bits(); if(wb>154) wb=154; r[wb>>5]=1u<<(wb&31); big_mul(r,LYW,ULY); ly_text(r2,r);
                   scpy(b,"WARP RANGE "); scat(b,r2); text(pg,14,113,b,C_CYAN,1); }
                 scpy(b,"WINGMEN "); ncat(b,wing_n); scat(b,"/"); ncat(b,MAXWING); scat(b,"   LASER MK"); ncat(b,laser_lv); scat(b,"  SHIELD MK"); ncat(b,shield_lv); text(pg,14,121,b,C_WHITE,1);
-                scpy(b,"HULL "); ncat(b,hull); scat(b,"%  FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10); scat(b,"/"); ncat(b,fuel_max()/10); scat(b," LY  CARGO "); ncat(b,cargo_cap); text(pg,14,129,b,C_WHITE,1);
+                scpy(b,"HULL "); ncat(b,hull); scat(b,"%  FUEL "); ncat(b,fuel/10); scat(b,"."); ncat(b,fuel%10); scat(b,"/"); ncat(b,fuel_max()/10); scat(b," LY  CARGO "); ncat(b,cargo_cap+ship_hold_bonus()); text(pg,14,129,b,C_WHITE,1);
                 scpy(b,"TECH "); ncat(b,tech_lv); scat(b,"  SCRAP "); ncat(b,scrap); text(pg,14,137,b,C_CYAN,1);
                 ui_lhint(pg,6,148,"A: BUY  L/R: MARKET  START: LEAVE",C_CYAN);
             }
         }
         vsync(); read_keys();
         int nt = ant_king ? 4 : 3, n = tab==0 ? 9 : tab==2 ? 3 : tab==3 ? 4 : 11;
-        if(HIT(K_UP)){ sel=(sel+n-1)%n; dirty=1; } if(HIT(K_DOWN)){ sel=(sel+1)%n; dirty=1; }
-        if(HIT(K_R)){ tab=(tab+1)%nt; sel=0; dirty=1; } if(HIT(K_L)){ tab=(tab+nt-1)%nt; sel=0; dirty=1; }
+        if(HIT(K_UP)){ sel=(sel+n-1)%n; market_note="";dirty=1; } if(HIT(K_DOWN)){ sel=(sel+1)%n; market_note="";dirty=1; }
+        if(HIT(K_R)){ tab=(tab+1)%nt; sel=0; market_note="";dirty=1; } if(HIT(K_L)){ tab=(tab+nt-1)%nt; sel=0; market_note="";dirty=1; }
         if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==10)) break;
         if(tab==3){
             if(HIT(K_A)){ if(dp_nav_press(pg,sel)) break; dirty=1; }
         } else if(tab==0){
             int held=0; for(int i=0;i<8;i++) held+=cargo[i];
-            if(sel<8 && HIT(K_A)){ int p=good_price(sel); if(held>=cargo_cap+ship_hold_bonus()){ space_say("CARGO HOLD FULL"); sfx(4); }
-                else if(gold<p){space_say("NOT ENOUGH GOLD");sfx(4);}
-                else {gold-=p;cargo[sel]++;sfx(7);} dirty=1; }
-            if(sel<8 && HIT(K_B) && cargo[sel]){ gold+=good_price(sel); cargo[sel]--; sfx(7); dirty=1; }
-            if(sel==8 && (HIT(K_B)||HIT(K_A)) && ore_bagn()){ int v=ore_sellval()*ore_station_pct()/100; gold+=v; ore_clear_sold(); sfx(7); dirty=1; }
+            if(sel<8 && HIT(K_A)){ int p=good_price(sel); if(held>=cargo_cap+ship_hold_bonus()){ market_note="CARGO HOLD FULL"; sfx(4); }
+                else if(gold<p){market_note="NOT ENOUGH GOLD";sfx(4);}
+                else {gold-=p;cargo[sel]++;market_note="BOUGHT ONE UNIT";sfx(7);} dirty=1; }
+            if(sel<8 && HIT(K_B)){if(cargo[sel]){gold+=good_price(sel);cargo[sel]--;market_note="SOLD ONE UNIT";sfx(7);}else{market_note="NO CARGO OF THIS TYPE";sfx(4);}dirty=1;}
+            if(sel==8 && (HIT(K_B)||HIT(K_A))){if(ore_bagn()){int v=ore_sellval()*ore_station_pct()/100;gold+=v;ore_clear_sold();market_note="ORE SOLD";sfx(7);}else{market_note="NO ORE TO SELL";sfx(4);}dirty=1;}
         } else if(HIT(K_A) && sel==6){ int c=300+wing_n*150; if(wing_n>=MAXWING) say("YOU HAVE A FULL WING"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; wing_n++; sfx(6); } dirty=1;
         } else if(HIT(K_A) && sel==7){ battle_req=1; sfx(6); dirty=1;
         } else if(HIT(K_A) && sel==8){ int c=400*(fuel_tank+1); if(fuel_tank>=8) say("THE TANK IS AS BIG AS IT GETS"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; fuel_tank++; fuel+=40; sfx(6); } dirty=1;

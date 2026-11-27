@@ -51,7 +51,14 @@ static int gold_find=100;
 enum { FE_NONE, FE_VAULT, FE_NEST, FE_ELITE, FE_DARK, FE_SPEED, FE_CURSED, FE_RUSH, FE_BLESSED, FE_AMBUSH, FE_QUIET, NFE, FE_GAS, FE_CAVE };      // FE_GAS and FE_CAVE are mine-only: they sit after NFE so the random roll never picks them
 static int mh_t=0;                                                                   // the mine hazard timer
 static int mine_cell=-1, mine_n=0;                                                    // partial digging on the current floor only
-static const char *const fe_name[NFE+2]={"","TREASURE VAULT","MONSTER NEST","ELITE HUNT","DARK FLOOR","SPEED RUN","CURSED FLOOR","GOLD RUSH","BLESSED SHRINE","AMBUSH","QUIET FLOOR","TOXIC GAS","CAVE-IN RISK"};
+// NFE is a sentinel, not a playable floor event. Explicit indices also cover mine-only events.
+static const char *const fe_name[FE_CAVE+1]={
+    [FE_NONE]="",[FE_VAULT]="TREASURE VAULT",[FE_NEST]="MONSTER NEST",[FE_ELITE]="ELITE HUNT",
+    [FE_DARK]="DARK FLOOR",[FE_SPEED]="SPEED RUN",[FE_CURSED]="CURSED FLOOR",[FE_RUSH]="GOLD RUSH",
+    [FE_BLESSED]="BLESSED SHRINE",[FE_AMBUSH]="AMBUSH",[FE_QUIET]="QUIET FLOOR",[NFE]="",
+    [FE_GAS]="TOXIC GAS",[FE_CAVE]="CAVE-IN RISK"
+};
+static const char *floor_event_name(int ev){ return ev>=0 && ev<=FE_CAVE ? fe_name[ev] : ""; }
 static const char *const fe_what[NFE]={"","CHESTS EVERYWHERE. SO ARE THE GUARDS","EXTRA MONSTERS. EXTRA GOLD","SLAY THE ELITES FOR A BIG REWARD","LESS LIGHT. DOUBLE LOOT","REACH THE STAIRS IN 60 SECONDS",
     "TOUGHER MONSTERS. BETTER LOOT","GOLD, GOLD, GOLD","A SHRINE BLESSES YOU","THEY ARE WAITING AT THE STAIRS","NOTHING HERE WANTS TO FIGHT. BREATHE"};
 static int fl_ev=0, fl_need=0, fl_have=0, fl_bonus=100, fl_done=0; static u32 fl_end=0;
