@@ -68,3 +68,9 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 
 - The opaque Android settings/help UI is now drawn directly: no hidden world composition, game texture allocation, upload, or contrast pass. The touch layout editor and gameplay captures retain the full scene. Menu redraws are scheduled independently of the input poll, approximately 30 per second with 8 ms polling, and menu feedback is visible above the footer.
 - A host regression exhausts the menu-only policy and tests the redraw scheduler. The Android emulator test additionally requires the actual composition-bypass diagnostic before continuing through touch navigation and pause/resume. No save format or simulation changes.
+
+## Version 0.45 adaptive performance
+
+- AUTO on phones outside the existing low-memory profile now measures rendering work before VSync. After at least 30 slow renders in a 60-render sample window (13.5 ms threshold), it lowers the internal draw budget to 153,600 pixels; a further slow window selects the existing battery profile. The governor does not change game tick speed or saved user preferences, and ignores launch frames, menus, screenshots and long suspended intervals. Explicit Battery/Full Detail are unchanged; reselect AUTO to reset the session governor. The effective profile appears in Video settings.
+- Native scene dimensions now follow live windows even when resized to 240x160, preventing stale high-resolution work after a downshift. Headless diagnostic semantics stay unchanged.
+- Host regression exercises normal, reduced, battery, mixed, excluded and long-stall render samples; hardware performance remains device-dependent.

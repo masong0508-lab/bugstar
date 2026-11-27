@@ -698,7 +698,9 @@ static void dn_compose(uint32_t *out,int W,int H,uint16_t dc,int bmode,int ev,ui
 void pc_compose_native(uint32_t *out, int W, int H, int smooth){
     double q_t0=pc_now_ms();
     if(W<240||H<160){ W=240; H=160; }
-    if(W>240 && H>160){ pc_nat_w=W; pc_nat_h=H; }       // (the game's own native renderers, e.g. the dungeon, make their picture at this size)
+    // A live window must also publish a downsize to the base 240x160.
+    // Otherwise native renderers keep drawing at the previous high resolution.
+    if(g_window || (W>240 && H>160)){ pc_nat_w=W; pc_nat_h=H; }
     build_lines();
     size_t need=(size_t)W*H;
     // Resizing a large native window must never leave the compositor with

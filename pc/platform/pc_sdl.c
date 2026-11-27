@@ -233,9 +233,36 @@ static MobileBudget mobile_budget(int mode,int low,int pressure,int padstyle,int
     b.simple=pressure||padstyle==1||(padstyle==0&&b.battery);
     return b;
 }
+// AUTO is deliberately conservative: a sustained slow rendering window
+// lowers resolution first, then enables the battery profile. No automatic
+// up/down oscillation; changing the user's mode resets the session governor.
+typedef struct { unsigned count,slow; int level; } MobileGovernor;
+static int mobile_governor_sample(MobileGovernor *g,int eligible,double ms){
+    if(!eligible || !(ms>=0.0 && ms<1000.0)){
+        g->count=g->slow=0;return 0;
+    }
+    if(g->level>=2)return 0;
+    g->count++;
+    if(ms>=13.5)g->slow++;
+    if(g->count<60)return 0;
+    int lower=g->slow>=30;
+    g->count=g->slow=0;
+    if(lower){g->level++;return 1;}
+    return 0;
+}
+static MobileBudget mobile_auto_budget(MobileBudget b,int mode,int low,int pressure,int style,int level){
+    if(mode!=0||b.battery)return b;
+    if(level>=2)return mobile_budget(1,low,pressure,style,0);
+    if(level==1&&b.pixels>153600)b.pixels=153600;
+    return b;
+}
 #ifdef PC_ANDROID
 static int g_low_ram,g_mem_pressure; // session-only; do not rewrite preferences
-static MobileBudget current_budget(void){return mobile_budget(C.mobile_mode,g_low_ram,g_mem_pressure,C.pad_style,C.max_mp);}
+static MobileGovernor g_governor;
+static MobileBudget current_budget(void){
+    MobileBudget b=mobile_budget(C.mobile_mode,g_low_ram,g_mem_pressure,C.pad_style,C.max_mp);
+    return mobile_auto_budget(b,C.mobile_mode,g_low_ram,g_mem_pressure,C.pad_style,g_governor.level);
+}
 static int cap_pixels(void){return current_budget().pixels;}
 #else
 static int cap_pixels(void){
@@ -287,7 +314,7 @@ static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRender
 // ---- the options screen
 enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_LAN, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_REBIND=1000 };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_MOBILE_MODE, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
@@ -338,7 +365,7 @@ static void menu_build(Item *it, int *n){
         it[k++]=(Item){0,"HOW TO PLAY",0,0,0,0,0,A_HELP}; it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
     case P_VIDEO:
 #ifdef PC_ANDROID
-        it[k++]=(Item){1,"PHONE PERFORMANCE",&C.mobile_mode,0,2,1,mobilemodes,0};
+        it[k++]=(Item){1,"PHONE PERFORMANCE",&C.mobile_mode,0,2,1,mobilemodes,A_MOBILE_MODE};
 #endif
         it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,3,1,v3names,0}; it[k++]=(Item){1,"QUALITY",&C.quality,0,3,1,qnames,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
         it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
@@ -375,6 +402,12 @@ static void menu_do(int act){
     int idx=act>=A_REBIND?act-A_REBIND:0; if(act>=A_REBIND) act=A_REBIND;
     switch(act){
     case A_RESUME: menu_open=0; cfg_save(); break;
+#ifdef PC_ANDROID
+    case A_MOBILE_MODE:
+        g_governor=(MobileGovernor){0};
+        say_toast(C.mobile_mode==0?"AUTO PERFORMANCE RESET":C.mobile_mode==1?"BATTERY PROFILE":"FULL DETAIL PROFILE");
+        break;
+#endif
     case A_LAN: menu_page=P_LAN;menu_sel=0;break;
     case A_LAN_IP: lan_ip_edit=1;SDL_StartTextInput();say_toast("TYPE IPv4 ADDRESS - ENTER TO FINISH");break;
     case A_LAN_HOST: case A_LAN_JOIN:{
@@ -493,6 +526,10 @@ static void touch_menu_draw(void){
         else if(it[i].kind==2)snprintf(b,sizeof b,"%d",*it[i].val);
         else if(it[i].action==A_LAN_IP)snprintf(b,sizeof b,"%s%s",lan_ui_ip,lan_ip_edit?" [EDIT]":"");
         else if(it[i].action>=A_REBIND){int bi=it[i].action-A_REBIND;if(menu_wait&&menu_sel==i)snprintf(b,sizeof b,"PRESS %s",menu_wait==1?"A KEY":"A BUTTON");else if(menu_page==P_CONTROLS)key_name_of(bi,b,sizeof b);else pad_name_of(bi,b,sizeof b);}
+#ifdef PC_ANDROID
+        if(it[i].kind==1&&it[i].val==&C.mobile_mode&&C.mobile_mode==0)
+            snprintf(b,sizeof b,"%s",current_budget().battery?"AUTO: BATTERY":g_governor.level==1?"AUTO: REDUCED":"AUTO: NORMAL");
+#endif
         if(it[i].kind){tm_fit(2*m,y+11*gs_,4*gs_,"<",0xFFD23C);tm_fit(w-4*m,y+11*gs_,4*gs_,">",0xFFD23C);
             tm_fit(5*m,y+11*gs_,w-10*m,b,0xD7E3FF);}
         else if(b[0])tm_fit(2*m,y+11*gs_,w-4*m,b,0xD7E3FF);
@@ -626,6 +663,8 @@ static void present_game(int with_overlay){
     int ui_only=0;
 #ifdef PC_ANDROID
     ui_only=mobile_menu_only(with_overlay,g_touch,menu_open,ted_on,shot_pending);
+    uint64_t render_begin=SDL_GetPerformanceCounter();
+    int governor_eligible=!ui_only&&!menu_open&&!g_paused_focus&&!g_bg&&!g_fast&&!shot_pending&&g_autoshot_frame<0&&C.mobile_mode==0&&!g_low_ram&&!g_mem_pressure&&pc_frames()>120;
 #endif
     int W=0,H=0,linear=0,smooth=0; SDL_Rect dst;
     if(!ui_only){
@@ -683,6 +722,16 @@ static void present_game(int with_overlay){
         SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,dw_,dh_,32,SDL_PIXELFORMAT_ARGB8888);
         if(s && SDL_RenderReadPixels(ren,NULL,SDL_PIXELFORMAT_ARGB8888,s->pixels,s->pitch)==0){ plat_write_png(g_autoshot_path,s->pixels,dw_,dh_); fprintf(stderr,"window shot %dx%d (draw %dx%d) -> %s\n",dw_,dh_,W,H,g_autoshot_path); }
         if(s) SDL_FreeSurface(s); g_autoshot_frame=-1; g_autoshot_path=0; if(g_stop_after>=0 && (menu_open || pc_frames()>=g_stop_after)) pc_quit_now(); }
+#ifdef PC_ANDROID
+    // Measure rendering work only, before the potentially blocking VSync.
+    // Do not classify launch, screenshots or menus as gameplay.
+    if(t_freq&&mobile_governor_sample(&g_governor,governor_eligible,
+        (SDL_GetPerformanceCounter()-render_begin)*1000.0/(double)t_freq)){
+        const char *notice=g_governor.level==1?"AUTO: REDUCED DRAW SIZE":"AUTO: BATTERY PROFILE";
+        say_toast_ms(notice,3500);
+        __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_PERF","auto render level %d",g_governor.level);
+    }
+#endif
     SDL_RenderPresent(ren);
     if(!menu_open&&!g_paused_focus&&!g_bg)present_n++;
 #ifdef PC_ANDROID
@@ -1275,7 +1324,11 @@ void plat_frame(void){
         if(!menu_open && !g_paused_focus && !g_bg) break;
         if(!g_bg) audio_frame();
     }
-    if(was_paused || g_pace_reset || g_app_resume){ g_pace_reset=0; g_app_resume=0; g_due=now_ticks(); if(was_paused){fps_n=present_n=0;fps_t0=SDL_GetPerformanceCounter();} }      // a pause, a window move/resize/minimise, a monitor change: a fresh clock, no catch-up burst
+    if(was_paused || g_pace_reset || g_app_resume){ g_pace_reset=0; g_app_resume=0; g_due=now_ticks(); if(was_paused){fps_n=present_n=0;fps_t0=SDL_GetPerformanceCounter();
+#ifdef PC_ANDROID
+        g_governor.count=g_governor.slow=0;
+#endif
+        } }      // a pause, a window move/resize/minimise, a monitor change: a fresh clock, no catch-up burst
     if(getenv("BUGSTAR_TOUCHEDIT") && fr==30 && g_touch && !ted_on){ open_menu(); ted_open(); }      // test hook: open the touch pad layout editor
     { const char *mp=getenv("BUGSTAR_MENU"); if(mp && fr==30 && !menu_open){ open_menu(); menu_page=atoi(mp); if(getenv("BUGSTAR_MENUSEL")) menu_sel=atoi(getenv("BUGSTAR_MENUSEL")); } }   // (test hook: open the options screen on a page)
     if(g_first_run && fr==45){ g_first_run=0;
