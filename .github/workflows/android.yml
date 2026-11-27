@@ -134,7 +134,7 @@ jobs:
       # patch 35: things that make an APK install fine and then die on launch, found here instead of on the phone
       - name: Check the APK (libraries inside, SDL_main exported, page alignment)
         run: |
-          APK=$(ls pc/android/app/build/outputs/apk/debug/bugstar-*-debug.apk | head -1)
+          APK=$(ls pc/android/app/build/outputs/apk/debug/bugstar-*-universal-debug.apk | head -1)
           echo "APK: $APK"
           ls -l "$APK"
           python3 tests/android_apk_audit.py "$APK"
@@ -161,11 +161,58 @@ jobs:
           ZA=$(find "$ANDROID_HOME/build-tools" -name zipalign 2>/dev/null | sort -V | tail -1)
           test -n "$ZA" && "$ZA" -c -P 16 -v 4 "$APK" || { echo "::error::APK zip alignment failed"; exit 1; }
 
-      - name: Upload the APK
+      - name: Verify every lightweight APK matches universal native code and signing
+        run: |
+          dir=pc/android/app/build/outputs/apk/debug
+          universal=$(find "$dir" -maxdepth 1 -name 'bugstar-*-universal-debug.apk')
+          test -f "$universal"
+          signer=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          aligner=$(find "$ANDROID_HOME/build-tools" -name zipalign | sort -V | tail -1)
+          test -x "$signer" && test -x "$aligner"
+          "$signer" verify --min-sdk-version 21 --print-certs "$universal" > universal-signing.txt
+          grep 'certificate SHA-256 digest:' universal-signing.txt > universal-digest.txt
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            apk=$(find "$dir" -maxdepth 1 -name "bugstar-*-$abi-debug.apk")
+            test -f "$apk"
+            python3 tests/android_apk_audit.py "$apk" "$abi" "$universal"
+            "$aligner" -c -P 16 4 "$apk"
+            "$signer" verify --min-sdk-version 21 --print-certs "$apk" > abi-signing.txt
+            grep 'certificate SHA-256 digest:' abi-signing.txt > abi-digest.txt
+            cmp universal-digest.txt abi-digest.txt
+            ls -lh "$apk"
+          done
+
+      - name: Upload the universal APK
         uses: actions/upload-artifact@v4
         with:
           name: bugstar-apk
-          path: pc/android/app/build/outputs/apk/debug/bugstar-*-debug.apk
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-universal-debug.apk
+          if-no-files-found: error
+
+      - name: Upload lightweight ARM32 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-apk-armeabi-v7a
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-armeabi-v7a-debug.apk
+          if-no-files-found: error
+      - name: Upload lightweight ARM64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-apk-arm64-v8a
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-arm64-v8a-debug.apk
+          if-no-files-found: error
+      - name: Upload lightweight x86 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-apk-x86
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-x86-debug.apk
+          if-no-files-found: error
+      - name: Upload lightweight x86-64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-apk-x86_64
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-x86_64-debug.apk
+          if-no-files-found: error
 
       # the unstripped libmain.so: the crash report lists "pc <offset> libmain.so", and with this file  llvm-addr2line -f -e libmain.so <offset>  names the line
       - name: Keep the symbols
@@ -201,6 +248,10 @@ jobs:
         with:
           name: bugstar-apk
           path: apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: bugstar-apk-${{ matrix.arch }}
+          path: lite-apk
       - name: Enable KVM for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -213,7 +264,7 @@ jobs:
           target: default
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: bash tests/android_emulator_smoke.sh "$(find apk -name '*.apk' | head -1)"
+          script: bash tests/android_emulator_smoke.sh "$(find apk -name '*.apk' | head -1)" "$(find lite-apk -name '*.apk' | head -1)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

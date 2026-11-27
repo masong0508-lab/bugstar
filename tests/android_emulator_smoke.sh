@@ -59,3 +59,15 @@ wait_log BUGSTAR_LIFE 'foreground resume'
 adb shell ps | grep "$pkg"
 adb exec-out screencap -p > android-resume.png
 echo 'Android boot, genuine touch tutorial/options navigation, and Home/resume PASS'
+if [[ -n "${2:-}" ]]; then
+    # Install the single-ABI APK over the universal APK without clearing the
+    # saved data. This proves same-run signing and standalone installability.
+    adb shell am force-stop "$pkg"
+    adb install -r "$2"
+    adb logcat -c
+    adb shell am start -W -n "$activity"
+    wait_log BUGSTAR_BOOT 'first rendered game frame'
+    wait_log BUGSTAR_PAD 'mode w='
+    adb shell ps | grep "$pkg"
+    echo 'Lightweight standalone APK upgrade, retained settings and boot PASS'
+fi

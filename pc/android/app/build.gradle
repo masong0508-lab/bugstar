@@ -24,17 +24,30 @@ android {
         applicationId 'org.bugstar.app'
         minSdk 21
         targetSdk 34          // 34, not newer: no forced edge-to-edge layout for SDL2 to trip over
-        versionCode 46
-        versionName '0.46'
-        ndk { abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64' }
+        versionCode 47
+        versionName '0.47'
         externalNativeBuild { ndkBuild { arguments 'APP_PLATFORM=android-21' } }
     }
 
     externalNativeBuild { ndkBuild { path 'jni/Android.mk' } }
 
-    // the file is named bugstar-<version>-debug.apk (not app-debug.apk), so a download says which build it is
+    // Build the same game once for each supported ABI. Keep a universal
+    // installable APK and four smaller standalone APKs, not split bundles
+    // that require a special installer. All outputs share the same signing key.
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            universalApk true
+        }
+    }
+
     applicationVariants.all { variant ->
-        variant.outputs.all { outputFileName = "bugstar-${variant.versionName}-debug.apk" }
+        variant.outputs.all { output ->
+            def abi = output.getFilter(com.android.build.OutputFile.ABI)
+            output.outputFileName = "bugstar-${variant.versionName}-${abi ?: 'universal'}-debug.apk"
+        }
     }
 
     sourceSets {

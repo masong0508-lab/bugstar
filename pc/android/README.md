@@ -79,3 +79,7 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 
 - Options > SCREENSHOT now requests an actual game capture, even when battery mode would skip that frame. Screenshots remain in the existing screenshots folder, use collision-resistant names, and show success or storage failure feedback.
 - PNG encoding uses a 32 KiB streaming buffer rather than allocating two complete images. RGB and RGBA output is preserved, including large pictures, and write errors are returned. The host test checks chunk CRCs, zlib data, all pixels and alpha across block boundaries, invalid dimensions and a full-device write failure.
+
+## Version 0.47 lightweight Android downloads
+
+- The universal APK still contains every common ABI, while four optional standalone APKs contain just the native code for ARMv7, ARM64, x86 or x86-64. They require no split-package installer. CI verifies the native libraries and Java program match the universal build, page alignment, and identical signing certificates within the same build. The x86 and x86-64 emulator runs also install the matching standalone APK over the universal build without clearing data and verify boot. Android debug signing keys can vary between separate CI runs; this does not guarantee cross-run APK upgrades. Keep a backup of existing game saves before changing builds.
