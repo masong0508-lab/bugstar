@@ -256,8 +256,14 @@ static s16 kbs[NKB], kbe[NKB]; static int nkb=0;   // the flyovers: first and la
 static int kbr_h(int pi){ for(int b=0;b<nkb;b++){ int d=(pi-kbs[b]+knp)%knp, L=kbe[b]-kbs[b]; if(d<=L){ int e=d<L-d?d:L-d; if(e>9) e=9; int t=e*256/9; return (int)((KBR_H*((t*t>>8)*(768-2*t)>>8))>>8); } } return 0; }
 static s16 kjl[NKJ], kjr[NKJ]; static int nkj=0;   // the jumps: where you take off, and where the road starts again
 static int kbend(int a, int b){ int d0=kp_dir((a+knp)%knp), m=0; for(int i=a+1;i<=b;i++){ int cv=((kp_dir((i+knp)%knp)-d0+512)&1023)-512; if(cv<0) cv=-cv; if(cv>m) m=cv; } return m; }   // how far the road swings away from its heading at a, from a to b
+/* A required gate must never stand over a missing road segment. Short
+   water crossings can still be bridged when a jump would hide a gate. */
+static int kart_gate_in_range(const u16 *gate,int count,int lo,int hi){
+    for(int i=0;i<count;i++)if(gate[i]>=lo&&gate[i]<=hi)return 1;
+    return 0;
+}
 static void kjump_add(int a, int b){               // a gap from a to b with a ramp before it
-    if(nkj>=NKJ || a<12 || b+10>=knp) return; for(int k=a-9;k<=b;k++) if(kpf[k]) return;
+    if(nkj>=NKJ || a<12 || b+10>=knp || kart_gate_in_range(kgate_pi,kt.n,a,b)) return; for(int k=a-9;k<=b;k++) if(kpf[k]) return;
     if(kbend(a-9,a)>64 || kbend(a,b+10)>96 || kbend(a-9,b+10)>128) return;                // only where the road runs fairly straight: a sharp bend gets a bridge instead
     for(int k=a-9;k<a;k++) kpf[k]|=KPF_RAMP; for(int k=a;k<=b;k++) kpf[k]|=KPF_GAP; kjl[nkj]=(s16)(a-1); kjr[nkj]=(s16)(b+1); nkj++; }
 static void kt_features(const u8 *raw){
@@ -279,7 +285,7 @@ static void kt_features(const u8 *raw){
     nkl=0;
     if(((kt.flags&KF_LOOPS) || k_stunts==1) && k_stunts!=2 && kt_len>36){ int want = k_stunts==1 ? (kt_len>120?3:2) : kt_len>150 ? 2 : 1, win = k_stunts==1 ? 10 : 12+(wd.psz%6)/2, lim = k_stunts==1 ? 110 : 96;   // loop-de-loops: on straight dry bits
         for(int k=0;k<want && nkl<NKL;k++){ static const u8 lq[3]={24,66,92}; int q=knp*lq[k]/100, best=-1, bc=999;
-            for(int d=-50;d<=50;d+=2){ int p=(q+d+knp)%knp; if(p<24 || p>knp-24) continue; int ok=1;
+            for(int d=-50;d<=50;d+=2){ int p=(q+d+knp)%knp; if(p<24 || p>knp-24 || kart_gate_in_range(kgate_pi,kt.n,p-5,p+5)) continue; int ok=1;
                 for(int e=-win;e<=win && ok;e++){ int pp=(p+e+knp)%knp; if(kpf[pp] || raw[pp]<water_lv) ok=0; } if(!ok) continue;
                 int b=kbend(p-win,p+win); if(b>lim) continue; if(b<bc){ bc=b; best=p; } }
             if(best>=0){ klp[nkl++]=(s16)best; for(int e=-12;e<=12;e++) kpf[(best+e+knp)%knp]|=KPF_LOOP; } } }
@@ -564,6 +570,25 @@ static void khorn(int k){
 // interval. Grid positions remain ordered before the first start crossing.
 /* A checkpoint is behind us only on the near half of the circular path.
    Keep recovery and the HUD in agreement, including the start/finish wrap. */
+/* Round checkpoint footprint covers the same axial extent as the old
+   diamond, but lets a kart on the diagonal edge of the road pass. Cheap
+   reject first; only nearby samples need two 32-bit multiplications. */
+static int kart_gate_contact(s32 dx,s32 dy){
+    const s32 radius=0x36000;
+    if(dx<=-radius||dx>=radius||dy<=-radius||dy>=radius)return 0;
+    if(dx<0)dx=-dx;if(dy<0)dy=-dy;
+    if(dx+dy<radius)return 1;
+    dx=(dx+255)>>8;dy=(dy+255)>>8;
+    return dx*dx+dy*dy<864*864;
+}
+/* Late finishers get more time on longer circuits. Do not count them as
+   finishers unless they actually visit every gate. */
+static int kart_finish_grace(int path,int laps){
+    if(path<1)path=1;if(path>600)path=600;
+    if(laps<1)laps=1;if(laps>9)laps=9;
+    int t=900+path*laps*3;
+    return t>7200?7200:t;
+}
 static int kart_gate_missed(int pi,int gp,int path){
     if(path<2||pi<0||pi>=path||gp<0||gp>=path)return 0;
     int past=pi-gp;if(past<0)past+=path;
@@ -962,9 +987,14 @@ static void kart_step(void){
         Racer *k=&rc[0]; int tp=kart_driver_target(k->pi,kgate_pi[k->nextg],knp);
         int want=iatan2(wrapd(kp_cx(tp)-ppx)>>4,wrapd(kp_cy(tp)-ppy)>>4), err=((want-khd+512)&1023)-512;
         int ab=err<0?-err:err; s=err>3?1:err<-3?-1:0;
-        /* Brake before tight turns rather than circle a missed gate at speed. */
-        dn=ab>120 && kv>vmax/4;
-        up=!dn && (ab<80 || kv<vmax/5);
+        /* Recover the heading while moving forward, accounting for real
+           reverse steering after a bounce. Preserve a usable turning
+           speed rather than alternating braking and near-zero throttle. */
+        if(kv<0)s=-s;
+        s32 target_speed=ab>150?vmax/3:ab>70?vmax/2:vmax;
+        if(ab<96 && (kpf[k->pi]&(KPF_RAMP|KPF_LOOP)))target_speed=vmax;
+        dn=kv>target_speed+vmax/12;
+        up=!dn && kv<target_speed;
     }   // the test driver
 #endif
     int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)], fl = form==FORM_CREATURE && form_body==2;
@@ -981,7 +1011,7 @@ static void kart_step(void){
     if(rc[0].cloud) vcap=vcap*3/4;
     vcap=vcap*(100+kstar)/100;                                                                 // every star bit: a little more top speed
     int indraft=0;
-    if(kr_mode==1 && ks_state==KS_RACE && !kair && !rc[0].spin){ for(int r=1;r<nrc;r++){ s32 sdx=wrapd(rc[r].x-ppx)>>8, sdy=wrapd(rc[r].y-ppy)>>8;   // SLIPSTREAM: close behind a rival
+    if(kr_mode==1 && ks_state==KS_RACE && !kair && !rc[0].spin){ for(int r=1;r<nrc;r++){ if(rc[r].fin||rc[r].out)continue; s32 sdx=wrapd(rc[r].x-ppx)>>8, sdy=wrapd(rc[r].y-ppy)>>8;   // SLIPSTREAM: close behind a rival
         s32 fwd=(sdx*sinx(khd>>2)+sdy*cosx(khd>>2))>>14, sd=(sdx*cosx(khd>>2)-sdy*sinx(khd>>2))>>14; if(fwd>128 && fwd<1400 && sd>-200 && sd<200){ vcap=vcap*106/100; indraft=1; break; } } }
     if(indraft){ if(++kdraft>=90){ kdraft=0; kboost_t=34; show_msg("SLINGSHOT!"); sfx(10); } } else if(kdraft>0) kdraft-=2; if(kdraft<0) kdraft=0;   // tuck in behind a rival long enough and you slingshot past
     if(kr_mode==1 && ks_state==KS_DONE){ kart_auto(vmax*7/10); s=0; up=0; dn=0; }
@@ -1104,7 +1134,7 @@ static void kart_tick(int n){
         if(kloop_prev>=0) for(int j=0;j<nkl;j++){ int d0=kwp(klp[j]-kloop_prev+knp), d1=kwp(klp[j]-p+knp); if(d0>0 && d0<30 && (d1==0 || d1>knp-30)){ if(kroad(cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)])) kloop_begin(j); break; } }
         kloop_prev=rc[0].pi; }
     if(kitem_active(0)){ int g=rc[0].nextg; s32 gx=((s32)KGX(g)<<15)+(1<<14), gy=((s32)KGY(g)<<15)+(1<<14), dx=wrapd(gx-ppx), dy=wrapd(gy-ppy);
-        if((dx<0?-dx:dx)+(dy<0?-dy:dy) < 0x36000){ if(g==0){ for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; rc[0].lap++; if(rc[0].lap>1){ int lt=k_clock-k_lap_t0; if(!k_best_lap || lt<k_best_lap) k_best_lap=lt; } k_lap_t0=k_clock;
+        if(kart_gate_contact(dx,dy)){ if(g==0){ for(int q=0;q<knp;q++) kpf[q]&=~KPF_TAKEN; rc[0].lap++; if(rc[0].lap>1){ int lt=k_clock-k_lap_t0; if(!k_best_lap || lt<k_best_lap) k_best_lap=lt; } k_lap_t0=k_clock;
             if(rc[0].lap>kt.laps) kfinish(0); else if(rc[0].lap>1){ if(rc[0].lap==kt.laps){ show_msg("FINAL LAP!"); sfx(6); music(7); } else { char b[24]; scpy(b,"LAP "); ncat(b,rc[0].lap); scat(b," OF "); ncat(b,kt.laps); show_msg(b); sfx(7); } } }
             rc[0].nextg=(u8)((g+1)%kt.n); }
         else if(kart_gate_missed(rc[0].pi,kgate_pi[g],knp) && (frames&63)==0) show_msg("MISSED A GATE! GO BACK");
@@ -1129,7 +1159,7 @@ static void kart_tick(int n){
     if(ks_state==KS_RACE && kitem_active(0) && (k_finished>=nrc-1 || k_clock>36000) && nrc>1){
          if(k_end_t==0)show_msg(k_finished>=nrc-1?"HURRY! THE OTHERS ARE DONE":"HURRY! TIME LIMIT");
          k_end_t+=n;
-         if(k_end_t>900){rc[0].out=1;rc[0].place=(u8)nrc;rc[0].v=kv=0;
+         if(k_end_t>kart_finish_grace(knp,kt.laps)){rc[0].out=1;rc[0].place=(u8)nrc;rc[0].v=kv=0;
              show_msg("TIME UP - DID NOT FINISH");sfx(4);ks_state=KS_DONE;k_end_t=150;}
     }
     if(ks_state==KS_DONE && k_end_t>=150) kart_results();
