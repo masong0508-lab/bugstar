@@ -164,7 +164,7 @@ static s16 bf[3], br[3], bu[3];     // forward, right, up (2.14)
 static s16 sun[3]={-9000,6000,-11000};
 EW static s16 star_dir[96*3];
 EW static s32 dust[20*3];
-typedef struct { s32 x,y,z; s16 f[3]; s16 hp, maxhp; s8 alive, cool, fire_t, team, tgt, slot; } Pirate;   // team 0: your wingmen, 1: enemies. tgt: who it shoots (-1 = you)
+typedef struct { s32 x,y,z; s16 f[3]; s16 hp, maxhp; s8 alive; u8 cool; s8 fire_t, team, tgt, slot; } Pirate;   // team 0: your wingmen, 1: enemies. tgt: who it shoots (-1 = you)
 #define NPIR 64                     // up to 10 wingmen and 50 enemies at once
 #define MAXWING 10
 static int wing_n=0, battle_on=0, battle_kills=0, battle_req=0;
@@ -438,12 +438,31 @@ static int hive_here(void){ return endless && !forge_on && hive_active() && cur_
 static int hive_boss_floor(void){ return hive_here() && depth_no==hive_floors[hive_done]; }
 static void hive_kill(void){ hive_done++; hive_card=hive_done+1; }
 static int space_danger(void){ return in_lair ? (beast_fight==1 ? 1+clampi(sdiv(level,3)) : beast_fight==2 ? 4+tech_lv*2+clampi(sdiv(level,3)) : 8 + tech_lv*2 + beast_kills*6 + clampi(sdiv(level,3))) : sys_dlv(cur_sys) + clampi(sdiv(level,4)); }
+/* Enemy slots reuse the wing formation byte as a role, so no actor or
+   save growth. Patrols remain ordinary fighters; fleet groups mix roles. */
+enum { SP_FIGHTER, SP_SCOUT, SP_HEAVY };
+static int sp_fleet_role(int order){int r=order&3;return r==1?SP_SCOUT:r==3?SP_HEAVY:SP_FIGHTER;}
+static int sp_role_hp(int hp,int role){
+    if(hp<1)hp=1;if(hp>16000)hp=16000;
+    if(role==SP_HEAVY)return hp+hp/2;
+    if(role==SP_SCOUT)return hp-hp/4;
+    return hp;
+}
+static int sp_role_speed(int speed,int role){
+    if(role==SP_SCOUT)return speed+speed/4;
+    if(role==SP_HEAVY)return speed-speed/4;
+    return speed;
+}
+static int sp_role_cool(int roll,int role){
+    return role==SP_SCOUT?30+roll:role==SP_HEAVY?60+roll:40+roll;
+}
+static int sp_role_size(int role){return role==SP_SCOUT?82:role==SP_HEAVY?145:110;}
 static void spawn_pirates(int n){
     for(int i=0;i<NPIR && n;i++) if(!pir[i].alive){ Pirate *p=&pir[i];
         s16 d[3]={(s16)(lr(32768)-16384),(s16)(lr(16384)-8192),(s16)(lr(32768)-16384)}; norm3(d);
         int dist=7000+lr(3000);
         p->x=shx+((d[0]*dist)>>14); p->y=shy+((d[1]*dist)>>14); p->z=shz+((d[2]*dist)>>14);
-        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->hp=p->maxhp=10+space_danger()*5; p->alive=1; p->cool=60; p->fire_t=0; p->team=1; p->tgt=-1; n--; }
+        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->hp=p->maxhp=10+space_danger()*5; p->alive=1; p->cool=60; p->fire_t=0; p->team=1; p->slot=SP_FIGHTER; p->tgt=-1; n--; }
 }
 static void boom(s32 x, s32 y, s32 z, int n, int col); static void space_say(const char *t);
 static int team_count(int t){ int n=0; for(int i=0;i<NPIR;i++) if(pir[i].alive && pir[i].team==t) n++; return n; }
@@ -455,11 +474,12 @@ static void spawn_wing(void){                                   // your hired wi
 }
 static void start_battle(int n){                                 // a fleet battle: up to 50 enemy ships, spread out ahead of you
     int room=NPIR-team_count(0)-team_count(1); if(n>room) n=room; if(n>50) n=50; if(n<1) return;
+    int order=0,danger=space_danger();
     for(int i=0;i<NPIR && n;i++) if(!pir[i].alive){ Pirate *p=&pir[i];
         s16 d[3]={(s16)(bf[0]+lr(12000)-6000),(s16)(bf[1]+lr(6000)-3000),(s16)(bf[2]+lr(12000)-6000)}; norm3(d);
         int dist=9000+lr(7000); p->x=shx+((d[0]*dist)>>14); p->y=shy+((d[1]*dist)>>14); p->z=shz+((d[2]*dist)>>14);
-        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->hp=p->maxhp=10+space_danger()*4; p->alive=1; p->cool=60+lr(90); p->fire_t=0; p->team=1; p->tgt=-1; n--; }
-    battle_on=1; battle_kills=0; char b[40]; scpy(b,"FLEET BATTLE! "); ncat(b,team_count(1)); scat(b," ENEMY SHIPS"); space_say(b); sfx(6);
+        p->f[0]=-d[0]; p->f[1]=-d[1]; p->f[2]=-d[2]; p->slot=sp_fleet_role(order++); p->hp=p->maxhp=sp_role_hp(10+danger*4,p->slot); p->alive=1; p->cool=60+lr(90); p->fire_t=0; p->team=1; p->tgt=-1; n--; }
+    battle_on=1; battle_kills=0; char b[40]; scpy(b,"FLEET BATTLE! "); ncat(b,team_count(1)); scat(b," SHIPS: MIXED SQUADRON"); space_say(b); sfx(6);
 }
 static void ship_dies(Pirate *p, int by_you){
     p->alive=0; boom(p->x,p->y,p->z,24,50);
@@ -982,11 +1002,11 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         if(l<1200){ d[0]=-d[0]; d[1]=-d[1]+8000; d[2]=-d[2]; }          // swerve away instead of ramming
         for(int k=0;k<3;k++) p->f[k]+= (d[k]-p->f[k])>>4;
         norm3(p->f);
-        int ps = p->team ? 34+danger*2 : 60+laser_lv*4; if(!p->team){ s32 ex=p->x-shx, ez=p->z-shz; if((ex<0?-ex:ex)+(ez<0?-ez:ez)>3000 && ps<speed*3+40) ps=speed*3+40; }
+        int ps = p->team ? sp_role_speed(34+danger*2,p->slot) : 60+laser_lv*4; if(!p->team){ s32 ex=p->x-shx, ez=p->z-shz; if((ex<0?-ex:ex)+(ez<0?-ez:ez)>3000 && ps<speed*3+40) ps=speed*3+40; }
         p->x+=(p->f[0]*ps)>>14; p->y+=(p->f[1]*ps)>>14; p->z+=(p->f[2]*ps)>>14;   // (wingmen keep up with you when they are far)
         if(p->cool) p->cool--; if(p->fire_t) p->fire_t--;
         s32 aim=(p->f[0]*d[0]+p->f[1]*d[1]+p->f[2]*d[2])>>14;
-        if(!p->cool && l<7000 && aim>15500){ p->cool=40+lr(30); p->fire_t=4;
+        if(!p->cool && l<7000 && aim>15500){ p->cool=sp_role_cool(lr(30),p->team?p->slot:SP_FIGHTER); p->fire_t=4;
             s32 ex=p->x-shx, ez=p->z-shz; if((ex<0?-ex:ex)+(ez<0?-ez:ez)<6000) sfx(p->team?4:10);
             if(p->tgt==-1){ if(lr(100)<55) ship_hit(4+danger*2,0); }
             else if(sp_target_live(p->tgt,p->team) && lr(100)<45){ Pirate *q=&pir[p->tgt]; q->hp -= p->team ? 4+danger*2 : 6+laser_lv*4+ship_gun(); boom(q->x,q->y,q->z,3,p->team?53:52);
@@ -1068,12 +1088,16 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         { int sx,sy; s32 z; if(!sproj(p->x,p->y,p->z,&sx,&sy,&z)) continue;
           if(p->fire_t){ int tx_,ty_; if(p->tgt==-1) line2(pg,sx,sy,120+(frames&7)-4,chase_cam?ch_y:124,col); else if(sp_target_live(p->tgt,p->team) && sproj(pir[p->tgt].x,pir[p->tgt].y,pir[p->tgt].z,&tx_,&ty_,0)) line2(pg,sx,sy,tx_,ty_,col); }
           if(z>dot_z){ dot2(pg,sx,sy,col); dot2(pg,sx-1,sy,col); dot2(pg,sx+1,sy,col); dot2(pg,sx,sy-1,col); continue; }   // far away: a small mark
-          { int rp=(int)(140*FOCS/z)+2; if(sx+rp<0 || sx-rp>239 || sy+rp<0 || sy-rp>127) continue; }                    // the whole ship is off the screen: skip it
+          { int rp=(int)(190*FOCS/z)+2; if(sx+rp<0 || sx-rp>239 || sy+rp<0 || sy-rp>127) continue; }                    // the whole ship is off the screen: skip it
           lod = z>lod_z;
           if(lod && ((i^frames)&1)){ dot2(pg,sx,sy,col); dot2(pg,sx-1,sy,col); dot2(pg,sx+1,sy,col); dot2(pg,sx,sy-1,col); continue; } }          // a far ship is only drawn properly every other frame (a mark in between)
         s16 R[3]={p->f[2],0,(s16)-p->f[0]}; norm3(R); s16 U[3]; if(lod){ U[0]=0; U[1]=16384; U[2]=0; } else { U[0]=(s16)((p->f[1]*R[2]-p->f[2]*R[1])>>14); U[1]=(s16)((p->f[2]*R[0]-p->f[0]*R[2])>>14); U[2]=(s16)((p->f[0]*R[1]-p->f[1]*R[0])>>14); }   // (far away: the fin just points up, so no cross product)
         static const s16 mdl[6][3]={{0,0,110},{-110,0,-50},{110,0,-50},{0,35,-50},{0,-18,-50},{0,0,-70}};
-        s32 v[6*3]; for(int k=0;k<6;k++){ for(int a=0;a<3;a++) v[k*3+a]=(a==0?p->x:a==1?p->y:p->z)+((mdl[k][0]*R[a]+mdl[k][1]*U[a]+mdl[k][2]*p->f[a])>>14); }
+        s32 v[6*3]; int scale=p->team?sp_role_size(p->slot):110;
+        for(int k=0;k<6;k++){ int mx=mdl[k][0],my=mdl[k][1],mz=mdl[k][2];
+            if(scale!=110){mx=mx*scale/110;my=my*scale/110;mz=mz*scale/110;}
+            for(int a=0;a<3;a++)v[k*3+a]=(a==0?p->x:a==1?p->y:p->z)+((mx*R[a]+my*U[a]+mz*p->f[a])>>14);
+        }
         static const u8 pe[]={0,1,0,2,0,3,0,4,1,3,2,3,1,4,2,4,3,5,4,5,1,5,2,5};
         static const u8 pel[]={0,1,0,2,1,5,2,5,3,5};                                                                  // (far away: just the outline and the fin)
         if(lod) wire(pg,v,6,pel,5,col); else wire(pg,v,6,pe,12,col); }
