@@ -389,7 +389,7 @@ static void menu_do(int act){
 }
 static const char *const *help_lines(void){       // (each line fits the narrowest panel: 32 letters)
     static const char *const lg[]={"MEGA PAD         GBA","D-PAD            D-PAD","B                A (OK)","A                B (BACK)","C                A (OK)","X                L","Y                R","Z                SELECT","START            START","MODE             OPTIONS","","3 BUTTON PAD: L R AT THE TOP,","MODE = SELECT, MENU AT THE TOP",0};
-    static const char *const tp[]={"THE ON-SCREEN PAD IS A MEGA PAD:","D-PAD, A B C, X Y Z, START, MODE","MODE OPENS THESE OPTIONS","","OPTIONS > TOUCH PAD: BUTTON LEGEND,","LAYOUT, SIZE, OPACITY, HAPTICS","","OPTIONS > VIDEO > 3D VIEWS:","CLASSIC IS THE LIGHTEST - NATIVE","AND ULTRA NEED A FAST PHONE","","THE GAME SAVES BY ITSELF.",0};
+    static const char *const tp[]={"WELCOME TO BUGSTAR!","TAP PLAY BELOW TO BEGIN.","D-PAD: MOVE AND TURN","B OR C: ACTION / CONFIRM","A: USE ITEM / BACK","X AND Y: L AND R","Z: SELECT (SPELLS / CAMERA)","START: GAME MENU","MODE: PHONE OPTIONS","","TAP A SETTING TO CHANGE IT.","LEFT HALF DECREASES; RIGHT INCREASES.","PREV / NEXT SHOW MORE SETTINGS.","TOUCH PAD: MOVE OR RESIZE BUTTONS.","VIDEO: CLASSIC IS FASTEST.","THE GAME SAVES BY ITSELF.",0};
     static const char *const ln[]={"ARROWS OR WASD: MOVE AND TURN","X OR SPACE: A     Z OR K: B","Q: L      E: R","ENTER: START   BACKSPACE: SELECT","","ESC: THIS MENU   F11: FULLSCREEN","F12: SCREENSHOT   F3: FPS","","VIDEO > 3D VIEWS: CLASSIC IS THE","GBA LOOK - NATIVE AND ULTRA ARE","SHARP AT ANY WINDOW SIZE","A GAMEPAD WORKS: BACK+START=MENU",0};
     if(menu_page==P_TLEGEND) return lg;
     if(g_touch) return tp;
@@ -758,7 +758,20 @@ static void tl_draw(uint32_t el, uint16_t dirs, int sel, int edit){        // ed
     if(edit){ int hw,hh; for(int i=0;i<TC_N;i++){ if(!tg_vis(i)) continue; tg_ext(g,i,&hw,&hh); int ov=(ted_ovm>>i)&1; tl_outline(g[i].cx-hw,g[i].cy-hh,2*hw,2*hh,ov?2:1,ov?0xFF4040:0x8890C8); } }
     if(sel>=0 && sel<TC_N){ int hw,hh; tg_ext(g,sel,&hw,&hh); int t=t_u()/40; if(t<2) t=2; tl_outline(g[sel].cx-hw-t,g[sel].cy-hh-t,2*hw+2*t,2*hh+2*t,t,0xFFD23C); }
 }
-static void touch_draw(void){ if(ted_on||menu_open||!tg_on()) return; uint16_t d; uint32_t el=tg_state(&d); tl_draw(el,d,-1,0); }
+static void touch_draw(void){
+    if(ted_on||menu_open||!tg_on()) return;
+    uint16_t d; uint32_t el=tg_state(&d); tl_draw(el,d,-1,0);
+#ifdef PC_ANDROID
+    // Log only when the actual options-button geometry changes. No input or
+    // personal information is recorded. CI uses this to send genuine taps.
+    static int lw,lh,lx=-1,ly=-1;
+    TGeo g[TC_N];tl_geo(g);int i=g_t6?TC_SEL:TC_MENU;
+    if(lw!=dw_||lh!=dh_||lx!=g[i].cx||ly!=g[i].cy){
+        lw=dw_;lh=dh_;lx=g[i].cx;ly=g[i].cy;
+        __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_PAD","mode w=%d h=%d x=%d y=%d",lw,lh,lx,ly);
+    }
+#endif
+}
 static void touch_release_all(void){ memset(tfing,0,sizeof tfing); }      // (patch 43) back from the background: no finger is still 'down'
 
 // ---- the layout editor. EVERY button is on its own: tap one to pick it (yellow outline), drag it to move, pinch with a second finger (or the - + buttons) to resize THAT button only,
@@ -876,10 +889,17 @@ static void rumble_frame(void){
 // ---- the app's life cycle (Android: home button, another app, screen off; also SDL_APP_TERMINATING). In the background the game does not step and makes no sound; coming back
 // starts a fresh clock (g_pace_reset): the minutes it was away are not played catch-up. The save is flushed on the game's own thread (g_app_save, in pump_events).
 static void touch_release_all(void);
-static void app_background(void){ g_bg=1; g_app_save=1; if(adev) SDL_PauseAudioDevice(adev,1); }
+static void app_background(void){ g_bg=1; g_app_save=1; if(adev) SDL_PauseAudioDevice(adev,1);
+#ifdef PC_ANDROID
+    __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_LIFE","background pause");
+#endif
+}
 static void app_foreground(void){
     if(!g_bg && !g_app_resume) return;
     g_bg=0; g_app_resume=0; g_pace_reset=1; memset(kst,0,sizeof kst); touch_release_all();
+#ifdef PC_ANDROID
+    __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_LIFE","foreground resume");
+#endif
     if(adev){ __atomic_store_n(&rd_i,__atomic_load_n(&wr_i,__ATOMIC_ACQUIRE),__ATOMIC_RELEASE); SDL_PauseAudioDevice(adev,0); }      // the old queued sound is dropped
 }
 static int SDLCALL app_watch(void *u, SDL_Event *e){        // called at once on SDL's own thread (the game thread may already be asleep inside SDL): only sets flags

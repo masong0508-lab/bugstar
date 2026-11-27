@@ -14,6 +14,8 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Surface;
+import android.view.View;
+import android.util.Log;
 import android.provider.MediaStore;
 import android.widget.Toast;
 
@@ -126,6 +128,15 @@ public class BugstarActivity extends SDLActivity {
         if (level == 10 || level == 15 || level >= 60) { try { SDLActivity.nativeLowMemory(); } catch (Throwable t) { } }
     }
 
+    private void reportSurfaceBounds() {
+        View view = mSurface;
+        if (view == null || view.getWidth() <= 0 || view.getHeight() <= 0) return;
+        int[] xy = new int[2];
+        view.getLocationOnScreen(xy);
+        Log.i("BUGSTAR_VIEW", "surface left=" + xy[0] + " top=" + xy[1]
+              + " w=" + view.getWidth() + " h=" + view.getHeight());
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -136,7 +147,7 @@ public class BugstarActivity extends SDLActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hintFrameRate();
+        if (hasFocus) { hintFrameRate(); reportSurfaceBounds(); }
     }
 
     @Override
@@ -167,6 +178,18 @@ public class BugstarActivity extends SDLActivity {
             }
         }, "bugstar-report").start();
         super.onCreate(savedInstanceState);
+        if (mSurface != null) {
+            final View view = mSurface;
+            view.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                @Override public void onLayoutChange(View v, int l, int t, int r, int b,
+                        int oldL, int oldT, int oldR, int oldB) {
+                    reportSurfaceBounds();
+                }
+            });
+            view.post(new Runnable() {
+                @Override public void run() { reportSurfaceBounds(); }
+            });
+        }
         if (crashedLastTime) {
             try {
                 new AlertDialog.Builder(this).setTitle("BUGSTAR crashed last time")

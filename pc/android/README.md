@@ -46,3 +46,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 - Options on touch devices are now a directly tappable list instead of a desktop panel behind the gamepad. Large text, paginated settings, clear values, dedicated Back/Prev/Next controls and wrapped help text fit tall, wide and small windows. The gamepad remains available during gameplay; the layout editor retains its own controls.
 - Tap the left/right half of a setting to decrease/increase; tap a command to execute. No duplicate game input after leaving the options, and stray finger-motion events after rotation cannot recreate a released touch.
 - Host geometry tests cover the whole paginated touch menu and the emulator smoke test exercises a real touch dismissal of the first-start guide and opens Video via a tap.
+
+## Version 0.41 reliability
+
+- The Android launch test now runs in one checked shell, preserving coordinate variables, and uses the actual SDL surface bounds to translate real taps even with navigation bars or display scaling. It dismisses the tutorial, opens options from the on-screen MODE control, opens Video, and verifies pause/resume across the Home button.
+- The first-start guide teaches touch actions and the new settings interaction. SRAM autosave writes and flushes a temporary file, then replaces the old save without first deleting it. Failed writes or replacements preserve the previous file. Windows uses its native replace-existing operation. No save format changes.

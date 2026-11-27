@@ -14,6 +14,7 @@
 #include <windows.h>
 #else
 #include <sys/mman.h>
+#include <unistd.h>
 #endif
 #include "pc_hw.h"
 #include "shipr/shipr.h"
@@ -116,12 +117,24 @@ int pc_hw_init(const char *sav_path){
     pc_psg_reset();
     return 1;
 }
-static int save_write(const char *path){            // write to a temp file, then swap it in: a crash while saving never leaves half a save
-    char tmp[1100]; snprintf(tmp,sizeof tmp,"%s.tmp",path);
+static int save_write(const char *path){
+    // Write beside the current save; do not unlink the last good copy.
+    // A full disk, failed flush or failed replacement keeps it intact.
+    char tmp[1100]; int len=snprintf(tmp,sizeof tmp,"%s.tmp",path);
+    if(len<0||(size_t)len>=sizeof tmp)return 0;
     FILE *f=fopen(tmp,"wb"); if(!f) return 0;
-    size_t n=fwrite((void*)(uintptr_t)SRAMB,1,0x8000,f); int ok = n==0x8000 && fflush(f)==0; fclose(f);
+    size_t n=fwrite((void*)(uintptr_t)SRAMB,1,0x8000,f);
+    int ok=n==0x8000 && fflush(f)==0;
+#ifdef PC_ANDROID
+    if(ok && fsync(fileno(f))!=0)ok=0;
+#endif
+    if(fclose(f)!=0)ok=0;
     if(!ok){ remove(tmp); return 0; }
-    remove(path); if(rename(tmp,path)!=0){ remove(tmp); return 0; }
+#ifdef _WIN32
+    if(!MoveFileExA(tmp,path,MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){remove(tmp);return 0;}
+#else
+    if(rename(tmp,path)!=0){remove(tmp);return 0;}
+#endif
     return 1;
 }
 void pc_set_save_path(const char *path){ g_sav=path; }
