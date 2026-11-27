@@ -12,7 +12,7 @@ def func(name):
 title=re.search(r'field_title\[NFIELD\]=\{([^}]+)\};',s).group(1)
 lines=re.search(r'field_lines\[NFIELD\]\[6\]=\{(.*?)\n\};',s,re.S).group(1)
 count=int(re.search(r'#define NFIELD (\d+)',s).group(1))
-assert count>=10 and len(re.findall(r'"[^"]+"',title))==count
+assert count>=12 and len(re.findall(r'"[^"]+"',title))==count
 rows=re.findall(r'\{([^}]+)\}',lines)
 assert len(rows)==count
 assert "sel>=top+FIELD_VISIBLE" in s and "i<top+FIELD_VISIBLE&&i<NFIELD" in s
@@ -24,7 +24,7 @@ prefix=r"""
 #include <assert.h>
 #include <stdio.h>
 typedef unsigned char u8;
-enum { Q_NONE,Q_HUNT,Q_CHAMP,Q_FETCH,Q_RESCUE,Q_BOSS,Q_SHARDS,Q_BRING,Q_GOODS };
+enum { Q_NONE,Q_HUNT,Q_CHAMP,Q_FETCH,Q_RESCUE,Q_BOSS,Q_SHARDS,Q_BRING,Q_GOODS,NQ };
 enum { IT_FISH=1,IT_BERRY,IT_SEED,IT_POTION,IT_THORN };
 typedef struct { int it; } Gear;
 #define BAGMAX 8
@@ -36,6 +36,14 @@ static int add_gear(Gear g){if(bag_n>=BAGMAX)return 0;bag[bag_n++]=g;return 1;}
 """
 cases=r"""
 int main(void){
+  for(int endless=0;endless<=1;endless++)for(int dir=-1;dir<=1;dir+=2){
+      int first=Q_HUNT,t=first,seen=0,count=0;
+      do { assert(t>Q_NONE&&t<NQ&&!(endless&&t==Q_BOSS));
+           assert(!(seen&(1<<t))); seen|=1<<t; count++;
+           t=quest_offer_next(t,dir,endless);
+      }while(t!=first && count<NQ);
+      assert(t==first && count==NQ-1-endless);
+  }
   Gear prize={IT_THORN};
   for(int n=0;n<=BAGMAX;n++) for(int wanted=1;wanted<=BAGMAX;wanted++) for(int have=0;have<=n;have++){
     bag_n=n;q_type=Q_BRING;q_floor=0;q_need=wanted;
@@ -49,11 +57,11 @@ int main(void){
   q_type=Q_GOODS;q_need=3;cargo[0]=7;assert(!quest_claim_prize(prize)&&cargo[0]==7);
   bag_n=BAGMAX-1;assert(quest_claim_prize(prize)&&cargo[0]==4&&bag_n==BAGMAX);
   q_type=Q_BRING;q_need=0;assert(!quest_claim_prize(prize));
-  puts("Field guide bounds and production delivery exchange PASS");
+  puts("Field guide bounds, contract browsing and production delivery exchange PASS");
 }
 """
 with tempfile.TemporaryDirectory() as td:
     c=Path(td)/"field.c"; exe=Path(td)/"field"
-    c.write_text(prefix+"\n".join(func(x) for x in ("static int quest_held(", "static void quest_take(", "static int quest_prize_room(", "static int quest_claim_prize("))+cases)
+    c.write_text(prefix+"\n".join(func(x) for x in ("static int quest_held(", "static void quest_take(", "static int quest_prize_room(", "static int quest_claim_prize(", "static int quest_offer_next("))+cases)
     subprocess.run(["cc","-std=c11","-Wall","-Wextra","-fsanitize=undefined","-fno-sanitize-recover=all",str(c),"-o",str(exe)],check=True)
     subprocess.run([str(exe)],check=True)
