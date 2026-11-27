@@ -406,12 +406,15 @@ static void menu_do(int act){
     case A_REBIND: menu_wait = menu_page==P_PAD ? 2 : 1; menu_sel=idx; break;
     }
 }
+static int simple_pad(void);
 static const char *const *help_lines(void){       // (each line fits the narrowest panel: 32 letters)
     static const char *const lg[]={"MEGA PAD         GBA","D-PAD            D-PAD","B                A (OK)","A                B (BACK)","C                A (OK)","X                L","Y                R","Z                SELECT","START            START","MODE             OPTIONS","","3 BUTTON PAD: L R AT THE TOP,","MODE = SELECT, MENU AT THE TOP",0};
     static const char *const tp[]={"WELCOME TO BUGSTAR!","TAP PLAY BELOW TO BEGIN.","D-PAD: MOVE AND TURN","B OR C: ACTION / CONFIRM","A: USE ITEM / BACK","X AND Y: L AND R","Z: SELECT (SPELLS / CAMERA)","START: GAME MENU","MODE: PHONE OPTIONS","","TAP A SETTING TO CHANGE IT.","LEFT HALF DECREASES; RIGHT INCREASES.","PREV / NEXT SHOW MORE SETTINGS.","TOUCH PAD: MOVE OR RESIZE BUTTONS.","SIMPLE PAD USES GAME BUTTON NAMES.","VIDEO: BATTERY MODE FOR SLOW PHONES.","THE GAME SAVES BY ITSELF.",0};
     static const char *const ln[]={"ARROWS OR WASD: MOVE AND TURN","X OR SPACE: A     Z OR K: B","Q: L      E: R","ENTER: START   BACKSPACE: SELECT","","ESC: THIS MENU   F11: FULLSCREEN","F12: SCREENSHOT   F3: FPS","","VIDEO > 3D VIEWS: CLASSIC IS THE","GBA LOOK - NATIVE AND ULTRA ARE","SHARP AT ANY WINDOW SIZE","A GAMEPAD WORKS: BACK+START=MENU",0};
-    if(menu_page==P_TLEGEND) return lg;
-    if(g_touch) return tp;
+    static const char *const simple_help[]={"WELCOME TO BUGSTAR!","TAP PLAY BELOW TO BEGIN.","D-PAD: MOVE AND TURN","A: ACTION / CONFIRM","B: USE ITEM / BACK","L AND R: SHOULDER BUTTONS","SEL: SPELLS / CAMERA","START: GAME MENU","MODE OR MENU: PHONE OPTIONS","","TAP SETTINGS TO CHANGE THEM.","LEFT HALF DECREASES; RIGHT INCREASES.","PREV / NEXT SHOW MORE SETTINGS.","TOUCH PAD: MOVE OR RESIZE BUTTONS.","VIDEO: BATTERY MODE FOR SLOW PHONES.","THE GAME SAVES BY ITSELF.",0};
+    static const char *const simple_legend[]={"SIMPLE PAD = GAME BUTTON NAMES","D-PAD: MOVE / STEER","A: ACTION / CONFIRM","B: USE ITEM / BACK","L AND R: SHOULDER BUTTONS","SEL: SELECT","START: GAME MENU","MODE OR MENU: PHONE OPTIONS","BUTTONS CAN BE MOVED OR RESIZED.",0};
+    if(menu_page==P_TLEGEND) return g_touch&&simple_pad()?simple_legend:lg;
+    if(g_touch) return simple_pad()?simple_help:tp;
     return ln; }
 static int m_x0, m_pw, m_lh, m_y1, m_n, m_gs;
 // Touch-first options: use the actual window, not a scaled desktop panel.
