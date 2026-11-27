@@ -83,3 +83,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 ## Version 0.47 lightweight Android downloads
 
 - The universal APK still contains every common ABI, while four optional standalone APKs contain just the native code for ARMv7, ARM64, x86 or x86-64. They require no split-package installer. CI verifies the native libraries and Java program match the universal build, page alignment, and identical signing certificates within the same build. The x86 and x86-64 emulator runs also install the matching standalone APK over the universal build without clearing data and verify boot. Android debug signing keys can vary between separate CI runs; this does not guarantee cross-run APK upgrades. Keep a backup of existing game saves before changing builds.
+
+## Version 0.48 audio and settings reliability
+
+- Audio synthesis advances by the exact emulated GBA frame duration, independent of speaker queue fullness, trim, mute, or output availability. Only the playback queue is resampled for device drift; diagnostic WAV captures preserve the source sample count. Paused menus/background suspend the callback, and resume discards old audio and primes a short silent buffer instead of synthesizing extra paused frames.
+- Android settings now use a temporary file, checked flush/sync and atomic rename. Storage errors leave the prior settings file intact. No campaign save format change. Host tests cover exact long-run sample counts, stereo resampling, queue bounds, and forced settings write failures.

@@ -6,6 +6,7 @@
 #include <SDL.h>
 #ifdef PC_ANDROID
 #include <android/log.h>
+#include <unistd.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,8 +72,23 @@ static void cfg_defaults(void){
         SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,SDL_CONTROLLER_BUTTON_LEFTSHOULDER};
     memcpy(C.pad,pad,sizeof pad);
 }
+#ifdef PC_ANDROID
+static int cfg_finish(FILE *f,const char *tmp,const char *dest){
+    int ok=!ferror(f)&&fflush(f)==0;
+    if(ok&&fsync(fileno(f))!=0)ok=0;
+    if(fclose(f)!=0)ok=0;
+    if(ok&&rename(tmp,dest)==0)return 1;
+    remove(tmp);return 0;
+}
+#endif
 static void cfg_save(void){
+#ifdef PC_ANDROID
+    char tmp[1200];int n=snprintf(tmp,sizeof tmp,"%s.tmp",g_cfgpath);
+    if(n<0||(size_t)n>=sizeof tmp)return;
+    FILE *f=fopen(tmp,"w");if(!f)return;
+#else
     FILE *f=fopen(g_cfgpath,"w"); if(!f) return;
+#endif
     fprintf(f,"# BUGSTAR PC settings (edit in the game: press Esc). scale_mode: 0 crisp, 1 smooth\n");
     tl_save(f);
     fprintf(f,"mobile_mode=%d\npad_style=%d\n",C.mobile_mode,C.pad_style);
@@ -83,7 +99,11 @@ static void cfg_save(void){
         C.ships,C.armada,C.textsize,C.contrast,C.mouse,C.video3d,C.quality,C.fullscreen,C.scale_mode,C.vsync,C.show_fps,C.volume,C.mute,C.pause_unfocus,C.rumble,C.deadzone,C.max_mp,C.win_w,C.win_h);
     for(int i=0;i<NB;i++){ fprintf(f,"key_%s=%s,%s\n",bname[i],C.kb[i][0]?SDL_GetScancodeName(C.kb[i][0]):"",C.kb[i][1]?SDL_GetScancodeName(C.kb[i][1]):"");
         fprintf(f,"pad_%s=%s\n",bname[i],SDL_GameControllerGetStringForButton(C.pad[i])?SDL_GameControllerGetStringForButton(C.pad[i]):""); }
+#ifdef PC_ANDROID
+    if(!cfg_finish(f,tmp,g_cfgpath))fprintf(stderr,"settings write failed; prior settings retained\n");
+#else
     fclose(f);
+#endif
 }
 static void cfg_load(void){
     FILE *f=fopen(g_cfgpath,"r"); if(!f) return; char ln[256];
@@ -178,41 +198,97 @@ static int png_write(const char *path, const uint32_t *xrgb, int w, int h, int a
 
 // ------------------------------------------------------------------------------------------------ audio
 #define RING 16384
-static int16_t ring[RING*2]; static volatile unsigned rd_i, wr_i; static unsigned long underruns;
-static unsigned ring_fill(void){ return __atomic_load_n(&wr_i,__ATOMIC_ACQUIRE)-__atomic_load_n(&rd_i,__ATOMIC_ACQUIRE); }
-static void audio_cb(void *u, Uint8 *stream, int len){
-    int16_t *o=(int16_t*)stream; int n=len/4; unsigned r=__atomic_load_n(&rd_i,__ATOMIC_RELAXED), w=__atomic_load_n(&wr_i,__ATOMIC_ACQUIRE);
-    for(int i=0;i<n;i++){ if(r!=w){ o[i*2]=ring[(r%RING)*2]; o[i*2+1]=ring[(r%RING)*2+1]; r++; } else { o[i*2]=o[i*2+1]=0; underruns++; } }
-    __atomic_store_n(&rd_i,r,__ATOMIC_RELEASE);
-}
-static void audio_open(void){
-    if(g_no_audio) return;
-    SDL_AudioSpec want; SDL_zero(want); want.freq=PC_AUDIO_RATE; want.format=AUDIO_S16SYS; want.channels=2; want.samples=512; want.callback=audio_cb;
-    SDL_AudioSpec got; adev=SDL_OpenAudioDevice(NULL,0,&want,&got,0);
-    if(!adev){ fprintf(stderr,"audio: %s (the game runs without sound)\n",SDL_GetError()); return; }
-    if(got.freq!=PC_AUDIO_RATE||got.channels!=2||got.format!=AUDIO_S16SYS){ fprintf(stderr,"audio: unexpected format\n"); SDL_CloseAudioDevice(adev); adev=0; return; }
-    SDL_PauseAudioDevice(adev,0);
-}
-// patch 43: one game frame lasts 280896 / 16777216 s = 1/59.7275 s, which is 48000 * 280896 / 16777216 = 803.64 samples. The sound is made at exactly that rate (the fraction is carried
-// over), so the music and the effects run at the game's own speed. The audio device has its own clock, a few parts per million off: the ring's fill is steered back to AUDIO_TARGET by
-// at most AUDIO_TRIM samples a frame (1 percent), and when the ring is far too full / empty a frame of sound is skipped / padded. The sound never decides when the game steps.
 #define AUDIO_TARGET 1200
 #define AUDIO_TRIM 8
 #define AUDIO_HIGH 4000
-static uint64_t a_acc; static unsigned long a_skips, a_pads;
-static void audio_frame(void){          // make this frame's sound and queue it
-    int fill=(int)ring_fill();
-    { static long dbg=0; static int mn=1<<30,mx=0; if(getenv("BUGSTAR_AUDLOG")){ if(fill<mn)mn=fill; if(fill>mx)mx=fill; if(++dbg%100==0){ fprintf(stderr,"audfill min %d max %d underruns %lu pads %lu\n",mn,mx,underruns,a_pads); mn=1<<30; mx=0; } } }
-    a_acc += (uint64_t)PC_AUDIO_RATE*280896u; int n=(int)(a_acc>>24); a_acc &= 0xFFFFFFu;      // 16777216 = 2^24
-    if(adev){ int adj=(AUDIO_TARGET-fill)/48; if(adj>AUDIO_TRIM)adj=AUDIO_TRIM; if(adj<-AUDIO_TRIM)adj=-AUDIO_TRIM; n+=adj;
-              if(fill>AUDIO_HIGH){ n=0; a_skips++; } else if(fill<96){ n+=64; a_pads++; } }
-    static int16_t buf[2*1024]; if(n>1024) n=1024;
-    if(menu_open || g_paused_focus) { memset(buf,0,sizeof buf); }
-    else if(n>0) pc_psg_render(buf,n);
-    if(n>0 && !menu_open && !g_paused_focus && !C.mute && C.volume<100){ int g=C.volume*C.volume*256/10000; for(int i=0;i<n*2;i++) buf[i]=(int16_t)((buf[i]*g)>>8); }
-    if(C.mute) memset(buf,0,sizeof buf);
-    if(adev){ unsigned w=__atomic_load_n(&wr_i,__ATOMIC_RELAXED); for(int i=0;i<n;i++){ ring[(w%RING)*2]=buf[i*2]; ring[(w%RING)*2+1]=buf[i*2+1]; w++; } __atomic_store_n(&wr_i,w,__ATOMIC_RELEASE); }
-    if(g_wav && n>0){ fwrite(buf,4,n,g_wav); g_wav_n+=n; }
+static int16_t ring[RING*2];static volatile unsigned rd_i,wr_i;
+static unsigned long underruns;
+static int audio_suspended=1;
+static uint64_t a_acc;
+static unsigned long a_skips,a_pads;
+// Keep synthesis at exactly the emulated frame rate. Clock correction is
+// applied solely to the speaker queue, not to the PSG or recorded WAV.
+static int audio_tick_samples(uint64_t *acc){
+    *acc+=(uint64_t)PC_AUDIO_RATE*280896u;
+    int n=(int)(*acc>>24);*acc&=0xffffffu;return n;
+}
+static int audio_queue_samples(int nominal,unsigned fill){
+    if(fill>AUDIO_HIGH)return 0;
+    int adj=(AUDIO_TARGET-(int)fill)/48;
+    if(adj>AUDIO_TRIM)adj=AUDIO_TRIM;
+    if(adj<-AUDIO_TRIM)adj=-AUDIO_TRIM;
+    int n=nominal+adj+(fill<96?64:0);
+    if(n<0)n=0;
+    if((unsigned)n>RING-fill)n=(int)(RING-fill);
+    return n;
+}
+static int16_t audio_resample(const int16_t *src,int nominal,int count,int i,int ch){
+    // Linear interpolation with integer arithmetic; final sample is clamped.
+    if(count<=0||nominal<=0)return 0;
+    unsigned p=(unsigned)i*(unsigned)nominal,lo=p/(unsigned)count,frac=p%(unsigned)count;
+    unsigned hi=lo+1<(unsigned)nominal?lo+1:lo;
+    int a=src[lo*2+ch],b=src[hi*2+ch];
+    return (int16_t)(a+(b-a)*(int)frac/count);
+}
+static unsigned ring_fill(void){return __atomic_load_n(&wr_i,__ATOMIC_ACQUIRE)-__atomic_load_n(&rd_i,__ATOMIC_ACQUIRE);}
+static unsigned long audio_underruns(void){return __atomic_load_n(&underruns,__ATOMIC_RELAXED);}
+static void audio_cb(void *u,Uint8 *stream,int len){
+    (void)u;memset(stream,0,len);int16_t *o=(int16_t*)stream;int n=len/4;
+    unsigned r=__atomic_load_n(&rd_i,__ATOMIC_RELAXED),w=__atomic_load_n(&wr_i,__ATOMIC_ACQUIRE),miss=0;
+    for(int i=0;i<n;i++){
+        if(r!=w){o[i*2]=ring[(r%RING)*2];o[i*2+1]=ring[(r%RING)*2+1];r++;}
+        else miss++;
+    }
+    if(miss)__atomic_fetch_add(&underruns,miss,__ATOMIC_RELAXED);
+    __atomic_store_n(&rd_i,r,__ATOMIC_RELEASE);
+}
+static void audio_suspend(void){
+    if(!adev||audio_suspended)return;
+    SDL_PauseAudioDevice(adev,1);audio_suspended=1;
+}
+static void audio_resume(void){
+    if(!adev||!audio_suspended)return;
+    // Device starts paused. Reset the queue under the callback lock, then
+    // prime 512 silent frames (10.7 ms at 48 kHz) to avoid stale audio.
+    SDL_LockAudioDevice(adev);
+    memset(ring,0,512*2*sizeof(*ring));
+    __atomic_store_n(&rd_i,0,__ATOMIC_RELEASE);
+    __atomic_store_n(&wr_i,512,__ATOMIC_RELEASE);
+    SDL_UnlockAudioDevice(adev);
+    audio_suspended=0;SDL_PauseAudioDevice(adev,0);
+}
+static void audio_open(void){
+    if(g_no_audio)return;
+    SDL_AudioSpec want;SDL_zero(want);want.freq=PC_AUDIO_RATE;want.format=AUDIO_S16SYS;want.channels=2;want.samples=512;want.callback=audio_cb;
+    SDL_AudioSpec got;adev=SDL_OpenAudioDevice(NULL,0,&want,&got,0);
+    if(!adev){fprintf(stderr,"audio: %s (the game runs without sound)\n",SDL_GetError());return;}
+    if(got.freq!=PC_AUDIO_RATE||got.channels!=2||got.format!=AUDIO_S16SYS){fprintf(stderr,"audio: unexpected format\n");SDL_CloseAudioDevice(adev);adev=0;return;}
+    audio_suspended=1;audio_resume();
+}
+static void audio_frame(void){
+    unsigned fill=ring_fill();
+    if(menu_open||g_paused_focus||g_bg)return;
+    {static long dbg=0;static int mn=1<<30,mx=0;if(getenv("BUGSTAR_AUDLOG")){if((int)fill<mn)mn=(int)fill;if((int)fill>mx)mx=(int)fill;if(++dbg%100==0){fprintf(stderr,"audfill min %d max %d underruns %lu pads %lu\n",mn,mx,audio_underruns(),a_pads);mn=1<<30;mx=0;}}}
+    int nominal=audio_tick_samples(&a_acc);
+    static int16_t buf[2*1024];
+    if(nominal<=0||nominal>1024)return;
+    // Always advance the synth, even when the output device is absent,
+    // stalled, muted or its queue is full.
+    pc_psg_render(buf,nominal);
+    if(C.mute)memset(buf,0,(size_t)nominal*4);
+    else if(C.volume<100){int gain=C.volume*C.volume*256/10000;for(int i=0;i<nominal*2;i++)buf[i]=(int16_t)((buf[i]*gain)>>8);}
+    if(adev&&!audio_suspended){
+        int n=audio_queue_samples(nominal,fill);
+        if(!n)a_skips++;else if(fill<96)a_pads++;
+        unsigned w=__atomic_load_n(&wr_i,__ATOMIC_RELAXED);
+        for(int i=0;i<n;i++){
+            ring[(w%RING)*2]=audio_resample(buf,nominal,n,i,0);
+            ring[(w%RING)*2+1]=audio_resample(buf,nominal,n,i,1);
+            w++;
+        }
+        __atomic_store_n(&wr_i,w,__ATOMIC_RELEASE);
+    }
+    if(g_wav){fwrite(buf,4,nominal,g_wav);g_wav_n+=nominal;}
 }
 static void wav_close(void){
     if(!g_wav) return; uint32_t dl=(uint32_t)(g_wav_n*4), v; fseek(g_wav,0,SEEK_SET); fwrite("RIFF",1,4,g_wav); v=36+dl; fwrite(&v,4,1,g_wav); fwrite("WAVEfmt ",1,8,g_wav); v=16; fwrite(&v,4,1,g_wav);
@@ -1105,7 +1181,7 @@ static void rumble_frame(void){
 // ---- the app's life cycle (Android: home button, another app, screen off; also SDL_APP_TERMINATING). In the background the game does not step and makes no sound; coming back
 // starts a fresh clock (g_pace_reset): the minutes it was away are not played catch-up. The save is flushed on the game's own thread (g_app_save, in pump_events).
 static void touch_release_all(void);
-static void app_background(void){ g_bg=1; g_app_save=1; touch_release_all(); if(adev) SDL_PauseAudioDevice(adev,1);
+static void app_background(void){ g_bg=1; g_app_save=1; touch_release_all(); audio_suspend();
 #ifdef PC_ANDROID
     __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_LIFE","background pause");
 #endif
@@ -1116,7 +1192,7 @@ static void app_foreground(void){
 #ifdef PC_ANDROID
     __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_LIFE","foreground resume");
 #endif
-    if(adev){ __atomic_store_n(&rd_i,__atomic_load_n(&wr_i,__ATOMIC_ACQUIRE),__ATOMIC_RELEASE); SDL_PauseAudioDevice(adev,0); }      // the old queued sound is dropped
+    // The paused-loop exit resumes audio after all pause causes clear.
 }
 static int SDLCALL app_watch(void *u, SDL_Event *e){        // called at once on SDL's own thread (the game thread may already be asleep inside SDL): only sets flags
     (void)u;
@@ -1309,7 +1385,7 @@ static void sim_stall(long fr){            // test hook BUGSTAR_SIM_STALL=frame:
     static int init, n, at[8], ms[8]; if(!init){ init=1; const char *e=getenv("BUGSTAR_SIM_STALL"); while(e&&*e&&n<8){ int a=0,m=0,k=0; if(sscanf(e,"%d:%d%n",&a,&m,&k)<2) break; at[n]=a; ms[n]=m; n++; e+=k; if(*e==',') e++; } }
     for(int i=0;i<n;i++) if(at[i]==fr) SDL_Delay((Uint32)ms[i]);
 }
-static void pace_stats(void){ if(getenv("BUGSTAR_PACELOG")) fprintf(stderr,"pace: frames %ld resyncs %lu catchups %lu waits %lu audio skips %lu pads %lu slack %.2f ms underruns %lu\n",pc_frames(),g_resyncs,g_catchups,g_waits,a_skips,a_pads,g_slack_ms,underruns); }
+static void pace_stats(void){ if(getenv("BUGSTAR_PACELOG")) fprintf(stderr,"pace: frames %ld resyncs %lu catchups %lu waits %lu audio skips %lu pads %lu slack %.2f ms underruns %lu\n",pc_frames(),g_resyncs,g_catchups,g_waits,a_skips,a_pads,g_slack_ms,audio_underruns()); }
 void plat_frame(void){
     long fr=pc_frames(); { static const int an[4]={0,500,2000,10000};
         int ships=C.ships,armada=an[C.armada];
@@ -1346,7 +1422,7 @@ void plat_frame(void){
     uint64_t next_menu_draw=0;
 #endif
     while(menu_open || g_paused_focus || g_bg){                // paused: game simulation does not step
-        was_paused=1; uint64_t t0=SDL_GetPerformanceCounter();
+        was_paused=1; audio_suspend(); uint64_t t0=SDL_GetPerformanceCounter();
 #ifdef PC_ANDROID
         int idle_menu=!g_bg&&mobile_menu_only(1,g_touch,menu_open,ted_on,shot_pending);
         if(!idle_menu)next_menu_draw=0;
@@ -1362,8 +1438,9 @@ void plat_frame(void){
         else if(!C.vsync) SDL_Delay(16);
         else if(SDL_GetPerformanceCounter()-t0<t_freq/200) SDL_Delay(8);
         if(!menu_open && !g_paused_focus && !g_bg) break;
-        if(!g_bg) audio_frame();
+        // Paused menus do not advance PSG time or refill the audio ring.
     }
+    if(was_paused&&!g_bg)audio_resume();
     if(was_paused || g_pace_reset || g_app_resume){ g_pace_reset=0; g_app_resume=0; g_due=now_ticks(); if(was_paused){fps_n=present_n=0;fps_t0=SDL_GetPerformanceCounter();
 #ifdef PC_ANDROID
         g_governor.count=g_governor.slow=0;
