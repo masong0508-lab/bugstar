@@ -40,3 +40,9 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 - Low-RAM and 32-bit devices cap the render area at 480x320, use a 4 MiB sprite cache and start new settings in reduced-detail classic mode. Low-memory warnings reduce only the current session's rendering budget; existing saves and settings are retained.
 - Tall portrait windows reserve space below the game for touch controls. Very small split-screen windows scale down without clipping. Resizing or loss of focus releases held touches; GPU reset recreates font and game textures. On-screen buttons remain bounded even with large saved layouts.
 - Local multiplayer has the Android INTERNET permission. Device-specific drivers, optional controllers and vendor OS restrictions still require hardware testing.
+
+## Version 0.40 touch interface
+
+- Options on touch devices are now a directly tappable list instead of a desktop panel behind the gamepad. Large text, paginated settings, clear values, dedicated Back/Prev/Next controls and wrapped help text fit tall, wide and small windows. The gamepad remains available during gameplay; the layout editor retains its own controls.
+- Tap the left/right half of a setting to decrease/increase; tap a command to execute. No duplicate game input after leaving the options, and stray finger-motion events after rotation cannot recreate a released touch.
+- Host geometry tests cover the whole paginated touch menu and the emulator smoke test exercises a real touch dismissal of the first-start guide and opens Video via a tap.

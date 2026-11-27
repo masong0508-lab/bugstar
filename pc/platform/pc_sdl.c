@@ -395,8 +395,127 @@ static const char *const *help_lines(void){       // (each line fits the narrowe
     if(g_touch) return tp;
     return ln; }
 static int m_x0, m_pw, m_lh, m_y1, m_n, m_gs;
+// Touch-first options: use the actual window, not a scaled desktop panel.
+typedef struct { int gs, margin, header, footer, row, rows; } TouchMenuGeo;
+static TouchMenuGeo touch_menu_geometry(int w,int h,int size){
+    TouchMenuGeo g;
+    int m=w<h?w:h;
+    int gs=m/(size==2?105:size==1?125:160);
+    if(gs<1)gs=1;if(gs>12)gs=12;
+    int max=w/128;if(max<1)max=1;if(gs>max)gs=max;
+    g.gs=gs;g.margin=2*gs;
+    g.header=14*gs;g.footer=18*gs;g.row=20*gs;
+    if(g.header+g.footer+g.row>h){
+        g.header=h/5;g.footer=h/4;g.row=h-g.header-g.footer;
+        if(g.row<1)g.row=1;
+    }
+    g.rows=(h-g.header-g.footer)/g.row;
+    if(g.rows<1)g.rows=1;
+    return g;
+}
+enum { TM_NONE=-1,TM_PREV=-2,TM_BACK=-3,TM_NEXT=-4 };
+static int touch_menu_hit(TouchMenuGeo g,int w,int h,int first,int total,int x,int y){
+    if(x<0||y<0||x>=w||y>=h)return TM_NONE;
+    if(y>=h-g.footer){
+        if(x<w/3)return TM_PREV;
+        if(x>=w-w/3)return TM_NEXT;
+        return TM_BACK;
+    }
+    if(y<g.header||x<g.margin||x>=w-g.margin)return TM_NONE;
+    int row=(y-g.header)/g.row;
+    return row<g.rows&&first+row<total?first+row:TM_NONE;
+}
+static void menu_key(SDL_Keycode k, SDL_Scancode sc);
+static int tm_page=-1,tm_info_first,tm_first,tm_total,tm_is_info,tm_w,tm_h;
+static TouchMenuGeo tm_geo;
+static void tm_fit(int x,int y,int w,const char *s,uint32_t color){
+    char b[160];int n=w/(4*gs_);if(n<=0)return;
+    if(n>159)n=159;
+    snprintf(b,sizeof b,"%.*s",n,s);text_at(x,y,b,color);
+}
+static void touch_menu_draw(void){
+    int w=dw_,h=dh_;
+    if(w<=0||h<=0)return;
+    Item it[24];int n;menu_build(it,&n);
+    static const char *const title[]={"BUGSTAR OPTIONS","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND","MULTIPLAYER LAN"};
+    static const char *const about[]={"BUGSTAR","NATIVE GAME AND GBA CAMPAIGN","SAVES AND SETTINGS ARE IN","THE APP'S PRIVATE DATA FOLDER.","GAMEPAD: BACK + START = MENU",0};
+    if(tm_page!=menu_page){tm_info_first=0;tm_page=menu_page;}
+    tm_geo=touch_menu_geometry(w,h,C.textsize);tm_w=w;tm_h=h;gs_=tm_geo.gs;
+    int m=tm_geo.margin,rh=tm_geo.row,rows=tm_geo.rows,head=tm_geo.header,foot=tm_geo.footer;
+    const char *const *ln=menu_page==P_ABOUT?about:help_lines();
+    tm_is_info=menu_page==P_HELP||menu_page==P_TLEGEND||menu_page==P_ABOUT;
+    // Wrap help text at words to keep readable lines on narrow windows.
+    char info[64][80];int ni=0,limit=(w-4*m)/(4*gs_);
+    if(limit<1)limit=1;if(limit>79)limit=79;
+    if(tm_is_info)for(int j=0;ln[j]&&ni<64;j++){
+        const char *p=ln[j];if(!*p){info[ni++][0]=0;continue;}
+        while(*p&&ni<64){int z=(int)strlen(p);if(z>limit){z=limit;while(z>1&&p[z]!=' ')z--;if(z<=1)z=limit;}
+            memcpy(info[ni],p,z);info[ni++][z]=0;p+=z;while(*p==' ')p++;}
+    }
+    tm_total=tm_is_info?ni:n;
+    int *pos=tm_is_info?&tm_info_first:&menu_sel;
+    if(*pos<0)*pos=0;if(*pos>=tm_total)*pos=tm_total?tm_total-1:0;
+    tm_first=(*pos/rows)*rows;
+    rect_fill(0,0,w,h,0x080D20,248);
+    rect_fill(0,0,w,head,0x152342,255);
+    tm_fit(m,m,w-2*m,title[menu_page],0xFFD23C);
+    if(menu_page==P_LAN){char st[60];int role=pc_mp_role();snprintf(st,sizeof st,"%s %s",role==1?"HOST":role==2?"JOIN":"OFFLINE",pc_mp_connected()?"CONNECTED":role?"WAITING":"");tm_fit(w/2,m,w/2-m,st,0xA0FFB0);}
+    for(int i=tm_first;i<tm_total&&i<tm_first+rows;i++){
+        int y=head+(i-tm_first)*rh;
+        if(tm_is_info){tm_fit(2*m,y+rh/2-3*gs_,w-4*m,info[i],0xE8EEFF);continue;}
+        uint32_t bg=i==menu_sel?0x304D89:((i&1)?0x182642:0x202F50);
+        rect_fill(m,y+gs_,w-2*m,rh-2*gs_,bg,255);
+        tm_fit(2*m,y+2*gs_,w-4*m,it[i].label,0xFFFFFF);
+        char b[120]="";
+        if(it[i].kind==1)snprintf(b,sizeof b,"%s",it[i].names[*it[i].val]);
+        else if(it[i].kind==2)snprintf(b,sizeof b,"%d",*it[i].val);
+        else if(it[i].action==A_LAN_IP)snprintf(b,sizeof b,"%s%s",lan_ui_ip,lan_ip_edit?" [EDIT]":"");
+        else if(it[i].action>=A_REBIND){int bi=it[i].action-A_REBIND;if(menu_wait&&menu_sel==i)snprintf(b,sizeof b,"PRESS %s",menu_wait==1?"A KEY":"A BUTTON");else if(menu_page==P_CONTROLS)key_name_of(bi,b,sizeof b);else pad_name_of(bi,b,sizeof b);}
+        if(it[i].kind){tm_fit(2*m,y+11*gs_,3*gs_,"<",0xFFD23C);tm_fit(w-4*m,y+11*gs_,4*gs_,">",0xFFD23C);
+            tm_fit(5*m,y+11*gs_,w-10*m,b,0xD7E3FF);}
+        else if(b[0])tm_fit(2*m,y+11*gs_,w-4*m,b,0xD7E3FF);
+        else tm_fit(w-4*m,y+rh/2-3*gs_,4*gs_,">",0xFFD23C);
+    }
+    int fy=h-foot,third=w/3;
+    const char *keys[3]={"PREV",g_help_first&&menu_page==P_HELP?"PLAY":menu_page==P_MAIN?"RESUME":"BACK","NEXT"};
+    for(int i=0;i<3;i++){
+        int x=i*third,ww=i==2?w-x:third;
+        int enabled=i==1||(i==0?tm_first>0:tm_first+rows<tm_total);
+        rect_fill(x+gs_,fy+gs_,ww-2*gs_,foot-2*gs_,i==1?0x30684D:0x253858,255);
+        int tw=text_w(keys[i]);tm_fit(x+(ww>tw?(ww-tw)/2:gs_),fy+(foot-6*gs_)/2,ww-gs_,keys[i],enabled?0xFFFFFF:0x7788A0);
+    }
+#ifdef PC_ANDROID
+    {static int page=-1,lw,lh;if(page!=menu_page||lw!=w||lh!=h){page=menu_page;lw=w;lh=h;
+      __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_UI","touch menu page=%d w=%d h=%d header=%d row=%d footer=%d",page,w,h,head,rh,foot);}}
+#endif
+}
+static void touch_menu_input(int x,int y){
+    // The last rendered menu is authoritative, especially during rotation.
+    if(tm_page!=menu_page||tm_w!=dw_||tm_h!=dh_)return;
+    int hit=touch_menu_hit(tm_geo,tm_w,tm_h,tm_first,tm_total,x,y);
+    if(hit==TM_NONE)return;
+#ifdef PC_ANDROID
+    __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_UI","touch menu action page=%d hit=%d",menu_page,hit);
+#endif
+    if(hit==TM_BACK){
+        if(menu_wait){menu_wait=0;return;}
+        menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);return;
+    }
+    if(menu_wait||lan_ip_edit)return;
+    if(hit==TM_PREV||hit==TM_NEXT){
+        int next=tm_first+(hit==TM_NEXT?tm_geo.rows:-tm_geo.rows);
+        if(next>=0&&next<tm_total){if(tm_is_info)tm_info_first=next;else menu_sel=next;}
+        return;
+    }
+    if(tm_is_info)return;
+    Item it[24];int n;menu_build(it,&n);
+    if(hit<0||hit>=n)return;menu_sel=hit;
+    if(it[hit].kind)menu_key(x<tm_w/2?SDLK_LEFT:SDLK_RIGHT,0);
+    else menu_key(SDLK_RETURN,0);
+}
 static void menu_draw(void){
     if(ted_on){ ted_draw(); return; }
+    if(g_touch){ touch_menu_draw(); return; }
     int dw=dw_, dh=dh_; gs_=(dw<dh?dw:dh)/140;      /* patch 39: portrait sizes the text by the narrow side */ if(gs_<2) gs_=2; if(gs_>12) gs_=12; if(C.textsize){ int g2=(dw<dh?dw:dh)/(C.textsize==1?100:75); if(g2>gs_) gs_=g2; if(gs_>16) gs_=16; }
     int hc=C.contrast; rect_fill(0,0,dw,dh,0x000000,hc?200:150);
     static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND","MULTIPLAYER LAN"};
@@ -609,16 +728,14 @@ static void touch_event(const SDL_Event *e){
     if(e->type==SDL_FINGERDOWN) g_thide=0;      // a finger brings the pad back
     if(ted_on){ ted_touch(e); return; }
     if(g_thide) return;
+    if(menu_open){ memset(tfing,0,sizeof tfing); if(e->type==SDL_FINGERDOWN)touch_menu_input((int)(e->tfinger.x*dw_),(int)(e->tfinger.y*dh_));return; }
     int k=-1, fr=-1; for(int i=0;i<10;i++){ if(tfing[i].on && tfing[i].id==e->tfinger.fingerId) k=i; if(!tfing[i].on && fr<0) fr=i; }
     if(e->type==SDL_FINGERUP){ if(k>=0) tfing[k].on=0; return; }
-    if(k<0){ if(fr<0) return; k=fr; tfing[k].id=e->tfinger.fingerId; tfing[k].on=1; }
+    if(k<0){ if(fr<0||e->type!=SDL_FINGERDOWN) return; k=fr; tfing[k].id=e->tfinger.fingerId; tfing[k].on=1; }
     tfing[k].x=e->tfinger.x; tfing[k].y=e->tfinger.y;
     if(e->type!=SDL_FINGERDOWN) return;
     uint16_t m=t_hit((int)(e->tfinger.x*dw_),(int)(e->tfinger.y*dh_));
-    if(menu_open){          // in the options the pad steers the menu: arrows, A = enter, B / MENU = back
-        if(m&(1<<6)) menu_key(SDLK_UP,0); else if(m&(1<<7)) menu_key(SDLK_DOWN,0); else if(m&(1<<5)) menu_key(SDLK_LEFT,0); else if(m&(1<<4)) menu_key(SDLK_RIGHT,0);
-        else if(m&1) menu_key(SDLK_RETURN,0); else if(m&((1<<1)|(1<<15))) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
-    } else if(m&(1<<15)) open_menu(); }
+    if(m&(1<<15)){ memset(tfing,0,sizeof tfing);open_menu(); } }
 static void tl_outline(int x, int y, int w, int h, int t, uint32_t col){ rect_fill(x,y,w,t,col,255); rect_fill(x,y+h-t,w,t,col,255); rect_fill(x,y,t,h,col,255); rect_fill(x+w-t,y,t,h,col,255); }
 static void tl_draw(uint32_t el, uint16_t dirs, int sel, int edit){        // edit: brighter (the editor shows every button even at a low opacity) and the picked one is outlined
     TGeo g[TC_N]; tl_geo(g); int a=g_talpha*255/100; if(edit&&a<170) a=170; int ap=a*5/4; if(ap>255) ap=255;
@@ -641,7 +758,7 @@ static void tl_draw(uint32_t el, uint16_t dirs, int sel, int edit){        // ed
     if(edit){ int hw,hh; for(int i=0;i<TC_N;i++){ if(!tg_vis(i)) continue; tg_ext(g,i,&hw,&hh); int ov=(ted_ovm>>i)&1; tl_outline(g[i].cx-hw,g[i].cy-hh,2*hw,2*hh,ov?2:1,ov?0xFF4040:0x8890C8); } }
     if(sel>=0 && sel<TC_N){ int hw,hh; tg_ext(g,sel,&hw,&hh); int t=t_u()/40; if(t<2) t=2; tl_outline(g[sel].cx-hw-t,g[sel].cy-hh-t,2*hw+2*t,2*hh+2*t,t,0xFFD23C); }
 }
-static void touch_draw(void){ if(ted_on||!tg_on()) return; uint16_t d; uint32_t el=tg_state(&d); tl_draw(el,d,-1,0); }
+static void touch_draw(void){ if(ted_on||menu_open||!tg_on()) return; uint16_t d; uint32_t el=tg_state(&d); tl_draw(el,d,-1,0); }
 static void touch_release_all(void){ memset(tfing,0,sizeof tfing); }      // (patch 43) back from the background: no finger is still 'down'
 
 // ---- the layout editor. EVERY button is on its own: tap one to pick it (yellow outline), drag it to move, pinch with a second finger (or the - + buttons) to resize THAT button only,
@@ -771,7 +888,7 @@ static int SDLCALL app_watch(void *u, SDL_Event *e){        // called at once on
     else if(e->type==SDL_APP_DIDENTERFOREGROUND || e->type==SDL_APP_WILLENTERFOREGROUND){ g_app_resume=1; }
     return 1;
 }
-static void open_menu(void){ menu_open=1; menu_page=P_MAIN; menu_sel=0; menu_wait=0; mp_choice=0; for(int i=0;i<7;i++) if(mp_val(i)==C.max_mp) mp_choice=i; }
+static void open_menu(void){ touch_release_all();tm_page=-1;menu_open=1; menu_page=P_MAIN; menu_sel=0; menu_wait=0; mp_choice=0; for(int i=0;i<7;i++) if(mp_val(i)==C.max_mp) mp_choice=i; }
 static void inject_step(void);
 static void pump_events(void){
     SDL_Event e; inject_step();
@@ -796,6 +913,7 @@ static void pump_events(void){
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_GAINED) g_paused_focus=0;
             break;
         case SDL_MOUSEMOTION: case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP:
+            if(menu_open && g_touch) break;
             if(menu_open && !menu_wait){ int ex = e.type==SDL_MOUSEMOTION ? e.motion.x : e.button.x, ey = e.type==SDL_MOUSEMOTION ? e.motion.y : e.button.y;
                 int hit = m_lh>0 && ex>=m_x0 && ex<m_x0+m_pw ? (ey-(m_y1-m_gs))/m_lh : -1; if(ey<m_y1-m_gs) hit=-1; if(hit>=m_n) hit=-1;
                 if(e.type==SDL_MOUSEMOTION){ if(hit>=0) menu_sel=hit; }

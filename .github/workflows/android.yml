@@ -21,6 +21,7 @@ on:
       - 'monsters.py'
       - 'gen.py'
       - 'tests/android_compat_runtime.py'
+      - 'tests/android_touch_menu_runtime.py'
       - 'tests/android_apk_audit.py'
       - 'tests/space_native_projection_audit.py'
       - 'tests/space_station_depth_audit.py'
@@ -72,7 +73,9 @@ jobs:
         run: python3 -m pip install numpy pillow
 
       - name: Verify Android relocation, low-memory and small-screen geometry
-        run: python3 tests/android_compat_runtime.py
+        run: |
+          python3 tests/android_compat_runtime.py
+          python3 tests/android_touch_menu_runtime.py
 
       - name: Check shared 3D camera clipping
         run: python3 tests/space_projection_audit.py
@@ -205,6 +208,29 @@ jobs:
             grep -q 'first rendered game frame' android-boot.log
             adb shell ps | grep org.bugstar.app
             adb exec-out screencap -p > android-boot.png
+            # Dismiss the actual first-start help using the touch footer, not a keyboard.
+            for n in $(seq 1 30); do adb logcat -d -s BUGSTAR_UI:I | grep -q 'touch menu page=7 ' && break; sleep 1; done
+            menu=$(adb logcat -d -s BUGSTAR_UI:I | grep 'touch menu page=7 ' | tail -1)
+            test -n "$menu"
+            w=$(echo "$menu" | sed -nE 's/.* w=([0-9]+).*/\1/p')
+            h=$(echo "$menu" | sed -nE 's/.* h=([0-9]+).*/\1/p')
+            footer=$(echo "$menu" | sed -nE 's/.* footer=([0-9]+).*/\1/p')
+            adb shell input tap "$((w/2))" "$((h-footer/2))"
+            sleep 2
+            adb logcat -d -s BUGSTAR_UI:I | grep -q 'touch menu action page=7 hit=-3'
+            adb shell input keyevent 4
+            for n in $(seq 1 15); do adb logcat -d -s BUGSTAR_UI:I | grep -q 'touch menu page=0 ' && break; sleep 1; done
+            menu=$(adb logcat -d -s BUGSTAR_UI:I | grep 'touch menu page=0 ' | tail -1)
+            test -n "$menu"
+            w=$(echo "$menu" | sed -nE 's/.* w=([0-9]+).*/\1/p')
+            header=$(echo "$menu" | sed -nE 's/.* header=([0-9]+).*/\1/p')
+            row=$(echo "$menu" | sed -nE 's/.* row=([0-9]+).*/\1/p')
+            adb shell input tap "$((w/2))" "$((header+row+row/2))"
+            for n in $(seq 1 15); do adb logcat -d -s BUGSTAR_UI:I | grep -q 'touch menu page=1 ' && break; sleep 1; done
+            adb logcat -d -s BUGSTAR_UI:I | grep -q 'touch menu action page=0 hit=1'
+            adb logcat -d -s BUGSTAR_UI:I | grep -q 'touch menu page=1 '
+            adb exec-out screencap -p > android-touch-menu.png
+            adb logcat -d > android-boot.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -212,4 +238,5 @@ jobs:
           path: |
             android-boot.log
             android-boot.png
+            android-touch-menu.png
           if-no-files-found: ignore
