@@ -691,7 +691,11 @@ enum { Q_NONE, Q_HUNT, Q_CHAMP, Q_FETCH, Q_RESCUE, Q_BOSS, Q_SHARDS, Q_BRING, Q_
 static int q_type, q_need, q_have, q_floor, q_done, q_gold, q_fame, q_zone, q_world; static char q_name[24];
 // One shared identity for the bounty board and the actual named dungeon foe.
 // q_need stores champion ID + 1 on Q_CHAMP (0 is an older save fallback).
-static const char *const quest_champ_names[6]={"GRIMFANG","MOLDJAW","SKITTERMAW","VILEWING","THE PALE ONE","OLD CRUNCH"};
+#define NQCHAMP 12
+static const char *const quest_champ_names[NQCHAMP]={
+    "GRIMFANG","MOLDJAW","SKITTERMAW","VILEWING","THE PALE ONE","OLD CRUNCH",
+    "THORNBACK","NIGHTSTING","GLASSWING","DUSTCLAW","IRON ROOT","STORM EYE"
+};
 // game.inc is included before dungeon.inc; both use the same static forge
 // flag, so forward-declare its tentative definition before quest helpers.
 static int forge_on;
@@ -704,7 +708,7 @@ static int quest_home(void){ return q_zone==zone && (s16)q_world==(s16)world_no;
 // so the combat label agrees even if an old q_need contained stale data.
 static int quest_champ_id(void){
     if(q_type!=Q_CHAMP) return -1;
-    for(int i=0;i<6;i++){
+    for(int i=0;i<NQCHAMP;i++){
         const char *a=q_name+5, *b=quest_champ_names[i];
         while(*b && *a==*b){ a++; b++; }
         if(!*b && *a==' ') return i;
