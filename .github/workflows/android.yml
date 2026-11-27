@@ -28,6 +28,7 @@ on:
       - 'tests/touch_input_runtime.py'
       - 'tests/mobile_menu_runtime.py'
       - 'tests/mobile_governor_runtime.py'
+      - 'tests/png_stream_runtime.py'
       - 'tests/android_apk_audit.py'
       - 'tests/space_native_projection_audit.py'
       - 'tests/space_station_depth_audit.py'
@@ -87,6 +88,7 @@ jobs:
           python3 tests/touch_input_runtime.py
           python3 tests/mobile_menu_runtime.py
           python3 tests/mobile_governor_runtime.py
+          python3 tests/png_stream_runtime.py
 
       - name: Check shared 3D camera clipping
         run: python3 tests/space_projection_audit.py

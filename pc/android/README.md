@@ -74,3 +74,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 - AUTO on phones outside the existing low-memory profile now measures rendering work before VSync. After at least 30 slow renders in a 60-render sample window (13.5 ms threshold), it lowers the internal draw budget to 153,600 pixels; a further slow window selects the existing battery profile. The governor does not change game tick speed or saved user preferences, and ignores launch frames, menus, screenshots and long suspended intervals. Explicit Battery/Full Detail are unchanged; reselect AUTO to reset the session governor. The effective profile appears in Video settings.
 - Native scene dimensions now follow live windows even when resized to 240x160, preventing stale high-resolution work after a downshift. Headless diagnostic semantics stay unchanged.
 - Host regression exercises normal, reduced, battery, mixed, excluded and long-stall render samples; hardware performance remains device-dependent.
+
+## Version 0.46 screenshot reliability
+
+- Options > SCREENSHOT now requests an actual game capture, even when battery mode would skip that frame. Screenshots remain in the existing screenshots folder, use collision-resistant names, and show success or storage failure feedback.
+- PNG encoding uses a 32 KiB streaming buffer rather than allocating two complete images. RGB and RGBA output is preserved, including large pictures, and write errors are returned. The host test checks chunk CRCs, zlib data, all pixels and alpha across block boundaries, invalid dimensions and a full-device write failure.

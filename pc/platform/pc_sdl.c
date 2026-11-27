@@ -108,6 +108,7 @@ static void cfg_load(void){
 // ------------------------------------------------------------------------------------------------ state
 static SDL_Window *win; static SDL_Renderer *ren; static SDL_Texture *tex, *fonttex;
 static int tex_w, tex_h, tex_linear; static uint32_t *pix; static size_t pix_cap;
+static int shot_pending;
 static int menu_open, menu_page, menu_sel, menu_wait;      // menu_wait: 1 = waiting for a key to bind, 2 = for a pad button
 static int menu_slot;                                      // which key slot (0/1) a bind goes into
 static uint64_t t_freq; static double fps_show,tick_show; static int fps_n,present_n; static uint64_t fps_t0;      // (pacing state: see 'the frame' below)
@@ -132,19 +133,49 @@ static void chunk(FILE*f,const char*t,const uint8_t*d,uint32_t n){ uint8_t h[8];
 static int png_write(const char *path, const uint32_t *px, int w, int h, int alpha);
 int plat_write_png(const char *path, const uint32_t *xrgb, int w, int h){ return png_write(path,xrgb,w,h,0); }
 int plat_write_png_rgba(const char *path, const uint32_t *argb, int w, int h){ return png_write(path,argb,w,h,1); }
+// Bounded-memory PNG encoder. A single zlib stream spans multiple IDAT
+// chunks. Stored DEFLATE blocks need only 32 KiB, regardless of screen size.
 static int png_write(const char *path, const uint32_t *xrgb, int w, int h, int alpha){
-    if(!crc_t[1]) crc_init(); int bpp=alpha?4:3;
-    FILE *f=fopen(path,"wb"); if(!f) return 0;
-    static const uint8_t sig[8]={137,80,78,71,13,10,26,10}; fwrite(sig,1,8,f);
-    uint8_t ih[13]; be32(ih,w); be32(ih+4,h); ih[8]=8; ih[9]=alpha?6:2; ih[10]=0; ih[11]=0; ih[12]=0; chunk(f,"IHDR",ih,13);
-    size_t rowb=(size_t)w*bpp+1, raw=rowb*h; uint8_t *rb=malloc(raw); 
-    for(int y=0;y<h;y++){ uint8_t *r=rb+y*rowb; r[0]=0; for(int x=0;x<w;x++){ uint32_t p=xrgb[(size_t)y*w+x]; r[1+x*bpp]=p>>16; r[2+x*bpp]=p>>8; r[3+x*bpp]=p; if(alpha) r[4+x*bpp]=p>>24; } }
-    // zlib stream of stored blocks
-    size_t nblk=(raw+65534)/65535; uint8_t *z=malloc(raw+nblk*5+6+16); size_t zn=0; z[zn++]=0x78; z[zn++]=0x01;
-    uint32_t a=1,b=0; for(size_t i=0;i<raw;i++){ a=(a+rb[i])%65521; b=(b+a)%65521; }
-    for(size_t o=0;o<raw;){ size_t n=raw-o>65535?65535:raw-o; z[zn++]=(o+n>=raw); z[zn++]=n&255; z[zn++]=n>>8; z[zn++]=~n&255; z[zn++]=(~n>>8)&255; memcpy(z+zn,rb+o,n); zn+=n; o+=n; }
-    be32(z+zn,(b<<16)|a); zn+=4; chunk(f,"IDAT",z,(uint32_t)zn); chunk(f,"IEND",0,0); fclose(f); free(rb); free(z); return 1;
+    if(!path||!xrgb||w<=0||h<=0)return 0;
+    if((size_t)w>SIZE_MAX/sizeof(*xrgb)/(size_t)h)return 0;
+    int bpp=alpha?4:3;
+    if((size_t)w>(SIZE_MAX-1)/(size_t)bpp)return 0;
+    size_t rowb=(size_t)w*bpp+1;
+    if((size_t)h>SIZE_MAX/rowb)return 0;
+    size_t left=rowb*(size_t)h;
+    if(!crc_t[1])crc_init();
+    FILE *f=fopen(path,"wb");if(!f)return 0;
+    static const uint8_t sig[8]={137,80,78,71,13,10,26,10};
+    fwrite(sig,1,8,f);
+    uint8_t ih[13];be32(ih,w);be32(ih+4,h);ih[8]=8;ih[9]=alpha?6:2;ih[10]=ih[11]=ih[12]=0;
+    chunk(f,"IHDR",ih,13);
+    const uint8_t zh[2]={0x78,0x01};chunk(f,"IDAT",zh,2);
+    uint8_t block[32768+5];uint32_t a=1,b=0;
+    size_t col=0,at=0;int channel=0;
+    static const unsigned shift[4]={16,8,0,24};
+    while(left&&!ferror(f)){
+        unsigned n=left>32768?32768:(unsigned)left;
+        block[0]=n==left;block[1]=(uint8_t)n;block[2]=(uint8_t)(n>>8);
+        unsigned inv=n^65535u;block[3]=(uint8_t)inv;block[4]=(uint8_t)(inv>>8);
+        for(unsigned i=0;i<n;i++){
+            uint8_t v=0;
+            if(col){v=(uint8_t)(xrgb[at]>>shift[channel]);
+                if(++channel==bpp){channel=0;at++;}
+            }
+            if(++col==rowb)col=0;
+            block[5+i]=v;
+            a+=v;if(a>=65521)a-=65521;
+            b+=a;if(b>=65521)b-=65521;
+        }
+        chunk(f,"IDAT",block,n+5);left-=n;
+    }
+    uint8_t adler[4];be32(adler,(b<<16)|a);
+    if(!left&&!ferror(f)){chunk(f,"IDAT",adler,4);chunk(f,"IEND",0,0);}
+    int ok=!left&&!ferror(f)&&fflush(f)==0;
+    if(fclose(f)!=0)ok=0;
+    return ok;
 }
+
 // ------------------------------------------------------------------------------------------------ audio
 #define RING 16384
 static int16_t ring[RING*2]; static volatile unsigned rd_i, wr_i; static unsigned long underruns;
@@ -435,7 +466,7 @@ static void menu_do(int act){
         if(C.fullscreen){ C.fullscreen=0; } apply_video(); } break;
     case A_RESETKEYS: { Cfg d; Cfg s=C; cfg_defaults(); d=C; C=s; memcpy(C.kb,d.kb,sizeof C.kb); say_toast("KEYS RESET"); } break;
     case A_RESETPAD: { Cfg d; Cfg s=C; cfg_defaults(); d=C; C=s; memcpy(C.pad,d.pad,sizeof C.pad); say_toast("PAD RESET"); } break;
-    case A_SHOT: menu_open=0; g_autoshot_frame=-2; break;
+    case A_SHOT: menu_open=0; shot_pending=1; break;
     case A_REBIND: menu_wait = menu_page==P_PAD ? 2 : 1; menu_sel=idx; break;
     }
 }
@@ -646,7 +677,6 @@ static void menu_pad(int btn){
         case SDL_CONTROLLER_BUTTON_A: menu_key(SDLK_RETURN,0); break; case SDL_CONTROLLER_BUTTON_B: case SDL_CONTROLLER_BUTTON_START: case SDL_CONTROLLER_BUTTON_BACK: menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE); break; }
 }
 // ---- one picture
-static int shot_pending;
 static void sim_vsync(void);          // test hook, defined with the pacing below
 // Opaque phone menus do not need a game texture or 3D compositor.
 // Keep full rendering for the layout editor, game-only screenshots, and PC.
@@ -716,11 +746,21 @@ static void present_game(int with_overlay){
         touch_draw();
         if(g_paused_focus && !menu_open){ rect_fill(0,0,dw_,dh_,0,120); gs_*=2; const char *s="PAUSED"; text_at((dw_-text_w(s))/2,dh_/2-3*gs_,s,0xFFFFFF); }
     }
-    if(shot_pending){ shot_pending=0; char p[1200]; time_t t=time(0); struct tm *tm=localtime(&t); char ts[64]; strftime(ts,sizeof ts,"%Y%m%d_%H%M%S",tm);
-        snprintf(p,sizeof p,"%sbugstar_%s.png",g_shotdir,ts); if(plat_write_png(p,pix,W,H)){ char m[200]; snprintf(m,sizeof m,"SAVED %s",p); say_toast("SCREENSHOT SAVED"); fprintf(stderr,"%s\n",m); } }
+    if(shot_pending){
+        shot_pending=0;char p[1200],ts[64]="capture";time_t t=time(0);struct tm *tm=localtime(&t);
+        if(tm)strftime(ts,sizeof ts,"%Y%m%d_%H%M%S",tm);
+        static unsigned serial;int n=snprintf(p,sizeof p,"%sbugstar_%s_%llu_%u.png",g_shotdir,ts,(unsigned long long)SDL_GetTicks64(),++serial);
+        if(n>0&&(size_t)n<sizeof p&&plat_write_png(p,pix,W,H)){
+            say_toast("SCREENSHOT SAVED");fprintf(stderr,"SAVED %s\n",p);
+#ifdef PC_ANDROID
+            __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_CAPTURE","game screenshot saved %dx%d",W,H);
+#endif
+        }else{say_toast("SCREENSHOT FAILED - CHECK STORAGE");fprintf(stderr,"screenshot write failed\n");}
+    }
     if(g_autoshot_path && g_autoshot_frame>=0 && pc_frames()>=g_autoshot_frame){
         SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,dw_,dh_,32,SDL_PIXELFORMAT_ARGB8888);
-        if(s && SDL_RenderReadPixels(ren,NULL,SDL_PIXELFORMAT_ARGB8888,s->pixels,s->pitch)==0){ plat_write_png(g_autoshot_path,s->pixels,dw_,dh_); fprintf(stderr,"window shot %dx%d (draw %dx%d) -> %s\n",dw_,dh_,W,H,g_autoshot_path); }
+        if(s && SDL_RenderReadPixels(ren,NULL,SDL_PIXELFORMAT_ARGB8888,s->pixels,s->pitch)==0 && plat_write_png(g_autoshot_path,s->pixels,dw_,dh_)){ fprintf(stderr,"window shot %dx%d (draw %dx%d) -> %s\n",dw_,dh_,W,H,g_autoshot_path); }
+        else fprintf(stderr,"window screenshot failed: %s\n",g_autoshot_path);
         if(s) SDL_FreeSurface(s); g_autoshot_frame=-1; g_autoshot_path=0; if(g_stop_after>=0 && (menu_open || pc_frames()>=g_stop_after)) pc_quit_now(); }
 #ifdef PC_ANDROID
     // Measure rendering work only, before the potentially blocking VSync.
@@ -1290,7 +1330,7 @@ void plat_frame(void){
     // still execute once per fixed GBA frame. Menus always remain responsive.
     if(!g_fast && current_budget().divisor==2 && (fr&1) && !shot_pending)draw=0;
 #endif
-    if(draw)present_game(1);
+    if(draw||shot_pending)present_game(1);
     fps_n++; { uint64_t n=SDL_GetPerformanceCounter(); if(n-fps_t0>=t_freq){ tick_show=fps_n*(double)t_freq/(double)(n-fps_t0); fps_show=present_n*(double)t_freq/(double)(n-fps_t0); fps_n=present_n=0; fps_t0=n; } }
     // ---- pace: never repay missed display time with a burst of faster gameplay
     g_due += period;
@@ -1358,7 +1398,7 @@ static void android_mkdir_p(const char *path){
 #endif
 const char *plat_save_path(void){ return g_savepath; }
 int plat_paths(int argc, char **argv){            // finds the folders; call before the fake GBA starts (it loads the save)
-    for(int i=1;i+1<argc;i++) if(!strcmp(argv[i],"--icon-png")){ int S=256; uint32_t *p=malloc((size_t)S*S*4); plat_icon_pixels(p,S); for(size_t k=0;k<(size_t)S*S;k++) if(!(p[k]>>24)) p[k]=0; plat_write_png_rgba(argv[i+1],p,S,S); exit(0); }
+    for(int i=1;i+1<argc;i++) if(!strcmp(argv[i],"--icon-png")){ int S=256; uint32_t *p=malloc((size_t)S*S*4); if(!p)exit(1); plat_icon_pixels(p,S); for(size_t k=0;k<(size_t)S*S;k++) if(!(p[k]>>24)) p[k]=0; int ok=plat_write_png_rgba(argv[i+1],p,S,S); free(p); exit(ok?0:1); }
     const char *data=NULL; int portable=0;
     for(int i=1;i<argc;i++){ if(!strcmp(argv[i],"--data")&&i+1<argc) data=argv[++i]; else if(!strcmp(argv[i],"--portable")) portable=1; }
     char *pp=NULL;

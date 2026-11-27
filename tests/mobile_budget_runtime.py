@@ -13,7 +13,7 @@ def extract(src,mark):
 a=s.index("typedef struct { int battery, pixels, divisor, simple; } MobileBudget;")
 b=s.index("#ifdef PC_ANDROID",a)
 assert "if(!g_fast && current_budget().divisor==2 && (fr&1)" in s
-assert "if(draw)present_game(1);" in s
+assert "if(draw||shot_pending)present_game(1);" in s
 assert "if(tg_failed)simple_pad_draw(g,el,dirs,a);" in s
 assert "while(tg_bytes+bytes>6u*1024u*1024u)" in p
 cases=r"""
