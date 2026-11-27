@@ -26,7 +26,7 @@ static void pc_sr_space(volatile u16 *pg){
         float fx=p->f[0]/16384.0f, fy=p->f[1]/16384.0f, fz=p->f[2]/16384.0f; s.f[0]=fx; s.f[1]=fy; s.f[2]=fz;
         float Rx=fz, Rz=-fx, rl=sqrtf(Rx*Rx+Rz*Rz); if(rl<1e-4f){ Rx=1; Rz=0; rl=1; } Rx/=rl; Rz/=rl;                   // (the game's own sideways and up for this ship)
         s.u[0]=fy*Rz; s.u[1]=fz*Rx-fx*Rz; s.u[2]=-fy*Rx;
-        s.size=110; s.kind = p->team ? SR_FIGHTER : SR_WING; s.team = p->team ? 1 : 0; s.col = p->team ? ce : cf; s.firing = p->fire_t>0; s.hit = pcsr_hit[i]>0 ? pcsr_hit[i] : 0; s.thrust=0.75f;
+        s.size=p->team?sp_role_size(p->slot):110; s.kind = p->team ? SR_FIGHTER : SR_WING; s.team = p->team ? 1 : 0; s.col = p->team ? ce : cf; s.firing = p->fire_t>0; s.hit = pcsr_hit[i]>0 ? pcsr_hit[i] : 0; s.thrust=0.75f;
         if(!pc_sy_foe(i,&s)) sr_ship(&s);
         if(p->fire_t){ float t[3];
             if(p->tgt==-1){
