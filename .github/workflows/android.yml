@@ -25,6 +25,7 @@ on:
       - 'tests/android_emulator_smoke.sh'
       - 'tests/atomic_save_runtime.py'
       - 'tests/mobile_budget_runtime.py'
+      - 'tests/touch_input_runtime.py'
       - 'tests/android_apk_audit.py'
       - 'tests/space_native_projection_audit.py'
       - 'tests/space_station_depth_audit.py'
@@ -81,6 +82,7 @@ jobs:
           python3 tests/android_touch_menu_runtime.py
           python3 tests/atomic_save_runtime.py
           python3 tests/mobile_budget_runtime.py
+          python3 tests/touch_input_runtime.py
 
       - name: Check shared 3D camera clipping
         run: python3 tests/space_projection_audit.py

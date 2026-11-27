@@ -57,3 +57,9 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 - Video > PHONE PERFORMANCE: AUTO selects the battery profile on low-memory/32-bit phones; BATTERY uses classic rendering, 240x160 internal drawing and alternate-frame presentation (~30 pictures/second), while preserving fixed GBA-speed simulation, input and audio. FULL restores the normal rendering budget within hard memory limits. Existing visual preferences are retained separately.
 - Touch Pad > PAD STYLE: SIMPLE uses direct geometry and game action labels; DETAILED retains the original controller. AUTO selects simple controls in the battery profile. Both share the same customizable touch regions. If a decorative texture cannot allocate/upload, the complete simple pad remains visible.
 - Detailed mobile pad textures are limited to 256 pixels per side and 6 MiB total. Memory warnings release existing frame/pad textures and force a low-budget session. Default Android composition workers are bounded to two total on 32-bit and four on 64-bit.
+
+## Version 0.43 touch responsiveness
+
+- Brief taps now survive a complete down/up pair between game-input samples. A tap is delivered once, while held fingers still support normal multi-touch and continuous movement. Opposing directions cancel. Options, editor, background, rotation and controller changes clear pending input.
+- Resizing refreshes the drawable dimensions immediately and invalidates old option geometry. Disconnecting the last physical controller restores touch controls. No new save format or gameplay timing changes.
+- FPS overlay distinguishes actual game-frame presentations from fixed simulation ticks, including the battery profile; paused-menu redraws no longer count toward gameplay FPS.
