@@ -811,6 +811,37 @@ static void sp_nav_label(volatile u16 *pg,int at,const char *name,s32 wx,s32 wy,
     char b[28];scpy(b,name);scat(b," ");ncat(b,dist/1000);scat(b,".");ncat(b,(dist%1000)/100);scat(b,"K ");
     scat(b,sp_nav_direction(x,y,z));text(pg,at,12,b,55,1);
 }
+// Always invalidate stale targets, even if the expensive search budget is used.
+// Reserve the two periodic scans each tick; at most four urgent searches.
+static int sp_target_live(int t,int team){return (unsigned)t<NPIR&&pir[t].alive&&pir[t].team!=team;}
+static u32 sp_distance16_sq(s32 x,s32 y,s32 z){
+    x>>=4;y>>=4;z>>=4;
+    if(x<-26000||x>26000||y<-26000||y>26000||z<-26000||z>26000)return 0xffffffffu;
+    return (u32)(x*x)+(u32)(y*y)+(u32)(z*z);
+}
+static int sp_best_target(Pirate *p){
+    int best=p->team?-1:-2;
+    u32 bd=p->team?sp_distance16_sq(shx-p->x,shy-p->y,shz-p->z):765625u;
+    s32 ox=p->team?p->x:shx,oy=p->team?p->y:shy,oz=p->team?p->z:shz;
+    for(int j=0;j<NPIR;j++){
+        Pirate *q=&pir[j];if(!sp_target_live(j,p->team))continue;
+        s32 ex=q->x-ox,ey=q->y-oy,ez=q->z-oz;
+        if(!p->team&&(ex<-16000||ex>16000||ez<-16000||ez>16000))continue;
+        if(!p->team&&((ex<0?-ex:ex)+(ez<0?-ez:ez)>16000))continue;
+        u32 dd=sp_distance16_sq(ex,ey,ez);if(dd<bd){bd=dd;best=j;}
+    }
+    return best;
+}
+static int sp_target_update(Pirate *p,int i,int *urgent){
+    int fallback=p->team?-1:-2,old=p->tgt;
+    int lost=old!=fallback&&!sp_target_live(old,p->team);
+    if(lost){p->tgt=fallback;p->fire_t=0;}
+    int scheduled=((frames+i)&31)==0;
+    if(!scheduled&&(!lost||*urgent>=4))return 0;
+    if(!scheduled)(*urgent)++;
+    int next=sp_best_target(p);if(next!=old)p->fire_t=0;p->tgt=(s8)next;
+    return 1;
+}
 static int laser_contact;
 static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
 #ifdef TEST_MOONS
@@ -935,16 +966,9 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     int danger=space_danger();
     if(!in_lair && !can_land && lr(1500) < 2+danger+(is_belt()?belt_pirates():0)) spawn_pirates(1);          // a rich belt draws pirates
     // ---- every ship: pick a target, fly at it, shoot. Wingmen fight enemies and form up on you when it's quiet; enemies hunt you and your wingmen
-    int scans=0;                                                                          // (a full look round is slow: only a few a frame, so a big battle does not stall when ships die)
+    int urgent_scans=0;
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
-        if(scans<6 && (((frames+i)&31)==0 || (p->tgt>=0 && (!pir[p->tgt].alive || pir[p->tgt].team==p->team)))){     // re-pick a target now and then
-            scans++;
-            u32 bd; { s32 ax=(shx-p->x)>>4, ay=(shy-p->y)>>4, az=(shz-p->z)>>4; bd = p->team ? (u32)(ax*ax+ay*ay+az*az) : 765625u; }   // (squared distances in 1/16s: no square roots needed to find the nearest)
-            p->tgt = p->team ? -1 : -2;                                                   // -1: you. -2: nobody (wingmen form up)
-            for(int j=0;j<NPIR;j++){ Pirate *q=&pir[j]; if(!q->alive || q->team==p->team) continue; s32 ex=q->x-(p->team?p->x:shx), ey=q->y-(p->team?p->y:shy), ez=q->z-(p->team?p->z:shz);   // wingmen go for the enemy nearest YOU
-                if(!p->team){ s32 px_=q->x-shx, pz_=q->z-shz; if((px_<0?-px_:px_)+(pz_<0?-pz_:pz_)>16000) continue; }
-                ex>>=4; ey>>=4; ez>>=4; u32 dd=(u32)(ex*ex+ey*ey+ez*ez);
-                if(dd<bd){ bd=dd; p->tgt=j; } } }
+        sp_target_update(p,i,&urgent_scans);
         s32 tx,ty,tz;
         if(p->tgt==-1){ tx=shx; ty=shy; tz=shz; }
         else if(p->tgt>=0){ tx=pir[p->tgt].x; ty=pir[p->tgt].y; tz=pir[p->tgt].z; }
@@ -965,7 +989,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
         if(!p->cool && l<7000 && aim>15500){ p->cool=40+lr(30); p->fire_t=4;
             s32 ex=p->x-shx, ez=p->z-shz; if((ex<0?-ex:ex)+(ez<0?-ez:ez)<6000) sfx(p->team?4:10);
             if(p->tgt==-1){ if(lr(100)<55) ship_hit(4+danger*2,0); }
-            else if(pir[p->tgt].alive && pir[p->tgt].team!=p->team && lr(100)<45){ Pirate *q=&pir[p->tgt]; q->hp -= p->team ? 4+danger*2 : 6+laser_lv*4+ship_gun(); boom(q->x,q->y,q->z,3,p->team?53:52);
+            else if(sp_target_live(p->tgt,p->team) && lr(100)<45){ Pirate *q=&pir[p->tgt]; q->hp -= p->team ? 4+danger*2 : 6+laser_lv*4+ship_gun(); boom(q->x,q->y,q->z,3,p->team?53:52);
                 if(q->hp<=0) ship_dies(q,0); } }
     }
     // Canisters share the current tractor/fly-through behavior and small pool.
@@ -1042,7 +1066,7 @@ static int space_frame(void){   // 0 keep flying, 1 land, 2 open the galaxy map
     for(int i=0;i<NPIR;i++){ Pirate *p=&pir[i]; if(!p->alive) continue;
         int col = p->team ? 53 : 52, lod=0;
         { int sx,sy; s32 z; if(!sproj(p->x,p->y,p->z,&sx,&sy,&z)) continue;
-          if(p->fire_t){ int tx_,ty_; if(p->tgt==-1) line2(pg,sx,sy,120+(frames&7)-4,chase_cam?ch_y:124,col); else if(p->tgt>=0 && sproj(pir[p->tgt].x,pir[p->tgt].y,pir[p->tgt].z,&tx_,&ty_,0)) line2(pg,sx,sy,tx_,ty_,col); }
+          if(p->fire_t){ int tx_,ty_; if(p->tgt==-1) line2(pg,sx,sy,120+(frames&7)-4,chase_cam?ch_y:124,col); else if(sp_target_live(p->tgt,p->team) && sproj(pir[p->tgt].x,pir[p->tgt].y,pir[p->tgt].z,&tx_,&ty_,0)) line2(pg,sx,sy,tx_,ty_,col); }
           if(z>dot_z){ dot2(pg,sx,sy,col); dot2(pg,sx-1,sy,col); dot2(pg,sx+1,sy,col); dot2(pg,sx,sy-1,col); continue; }   // far away: a small mark
           { int rp=(int)(140*FOCS/z)+2; if(sx+rp<0 || sx-rp>239 || sy+rp<0 || sy-rp>127) continue; }                    // the whole ship is off the screen: skip it
           lod = z>lod_z;
@@ -1657,6 +1681,9 @@ static void station_menu_(void){
                 else {gold-=p;cargo[sel]++;market_note="BOUGHT ONE UNIT";sfx(7);} dirty=1; }
             if(sel<8 && HIT(K_B)){if(cargo[sel]){gold+=good_price(sel);cargo[sel]--;market_note="SOLD ONE UNIT";sfx(7);}else{market_note="NO CARGO OF THIS TYPE";sfx(4);}dirty=1;}
             if(sel==8 && (HIT(K_B)||HIT(K_A))){if(ore_bagn()){int v=ore_sellval()*ore_station_pct()/100;gold+=v;ore_clear_sold();market_note="ORE SOLD";sfx(7);}else{market_note="NO ORE TO SELL";sfx(4);}dirty=1;}
+        } else if(tab==2){
+            // The lounge is a conversation panel, never a shipyard transaction.
+            if(HIT(K_A)){sfx(7);dirty=1;}
         } else if(HIT(K_A) && sel==6){ int c=300+wing_n*150; if(wing_n>=MAXWING) say("YOU HAVE A FULL WING"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; wing_n++; sfx(6); } dirty=1;
         } else if(HIT(K_A) && sel==7){ battle_req=1; sfx(6); dirty=1;
         } else if(HIT(K_A) && sel==8){ int c=400*(fuel_tank+1); if(fuel_tank>=8) say("THE TANK IS AS BIG AS IT GETS"); else if(gold<c) say("NOT ENOUGH GOLD"); else { gold-=c; fuel_tank++; fuel+=40; sfx(6); } dirty=1;

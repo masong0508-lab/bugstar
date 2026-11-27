@@ -16,6 +16,7 @@ on:
       - 'tests/space_flight_runtime.py'
       - 'tests/flight_dungeon_objectives_runtime.py'
       - 'tests/navigation_market_runtime.py'
+      - 'tests/fleet_kart_items_runtime.py'
       - 'tests/space_content_speed_runtime.py'
       - 'tests/ship_model_capacity_runtime.py'
       - 'tests/space_native_beam_runtime.py'
@@ -101,6 +102,7 @@ on:
       - 'tests/space_flight_runtime.py'
       - 'tests/flight_dungeon_objectives_runtime.py'
       - 'tests/navigation_market_runtime.py'
+      - 'tests/fleet_kart_items_runtime.py'
       - 'tests/space_content_speed_runtime.py'
       - 'tests/ship_model_capacity_runtime.py'
       - 'tests/space_native_beam_runtime.py'
@@ -253,6 +255,7 @@ jobs:
           python3 tests/space_flight_runtime.py
           python3 tests/flight_dungeon_objectives_runtime.py
           python3 tests/navigation_market_runtime.py
+          python3 tests/fleet_kart_items_runtime.py
       - name: Keep assembled ship geometry inside the handheld model buffers
         run: python3 tests/ship_model_capacity_runtime.py
       - name: Keep native enemy beams attached to the visible player ship

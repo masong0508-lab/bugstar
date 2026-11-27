@@ -116,3 +116,8 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 ## Version 0.54 exploration and trading
 
 - Fixed mine-only event indexing and bounded event labels. Added stable cockpit direction/range guidance for the station and world, widened distant scanner arithmetic, and removed undefined negative signed shifts from line rasterization. Station trade hints use the real next-visit price formula, accessible stars and fuel limits; the estimate is a gross unit premium, not net profit. Transactions display local feedback and the effective hold capacity. The scrollable ship field guide has ten pages, with separate hazard and navigation/trading sections.
+
+## Version 0.55 fleet combat and kart items
+
+- Destroyed, friendly and invalid fleet targets are invalidated immediately. Two scheduled searches and at most four urgent searches per logic tick preserve the previous worst-case scan budget without starving high-index ships. Friendly/invalid targets no longer render as laser endpoints. The lounge cannot buy hidden shipyard upgrades.
+- Shells and slime remain in inventory if projectile/scenery pools are exhausted; AI retries after a short delay. Finished and eliminated racers no longer consume item boxes, trigger traps or bump active racers. Shells and slime expire without applying a final phantom hit. Signed collision shifts replaced with defined multiplication. Save formats and vehicle controls unchanged.

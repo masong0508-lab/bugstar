@@ -35,7 +35,7 @@ static void pc_sr_space(volatile u16 *pg){
                 if(chase_cam && pc_ships_mode>0){ t[0]=shx; t[1]=shy; t[2]=shz; }
                 else for(int k=0;k<3;k++) t[k]=eye[k]+f[k]*400-u[k]*((124-VCY)*400.0f/FOCS)+r[k]*(((vbl_count&7)-4)*400.0f/FOCS);
                 sr_beam(s.p,t,s.col,1); }
-            else if(p->tgt>=0 && pir[p->tgt].alive){ t[0]=pir[p->tgt].x; t[1]=pir[p->tgt].y; t[2]=pir[p->tgt].z; sr_beam(s.p,t,s.col,1); } } }
+            else if((unsigned)p->tgt<NPIR && pir[p->tgt].alive && pir[p->tgt].team!=p->team){ t[0]=pir[p->tgt].x; t[1]=pir[p->tgt].y; t[2]=pir[p->tgt].z; sr_beam(s.p,t,s.col,1); } } }
     for(int i=0;i<pcsr_nb;i++){ float t=(vbl_count-pcsr_b[i].t0)/45.0f; if(t>=1 || t<0){ pcsr_b[i]=pcsr_b[--pcsr_nb]; i--; continue; } sr_boom(pcsr_b[i].p,160,t,pcsr_b[i].seed); }
     if(battle_on && pc_armada_n>0) sr_armada(pc_armada_n, sys_id(cur_sys)^0xA4A7u, vbl_count, 14000);                          // the far battle around yours (only drawn)
     sr_run_hooks();                                                                                                     // (more ships: warships and anything else that registered)

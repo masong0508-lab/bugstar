@@ -428,8 +428,9 @@ static int kitem_roll(int place){                                  // further ba
     if(place<=3) return r<25?KI_PEPPER : r<50?KI_SHELL : r<65?KI_SLIME : r<80?KI_BUBBLE : r<92?KI_MAGNET : KI_SNEEZE;
     return r<20?KI_PEPPER3 : r<38?KI_SHELL : r<52?KI_MAGNET : r<66?KI_CLOUD : r<80?KI_SNEEZE : r<92?KI_PEPPER : KI_BUBBLE; }
 static int kpnear(s32 x, s32 y){ s32 dx=wrapd(x-ppx), dy=wrapd(y-ppy); return (dx<0?-dx:dx)+(dy<0?-dy:dy) < (16<<16); }
+static int kitem_active(int r){return r>=0&&r<nrc&&!rc[r].fin&&!rc[r].out;}
 static void kspin(int r, const char *why){
-    Racer *k=&rc[r]; if(k->fin || k->la || (r==0 && kloop_on)) return;                      // (nothing hits you upside down in a loop)
+    Racer *k=&rc[r]; if(!kitem_active(r) || k->la || (r==0 && kloop_on)) return;                      // (nothing hits you upside down in a loop)
     if(k->spin) return;
     if(k->shield){ k->shield=0; if(r==0) show_msg("YOUR BUBBLE POPPED!"); if(r==0 || kpnear(k->x,k->y)) sfx(2); return; }
     if(r!=0 && kpnear(k->x,k->y)) sfx(1);                                                  // (a rival gets hit nearby: you hear it)
@@ -438,27 +439,42 @@ static void kspin(int r, const char *why){
 #endif
     k->spin=48; if(r==0){ show_msg(why); sfx(4); kboost_t=0; kdrift=0; kcharge=0; if(kstar) kstar = kstar>3 ? kstar-3 : 0; } }   // (hit: you drop some star bits)
 static int kahead(int r){                                          // the racer just ahead of r (or -1)
-    int want=rc[r].place-1; if(want<1) return -1; for(int i=0;i<nrc;i++) if(rc[i].place==want) return i; return -1; }
+    int best=-1,place=0; for(int i=0;i<nrc;i++)if(i!=r&&kitem_active(i)&&rc[i].place<rc[r].place&&rc[i].place>place){place=rc[i].place;best=i;}return best; }
+static void kitem_wait(int r){
+#ifdef TEST_KAUDIT
+    klogi[rc[r].item]--;if(r==0)klogi[11]--;
+#endif
+    if(r==0)show_msg("ITEM BUSY - TRY AGAIN");else rc[r].ai_t=15;
+}
 static void kuse_item(int r){
+    if(!kitem_active(r))return;
     Racer *k=&rc[r]; int it=k->item; if(!it) return;
 #ifdef TEST_KAUDIT
     klogi[it]++; if(r==0) klogi[11]++;
 #endif
     switch(it){
         case KI_PEPPER: case KI_PEPPER3: k->boost=50; if(r==0){ kboost_t=50; sfx(10); } if(it==KI_PEPPER3 && k->item_n>1){ k->item_n--; return; } break;
-        case KI_SHELL: for(int s=0;s<3;s++) if(!ksh[s].life){ int t=kahead(r); int p=kgrab(O_KSHELL,k->x,k->y); if(p<0) break;
-            ksh[s].x=k->x; ksh[s].y=k->y; ksh[s].pi=k->pi; ksh[s].owner=(s8)r; ksh[s].tgt=(s8)t; ksh[s].life=240; ksh[s].po=(u8)p; if(r==0) sfx(3); break; } break;
-        case KI_SLIME: for(int s=0;s<6;s++) if(!kslm_life[s]){ s32 bx=k->x-((sinx(k->hd>>2)*3)<<2), by=k->y-((cosx(k->hd>>2)*3)<<2); int p=kgrab(O_KSLIME,bx,by); if(p<0) break; kslm_po[s]=(u8)p; kslm_life[s]=255; if(r==0) sfx(8); break; } break;
+        case KI_SHELL: {
+            int slot=0;while(slot<3&&ksh[slot].life)slot++;
+            if(slot==3){kitem_wait(r);return;}
+            int p=kgrab(O_KSHELL,k->x,k->y);if(p<0){kitem_wait(r);return;}
+            ksh[slot].x=k->x;ksh[slot].y=k->y;ksh[slot].pi=k->pi;ksh[slot].owner=(s8)r;ksh[slot].tgt=(s8)kahead(r);ksh[slot].life=240;ksh[slot].po=(u8)p;if(r==0)sfx(3);break;}
+        case KI_SLIME: {
+            int slot=0;while(slot<6&&kslm_life[slot])slot++;
+            if(slot==6){kitem_wait(r);return;}
+            s32 bx=k->x-sinx(k->hd>>2)*12,by=k->y-cosx(k->hd>>2)*12;
+            int p=kgrab(O_KSLIME,bx,by);if(p<0){kitem_wait(r);return;}
+            kslm_po[slot]=(u8)p;kslm_life[slot]=255;if(r==0)sfx(8);break;}
         case KI_BUBBLE: k->shield=255; if(r==0){ show_msg("BUBBLE ON! IT BLOCKS ONE HIT"); sfx(2); } break;
         case KI_MAGNET: { int t=kahead(r); k->boost=40; if(t>=0 && r==0) show_msg("MAGNET! WHOOSH"); if(r==0){ kboost_t=40; sfx(10); } } break;
         case KI_SNEEZE: for(int i=0;i<nrc;i++) if(i!=r && rc[i].place<k->place) kspin(i,"ACHOO! SOMEONE SNEEZED ON YOU"); if(r==0){ show_msg("ACHOO! EVERYONE AHEAD SPINS"); sfx(9); } break;
-        case KI_CLOUD: for(int i=0;i<nrc;i++) if(rc[i].place==1 && i!=r){ rc[i].cloud=200; if(i==0) show_msg("A GRUMPY CLOUD! IT IS RAINING ON YOU"); } if(r==0) sfx(8); break; }
+        case KI_CLOUD: for(int i=0;i<nrc;i++) if(kitem_active(i)&&rc[i].place==1 && i!=r){ rc[i].cloud=200; if(i==0) show_msg("A GRUMPY CLOUD! IT IS RAINING ON YOU"); } if(r==0) sfx(8); break; }
     k->item=0; k->item_n=0; }
 static void kitems_tick(int n){
     if(kroul>0){ kroul-=n; if(kroul>0 && (kroul&7)<n) sfx(7); else if(kroul<=0){ kroul=0; if(rc[0].item){ char b2[40]; scpy(b2,"GOT: "); scat(b2,kitem_name[rc[0].item]); scat(b2,"! A: USE"); show_msg(b2); sfx(7); } } }   // the item box spins for a moment before it shows what you got
     for(int b=0;b<15;b++){ if(kbox_po[b]==255) continue; PObj *o=&po[kbox_po[b]];
         if(kbox_t[b]){ if(kbox_t[b]>n) kbox_t[b]-=n; else { kbox_t[b]=0; o->alive=1; } continue; }
-        for(int r=0;r<nrc;r++){ s32 dx=wrapd(rc[r].x-o->x), dy=wrapd(rc[r].y-o->y); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<0xE000){ o->alive=0; kbox_t[b] = k_items==2 ? 80 : 200;
+        for(int r=0;r<nrc;r++){ if(!kitem_active(r)||rc[r].item)continue; s32 dx=wrapd(rc[r].x-o->x), dy=wrapd(rc[r].y-o->y); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<0xE000){ o->alive=0; kbox_t[b] = k_items==2 ? 80 : 200;
 #ifdef TEST_KAUDIT
             klogi[12+(r==0)]++;
 #endif
@@ -466,10 +482,10 @@ static void kitems_tick(int n){
             if(!rc[r].item && !rc[r].fin){ int it=kitem_roll(rc[r].place); if(kl.part[KP_TOP]==11 && r==0 && it<=KI_SLIME && rndi(3)==0) it=KI_PEPPER3;   // the cherry is lucky
                 rc[r].item=(u8)it; rc[r].item_n = it==KI_PEPPER3 ? 3 : 1; rc[r].ai_t=(u8)(30+rndi(120)); if(r==0){ kroul=40; sfx(7); } }
             break; } } }
-    for(int s=0;s<3;s++){ KShell *h=&ksh[s]; if(!h->life) continue; if(h->life>n) h->life-=n; else h->life=0;
+    for(int s=0;s<3;s++){ KShell *h=&ksh[s]; if(!h->life) continue; if(h->life>n) h->life-=n; else {h->life=0;kpo_release(h->po);continue;}
         s32 tx, ty; int tg=h->tgt;
-        if(tg>=0 && !rc[tg].fin){ s32 dx=wrapd(rc[tg].x-h->x), dy=wrapd(rc[tg].y-h->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
-            if(ad<0xC000){ int sp0=rc[tg].spin; kspin(tg,"BONK! A BEETLE SHELL GOT YOU"); if(h->owner==0 && tg!=0 && !sp0 && rc[tg].spin){ show_msg("DIRECT HIT!"); sfx(9); } h->life=0; }
+        if(kitem_active(tg)){ s32 dx=wrapd(rc[tg].x-h->x), dy=wrapd(rc[tg].y-h->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy);
+            if(ad<0xC000){ int sp0=rc[tg].spin; kspin(tg,"BONK! A BEETLE SHELL GOT YOU"); if(h->owner==0 && tg!=0 && !sp0 && rc[tg].spin){ show_msg("DIRECT HIT!"); sfx(9); } h->life=0;kpo_release(h->po);continue; }
             if(ad<(6<<16)){ tx=rc[tg].x; ty=rc[tg].y; } else { h->pi=(h->pi+3*n)%knp; tx=kp_cx(h->pi); ty=kp_cy(h->pi); } }
         else { h->pi=(h->pi+3*n)%knp; tx=kp_cx(h->pi); ty=kp_cy(h->pi); }
         s32 dx=wrapd(tx-h->x), dy=wrapd(ty-h->y); int a=iatan2(dx>>4,dy>>4); s32 sp=(K_VBASE*17/10)*n;
@@ -477,7 +493,8 @@ static void kitems_tick(int n){
         h->x&=(TW<<16)-1; h->y&=(TW<<16)-1; po[h->po].x=h->x; po[h->po].y=h->y;
         if(!h->life) kpo_release(h->po); }
     for(int s=0;s<6;s++){ if(!kslm_life[s]) continue; PObj *o=&po[kslm_po[s]]; if(tk_new && frames%8==0) kslm_life[s]--;
-        for(int r=0;r<nrc;r++){ s32 dx=wrapd(rc[r].x-o->x), dy=wrapd(rc[r].y-o->y); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<0xC000 && !rc[r].spin){ kspin(r,"SPLAT! YOU HIT THE SLIME"); kslm_life[s]=0; break; } }
+        if(!kslm_life[s]){kpo_release(kslm_po[s]);continue;}
+        for(int r=0;r<nrc;r++){ if(!kitem_active(r)||rc[r].la||(r==0&&kloop_on))continue; s32 dx=wrapd(rc[r].x-o->x), dy=wrapd(rc[r].y-o->y); if((dx<0?-dx:dx)+(dy<0?-dy:dy)<0xC000 && !rc[r].spin){ kspin(r,"SPLAT! YOU HIT THE SLIME"); kslm_life[s]=0; break; } }
         if(!kslm_life[s]) kpo_release(kslm_po[s]); }
 }
 
@@ -985,11 +1002,11 @@ static void kai(int r, int n){
         if(t!=-2) kuse_item(r); } }
     if(tk_new && (frames+r*37)%240==0) k->lane=((s32)rndi(7)-3)<<15; }
 static void kbump(void){                                           // karts that touch push each other apart; the heavy one wins
-    for(int i=0;i<nrc;i++) for(int j=i+1;j<nrc;j++){ if(rc[i].la || rc[j].la || (i==0 && kloop_on)) continue; { int dp=kwp(rc[i].pi-rc[j].pi+knp); if(dp>24 && dp<knp-24) continue; }   // (one on a flyover, the other under it: no touching)
+    for(int i=0;i<nrc;i++) for(int j=i+1;j<nrc;j++){ if(!kitem_active(i)||!kitem_active(j)||rc[i].la || rc[j].la || (i==0 && kloop_on)) continue; { int dp=kwp(rc[i].pi-rc[j].pi+knp); if(dp>24 && dp<knp-24) continue; }   // (one on a flyover, the other under it: no touching)
          s32 dx=wrapd(rc[j].x-rc[i].x), dy=wrapd(rc[j].y-rc[i].y); if(dx>0xE000||dx<-0xE000||dy>0xE000||dy<-0xE000) continue;
         int ex=dx>>8, ey=dy>>8, d=isqrt((u32)(ex*ex+ey*ey)); if(d>=218) continue; if(d<1){ ex=1; d=1; }
         int wi=kstat(&rc[i].look,KST_WGT), wj=kstat(&rc[j].look,KST_WGT), ov=218-d;
-        s32 pxi=(ex*ov*wj/(wi+wj)/d)<<8, pyi=(ey*ov*wj/(wi+wj)/d)<<8, pxj=(ex*ov*wi/(wi+wj)/d)<<8, pyj=(ey*ov*wi/(wi+wj)/d)<<8;
+        s32 pxi=(ex*ov*wj/(wi+wj)/d)*256, pyi=(ey*ov*wj/(wi+wj)/d)*256, pxj=(ex*ov*wi/(wi+wj)/d)*256, pyj=(ey*ov*wi/(wi+wj)/d)*256;
         rc[i].x=(rc[i].x-pxi)&((TW<<16)-1); rc[i].y=(rc[i].y-pyi)&((TW<<16)-1); rc[j].x=(rc[j].x+pxj)&((TW<<16)-1); rc[j].y=(rc[j].y+pyj)&((TW<<16)-1);
         if(i==0){ ppx=rc[0].x; ppy=rc[0].y; kv=kv*9/10; thump(0); } } }
 
