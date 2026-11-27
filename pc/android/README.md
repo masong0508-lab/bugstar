@@ -51,3 +51,9 @@ Speed (patch 43): the game steps at the GBA's own 59.7275 Hz from a fixed-timest
 
 - The Android launch test now runs in one checked shell, preserving coordinate variables, and uses the actual SDL surface bounds to translate real taps even with navigation bars or display scaling. It dismisses the tutorial, opens options from the on-screen MODE control, opens Video, and verifies pause/resume across the Home button.
 - The first-start guide teaches touch actions and the new settings interaction. SRAM autosave writes and flushes a temporary file, then replaces the old save without first deleting it. Failed writes or replacements preserve the previous file. Windows uses its native replace-existing operation. No save format changes.
+
+## Version 0.42 low-end phone profile
+
+- Video > PHONE PERFORMANCE: AUTO selects the battery profile on low-memory/32-bit phones; BATTERY uses classic rendering, 240x160 internal drawing and alternate-frame presentation (~30 pictures/second), while preserving fixed GBA-speed simulation, input and audio. FULL restores the normal rendering budget within hard memory limits. Existing visual preferences are retained separately.
+- Touch Pad > PAD STYLE: SIMPLE uses direct geometry and game action labels; DETAILED retains the original controller. AUTO selects simple controls in the battery profile. Both share the same customizable touch regions. If a decorative texture cannot allocate/upload, the complete simple pad remains visible.
+- Detailed mobile pad textures are limited to 256 pixels per side and 6 MiB total. Memory warnings release existing frame/pad textures and force a low-budget session. Default Android composition workers are bounded to two total on 32-bit and four on 64-bit.

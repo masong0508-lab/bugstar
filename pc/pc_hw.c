@@ -440,6 +440,11 @@ void pc_par(int total, ParFn fn, void *ctx){ pc_par_chunk(total,8,fn,ctx); }
 int pc_par_threads(void){ pc_par_init(); return PP.n+1; }
 static void pc_par_init(void){
     if(!PP.inited){ PP.inited=1; int n=pc_ncpu()-1; const char *e=getenv("PC_THREADS"); if(e) n=atoi(e)-1; if(n<0) n=0; if(n>15) n=15;
+#ifdef PC_ANDROID
+        // Mobile CPUs have limited thermal and RAM budgets. Four total
+        // render threads by default, two on 32-bit; developer override stays.
+        if(!e){int limit=sizeof(void*)==4?1:3;if(n>limit)n=limit;}
+#endif
         pthread_mutex_init(&PP.m,0); for(int i=0;i<15;i++) pthread_cond_init(&PP.go[i],0); pthread_cond_init(&PP.done,0);
         for(int i=0;i<n;i++) if(pthread_create(&PP.th[PP.n],0,par_worker,(void*)(uintptr_t)PP.n)==0) PP.n++; } }
 // PC_PAR_LEGACY=1 retains the original wake-every-worker policy for A/B
