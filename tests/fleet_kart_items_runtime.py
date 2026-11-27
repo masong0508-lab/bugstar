@@ -22,6 +22,7 @@ prefix=r"""
 #include <string.h>
 typedef uint8_t u8;typedef int8_t s8;typedef uint32_t u32;typedef int32_t s32;
 #define NPIR 64
+enum { SP_FIGHTER, SP_SCOUT, SP_HEAVY };
 #define NRC 12
 typedef struct {s32 x,y,z;int alive,team,tgt,fire_t;} Pirate;
 static Pirate pir[NPIR];static s32 shx,shy,shz;static unsigned frames;
@@ -39,6 +40,29 @@ static int kgrab(int kind,s32 x,s32 y){(void)kind;(void)x;(void)y;allocs++;retur
 """
 cases=r"""
 int main(void){
+    for(int n=1;n<=50;n++){
+        int scouts=0,heavies=0,fighters=0;
+        for(int i=0;i<n;i++){
+            int role=sp_fleet_role(i);
+            scouts+=role==SP_SCOUT;heavies+=role==SP_HEAVY;fighters+=role==SP_FIGHTER;
+            CHECK(role>=SP_FIGHTER&&role<=SP_HEAVY);
+        }
+        CHECK(scouts==(n+2)/4&&heavies==n/4&&fighters==n-scouts-heavies);
+    }
+    for(int hp=1;hp<=20000;hp++){
+        CHECK(sp_role_hp(hp,SP_SCOUT)>=1);
+        CHECK(sp_role_hp(hp,SP_HEAVY)<=32767);
+        CHECK(sp_role_hp(hp,SP_SCOUT)<=sp_role_hp(hp,SP_FIGHTER));
+        CHECK(sp_role_hp(hp,SP_HEAVY)>=sp_role_hp(hp,SP_FIGHTER));
+    }
+    for(int roll=0;roll<30;roll++){
+        CHECK(sp_role_cool(roll,SP_SCOUT)<sp_role_cool(roll,SP_FIGHTER));
+        CHECK(sp_role_cool(roll,SP_HEAVY)>sp_role_cool(roll,SP_FIGHTER));
+        CHECK(sp_role_cool(roll,SP_HEAVY)<=255);
+    }
+    CHECK(sp_role_size(SP_SCOUT)<sp_role_size(SP_FIGHTER)&&sp_role_size(SP_HEAVY)>sp_role_size(SP_FIGHTER));
+    for(int speed=1;speed<500;speed++)
+        CHECK(sp_role_speed(speed,SP_SCOUT)>=speed&&sp_role_speed(speed,SP_HEAVY)<=speed);
     for(int i=0;i<63;i++)pir[i]=(Pirate){1000+i,0,0,1,1,63,4};
     pir[63].alive=0;frames=1;int urgent=0,scans=0;
     for(int i=0;i<63;i++)scans+=sp_target_update(&pir[i],i,&urgent);
@@ -63,12 +87,13 @@ int main(void){
     kspin(1,"test");CHECK(!rc[1].spin);
     rc[3].item=KI_PEPPER3;rc[3].item_n=3;kuse_item(3);CHECK(rc[3].item_n==2&&rc[3].item==KI_PEPPER3);
     rc[3].out=1;kuse_item(3);CHECK(rc[3].item_n==2);
+    puts("Fleet role diversity, health, speed, size and cooldown bounds PASS");
     puts("Fleet mass target loss, 2048 scheduled refreshes, bounded searches; kart item pool, retry and active targets PASS");return 0;
 }
 """
 with tempfile.TemporaryDirectory() as td:
     p=Path(td);c=p/"test.c";exe=p/"test"
-    fleet=("static int sp_target_live(","static u32 sp_distance16_sq(","static int sp_best_target(","static int sp_target_update(")
+    fleet=("static int sp_fleet_role(","static int sp_role_hp(","static int sp_role_speed(","static int sp_role_cool(","static int sp_role_size(","static int sp_target_live(","static u32 sp_distance16_sq(","static int sp_best_target(","static int sp_target_update(")
     kart=("static int kitem_active(","static void kspin(","static int kahead(","static void kitem_wait(","static void kuse_item(")
     c.write_text(prefix+"\n".join(fun(sp,m) for m in fleet)+"\n"+"\n".join(fun(k,m) for m in kart)+cases)
     subprocess.run(["cc","-std=c11","-O1","-fsanitize=undefined","-fno-sanitize-recover=all",str(c),"-o",str(exe)],check=True)
