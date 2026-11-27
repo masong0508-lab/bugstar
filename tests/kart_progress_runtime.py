@@ -27,6 +27,18 @@ static struct {int n;} kt={6};
 cases=r"""
 int main(void){
     unsigned checks=0;
+    for(int path=32;path<=256;path*=2)for(int pi=0;pi<path;pi++)for(int gp=0;gp<path;gp++){
+        int ahead=(gp-pi+path)%path,past=(pi-gp+path)%path;
+        assert(kart_gate_missed(pi,gp,path)==(past>8&&past<path/2));
+        int target=kart_driver_target(pi,gp,path);
+        assert(target>=0&&target<path);
+        assert(target==((ahead<=5||ahead>path/2)?gp:(pi+5)%path));
+    }
+    assert(!kart_gate_missed(239,0,240));
+    assert(kart_gate_missed(12,0,240));
+    assert(kart_driver_target(239,0,240)==0);
+    assert(kart_driver_target(12,0,240)==0);
+    assert(!kart_gate_missed(-1,0,240));
     for(int lap=1;lap<=6;lap++)for(int gate=0;gate<6;gate++)for(int pi=0;pi<240;pi++){
         int s=kvalidated_progress(lap,pi,gate,240,6,kgate_pi);
         int lo=gate?kgate_pi[gate-1]:kgate_pi[5],hi=gate?kgate_pi[gate]:240;
@@ -46,11 +58,11 @@ int main(void){
     kplaces();assert(rc[1].place==1&&rc[11].place==12);
     for(int fin=0;fin<2;fin++)for(int out=0;out<2;out++)for(int type=0;type<8;type++)for(int elapsed=0;elapsed<2;elapsed++)
         assert(kart_record_eligible(fin,out,type,elapsed)==(fin&&!out&&type!=3&&type!=6&&elapsed));
-    printf("Kart progress: %u gate cases, backwards crossing, standings and 64 record-policy cases PASS\n",checks);
+    printf("Kart progress: %u gate cases, checkpoint navigation, backwards crossing, standings and 64 record-policy cases PASS\n",checks);
 }
 """
 with tempfile.TemporaryDirectory() as td:
     p=Path(td);c=p/"test.c";exe=p/"test"
-    c.write_text(prefix+"\n".join(fn(k,m) for m in ("static int kvalidated_progress(","static int kscore(","static void kplaces(","static int kart_record_eligible("))+cases)
+    c.write_text(prefix+"\n".join(fn(k,m) for m in ("static int kart_gate_missed(","static int kart_driver_target(","static int kvalidated_progress(","static int kscore(","static void kplaces(","static int kart_record_eligible("))+cases)
     subprocess.run(["cc","-std=c11","-O1","-fsanitize=undefined","-fno-sanitize-recover=all",str(c),"-o",str(exe)],check=True)
     subprocess.run([str(exe)],check=True)
