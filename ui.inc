@@ -1038,8 +1038,15 @@ static void char_screen_(volatile u16 *pg){
 // ---------------------------------------------------------------- the ship: shops, quest board
 EW static Gear stock[6];
 static void restock(void){ int il=dlv()*3+clampi(level); for(int i=0;i<6;i++) stock[i]=roll_gear(i<2?IT_THORN:i<4?IT_SHELL:IT_CHARM, il, 10); }
-static void make_quest(void){
-    q_type=1+rndi(NQ-1); if(q_type==Q_BOSS && endless) q_type=Q_HUNT; q_have=0; q_done=0; q_zone=zone; q_world=world_no;
+static int quest_offer_next(int type,int dir,int is_endless){
+    do { type+=dir; if(type<=Q_NONE)type=NQ-1; if(type>=NQ)type=1; }
+    while(is_endless && type==Q_BOSS);
+    return type;
+}
+static void make_quest_type(int requested){
+    q_type=requested>Q_NONE && requested<NQ ? requested : 1+rndi(NQ-1);
+    if(q_type==Q_BOSS && endless) q_type=Q_HUNT;
+    q_need=0; q_have=0; q_done=0; q_zone=zone; q_world=world_no;
     int maxf = endless ? (best_depth>3?best_depth:3) : zone_floors();
     q_floor = 1+rndi(maxf);
     q_gold = 60 + dlv()*40 + q_floor*10; q_fame = 15 + dlv()*6;
@@ -1056,6 +1063,7 @@ static void make_quest(void){
     }
     b[23]=0; scpy(q_name,b);
 }
+static void make_quest(void){make_quest_type(Q_NONE);}
 static void (*list_desc)(int,char*,int*)=0;      // an optional second line about the picked row
 static int list_pick_(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help);
 static int list_pick(volatile u16 *pg, const char *title, int n, void (*row)(int,char*,int*), int *sel, const char *help){ int sh=shd_begin(); int r=list_pick_(sh?VISPG:pg,title,n,row,sel,help); shd_end(sh); return r; }
@@ -1310,9 +1318,9 @@ static void shop_prev_copy(volatile u16 *pg, volatile u16 *bp){ for(int y=SK_Y;y
 // ---- the ship menu: four tabs (L/R or LEFT/RIGHT), a few big rows on each, and a line that says what the row does.
 // the ids below are the old row numbers, so every action further down is unchanged. START = take off from any tab.
 // Shipboard field manual. Read only on demand; no gameplay tick or saved state.
-#define NFIELD 10
+#define NFIELD 12
 #define FIELD_VISIBLE 8
-static const char *const field_title[NFIELD]={"FIRST EXPEDITION","DUNGEON COMBAT","MINING AND CRAFTING","SPACE PILOTING","TRADE AND QUESTS","BUDDY AND GEAR","EXPLORING NEW WORLDS","KART AND CHALLENGES","HAZARDS AND FLOOR GOALS","PILOT NAVIGATION AND TRADE"};
+static const char *const field_title[NFIELD]={"FIRST EXPEDITION","DUNGEON COMBAT","MINING AND CRAFTING","SPACE PILOTING","TRADE AND QUESTS","BUDDY AND GEAR","EXPLORING NEW WORLDS","KART AND CHALLENGES","HAZARDS AND FLOOR GOALS","PILOT NAVIGATION AND TRADE","RACE CHECKPOINTS","CHOOSING CONTRACTS"};
 static const char *const field_lines[NFIELD][6]={
     {"FOLLOW THE GOLD ARROW TO THE DOOR.","TAP SELECT TO CHANGE PLANET CAMERA.","HOLD SELECT + L/R TO SWITCH TARGET.","A OPENS DOORS AND TALKS TO LOCALS.","BUY FOOD AND POTIONS AT YOUR SHIP.","START OPENS YOUR BAG, MAP AND QUEST."},
     {"RED EXCLAMATION MARKS AN ATTACK.","STEP BACK OR STRAFE BEFORE IT LANDS.","DOUBLE TAP L OR R TO DODGE SIDEWAYS.","THREE BITES IN A ROW TRIGGER CRUNCH.","HOLD SELECT TO AIM A LEARNED SPELL.","KEEP A WARP CRYSTAL FOR YOUR RETURN."},
@@ -1323,7 +1331,9 @@ static const char *const field_lines[NFIELD][6]={
     {"CITIES HAVE SHOPS AND LOCAL JOBS.","RUINS CAN HIDE RIDDLES AND REWARDS.","LOOK FOR RESOURCE NODES AND FOSSILS.","WEATHER AND GRAVITY CHANGE HOW YOU MOVE.","CHECK YOUR FUEL BEFORE A LONG JUMP.","TALK TO BOLT FOR THE NEXT STORY GOAL."},
     {"GO > KART CLUB OPENS THE RACING MODE.","TRY DIFFERENT KARTS AND TRACKS.","THE TRACK MAKER BUILDS CUSTOM COURSES.","REVISIT A CLEARED WORLD FOR A NEW TIER.","HIGHER TIERS HAVE STRONGER ENEMIES.","START > EXTRAS SHOWS UNLOCK CONDITIONS."},
     {"GAS AND CAVE-IN TIMERS WARN OF DANGER.","KEEP MOVING WHEN THE CEILING RUMBLES.","USE PROTECTIVE GEAR IN GAS POCKETS.","ELITE HUNTS TRACK THE REMAINING GOAL.","SPEED RUNS KEEP TIME ON REVISITED FLOORS.","FULL BAG? DROP OR SELL LOOT AT SHIP."},
-    {"PORT AND WORLD SHOW RANGE AND HEADING.","TURN TO AHEAD, THRUST, THEN BRAKE.","MATCH A FAST ROCK BEFORE LANDING.","L + A FIRES EVEN NEAR AN APPROACH.","MARKET SUGGESTS A REACHABLE NEXT SALE.","THE PRICE PREMIUM EXCLUDES FUEL COST."}
+    {"PORT AND WORLD SHOW RANGE AND HEADING.","TURN TO AHEAD, THRUST, THEN BRAKE.","MATCH A FAST ROCK BEFORE LANDING.","L + A FIRES EVEN NEAR AN APPROACH.","MARKET SUGGESTS A REACHABLE NEXT SALE.","THE PRICE PREMIUM EXCLUDES FUEL COST."},
+    {"FOLLOW THE GOLD CROSS ON THE MINIMAP.","THE HUD SHOWS YOUR REQUIRED NEXT GATE.","A RED CROSS MEANS YOU MISSED A GATE.","TURN BACK AND PASS THE RED CHECKPOINT.","BRAKE BEFORE SHARP BENDS OR JUMPS.","EVERY LAP NEEDS ALL GATES IN ORDER."},
+    {"OPEN SHOP > QUEST BOARD AT YOUR SHIP.","USE L AND R TO BROWSE OTHER CONTRACTS.","PICK HUNTS, RESCUES OR DELIVERY JOBS.","CHECK THE TARGET WORLD AND FLOOR.","YOUR ACTIVE JOB STAYS UNTIL CLAIMED.","RETURN TO THE SHIP TO COLLECT YOUR PRIZE."}
 };
 static void field_guide(volatile u16 *pg){
     int sel=0,top=0,dirty=1; wait_release();
@@ -1538,7 +1548,10 @@ static int shop_menu_(void){   // returns 1 to fly on, 2 for autopilot
                     int t = q_type<0 ? -q_type : q_type;
                     text(pg,20,40,q_name,C_WHITE,1);
                     scpy(b,"REWARD "); ncat(b,q_gold); scat(b,"G, "); ncat(b,q_fame); scat(b," FAME, A PRIZE"); text(pg,20,50,b,C_GOLD,1);
-                    if(q_type<0) ui_lhint(pg,20,70,"A: TAKE THIS QUEST   B: NOT NOW",C_CYAN);
+                    if(q_type<0){
+                        ui_lhint(pg,20,70,"A: TAKE THIS QUEST   B: NOT NOW",C_CYAN);
+                        ui_lhint(pg,20,81,"L/R: BROWSE OTHER JOBS",C_CYAN);
+                    }
                     else if(q_done) text(pg,20,70,"DONE! A: CLAIM YOUR REWARD",C_GREEN,1);
                     else { scpy(b,"IN PROGRESS"); if(q_counted(t)){ scat(b," "); ncat(b,q_have); scat(b,"/"); ncat(b,q_need); } text(pg,20,70,b,C_WHITE,1); ui_lhint(pg,20,80,"A: GIVE UP   B: BACK",C_CYAN); }
                     if(t==Q_RESCUE){ scpy(b,"EXTRA CAGES ON B"); ncat(b,q_floor); text(pg,20,99,b,C_CYAN,1); }
@@ -1552,6 +1565,10 @@ static int shop_menu_(void){   // returns 1 to fly on, 2 for autopilot
                     scpy(b,"YOUR FAME: "); ncat(b,fame); scat(b,"  "); scat(b,fame_rank()); text(pg,20,140,b,C_GOLD,1); }
                 vsync(); read_keys(); if(keys!=keys_old) dirty2=1;
                 if(HIT(K_B)){ if(q_type<0) q_type=Q_NONE; break; }
+                if(q_type<0 && (HIT(K_L)||HIT(K_R))){
+                    int t=quest_offer_next(-q_type,HIT(K_R)?1:-1,endless);
+                    make_quest_type(t); q_type=-q_type; dirty2=1; sfx(7); continue;
+                }
                 if(HIT(K_A)){
                     if(q_type<0){ q_type=-q_type; say("QUEST TAKEN"); save_game(); break; }
                     if(q_done){
