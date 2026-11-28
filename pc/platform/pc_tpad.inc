@@ -76,9 +76,17 @@ static void tg_body(TgPx *p, const TgSh *s, float x, float y, const TgMat *m, fl
 static float tg_stroke(float d, float th){ return tg_clamp(th*0.5f-d+0.5f,0,1); }      // coverage of a stroke of width th at distance d from its centre line
 // ---- the textures
 enum { TG_DISC=1, TG_PILL, TG_DPAD, TG_ARM, TG_PLATE, TG_LOGO };
-typedef struct { SDL_Texture *t; int k, a, b, w, h; unsigned stamp; } TgC;
-static TgC tg_c[96]; static unsigned tg_stamp;
-static void tg_flush(void){ for(int i=0;i<96;i++) if(tg_c[i].t){ SDL_DestroyTexture(tg_c[i].t); tg_c[i].t=0; } }
+typedef struct { SDL_Texture *t; int k, a, b, w, h; unsigned stamp; size_t bytes; } TgC;
+static TgC tg_c[96]; static unsigned tg_stamp; static size_t tg_bytes; static int tg_failed;
+static void tg_drop(int i){if(tg_c[i].t){SDL_DestroyTexture(tg_c[i].t);tg_bytes-=tg_c[i].bytes;tg_c[i].t=0;tg_c[i].bytes=0;}}
+static void tg_flush(void){ for(int i=0;i<96;i++)tg_drop(i);tg_failed=0; }
+static void tg_limit_dims(int *w,int *h,int *extra){
+    int biggest=*w>*h?*w:*h;
+    if(biggest<=256)return;
+    *w=(int)((int64_t)*w*256/biggest);if(*w<1)*w=1;
+    *h=(int)((int64_t)*h*256/biggest);if(*h<1)*h=1;
+    if(*extra>0){*extra=(int)((int64_t)*extra*256/biggest);if(*extra<1)*extra=1;}
+}
 static const char *const tg_lab_s[]={"","B","A","L","R","MODE","START","MENU","C","X","Y","Z"};      // label of each element (TC_ order); the GBA key each one presses is in the legend
 #define TG_RGB(c) ((((c)>>16)&255)/255.f),((((c)>>8)&255)/255.f),(((c)&255)/255.f)
 static void tg_gen_disc(uint32_t *out, int S, int lab, int pr){
@@ -155,18 +163,35 @@ static void tg_gen_logo(uint32_t *out, int w, int h){       // 'MEGA BUG' in a s
         float a2=p.a; uint32_t px=0; if(a2>0){ float ir=1.f/a2; px=((uint32_t)(a2*255+0.5f)<<24)|((uint32_t)tg_clamp(p.r*ir*255+0.5f,0,255)<<16)|((uint32_t)tg_clamp(p.g*ir*255+0.5f,0,255)<<8)|(uint32_t)tg_clamp(p.b*ir*255+0.5f,0,255); }
         out[y*w+x]=px; } }
 static SDL_Texture *tg_get(int k, int a, int b, int w, int h, int extra){
+    if(w<=0||h<=0||tg_failed)return 0;
     for(int i=0;i<96;i++) if(tg_c[i].t && tg_c[i].k==k && tg_c[i].a==a && tg_c[i].b==b && tg_c[i].w==w && tg_c[i].h==h){ tg_c[i].stamp=tg_stamp; return tg_c[i].t; }
-    int slot=-1; unsigned old=~0u; for(int i=0;i<96;i++){ if(!tg_c[i].t){ slot=i; break; } if(tg_c[i].stamp<old && tg_c[i].stamp!=tg_stamp){ old=tg_c[i].stamp; slot=i; } }
-    if(slot<0) return 0; if(tg_c[slot].t){ SDL_DestroyTexture(tg_c[slot].t); tg_c[slot].t=0; }
-    int gw=w, gh=h; if(k==TG_PLATE){ gw=(w+1)/2; gh=(h+1)/2; }          // the big plate is drawn at half size (soft shading) and scaled up smoothly
-    uint32_t *buf=(uint32_t*)calloc((size_t)gw*gh,4); if(!buf) return 0;
-    switch(k){ case TG_DISC: tg_gen_disc(buf,w,a,b); break; case TG_PILL: tg_gen_pill(buf,w,h,a,b,extra); break; case TG_DPAD: tg_gen_dpad(buf,w); break; case TG_ARM: tg_gen_arm(buf,w,a); break;
-        case TG_PLATE: tg_gen_plate(buf,gw,gh); break; case TG_LOGO: tg_gen_logo(buf,w,h); break; }
-    const char *old_hint=SDL_GetHint(SDL_HINT_RENDER_SCALE_QUALITY); char sv[16]; snprintf(sv,sizeof sv,"%s",old_hint?old_hint:"nearest");
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,k==TG_PLATE?"linear":"nearest");
+    int gw=w,gh=h;if(k==TG_PLATE){gw=(w+1)/2;gh=(h+1)/2;}
+#ifdef PC_ANDROID
+    tg_limit_dims(&gw,&gh,&extra);
+#endif
+    if((size_t)gw>SIZE_MAX/(size_t)gh/4){tg_failed=1;return 0;}
+    size_t bytes=(size_t)gw*gh*4;
+#ifdef PC_ANDROID
+    while(tg_bytes+bytes>6u*1024u*1024u){
+        int victim=-1;unsigned old=~0u;
+        for(int i=0;i<96;i++)if(tg_c[i].t&&tg_c[i].stamp!=tg_stamp&&tg_c[i].stamp<old){old=tg_c[i].stamp;victim=i;}
+        if(victim<0){tg_failed=1;return 0;}tg_drop(victim);
+    }
+#endif
+    int slot=-1; unsigned old=~0u;
+    for(int i=0;i<96;i++){ if(!tg_c[i].t){ slot=i; break; } if(tg_c[i].stamp<old && tg_c[i].stamp!=tg_stamp){ old=tg_c[i].stamp; slot=i; } }
+    if(slot<0){tg_failed=1;return 0;}tg_drop(slot);
+    uint32_t *buf=(uint32_t*)calloc((size_t)gw*gh,4);if(!buf){tg_failed=1;return 0;}
+    switch(k){case TG_DISC:tg_gen_disc(buf,gw,a,b);break;case TG_PILL:tg_gen_pill(buf,gw,gh,a,b,extra);break;
+        case TG_DPAD:tg_gen_dpad(buf,gw);break;case TG_ARM:tg_gen_arm(buf,gw,a);break;
+        case TG_PLATE:tg_gen_plate(buf,gw,gh);break;case TG_LOGO:tg_gen_logo(buf,gw,gh);break;}
+    const char *old_hint=SDL_GetHint(SDL_HINT_RENDER_SCALE_QUALITY);char sv[16];snprintf(sv,sizeof sv,"%s",old_hint?old_hint:"nearest");
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,(gw!=w||gh!=h)?"linear":"nearest");
     SDL_Texture *t=SDL_CreateTexture(ren,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STATIC,gw,gh);
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,sv);
-    if(t){ SDL_UpdateTexture(t,NULL,buf,gw*4); SDL_SetTextureBlendMode(t,SDL_BLENDMODE_BLEND); }
-    free(buf); if(!t) return 0;
-    tg_c[slot]=(TgC){t,k,a,b,w,h,tg_stamp}; return t; }
+    if(t&&SDL_UpdateTexture(t,NULL,buf,gw*4)!=0){SDL_DestroyTexture(t);t=0;}
+    if(t)SDL_SetTextureBlendMode(t,SDL_BLENDMODE_BLEND);
+    free(buf);if(!t){tg_failed=1;return 0;}
+    tg_c[slot]=(TgC){t,k,a,b,w,h,tg_stamp,bytes};tg_bytes+=bytes;return t;
+}
 static void tg_blit(SDL_Texture *t, int cx, int cy, int w, int h, int alpha){ if(!t) return; SDL_SetTextureAlphaMod(t,(Uint8)alpha); SDL_Rect d={cx-w/2,cy-h/2,w,h}; SDL_RenderCopy(ren,t,NULL,&d); }

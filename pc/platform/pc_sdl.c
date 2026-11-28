@@ -4,6 +4,13 @@
 // The game itself (the C code from the GBA) does not know any of this. It still thinks it is a GBA; pc_hw.c calls plat_frame() once per game frame (60 a second).
 #define _GNU_SOURCE
 #include <SDL.h>
+#ifdef PC_ANDROID
+#include <android/log.h>
+#include <unistd.h>
+#include <jni.h>
+#include <errno.h>
+#include <SDL_system.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +19,7 @@
 #include "pc_plat.h"
 #include "pc_net.h"
 extern int pc_mouse_x, pc_mouse_y, pc_mouse_b, pc_mouse_wheel;
+extern void sg_cache_set_cap_mb(int mb);
 extern void sg_cache_trim(void);      // pc_sprgen.c: give the sprite cache back (Android low memory)
 
 extern int pc_vid3d, pc_ships_mode, pc_armada_n, pc_quality; extern int pc_q_auto(void), pc_q_cur(void);
@@ -25,6 +33,7 @@ static const char *bname[NB]={"A","B","SELECT","START","RIGHT","LEFT","UP","DOWN
 typedef struct {
     int ships, armada, textsize, contrast, mouse, video3d, quality, fullscreen, scale_mode, vsync, show_fps, volume, mute, pause_unfocus, rumble, deadzone, max_mp;
     int kb[NB][2]; int pad[NB]; int win_w, win_h;
+    int mobile_mode, pad_style; // AUTO / BATTERY / FULL and AUTO / SIMPLE / DETAILED
 } Cfg;
 enum { SM_CRISP, SM_SMOOTH, SM_COUNT };
 static Cfg C;
@@ -34,6 +43,10 @@ static int g_a38;      // patch 38: set when the settings file already carries t
 enum { TC_DPAD, TC_A, TC_B, TC_L, TC_R, TC_SEL, TC_STA, TC_MENU, TC_C, TC_X, TC_Y, TC_Z, TC_N };
 typedef struct { int set, x, y, s; } TPos;      // set: the player moved it; x,y: centre in 1/1000 of the window width/height; s: size in percent (0 = 100)
 static TPos g_tl[2][TC_N]; static int g_talpha=80, g_t6=1, g_thaptic=1, g_tsnap;      // opacity in percent; 1 = the 6 button pad (0 = 3 button); haptics on
+#ifdef PC_ANDROID
+static unsigned pad_report_epoch;
+static int pad_report_visible;
+#endif
 static int g_touch, g_thide;      // g_touch: the pad exists (1 Android, 2 PC preview with --touch); g_thide: a keyboard or gamepad was used, the pad is hidden until the next touch
 static const char *const tl_key[TC_N]={"dpad","a","b","l","r","sel","sta","menu","c","x","y","z"};
 static void tl_save(FILE *f){
@@ -66,10 +79,26 @@ static void cfg_defaults(void){
         SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,SDL_CONTROLLER_BUTTON_LEFTSHOULDER};
     memcpy(C.pad,pad,sizeof pad);
 }
+#ifdef PC_ANDROID
+static int cfg_finish(FILE *f,const char *tmp,const char *dest){
+    int ok=!ferror(f)&&fflush(f)==0;
+    if(ok&&fsync(fileno(f))!=0)ok=0;
+    if(fclose(f)!=0)ok=0;
+    if(ok&&rename(tmp,dest)==0)return 1;
+    remove(tmp);return 0;
+}
+#endif
 static void cfg_save(void){
+#ifdef PC_ANDROID
+    char tmp[1200];int n=snprintf(tmp,sizeof tmp,"%s.tmp",g_cfgpath);
+    if(n<0||(size_t)n>=sizeof tmp)return;
+    FILE *f=fopen(tmp,"w");if(!f)return;
+#else
     FILE *f=fopen(g_cfgpath,"w"); if(!f) return;
+#endif
     fprintf(f,"# BUGSTAR PC settings (edit in the game: press Esc). scale_mode: 0 crisp, 1 smooth\n");
     tl_save(f);
+    fprintf(f,"mobile_mode=%d\npad_style=%d\n",C.mobile_mode,C.pad_style);
 #ifdef PC_ANDROID
     fprintf(f,"android38=1\n");      // patch 38
 #endif
@@ -77,7 +106,11 @@ static void cfg_save(void){
         C.ships,C.armada,C.textsize,C.contrast,C.mouse,C.video3d,C.quality,C.fullscreen,C.scale_mode,C.vsync,C.show_fps,C.volume,C.mute,C.pause_unfocus,C.rumble,C.deadzone,C.max_mp,C.win_w,C.win_h);
     for(int i=0;i<NB;i++){ fprintf(f,"key_%s=%s,%s\n",bname[i],C.kb[i][0]?SDL_GetScancodeName(C.kb[i][0]):"",C.kb[i][1]?SDL_GetScancodeName(C.kb[i][1]):"");
         fprintf(f,"pad_%s=%s\n",bname[i],SDL_GameControllerGetStringForButton(C.pad[i])?SDL_GameControllerGetStringForButton(C.pad[i]):""); }
+#ifdef PC_ANDROID
+    if(!cfg_finish(f,tmp,g_cfgpath))fprintf(stderr,"settings write failed; prior settings retained\n");
+#else
     fclose(f);
+#endif
 }
 static void cfg_load(void){
     FILE *f=fopen(g_cfgpath,"r"); if(!f) return; char ln[256];
@@ -88,6 +121,7 @@ static void cfg_load(void){
         int v=atoi(e);
         #define I(nm,fld,lo,hi) if(!strcmp(ln,nm)){ C.fld = v<lo?lo:v>hi?hi:v; continue; }
         I("ships",ships,0,2) I("armada",armada,0,3) I("textsize",textsize,0,2) I("contrast",contrast,0,1) I("mouse",mouse,0,1) I("video3d",video3d,0,3) I("quality",quality,0,3) I("fullscreen",fullscreen,0,1) I("scale_mode",scale_mode,0,SM_COUNT-1) I("vsync",vsync,0,1) I("show_fps",show_fps,0,1) I("volume",volume,0,100) I("mute",mute,0,1)
+        I("mobile_mode",mobile_mode,0,2) I("pad_style",pad_style,0,2)
         I("pause_unfocus",pause_unfocus,0,1) I("rumble",rumble,0,1) I("deadzone",deadzone,5,80) I("max_mp",max_mp,0,40) I("win_w",win_w,240,16384) I("win_h",win_h,160,16384)
         if(!strncmp(ln,"key_",4)){ for(int i=0;i<NB;i++) if(!strcmp(ln+4,bname[i])){ char *c=strchr(e,','); char a[64]="",b[64]=""; if(c){ *c=0; snprintf(b,sizeof b,"%s",c+1); } snprintf(a,sizeof a,"%s",e);
                 C.kb[i][0]=a[0]?SDL_GetScancodeFromName(a):0; C.kb[i][1]=b[0]?SDL_GetScancodeFromName(b):0; } }
@@ -101,9 +135,10 @@ static void cfg_load(void){
 // ------------------------------------------------------------------------------------------------ state
 static SDL_Window *win; static SDL_Renderer *ren; static SDL_Texture *tex, *fonttex;
 static int tex_w, tex_h, tex_linear; static uint32_t *pix; static size_t pix_cap;
+static int shot_pending;
 static int menu_open, menu_page, menu_sel, menu_wait;      // menu_wait: 1 = waiting for a key to bind, 2 = for a pad button
 static int menu_slot;                                      // which key slot (0/1) a bind goes into
-static uint64_t t_freq; static double fps_show; static int fps_n; static uint64_t fps_t0;      // (pacing state: see 'the frame' below)
+static uint64_t t_freq; static double fps_show,tick_show; static int fps_n,present_n; static uint64_t fps_t0;      // (pacing state: see 'the frame' below)
 static char toast[80]; static uint64_t toast_until;
 static SDL_GameController *pad; static int pad_rumble_ok;
 static SDL_AudioDeviceID adev; static const char *g_autoshot_path; static long g_autoshot_frame=-1; static int g_headless_audio;
@@ -125,56 +160,246 @@ static void chunk(FILE*f,const char*t,const uint8_t*d,uint32_t n){ uint8_t h[8];
 static int png_write(const char *path, const uint32_t *px, int w, int h, int alpha);
 int plat_write_png(const char *path, const uint32_t *xrgb, int w, int h){ return png_write(path,xrgb,w,h,0); }
 int plat_write_png_rgba(const char *path, const uint32_t *argb, int w, int h){ return png_write(path,argb,w,h,1); }
+// Bounded-memory PNG encoder. A single zlib stream spans multiple IDAT
+// chunks. Stored DEFLATE blocks need only 32 KiB, regardless of screen size.
 static int png_write(const char *path, const uint32_t *xrgb, int w, int h, int alpha){
-    if(!crc_t[1]) crc_init(); int bpp=alpha?4:3;
-    FILE *f=fopen(path,"wb"); if(!f) return 0;
-    static const uint8_t sig[8]={137,80,78,71,13,10,26,10}; fwrite(sig,1,8,f);
-    uint8_t ih[13]; be32(ih,w); be32(ih+4,h); ih[8]=8; ih[9]=alpha?6:2; ih[10]=0; ih[11]=0; ih[12]=0; chunk(f,"IHDR",ih,13);
-    size_t rowb=(size_t)w*bpp+1, raw=rowb*h; uint8_t *rb=malloc(raw); 
-    for(int y=0;y<h;y++){ uint8_t *r=rb+y*rowb; r[0]=0; for(int x=0;x<w;x++){ uint32_t p=xrgb[(size_t)y*w+x]; r[1+x*bpp]=p>>16; r[2+x*bpp]=p>>8; r[3+x*bpp]=p; if(alpha) r[4+x*bpp]=p>>24; } }
-    // zlib stream of stored blocks
-    size_t nblk=(raw+65534)/65535; uint8_t *z=malloc(raw+nblk*5+6+16); size_t zn=0; z[zn++]=0x78; z[zn++]=0x01;
-    uint32_t a=1,b=0; for(size_t i=0;i<raw;i++){ a=(a+rb[i])%65521; b=(b+a)%65521; }
-    for(size_t o=0;o<raw;){ size_t n=raw-o>65535?65535:raw-o; z[zn++]=(o+n>=raw); z[zn++]=n&255; z[zn++]=n>>8; z[zn++]=~n&255; z[zn++]=(~n>>8)&255; memcpy(z+zn,rb+o,n); zn+=n; o+=n; }
-    be32(z+zn,(b<<16)|a); zn+=4; chunk(f,"IDAT",z,(uint32_t)zn); chunk(f,"IEND",0,0); fclose(f); free(rb); free(z); return 1;
+    if(!path||!xrgb||w<=0||h<=0)return 0;
+    if((size_t)w>SIZE_MAX/sizeof(*xrgb)/(size_t)h)return 0;
+    int bpp=alpha?4:3;
+    if((size_t)w>(SIZE_MAX-1)/(size_t)bpp)return 0;
+    size_t rowb=(size_t)w*bpp+1;
+    if((size_t)h>SIZE_MAX/rowb)return 0;
+    size_t left=rowb*(size_t)h;
+    if(!crc_t[1])crc_init();
+    FILE *f=fopen(path,"wb");if(!f)return 0;
+    static const uint8_t sig[8]={137,80,78,71,13,10,26,10};
+    fwrite(sig,1,8,f);
+    uint8_t ih[13];be32(ih,w);be32(ih+4,h);ih[8]=8;ih[9]=alpha?6:2;ih[10]=ih[11]=ih[12]=0;
+    chunk(f,"IHDR",ih,13);
+    const uint8_t zh[2]={0x78,0x01};chunk(f,"IDAT",zh,2);
+    uint8_t block[32768+5];uint32_t a=1,b=0;
+    size_t col=0,at=0;int channel=0;
+    static const unsigned shift[4]={16,8,0,24};
+    while(left&&!ferror(f)){
+        unsigned n=left>32768?32768:(unsigned)left;
+        block[0]=n==left;block[1]=(uint8_t)n;block[2]=(uint8_t)(n>>8);
+        unsigned inv=n^65535u;block[3]=(uint8_t)inv;block[4]=(uint8_t)(inv>>8);
+        for(unsigned i=0;i<n;i++){
+            uint8_t v=0;
+            if(col){v=(uint8_t)(xrgb[at]>>shift[channel]);
+                if(++channel==bpp){channel=0;at++;}
+            }
+            if(++col==rowb)col=0;
+            block[5+i]=v;
+            a+=v;if(a>=65521)a-=65521;
+            b+=a;if(b>=65521)b-=65521;
+        }
+        chunk(f,"IDAT",block,n+5);left-=n;
+    }
+    uint8_t adler[4];be32(adler,(b<<16)|a);
+    if(!left&&!ferror(f)){chunk(f,"IDAT",adler,4);chunk(f,"IEND",0,0);}
+    int ok=!left&&!ferror(f)&&fflush(f)==0;
+    if(fclose(f)!=0)ok=0;
+    return ok;
 }
+
+#ifdef PC_ANDROID
+// Export format: 8-byte identifier, big-endian CRC32, exact 32 KiB SRAM.
+// The picker never writes the live save. Apply a verified staged export
+// before the game's normal SRAM initialization on the next fresh process.
+#define TRANSFER_SIZE 32768
+static int transfer_decode(FILE *f,uint8_t *out){
+    const uint8_t magic[8]={'B','G','S','T','A','R','1','\n'};
+    uint8_t head[12];
+    if(fread(head,1,sizeof head,f)!=sizeof head||memcmp(head,magic,8))return 0;
+    if(fread(out,1,TRANSFER_SIZE,f)!=TRANSFER_SIZE||fgetc(f)!=EOF||ferror(f))return 0;
+    uint32_t want=((uint32_t)head[8]<<24)|((uint32_t)head[9]<<16)|((uint32_t)head[10]<<8)|head[11];
+    if(!crc_t[1])crc_init();
+    return (crc_upd(0xffffffffu,out,TRANSFER_SIZE)^0xffffffffu)==want;
+}
+static int transfer_finish(FILE *f,const char *tmp,const char *dest,int ok){
+    if(ferror(f)||fflush(f)!=0)ok=0;
+    if(ok&&fsync(fileno(f))!=0)ok=0;
+    if(fclose(f)!=0)ok=0;
+    if(ok&&rename(tmp,dest)==0)return 1;
+    remove(tmp);return 0;
+}
+static int transfer_backup(const char *save,const char *tmp,const char *backup){
+    FILE *in=fopen(save,"rb");
+    if(!in)return errno==ENOENT;
+    FILE *out=fopen(tmp,"wb");if(!out){fclose(in);return 0;}
+    uint8_t buf[4096];size_t n;int ok=1;
+    while((n=fread(buf,1,sizeof buf,in))!=0)if(fwrite(buf,1,n,out)!=n){ok=0;break;}
+    if(ferror(in))ok=0;
+    fclose(in);
+    return transfer_finish(out,tmp,backup,ok);
+}
+static int transfer_apply(const char *save){
+    char stage[1200],used[1200],candidate[1200],bak[1200],btmp[1200];
+    if(strlen(save)>sizeof stage-32)return -1;
+    snprintf(stage,sizeof stage,"%s.restore",save);
+    snprintf(used,sizeof used,"%s.restore.used",save);
+    snprintf(candidate,sizeof candidate,"%s.restore.new",save);
+    snprintf(bak,sizeof bak,"%s.before-import",save);
+    snprintf(btmp,sizeof btmp,"%s.before-import.tmp",save);
+    FILE *f=fopen(stage,"rb");if(!f)return errno==ENOENT?0:-1;
+    uint8_t *raw=malloc(TRANSFER_SIZE);
+    int ok=raw&&transfer_decode(f,raw);fclose(f);
+    if(!ok){free(raw);return -1;}
+    // Keep the complete previous file, including unusual legacy sizes.
+    if(!transfer_backup(save,btmp,bak)){free(raw);return -1;}
+    f=fopen(candidate,"wb");if(!f){free(raw);return -1;}
+    ok=fwrite(raw,1,TRANSFER_SIZE,f)==TRANSFER_SIZE;free(raw);
+    if(!ok||ferror(f)||fflush(f)!=0||fsync(fileno(f))!=0)ok=0;
+    if(fclose(f)!=0)ok=0;
+    if(!ok){remove(candidate);return -1;}
+    // Consume the pending marker BEFORE replacing the live save. A crash
+    // during this small interval leaves the original and staged copy intact,
+    // never repeatedly overwrites new progress on every launch.
+    if(rename(stage,used)!=0){remove(candidate);return -1;}
+    if(rename(candidate,save)!=0){remove(candidate);rename(used,stage);return -1;}
+    remove(used);
+    return 1;
+}
+// Recovery files may be larger than raw cartridge SRAM (legacy padding).
+// Read exactly the cartridge region and never modify the recovery copy.
+static int transfer_recovery_read(const char *save,uint8_t *raw){
+    char path[1200];int n=snprintf(path,sizeof path,"%s.before-import",save);
+    if(n<0||(size_t)n>=sizeof path)return 0;
+    FILE *f=fopen(path,"rb");if(!f)return 0;
+    int ok=fread(raw,1,TRANSFER_SIZE,f)==TRANSFER_SIZE&&!ferror(f);
+    fclose(f);return ok;
+}
+static int transfer_result;
+static void android_save_picker(int mode){
+    // 0: current SRAM, 1: restore, 2: export the previous recovery copy.
+    int importing=mode==1;
+    JNIEnv *env=(JNIEnv*)SDL_AndroidGetJNIEnv();
+    if(!env){say_toast("FILE PICKER UNAVAILABLE");return;}
+    jobject activity=(jobject)SDL_AndroidGetActivity();
+    if(!activity){say_toast("FILE PICKER UNAVAILABLE");return;}
+    jclass cls=(*env)->GetObjectClass(env,activity);
+    jmethodID method=cls?(*env)->GetMethodID(env,cls,"beginSaveTransfer","(ILjava/lang/String;[B)V"):0;
+    jstring path=0;jbyteArray data=0;uint8_t *recovery=0;
+    int available=1;
+    if(mode==2){
+        recovery=malloc(TRANSFER_SIZE);
+        available=recovery&&transfer_recovery_read(g_savepath,recovery);
+    }
+    if(method&&available){
+        path=(*env)->NewStringUTF(env,g_savepath);
+        if(!importing&&path&&!(*env)->ExceptionCheck(env)){
+            data=(*env)->NewByteArray(env,TRANSFER_SIZE);
+            if(data)(*env)->SetByteArrayRegion(env,data,0,TRANSFER_SIZE,
+                mode==2?(const jbyte*)recovery:(const jbyte*)(uintptr_t)GBAA(0x0E000000u));
+        }
+        if(path&&(importing||data)&&!(*env)->ExceptionCheck(env))
+            (*env)->CallVoidMethod(env,activity,method,(jint)mode,path,data);
+    }
+    if(!method||!path||(!importing&&!data)||(*env)->ExceptionCheck(env)){
+        if((*env)->ExceptionCheck(env))(*env)->ExceptionClear(env);
+        say_toast(!available?"NO COMPLETE RECOVERY COPY":"FILE PICKER UNAVAILABLE");
+    }
+    free(recovery);
+    if(data)(*env)->DeleteLocalRef(env,data);
+    if(path)(*env)->DeleteLocalRef(env,path);
+    if(cls)(*env)->DeleteLocalRef(env,cls);
+    (*env)->DeleteLocalRef(env,activity);
+}
+#endif
 // ------------------------------------------------------------------------------------------------ audio
 #define RING 16384
-static int16_t ring[RING*2]; static volatile unsigned rd_i, wr_i; static unsigned long underruns;
-static unsigned ring_fill(void){ return __atomic_load_n(&wr_i,__ATOMIC_ACQUIRE)-__atomic_load_n(&rd_i,__ATOMIC_ACQUIRE); }
-static void audio_cb(void *u, Uint8 *stream, int len){
-    int16_t *o=(int16_t*)stream; int n=len/4; unsigned r=__atomic_load_n(&rd_i,__ATOMIC_RELAXED), w=__atomic_load_n(&wr_i,__ATOMIC_ACQUIRE);
-    for(int i=0;i<n;i++){ if(r!=w){ o[i*2]=ring[(r%RING)*2]; o[i*2+1]=ring[(r%RING)*2+1]; r++; } else { o[i*2]=o[i*2+1]=0; underruns++; } }
-    __atomic_store_n(&rd_i,r,__ATOMIC_RELEASE);
-}
-static void audio_open(void){
-    if(g_no_audio) return;
-    SDL_AudioSpec want; SDL_zero(want); want.freq=PC_AUDIO_RATE; want.format=AUDIO_S16SYS; want.channels=2; want.samples=512; want.callback=audio_cb;
-    SDL_AudioSpec got; adev=SDL_OpenAudioDevice(NULL,0,&want,&got,0);
-    if(!adev){ fprintf(stderr,"audio: %s (the game runs without sound)\n",SDL_GetError()); return; }
-    if(got.freq!=PC_AUDIO_RATE||got.channels!=2||got.format!=AUDIO_S16SYS){ fprintf(stderr,"audio: unexpected format\n"); SDL_CloseAudioDevice(adev); adev=0; return; }
-    SDL_PauseAudioDevice(adev,0);
-}
-// patch 43: one game frame lasts 280896 / 16777216 s = 1/59.7275 s, which is 48000 * 280896 / 16777216 = 803.64 samples. The sound is made at exactly that rate (the fraction is carried
-// over), so the music and the effects run at the game's own speed. The audio device has its own clock, a few parts per million off: the ring's fill is steered back to AUDIO_TARGET by
-// at most AUDIO_TRIM samples a frame (1 percent), and when the ring is far too full / empty a frame of sound is skipped / padded. The sound never decides when the game steps.
 #define AUDIO_TARGET 1200
 #define AUDIO_TRIM 8
 #define AUDIO_HIGH 4000
-static uint64_t a_acc; static unsigned long a_skips, a_pads;
-static void audio_frame(void){          // make this frame's sound and queue it
-    int fill=(int)ring_fill();
-    { static long dbg=0; static int mn=1<<30,mx=0; if(getenv("BUGSTAR_AUDLOG")){ if(fill<mn)mn=fill; if(fill>mx)mx=fill; if(++dbg%100==0){ fprintf(stderr,"audfill min %d max %d underruns %lu pads %lu\n",mn,mx,underruns,a_pads); mn=1<<30; mx=0; } } }
-    a_acc += (uint64_t)PC_AUDIO_RATE*280896u; int n=(int)(a_acc>>24); a_acc &= 0xFFFFFFu;      // 16777216 = 2^24
-    if(adev){ int adj=(AUDIO_TARGET-fill)/48; if(adj>AUDIO_TRIM)adj=AUDIO_TRIM; if(adj<-AUDIO_TRIM)adj=-AUDIO_TRIM; n+=adj;
-              if(fill>AUDIO_HIGH){ n=0; a_skips++; } else if(fill<96){ n+=64; a_pads++; } }
-    static int16_t buf[2*1024]; if(n>1024) n=1024;
-    if(menu_open || g_paused_focus) { memset(buf,0,sizeof buf); }
-    else if(n>0) pc_psg_render(buf,n);
-    if(n>0 && !menu_open && !g_paused_focus && !C.mute && C.volume<100){ int g=C.volume*C.volume*256/10000; for(int i=0;i<n*2;i++) buf[i]=(int16_t)((buf[i]*g)>>8); }
-    if(C.mute) memset(buf,0,sizeof buf);
-    if(adev){ unsigned w=__atomic_load_n(&wr_i,__ATOMIC_RELAXED); for(int i=0;i<n;i++){ ring[(w%RING)*2]=buf[i*2]; ring[(w%RING)*2+1]=buf[i*2+1]; w++; } __atomic_store_n(&wr_i,w,__ATOMIC_RELEASE); }
-    if(g_wav && n>0){ fwrite(buf,4,n,g_wav); g_wav_n+=n; }
+static int16_t ring[RING*2];static volatile unsigned rd_i,wr_i;
+static unsigned long underruns;
+static int audio_suspended=1;
+static uint64_t a_acc;
+static unsigned long a_skips,a_pads;
+// Keep synthesis at exactly the emulated frame rate. Clock correction is
+// applied solely to the speaker queue, not to the PSG or recorded WAV.
+static int audio_tick_samples(uint64_t *acc){
+    *acc+=(uint64_t)PC_AUDIO_RATE*280896u;
+    int n=(int)(*acc>>24);*acc&=0xffffffu;return n;
+}
+static int audio_queue_samples(int nominal,unsigned fill){
+    if(fill>AUDIO_HIGH)return 0;
+    int adj=(AUDIO_TARGET-(int)fill)/48;
+    if(adj>AUDIO_TRIM)adj=AUDIO_TRIM;
+    if(adj<-AUDIO_TRIM)adj=-AUDIO_TRIM;
+    int n=nominal+adj+(fill<96?64:0);
+    if(n<0)n=0;
+    if((unsigned)n>RING-fill)n=(int)(RING-fill);
+    return n;
+}
+static int16_t audio_resample(const int16_t *src,int nominal,int count,int i,int ch){
+    // Linear interpolation with integer arithmetic; final sample is clamped.
+    if(count<=0||nominal<=0)return 0;
+    unsigned p=(unsigned)i*(unsigned)nominal,lo=p/(unsigned)count,frac=p%(unsigned)count;
+    unsigned hi=lo+1<(unsigned)nominal?lo+1:lo;
+    int a=src[lo*2+ch],b=src[hi*2+ch];
+    return (int16_t)(a+(b-a)*(int)frac/count);
+}
+static unsigned ring_fill(void){return __atomic_load_n(&wr_i,__ATOMIC_ACQUIRE)-__atomic_load_n(&rd_i,__ATOMIC_ACQUIRE);}
+static unsigned long audio_underruns(void){return __atomic_load_n(&underruns,__ATOMIC_RELAXED);}
+static void audio_cb(void *u,Uint8 *stream,int len){
+    (void)u;memset(stream,0,len);int16_t *o=(int16_t*)stream;int n=len/4;
+    unsigned r=__atomic_load_n(&rd_i,__ATOMIC_RELAXED),w=__atomic_load_n(&wr_i,__ATOMIC_ACQUIRE),miss=0;
+    for(int i=0;i<n;i++){
+        if(r!=w){o[i*2]=ring[(r%RING)*2];o[i*2+1]=ring[(r%RING)*2+1];r++;}
+        else miss++;
+    }
+    if(miss)__atomic_fetch_add(&underruns,miss,__ATOMIC_RELAXED);
+    __atomic_store_n(&rd_i,r,__ATOMIC_RELEASE);
+}
+static void audio_suspend(void){
+    if(!adev||audio_suspended)return;
+    SDL_PauseAudioDevice(adev,1);audio_suspended=1;
+}
+static void audio_resume(void){
+    if(!adev||!audio_suspended)return;
+    // Device starts paused. Reset the queue under the callback lock, then
+    // prime 512 silent frames (10.7 ms at 48 kHz) to avoid stale audio.
+    SDL_LockAudioDevice(adev);
+    memset(ring,0,512*2*sizeof(*ring));
+    __atomic_store_n(&rd_i,0,__ATOMIC_RELEASE);
+    __atomic_store_n(&wr_i,512,__ATOMIC_RELEASE);
+    SDL_UnlockAudioDevice(adev);
+    audio_suspended=0;SDL_PauseAudioDevice(adev,0);
+}
+static void audio_open(void){
+    if(g_no_audio)return;
+    SDL_AudioSpec want;SDL_zero(want);want.freq=PC_AUDIO_RATE;want.format=AUDIO_S16SYS;want.channels=2;want.samples=512;want.callback=audio_cb;
+    SDL_AudioSpec got;adev=SDL_OpenAudioDevice(NULL,0,&want,&got,0);
+    if(!adev){fprintf(stderr,"audio: %s (the game runs without sound)\n",SDL_GetError());return;}
+    if(got.freq!=PC_AUDIO_RATE||got.channels!=2||got.format!=AUDIO_S16SYS){fprintf(stderr,"audio: unexpected format\n");SDL_CloseAudioDevice(adev);adev=0;return;}
+    audio_suspended=1;audio_resume();
+}
+static void audio_frame(void){
+    unsigned fill=ring_fill();
+    if(menu_open||g_paused_focus||g_bg)return;
+    {static long dbg=0;static int mn=1<<30,mx=0;if(getenv("BUGSTAR_AUDLOG")){if((int)fill<mn)mn=(int)fill;if((int)fill>mx)mx=(int)fill;if(++dbg%100==0){fprintf(stderr,"audfill min %d max %d underruns %lu pads %lu\n",mn,mx,audio_underruns(),a_pads);mn=1<<30;mx=0;}}}
+    int nominal=audio_tick_samples(&a_acc);
+    static int16_t buf[2*1024];
+    if(nominal<=0||nominal>1024)return;
+    // Always advance the synth, even when the output device is absent,
+    // stalled, muted or its queue is full.
+    pc_psg_render(buf,nominal);
+    if(C.mute)memset(buf,0,(size_t)nominal*4);
+    else if(C.volume<100){int gain=C.volume*C.volume*256/10000;for(int i=0;i<nominal*2;i++)buf[i]=(int16_t)((buf[i]*gain)>>8);}
+    if(adev&&!audio_suspended){
+        int n=audio_queue_samples(nominal,fill);
+        if(!n)a_skips++;else if(fill<96)a_pads++;
+        unsigned w=__atomic_load_n(&wr_i,__ATOMIC_RELAXED);
+        for(int i=0;i<n;i++){
+            ring[(w%RING)*2]=audio_resample(buf,nominal,n,i,0);
+            ring[(w%RING)*2+1]=audio_resample(buf,nominal,n,i,1);
+            w++;
+        }
+        __atomic_store_n(&wr_i,w,__ATOMIC_RELEASE);
+    }
+    if(g_wav){fwrite(buf,4,nominal,g_wav);g_wav_n+=nominal;}
 }
 static void wav_close(void){
     if(!g_wav) return; uint32_t dl=(uint32_t)(g_wav_n*4), v; fseek(g_wav,0,SEEK_SET); fwrite("RIFF",1,4,g_wav); v=36+dl; fwrite(&v,4,1,g_wav); fwrite("WAVEfmt ",1,8,g_wav); v=16; fwrite(&v,4,1,g_wav);
@@ -215,11 +440,48 @@ static int tex_ensure(int w, int h, int linear){
     if(tex) SDL_DestroyTexture(tex);
     tex=next; tex_w=w; tex_h=h; tex_linear=linear; return 1;
 }
-#ifdef PC_ANDROID
-static int cap_pixels(void){ // bound temporary renderer RAM even if old settings requested 40 megapixels
-    int want=C.max_mp ? C.max_mp*1000000 : 450000;
-    return want>650000 ? 650000 : want;
+// The mobile budget is independent of game simulation speed. Even FULL
+// honors the hard memory ceilings on 32-bit / low-RAM devices.
+typedef struct { int battery, pixels, divisor, simple; } MobileBudget;
+static MobileBudget mobile_budget(int mode,int low,int pressure,int padstyle,int maxmp){
+    MobileBudget b;
+    b.battery=pressure||mode==1||(mode==0&&low);
+    b.pixels=b.battery?38400:low?153600:maxmp>0?650000:450000;
+    b.divisor=b.battery?2:1;
+    b.simple=pressure||padstyle==1||(padstyle==0&&b.battery);
+    return b;
 }
+// AUTO is deliberately conservative: a sustained slow rendering window
+// lowers resolution first, then enables the battery profile. No automatic
+// up/down oscillation; changing the user's mode resets the session governor.
+typedef struct { unsigned count,slow; int level; } MobileGovernor;
+static int mobile_governor_sample(MobileGovernor *g,int eligible,double ms){
+    if(!eligible || !(ms>=0.0 && ms<1000.0)){
+        g->count=g->slow=0;return 0;
+    }
+    if(g->level>=2)return 0;
+    g->count++;
+    if(ms>=13.5)g->slow++;
+    if(g->count<60)return 0;
+    int lower=g->slow>=30;
+    g->count=g->slow=0;
+    if(lower){g->level++;return 1;}
+    return 0;
+}
+static MobileBudget mobile_auto_budget(MobileBudget b,int mode,int low,int pressure,int style,int level){
+    if(mode!=0||b.battery)return b;
+    if(level>=2)return mobile_budget(1,low,pressure,style,0);
+    if(level==1&&b.pixels>153600)b.pixels=153600;
+    return b;
+}
+#ifdef PC_ANDROID
+static int g_low_ram,g_mem_pressure; // session-only; do not rewrite preferences
+static MobileGovernor g_governor;
+static MobileBudget current_budget(void){
+    MobileBudget b=mobile_budget(C.mobile_mode,g_low_ram,g_mem_pressure,C.pad_style,C.max_mp);
+    return mobile_auto_budget(b,C.mobile_mode,g_low_ram,g_mem_pressure,C.pad_style,g_governor.level);
+}
+static int cap_pixels(void){return current_budget().pixels;}
 #else
 static int cap_pixels(void){
     int want=C.max_mp ? C.max_mp*1000000 : 2400000;
@@ -229,25 +491,35 @@ static int cap_pixels(void){
 static void present_game(int with_overlay);
 static void touch_draw(void);          // patch 30.1: defined further down (clang refuses an implicit declaration)
 static void frame_geometry(int *W, int *H, SDL_Rect *dst, int *linear, int *smooth){
-    int dw=dw_, dh=dh_; if(dw<240)dw=240; if(dh<160)dh=160;
+    int dw=dw_>0?dw_:1, dh=dh_>0?dh_:1, area=dh;
+    // A tall portrait screen has room for the game ABOVE the default touch
+    // controls. Square/foldable windows keep the original overlay layout.
+    if(g_touch && !g_thide && dh>dw){
+        int u=dw/7; if(u<12)u=12;
+        int spare=dh-6*u;
+        if(spare>=dw*2/3 && spare>=160) area=spare;
+    }
     int cap=cap_pixels();
-    if(C.scale_mode==SM_CRISP){
-        int k=dw/240<dh/160?dw/240:dh/160; if(k<1)k=1;
-        int r=k; while(r>1 && ((k%r)!=0 || (long)r*r*38400>cap)) r--;      // render at r, upscale by k/r (a whole number): still sharp
+    if(C.scale_mode==SM_CRISP && dw>=240 && area>=160){
+        int k=dw/240<area/160?dw/240:area/160;
+        int r=k; while(r>1 && ((k%r)!=0 || (long)r*r*38400>cap)) r--;
         *W=240*r; *H=160*r; dst->w=240*k; dst->h=160*k; *linear=0; *smooth=0;
     } else {
-        double s=fmin(dw/240.0,dh/160.0); int w=(int)lround(240*s), h=(int)lround(160*s); dst->w=w; dst->h=h; *smooth=1; *linear=0;
-        if((long)w*h>cap){ double f=sqrt((double)cap/((double)w*h)); *W=(int)(w*f)&~1; *H=(int)(h*f)&~1; if(*W<240)*W=240; if(*H<160)*H=160; *linear=1; }
+        double s=fmin(dw/240.0,area/160.0); int w=(int)lround(240*s), h=(int)lround(160*s);
+        if(w<1)w=1; if(h<1)h=1; if(w>dw)w=dw; if(h>area)h=area;
+        dst->w=w; dst->h=h; *smooth=1; *linear=0;
+        if(w<240 || h<160){ *W=240; *H=160; *linear=1; }
+        else if((double)w*h>cap){ double f=sqrt((double)cap/((double)w*h)); *W=(int)(w*f)&~1; *H=(int)(h*f)&~1; if(*W<240)*W=240; if(*H<160)*H=160; *linear=1; }
         else { *W=w; *H=h; }
     }
-    dst->x=(dw-dst->w)/2; dst->y=(dh-dst->h)/2;
+    dst->x=(dw-dst->w)/2; dst->y=(area-dst->h)/2;
 }
 // ---- font / text overlay
 static void font_init(void){
     const int cw=4, ch=6; SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,cw*16,ch*8,32,SDL_PIXELFORMAT_ARGB8888); if(!s) return; SDL_FillRect(s,0,0);
     uint32_t *p=s->pixels;
     for(int c=32;c<128;c++){ uint16_t g=pc_font_glyph(c); int cx=(c&15)*cw, cy=(c>>4)*ch; for(int k=0;k<15;k++) if(g&(1<<(14-k))) p[(cy+k/3)*(cw*16)+cx+k%3]=0xFFFFFFFF; }
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"nearest"); fonttex=SDL_CreateTextureFromSurface(ren,s); SDL_SetTextureBlendMode(fonttex,SDL_BLENDMODE_BLEND); SDL_FreeSurface(s);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,"nearest"); fonttex=SDL_CreateTextureFromSurface(ren,s); if(fonttex) SDL_SetTextureBlendMode(fonttex,SDL_BLENDMODE_BLEND); SDL_FreeSurface(s);
 }
 static int gs_;                                                  // glyph scale in real pixels
 static int text_w(const char *s){ return (int)strlen(s)*4*gs_; }
@@ -260,13 +532,17 @@ static void rect_fill(int x,int y,int w,int h,uint32_t col,int a){ SDL_SetRender
 // ---- the options screen
 enum { P_MAIN, P_VIDEO, P_AUDIO, P_CONTROLS, P_PAD, P_ABOUT, P_ACCESS, P_HELP, P_TOUCH, P_TLEGEND, P_LAN, P_COUNT };
 typedef struct { int kind; const char *label; int *val; int lo, hi, step; const char *const *names; int action; } Item;   // kind 0 action, 1 choice/toggle, 2 slider
-enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_REBIND=1000 };
+enum { A_RESUME=1, A_VIDEO, A_AUDIO, A_CONTROLS, A_PAD, A_ABOUT, A_QUIT, A_BACK, A_FULLSCREEN, A_VSYNC, A_RESETKEYS, A_RESETPAD, A_WINSIZE, A_SHOT, A_MAINBACK, A_ACCESS, A_TOUCHEDIT, A_HELP, A_TOUCH, A_TLEGEND, A_TRESET, A_LAN, A_LAN_IP, A_LAN_HOST, A_LAN_JOIN, A_LAN_LEAVE, A_MOBILE_MODE, A_SAVE_EXPORT, A_SAVE_IMPORT, A_SAVE_RECOVERY, A_REBIND=1000 };
 static const char *const onoff[]={"OFF","ON"}; static const char *const scalenames[]={"CRISP (WHOLE NUMBERS)","SMOOTH (FITS THE WINDOW)"};
 static const char *const tsnames[]={"NORMAL","LARGE","HUGE"}; static const char *const hcnames[]={"OFF","ON"};
 static const char *const shnames[]={"CLASSIC (GBA)","NATIVE","ULTRA"}; static const char *const arnames[]={"OFF","500 SHIPS","2,000 SHIPS","10,000 SHIPS"};
 static const char *const v3names[]={"AUTO","NATIVE (SMOOTH)","CLASSIC (GBA)","ULTRA (BLOOM)"}; static const char *const qnames[]={"AUTO (ADAPTS TO SPEED)","LOW (FASTEST)","MEDIUM","HIGH (FULL DETAIL)"};
 static const char *const mpnames[]={"AUTO","1 MEGAPIXEL","2","3","4","6","8"}; static int mp_choice;
 static const char *const t6names[]={"3 BUTTON PAD","6 BUTTON PAD"};
+static const char *const padstyles[]={"AUTO","SIMPLE (LOW MEMORY)","DETAILED"};
+#ifdef PC_ANDROID
+static const char *const mobilemodes[]={"AUTO","BATTERY / LOW SPEC","FULL DETAIL"};
+#endif
 /* Optional LAN control: no shell, discovery, NAT or background threads. */
 static int lan_ui_coop=1, lan_ui_port=0, lan_ip_edit;
 static char lan_ui_ip[24]="127.0.0.1";
@@ -304,15 +580,25 @@ static void menu_build(Item *it, int *n){
     switch(menu_page){
     case P_MAIN: it[k++]=(Item){0,"RESUME",0,0,0,0,0,A_RESUME}; it[k++]=(Item){0,"VIDEO",0,0,0,0,0,A_VIDEO}; it[k++]=(Item){0,"AUDIO",0,0,0,0,0,A_AUDIO}; it[k++]=(Item){0,"ACCESSIBILITY AND MOUSE",0,0,0,0,0,A_ACCESS};
         it[k++]=(Item){0,"KEYBOARD",0,0,0,0,0,A_CONTROLS}; it[k++]=(Item){0,"GAMEPAD",0,0,0,0,0,A_PAD}; if(g_touch) it[k++]=(Item){0,"TOUCH PAD",0,0,0,0,0,A_TOUCH}; it[k++]=(Item){0,"MULTIPLAYER LAN",0,0,0,0,0,A_LAN}; it[k++]=(Item){0,"SCREENSHOT",0,0,0,0,0,A_SHOT};
-        it[k++]=(Item){0,"HOW TO PLAY",0,0,0,0,0,A_HELP}; it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT}; it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
-    case P_VIDEO: it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,3,1,v3names,0}; it[k++]=(Item){1,"QUALITY",&C.quality,0,3,1,qnames,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
+        it[k++]=(Item){0,"HOW TO PLAY",0,0,0,0,0,A_HELP}; it[k++]=(Item){0,"ABOUT AND FOLDERS",0,0,0,0,0,A_ABOUT};
+#ifdef PC_ANDROID
+        it[k++]=(Item){0,"EXPORT CARTRIDGE SAVE",0,0,0,0,0,A_SAVE_EXPORT};
+        it[k++]=(Item){0,"RESTORE CARTRIDGE SAVE",0,0,0,0,0,A_SAVE_IMPORT};
+        it[k++]=(Item){0,"EXPORT PREVIOUS SAVE",0,0,0,0,0,A_SAVE_RECOVERY};
+#endif
+        it[k++]=(Item){0,"QUIT GAME",0,0,0,0,0,A_QUIT}; break;
+    case P_VIDEO:
+#ifdef PC_ANDROID
+        it[k++]=(Item){1,"PHONE PERFORMANCE",&C.mobile_mode,0,2,1,mobilemodes,A_MOBILE_MODE};
+#endif
+        it[k++]=(Item){1,"FULLSCREEN",&C.fullscreen,0,1,1,onoff,A_FULLSCREEN}; it[k++]=(Item){1,"SCALING",&C.scale_mode,0,SM_COUNT-1,1,scalenames,0}; it[k++]=(Item){1,"3D VIEWS",&C.video3d,0,3,1,v3names,0}; it[k++]=(Item){1,"QUALITY",&C.quality,0,3,1,qnames,0}; it[k++]=(Item){1,"SHIPS",&C.ships,0,2,1,shnames,0}; it[k++]=(Item){1,"FAR BATTLE",&C.armada,0,3,1,arnames,0};
         it[k++]=(Item){1,"VSYNC",&C.vsync,0,1,1,onoff,A_VSYNC}; it[k++]=(Item){1,"MAX DRAW SIZE",&mp_choice,0,6,1,mpnames,0}; it[k++]=(Item){1,"SHOW FPS",&C.show_fps,0,1,1,onoff,0};
         it[k++]=(Item){1,"PAUSE WHEN UNFOCUSED",&C.pause_unfocus,0,1,1,onoff,0}; it[k++]=(Item){0,"WINDOW SIZE: NEXT",0,0,0,0,0,A_WINSIZE}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_ACCESS: it[k++]=(Item){1,"MENU TEXT SIZE",&C.textsize,0,2,1,tsnames,0}; it[k++]=(Item){1,"HIGH CONTRAST",&C.contrast,0,1,1,hcnames,0}; it[k++]=(Item){1,"MOUSE PLAYS THE GAME",&C.mouse,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_AUDIO: it[k++]=(Item){2,"VOLUME",&C.volume,0,100,5,0,0}; it[k++]=(Item){1,"MUTE",&C.mute,0,1,1,onoff,0}; it[k++]=(Item){1,"RUMBLE (GAMEPAD)",&C.rumble,0,1,1,onoff,0}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_CONTROLS: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+i}; it[k++]=(Item){0,"RESET KEYS",0,0,0,0,0,A_RESETKEYS}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_PAD: for(int i=0;i<NB;i++) it[k++]=(Item){0,bname[i],0,0,0,0,0,A_REBIND+i}; it[k++]=(Item){2,"STICK DEAD ZONE",&C.deadzone,5,80,5,0,0}; it[k++]=(Item){0,"RESET PAD",0,0,0,0,0,A_RESETPAD}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
-    case P_TOUCH: it[k++]=(Item){1,"PAD BUTTONS",&g_t6,0,1,1,t6names,0}; it[k++]=(Item){2,"OPACITY",&g_talpha,10,100,5,0,0}; it[k++]=(Item){1,"HAPTICS",&g_thaptic,0,1,1,onoff,0};
+    case P_TOUCH: it[k++]=(Item){1,"PAD STYLE",&C.pad_style,0,2,1,padstyles,0}; it[k++]=(Item){1,"PAD BUTTONS",&g_t6,0,1,1,t6names,0}; it[k++]=(Item){2,"OPACITY",&g_talpha,10,100,5,0,0}; it[k++]=(Item){1,"HAPTICS",&g_thaptic,0,1,1,onoff,0};
         it[k++]=(Item){0,"MOVE AND RESIZE BUTTONS",0,0,0,0,0,A_TOUCHEDIT}; it[k++]=(Item){0,"BUTTON LEGEND",0,0,0,0,0,A_TLEGEND}; it[k++]=(Item){0,"RESET LAYOUT",0,0,0,0,0,A_TRESET}; it[k++]=(Item){0,"BACK",0,0,0,0,0,A_MAINBACK}; break;
     case P_LAN:
         it[k++]=(Item){1,"MATCH TYPE",&lan_ui_coop,0,1,1,lan_modes,0};
@@ -340,6 +626,15 @@ static void menu_do(int act){
     int idx=act>=A_REBIND?act-A_REBIND:0; if(act>=A_REBIND) act=A_REBIND;
     switch(act){
     case A_RESUME: menu_open=0; cfg_save(); break;
+#ifdef PC_ANDROID
+    case A_SAVE_EXPORT: pc_save_flush(1);android_save_picker(0);break;
+    case A_SAVE_IMPORT: pc_save_flush(1);android_save_picker(1);break;
+    case A_SAVE_RECOVERY: android_save_picker(2);break;
+    case A_MOBILE_MODE:
+        g_governor=(MobileGovernor){0};
+        say_toast(C.mobile_mode==0?"AUTO PERFORMANCE RESET":C.mobile_mode==1?"BATTERY PROFILE":"FULL DETAIL PROFILE");
+        break;
+#endif
     case A_LAN: menu_page=P_LAN;menu_sel=0;break;
     case A_LAN_IP: lan_ip_edit=1;SDL_StartTextInput();say_toast("TYPE IPv4 ADDRESS - ENTER TO FINISH");break;
     case A_LAN_HOST: case A_LAN_JOIN:{
@@ -367,20 +662,147 @@ static void menu_do(int act){
         if(C.fullscreen){ C.fullscreen=0; } apply_video(); } break;
     case A_RESETKEYS: { Cfg d; Cfg s=C; cfg_defaults(); d=C; C=s; memcpy(C.kb,d.kb,sizeof C.kb); say_toast("KEYS RESET"); } break;
     case A_RESETPAD: { Cfg d; Cfg s=C; cfg_defaults(); d=C; C=s; memcpy(C.pad,d.pad,sizeof C.pad); say_toast("PAD RESET"); } break;
-    case A_SHOT: menu_open=0; g_autoshot_frame=-2; break;
+    case A_SHOT: menu_open=0; shot_pending=1; break;
     case A_REBIND: menu_wait = menu_page==P_PAD ? 2 : 1; menu_sel=idx; break;
     }
 }
+static int simple_pad(void);
 static const char *const *help_lines(void){       // (each line fits the narrowest panel: 32 letters)
     static const char *const lg[]={"MEGA PAD         GBA","D-PAD            D-PAD","B                A (OK)","A                B (BACK)","C                A (OK)","X                L","Y                R","Z                SELECT","START            START","MODE             OPTIONS","","3 BUTTON PAD: L R AT THE TOP,","MODE = SELECT, MENU AT THE TOP",0};
-    static const char *const tp[]={"THE ON-SCREEN PAD IS A MEGA PAD:","D-PAD, A B C, X Y Z, START, MODE","MODE OPENS THESE OPTIONS","","OPTIONS > TOUCH PAD: BUTTON LEGEND,","LAYOUT, SIZE, OPACITY, HAPTICS","","OPTIONS > VIDEO > 3D VIEWS:","CLASSIC IS THE LIGHTEST - NATIVE","AND ULTRA NEED A FAST PHONE","","THE GAME SAVES BY ITSELF.",0};
+    static const char *const tp[]={"WELCOME TO BUGSTAR!","TAP PLAY BELOW TO BEGIN.","D-PAD: MOVE AND TURN","B OR C: ACTION / CONFIRM","A: USE ITEM / BACK","X AND Y: L AND R","Z: SELECT (SPELLS / CAMERA)","START: GAME MENU","MODE: PHONE OPTIONS","","TAP A SETTING TO CHANGE IT.","LEFT HALF DECREASES; RIGHT INCREASES.","PREV / NEXT SHOW MORE SETTINGS.","TOUCH PAD: MOVE OR RESIZE BUTTONS.","SIMPLE PAD USES GAME BUTTON NAMES.","VIDEO: BATTERY MODE FOR SLOW PHONES.","THE GAME SAVES BY ITSELF.",0};
     static const char *const ln[]={"ARROWS OR WASD: MOVE AND TURN","X OR SPACE: A     Z OR K: B","Q: L      E: R","ENTER: START   BACKSPACE: SELECT","","ESC: THIS MENU   F11: FULLSCREEN","F12: SCREENSHOT   F3: FPS","","VIDEO > 3D VIEWS: CLASSIC IS THE","GBA LOOK - NATIVE AND ULTRA ARE","SHARP AT ANY WINDOW SIZE","A GAMEPAD WORKS: BACK+START=MENU",0};
-    if(menu_page==P_TLEGEND) return lg;
-    if(g_touch) return tp;
+    static const char *const simple_help[]={"WELCOME TO BUGSTAR!","TAP PLAY BELOW TO BEGIN.","D-PAD: MOVE AND TURN","A: ACTION / CONFIRM","B: USE ITEM / BACK","L AND R: SHOULDER BUTTONS","SEL: SPELLS / CAMERA","START: GAME MENU","MODE OR MENU: PHONE OPTIONS","","TAP SETTINGS TO CHANGE THEM.","LEFT HALF DECREASES; RIGHT INCREASES.","PREV / NEXT SHOW MORE SETTINGS.","TOUCH PAD: MOVE OR RESIZE BUTTONS.","VIDEO: BATTERY MODE FOR SLOW PHONES.","THE GAME SAVES BY ITSELF.",0};
+    static const char *const simple_legend[]={"SIMPLE PAD = GAME BUTTON NAMES","D-PAD: MOVE / STEER","A: ACTION / CONFIRM","B: USE ITEM / BACK","L AND R: SHOULDER BUTTONS","SEL: SELECT","START: GAME MENU","MODE OR MENU: PHONE OPTIONS","BUTTONS CAN BE MOVED OR RESIZED.",0};
+    if(menu_page==P_TLEGEND) return g_touch&&simple_pad()?simple_legend:lg;
+    if(g_touch) return simple_pad()?simple_help:tp;
     return ln; }
 static int m_x0, m_pw, m_lh, m_y1, m_n, m_gs;
+// Touch-first options: use the actual window, not a scaled desktop panel.
+typedef struct { int gs, margin, header, footer, row, rows; } TouchMenuGeo;
+static TouchMenuGeo touch_menu_geometry(int w,int h,int size){
+    TouchMenuGeo g;
+    int m=w<h?w:h;
+    int gs=m/(size==2?105:size==1?125:160);
+    if(gs<1)gs=1;if(gs>12)gs=12;
+    int max=w/128;if(max<1)max=1;if(gs>max)gs=max;
+    g.gs=gs;g.margin=2*gs;
+    g.header=14*gs;g.footer=18*gs;g.row=20*gs;
+    if(g.header+g.footer+g.row>h){
+        g.header=h/5;g.footer=h/4;g.row=h-g.header-g.footer;
+        if(g.row<1)g.row=1;
+    }
+    g.rows=(h-g.header-g.footer)/g.row;
+    if(g.rows<1)g.rows=1;
+    return g;
+}
+enum { TM_NONE=-1,TM_PREV=-2,TM_BACK=-3,TM_NEXT=-4 };
+static int touch_menu_hit(TouchMenuGeo g,int w,int h,int first,int total,int x,int y){
+    if(x<0||y<0||x>=w||y>=h)return TM_NONE;
+    if(y>=h-g.footer){
+        if(x<w/3)return TM_PREV;
+        if(x>=w-w/3)return TM_NEXT;
+        return TM_BACK;
+    }
+    if(y<g.header||x<g.margin||x>=w-g.margin)return TM_NONE;
+    int row=(y-g.header)/g.row;
+    return row<g.rows&&first+row<total?first+row:TM_NONE;
+}
+static void menu_key(SDL_Keycode k, SDL_Scancode sc);
+static int tm_page=-1,tm_info_first,tm_first,tm_total,tm_is_info,tm_w,tm_h;
+static TouchMenuGeo tm_geo;
+static void tm_fit(int x,int y,int w,const char *s,uint32_t color){
+    char b[160];int n=w/(4*gs_);if(n<=0)return;
+    if(n>159)n=159;
+    snprintf(b,sizeof b,"%.*s",n,s);text_at(x,y,b,color);
+}
+static void touch_menu_draw(void){
+    int w=dw_,h=dh_;
+    if(w<=0||h<=0)return;
+    Item it[24];int n;menu_build(it,&n);
+    static const char *const title[]={"BUGSTAR OPTIONS","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND","MULTIPLAYER LAN"};
+    static const char *const about[]={"BUGSTAR","NATIVE GAME AND GBA CAMPAIGN","SAVES AND SETTINGS ARE IN","THE APP'S PRIVATE DATA FOLDER.","GAMEPAD: BACK + START = MENU",0};
+    if(tm_page!=menu_page){tm_info_first=0;tm_page=menu_page;}
+    tm_geo=touch_menu_geometry(w,h,C.textsize);tm_w=w;tm_h=h;gs_=tm_geo.gs;
+    int m=tm_geo.margin,rh=tm_geo.row,rows=tm_geo.rows,head=tm_geo.header,foot=tm_geo.footer;
+    const char *const *ln=menu_page==P_ABOUT?about:help_lines();
+    tm_is_info=menu_page==P_HELP||menu_page==P_TLEGEND||menu_page==P_ABOUT;
+    // Wrap help text at words to keep readable lines on narrow windows.
+    char info[64][80];int ni=0,limit=(w-4*m)/(4*gs_);
+    if(limit<1)limit=1;if(limit>79)limit=79;
+    if(tm_is_info)for(int j=0;ln[j]&&ni<64;j++){
+        const char *p=ln[j];if(!*p){info[ni++][0]=0;continue;}
+        while(*p&&ni<64){int z=(int)strlen(p);if(z>limit){z=limit;while(z>1&&p[z]!=' ')z--;if(z<=1)z=limit;}
+            memcpy(info[ni],p,z);info[ni++][z]=0;p+=z;while(*p==' ')p++;}
+    }
+    tm_total=tm_is_info?ni:n;
+    int *pos=tm_is_info?&tm_info_first:&menu_sel;
+    if(*pos<0)*pos=0;if(*pos>=tm_total)*pos=tm_total?tm_total-1:0;
+    tm_first=(*pos/rows)*rows;
+    rect_fill(0,0,w,h,0x080D20,255); // the touch menu is opaque
+    rect_fill(0,0,w,head,0x152342,255);
+    tm_fit(m,m,w-2*m,title[menu_page],0xFFD23C);
+    if(menu_page==P_LAN){char st[60];int role=pc_mp_role();snprintf(st,sizeof st,"%s %s",role==1?"HOST":role==2?"JOIN":"OFFLINE",pc_mp_connected()?"CONNECTED":role?"WAITING":"");tm_fit(w/2,m,w/2-m,st,0xA0FFB0);}
+    for(int i=tm_first;i<tm_total&&i<tm_first+rows;i++){
+        int y=head+(i-tm_first)*rh;
+        if(tm_is_info){tm_fit(2*m,y+rh/2-3*gs_,w-4*m,info[i],0xE8EEFF);continue;}
+        uint32_t bg=i==menu_sel?0x304D89:((i&1)?0x182642:0x202F50);
+        rect_fill(m,y+gs_,w-2*m,rh-2*gs_,bg,255);
+        tm_fit(2*m,y+2*gs_,w-4*m,it[i].label,0xFFFFFF);
+        char b[120]="";
+        if(it[i].kind==1)snprintf(b,sizeof b,"%s",it[i].names[*it[i].val]);
+        else if(it[i].kind==2)snprintf(b,sizeof b,"%d",*it[i].val);
+        else if(it[i].action==A_LAN_IP)snprintf(b,sizeof b,"%s%s",lan_ui_ip,lan_ip_edit?" [EDIT]":"");
+        else if(it[i].action>=A_REBIND){int bi=it[i].action-A_REBIND;if(menu_wait&&menu_sel==i)snprintf(b,sizeof b,"PRESS %s",menu_wait==1?"A KEY":"A BUTTON");else if(menu_page==P_CONTROLS)key_name_of(bi,b,sizeof b);else pad_name_of(bi,b,sizeof b);}
+#ifdef PC_ANDROID
+        if(it[i].kind==1&&it[i].val==&C.mobile_mode&&C.mobile_mode==0)
+            snprintf(b,sizeof b,"%s",current_budget().battery?"AUTO: BATTERY":g_governor.level==1?"AUTO: REDUCED":"AUTO: NORMAL");
+#endif
+        if(it[i].kind){tm_fit(2*m,y+11*gs_,4*gs_,"<",0xFFD23C);tm_fit(w-4*m,y+11*gs_,4*gs_,">",0xFFD23C);
+            tm_fit(5*m,y+11*gs_,w-10*m,b,0xD7E3FF);}
+        else if(b[0])tm_fit(2*m,y+11*gs_,w-4*m,b,0xD7E3FF);
+        else tm_fit(w-4*m,y+rh/2-3*gs_,4*gs_,">",0xFFD23C);
+    }
+    int fy=h-foot,third=w/3;
+    const char *keys[3]={"PREV",g_help_first&&menu_page==P_HELP?"PLAY":menu_page==P_MAIN?"RESUME":"BACK","NEXT"};
+    for(int i=0;i<3;i++){
+        int x=i*third,ww=i==2?w-x:third;
+        int enabled=i==1||(i==0?tm_first>0:tm_first+rows<tm_total);
+        rect_fill(x+gs_,fy+gs_,ww-2*gs_,foot-2*gs_,i==1?0x30684D:0x253858,255);
+        int tw=text_w(keys[i]);tm_fit(x+(ww>tw?(ww-tw)/2:gs_),fy+(foot-6*gs_)/2,ww-gs_,keys[i],enabled?0xFFFFFF:0x7788A0);
+    }
+#ifdef PC_ANDROID
+    {static int page=-1,lw,lh,lf=-1,lr=-1;if(page!=menu_page||lw!=w||lh!=h||lf!=tm_first||lr!=rows){
+      page=menu_page;lw=w;lh=h;lf=tm_first;lr=rows;
+      __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_UI","touch menu page=%d w=%d h=%d header=%d row=%d footer=%d first=%d rows=%d",page,w,h,head,rh,foot,tm_first,rows);}}
+#endif
+}
+static void touch_menu_input(int x,int y){
+    // The last rendered menu is authoritative, especially during rotation.
+    if(tm_page!=menu_page||tm_w!=dw_||tm_h!=dh_)return;
+    int hit=touch_menu_hit(tm_geo,tm_w,tm_h,tm_first,tm_total,x,y);
+    if(hit==TM_NONE)return;
+#ifdef PC_ANDROID
+    __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_UI","touch menu action page=%d hit=%d",menu_page,hit);
+#endif
+    if(hit==TM_BACK){
+        if(menu_wait){menu_wait=0;return;}
+        menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);return;
+    }
+    if(menu_wait||lan_ip_edit)return;
+    if(hit==TM_PREV||hit==TM_NEXT){
+        int next=tm_first+(hit==TM_NEXT?tm_geo.rows:-tm_geo.rows);
+        if(next>=0&&next<tm_total){if(tm_is_info)tm_info_first=next;else menu_sel=next;}
+        return;
+    }
+    if(tm_is_info)return;
+    Item it[24];int n;menu_build(it,&n);
+    if(hit<0||hit>=n)return;menu_sel=hit;
+    if(it[hit].kind)menu_key(x<tm_w/2?SDLK_LEFT:SDLK_RIGHT,0);
+    else menu_key(SDLK_RETURN,0);
+}
 static void menu_draw(void){
     if(ted_on){ ted_draw(); return; }
+    if(g_touch){ touch_menu_draw(); return; }
     int dw=dw_, dh=dh_; gs_=(dw<dh?dw:dh)/140;      /* patch 39: portrait sizes the text by the narrow side */ if(gs_<2) gs_=2; if(gs_>12) gs_=12; if(C.textsize){ int g2=(dw<dh?dw:dh)/(C.textsize==1?100:75); if(g2>gs_) gs_=g2; if(gs_>16) gs_=16; }
     int hc=C.contrast; rect_fill(0,0,dw,dh,0x000000,hc?200:150);
     static const char *const titles[]={"BUGSTAR PC","VIDEO","AUDIO","KEYBOARD","GAMEPAD","ABOUT","ACCESSIBILITY","HOW TO PLAY","TOUCH PAD","BUTTON LEGEND","MULTIPLAYER LAN"};
@@ -452,18 +874,39 @@ static void menu_pad(int btn){
         case SDL_CONTROLLER_BUTTON_A: menu_key(SDLK_RETURN,0); break; case SDL_CONTROLLER_BUTTON_B: case SDL_CONTROLLER_BUTTON_START: case SDL_CONTROLLER_BUTTON_BACK: menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE); break; }
 }
 // ---- one picture
-static int shot_pending;
 static void sim_vsync(void);          // test hook, defined with the pacing below
+// Opaque phone menus do not need a game texture or 3D compositor.
+// Keep full rendering for the layout editor, game-only screenshots, and PC.
+static int mobile_menu_only(int overlay,int touch,int open,int edit,int capture){
+    return overlay&&touch&&open&&!edit&&!capture;
+}
+static int mobile_menu_due(uint64_t now,uint64_t *next){
+    if(*next&&now<*next)return 0;
+    *next=now+33; // cap idle menu redraws to about 30/s
+    return 1;
+}
 static void present_game(int with_overlay){
-    SDL_GetRendererOutputSize(ren,&dw_,&dh_);
-    int W,H,linear,smooth; SDL_Rect dst; frame_geometry(&W,&H,&dst,&linear,&smooth);
+    if(SDL_GetRendererOutputSize(ren,&dw_,&dh_)!=0 || dw_<=0 || dh_<=0) return;
+    int ui_only=0;
+#ifdef PC_ANDROID
+    ui_only=mobile_menu_only(with_overlay,g_touch,menu_open,ted_on,shot_pending);
+    uint64_t render_begin=SDL_GetPerformanceCounter();
+    int governor_eligible=!ui_only&&!menu_open&&!g_paused_focus&&!g_bg&&!g_fast&&!shot_pending&&g_autoshot_frame<0&&C.mobile_mode==0&&!g_low_ram&&!g_mem_pressure&&pc_frames()>120;
+#endif
+    int W=0,H=0,linear=0,smooth=0; SDL_Rect dst;
+    if(!ui_only){
+    frame_geometry(&W,&H,&dst,&linear,&smooth);
     if(!tex_ensure(W,H,linear)){
         // Keep the game playable at the original GBA resolution if a large
         // texture cannot be created (Android app resumes / GPU memory pressure).
         W=240; H=160; linear=1; smooth=1;
         if(!tex_ensure(W,H,linear)) return;
     }
-    pc_vid3d=C.video3d; pc_quality=C.quality; pc_compose_native(pix,W,H,smooth);
+    pc_vid3d=C.video3d; pc_quality=C.quality;
+#ifdef PC_ANDROID
+    if(current_budget().battery){pc_vid3d=2;pc_quality=1;}
+#endif
+    pc_compose_native(pix,W,H,smooth);
     if(C.contrast){ for(size_t i=0,n=(size_t)W*H;i<n;i++){ uint32_t c=pix[i]; int r=c>>16&255,g=c>>8&255,b=c&255; int m=(r+g+b)/3; r=m+(r-m)*3/2; g=m+(g-m)*3/2; b=m+(b-m)*3/2;
             r=(r-128)*3/2+128; g=(g-128)*3/2+128; b=(b-128)*3/2+128; r=r<0?0:r>255?255:r; g=g<0?0:g>255?255:g; b=b<0?0:b>255?255:b; pix[i]=(uint32_t)r<<16|(uint32_t)g<<8|(uint32_t)b; } }
     if(SDL_UpdateTexture(tex,NULL,pix,W*4)!=0){
@@ -474,21 +917,63 @@ static void present_game(int with_overlay){
     }
     SDL_SetRenderDrawColor(ren,0,0,0,255); SDL_RenderClear(ren);
     SDL_RenderCopy(ren,tex,NULL,&dst);
+    }else{
+        // Do not allocate, upload, or compose a hidden game image.
+        SDL_SetRenderDrawColor(ren,8,13,32,255);SDL_RenderClear(ren);
+    }
+#ifdef PC_ANDROID
+    {static int was_ui;if(ui_only&&!was_ui)__android_log_print(ANDROID_LOG_INFO,"BUGSTAR_RENDER","opaque menu: game composition bypassed");was_ui=ui_only;}
+#endif
     gs_=dh_/180; if(gs_<2) gs_=2; if(gs_>10) gs_=10;
     if(with_overlay){
-        if(C.show_fps){ char b[56]; static const char *const qn[]={"","LOW","MEDIUM","HIGH"}; char qb[24]=""; if(pc_q_auto()) snprintf(qb,sizeof qb,"  AUTO %s",qn[pc_q_cur()&3]); snprintf(b,sizeof b,"%.0f FPS  %dX%d%s",fps_show,W,H,qb); rect_fill(gs_,gs_,text_w(b)+2*gs_,8*gs_,0,160); text_at(2*gs_,2*gs_,b,0x60FF80); }
-        if(toast[0] && SDL_GetTicks64()<toast_until){ int w=text_w(toast)+6*gs_; rect_fill((dw_-w)/2,dh_-12*gs_,w,9*gs_,0,170); text_at((dw_-w)/2+3*gs_,dh_-12*gs_+gs_*3/2,toast,0xFFFFFF); }
+        if(C.show_fps&&!ui_only){ char b[56]; static const char *const qn[]={"","LOW","MEDIUM","HIGH"}; char qb[24]=""; if(pc_q_auto()) snprintf(qb,sizeof qb,"  AUTO %s",qn[pc_q_cur()&3]); snprintf(b,sizeof b,"%.0f FPS / %.0f TICK  %dX%d%s",fps_show,tick_show,W,H,qb); rect_fill(gs_,gs_,text_w(b)+2*gs_,8*gs_,0,160); text_at(2*gs_,2*gs_,b,0x60FF80); }
         if(menu_open) menu_draw();
+        // In an opaque menu, keep feedback visible above the footer.
+        if(toast[0] && SDL_GetTicks64()<toast_until){
+            int save_gs=gs_;
+            if(menu_open&&g_touch&&!ted_on)gs_=tm_geo.gs;
+            int w=text_w(toast)+6*gs_, y=dh_-12*gs_;
+            if(menu_open&&g_touch&&!ted_on)y=tm_geo.header;
+            if(w>dw_)w=dw_;
+            rect_fill((dw_-w)/2,y,w,9*gs_,0,230);
+            if(menu_open&&g_touch&&!ted_on)tm_fit((dw_-w)/2+3*gs_,y+gs_*3/2,w-6*gs_,toast,0xFFFFFF);
+            else text_at((dw_-w)/2+3*gs_,y+gs_*3/2,toast,0xFFFFFF);
+            gs_=save_gs;
+        }
         touch_draw();
         if(g_paused_focus && !menu_open){ rect_fill(0,0,dw_,dh_,0,120); gs_*=2; const char *s="PAUSED"; text_at((dw_-text_w(s))/2,dh_/2-3*gs_,s,0xFFFFFF); }
     }
-    if(shot_pending){ shot_pending=0; char p[1200]; time_t t=time(0); struct tm *tm=localtime(&t); char ts[64]; strftime(ts,sizeof ts,"%Y%m%d_%H%M%S",tm);
-        snprintf(p,sizeof p,"%sbugstar_%s.png",g_shotdir,ts); if(plat_write_png(p,pix,W,H)){ char m[200]; snprintf(m,sizeof m,"SAVED %s",p); say_toast("SCREENSHOT SAVED"); fprintf(stderr,"%s\n",m); } }
+    if(shot_pending){
+        shot_pending=0;char p[1200],ts[64]="capture";time_t t=time(0);struct tm *tm=localtime(&t);
+        if(tm)strftime(ts,sizeof ts,"%Y%m%d_%H%M%S",tm);
+        static unsigned serial;int n=snprintf(p,sizeof p,"%sbugstar_%s_%llu_%u.png",g_shotdir,ts,(unsigned long long)SDL_GetTicks64(),++serial);
+        if(n>0&&(size_t)n<sizeof p&&plat_write_png(p,pix,W,H)){
+            say_toast("SCREENSHOT SAVED");fprintf(stderr,"SAVED %s\n",p);
+#ifdef PC_ANDROID
+            __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_CAPTURE","game screenshot saved %dx%d",W,H);
+#endif
+        }else{say_toast("SCREENSHOT FAILED - CHECK STORAGE");fprintf(stderr,"screenshot write failed\n");}
+    }
     if(g_autoshot_path && g_autoshot_frame>=0 && pc_frames()>=g_autoshot_frame){
         SDL_Surface *s=SDL_CreateRGBSurfaceWithFormat(0,dw_,dh_,32,SDL_PIXELFORMAT_ARGB8888);
-        if(s && SDL_RenderReadPixels(ren,NULL,SDL_PIXELFORMAT_ARGB8888,s->pixels,s->pitch)==0){ plat_write_png(g_autoshot_path,s->pixels,dw_,dh_); fprintf(stderr,"window shot %dx%d (draw %dx%d) -> %s\n",dw_,dh_,W,H,g_autoshot_path); }
+        if(s && SDL_RenderReadPixels(ren,NULL,SDL_PIXELFORMAT_ARGB8888,s->pixels,s->pitch)==0 && plat_write_png(g_autoshot_path,s->pixels,dw_,dh_)){ fprintf(stderr,"window shot %dx%d (draw %dx%d) -> %s\n",dw_,dh_,W,H,g_autoshot_path); }
+        else fprintf(stderr,"window screenshot failed: %s\n",g_autoshot_path);
         if(s) SDL_FreeSurface(s); g_autoshot_frame=-1; g_autoshot_path=0; if(g_stop_after>=0 && (menu_open || pc_frames()>=g_stop_after)) pc_quit_now(); }
+#ifdef PC_ANDROID
+    // Measure rendering work only, before the potentially blocking VSync.
+    // Do not classify launch, screenshots or menus as gameplay.
+    if(t_freq&&mobile_governor_sample(&g_governor,governor_eligible,
+        (SDL_GetPerformanceCounter()-render_begin)*1000.0/(double)t_freq)){
+        const char *notice=g_governor.level==1?"AUTO: REDUCED DRAW SIZE":"AUTO: BATTERY PROFILE";
+        say_toast_ms(notice,3500);
+        __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_PERF","auto render level %d",g_governor.level);
+    }
+#endif
     SDL_RenderPresent(ren);
+    if(!menu_open&&!g_paused_focus&&!g_bg)present_n++;
+#ifdef PC_ANDROID
+    { static int boot_logged; if(!boot_logged&&!ui_only){ boot_logged=1; __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_BOOT","first rendered game frame %dx%d",W,H); } }
+#endif
     sim_vsync();
 }
 // ------------------------------------------------------------------------------------------------ input
@@ -505,12 +990,23 @@ static uint8_t kst[512]; static uint16_t g_lastkeys;
 static void open_menu(void);
 typedef struct { SDL_FingerID id; float x, y; int on; } TFing;
 static TFing tfing[10];
+static uint16_t touch_pending; // gameplay edges between consecutive input samples
+static void touch_latch(uint16_t m){touch_pending|=m&0x03ff;}
+static uint16_t touch_consume(uint16_t held){
+    uint16_t m=(held|touch_pending)&0x03ff;
+    touch_pending=0;
+    // Simultaneous opposite directions cancel, including very short taps.
+    if((m&0x30)==0x30)m&=~0x30;
+    if((m&0xc0)==0xc0)m&=~0xc0;
+    return m;
+}
+static void touch_release_all(void);
 typedef struct { int cx, cy, r; } TGeo;      // centre and radius in pixels (the pad: the radius of its touch area)
 static const int tl_base[TC_N]={140,52,52,50,50,36,36,36,52,40,40,40};           // radius in 1/100 of a unit
 static const char *const tl_nm[TC_N]={"D-PAD","B","A","L","R","MODE","START","MENU","C","X","Y","Z"};
 #include "pc_tpad.inc"
 static int tl_o(void){ return dw_>=dh_ ? 0 : 1; }        // 0 landscape, 1 portrait
-static int t_u(void){ int m=dw_<dh_?dw_:dh_; int u=tl_o()?m/7:m/6; return u<40?40:u; }
+static int t_u(void){ int m=dw_<dh_?dw_:dh_; int u=tl_o()?m/7:m/6; return u<12?12:u; }
 static int tg_on(void){ return g_touch && !g_thide; }
 static int tg_vis(int i){ if(ted_on) return 1; if(i==TC_L||i==TC_R||i==TC_MENU) return !g_t6; if(i==TC_X||i==TC_Y||i==TC_Z) return g_t6; return 1; }
 static int tg_kind(int i){ return i==TC_DPAD?0 : (i==TC_A||i==TC_B||i==TC_C||i==TC_X||i==TC_Y||i==TC_Z)?1 : 2; }       // 0 D-pad, 1 round button, 2 pill
@@ -541,7 +1037,12 @@ static void tl_geo(TGeo *g){
     for(int i=0;i<TC_N;i++){ TPos *p=&g_tl[o][i]; int x,y;
         if(p->set){ x=(int)((long)p->x*dw_/1000); y=(int)((long)p->y*dh_/1000); } else tl_default(o,i,&x,&y);
         int s=p->s?p->s:100; int k=(i==TC_DPAD?(o?90:100):sc); g[i].r=(int)((long)u*tl_base[i]/100*s/100*k/100);
-        if(p->set){ int hw,hh; tg_ext_r(i,g[i].r,&hw,&hh); if(2*hw<dw_){ if(x<hw) x=hw; if(x>dw_-hw) x=dw_-hw; } if(2*hh<dh_){ if(y<hh) y=hh; if(y>dh_-hh) y=dh_-hh; } }      // a button never leaves the screen
+        { int hw,hh; if(g[i].r<1)g[i].r=1; tg_ext_r(i,g[i].r,&hw,&hh);
+          // A saved oversized layout must still be reachable in split-screen.
+          int limit=dw_<dh_?dw_:dh_; if(limit<1)limit=1;
+          if(hw*2>dw_ || hh*2>dh_){ int nr=limit/4; if(nr<1)nr=1; if(g[i].r>nr)g[i].r=nr; tg_ext_r(i,g[i].r,&hw,&hh); }
+          if(2*hw<=dw_){ if(x<hw)x=hw; if(x>dw_-hw)x=dw_-hw; }else x=dw_/2;
+          if(2*hh<=dh_){ if(y<hh)y=hh; if(y>dh_-hh)y=dh_-hh; }else y=dh_/2; }      // a button never leaves the screen
         g[i].cx=x; g[i].cy=y; }
 }
 static void tg_ext(const TGeo *g, int i, int *hw, int *hh){ tg_ext_r(i,g[i].r,hw,hh); }
@@ -577,27 +1078,83 @@ static void t_buzz(void){ if(!g_thaptic) return; if(!t_hap_try){ t_hap_try=1; if
 #else
 static void t_buzz(void){}
 #endif
-static uint16_t touch_keys(void){ static uint32_t pe; static uint16_t pd; if(ted_on||!tg_on()){ pe=0; pd=0; return 0; }
-    uint16_t d; uint32_t el=tg_state(&d); if((el&~pe)||(d&~pd)) t_buzz(); pe=el; pd=d; return tg_keys(el,d)&0x7FFF; }
+static uint16_t touch_keys(void){
+    static uint32_t pe; static uint16_t pd;
+    if(ted_on||menu_open||g_bg||!tg_on()){pe=0;pd=0;touch_pending=0;return 0;}
+    uint16_t d;uint32_t el=tg_state(&d);
+    if((el&~pe)||(d&~pd)||touch_pending)t_buzz();
+    pe=el;pd=d;
+    return touch_consume(tg_keys(el,d));
+}
 static void ted_touch(const SDL_Event *e);
 static void touch_event(const SDL_Event *e){
-    if(!g_touch) return;
+    // A surface can temporarily be 0x0 during rotation or backgrounding.
+    // The editor must obey this guard too (it divides by drawable size).
+    if(!g_touch||g_bg||dw_<=0||dh_<=0)return;
+#ifdef PC_ANDROID
+    // SDL can report a changed surface before its size event is dequeued.
+    // Discard touches against old drawable dimensions until the next draw.
+    int actual_w,actual_h;
+    if(SDL_GetRendererOutputSize(ren,&actual_w,&actual_h)!=0||actual_w!=dw_||actual_h!=dh_){
+        touch_release_all();pad_report_visible=0;return;
+    }
+#endif
     if(e->type==SDL_FINGERDOWN) g_thide=0;      // a finger brings the pad back
     if(ted_on){ ted_touch(e); return; }
-    if(g_thide) return;
+    if(g_thide||g_bg||dw_<=0||dh_<=0) return;
+    if(menu_open){ touch_release_all(); if(e->type==SDL_FINGERDOWN)touch_menu_input((int)(e->tfinger.x*dw_),(int)(e->tfinger.y*dh_));return; }
     int k=-1, fr=-1; for(int i=0;i<10;i++){ if(tfing[i].on && tfing[i].id==e->tfinger.fingerId) k=i; if(!tfing[i].on && fr<0) fr=i; }
     if(e->type==SDL_FINGERUP){ if(k>=0) tfing[k].on=0; return; }
-    if(k<0){ if(fr<0) return; k=fr; tfing[k].id=e->tfinger.fingerId; tfing[k].on=1; }
+    if(k<0){ if(fr<0||e->type!=SDL_FINGERDOWN) return; k=fr; tfing[k].id=e->tfinger.fingerId; tfing[k].on=1; }
     tfing[k].x=e->tfinger.x; tfing[k].y=e->tfinger.y;
     if(e->type!=SDL_FINGERDOWN) return;
     uint16_t m=t_hit((int)(e->tfinger.x*dw_),(int)(e->tfinger.y*dh_));
-    if(menu_open){          // in the options the pad steers the menu: arrows, A = enter, B / MENU = back
-        if(m&(1<<6)) menu_key(SDLK_UP,0); else if(m&(1<<7)) menu_key(SDLK_DOWN,0); else if(m&(1<<5)) menu_key(SDLK_LEFT,0); else if(m&(1<<4)) menu_key(SDLK_RIGHT,0);
-        else if(m&1) menu_key(SDLK_RETURN,0); else if(m&((1<<1)|(1<<15))) menu_key(SDLK_ESCAPE,SDL_SCANCODE_ESCAPE);
-    } else if(m&(1<<15)) open_menu(); }
+    if(m&(1<<15)){ touch_release_all();open_menu();return; }
+    // A DOWN followed by UP before the next game tick must still count
+    // once. Held fingers continue to use the live multitouch state.
+    touch_latch(m);
+}
 static void tl_outline(int x, int y, int w, int h, int t, uint32_t col){ rect_fill(x,y,w,t,col,255); rect_fill(x,y+h-t,w,t,col,255); rect_fill(x,y,t,h,col,255); rect_fill(x+w-t,y,t,h,col,255); }
+// Primitive pad shares the exact layout/hit areas with the detailed pad.
+// No per-button textures, CPU shading loops, or allocations are required.
+static int simple_pad(void){
+    if(tg_failed)return 1;
+#ifdef PC_ANDROID
+    if(current_budget().simple)return 1;
+#endif
+    return C.pad_style==1;
+}
+static void simple_pad_draw(const TGeo *g,uint32_t el,uint16_t dirs,int a){
+    int saved=gs_;
+    int r=g[0].r,cx=g[0].cx,cy=g[0].cy,b=r/3;
+    if(b<1)b=1;
+    rect_fill(cx-b,cy-r,2*b,2*r,0x26354E,a);
+    rect_fill(cx-r,cy-b,2*r,2*b,0x26354E,a);
+    static const int dx[4]={0,0,-1,1},dy[4]={-1,1,0,0},bits[4]={1<<6,1<<7,1<<5,1<<4};
+    static const char *const names[4]={"^","V","<",">"};
+    gs_=b/4;if(gs_<1)gs_=1;
+    for(int j=0;j<4;j++){
+        int x=cx+dx[j]*(r-b),y=cy+dy[j]*(r-b);
+        if(dirs&bits[j])rect_fill(x-b,y-b,2*b,2*b,0x469ECA,a);
+        text_at(x-text_w(names[j])/2,y-3*gs_,names[j],0xFFFFFF);
+    }
+    for(int i=1;i<TC_N;i++)if(tg_vis(i)){
+        int hw,hh;tg_ext(g,i,&hw,&hh);if(hw<1)hw=1;if(hh<1)hh=1;
+        int x=g[i].cx,y=g[i].cy,pr=(el>>i)&1;
+        rect_fill(x-hw,y-hh,2*hw,2*hh,pr?0x427FB5:0x26354E,a);
+        // Use conventional game-action labels rather than the Mega Pad's
+        // reversed A/B legend, with the underlying input mapping unchanged.
+        static const char *const lab[TC_N]={"","A","B","L","R","MODE","START","MENU","A","L","R","SEL"};
+        const char *name=(i==TC_SEL&&!g_t6)?"SEL":lab[i];
+        int len=(int)strlen(name);gs_=hh/4;int fit=(2*hw)/(4*len);
+        if(gs_>fit)gs_=fit;if(gs_<1)gs_=1;
+        text_at(x-text_w(name)/2,y-3*gs_,name,0xFFFFFF);
+    }
+    gs_=saved;
+}
 static void tl_draw(uint32_t el, uint16_t dirs, int sel, int edit){        // edit: brighter (the editor shows every button even at a low opacity) and the picked one is outlined
     TGeo g[TC_N]; tl_geo(g); int a=g_talpha*255/100; if(edit&&a<170) a=170; int ap=a*5/4; if(ap>255) ap=255;
+    if(simple_pad()){simple_pad_draw(g,el,dirs,a);goto outlines;}
     tg_stamp++; int u=t_u();
     // the plate under the round buttons
     { int x0=1<<30,y0=1<<30,x1=-(1<<30),y1=-(1<<30); for(int i=1;i<TC_N;i++) if(tg_kind(i)==1 && tg_vis(i)){ int hw,hh; tg_ext(g,i,&hw,&hh); if(g[i].cx-hw<x0) x0=g[i].cx-hw; if(g[i].cy-hh<y0) y0=g[i].cy-hh; if(g[i].cx+hw>x1) x1=g[i].cx+hw; if(g[i].cy+hh>y1) y1=g[i].cy+hh; }
@@ -614,17 +1171,42 @@ static void tl_draw(uint32_t el, uint16_t dirs, int sel, int edit){        // ed
     for(int i=1;i<TC_N;i++){ if(!tg_vis(i)) continue; int pr=(el>>i)&1; int r=g[i].r;
         if(tg_kind(i)==1){ int S=(int)(r*2.6f+0.5f); S+=S&1; tg_blit(tg_get(TG_DISC,i,pr,S,S,0),g[i].cx,g[i].cy,S,S,pr?ap:a); }
         else { int hp=(int)(r*1.15f+0.5f), pw=(int)(r*3.1f+0.5f), w=pw+hp, h=(int)(hp*2.1f+0.5f); w+=w&1; h+=h&1; tg_blit(tg_get(TG_PILL,i,pr,w,h,hp),g[i].cx,g[i].cy,w,h,pr?ap:a); } }
+    // If any decorative allocation failed, show all controls immediately
+    // rather than leaving a button invisible until the next frame.
+    if(tg_failed)simple_pad_draw(g,el,dirs,a);
+outlines:
     if(edit){ int hw,hh; for(int i=0;i<TC_N;i++){ if(!tg_vis(i)) continue; tg_ext(g,i,&hw,&hh); int ov=(ted_ovm>>i)&1; tl_outline(g[i].cx-hw,g[i].cy-hh,2*hw,2*hh,ov?2:1,ov?0xFF4040:0x8890C8); } }
     if(sel>=0 && sel<TC_N){ int hw,hh; tg_ext(g,sel,&hw,&hh); int t=t_u()/40; if(t<2) t=2; tl_outline(g[sel].cx-hw-t,g[sel].cy-hh-t,2*hw+2*t,2*hh+2*t,t,0xFFD23C); }
 }
-static void touch_draw(void){ if(ted_on||!tg_on()) return; uint16_t d; uint32_t el=tg_state(&d); tl_draw(el,d,-1,0); }
-static void touch_release_all(void){ memset(tfing,0,sizeof tfing); }      // (patch 43) back from the background: no finger is still 'down'
+static void touch_draw(void){
+    if(ted_on||menu_open||!tg_on()||g_bg||g_paused_focus){
+#ifdef PC_ANDROID
+        pad_report_visible=0;
+#endif
+        return;
+    }
+    uint16_t d; uint32_t el=tg_state(&d); tl_draw(el,d,-1,0);
+#ifdef PC_ANDROID
+    // Log only when the actual options-button geometry changes. No input or
+    // personal information is recorded. CI uses this to send genuine taps.
+    static int lw,lh,lx=-1,ly=-1;
+    TGeo g[TC_N];tl_geo(g);int i=g_t6?TC_SEL:TC_MENU;
+    if(!pad_report_visible||lw!=dw_||lh!=dh_||lx!=g[i].cx||ly!=g[i].cy){
+        pad_report_visible=1;lw=dw_;lh=dh_;lx=g[i].cx;ly=g[i].cy;
+        __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_PAD","mode w=%d h=%d x=%d y=%d epoch=%u",lw,lh,lx,ly,++pad_report_epoch);
+    }
+#endif
+}
 
 // ---- the layout editor. EVERY button is on its own: tap one to pick it (yellow outline), drag it to move, pinch with a second finger (or the - + buttons) to resize THAT button only,
 //      the arrows nudge it a little. Opacity is shared. Landscape and portrait are separate layouts. SNAP puts the centres on a grid. A button cannot leave the screen; buttons that
 //      overlap are outlined in red and named in the panel. All twelve buttons show in the editor (the 3 button and the 6 button pad), so each can be placed whichever pad is on.
 static int ted_sel=-1, ted_drag=-1, ted_ox, ted_oy, ted_py=-1; static SDL_FingerID ted_fid;
 static int ted_pinch, ted_ax, ted_ay, ted_bx, ted_by, ted_s0; static float ted_d0; static SDL_FingerID ted_pf;
+static void touch_release_all(void){
+    memset(tfing,0,sizeof tfing);touch_pending=0;
+    ted_drag=-1;ted_pinch=0;
+}
 enum { TA_SMALLER=1, TA_BIGGER, TA_LESS, TA_MORE, TA_RESETONE, TA_RESETALL, TA_DONE, TA_NL, TA_NU, TA_ND, TA_NR, TA_SNAP };
 typedef struct { int x, y, w, h, act; const char *t; } TedB;
 typedef struct { int x, y, w, h, gs, n; TedB b[14]; } TedP;
@@ -635,13 +1217,26 @@ static uint32_t ted_overlaps(const TGeo *g){      // the buttons that overlap an
     return m; }
 static int ted_grid(void){ int g=t_u()/4; return g<4?4:g; }
 static void ted_panel(TedP *p, const TGeo *g){
-    int m=dw_<dh_?dw_:dh_, gs=m/150, gmax=dw_/108; if(gs>gmax) gs=gmax; if(gs<2) gs=2; if(gs>8) gs=8;
-    int pw=100*gs; if(pw>dw_-8*gs) pw=dw_-8*gs; int rh=12*gs, ph=7*rh+2*gs, px=(dw_-pw)/2;
+    // The full panel needs 108 glyph units horizontally and 90 vertically.
+    // On tiny split-screen surfaces offer a safe exit instead of offscreen
+    // editor buttons. Normal phone windows keep all editing commands.
+    if(dw_<108||dh_<90){
+        int w=dw_>0?dw_:1,h=dh_>0?dh_:1;
+        int bh=h<32?h:32;
+        *p=(TedP){.x=0,.y=h-bh,.w=w,.h=bh,.gs=1,.n=1,
+            .b={{0,h-bh,w,bh,TA_DONE,"DONE"}}};
+        return;
+    }
+    int m=dw_<dh_?dw_:dh_,gs=m/150;
+    if(gs<1)gs=1;if(gs>8)gs=8;
+    if(gs>dw_/108)gs=dw_/108;
+    if(gs>dh_/90)gs=dh_/90;
+    int pw=100*gs,rh=12*gs,ph=7*rh+2*gs,px=(dw_-pw)/2;
     int lo=2*gs, hi=dh_-ph-2*gs; if(hi<lo) hi=lo;
     int pref = tl_o()==0 ? (dh_-ph)/2 : dh_/12; if(pref<lo) pref=lo; if(pref>hi) pref=hi;
-    int best=-1; long bestc=1L<<60;
-    if(ted_py>=lo && ted_py<=hi){ long c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,ted_py,pw,ph,i)) c+= i==ted_sel?1000:1; if(c==0) best=ted_py; }
-    if(best<0){ for(int y=lo;y<=hi;y+=gs*2){ long c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,y,pw,ph,i)) c+= i==ted_sel?1000:1; c=c*100000+labs((long)y-pref); if(c<bestc){ bestc=c; best=y; } } }
+    int best=-1; int64_t bestc=INT64_MAX; // long is 32-bit on ARMv7/x86
+    if(ted_py>=lo && ted_py<=hi){ int64_t c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,ted_py,pw,ph,i)) c+= i==ted_sel?1000:1; if(c==0) best=ted_py; }
+    if(best<0){ for(int y=lo;y<=hi;y+=gs*2){ int64_t c=0; for(int i=0;i<TC_N;i++) if(ted_hits(&g[i],px,y,pw,ph,i)) c+= i==ted_sel?1000:1; c=c*100000+(y>=pref?y-pref:pref-y); if(c<bestc){ bestc=c; best=y; } } }
     if(best<0) best=pref; ted_py=best;
     p->x=px; p->y=best; p->w=pw; p->h=ph; p->gs=gs; int n=0, y0=best+gs+rh*2;
     int bw=10*gs, bx2=px+pw-2*gs-bw, bx1=bx2-bw-20*gs;       // [ - ] value [ + ] at the right of a row
@@ -661,7 +1256,7 @@ static void ted_put(int i, int cx, int cy){      // put button i's centre at (cx
     TPos *p=&g_tl[tl_o()][i]; p->set=1; p->x=cx*1000/dw_; p->y=cy*1000/dh_; if(!p->s) p->s=100; }
 static void ted_clamp(int i){ TGeo g[TC_N]; tl_geo(g); ted_put(i,g[i].cx,g[i].cy); }
 static void ted_setsize(int i, int s){ TPos *p=&g_tl[tl_o()][i]; ted_pin(i); p->s=s<30?30:s>300?300:s; ted_clamp(i); }
-static void ted_open(void){ memset(tfing,0,sizeof tfing); ted_on=1; ted_sel=-1; ted_drag=-1; ted_pinch=0; ted_py=-1; say_toast("DRAG THE BUTTONS"); }
+static void ted_open(void){ touch_release_all(); ted_on=1; ted_sel=-1; ted_drag=-1; ted_pinch=0; ted_py=-1; say_toast("DRAG THE BUTTONS"); }
 static void ted_close(void){ ted_on=0; ted_sel=-1; ted_drag=-1; ted_pinch=0; cfg_save(); say_toast("TOUCH PAD SAVED"); }
 static void ted_key(SDL_Keycode k){ if(k==SDLK_ESCAPE||k==SDLK_AC_BACK) ted_close(); }
 static void ted_act(int act){
@@ -686,6 +1281,7 @@ static void ted_touch(const SDL_Event *e){
     if(e->type!=SDL_FINGERDOWN) return;
     if(ted_drag>=0){ if(!ted_pinch && id!=ted_fid && ted_sel>=0){ ted_pinch=1; ted_pf=id; ted_bx=x; ted_by=y; float dx=(float)(ted_ax-x), dy=(float)(ted_ay-y); ted_d0=sqrtf(dx*dx+dy*dy); if(ted_d0<20) ted_d0=20; ted_s0=g_tl[tl_o()][ted_sel].s?g_tl[tl_o()][ted_sel].s:100; } return; }
     TedP pn; ted_panel(&pn,g);
+    if(pn.n==1){if(x>=pn.x&&x<pn.x+pn.w&&y>=pn.y&&y<pn.y+pn.h)ted_act(TA_DONE);return;}
     if(x>=pn.x && x<pn.x+pn.w && y>=pn.y && y<pn.y+pn.h){ for(int i=0;i<pn.n;i++){ TedB *b=&pn.b[i]; if(x>=b->x && x<b->x+b->w && y>=b->y && y<b->y+b->h){ ted_act(b->act); break; } } return; }
     int hit=tg_pick(g,x,y);
     if(hit<0){ long ex=x-g[0].cx, ey=y-g[0].cy; if(ex*ex+ey*ey<(long)g[0].r*g[0].r) hit=0; }
@@ -694,15 +1290,22 @@ static void ted_touch(const SDL_Event *e){
 static void ted_draw(void){
     TGeo g[TC_N]; tl_geo(g); TedP pn; ted_panel(&pn,g); int gs=pn.gs, saved=gs_; ted_ovm=ted_overlaps(g);
     rect_fill(0,0,dw_,dh_,0x000000,120);
+    if(pn.n==1){
+        gs_=1;
+        tm_fit(2,2,dw_-4,"ENLARGE WINDOW TO EDIT",0xFFFFFF);
+        rect_fill(pn.x,pn.y,pn.w,pn.h,0x2E8B3A,255);
+        tm_fit(pn.w>16?(pn.w-16)/2:0,pn.y+(pn.h-6)/2,pn.w,"DONE",0xFFFFFF);
+        gs_=saved;return;
+    }
     if(g_tsnap){ int gr=ted_grid(); for(int xx=gr;xx<dw_;xx+=gr) rect_fill(xx,0,1,dh_,0x8890C8,28); for(int yy=gr;yy<dh_;yy+=gr) rect_fill(0,yy,dw_,1,0x8890C8,28); }
     tl_draw(0,0,ted_sel,1);
     gs_=gs; rect_fill(pn.x,pn.y,pn.w,pn.h,0x0B1030,242); rect_fill(pn.x,pn.y,pn.w,gs,0xFFD23C,255); rect_fill(pn.x,pn.y+pn.h-gs,pn.w,gs,0xFFD23C,255);
     int rh=12*gs, y=pn.y+gs; char b[64]; int land=tl_o()==0;
-    text_at(pn.x+2*gs,y+rh/2-3*gs,land?"TOUCH PAD: LANDSCAPE":"TOUCH PAD: PORTRAIT",0xFFD23C); y+=rh;
+    tm_fit(pn.x+2*gs,y+rh/2-3*gs,pn.w-4*gs,land?"TOUCH PAD: LANDSCAPE":"TOUCH PAD: PORTRAIT",0xFFD23C); y+=rh;
     if(ted_sel>=0 && (ted_ovm>>ted_sel&1)){ int n=0; snprintf(b,sizeof b,"OVERLAPS:"); for(int j=0;j<TC_N && n<3;j++) if(j!=ted_sel){ int aw,ah,bw,bh; tg_ext(g,ted_sel,&aw,&ah); tg_ext(g,j,&bw,&bh); aw=aw*9/10; ah=ah*9/10; bw=bw*9/10; bh=bh*9/10;
             if(abs(g[ted_sel].cx-g[j].cx)<aw+bw && abs(g[ted_sel].cy-g[j].cy)<ah+bh){ size_t l=strlen(b); snprintf(b+l,sizeof b-l," %s",tl_nm[j]); n++; } }
-        text_at(pn.x+2*gs,y+rh/2-3*gs,b,0xFF6060); }
-    else text_at(pn.x+2*gs,y+rh/2-3*gs,"DRAG MOVE  PINCH SIZE",0xA8B4F0);
+        tm_fit(pn.x+2*gs,y+rh/2-3*gs,pn.w-4*gs,b,0xFF6060); }
+    else tm_fit(pn.x+2*gs,y+rh/2-3*gs,pn.w-4*gs,"DRAG MOVE  PINCH SIZE",0xA8B4F0);
     y+=rh;
     snprintf(b,sizeof b,"SIZE: %s",ted_sel>=0?tl_nm[ted_sel]:"NONE"); text_at(pn.x+2*gs,y+rh/2-3*gs,b,ted_sel>=0?0xFFFFFF:0x8890C8);
     int ssz=ted_sel>=0?(g_tl[tl_o()][ted_sel].s?g_tl[tl_o()][ted_sel].s:100):0;
@@ -712,9 +1315,14 @@ static void ted_draw(void){
     for(int i=0;i<pn.n;i++){ TedB *t=&pn.b[i]; int dis=(ted_sel<0 && (t->act==TA_SMALLER||t->act==TA_BIGGER||t->act==TA_RESETONE||(t->act>=TA_NL&&t->act<=TA_NR)));
         rect_fill(t->x,t->y,t->w,t->h,dis?0x252C50:(t->act==TA_DONE?0x2E8B3A:(t->act==TA_SNAP&&g_tsnap)?0x2E7A8B:0x2A3A9A),255); text_at(t->x+(t->w-text_w(t->t))/2,t->y+(t->h-6*gs)/2,t->t,dis?0x6E78A8:0xFFFFFF); }
     gs_=saved; }
+static int bounded_key_down(int c,int count,const uint8_t *keys,const uint8_t *cached){
+    if(c<=0)return 0;
+    return (keys&&c<count&&keys[c])||(cached&&c<512&&cached[c]);
+}
 static uint16_t read_keys(void){
-    uint16_t down=0; const Uint8 *ks=SDL_GetKeyboardState(NULL);
-    for(int b=0;b<NB;b++){ for(int sl=0;sl<2;sl++){ int c=C.kb[b][sl]; if(c&&c<512&&(ks[c]||kst[c])) down|=1<<b; else if(c>=512&&ks[c]) down|=1<<b; } }
+    uint16_t down=0;int nk=0;const Uint8 *ks=SDL_GetKeyboardState(&nk);
+    for(int b=0;b<NB;b++)for(int sl=0;sl<2;sl++)
+        if(bounded_key_down(C.kb[b][sl],nk,ks,kst))down|=1<<b;
     if(pad){
         for(int b=0;b<NB;b++) if(SDL_GameControllerGetButton(pad,C.pad[b])) down|=1<<b;
         int dz=C.deadzone*32767/100; int lx=SDL_GameControllerGetAxis(pad,SDL_CONTROLLER_AXIS_LEFTX), ly=SDL_GameControllerGetAxis(pad,SDL_CONTROLLER_AXIS_LEFTY);
@@ -735,11 +1343,19 @@ static void rumble_frame(void){
 // ---- the app's life cycle (Android: home button, another app, screen off; also SDL_APP_TERMINATING). In the background the game does not step and makes no sound; coming back
 // starts a fresh clock (g_pace_reset): the minutes it was away are not played catch-up. The save is flushed on the game's own thread (g_app_save, in pump_events).
 static void touch_release_all(void);
-static void app_background(void){ g_bg=1; g_app_save=1; if(adev) SDL_PauseAudioDevice(adev,1); }
+static void app_background(void){ g_bg=1; g_app_save=1; touch_release_all(); audio_suspend();
+#ifdef PC_ANDROID
+    __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_LIFE","background pause");
+#endif
+}
 static void app_foreground(void){
     if(!g_bg && !g_app_resume) return;
     g_bg=0; g_app_resume=0; g_pace_reset=1; memset(kst,0,sizeof kst); touch_release_all();
-    if(adev){ __atomic_store_n(&rd_i,__atomic_load_n(&wr_i,__ATOMIC_ACQUIRE),__ATOMIC_RELEASE); SDL_PauseAudioDevice(adev,0); }      // the old queued sound is dropped
+#ifdef PC_ANDROID
+    pad_report_visible=0;
+    __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_LIFE","foreground resume");
+#endif
+    // The paused-loop exit resumes audio after all pause causes clear.
 }
 static int SDLCALL app_watch(void *u, SDL_Event *e){        // called at once on SDL's own thread (the game thread may already be asleep inside SDL): only sets flags
     (void)u;
@@ -747,7 +1363,7 @@ static int SDLCALL app_watch(void *u, SDL_Event *e){        // called at once on
     else if(e->type==SDL_APP_DIDENTERFOREGROUND || e->type==SDL_APP_WILLENTERFOREGROUND){ g_app_resume=1; }
     return 1;
 }
-static void open_menu(void){ menu_open=1; menu_page=P_MAIN; menu_sel=0; menu_wait=0; mp_choice=0; for(int i=0;i<7;i++) if(mp_val(i)==C.max_mp) mp_choice=i; }
+static void open_menu(void){ touch_release_all();tm_page=-1;menu_open=1; menu_page=P_MAIN; menu_sel=0; menu_wait=0; mp_choice=0; for(int i=0;i<7;i++) if(mp_val(i)==C.max_mp) mp_choice=i; }
 static void inject_step(void);
 static void pump_events(void){
     SDL_Event e; inject_step();
@@ -758,15 +1374,37 @@ static void pump_events(void){
         case SDL_DISPLAYEVENT: g_pace_reset=1; break;                 // the monitor changed (refresh rate, plugged in/out): the game's clock does not care
         case SDL_APP_WILLENTERBACKGROUND: case SDL_APP_DIDENTERBACKGROUND: case SDL_APP_TERMINATING: app_background(); break;
         case SDL_APP_WILLENTERFOREGROUND: case SDL_APP_DIDENTERFOREGROUND: app_foreground(); break;
-        case SDL_APP_LOWMEMORY: sg_cache_trim(); pc_save_flush(0); fprintf(stderr,"low memory: sprite cache emptied\n"); break;      // Android: the system asks apps to give memory back (BugstarActivity.onTrimMemory sends this too)
+        case SDL_APP_LOWMEMORY:
+#ifdef PC_ANDROID
+            g_low_ram=1; g_mem_pressure=1; sg_cache_set_cap_mb(4);
+            // Release the existing large textures, not just future allocations.
+            tg_flush(); if(tex){SDL_DestroyTexture(tex);tex=0;tex_w=tex_h=0;}
+            free(pix);pix=0;pix_cap=0;
+#endif
+            sg_cache_trim(); pc_save_flush(0); fprintf(stderr,"low memory: sprite cache emptied\n"); break;      // Android: the system asks apps to give memory back (BugstarActivity.onTrimMemory sends this too)
         case SDL_WINDOWEVENT:
             g_pace_reset=1;      // any window event (move, size, minimise, restore, focus): the next frame starts a fresh clock, no burst of catch-up frames
             if(e.window.event==SDL_WINDOWEVENT_SIZE_CHANGED && !C.fullscreen && !(SDL_GetWindowFlags(win)&SDL_WINDOW_MINIMIZED)){ int w,h; SDL_GetWindowSize(win,&w,&h); if(w>=240&&h>=160){ C.win_w=w; C.win_h=h; } }
+            if(e.window.event==SDL_WINDOWEVENT_SIZE_CHANGED){
+                touch_release_all();tm_page=-1;
+                int w,h;if(SDL_GetRendererOutputSize(ren,&w,&h)==0&&w>0&&h>0){dw_=w;dh_=h;}
+                else {dw_=dh_=0;}
+            }
+            if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST)touch_release_all();
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST) memset(kst,0,sizeof kst);
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_LOST && C.pause_unfocus) g_paused_focus=1;
             if(e.window.event==SDL_WINDOWEVENT_FOCUS_GAINED) g_paused_focus=0;
             break;
         case SDL_MOUSEMOTION: case SDL_MOUSEBUTTONDOWN: case SDL_MOUSEBUTTONUP:
+            if(menu_open && g_touch){
+                // Desktop touch preview also accepts a mouse, scaled to drawable pixels.
+                // Android uses genuine finger events (touch-to-mouse is disabled).
+                if(g_touch==2 && !ted_on && e.type==SDL_MOUSEBUTTONDOWN && e.button.button==SDL_BUTTON_LEFT){
+                    int w,h;SDL_GetWindowSize(win,&w,&h);
+                    if(w>0&&h>0)touch_menu_input((int)((int64_t)e.button.x*dw_/w),(int)((int64_t)e.button.y*dh_/h));
+                }
+                break;
+            }
             if(menu_open && !menu_wait){ int ex = e.type==SDL_MOUSEMOTION ? e.motion.x : e.button.x, ey = e.type==SDL_MOUSEMOTION ? e.motion.y : e.button.y;
                 int hit = m_lh>0 && ex>=m_x0 && ex<m_x0+m_pw ? (ey-(m_y1-m_gs))/m_lh : -1; if(ey<m_y1-m_gs) hit=-1; if(hit>=m_n) hit=-1;
                 if(e.type==SDL_MOUSEMOTION){ if(hit>=0) menu_sel=hit; }
@@ -785,21 +1423,22 @@ static void pump_events(void){
         case SDL_RENDER_DEVICE_RESET: case SDL_RENDER_TARGETS_RESET:
             tg_flush();  // rebuild the game texture as well as touch graphics after Android EGL loss
             if(tex){ SDL_DestroyTexture(tex); tex=0; tex_w=tex_h=0; }
+            if(fonttex){ SDL_DestroyTexture(fonttex); fonttex=0; } font_init();
             g_pace_reset=1;
             break;
         case SDL_CONTROLLERDEVICEADDED: pad_open(); break;
-        case SDL_CONTROLLERDEVICEREMOVED: if(pad && e.cdevice.which==SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad))){ SDL_GameControllerClose(pad); pad=0; say_toast("GAMEPAD REMOVED"); pad_open(); } break;
+        case SDL_CONTROLLERDEVICEREMOVED: if(pad && e.cdevice.which==SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pad))){ SDL_GameControllerClose(pad); pad=0; say_toast("GAMEPAD REMOVED"); pad_open(); if(g_touch==1&&!pad){g_thide=0;touch_release_all();} } break;
         case SDL_CONTROLLERBUTTONDOWN:
-            if(g_touch==1) g_thide=1;      // a gamepad button: the on-screen pad goes away until the next touch
+            if(g_touch==1){g_thide=1;touch_release_all();}      // a gamepad button: the on-screen pad goes away until the next touch
             if(menu_open) menu_pad(e.cbutton.button);
             else if(e.cbutton.button==SDL_CONTROLLER_BUTTON_GUIDE) open_menu();
             else if((e.cbutton.button==SDL_CONTROLLER_BUTTON_START && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_BACK)) || (e.cbutton.button==SDL_CONTROLLER_BUTTON_BACK && SDL_GameControllerGetButton(pad,SDL_CONTROLLER_BUTTON_START))) open_menu();
             break;
         case SDL_TEXTINPUT: if(menu_open && menu_page==P_LAN && lan_ip_edit)lan_text(e.text.text);break;
-        case SDL_KEYUP: if(e.key.keysym.scancode<512) kst[e.key.keysym.scancode]=0; break;
+        case SDL_KEYUP: if((unsigned)e.key.keysym.scancode<sizeof kst) kst[e.key.keysym.scancode]=0; break;
         case SDL_KEYDOWN:
-            if(g_touch==1 && e.key.keysym.sym!=SDLK_AC_BACK && e.key.keysym.sym!=SDLK_MENU && !menu_open) g_thide=1;      // a real keyboard: the on-screen pad goes away until the next touch
-            if(e.key.keysym.scancode<512) kst[e.key.keysym.scancode]=1;
+            if(g_touch==1 && e.key.keysym.sym!=SDLK_AC_BACK && e.key.keysym.sym!=SDLK_MENU && !menu_open){g_thide=1;touch_release_all();}      // a real keyboard: the on-screen pad goes away until the next touch
+            if((unsigned)e.key.keysym.scancode<sizeof kst) kst[e.key.keysym.scancode]=1;
             if(e.key.repeat && !menu_open) break;
             if(e.key.keysym.sym==SDLK_F11 || (e.key.keysym.sym==SDLK_RETURN && (e.key.keysym.mod&KMOD_ALT))){ toggle_fullscreen(); break; }
             if(e.key.keysym.sym==SDLK_F12){ shot_pending=1; break; }
@@ -909,16 +1548,29 @@ static void sim_stall(long fr){            // test hook BUGSTAR_SIM_STALL=frame:
     static int init, n, at[8], ms[8]; if(!init){ init=1; const char *e=getenv("BUGSTAR_SIM_STALL"); while(e&&*e&&n<8){ int a=0,m=0,k=0; if(sscanf(e,"%d:%d%n",&a,&m,&k)<2) break; at[n]=a; ms[n]=m; n++; e+=k; if(*e==',') e++; } }
     for(int i=0;i<n;i++) if(at[i]==fr) SDL_Delay((Uint32)ms[i]);
 }
-static void pace_stats(void){ if(getenv("BUGSTAR_PACELOG")) fprintf(stderr,"pace: frames %ld resyncs %lu catchups %lu waits %lu audio skips %lu pads %lu slack %.2f ms underruns %lu\n",pc_frames(),g_resyncs,g_catchups,g_waits,a_skips,a_pads,g_slack_ms,underruns); }
+static void pace_stats(void){ if(getenv("BUGSTAR_PACELOG")) fprintf(stderr,"pace: frames %ld resyncs %lu catchups %lu waits %lu audio skips %lu pads %lu slack %.2f ms underruns %lu\n",pc_frames(),g_resyncs,g_catchups,g_waits,a_skips,a_pads,g_slack_ms,audio_underruns()); }
 void plat_frame(void){
-    long fr=pc_frames(); { static const int an[4]={0,500,2000,10000}; if(!getenv("PC_SHIPS")) pc_ships_mode=C.ships; if(!getenv("PC_ARMADA")) pc_armada_n=an[C.armada]; }
+    long fr=pc_frames(); { static const int an[4]={0,500,2000,10000};
+        int ships=C.ships,armada=an[C.armada];
+#ifdef PC_ANDROID
+        if(current_budget().battery){ships=0;armada=0;pc_vid3d=2;pc_quality=1;}
+        else {pc_vid3d=C.video3d;pc_quality=C.quality;}
+#endif
+        if(!getenv("PC_SHIPS")) pc_ships_mode=ships; if(!getenv("PC_ARMADA")) pc_armada_n=armada;
+    }
     audio_frame();
     double period=pace_period(), now=now_ticks();
     // g_due is when THIS frame should have begun (= when the last one ended). A frame that arrives more than PACE_MAX_LAG frames late starts a fresh clock: the lost time is dropped.
     if(!g_fast && now-g_due > PACE_MAX_LAG*period){ g_due=now; g_resyncs++; }
     int late = now - g_due > period;                          // already more than a whole frame behind: do not spend time showing this one
-    if(g_fast ? (fr&15)==0 : (!late || (fr&7)==0)) present_game(1);
-    fps_n++; { uint64_t n=SDL_GetPerformanceCounter(); if(n-fps_t0>=t_freq){ fps_show=fps_n*(double)t_freq/(double)(n-fps_t0); fps_n=0; fps_t0=n; } }
+    int draw=g_fast ? (fr&15)==0 : (!late || (fr&7)==0);
+#ifdef PC_ANDROID
+    // Only presentation is skipped. Input, audio, timers and world ticks
+    // still execute once per fixed GBA frame. Menus always remain responsive.
+    if(!g_fast && current_budget().divisor==2 && (fr&1) && !shot_pending)draw=0;
+#endif
+    if(draw||shot_pending)present_game(1);
+    fps_n++; { uint64_t n=SDL_GetPerformanceCounter(); if(n-fps_t0>=t_freq){ tick_show=fps_n*(double)t_freq/(double)(n-fps_t0); fps_show=present_n*(double)t_freq/(double)(n-fps_t0); fps_n=present_n=0; fps_t0=n; } }
     // ---- pace: never repay missed display time with a burst of faster gameplay
     g_due += period;
     now=now_ticks();
@@ -929,17 +1581,34 @@ void plat_frame(void){
     pc_mp_frame((uint32_t)fr);   // nonblocking LAN ship snapshots; no effect without --lan-host/join
     pump_events();
     int was_paused=0;
-    while(menu_open || g_paused_focus || g_bg){                // paused: the game does not step; the window keeps being drawn (not while the app is in the background)
-        was_paused=1; uint64_t t0=SDL_GetPerformanceCounter();
+#ifdef PC_ANDROID
+    uint64_t next_menu_draw=0;
+#endif
+    while(menu_open || g_paused_focus || g_bg){                // paused: game simulation does not step
+        was_paused=1; audio_suspend(); uint64_t t0=SDL_GetPerformanceCounter();
+#ifdef PC_ANDROID
+        int idle_menu=!g_bg&&mobile_menu_only(1,g_touch,menu_open,ted_on,shot_pending);
+        if(!idle_menu)next_menu_draw=0;
+        if(!g_bg&&(!idle_menu||mobile_menu_due(SDL_GetTicks64(),&next_menu_draw)))present_game(1);
+#else
         if(!g_bg) present_game(1);
+#endif
         pump_events();
         if(g_bg) SDL_Delay(50);
+#ifdef PC_ANDROID
+        else if(idle_menu) SDL_Delay(8); // poll inputs frequently, redraw separately
+#endif
         else if(!C.vsync) SDL_Delay(16);
         else if(SDL_GetPerformanceCounter()-t0<t_freq/200) SDL_Delay(8);
         if(!menu_open && !g_paused_focus && !g_bg) break;
-        if(!g_bg) audio_frame();
+        // Paused menus do not advance PSG time or refill the audio ring.
     }
-    if(was_paused || g_pace_reset || g_app_resume){ g_pace_reset=0; g_app_resume=0; g_due=now_ticks(); }      // a pause, a window move/resize/minimise, a monitor change: a fresh clock, no catch-up burst
+    if(was_paused&&!g_bg)audio_resume();
+    if(was_paused || g_pace_reset || g_app_resume){ g_pace_reset=0; g_app_resume=0; g_due=now_ticks(); if(was_paused){fps_n=present_n=0;fps_t0=SDL_GetPerformanceCounter();
+#ifdef PC_ANDROID
+        g_governor.count=g_governor.slow=0;
+#endif
+        } }      // a pause, a window move/resize/minimise, a monitor change: a fresh clock, no catch-up burst
     if(getenv("BUGSTAR_TOUCHEDIT") && fr==30 && g_touch && !ted_on){ open_menu(); ted_open(); }      // test hook: open the touch pad layout editor
     { const char *mp=getenv("BUGSTAR_MENU"); if(mp && fr==30 && !menu_open){ open_menu(); menu_page=atoi(mp); if(getenv("BUGSTAR_MENUSEL")) menu_sel=atoi(getenv("BUGSTAR_MENUSEL")); } }   // (test hook: open the options screen on a page)
     if(g_first_run && fr==45){ g_first_run=0;
@@ -969,7 +1638,7 @@ static void android_mkdir_p(const char *path){
 #endif
 const char *plat_save_path(void){ return g_savepath; }
 int plat_paths(int argc, char **argv){            // finds the folders; call before the fake GBA starts (it loads the save)
-    for(int i=1;i+1<argc;i++) if(!strcmp(argv[i],"--icon-png")){ int S=256; uint32_t *p=malloc((size_t)S*S*4); plat_icon_pixels(p,S); for(size_t k=0;k<(size_t)S*S;k++) if(!(p[k]>>24)) p[k]=0; plat_write_png_rgba(argv[i+1],p,S,S); exit(0); }
+    for(int i=1;i+1<argc;i++) if(!strcmp(argv[i],"--icon-png")){ int S=256; uint32_t *p=malloc((size_t)S*S*4); if(!p)exit(1); plat_icon_pixels(p,S); for(size_t k=0;k<(size_t)S*S;k++) if(!(p[k]>>24)) p[k]=0; int ok=plat_write_png_rgba(argv[i+1],p,S,S); free(p); exit(ok?0:1); }
     const char *data=NULL; int portable=0;
     for(int i=1;i<argc;i++){ if(!strcmp(argv[i],"--data")&&i+1<argc) data=argv[++i]; else if(!strcmp(argv[i],"--portable")) portable=1; }
     char *pp=NULL;
@@ -989,6 +1658,11 @@ int plat_paths(int argc, char **argv){            // finds the folders; call bef
     { char cmd[1300]; snprintf(cmd,sizeof cmd,"mkdir -p '%s' '%sscreenshots' 2>/dev/null",g_pref,g_pref); if(system(cmd)){} }
 #endif
     snprintf(g_savepath,sizeof g_savepath,"%sbugstar.sav",g_pref); snprintf(g_cfgpath,sizeof g_cfgpath,"%ssettings.ini",g_pref); snprintf(g_shotdir,sizeof g_shotdir,"%sscreenshots/",g_pref);
+#ifdef PC_ANDROID
+    __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_SAVE","cartridge path=%s",g_savepath);
+    transfer_result=transfer_apply(g_savepath);
+    if(transfer_result) __android_log_print(ANDROID_LOG_INFO,"BUGSTAR_SAVE","restore result=%d",transfer_result);
+#endif
 #ifdef _WIN32
     { char d[1300]; snprintf(d,sizeof d,"%sscreenshots",g_pref); pc_mkdir_p(d); }
 #endif
@@ -1031,6 +1705,11 @@ int plat_open(int argc, char **argv){
 #endif
     if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){
         if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_GAMECONTROLLER|SDL_INIT_TIMER)!=0){ fprintf(stderr,"SDL: %s\n",SDL_GetError()); return 1; } g_no_audio=1; }
+#ifdef PC_ANDROID
+    { int ram=SDL_GetSystemRAM(); g_low_ram=sizeof(void*)==4 || (ram>0 && ram<=2048);
+      if(g_low_ram){ sg_cache_set_cap_mb(4); if(g_first_run){ C.ships=0; C.armada=0; C.quality=1; } }
+      fprintf(stderr,"Android RAM %d MiB, %u-bit, low memory profile %d\n",ram,(unsigned)(sizeof(void*)*8),g_low_ram); }
+#endif
     { const char *vd=SDL_GetCurrentVideoDriver(); g_quiet=getenv("BUGSTAR_EVENTS")||getenv("BUGSTAR_MENU")||getenv("BUGSTAR_FAKEPAD")||getenv("BUGSTAR_NOHELP")||g_stop_after>=0||(vd&&(!strcmp(vd,"dummy")||!strcmp(vd,"offscreen"))); }      // a test run (events, a dummy screen, a fixed length): no tutorial, the window keeps the size it was given
     if(g_first_run && !g_quiet && !g_size_arg && !C.fullscreen){      // first start: the biggest of the usual sizes (3x to 8x the GBA's 240 x 160) that fits the desktop with room for the title bar
         SDL_Rect r; if(SDL_GetDisplayUsableBounds(0,&r)==0 && r.w>0){ static const int sz[][2]={{720,480},{960,640},{1200,800},{1440,960},{1920,1280}}; int best=0; for(int i=0;i<5;i++) if(sz[i][0]<=r.w*9/10 && sz[i][1]<=r.h*88/100) best=i; C.win_w=sz[best][0]; C.win_h=sz[best][1]; } }
@@ -1038,10 +1717,21 @@ int plat_open(int argc, char **argv){
     if(!win){ fprintf(stderr,"window: %s\n",SDL_GetError()); return 1; }
     SDL_SetWindowMinimumSize(win,240,160);
     ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_ACCELERATED|(C.vsync?SDL_RENDERER_PRESENTVSYNC:0));
-    if(!ren){ fprintf(stderr,"no accelerated renderer (%s): using the software one\n",SDL_GetError()); ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_SOFTWARE); }
+#ifdef PC_ANDROID
+    if(!ren && C.vsync) ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_ACCELERATED);
+#endif
+    if(!ren){ fprintf(stderr,"no accelerated renderer (%s): using the software one\n",SDL_GetError()); ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_SOFTWARE);
+#ifdef PC_ANDROID
+      g_low_ram=1; sg_cache_set_cap_mb(4);
+#endif
+    }
     if(!ren){ fprintf(stderr,"renderer: %s\n",SDL_GetError()); return 1; }
     { SDL_RendererInfo ri; if(SDL_GetRendererInfo(ren,&ri)==0) fprintf(stderr,"video: %s renderer, driver %s\n",ri.name,SDL_GetCurrentVideoDriver()); }
     make_icon(); font_init();
+#ifdef PC_ANDROID
+    if(transfer_result>0)say_toast_ms("CARTRIDGE SAVE RESTORED",6000);
+    else if(transfer_result<0)say_toast_ms("RESTORE FAILED - OLD SAVE KEPT",6000);
+#endif
     SDL_ShowCursor(C.fullscreen?SDL_DISABLE:SDL_ENABLE);
     pad_open();
     if(g_touch==1 && pad) g_thide=1;      // a gamepad is plugged in: no on-screen pad until a finger touches the screen

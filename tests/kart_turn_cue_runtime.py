@@ -175,10 +175,13 @@ static int knp,kt_len,kmm_w,kmm_h,krev,kpaint_rev;
 #define KGY(i) (kt.gy[krev ? (kt.n-(i))%kt.n : (i)])
 static int kwrap8(int d){ return ((d+128)&255)-128; }
 static int isqrt(u32 v){ u32 r=0; while((r+1)*(r+1)<=v) r++; return (int)r; }
-static struct { int pi,place; } rc[1];
+static struct { int pi,place,fin,nextg; } rc[1];
+#define KS_RACE 1
+static int ks_state;
 static int kr_mode=1,nrc=1,khd=0,m7_strip;
 static int outline_count,fast_count,player_x,player_y,ahead_count;
 static int ahead_x[6],ahead_y[6],ahead_c[6];
+static int gate_count,gate_x[4],gate_y[4],gate_c[4],route_expected;
 static void ov_k(void){}
 static void kmm_path(volatile u16 *pg,int x,int y,int n){
     (void)pg;(void)x;(void)y;fast_count=n;
@@ -188,19 +191,26 @@ static int cosx(int a){ (void)a;return 16384; }
 static void pix(volatile u16 *pg,int x,int y,int c){
     (void)pg;
     if(c==C_GREY || c==C_WHITE){ outline_count++; return; }
-    if(ahead_count>=6){ fputs("too many route highlights\n",stderr);exit(1); }
+    if(ahead_count>=route_expected){
+        if(gate_count>=4){fputs("too many gate pixels\n",stderr);exit(1);}
+        gate_x[gate_count]=x;gate_y[gate_count]=y;gate_c[gate_count++]=c;return;
+    }
     ahead_x[ahead_count]=x;ahead_y[ahead_count]=y;ahead_c[ahead_count++]=c;
 }
 static void rect(volatile u16 *pg,int x,int y,int w,int h,int c){
     (void)pg;
     if(w==3 && h==3 && c==C_GOLD){ player_x=x+1;player_y=y+1; }
 }
-""" + extract_function("static void kt_build(") + "\n" + map_function + "\n" + extract_function("static void kart_minimap(") + r"""
+""" + extract_function("static void kt_build(") + "\n" + map_function + "\n" + extract_function("static int kart_gate_missed(") + "\n" + extract_function("static void kart_minimap(") + r"""
 static int check_map(int built_count,int pi,int fast){
     int ox=194+(40-kmm_w)/2,oy=20+(40-kmm_h)/2;
     m7_strip=fast?160:0;
     rc[0].pi=pi;rc[0].place=1;
-    outline_count=fast_count=ahead_count=0;player_x=player_y=-1;
+    outline_count=fast_count=ahead_count=gate_count=route_expected=0;player_x=player_y=-1;
+    if(built_count>12) for(int step=2;step<=12;step+=2){
+        int i=(pi/2+step)%built_count,x=ox+kmmx[i],y=oy+kmmy[i];
+        if(x>=194&&x<=234&&y>=21&&y<=61)route_expected++;
+    }
     kart_minimap(NULL);
     if((fast?fast_count:outline_count)!=built_count){
         fprintf(stderr,"map outline: %d path points generated %d samples, drew %d (fast=%d)\n",
@@ -221,6 +231,16 @@ static int check_map(int built_count,int pi,int fast){
         expected_count++;
     }
     if(expected_count!=ahead_count){ fputs("map route point count mismatch\n",stderr);return 1; }
+    if(ks_state==KS_RACE && !rc[0].fin && rc[0].nextg<kt.n){
+        int gp=kgate_pi[rc[0].nextg],i=gp/2,x=ox+kmmx[i],y=oy+kmmy[i];
+        int past=(pi-gp+knp)%knp,c=past>8&&past<knp/2?C_RED:C_GOLD;
+        int visible=i<built_count&&x>=195&&x<=233&&y>=22&&y<=60;
+        if(gate_count!=(visible?4:0))return 1;
+        if(visible){
+            int dx[]={-1,1,0,0},dy[]={0,0,-1,1};
+            for(int j=0;j<4;j++)if(gate_x[j]!=x+dx[j]||gate_y[j]!=y+dy[j]||gate_c[j]!=c)return 1;
+        }
+    }else if(gate_count)return 1;
     return 0;
 }
 int main(void){
@@ -242,6 +262,9 @@ int main(void){
         }
         tracks++;odd_tracks+=knp&1;
         for(int pi=0;pi<knp;pi++) for(int fast=0;fast<2;fast++){
+            ks_state=0;
+            if(check_map(built_count,pi,fast)) return 1;
+            ks_state=KS_RACE;rc[0].nextg=pi%kt.n;
             if(check_map(built_count,pi,fast)) return 1;
             checks++;
         }

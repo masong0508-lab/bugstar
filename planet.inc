@@ -301,8 +301,42 @@ static void place_habitat(PObj *o, int kind, int minr, int maxr){
     }
     o->alive=0; // a drowned or built-over grove must not block movement
 }
+/* A required destination must never be culled by the decoration water
+   filter. Repair only unsafe positions, without advancing the world RNG. */
+static int surface_goal_kind(int kind){
+    return kind==O_DOOR||kind==O_CAGE||kind==O_BASE||kind==O_SHRINE;
+}
+static int surface_goal_safe(int self,s32 x,s32 y){
+    int tx=(x>>15)&HMASK,ty=(y>>15)&HMASK;
+    int i=ty*HW+tx,c=cmap[i];
+    if(hm_at(x,y)<water_lv||hfine[i]<water_lv||(c>=BLD_B&&c<BLD_B+8))return 0;
+    for(int j=0;j<NPO;j++)if(j!=self&&po[j].alive&&(surface_goal_kind(po[j].kind)||po[j].kind==O_SHIP)){
+        s32 dx=wrapd(x-po[j].x),dy=wrapd(y-po[j].y);
+        if((dx<0?-dx:dx)+(dy<0?-dy:dy)<(1<<16))return 0;
+    }
+    return 1;
+}
+static int surface_goal_repair(int i){
+    PObj *o=&po[i];
+    if(surface_goal_safe(i,o->x,o->y))return 1;
+    int ox=(o->x>>16)&TMASK,oy=(o->y>>16)&TMASK;
+    /* First preserve the locality of the destination. If surrounded by
+       water/buildings, fall back to the clear area near the ship. */
+    for(int phase=0;phase<2;phase++){
+        int cx=phase?64:ox,cy=phase?64:oy;
+        int low=phase?2:0,high=phase?8:6;
+        for(int d=low;d<=high;d++)for(int dy=-d;dy<=d;dy++)for(int dx=-d;dx<=d;dx++){
+            if(dx!=-d&&dx!=d&&dy!=-d&&dy!=d)continue;
+            s32 x=(((cx+dx)&TMASK)<<16)+0x8000,y=(((cy+dy)&TMASK)<<16)+0x8000;
+            if(surface_goal_safe(i,x,y)){o->x=x;o->y=y;return 1;}
+        }
+    }
+    return 0; /* keep the object alive even on an extreme terrain seed */
+}
+static void ore_nav_reset(void);
 static char tdbg[40];
 static void new_planet(void){
+    ore_nav_reset();
     water_lv = endless ? 30+wr(60) : (zone==1 ? 100 : zone==0||zone==3 ? 70 : zone==5 ? 10 : 45);
     if(endless){ switch(wd.cls){ case PC_OCEAN: water_lv=86+wr(6); break; case PC_DESERT: water_lv=0; break; case PC_MOUNTAIN: water_lv=20+wr(20); break;
         case PC_DEATH: water_lv=45+wr(20); break;
@@ -342,7 +376,8 @@ static void new_planet(void){
     }
     city_people(&k); planet_life(&k); pq_type=0; pq_done=0; race_on=0; kart_on=0; kart_won=0; race_best=0; kart_reset();
     while(k<NPO){ place(&po[k],(k&1)?O_PEBBLE:O_TUFT,3,64); k++; }
-    for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind!=O_SHIP && (po[i].kind<O_MARKET || (po[i].kind>=O_FOSSIL && po[i].kind<=O_CRIT)) && hm_at(po[i].x,po[i].y)<water_lv){ po[i].x+=1<<16; if(hm_at(po[i].x,po[i].y)<water_lv) po[i].alive = po[i].kind<=O_CAGE ? 1 : 0; }
+    for(int i=0;i<NPO;i++) if(po[i].alive && surface_goal_kind(po[i].kind)) surface_goal_repair(i);
+    for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind!=O_SHIP && !surface_goal_kind(po[i].kind) && (po[i].kind<O_MARKET || (po[i].kind>=O_FOSSIL && po[i].kind<=O_CRIT)) && hm_at(po[i].x,po[i].y)<water_lv){ po[i].x+=1<<16; if(hm_at(po[i].x,po[i].y)<water_lv) po[i].alive = po[i].kind<=O_CAGE ? 1 : 0; }
     for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_ROCK && ore_of(po[i].x,po[i].y)>=0 && ore_mined_recently(ore_id(po[i].x,po[i].y))) po[i].alive=0;      // veins you mined lately are still empty (the list holds the last 16, so they regrow as you mine others)
     ppx=64<<16; ppy=64<<16; cam_h = ground_h(ppx,ppy)+CAM_UP; facing=1; prompt_k=-2;
 #ifdef TEST_CITY
@@ -386,8 +421,14 @@ __attribute__((noinline)) static int bld_face(int px,int py,int qx,int qy,s32 vx
     if(px!=qx && py==qy) return 0; if(py!=qy && px==qx) return 1; s32 ax=vx<0?-vx:vx, ay=vy<0?-vy:vy; return ay>ax; }
 __attribute__((noinline)) static int rise_of(int h,int cL){ return (h-cL)*g_hs*CITY_K; }
 __attribute__((noinline)) static int street_ix(int ix, s32 mx, s32 my){                                          // streets: shadowed under the walls and along the kerb; a plaza: contact shadow and a pale kerb
+    int fx=(mx>>11)&15,fy=(my>>11)&15;
+    /* Neither kerbs nor wall shadows can reach the center of a texel.
+       Avoid four map reads and the city-tech lookup on interior samples. */
+    if(ix==74){if(fx>=4&&fx<12&&fy>=4&&fy<12)return ix;}
+    else if(ix==80||ix==81){if(fx>=5&&fx<11&&fy>=5&&fy<11)return ix;}
+    else return ix;
     int tx=(mx>>15)&HMASK, ty=(my>>15)&HMASK, tr=(tx+1)&HMASK, tl=(tx-1)&HMASK, td=(ty+1)&HMASK, tu=(ty-1)&HMASK;
-    int cr=cmap[ty*HW+tr], cl=cmap[ty*HW+tl], cd=cmap[td*HW+tx], cu=cmap[tu*HW+tx], fx=(mx>>11)&15, fy=(my>>11)&15;
+    int cr=cmap[ty*HW+tr], cl=cmap[ty*HW+tl], cd=cmap[td*HW+tx], cu=cmap[tu*HW+tx];
     #define ISB(q) ((q)>=BLD_B && (q)<BLD_B+8)
     if(ix==74){ int ke=(ISB(cr)&&fx>=12)||(ISB(cl)&&fx<4)||(ISB(cd)&&fy>=12)||(ISB(cu)&&fy<4);
         int yk=((cr==80||cr==81)&&fx>=14)||((cl==80||cl==81)&&fx<2)||((cd==80||cd==81)&&fy>=14)||((cu==80||cu==81)&&fy<2);
@@ -441,7 +482,7 @@ IWRAM static void render_planet(volatile u16 *pg){
                 if(i<NEAR_STEPS && ix>=GND_B+1 && ix<GND_B+15) ix += gtex[(((my>>11)&15)<<4)|((mx>>11)&15)];    // grass texture up close
                 if(g_fog && i>=g_nst-6) ix=SKY_B+7-((g_nst-i)>>1);                                // FOG: the far ground fades into the mist
                 if(ix<GND_B && ((((c+sparkle)*7+i*3)&31)==0)) ix=WAT_B+7;              // sparkles on the water
-                if(i<NEAR_STEPS && (ix==74||ix==75||ix==80||ix==81)) ix=street_ix(ix,mx,my);          // the PC look for streets (shadow under walls, kerbs)
+                if(i<NEAR_STEPS && (ix==74||ix==80||ix==81)) ix=street_ix(ix,mx,my);          // the PC look for streets (shadow under walls, kerbs)
                 u16 p2=ix|(ix<<8);
                 int y0 = y<18 ? 18 : y;
                 if(ix>=BLD_B && ix<BLD_B+8 && ytop-y0>3){                                // a building (the PC look): lit face and shaded face, roof lip, shopfront, slab lines, floors of real height with punched windows or glass ribbons, sills, mullions, sky mirrored in the panes
@@ -599,6 +640,7 @@ static int scan_vein(void){                                // the highest tier v
 // It costs nothing per screen column: the veins near you are listed once every half second, and each frame draws a 30x30 panel and at most OM_N dots.
 #define OM_N 40
 static u8 om_i[OM_N]; static u8 om_n; static int om_t=-999;
+static void ore_nav_reset(void){scan_i=-1;om_n=0;om_t=-999;}
 static const u8 om_col[NORE]={0,0,0,0, C_GREY,C_RED,C_CYAN,C_GOLD,C_DRED,C_WHITE,C_GREEN,C_UNIQ};      // iron grey, copper red, ice quartz cyan, sulfur gold, obsidian dark red, calcite white, scrap green, voidsteel purple
 static void oremap_list(void){ om_n=0; om_t=frames;
     for(int i=0;i<NPO && om_n<OM_N;i++) if(po[i].alive && po[i].kind==O_ROCK){ s32 dx=wrapd(po[i].x-ppx), dy=wrapd(po[i].y-ppy); if(dx>(20<<16)||dx<-(20<<16)||dy>(20<<16)||dy<-(20<<16)) continue; if(ore_of(po[i].x,po[i].y)>=0) om_i[om_n++]=(u8)i; } }
@@ -718,7 +760,7 @@ static void planet_frame(void){
             case O_BEETLE: { PObj *o=&po[best]; sfx(0); mine_t=6; s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); o->x=(o->x+dx*2)&((TW<<16)-1); o->y=(o->y+dy*2)&((TW<<16)-1); invuln=20;
                 if(--o->hp>0){ char b[40]; scpy(b,"BITE! THE BEETLE HAS "); ncat(b,o->hp); scat(b," LEFT"); show_msg(b); break; }
                 o->alive=0; gold+=12+dlv()*3; gain_xp(8+dlv()*2); st_kills[2]++; show_msg("BEETLE DOWN! +GOLD"); sfx(9); if(pq_type==2){ pq_have++; job_tick(); } if(relic_roll(250)){ planet_hud(); p_last=vbl_count; return; } break; }
-            case O_CRIT: { PObj *o=&po[best]; Species *p=&spc[o->var]; sfx(0); mine_t=6; invuln=12; s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); o->x=(o->x+dx)&((TW<<16)-1); o->y=(o->y+dy)&((TW<<16)-1); ctim[o->var]=0;
+            case O_CRIT: { PObj *o=&po[best]; Species *p=&spc[o->var]; sfx(0); mine_t=6; invuln=12; s32 dx=wrapd(o->x-ppx), dy=wrapd(o->y-ppy); o->x=(o->x+dx)&((TW<<16)-1); o->y=(o->y+dy)&((TW<<16)-1); ctim[best]=0;
                 if(--o->hp>0){ char b[40]; scpy(b,p->temper==1?"IT LOOKS HURT. AND CONFUSED":"THE "); if(p->temper!=1){ scat(b,p->name); scat(b," SQUEAKS"); } show_msg(b); break; }
                 o->alive=0; p->pop=crit_count(o->var); eat(12); gain_xp(5+dlv()); char b[40]; scpy(b,"CAUGHT A "); scat(b,p->name); scat(b,". FOOD +12. "); ncat(b,p->pop); scat(b," LEFT"); show_msg(b); sfx(9);
                 if(pq_type==6 && o->var==0){ pq_have++; job_tick(); } break; }

@@ -28,7 +28,8 @@ def extract(name):
 
 
 functions=[extract(name) for name in
-           ("kart_turn_rate","kart_turn_direction","kart_recovery_slow")]
+           ("kart_surface_turn_base","kart_turn_rate","kart_turn_direction","kart_recovery_slow")]
+assert "tr=kart_surface_turn_base(tr,kt.surf,kr_mode,wd.weather);" in source, "surface steering floor must be applied to real driving"
 assert "tr=kart_turn_rate(tr,kv,vmax);" in source, "steering helper is not active in kart_step"
 assert "int steer=kart_turn_direction(s,kv); khd=(khd+steer*tr)&1023;" in source, (
     "reverse steering is not connected to the real heading update"
@@ -51,6 +52,26 @@ typedef int32_t s32;
 #define CHECK(e) do { if(!(e)){ fprintf(stderr,"Kart control failed at line %d: %s\n", __LINE__, #e); return 1; } } while(0)
 int main(void){
     const s32 max=12800;
+    // Test every normal steering base, surface, mode and weather combination.
+    // Independently calculate the original penalty and verify the only change
+    // is the minimum usable turn authority.
+    for(int base=5;base<=10;base++)for(int surf=0;surf<6;surf++)
+    for(int mode=1;mode<=2;mode++)for(int weather=0;weather<=2;weather++){
+        int old=base;
+        if(mode==1&&surf==2)old=old*11/20;
+        else if(mode==1&&surf==1)old=old*9/10;
+        if(weather==1)old=old*9/10;
+        else if(weather==2)old=old*4/5;
+        const int actual=kart_surface_turn_base(base,surf,mode,weather);
+        CHECK(actual==(old<4?4:old));
+        CHECK(actual<=base);
+        CHECK(kart_turn_rate(actual,0,max)==0);
+        CHECK(kart_turn_rate(actual,max/3,max)==(actual*255>>8));
+        CHECK(kart_turn_rate(actual,max/2,max)>=4);
+    }
+    CHECK(kart_surface_turn_base(5,2,1,2)==4);      // weakest grip: snow on ice
+    CHECK(kart_surface_turn_base(9,0,1,0)==9);      // dry: original behavior
+
     CHECK(kart_turn_rate(7,0,max)==0);             // no stationary pirouette
     CHECK(kart_turn_rate(7,max/64,max)==0);       // very tiny speed still has little effect
     CHECK(kart_turn_rate(7,max/32,max)==2);       // speed threshold gives usable turning

@@ -107,15 +107,16 @@ static void kart_results(void){
     static const u8 cpts[NRC]={15,12,10,8,7,6,5,4,3,2,1,0};
     int prize=0, medal=0; char l1[64], l2[64];
     int base=(30+dlv()*6)*(k_cls==0?100:k_cls==1?160:k_cls==2?240:350)/100;
-    if(nrc>1){ kst_races++; if(me==1) kst_wins++; if(me<=3) kst_pods++;
+    if(nrc>1){ kst_races++; if(me==1&&!rc[0].out) kst_wins++; if(me<=3&&!rc[0].out) kst_pods++;
         if(k_type!=1){ static const u8 pc[NRC]={100,60,40,20,5,5,5,5,3,3,3,3}; prize=base*pc[me-1]/100; }
         if(k_type==1) for(int i=0;i<nrc;i++) rc[ord[i]].pts+=cpts[i];
         if(me==1 && pq_type==8 && !pq_done){ kart_won=1; job_tick(); }
         if(kst_wins>=10) kown[KP_TOP]|=1u<<15; }
     else { int t=rc[0].ftime, par=k_par(); medal = t<=par ? 3 : t<=par*112/100 ? 2 : t<=par*130/100 ? 1 : 0; if(medal==3) kst_tt++; prize = medal ? base*medal/3 : 0; }
-    if(rc[0].fin && k_type!=3){ if(k_rec>=0){ KRec r; if(krec_get(k_rec,&r)){ if(!r.best || rc[0].ftime<r.best) r.best=rc[0].ftime; if(medal>r.medal) r.medal=(u8)medal; r.runs++; krec_put(k_rec,&r); } }
+    if(kart_record_eligible(rc[0].fin,rc[0].out,k_type,rc[0].ftime)){ if(k_rec>=0){ KRec r; if(krec_get(k_rec,&r)){ if(!r.best || rc[0].ftime<r.best) r.best=rc[0].ftime; if(medal>r.medal) r.medal=(u8)medal; r.runs++; krec_put(k_rec,&r); } }
         else if(k_trk>=0) kbest_set(k_trk, rc[0].ftime, medal); }
-    gold+=prize; fame+=me==1?6:me<=3?2:0;
+    if(rc[0].out&&k_type!=6)prize=0;
+    gold+=prize; if(!rc[0].out)fame+=me==1?6:me<=3?2:0;
     // the card
     box(pg,8,20,224,132); rect(pg,9,21,222,12,6);
     { char t[40]; scpy(t,k_type==1?"CUP RACE ":"RESULTS: "); if(k_type==1){ ncat(t,k_cup_i+1); scat(t," OF 4: "); } scat(t,kt.name); ctext(pg,120,24,t,C_GOLD); }
@@ -123,7 +124,7 @@ static void kart_results(void){
         scpy(t,kplace_s(i+1)); text(pg,16,y,t,i==0?C_GOLD:C_GREY,1);
         scpy(t, ord[i]==0 ? "YOU" : k->name); t[19]=0; text(pg,36,y,t,c,1);
         if(ord[i] && (k->being==KB_CRIT0||k->being==KB_CRIT1)) scpy(t,"CREATURE"); else scpy(t, ord[i]==0 ? (form==FORM_HUMAN?"HUMANOID":form==FORM_CREATURE?"CREATURE":"BUG") : kbeing_kind[k->being]); text(pg,120,y,t,C_DGREY,1);
-        if(k->fin) kfmt_time(t,k->ftime); else { int sc=kscore(ord[i]), tot=(kt.laps+1)*knp; if(sc>knp/4 && nrc>1){ int est=k_clock+(int)((s32)(tot-sc)*k_clock/(sc>1?sc:1)); kfmt_time(t,est); } else scpy(t,"--"); } text(pg,172,y,t,c,1);   // the ones still going: about when they will finish
+        if(k->fin) kfmt_time(t,k->ftime); else if(k->out)scpy(t,k_type==6?"OUT":"DNF"); else { int sc=kscore(ord[i]), tot=(kt.laps+1)*knp; if(sc>knp/4 && nrc>1){ int est=k_clock+(int)((s32)(tot-sc)*k_clock/(sc>1?sc:1)); kfmt_time(t,est); } else scpy(t,"--"); } text(pg,172,y,t,c,1);   // the ones still going: about when they will finish
         if(k_type==1){ scpy(t,"+"); ncat(t,cpts[i]); text(pg,206,y,t,C_CYAN,1); } }
     if(nrc>1){ if(ord[0]){ scpy(l1,rc[ord[0]].name); scat(l1,": \""); scat(l1, rc[ord[0]].being==KB_CRIT0||rc[ord[0]].being==KB_CRIT1 ? "SQUEAK! SQUEAK!" : kbeing_brag[rc[ord[0]].being]); scat(l1,"\""); l1[54]=0; ctext(pg,120,112,l1,C_GREY); }
         else ctext(pg,120,112,"FIRST PLACE! THE CROWD GOES WILD. MOSTLY BUGS.",C_GREEN); }

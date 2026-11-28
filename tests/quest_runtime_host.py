@@ -32,7 +32,7 @@ def extract(signature):
 
 quest_home = extract("static int quest_home(void)")
 quest_champ_id = extract("static int quest_champ_id(void)")
-name_table = re.search(r"static const char \*const quest_champ_names\[6\]=\{[^}]+\};", source)
+name_table = re.search(r"static const char \*const quest_champ_names\[NQCHAMP\]=\{[^}]+\};", source)
 assert name_table, "missing original champion names"
 add_gear = extract("static int add_gear(Gear g)")
 prefix = r"""
@@ -44,6 +44,7 @@ typedef unsigned char u8;
 typedef int16_t s16;
 typedef struct { u8 it,sub,rar,pre,suf,lvl; } Gear;
 #define BAGMAX 120
+#define NQCHAMP 12
 enum { IT_NONE, IT_BERRY, IT_SEED, IT_SHELL, IT_THORN, IT_CRUMB,
        IT_WARP, IT_GEM, IT_CHARM, IT_BOOK, IT_FISH, IT_POTION, IT_QUEST, IT_KEY };
 enum { Q_NONE, Q_HUNT, Q_CHAMP, Q_FETCH, Q_RESCUE, Q_BOSS,
@@ -105,6 +106,11 @@ int main(void){
     CHECK(quest_champ_id()==0);
     strcpy(q_name,"SLAY THE PALE ONE ON B8");
     CHECK(quest_champ_id()==4);
+    for(int i=0;i<NQCHAMP;i++){
+        q_need=0;
+        snprintf(q_name,sizeof q_name,"SLAY %s ON B%d",quest_champ_names[i],8);
+        CHECK(quest_champ_id()==i);
+    }
     strcpy(q_name,"SLAY UNKNOWN ON B8");
     CHECK(quest_champ_id()==-1);
     puts("Quest C runtime: authentic relic, bag and legacy target paths PASS");

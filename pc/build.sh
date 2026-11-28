@@ -225,12 +225,12 @@ H game.inc 'while(level<LEVEL_CAP && xp>=xp_next() && ups<64){' 'while(!sim_big_
 H ui.inc 'scpy(b,"LEVEL "); ncat(b,level); scat(b,"   BUGS FREED ");' 'scpy(b,"LEVEL "); sim_ncat_level(b); scat(b,"   BUGS FREED ");'
 H ui.inc 'char lv[12]="LV "; ncat(lv,level);' 'char lv[16]="LV "; sim_ncat_level(lv);'
 H ui.inc 'vbar(pg,30,75,90,xp,xp_next(),C_GOLD,"XP")' 'vbar(pg,30,75,90,sim_xpv(xp),sim_xpm(xp_next()),C_GOLD,"XP")'
-H ui.inc 'static const u8 shop_tab_n[4]={3,5,5,4};' 'static u8 shop_tab_n[4]={3,5,5,4};'
-H ui.inc 'shop_tab_id[4][5]={{0,14,13,0,0},' 'shop_tab_id[4][5]={{0,14,13,17,18},'
-H ui.inc 'static const char *const shop_nm[17]={' 'static const char *const shop_nm[19]={'
-H ui.inc '"KART CLUB","SPELL SHOP","MINING"};' '"KART CLUB","SPELL SHOP","MINING","COLONY","MISSIONS"};'
-H ui.inc 'static const char *const shop_ds[17]={' 'static const char *const shop_ds[19]={'
-H ui.inc '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG"};' '"SELL ORE, UPGRADE YOUR TOOL, SEE YOUR ORE BAG","YOUR SETTLERS: SEE THEM AND TAKE WHAT THEY MADE","WARSHIP JOBS: BOARD AND JOURNAL"};'
+H ui.inc 'static const u8 shop_tab_n[4]={3,5,5,5};' 'static u8 shop_tab_n[4]={3,5,5,5};'
+H ui.inc 'shop_tab_id[4][5]={{0,14,13,0,0},' 'shop_tab_id[4][5]={{0,14,13,18,19},'
+H ui.inc 'static const char *const shop_nm[18]={' 'static const char *const shop_nm[20]={'
+H ui.inc '"KART CLUB","SPELL SHOP","MINING","FIELD GUIDE"};' '"KART CLUB","SPELL SHOP","MINING","FIELD GUIDE","COLONY","MISSIONS"};'
+H ui.inc 'static const char *const shop_ds[18]={' 'static const char *const shop_ds[20]={'
+H ui.inc 'S PRACTICAL FIELD MANUAL"};' 'S PRACTICAL FIELD MANUAL","YOUR SETTLERS: SEE THEM AND TAKE WHAT THEY MADE","WARSHIP JOBS: BOARD AND JOURNAL"};'
 # --- patch 15: colony calls in the dungeon (the colony's trouble picks a floor's goal; the floor event code does the rest)
 H dungeon.inc 'fl_ev=FE_NONE; fl_need=fl_have=0; fl_bonus=100; fl_done=0;' ' sim_dn_reset();' after
 H dungeon.inc '(rndi(100)<65 || cur_rock==5 || (ddna.on && ddna.haz))){' '(rndi(100)<65 || cur_rock==5 || (ddna.on && ddna.haz) || sim_dn_call())){'
@@ -242,7 +242,7 @@ H dungeon.inc 'static void fl_draw(volatile u16 *pg){' ' sim_dn_draw(pg);' after
 H main.c 'dob[i].alive=0; free_bug(dob[i].sub); break;' '{ int cc_=dob[i].champ==3; dob[i].alive=0; free_bug(dob[i].sub); if(cc_) sim_dn_done(FE_QUIET); } break;'
 H main.c 'dob[near_cage].alive=0; free_bug(dob[near_cage].sub);' '{ int cc_=dob[near_cage].champ==3; dob[near_cage].alive=0; free_bug(dob[near_cage].sub); if(cc_) sim_dn_done(FE_QUIET); }'
 H ui.inc 'in_menu++; menu_msg[0]=0; ship_build_model();' 'in_menu++; menu_msg[0]=0; ship_build_model(); sim_ship_tabs();'
-H ui.inc 'if(sel==15){ spell_shop(pg); continue; }' 'if(sel==17){ sim_ship_colony(pg); continue; } if(sel==15){ spell_shop(pg); continue; }'
+H ui.inc 'if(sel==15){ spell_shop(pg); continue; }' 'if(sel==18){ sim_ship_colony(pg); continue; } if(sel==15){ spell_shop(pg); continue; }'
 # --- the PC SHIP EDITOR (pc/shipyard): the hangar opens it, and your design gives the ship's numbers (no design file for the slot = the game's own numbers)
 for f in armour top_speed turn damp gun hold_bonus fuel_bonus accel16; do H ship.inc "static int ship_$f(void){" "static int ship_${f}_g(void){"; done
 H ship.inc '#define SV_MAX 128' $'static int pc_sy_stat(int k, int v);\nstatic int ship_armour(void){ return pc_sy_stat(0, ship_armour_g()); } static int ship_top_speed(void){ return pc_sy_stat(1, ship_top_speed_g()); } static int ship_turn(void){ return pc_sy_stat(2, ship_turn_g()); } static int ship_damp(void){ return pc_sy_stat(3, ship_damp_g()); }\nstatic int ship_gun(void){ return pc_sy_stat(4, ship_gun_g()); } static int ship_hold_bonus(void){ return pc_sy_stat(5, ship_hold_bonus_g()); } static int ship_fuel_bonus(void){ return pc_sy_stat(6, ship_fuel_bonus_g()); } static int ship_accel16(void){ return pc_sy_stat(7, ship_accel16_g()); }\n#define SV_MAX 128'
@@ -273,7 +273,7 @@ H save.inc 'pc_laws_slot_load(cur_slot);' ' pc_ws_slot_load(cur_slot);' after
 H save.inc 'sram_write(slot_base(cur_slot), s, sizeof(Save)); pc_laws_slot_save(cur_slot);' ' pc_ws_slot_save(cur_slot);' after
 H main.c 'pc_laws_slot_new(s2);' ' pc_ws_slot_new(s2);' after
 H ui.inc 'static const u8 shop_tab_id[4][5]' 'static u8 shop_tab_id[4][5]'
-H ui.inc 'if(sel==16){ mining_menu(pg); continue; }' 'if(sel==18){ pc_ms_board(pg,0); box(pg,12,20,216,136); continue; } if(sel==16){ mining_menu(pg); continue; }'
+H ui.inc 'if(sel==16){ mining_menu(pg); continue; }' 'if(sel==19){ pc_ms_board(pg,0); box(pg,12,20,216,136); continue; } if(sel==16){ mining_menu(pg); continue; }'
 H space.inc 'if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==10)) break;' 'if(HIT(K_SEL)){ pc_ms_board(pg,1); dirty=1; wait_release(); continue; } if(HIT(K_START) || (tab==1 && HIT(K_A) && sel==10)) break;'
 H space.inc '"A: BUY  L/R: MARKET  START: LEAVE"' '"A: BUY  L/R: MARKET  SEL: MISSIONS  START: LEAVE"'
 H space.inc 'for(int i=0;i<NSYS;i++) if(has_base(i) && (i<6 ? i<zones_open : ant_king)){ int x=sys[i].x, y=sys[i].y; rect(pg,x-3,y-3,2,2,C_RED);' 'pc_ms_map(pg); for(int i=0;i<NSYS;i++) if(has_base(i) && (i<6 ? i<zones_open : ant_king)){ int x=sys[i].x, y=sys[i].y; rect(pg,x-3,y-3,2,2,C_RED);'

@@ -156,6 +156,14 @@ static int nm_pick(void){                      // a creature of this planet, or 
 }
 static const char *const champ_pre[8]={"GRIM","BLOODY","GIANT","SWIFT","ANCIENT","VILE","FROST","ROTTEN"};
 static const char *const kind_name[K_NEND]={"SPIDER","","","","QUEEN","BAT","","BEETLE","WASP","","BARREL","CORE","SLIME","SCORPION","GHOST","TOAD","ANT","CENTIPEDE","GOLEM","DRONE","MOTH","SHROOM","CRAB","WISP","SNAIL","BUMBLEBEE","JELLYFISH","ROCKBACK","SANDWORM","FROSTMITE","MANTIS","REAPER","SENTRY","GLOWFLY","FIRE IMP","ACIDLING","SHARD","SKELETON","LEECH","WRAITH","EARWIG","APHID","DRAGONFLY","STINKBUG","FLATWORM","HORNET","WEEVIL","HOPPER","MONARCH","TICK","PIXIE","PUFFBALL","CRAYFISH","PIRANHA","EEL","URCHIN","SQUID","MOSQUITO","NEWT","ANGLER","ANTLION","SCARAB","SOLIFUGE","GEODE","GECKO","ICEWORM","YETI","SNOWBALL","ICICLE","PENGUIN","TARANTULA","TREE FROG","STRANGLER","PITCHER","BULLET ANT","ZOMBUG","BANSHEE","MUMMY","CROW","GRAVEWORM","ROACH","TURRET","RAT","SCRAPBOT","PIGEON","LAVA WORM","CINDER","SALAMANDER","HELLHOUND","PYRE","BRAMBLE","POLLEN IMP","BLOOM WASP","ROOT TITAN","ABYSS EEL","CORAL STALKER","STORM MEDUSA","REEF LURKER","DUST SCARAB","SAND SPECTER","THORN WORM","IRON SCORPION","RIME MOTH","FROST SENTINEL","GLACIER BRUTE","BLIZZARD BAT","FANG VINE","SPORE WIDOW","CANOPY PHANTOM","VENOM BLOOM","BONE REAPER","CRYPT LOCUST","GRAVE SENTINEL","SHADE HOUND"};
+/* Each bounty name now has its own silhouette and combat rhythm.
+   The first six names remain valid in existing save files. All targets
+   use the existing actor pool, art and enemy AI. */
+static const u8 quest_champ_kind[NQCHAMP]={
+    K_SPIDER,K_SHROOM,K_CENTI,K_WASP,K_GHOST,K_BEETLE,
+    K_BRAMBLE,K_SCORP,K_SHARD,K_MANTIS,K_ROOTTITAN,K_STORMMEDUSA
+};
+static const u8 quest_champ_hp[NQCHAMP]={5,5,4,4,4,6,5,5,4,5,6,4};
 static int is_mon(int k){ return k==K_SPIDER||k==K_BOSS||k==K_BAT||k==K_BEETLE||k==K_WASP||k==K_CORE||k==K_SLIME||k==K_SCORP||k==K_GHOST||k==K_TOAD||k==K_ANT||k==K_CENTI||k==K_GOLEM||k==K_DRONE||k==K_MOTH||k==K_SHROOM||k==K_CRAB||k==K_WISP||(k>=K_SNAIL&&k<K_NEND); }
 enum { DC_NONE, DC_PANEL, DC_NICHE, DC_DOOR, DC_RUNE, DC_PLAQUE };
 #define NDO 160                                   // objects on a floor (was 64): room for crowds on the deep floors
@@ -318,7 +326,7 @@ static s16 skip_cell=-1; static u8 fl_max, skip_taken, arrive_dn, dn_ok=1;      
 #define FM_MAX 56
 #define FM_MAGIC 0xF10E5EEDu
 typedef struct { u32 magic, seed; u16 sigL, sigO, serial; s16 up2; u8 cur, flags, nbase, nop, req, ask, pad[2]; u8 wasitem[20]; u16 opn[16]; } FMHead;    // the floor on screen now (128 bytes with the room to grow)
-typedef struct { u32 seed; u16 sigL, sigO, rsn, chk; u8 depth, flags, nop, nx; u8 dead[20]; u8 seenb[128]; u16 open[16]; struct { u16 c; u8 sub, it, rar, pre, suf, lvl; } ex[6]; } FloorMem;   // 244 bytes a floor
+typedef struct { u32 seed; u16 sigL, sigO, rsn, chk; u8 depth, flags, nop, nx; u8 dead[20]; u8 seenb[128]; u16 open[16]; struct { u16 c; u8 sub, it, rar, pre, suf, lvl; } ex[6]; u16 speed_left; } FloorMem;   // trip-local record, includes remaining speed-run ticks
 _Static_assert(sizeof(FMHead)<=128 && sizeof(FloorMem)%4==0 && FM_BASE+128+FM_MAX*sizeof(FloorMem)<=32768, "the floor memory must fit in the 32 KB scratch");
 #define FMH ((FMHead*)(void*)((u8*)(void*)gen_acc+FM_BASE))
 #define FMS(i) ((FloorMem*)(void*)((u8*)(void*)gen_acc+FM_BASE+128+(i)*sizeof(FloorMem)))
@@ -330,6 +338,12 @@ static void face_open(int c){                                                   
     for(int k=0;k<4;k++){ int x=c%MW, y=c/MW, l=0; while(l<20){ x+=ddx[k]; y+=ddy[k]; if(x<0||y<0||x>=MW||y>=MW) break; int t=dmap[y*MW+x]; if(t==D_WALL||t==D_PILLAR) break; l++; } if(l>bl){ bl=l; best=k; } }
     pang = best*256;
 }
+static int fl_ticks_left(u32 end,u32 now){
+    s32 left=(s32)(end-now);
+    if(left<=0)return 0;
+    return left>3600?3600:(int)left;
+}
+static int fl_seconds_left(u32 end,u32 now){return (fl_ticks_left(end,now)+59)/60;}
 static void make_floor(void){
     mine_cell=-1; mine_n=0; mh_t=0; // fresh floor, not a continuation of the previous shaft's warning/bite
     for(int i=0;i<MW*MW;i++){ dmap[i]=D_WALL; wmat[i]=M_BRICK; fmat[i]=FL_FLAG; rid[i]=254; wdec[i]=0; }
@@ -603,9 +617,12 @@ static void make_floor(void){
     }
     FMH->nbase=ndo;  // quest-specific objects below are regenerated; normal changes are remembered
     if(qhere && q_type==Q_CHAMP && ndo<NDO){
-        SPAWN(rndi(2)?K_SPIDER:K_BEETLE, room_floor_cell(&rooms[far]), base_hp*5, 0);
+        int cid=quest_champ_id(), fallback=rndi(2)?K_SPIDER:K_BEETLE;
+        int kind=cid>=0?quest_champ_kind[cid]:fallback;
+        int hp=base_hp*(cid>=0?quest_champ_hp[cid]:5);
+        SPAWN(kind, room_floor_cell(&rooms[far]), hp, 0);
         dob[ndo-1].champ=2;
-        { int cid=quest_champ_id(); dob[ndo-1].cname=cid>=0?(u8)cid:0; }
+        dob[ndo-1].cname=cid>=0?(u8)cid:0;
     }
     if(qhere && q_type==Q_FETCH && ndo<NDO)
         SPAWN_GEAR(room_floor_cell(&rooms[far]), ((Gear){IT_QUEST,0,0,0,0,0}));
@@ -649,6 +666,7 @@ static void fm_save(void){                                                 // yo
     for(int i=nb;i<ndo;i++){ DObj *o=&dob[i]; if(o->kind==K_ITEM && o->alive) fm_extra(m,o); }
     for(int i=0;i<MW*MW;i++) if(seen[i]) m->seenb[i>>3]|=(u8)(1<<(i&7));
     for(int i=0;i<10;i++) if(room_seen[i]) m->rsn|=(u16)(1<<i);
+    if(fl_ev==FE_SPEED)m->speed_left=(u16)fl_ticks_left(fl_end,vbl_count);
     m->chk=fm_chk(m);
 }
 static void fm_make(void){                                                 // make_floor, except that a floor you have already been on comes back the way you left it
@@ -675,6 +693,7 @@ static void fm_make(void){                                                 // ma
         for(int i=0;i<h->nbase && i<ndo;i++) if((m->dead[i>>3]>>(i&7))&1) dob[i].alive=0;
         for(int k=0;k<m->nx && ndo<NDO;k++){ DObj *o=&dob[ndo++]; int c=m->ex[k].c; memset(o,0,sizeof(DObj)); o->kind=K_ITEM; o->alive=1; o->hp=o->maxhp=1;
             o->x=((c%MW)<<16)+0x8000; o->y=((c/MW)<<16)+0x8000; o->sub=m->ex[k].sub; o->it=m->ex[k].it; o->rar=m->ex[k].rar; o->pre=m->ex[k].pre; o->suf=m->ex[k].suf; o->lvl=m->ex[k].lvl; }
+        if(fl_ev==FE_SPEED)fl_end=(u32)vbl_count+(m->speed_left>3600?3600:m->speed_left);
         if(m->flags&2) fl_done=1;
         else if(fl_ev==FE_ELITE){ int n=0; for(int i=0;i<h->nbase && i<ndo;i++) if(dob[i].champ==FLOOR_ELITE_CHAMP && !dob[i].alive && is_mon(dob[i].kind)) n++; fl_have=n; if(fl_have>=fl_need) fl_done=1; }
     }
@@ -1261,7 +1280,7 @@ static void dungeon_enter(void){ auto_run=0;
 #endif
 #endif
     dungeon_hud_both();
-    if(fl_ev){ char b[40]; scpy(b,fe_name[fl_ev]); scat(b,"!"); say(b); msg_timer=60;
+    if(fl_ev){ char b[40]; scpy(b,floor_event_name(fl_ev)); scat(b,"!"); say(b); msg_timer=60;
         if(fl_ev==FE_BLESSED){ int mk=rndi(MK_GOOD); mark_t[mk]=150; recalc(); scpy(b,"BLESSED: "); scat(b,mk_name[mk]); scat(b," FOR A WHILE"); say(b); msg_timer=60; } }
 }
 static void dungeon_checkpoint(void){                 // every new floor is a save point: if you load, you wake on the surface with a portal open to this floor
@@ -1272,12 +1291,15 @@ static void fl_kill(DObj *o){                                                   
     if(fl_ev==FE_ELITE && o->champ==FLOOR_ELITE_CHAMP && !fl_done && ++fl_have>=fl_need){ fl_done=1; int g=200+dlv()*40+depth_no*10; earn(g); gain_xp(30+dlv()*6); char b[40]; scpy(b,"ELITES SLAIN! +"); ncat(b,g); scat(b,"G"); say(b); msg_timer=50; sfx(6); }
 }
 static void fl_leave(void){                                                     // taking the stairs down
-    if(fl_ev==FE_SPEED && !fl_done && (s32)(fl_end-vbl_count)>0){ fl_done=1; int g=120+dlv()*30+depth_no*8; earn(g); gain_xp(20+dlv()*5); char b[40]; scpy(b,"SPEED RUN BEATEN! +"); ncat(b,g); scat(b,"G"); say(b); sfx(6); }
+    if(fl_ev==FE_SPEED && !fl_done && fl_ticks_left(fl_end,vbl_count)>0){ fl_done=1; int g=120+dlv()*30+depth_no*8; earn(g); gain_xp(20+dlv()*5); char b[40]; scpy(b,"SPEED RUN BEATEN! +"); ncat(b,g); scat(b,"G"); say(b); sfx(6); }
     fl_bonus=100;
 }
 static void fl_draw(volatile u16 *pg){                                          // the goal line under the compass
-    if(!fl_ev || fl_done) return; char b[40]; scpy(b,fe_name[fl_ev]);
+    if(!fl_ev)return;
+    if(fl_done){if(fl_ev==FE_SPEED||fl_ev==FE_ELITE)text(pg,4,30,"FLOOR GOAL COMPLETE",C_GREEN,1);return;}
+    char b[40]; scpy(b,floor_event_name(fl_ev));
     if(fl_ev==FE_ELITE){ scat(b," "); ncat(b,fl_have); scat(b,"/"); ncat(b,fl_need); }
-    else if(fl_ev==FE_SPEED){ s32 left=(s32)(fl_end-vbl_count)/60; if(left<0){ left=0; } scat(b," "); ncat(b,left); scat(b,"S"); if(left==0) scpy(b,"SPEED RUN: TOO SLOW"); }
+    else if(fl_ev==FE_SPEED){int left=fl_seconds_left(fl_end,vbl_count);scat(b," ");ncat(b,left);scat(b,"S");if(!left)scpy(b,"SPEED RUN: TIME UP");}
+    else if(fl_ev==FE_GAS||fl_ev==FE_CAVE){int ticks=(fl_ev==FE_GAS?240:420)-mh_t;if(ticks<0)ticks=0;scat(b," ");ncat(b,(ticks+14)/15);scat(b,"S");}
     text(pg,4,30,b, fl_ev==FE_CURSED||fl_ev==FE_AMBUSH||fl_ev==FE_GAS||fl_ev==FE_CAVE ? C_RED : fl_ev==FE_SPEED ? C_GOLD : C_CYAN, 1);
 }

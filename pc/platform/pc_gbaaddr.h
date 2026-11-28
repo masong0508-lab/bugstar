@@ -7,5 +7,13 @@
 #ifndef PC_GBA_TOP
 #define PC_GBA_TOP 0
 #endif
+#ifdef PC_ANDROID
+#include <stdint.h>
+// Selected once before the game thread starts. Android ASLR and 32-bit
+// address-space fragmentation differ by OS, device, and launch.
+extern uint32_t pc_gba_top;
+#define GBAA(a) ((a) + pc_gba_top)
+#else
 #define GBAA(a) ((a) + PC_GBA_TOP)
+#endif
 #endif

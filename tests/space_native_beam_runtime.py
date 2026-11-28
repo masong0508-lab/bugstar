@@ -41,6 +41,8 @@ harness = r"""
 #include <string.h>
 #include "shipr.h"
 typedef int8_t s8;
+typedef uint8_t u8;
+enum { SP_FIGHTER, SP_SCOUT, SP_HEAVY };
 typedef int16_t s16;
 typedef uint16_t u16;
 typedef int32_t s32;
@@ -67,7 +69,7 @@ static void observe_beam(const float a[3],const float b[3],uint32_t col,float wi
     beam_color[beam_count]=col; beam_width[beam_count]=width; beam_count++;
     sr_beam(a,b,col,width);
 }
-""" + function(production, "static uint32_t pc_sr_rgb(") + r"""
+""" + function(space, "static int sp_role_size(") + "\n" + function(production, "static uint32_t pc_sr_rgb(") + r"""
 #define sr_beam observe_beam
 """ + function(production, "static void pc_sr_space(") + r"""
 #undef sr_beam
@@ -122,7 +124,7 @@ static void screen(const float point[3],double *x,double *y){
 }
 static unsigned aim_checks,legacy_checks,picture_checks;
 static void aim_case(void){
-    reset_ships(); submit(); CHECK(beam_count==1);
+    reset_ships(); pir[0].slot=(s8)(vbl_count%3); submit(); CHECK(beam_count==1);
     CHECK(beam_a[0][0]==pir[0].x && beam_a[0][1]==pir[0].y && beam_a[0][2]==pir[0].z);
     CHECK(beam_color[0]==pc_sr_rgb(53) && beam_width[0]==1);
     if(chase_cam && pc_ships_mode>0){

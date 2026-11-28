@@ -14,6 +14,10 @@ on:
       - 'pc/shipr/**'
       - 'pc/shipyard/**'
       - 'tests/space_flight_runtime.py'
+      - 'tests/flight_dungeon_objectives_runtime.py'
+      - 'tests/navigation_market_runtime.py'
+      - 'tests/fleet_kart_items_runtime.py'
+      - 'tests/kart_progress_runtime.py'
       - 'tests/space_content_speed_runtime.py'
       - 'tests/ship_model_capacity_runtime.py'
       - 'tests/space_native_beam_runtime.py'
@@ -24,10 +28,13 @@ on:
       - 'ui.inc'
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
+      - 'tests/field_guide_delivery_runtime.py'
       - 'tests/quest_runtime_host.py'
+      - 'tests/planet_landmark_runtime.py'
       - 'tests/list_picker_runtime_host.py'
       - 'tests/ui_text_bounds_runtime.py'
       - 'tests/local_rewards_runtime.py'
+      - 'tests/planet_contract_ore_runtime.py'
       - 'tests/mining_persistence_runtime.py'
       - 'tests/life_sim_rewards_runtime.py'
       - 'pc/sim/**'
@@ -35,6 +42,7 @@ on:
       - 'tests/story_journal_runtime.py'
       - 'tests/colony_dungeon_wiring_audit.py'
       - 'tests/dungeon_spawn_budget_runtime.py'
+      - 'tests/dungeon_combat_runtime.py'
       - 'tests/ambient_story_runtime.py'
       - 'tests/kart_world_save_runtime.py'
       - 'tests/kart_object_pool_runtime.py'
@@ -95,6 +103,10 @@ on:
       - 'pc/shipr/**'
       - 'pc/shipyard/**'
       - 'tests/space_flight_runtime.py'
+      - 'tests/flight_dungeon_objectives_runtime.py'
+      - 'tests/navigation_market_runtime.py'
+      - 'tests/fleet_kart_items_runtime.py'
+      - 'tests/kart_progress_runtime.py'
       - 'tests/space_content_speed_runtime.py'
       - 'tests/ship_model_capacity_runtime.py'
       - 'tests/space_native_beam_runtime.py'
@@ -105,10 +117,13 @@ on:
       - 'ui.inc'
       - 'main.c'
       - 'tests/quest_integrity_audit.py'
+      - 'tests/field_guide_delivery_runtime.py'
       - 'tests/quest_runtime_host.py'
+      - 'tests/planet_landmark_runtime.py'
       - 'tests/list_picker_runtime_host.py'
       - 'tests/ui_text_bounds_runtime.py'
       - 'tests/local_rewards_runtime.py'
+      - 'tests/planet_contract_ore_runtime.py'
       - 'tests/mining_persistence_runtime.py'
       - 'tests/life_sim_rewards_runtime.py'
       - 'pc/sim/**'
@@ -116,6 +131,7 @@ on:
       - 'tests/story_journal_runtime.py'
       - 'tests/colony_dungeon_wiring_audit.py'
       - 'tests/dungeon_spawn_budget_runtime.py'
+      - 'tests/dungeon_combat_runtime.py'
       - 'tests/ambient_story_runtime.py'
       - 'tests/kart_world_save_runtime.py'
       - 'tests/kart_object_pool_runtime.py'
@@ -182,6 +198,8 @@ jobs:
         run: python3 tests/ambient_story_runtime.py
       - name: Validate distinct resident bounties and full-inventory rewards under ASan and UBSan
         run: python3 tests/local_rewards_runtime.py
+      - name: Test selectable planetary work and mineral cache parity
+        run: python3 tests/planet_contract_ore_runtime.py
       - name: Ore SRAM persistence and cap-safe crafting
         run: python3 tests/mining_persistence_runtime.py
       - name: Exercise mine expeditions, old saves and one-pass crew under UBSan
@@ -191,6 +209,8 @@ jobs:
         run: python3 tests/colony_dungeon_wiring_audit.py
       - name: Verify reserved dungeon actors and exact elite goals under sanitizers
         run: python3 tests/dungeon_spawn_budget_runtime.py
+      - name: Check crowd collision parity, all 160 spell slots and moving mine hazards
+        run: python3 tests/dungeon_combat_runtime.py
       - name: Test colony calls, old-save migration and no duplicate payouts under UBSan
         run: |
           cc -std=gnu11 -O1 -fwrapv -Wall -Wextra -Wno-unused-parameter -Wno-misleading-indentation -Wno-format-truncation -fsanitize=undefined -fno-sanitize-recover=all pc/sim/colony_test.c pc/sim/mine.c pc/sim/sim_core.c pc/sim/colony.c pc/sim/god.c pc/sim/lv.c -o /tmp/bugstar-colony-calls && /tmp/bugstar-colony-calls
@@ -230,14 +250,23 @@ jobs:
         run: python3 tests/kart_dma_palette_runtime_host.py
       - name: Audit quest targets, world gates and guaranteed rewards
         run: python3 tests/quest_integrity_audit.py
+      - name: Check field guide text and full-bag delivery exchange
+        run: python3 tests/field_guide_delivery_runtime.py
       - name: Execute real quest pickup code with UndefinedBehaviorSanitizer
         run: python3 tests/quest_runtime_host.py
+      - name: Check planetary landmark safety and street shading parity
+        run: python3 tests/planet_landmark_runtime.py
       - name: Exercise native 3D perspective and near-plane regression with UBSan
         run: python3 tests/space_native_projection_audit.py
       - name: Validate new combat salvage and pixel-identical fast space rendering
         run: python3 tests/space_content_speed_runtime.py
       - name: Test space steering, braking and moving-asteroid landing control
-        run: python3 tests/space_flight_runtime.py
+        run: |
+          python3 tests/space_flight_runtime.py
+          python3 tests/flight_dungeon_objectives_runtime.py
+          python3 tests/navigation_market_runtime.py
+          python3 tests/fleet_kart_items_runtime.py
+          python3 tests/kart_progress_runtime.py
       - name: Keep assembled ship geometry inside the handheld model buffers
         run: python3 tests/ship_model_capacity_runtime.py
       - name: Keep native enemy beams attached to the visible player ship

@@ -26,7 +26,7 @@ static void pc_sr_space(volatile u16 *pg){
         float fx=p->f[0]/16384.0f, fy=p->f[1]/16384.0f, fz=p->f[2]/16384.0f; s.f[0]=fx; s.f[1]=fy; s.f[2]=fz;
         float Rx=fz, Rz=-fx, rl=sqrtf(Rx*Rx+Rz*Rz); if(rl<1e-4f){ Rx=1; Rz=0; rl=1; } Rx/=rl; Rz/=rl;                   // (the game's own sideways and up for this ship)
         s.u[0]=fy*Rz; s.u[1]=fz*Rx-fx*Rz; s.u[2]=-fy*Rx;
-        s.size=110; s.kind = p->team ? SR_FIGHTER : SR_WING; s.team = p->team ? 1 : 0; s.col = p->team ? ce : cf; s.firing = p->fire_t>0; s.hit = pcsr_hit[i]>0 ? pcsr_hit[i] : 0; s.thrust=0.75f;
+        s.size=p->team?sp_role_size(p->slot):110; s.kind = p->team ? SR_FIGHTER : SR_WING; s.team = p->team ? 1 : 0; s.col = p->team ? ce : cf; s.firing = p->fire_t>0; s.hit = pcsr_hit[i]>0 ? pcsr_hit[i] : 0; s.thrust=0.75f;
         if(!pc_sy_foe(i,&s)) sr_ship(&s);
         if(p->fire_t){ float t[3];
             if(p->tgt==-1){
@@ -35,7 +35,7 @@ static void pc_sr_space(volatile u16 *pg){
                 if(chase_cam && pc_ships_mode>0){ t[0]=shx; t[1]=shy; t[2]=shz; }
                 else for(int k=0;k<3;k++) t[k]=eye[k]+f[k]*400-u[k]*((124-VCY)*400.0f/FOCS)+r[k]*(((vbl_count&7)-4)*400.0f/FOCS);
                 sr_beam(s.p,t,s.col,1); }
-            else if(p->tgt>=0 && pir[p->tgt].alive){ t[0]=pir[p->tgt].x; t[1]=pir[p->tgt].y; t[2]=pir[p->tgt].z; sr_beam(s.p,t,s.col,1); } } }
+            else if((unsigned)p->tgt<NPIR && pir[p->tgt].alive && pir[p->tgt].team!=p->team){ t[0]=pir[p->tgt].x; t[1]=pir[p->tgt].y; t[2]=pir[p->tgt].z; sr_beam(s.p,t,s.col,1); } } }
     for(int i=0;i<pcsr_nb;i++){ float t=(vbl_count-pcsr_b[i].t0)/45.0f; if(t>=1 || t<0){ pcsr_b[i]=pcsr_b[--pcsr_nb]; i--; continue; } sr_boom(pcsr_b[i].p,160,t,pcsr_b[i].seed); }
     if(battle_on && pc_armada_n>0) sr_armada(pc_armada_n, sys_id(cur_sys)^0xA4A7u, vbl_count, 14000);                          // the far battle around yours (only drawn)
     sr_run_hooks();                                                                                                     // (more ships: warships and anything else that registered)

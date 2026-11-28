@@ -421,7 +421,7 @@ static void life_tick(int n){                                                   
             if(ad<(12<<16) && ad>0x8000){ int sg=WL(MW_SHY)?-1:1, ml=8+WL(MW_ANGRY); o->x=(o->x+sg*((dx>>6)*n)*ml/8)&((TW<<16)-1); o->y=(o->y+sg*((dy>>6)*n)*ml/8)&((TW<<16)-1); }
             if(ad<0x14000 && !invuln){ hurt((5+dlv()*2)*deadly_mul()); show_msg("A BEETLE RAMMED YOU"); pknock(dx,dy,48); } }
         else if(o->kind==O_LOCAL){ if(ctim[i]>n) ctim[i]-=n; else { ctim[i]=60+wr(120); int a=wr(256); cvx[i]=(cosx(a)*120)>>14; cvy[i]=(sinx(a)*120)>>14; if(wr(2)) cvx[i]=cvy[i]=0; }
-            s32 nx=o->x+cvx[i]*n, ny=o->y+cvy[i]*n; int c=cmap[((ny>>15)&HMASK)*HW+((nx>>15)&HMASK)]; if(c==74||c==75||c==80||c==81){ o->x=nx; o->y=ny; } else ctim[i]=0; }
+            s32 nx=o->x+cvx[i]*n, ny=o->y+cvy[i]*n; int c=cmap[((ny>>15)&HMASK)*HW+((nx>>15)&HMASK)]; if(c==74||c==75||c==80||c==81){ o->x=nx&((TW<<16)-1); o->y=ny&((TW<<16)-1); } else ctim[i]=0; }
     }
     if(WL(MW_MAGNET)||WL(MW_SHYORE)) for(int i=0;i<NPO;i++){ PObj *o=&po[i]; if(!o->alive || o->kind<O_TREE || o->kind>O_FLOWER) continue;   // MAGNET / SHY ORE
         s32 dx=wrapd(ppx-o->x), dy=wrapd(ppy-o->y); s32 ad=(dx<0?-dx:dx)+(dy<0?-dy:dy); if(ad>(10<<16)) continue;
@@ -572,22 +572,68 @@ static void job_tick(void){                                                     
     if(pq_type==4 ? race_best>0 : pq_type==8 ? kart_won : pq_have>=pq_need){ pq_done=1; gold+=pq_gold; fame+=8; gain_xp(10+dlv()*3); st_uniq++; ach_check();
         char b[40]; scpy(b,"JOB DONE! THE OFFICE WIRED "); ncat(b,pq_gold); scat(b,"G. BEEP."); show_msg(b); sfx(6); save_game(); }
 }
+/* Build the menu from the actual remaining resources on the planet.
+   The counters are temporary menu state; no extra object or save slots. */
+EW static u8 pb_count[11],pb_choices[10],pb_ore;
+static void local_offer_count(u8 *count,int kind,int var,int mineable){
+    switch(kind){
+    case O_SLUG:count[1]++;break;
+    case O_BEETLE:count[2]++;break;
+    case O_FOSSIL:count[3]++;break;
+    case O_RACE:count[4]=count[8]=1;break;
+    case O_LOCAL:count[5]++;break;
+    case O_CRIT:if(var==0)count[6]++;break;
+    case O_TREE:case O_ROCK:case O_WEB:case O_FLOWER:if(mineable)count[7]++;break;
+    case O_PLANT:count[9]++;break;
+    }
+}
+static int local_offer_need(int type,int available,int extra){
+    static const u8 need[11]={0,3,1,1,1,3,2,3,1,4,3};
+    if(type<1||type>10||available<1)return 0;
+    int n=need[type]+((type==1||type==5||type==7||type==9)?extra:0);
+    return n>available?available:n;
+}
+static int local_offer_prepare(void){
+    memset(pb_count,0,sizeof pb_count);
+    int ore_available[NORE], tool=ore_tool_eff(), n=0;
+    for(int o=0;o<NORE;o++)ore_available[o]=ore_n[o];
+    for(int i=0;i<NPO;i++){
+        PObj *o=&po[i];if(!o->alive)continue;
+        int ore=o->kind==O_ROCK?ore_of(o->x,o->y):-1;
+        int ok=ore<0||ore_need_tool(ore)<=tool;
+        local_offer_count(pb_count,o->kind,o->var,ok);
+        if(ore>=4&&ore<NORE&&ok)ore_available[ore]++;
+    }
+    pb_ore=4;
+    for(int o=4;o<NORE;o++)if(ore_available[o]>0&&ore_available[o]>=ore_available[pb_ore])pb_ore=(u8)o;
+    pb_count[10]=(u8)(ore_available[pb_ore]>9?9:ore_available[pb_ore]);
+    for(int t=1;t<=10;t++)if(pb_count[t])pb_choices[n++]=(u8)t;
+    return n;
+}
+static void local_offer_row(int row,char *b,int *c){
+    static const char *const name[11]={"","SLUG HUNT","BEETLE HUNT","FOSSIL SEARCH","FOOT RACE","TOWN CENSUS","WILDLIFE HUNT","RESOURCE SURVEY","KART RACE","FORAGE","ORE DELIVERY"};
+    int type=pb_choices[row];scpy(b,name[type]);
+    if(type==10){scat(b,": ");scat(b,ore_def[pb_ore].name);}
+    else if(type!=4&&type!=8){scat(b,"  AVAILABLE ");ncat(b,pb_count[type]);}
+    *c=C_WHITE;
+}
 static void bounty_office(volatile u16 *pg){
     const char *ln[4]; char j[48], p[40];
     if(pq_type==10 && !pq_done){ pq_have=ore_n[pq_ore]; if(pq_have>=pq_need){ ore_take(pq_ore,pq_need); pq_have=pq_need; job_tick(); } }       // a delivery job: hand the ore over here
     if(pq_type && !pq_done){ job_text(j); scpy(p,"SO FAR: "); if(pq_type==4||pq_type==8) scat(p, (pq_type==8?kart_won:race_best)?"WON":"NOT YET"); else { ncat(p,pq_have); scat(p,"/"); ncat(p,pq_need); }
-        ln[0]="YOUR JOB IS STILL OPEN:"; ln[1]=j; ln[2]=p; card(pg,"BOUNTY OFFICE",ln,3); return; }
-    // a new job that this planet can actually offer
-    int tries=0; do { pq_type=1+wr(7); tries++; { int rp=0; for(int i=0;i<NPO;i++) if(po[i].alive && po[i].kind==O_RACE) rp=1; if(rp && wr(3)==0) pq_type=8; } if(pq_type!=8 && wr(6)==0) pq_type=9; else if(pq_type<8 && wr(5)==0) pq_type=10;   // a planet with a race post can offer the kart job
-        if(pq_type==2 && !wd.beetles) pq_type=0; if(pq_type==3 && !wd.fossils) pq_type=0; if(pq_type==5 && !city_r) pq_type=0; if(pq_type==6 && spc[0].temper==0 && wr(2)) pq_type=0;
-        if(pq_type==10){ int cand[NORE], nc=0, hab=ore_habitat(); for(int o=4;o<NORE;o++) if((ore_hab[o]&hab) && ore_need_tool(o)<=ore_tool_eff()) cand[nc++]=o; if(nc){ pq_ore=(u8)cand[wr(nc)]; } else pq_type=0; }      // an ore this world has and your tool can cut
-    } while(!pq_type && tries<10);
-    if(!pq_type) pq_type=1;
-    static const u8 need[11]={0,3,1,1,1,3,2,3,1,4,3}; pq_need=need[pq_type]+(pq_type==1||pq_type==5||pq_type==7||pq_type==9 ? wr(3) : 0); pq_have=0; if(pq_type==5) local_job_reset();
-    { static const u8 kk[11]={0,O_SLUG,O_BEETLE,O_FOSSIL,0,O_LOCAL,O_CRIT,O_TREE,0,O_PLANT,0}; int have=0;                    // never ask for more than the planet has
-      if(pq_type!=4 && pq_type!=8 && pq_type!=10) for(int i=0;i<NPO;i++) if(po[i].alive && (po[i].kind==kk[pq_type] || (pq_type==7 && po[i].kind>=O_TREE && po[i].kind<=O_FLOWER)) && (pq_type!=6 || po[i].var==0)) have++;
-      if(pq_type==10) pq_need=3+wr(4)+ore_def[pq_ore].tier/2;
-      if(pq_type!=4 && pq_type!=8 && pq_type!=10 && pq_need>have) pq_need = have>0 ? have : 1; } pq_done=0; pq_gold=20+dlv()*8+pq_need*6+(pq_type==4?30:pq_type==8?70:0); if(pq_type==10) pq_gold=20+dlv()*4+pq_need*ore_def[pq_ore].price*2;       // a delivery pays double the market
+        ln[0]="YOUR JOB IS STILL OPEN:"; ln[1]=j; ln[2]=p; card(pg,"BOUNTY OFFICE",ln,3);
+        if(confirm(pg,"ABANDON THIS LOCAL JOB?","NO REWARD FOR UNFINISHED WORK")){pq_type=0;pq_done=0;}return; }
+    // Choose a viable activity instead of accepting a random or impossible job.
+    int n=local_offer_prepare(),sel=0;
+    if(!n){ln[0]="NO WORK AVAILABLE ON THIS WORLD.";ln[1]="TRY ANOTHER PLANET OR RETURN LATER.";card(pg,"BOUNTY OFFICE",ln,2);return;}
+    list_desc=0;
+    if(list_pick(pg,"CHOOSE LOCAL WORK",n,local_offer_row,&sel,"A: TAKE JOB  B: BACK")<0)return;
+    pq_type=pb_choices[sel];pq_need=local_offer_need(pq_type,pb_count[pq_type],wr(3));
+    pq_have=0; if(pq_type==5) local_job_reset();
+    if(pq_type==10){pq_ore=pb_ore;pq_need=pb_count[10]<3?pb_count[10]:3;}
+    pq_done=0;
+    pq_gold=20+dlv()*8+pq_need*6+(pq_type==4?30:pq_type==8?70:0);
+    if(pq_type==10)pq_gold=20+dlv()*4+pq_need*ore_def[pq_ore].price*2;
     job_text(j); scpy(p,"PAYS "); ncat(p,pq_gold); scat(p,"G AND FAME. WE WIRE IT. BEEP.");
     ln[0]="THE CLERK SLIDES YOU A NOTE:"; ln[1]=j; ln[2]=p; ln[3]= pq_type==8 ? "GO TO THE RACE POST. B = BOOST. BEAT THE PAR" : "(IT IS PAID WHEN IT IS DONE. NO TRIPS BACK)"; card(pg,"BOUNTY OFFICE",ln,4); sfx(2);
 }

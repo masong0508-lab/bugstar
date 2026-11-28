@@ -31,7 +31,7 @@ LOCAL_SRC_FILES := $(addprefix $(PC_REL)/,$(PC_SOURCES))
 
 LOCAL_SHARED_LIBRARIES := SDL2
 
-LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -lOpenSLES -llog -landroid -lm
+LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -lOpenSLES -llog -landroid -lm -latomic
 LOCAL_LDFLAGS := -Wl,-z,max-page-size=16384
 
 include $(BUILD_SHARED_LIBRARY)

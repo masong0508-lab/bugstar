@@ -20,6 +20,25 @@ on:
       - 'facts_more.py'
       - 'monsters.py'
       - 'gen.py'
+      - 'tests/android_compat_runtime.py'
+      - 'tests/android_touch_menu_runtime.py'
+      - 'tests/android_emulator_smoke.sh'
+      - 'tests/atomic_save_runtime.py'
+      - 'tests/mobile_budget_runtime.py'
+      - 'tests/touch_input_runtime.py'
+      - 'tests/mobile_menu_runtime.py'
+      - 'tests/mobile_governor_runtime.py'
+      - 'tests/png_stream_runtime.py'
+      - 'tests/mobile_audio_settings_runtime.py'
+      - 'tests/touch_editor_runtime.py'
+      - 'tests/cartridge_transfer_runtime.py'
+      - 'tests/android_save_codec_runtime.py'
+      - 'tests/flight_dungeon_objectives_runtime.py'
+      - 'tests/navigation_market_runtime.py'
+      - 'tests/fleet_kart_items_runtime.py'
+      - 'tests/kart_progress_runtime.py'
+      - 'tests/android_save_emulator.sh'
+      - 'tests/android_apk_audit.py'
       - 'tests/space_native_projection_audit.py'
       - 'tests/space_station_depth_audit.py'
       - 'net/**'
@@ -69,6 +88,26 @@ jobs:
       - name: Python deps for the generators
         run: python3 -m pip install numpy pillow
 
+      - name: Verify Android relocation, low-memory and small-screen geometry
+        run: |
+          python3 tests/android_compat_runtime.py
+          python3 tests/android_touch_menu_runtime.py
+          python3 tests/atomic_save_runtime.py
+          python3 tests/mobile_budget_runtime.py
+          python3 tests/touch_input_runtime.py
+          python3 tests/mobile_menu_runtime.py
+          python3 tests/mobile_governor_runtime.py
+          python3 tests/png_stream_runtime.py
+          python3 tests/mobile_audio_settings_runtime.py
+          python3 tests/touch_editor_runtime.py
+          python3 tests/cartridge_transfer_runtime.py
+          python3 tests/android_save_codec_runtime.py
+          python3 tests/flight_dungeon_objectives_runtime.py
+          python3 tests/navigation_market_runtime.py
+          python3 tests/fleet_kart_items_runtime.py
+          python3 tests/kart_progress_runtime.py
+          bash -n tests/android_emulator_smoke.sh tests/android_save_emulator.sh
+
       - name: Check shared 3D camera clipping
         run: python3 tests/space_projection_audit.py
 
@@ -113,10 +152,11 @@ jobs:
       # patch 35: things that make an APK install fine and then die on launch, found here instead of on the phone
       - name: Check the APK (libraries inside, SDL_main exported, page alignment)
         run: |
-          APK=$(ls pc/android/app/build/outputs/apk/debug/bugstar-*-debug.apk | head -1)
+          APK=$(ls pc/android/app/build/outputs/apk/debug/bugstar-*-universal-debug.apk | head -1)
           echo "APK: $APK"
           ls -l "$APK"
-          unzip -l "$APK" | grep -E 'lib/arm64-v8a/' || true
+          python3 tests/android_apk_audit.py "$APK"
+          unzip -l "$APK" | grep -E 'lib/(armeabi-v7a|arm64-v8a|x86|x86_64)/' || true
           for l in libSDL2.so libmain.so; do
             unzip -l "$APK" | grep -q "lib/arm64-v8a/$l" || { echo "::error::$l is not in the APK: the app would close the moment it starts"; exit 1; }
           done
@@ -130,29 +170,128 @@ jobs:
           done
           echo "feature check: updated 60-frame and 2,048-bit PC number pages are in the Android APK"
           grep -aq 'low memory: sprite cache emptied' "$SO" && echo "feature check: the low-memory handler is in libmain.so" || { echo "::error::libmain.so lacks the low-memory handler"; exit 1; }
-          if [ -n "$NM" ] && [ -n "$SO" ]; then
-            "$NM" -D --defined-only "$SO" | grep -E ' SDL_main$' || { echo "::error::libmain.so does not export SDL_main: SDL cannot start the game"; exit 1; }
-          else echo "::warning::llvm-nm not found, SDL_main export not checked"; fi
+          test -n "$NM" || { echo "::error::llvm-nm not found"; exit 1; }
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            so=$(find pc/android/app/build -path "*/$abi/libmain.so" | head -1)
+            test -n "$so" && "$NM" -D --defined-only "$so" | grep -E ' SDL_main$' || { echo "::error::$abi libmain.so does not export SDL_main"; exit 1; }
+          done
           if [ -n "$RE" ] && [ -n "$SO" ]; then "$RE" -lW "$SO" | grep -E 'LOAD' || true; fi
           ZA=$(find "$ANDROID_HOME/build-tools" -name zipalign 2>/dev/null | sort -V | tail -1)
-          if [ -n "$ZA" ]; then "$ZA" -c -P 16 -v 4 "$APK" >/dev/null 2>&1 && echo "16 KB page alignment: ok" || echo "::warning::zipalign -P 16 says the APK is not 16 KB aligned (or this zipalign is too old to check)"; fi
+          test -n "$ZA" && "$ZA" -c -P 16 -v 4 "$APK" || { echo "::error::APK zip alignment failed"; exit 1; }
 
-      - name: Upload the APK
+      - name: Verify every lightweight APK matches universal native code and signing
+        run: |
+          dir=pc/android/app/build/outputs/apk/debug
+          universal=$(find "$dir" -maxdepth 1 -name 'bugstar-*-universal-debug.apk')
+          test -f "$universal"
+          signer=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          aligner=$(find "$ANDROID_HOME/build-tools" -name zipalign | sort -V | tail -1)
+          test -x "$signer" && test -x "$aligner"
+          "$signer" verify --min-sdk-version 21 --print-certs "$universal" > universal-signing.txt
+          grep 'certificate SHA-256 digest:' universal-signing.txt > universal-digest.txt
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            apk=$(find "$dir" -maxdepth 1 -name "bugstar-*-$abi-debug.apk")
+            test -f "$apk"
+            python3 tests/android_apk_audit.py "$apk" "$abi" "$universal"
+            "$aligner" -c -P 16 4 "$apk"
+            "$signer" verify --min-sdk-version 21 --print-certs "$apk" > abi-signing.txt
+            grep 'certificate SHA-256 digest:' abi-signing.txt > abi-digest.txt
+            cmp universal-digest.txt abi-digest.txt
+            ls -lh "$apk"
+          done
+
+      - name: Upload the universal APK
         uses: actions/upload-artifact@v4
         with:
           name: bugstar-apk
-          path: pc/android/app/build/outputs/apk/debug/bugstar-*-debug.apk
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-universal-debug.apk
+          if-no-files-found: error
+
+      - name: Upload lightweight ARM32 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-apk-armeabi-v7a
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-armeabi-v7a-debug.apk
+          if-no-files-found: error
+      - name: Upload lightweight ARM64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-apk-arm64-v8a
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-arm64-v8a-debug.apk
+          if-no-files-found: error
+      - name: Upload lightweight x86 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-apk-x86
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-x86-debug.apk
+          if-no-files-found: error
+      - name: Upload lightweight x86-64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugstar-apk-x86_64
+          path: pc/android/app/build/outputs/apk/debug/bugstar-*-x86_64-debug.apk
+          if-no-files-found: error
 
       # the unstripped libmain.so: the crash report lists "pc <offset> libmain.so", and with this file  llvm-addr2line -f -e libmain.so <offset>  names the line
       - name: Keep the symbols
         if: always()
         run: |
           mkdir -p symbols
-          SO=$(find pc/android/app/build -path '*obj/local/arm64-v8a*' -name libmain.so | head -1)
-          [ -n "$SO" ] && cp "$SO" symbols/libmain.so || echo "no unstripped libmain.so found"
+          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+            SO=$(find pc/android/app/build -path "*obj/local/$abi*" -name libmain.so | head -1)
+            if [ -n "$SO" ]; then mkdir -p "symbols/$abi"; cp "$SO" "symbols/$abi/libmain.so"; fi
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: bugstar-symbols
           path: symbols
+          if-no-files-found: ignore
+
+  emulator-smoke:
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: 21
+            arch: x86
+          - api: 35
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bugstar-apk
+          path: apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: bugstar-apk-${{ matrix.arch }}
+          path: lite-apk
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: ${{ matrix.arch }}
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: bash tests/android_emulator_smoke.sh "$(find apk -name '*.apk' | head -1)" "$(find lite-apk -name '*.apk' | head -1)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-smoke-${{ matrix.api }}-${{ matrix.arch }}
+          path: |
+            android-boot.log
+            android-boot.png
+            android-touch-menu.png
+            android-resume.png
+            android-last.png
+            android-save-picker.png
           if-no-files-found: ignore

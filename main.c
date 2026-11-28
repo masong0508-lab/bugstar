@@ -640,13 +640,28 @@ static void bodies_tick(void){          // you against everything solid, every 6
             s32 vn=(s32)(((long long)pvx*nx+(long long)pvy*ny)>>16);
             if(vn<0){ pvx-=(s32)(((long long)nx*vn)>>16); pvy-=(s32)(((long long)ny*vn)>>16); } } }
 }
-static void mon_bodies(void){           // monsters, barrels and Buddy shove each other (15 times a second, near you)
+// All base body radii are constants below 65536 or NMon.rad (u16).
+// A champion expands the base radius by 5/4, hence 0x14000 strictly
+// exceeds every possible radius. Reject distant pairs before the kind
+// lookup, then use the same exact axis test as separate(). Pair ordering
+// and live positions stay unchanged even when earlier pairs push actors.
+#define BODY_R_LIMIT 0x14000
+static void mon_bodies(void){           // monsters, barrels and Buddy shove each other near you
     int pet_here = !pet_away_t && !pet_down_t;
-    for(int i=0;i<ndo;i++){ DObj *a=&dob[i]; if(!a->alive) continue; s32 ra=body_r(a); if(!ra) continue;
-        if(iabs(a->x-px_)>0x70000 || iabs(a->y-py_)>0x70000) continue; s32 nx,ny;
-        if(pet_here && a->kind!=K_CAGE) separate(&pet_x,&pet_y,0x2800,1,0x1400,&a->x,&a->y,ra,body_m(a),ra>>1,&nx,&ny);
-        for(int j=i+1;j<ndo;j++){ DObj *b=&dob[j]; if(!b->alive) continue; s32 rb=body_r(b); if(!rb) continue;
-            separate(&a->x,&a->y,ra,body_m(a),ra>>1,&b->x,&b->y,rb,body_m(b),rb>>1,&nx,&ny); } }
+    for(int i=0;i<ndo;i++){ DObj *a=&dob[i]; if(!a->alive) continue;
+        if(iabs(a->x-px_)>0x70000 || iabs(a->y-py_)>0x70000) continue;
+        s32 ra=body_r(a); if(!ra) continue; s32 nx,ny;
+        int am=0;
+        if(pet_here && a->kind!=K_CAGE){ am=body_m(a); separate(&pet_x,&pet_y,0x2800,1,0x1400,&a->x,&a->y,ra,am,ra>>1,&nx,&ny); }
+        for(int j=i+1;j<ndo;j++){ DObj *b=&dob[j]; if(!b->alive) continue;
+            s32 dx=a->x-b->x, dy=a->y-b->y, bound=ra+BODY_R_LIMIT;
+            if(dx>=bound||dx<=-bound||dy>=bound||dy<=-bound) continue;
+            s32 rb=body_r(b); if(!rb) continue; s32 rr=ra+rb;
+            if(dx>=rr||dx<=-rr||dy>=rr||dy<=-rr) continue;
+            if(!am) am=body_m(a);
+            separate(&a->x,&a->y,ra,am,ra>>1,&b->x,&b->y,rb,body_m(b),rb>>1,&nx,&ny);
+        }
+    }
 }
 static void knock_tick(void){           // things that were hit slide, slam into walls, and bowl into each other
     for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive || !(o->kvx||o->kvy)) continue;
@@ -782,7 +797,7 @@ static void fish_draw(volatile u16 *pg){
 #define TURN_RAMP  16          // 60ths of holding to reach TURN_MAX
 
 static int skip_draw=0, wtick=1, turn_held=0, dt_last=0, wacc=0, mv_now=0, near_cage_p=-1, atk_len=9;
-static DObj *named_p=0; static u32 dhud_sig=0; static int lock_ahead=0;
+static DObj *named_p=0; static u32 dhud_sig=0; static int lock_ahead=0, near_loot_full=0;
 // is there something to bite right in front of you? (same box the bite uses)
 static int foe_ahead(s32 dirx, s32 diry){
     const s32 rb_=xo_v(XO_BITERNG);
@@ -841,12 +856,16 @@ static void do_bite(s32 dirx, s32 diry){
 typedef struct { s16 t; u8 every, tick, n; s32 dmg; } Summon;
 #define NSUM 3
 static Summon sums[NSUM];
-static int sp_near(s32 maxd, u32 used){ int best=-1; s32 bd=maxd;
-    for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue; if(i<32 && ((used>>i)&1)) continue; s32 d=dist8(o->x-px_,o->y-py_); if(d<bd){ bd=d; best=i; } }
+#define SP_USED_BYTES ((NDO+7)/8)
+static int sp_near(s32 maxd, const u8 *used){ int best=-1; s32 bd=maxd;
+    for(int i=0;i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive||!is_mon(o->kind)) continue;
+        if(used && (used[i>>3]&(1u<<(i&7)))) continue;
+        s32 d=dist8(o->x-px_,o->y-py_); if(d<bd){ bd=d; best=i; } }
     return best; }
+static void sp_mark(u8 *used,int i){ used[i>>3]|=(u8)(1u<<(i&7)); }
 static void sum_tick(void){
-    for(int k=0;k<NSUM;k++){ Summon *u=&sums[k]; if(u->t<=0) continue; u->t--; if(++u->tick<u->every) continue; u->tick=0; u32 used=0;
-        for(int j=0;j<u->n;j++){ int i=sp_near(0x60000,used); if(i<0) break; if(i<32) used|=1u<<i; DObj *o=&dob[i]; s32 ox=o->x, oy=o->y; hit_mon(o,u->dmg,0); burst(ox,oy,0x6000,5,1); } }
+    for(int k=0;k<NSUM;k++){ Summon *u=&sums[k]; if(u->t<=0) continue; u->t--; if(++u->tick<u->every) continue; u->tick=0; u8 used[SP_USED_BYTES]={0};
+        for(int j=0;j<u->n;j++){ int i=sp_near(0x60000,used); if(i<0) break; sp_mark(used,i); DObj *o=&dob[i]; s32 ox=o->x, oy=o->y; hit_mon(o,u->dmg,0); burst(ox,oy,0x6000,5,1); } }
 }
 static void sp_heal(s64 n){ hearts=sadd(hearts,n); if(hearts>maxh) hearts=maxh; burst(px_,py_,0x4000,10,1); sfx(6); }
 // ---- the bolt spells: homing, explosions, piercing and the falling meteor (see the projectile loop in dungeon_frame_)
@@ -868,7 +887,7 @@ static void proj_home(Proj *p, int self){                            // steer a 
         int seen=1; for(int s=1;s<6 && seen;s++) if(solid(p->x+dx/6*s,p->y+dy/6*s)) seen=0; if(!seen) continue; bd=d; bi=k; }
     if(bi>=0){ s32 dx=dob[bi].x-p->x, dy=dob[bi].y-p->y, spd=dist8(p->vx,p->vy), l=(dist8(dx,dy)>>8)+1, tvx=(dx>>8)*spd/l, tvy=(dy>>8)*spd/l; p->vx+=(tvx-p->vx)*p->aux/8; p->vy+=(tvy-p->vy)*p->aux/8; } }
 static int cast_spell(int s, s32 dirx, s32 diry, s32 plx, s32 ply){
-    const SpellDef *d=&spell_def[s]; int dmg=clampi(sadd(sadd(d->a,smul(st_mag,d->b)),level)); u32 used=0; (void)plx; (void)ply;
+    const SpellDef *d=&spell_def[s]; int dmg=clampi(sadd(sadd(d->a,smul(st_mag,d->b)),level)); u8 used[SP_USED_BYTES]={0}; (void)plx; (void)ply;
     switch(d->fx){
     case FX_BALL: { int n=d->c?d->c:1, mag=(int)(st_mag>300?300:st_mag);
         if(s==SPI_METEOR){ s32 tx=px_+dirx*4, ty=py_+diry*4; s32 bd=0x60000;                                                          // it lands on the nearest foe ahead, or four tiles in front of you
@@ -883,13 +902,13 @@ static int cast_spell(int s, s32 dirx, s32 diry, s32 plx, s32 ply){
         for(int k=0;k<n;k++){ int sp=2*k-(n-1);
             fire_projx(kind, px_+(dirx>>2)+((-diry*sp)>>3), py_+(diry>>2)+((dirx*sp)>>3), 0x7000, ((dirx*spd)>>5)+((-diry*sp)>>6), ((diry*spd)>>5)+((dirx*sp)>>6), dmg, life, aux, aux2); }
         burst(px_+(dirx>>2),py_+(diry>>2),0x7000,6,kind==2?2:0); sfx(3); return 1; }
-    case FX_ZAP: { int hit=0; for(int k=0;k<d->c;k++){ int i=sp_near(0x60000,used); if(i<0) break; if(i<32) used|=1u<<i; DObj *o=&dob[i]; s32 ox=o->x, oy=o->y;
+    case FX_ZAP: { int hit=0; for(int k=0;k<d->c;k++){ int i=sp_near(0x60000,used); if(i<0) break; sp_mark(used,i); DObj *o=&dob[i]; s32 ox=o->x, oy=o->y;
             hit_mon(o,dmg,0); burst(ox,oy,0x8000,8,2); if(!hit){ spark_t=6; s32 det=(s32)((((long long)plx*diry)-((long long)dirx*ply))>>16); s32 sx=ox-px_, sy=oy-py_;
                 s32 tY=det?(s32)((((long long)-ply*sx)+((long long)plx*sy))/det):0, tX=det?(s32)((((long long)diry*sx)-((long long)dirx*sy))/det):0;
                 if(tY>0x2000){ spark_c=60+(s32)(((long long)tX*60)/tY); spark_y=hz; } else { spark_c=60; spark_y=60; } } hit++; }
         if(!hit){ say("NOTHING TO ZAP"); return 0; } sfx(10); return 1; }
     case FX_DRAIN: { int i=sp_near(0x60000,0); if(i<0){ say("NOTHING TO DRAIN"); return 0; } DObj *o=&dob[i]; s32 ox=o->x, oy=o->y; hit_mon(o,dmg,0); burst(ox,oy,0x6000,8,1); sp_heal(dmg/2+1); return 1; }
-    case FX_STUN: { int hit=0; for(int k=0;k<d->c;k++){ int i=sp_near(0x50000,used); if(i<0) break; if(i<32) used|=1u<<i; DObj *o=&dob[i]; s32 ox=o->x, oy=o->y;
+    case FX_STUN: { int hit=0; for(int k=0;k<d->c;k++){ int i=sp_near(0x50000,used); if(i<0) break; sp_mark(used,i); DObj *o=&dob[i]; s32 ox=o->x, oy=o->y;
             hit_mon(o,dmg,0); burst(ox,oy,0x7000,6,2); if(o->alive){ o->stag=d->d; o->wind=0; } hit++; }
         if(!hit){ say("NOTHING TO FREEZE"); return 0; } sfx(10); return 1; }
     case FX_NOVA: case FX_POISON: { s32 rng=(s32)d->c<<16; int n=ndo, hit=0;
@@ -915,18 +934,19 @@ static int cast_spell(int s, s32 dirx, s32 diry, s32 plx, s32 ply){
 static void mine_hazard(void){                                                   // mines: toxic gas hurts on a timer (a shield keeps it out); the roof drops rocks (keep moving and they miss)
     if(fl_ev!=FE_GAS && fl_ev!=FE_CAVE){ mh_t=0; return; }
     mh_t++;
+    if(fl_ev==FE_GAS && mh_t==180){say("GAS BUILDING UP! SHIELD HELPS");sfx(14);}
     if(fl_ev==FE_CAVE && mh_t==330){ say("THE ROOF RUMBLES! KEEP MOVING"); sfx(12); rumble(RP_QUAKE); if(opt_shake) shake_t=20; }
     if(mh_t<(fl_ev==FE_GAS?240:420)) return;
     mh_t=0;
     int dmg=1+dlv()/6+depth_no/4;
     if(fl_ev==FE_GAS){ if(shield_t){ say("YOUR SHIELD KEEPS THE GAS OUT"); } else { say("TOXIC GAS!"); hurt(dmg); } }
-    else { if(HELD(K_UP|K_DOWN|K_LEFT|K_RIGHT)){ say("A ROCK CRASHES BEHIND YOU"); sfx(11); } else { say("CAVE-IN! A ROCK FALLS ON YOU"); hurt(dmg*2); } }
+    else { if(moved_real){ say("A ROCK CRASHES BEHIND YOU"); sfx(11); } else { say("CAVE-IN! A ROCK FALLS ON YOU"); hurt(dmg*2); } }
 }
 static int dungeon_frame_(void);
 static int dungeon_frame(void){ u32 t=TMR(); ov_d(); int r=dungeon_frame_(); prof[5]=TMR()-t; return r; }
 static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint, 3 when you warp out
     int freeze = hitstop>0; if(freeze){ hitstop--; wtick=0; }      // a blink of stillness when a hit lands
-    if(wtick){ tick_timers(); hunger_tick(40); regen_tick(45); map_reveal(); mine_hazard(); }
+    if(wtick){ tick_timers(); hunger_tick(40); regen_tick(45); map_reveal(); }
     bag_input();
     if(!skip_draw){ int f=frames; if((f&127)==0) dungeon_palette(); int fl=(sin_tab[(f*29)&255]+sin_tab[(f*47+80)&255])>>12;
       for(int i=0;i<8;i++){ int k=i+(fl>2?1:fl<-2?-1:0); if(k<0)k=0; if(k>7)k=7; BG_PAL[R_FLAME+i]=bg_pal[R_FLAME+k]; }
@@ -978,7 +998,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
     if(dodge_t){ dodge_t--; s32 ds=(0x1400*xo_v(XO_DODGED)/100)*dodge_dir; tvx=(s32)((-(long long)diry*ds)>>16); tvy=(s32)(((long long)dirx*ds)>>16); pvx=tvx; pvy=tvy; }
     if(wtick && combo_t && --combo_t==0) combo=0;
     if(!freeze){ player_move(tvx,tvy); bodies_tick(); knock_tick(); if(kick_t) kick_t--; if(bump_cd) bump_cd--; if(pknock_t) pknock_t--; }
-    if(wtick) mon_bodies();
+    if(wtick){ mine_hazard(); mon_bodies(); } // judge real movement on this tick, not a held turn/wall key
     mv_now = sp;
     if(wtick && atk_t) atk_t--;
     if(escape_flag){ escape_flag=0; return 3; }
@@ -1030,7 +1050,7 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
         if(b->cool) b->cool--; if(b->flash) b->flash--;
         if(tg>=0 && best<0xC000 && !b->cool){ hit_mon(&dob[tg], pet_dmg(), 0); b->cool=(s16)(20+(k&3)); b->flash=4; } }
     // ---- monsters, pickups, cages
-    s32 named_d=0x60000; if(wtick){ near_cage_p=-1; named_p=0; }
+    s32 named_d=0x60000; if(wtick){ near_cage_p=-1; named_p=0; near_loot_full=0; }
     if(wtick && alert_t>0) alert_t--;
     for(int i=0;wtick && i<ndo;i++){ DObj *o=&dob[i]; if(!o->alive) continue; if(o->flash) o->flash--;
         s32 dx=px_-o->x, dy=py_-o->y, d=dist8(dx,dy);
@@ -1104,9 +1124,9 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
             // the boss calls her brood at half health, and gets angry
             if(boss && !o->ph && o->hp<o->maxhp/2){ o->ph=1; say("THE QUEEN CALLS HER BROOD!"); sfx(9);
                 for(int k=0;k<2 && ndo<NDO;k++){ DObj *b=&dob[ndo++]; memset(b,0,sizeof(DObj)); b->kind=K_SPIDER; b->alive=1; b->hp=b->maxhp=6+dlv()*4; b->x=o->x+((k?1:-1)<<16); b->y=o->y+(1<<15); if(solid(b->x,b->y)){ b->x=o->x; b->y=o->y; } } }
-        } else if(o->kind==K_CHEST){ if(d<0x9000){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
-                Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now(); } }
-        else if(o->kind==K_ITEM){ if(d<0x9000 && (bag_n<BAGMAX || o->it==IT_QUEST)){ Gear g={o->it,o->sub,o->rar,o->pre,o->suf,o->lvl}; if(add_gear(g)) o->alive=0; } }
+        } else if(o->kind==K_CHEST){ if(d<0x9000 && bag_n<BAGMAX){ o->alive=0; earn(10+rndi(20)+dlv()*8+depth_no*3); say("TREASURE!"); sfx(7);
+                Gear g=roll_drop(dlv()*3+depth_no+2,15); add_gear(g); hud_now(); } else if(d<0x9000)near_loot_full=1; }
+        else if(o->kind==K_ITEM){ if(d<0x9000 && (bag_n<BAGMAX || o->it==IT_QUEST)){ Gear g={o->it,o->sub,o->rar,o->pre,o->suf,o->lvl}; if(add_gear(g)) o->alive=0; else near_loot_full=1; } else if(d<0x9000)near_loot_full=1; }
         else if(o->kind==K_CAGE){ if(d<0xC000) near_cage_p=i; }
     }
     int near_cage=near_cage_p; DObj *named=named_p;
@@ -1229,11 +1249,12 @@ static int dungeon_frame_(void){   // returns 1 to go back up, 2 when you faint,
       scpy(tb,"B"); ncat(tb,depth_no); scat(tb," MON"); ncat(tb,al); scat(tb," SEEN"); ncat(tb,sn); scat(tb," ID"); ncat(tb,FMH->sigL&0xFFF); scat(tb,up2_cell>=0?" U2":" -"); scat(tb,skip_cell>=0?" SK":" -");
       scat(tb, hc==skip_cell?" ON SHORT-DN" : hc==up2_cell?" ON SHORT-UP" : dmap[hc]==D_DOWN?" ON DOWN" : dmap[hc]==D_UP?" ON UP" : " WALKING"); text(pg,2,70,tb,C_GOLD,1); }
 #endif
-    if(msg_timer){ text(pg,120-textlen(msg)*4,24,msg,C_WHITE,2); }
+    if(msg_timer){int len=textlen(msg),sc=len>28?1:2;text(pg,120-len*2*sc,24,msg,C_WHITE,sc);}
     else if(!opt_hints){}
     else if(lock_ahead) text(pg,120-14*4,24,"A: USE KEYCARD",C_GOLD,2);
     else if(near_cage>=0) text(pg,120-12*4,24,"A: OPEN CAGE",C_WHITE,2);
     else if((here==D_UP && stair_ok)||(here==D_DOWN && dn_ok)){ const char *m2 = here==D_UP? (((py_>>16)*MW+(px_>>16))==up2_cell ? "A: SHORTCUT UP!" : (!endless&&!forge_on&&!base_mode&&depth_no>=2)?"A: STAIRS" : "A: CLIMB UP") : (((py_>>16)*MW+(px_>>16))==skip_cell ? "A: SHORTCUT!" : "A: GO DEEPER"); text(pg,120-textlen(m2)*4,24,m2,C_WHITE,2); }
+    else if(near_loot_full&&bag_n>=BAGMAX)text(pg,62,24,"BAG FULL - MAKE ROOM",C_GOLD,1);
     else if(fish_state==1) text(pg,120-8*4,24,"WAITING...",C_CYAN,2);
     else if(fish_state==2) text(pg,120-6*4,24,"PRESS A!",(frames&2)?C_RED:C_WHITE,2);
     else if(fish_state==3) text(pg,120-8*4,24,"HOLD A TO REEL",C_CYAN,2);
