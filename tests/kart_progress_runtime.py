@@ -13,6 +13,14 @@ assert "if(kart_record_eligible(rc[0].fin,rc[0].out,k_type,rc[0].ftime))" in r
 assert 'if(k->out)scpy(t,k_type==6?"OUT":"DNF")' in r
 assert "rc[0].out=1;rc[0].place=(u8)nrc" in k
 assert 'if(kitem_active(0)){ int g=rc[0].nextg;' in k
+assert "kart_gate_in_range(kgate_pi,kt.n,a-9,b+10)" in k
+assert "kart_gate_in_range(kgate_pi,kt.n,p-12,p+22)" in k
+assert "kart_gate_in_range(kgate_pi,kt.n,p-12,p+12)" in k
+assert "kart_race_retire(k_end_t,k_finish_idle,knp,kt.laps)" in k
+rescue=fn(k,"static void kart_restore_road(")
+assert "nextg=" not in rescue and ".lap=" not in rescue
+assert "rc[0].x=ppx; rc[0].y=ppy;" in rescue
+assert "kart_gate_contact(" in fn(k,"static int kart_checkpoint_rescue_point(")
 prefix=r"""
 #include <assert.h>
 #include <stdint.h>
@@ -54,6 +62,10 @@ int main(void){
         int grace=kart_finish_grace(path,laps);
         assert(grace>=900&&grace<=7200);
         if(laps>1)assert(grace>=kart_finish_grace(path,laps-1));
+        assert(!kart_race_retire(grace,900,path,laps));
+        assert(kart_race_retire(grace+1,0,path,laps));
+        assert(kart_race_retire(901,901,path,laps));
+        assert(!kart_race_retire(0,0,path,laps));
     }
     for(int a=0;a<240;a++)for(int b=a;b<240;b++){
         int found=0;for(int i=0;i<6;i++)if(kgate_pi[i]>=a&&kgate_pi[i]<=b)found=1;
@@ -83,6 +95,22 @@ int main(void){
     assert(kart_driver_target(239,0,240)==0);
     assert(kart_driver_target(12,0,240)==0);
     assert(!kart_gate_missed(-1,0,240));
+    /* Recovery is bounded by the last cleared gate and never lands at
+       or beyond the required next gate, including the finish-line wrap. */
+    for(int path=2;path<=40;path++)for(int prev=0;prev<path;prev++)
+        for(int gp=0;gp<path;gp++)for(int pi=0;pi<path;pi++){
+            int span=(gp-prev+path)%path,offset=(pi-prev+path)%path;
+            int result=kart_recovery_limit(pi,prev,gp,path);
+            if(!span){assert(result==-1);continue;}
+            assert(result>=0&&result<span);
+            if(offset<span)assert(result==offset);
+            else if(kart_gate_missed(pi,gp,path))assert(result==span-1);
+            else assert(result==0);
+        }
+    assert(kart_recovery_limit(-1,200,0,240)==-1);
+    assert(kart_recovery_limit(239,200,0,240)==39);
+    assert(kart_recovery_limit(12,200,0,240)==39);
+    assert(kart_recovery_limit(6,200,0,240)==0);
     for(int lap=1;lap<=6;lap++)for(int gate=0;gate<6;gate++)for(int pi=0;pi<240;pi++){
         int s=kvalidated_progress(lap,pi,gate,240,6,kgate_pi);
         int lo=gate?kgate_pi[gate-1]:kgate_pi[5],hi=gate?kgate_pi[gate]:240;
@@ -107,6 +135,6 @@ int main(void){
 """
 with tempfile.TemporaryDirectory() as td:
     p=Path(td);c=p/"test.c";exe=p/"test"
-    c.write_text(prefix+"\n".join(fn(k,m) for m in ("static inline int kwp(","static int kwrap8(","static void kpath_track(","static int kart_gate_in_range(","static int kart_gate_contact(","static int kart_finish_grace(","static int kart_gate_missed(","static int kart_driver_target(","static int kvalidated_progress(","static int kscore(","static void kplaces(","static int kart_record_eligible("))+cases)
+    c.write_text(prefix+"\n".join(fn(k,m) for m in ("static inline int kwp(","static int kwrap8(","static void kpath_track(","static int kart_gate_in_range(","static int kart_gate_contact(","static int kart_finish_grace(","static int kart_race_retire(","static int kart_gate_missed(","static int kart_driver_target(","static int kart_recovery_limit(","static int kvalidated_progress(","static int kscore(","static void kplaces(","static int kart_record_eligible("))+cases)
     subprocess.run(["cc","-std=c11","-O1","-fsanitize=undefined","-fno-sanitize-recover=all",str(c),"-o",str(exe)],check=True)
     subprocess.run([str(exe)],check=True)
