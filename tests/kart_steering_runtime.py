@@ -66,7 +66,8 @@ int main(void){
         CHECK(actual==(old<4?4:old));
         CHECK(actual<=base);
         CHECK(kart_turn_rate(actual,0,max)==0);
-        CHECK(kart_turn_rate(actual,max/3,max)>=4);
+        CHECK(kart_turn_rate(actual,max/3,max)==(actual*255>>8));
+        CHECK(kart_turn_rate(actual,max/2,max)>=4);
     }
     CHECK(kart_surface_turn_base(5,2,1,2)==4);      // weakest grip: snow on ice
     CHECK(kart_surface_turn_base(9,0,1,0)==9);      // dry: original behavior
