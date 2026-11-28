@@ -387,6 +387,20 @@ static const char *const kcls_name[5]={"LARVA","PUPA","IMAGO","STARBUG","HYPER"}
 static s32 k_vmax(const KLook *l){ return (s32)K_VBASE*kcls_pct[k_cls]/100*(82+kstat(l,KST_SPD)*3)/100; }
  // Low-speed steering should remain usable, but a fully stopped kart must not
  // spin in place. The same fixed-tick steering applies on GBA, PC and Android.
+/* Ice and weather still reduce grip, but stacked integer truncation must
+   not make a moving kart unable to negotiate tight turns or recover a gate.
+   This is the shared steering base for all real drivers, not a fuzz override. */
+static inline int kart_surface_turn_base(int base,int surf,int mode,int weather){
+    int tr=base;
+    if(mode==1 && surf==2)tr=tr*11/20;
+    else if(mode==1 && surf==1)tr=tr*9/10;
+    if(weather==1)tr=tr*9/10;
+    else if(weather==2)tr=tr*4/5;
+    /* Only floor genuine surface penalties; retain the original dry-road
+       behavior and the stationary/low-speed scaling in kart_turn_rate. */
+    if(tr<4 && base>=4)tr=4;
+    return tr;
+}
 static inline int kart_turn_rate(int base, s32 speed, s32 vmax){
     s32 moving=speed<0?-speed:speed;
     int f=(int)((moving*768)/(vmax?vmax:1)); if(f>256) f=256;
@@ -1000,7 +1014,7 @@ static void kart_step(void){
     int c=cmap[((ppy>>15)&HMASK)*HW+((ppx>>15)&HMASK)], fl = form==FORM_CREATURE && form_body==2;
     int water = hm_at(ppx,ppy)<water_lv && !fl && !kroad(c) && kbr_cur<64, onroad = kroad(c) || kbr_cur>=64 || (kr_mode==2 && !water);
     int grip=kstat(&kl,KST_GRP), tr=5+grip/2; s32 vcap=vmax;
-    if(onroad){ if(kt.surf==2 && kr_mode==1){ tr=tr*11/20; } else if(kt.surf==1 && kr_mode==1) tr=tr*9/10; if(wd.weather==1) tr=tr*9/10; else if(wd.weather==2) tr=tr*4/5; }   // ice, dirt, rain and snow are slippery
+    if(onroad){ tr=kart_surface_turn_base(tr,kt.surf,kr_mode,wd.weather); }   // ice, dirt, rain and snow are slippery
     else if(water) vcap=vmax*35/100; else vcap = (c>=82 && c<=87) ? vmax/2 : vmax*62/100;
     if(c==KRC_PAD && kboost_t<36 && !kair){ kboost_t=40; sfx(10); }
     if(kr_mode==1 && water && !kair && kgap_at(rc[0].pi)){ if(++kwet>20){ kart_splash(); return; } } else kwet=0;   // you dropped into a jump's water
